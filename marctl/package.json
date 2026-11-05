@@ -1,6 +1,7 @@
 {
   "name": "@myagentroam/marctl",
-  "version": "0.12.0",
+  "private": true,
+  "version": "0.12.1",
   "description": "MyAgentRoam command-line interface for authorized Node access.",
   "license": "Apache-2.0",
   "type": "module",
@@ -16,9 +17,6 @@
   },
   "engines": {
     "node": ">=22.13"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "test:unit": "node --test test/unit/*.test.mjs"

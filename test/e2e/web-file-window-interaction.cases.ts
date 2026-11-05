@@ -1,7 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { emitMockSessionEvent, json, mockConsoleApi } from './support/web-console-api.js';
+import {
+  emitMockSessionEvent,
+  fulfillMockWorkspaceWatch,
+  json,
+  mockConsoleApi
+} from './support/web-console-api.js';
 
-async function prepareFiles(page: Page): Promise<void> {
+async function prepareFiles(page: Page, extraFiles: string[] = []): Promise<void> {
   await mockConsoleApi(
     page,
     'MANAGED',
@@ -14,7 +19,7 @@ async function prepareFiles(page: Page): Promise<void> {
     '0.9.95',
     true
   );
-  const files = ['first.ts', 'second.ts', 'README.md'];
+  const files = ['first.ts', 'second.ts', 'README.md', ...extraFiles];
   await page.context().route(/\/api\/workspaces\/workspace-1\/files(?:\?.*)?$/, (route) =>
     json(route, {
       files: {
@@ -46,8 +51,272 @@ async function prepareFiles(page: Page): Promise<void> {
     .locator('.workspace-tree')
     .getByRole('button', { name: /node-1/ })
     .click();
-  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'project', exact: true })
+    .click();
 }
+
+test('Workspace HTML conversation links and Files preview use the single Aside browser', async ({
+  page
+}, testInfo) => {
+  test.setTimeout(90_000);
+  page.on('pageerror', (error) => console.error('Browser error:', error.message));
+  await prepareFiles(page, ['index.html', 'second.htm']);
+  const grants: string[] = [];
+  await page.context().route('**/api/html-preview/grants', async (route) => {
+    const path = route.request().postDataJSON().path as string;
+    grants.push(path);
+    await json(route, { url: new URL(`/html-preview-test/${path}`, page.url()).href });
+  });
+  await page.context().route('**/html-preview-test/**', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<h1>${new URL(route.request().url()).pathname}</h1>`
+    })
+  );
+  await page.locator('.session-list button').first().click();
+  await emitMockSessionEvent(page, 'conversation', {
+    sessionId: 'session-1',
+    runId: 'run-1',
+    item: {
+      itemId: 'html-links',
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      segmentId: 'turn-1:segment:0',
+      segmentIndex: 0,
+      payload: {
+        text: '[First HTML](index.html)\n\n[Second HTML](second.htm)',
+        format: 'markdown',
+        model: null
+      }
+    }
+  });
+  const first = page.locator('.agent-markdown').getByRole('link', { name: 'First HTML' });
+  await first.click();
+  await expect(
+    page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('html-aside-desktop.png'),
+    animations: 'disabled'
+  });
+  await page.locator('.agent-markdown').getByRole('link', { name: 'Second HTML' }).click();
+  await expect(
+    page.frameLocator('iframe[title="second.htm"]').getByText('/html-preview-test/second.htm')
+  ).toBeVisible();
+  await expect(page.locator('iframe[title="index.html"]')).toHaveCount(0);
+  const popupPromise = page.waitForEvent('popup');
+  await first.click({ modifiers: ['Control'] });
+  const popup = await popupPromise;
+  await expect(
+    popup.frameLocator('iframe[title]').getByText('/html-preview-test/index.html')
+  ).toBeVisible();
+  await expect(
+    page.frameLocator('iframe[title="second.htm"]').getByText('/html-preview-test/second.htm')
+  ).toBeVisible();
+  expect(grants).toEqual(['index.html', 'second.htm', 'index.html']);
+  await popup.close();
+  await page.getByRole('tab', { name: '文件', exact: true }).click();
+  const row = page.locator('.file-tree-row[data-file-path="index.html"]');
+  await row.hover();
+  await row.locator('..').locator('.file-tree-more').click();
+  await page.getByRole('menuitem', { name: '预览', exact: true }).click();
+  await expect(
+    page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
+  ).toBeVisible();
+  await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+  await page.evaluate(() => {
+    const mock = (
+      window as unknown as {
+        __consoleMockWorkbenchWebSocket: {
+          emitNodeConnection(nodeId: string, connected: boolean): void;
+        };
+      }
+    ).__consoleMockWorkbenchWebSocket;
+    mock.emitNodeConnection('node-1', false);
+  });
+  await expect(page.locator('.workspace-offline-placeholder')).toBeVisible();
+  await expect(page.locator('.workspace-grid')).toBeHidden();
+  await expect(page.locator('iframe[title="index.html"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    const mock = (
+      window as unknown as {
+        __consoleMockWorkbenchWebSocket: {
+          emitNodeConnection(nodeId: string, connected: boolean): void;
+        };
+      }
+    ).__consoleMockWorkbenchWebSocket;
+    mock.emitNodeConnection('node-1', true);
+  });
+  await expect(page.locator('.workspace-offline-placeholder')).toHaveCount(0);
+  await expect(
+    page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
+  ).toBeVisible();
+  expect(grants).toEqual(['index.html', 'second.htm', 'index.html', 'index.html', 'index.html']);
+});
+
+test('Workspace HTML conversation preview opens on mobile', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await prepareFiles(page, ['mobile.html']);
+  await page
+    .context()
+    .route('**/api/html-preview/grants', (route) =>
+      json(route, { url: new URL('/html-preview-mobile', page.url()).href })
+    );
+  await page
+    .context()
+    .route('**/html-preview-mobile', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<h1>Mobile rendered</h1>' })
+    );
+  await page.locator('.session-list button').first().click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await emitMockSessionEvent(page, 'conversation', {
+    sessionId: 'session-1',
+    runId: 'run-1',
+    item: {
+      itemId: 'mobile-html',
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      segmentId: 'turn-1:segment:0',
+      segmentIndex: 0,
+      payload: { text: '[Mobile HTML](mobile.html)', format: 'markdown', model: null }
+    }
+  });
+  await page.locator('.agent-markdown').getByRole('link', { name: 'Mobile HTML' }).click();
+  await expect(
+    page.frameLocator('iframe[title="mobile.html"]').getByText('Mobile rendered')
+  ).toBeVisible();
+  const browser = page.locator('.html-browser');
+  expect(
+    await browser.evaluate((element) => element.scrollWidth - element.clientWidth)
+  ).toBeLessThanOrEqual(1);
+  await page.screenshot({
+    path: testInfo.outputPath('html-aside-mobile.png'),
+    animations: 'disabled'
+  });
+});
+
+test('Workspace HTML source drafts and previews stay isolated across real Workspace switches', async ({
+  page
+}) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const fileEntries = [{ path: 'index.html', name: 'index.html', kind: 'FILE', size: 32 }];
+  await page.route('**/api/workspaces?nodeId=node-1', (route) =>
+    json(route, {
+      workspaces: [
+        { id: 'workspace-1', path: '/project', kind: 'GIT_WORKSPACE' },
+        { id: 'workspace-2', path: '/other-project', kind: 'DIRECTORY' }
+      ]
+    })
+  );
+  await page.route(/\/api\/workspaces\/workspace-2\/files(?:\?.*)?$/, (route) =>
+    json(route, { files: { entries: fileEntries, nextCursor: null, truncated: false } })
+  );
+  await page.route(/\/api\/workspaces\/workspace-2\/watch$/, (route) =>
+    fulfillMockWorkspaceWatch(
+      page,
+      route,
+      {
+        id: 'session-2',
+        workspaceId: 'workspace-2',
+        runner: 'codex',
+        externalSessionId: 'thread-2',
+        activity: 'IDLE',
+        control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
+      },
+      'DIRECTORY',
+      fileEntries
+    )
+  );
+  await page.route(/\/api\/workspaces\/(workspace-[12])\/files\/read(?:\?.*)?$/, (route) => {
+    const workspaceId = new URL(route.request().url()).pathname.split('/')[3]!;
+    const content = `<h1>saved ${workspaceId}</h1>`;
+    return json(route, {
+      file: {
+        path: 'index.html',
+        encoding: 'utf-8',
+        size: content.length,
+        content,
+        truncated: false,
+        nextOffset: null,
+        revision: 'a'.repeat(64)
+      }
+    });
+  });
+  await prepareFiles(page, ['index.html']);
+  const grants: string[] = [];
+  const writes: string[] = [];
+  await page.context().route('**/api/html-preview/grants', (route) => {
+    const workspaceId = route.request().postDataJSON().workspaceId as string;
+    grants.push(workspaceId);
+    return json(route, { url: new URL(`/html-isolation/${workspaceId}`, page.url()).href });
+  });
+  await page.context().route('**/html-isolation/*', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<h1>saved ${new URL(route.request().url()).pathname.split('/').at(-1)}</h1>`
+    })
+  );
+  page.on('request', (request) => {
+    if (/\/files\/write$/.test(new URL(request.url()).pathname)) writes.push(request.url());
+  });
+  const editor = page
+    .getByRole('region', { name: 'index.html 文件预览', exact: true })
+    .locator('.cm-content');
+  const browser = page.locator('.html-browser');
+  async function editAndPreview(workspaceId: string, draft: string) {
+    await page.getByRole('tab', { name: '文件', exact: true }).click();
+    await page.locator('.file-tree-row[data-file-path="index.html"]').click();
+    await expect(editor).toContainText(`saved ${workspaceId}`);
+    if ((await editor.getAttribute('contenteditable')) !== 'true')
+      await page.getByRole('button', { name: '编辑文件', exact: true }).click();
+    await editor.click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type(` ${draft}`);
+    await expect(editor).toContainText(draft);
+    await page.getByRole('button', { name: '运行 HTML 预览', exact: true }).click();
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+    await expect(
+      page.frameLocator('iframe[title="index.html"]').getByText(`saved ${workspaceId}`)
+    ).toBeVisible();
+    await expect(page.frameLocator('iframe[title="index.html"]').locator('body')).not.toContainText(
+      draft
+    );
+  }
+
+  await editAndPreview('workspace-1', 'workspace-one-draft');
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: 'other-project', exact: true })
+    .click();
+  await page.getByRole('tab', { name: '浏览器', exact: true }).click();
+  await expect(browser.getByText('从会话或文件中打开 HTML 文件，即可在此预览。')).toBeVisible();
+  await expect(page.locator('iframe[title="index.html"]')).toHaveCount(0);
+  await editAndPreview('workspace-2', 'workspace-two-draft');
+
+  for (const [workspaceId, draft, otherDraft] of [
+    ['workspace-1', 'workspace-one-draft', 'workspace-two-draft'],
+    ['workspace-2', 'workspace-two-draft', 'workspace-one-draft']
+  ] as const) {
+    await page.locator(`.workspace-tab[data-tab-id="node-1:${workspaceId}"]`).click();
+    await expect(
+      page.frameLocator('iframe[title="index.html"]').getByText(`saved ${workspaceId}`)
+    ).toBeVisible();
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+    await browser.getByRole('button', { name: '打开源码', exact: true }).click();
+    await expect(editor).toContainText(draft);
+    await expect(editor).not.toContainText(otherDraft);
+    await expect(page.getByRole('tablist', { name: '文件预览标签' }).getByRole('tab')).toHaveCount(
+      1
+    );
+    await page.getByRole('button', { name: '运行 HTML 预览', exact: true }).click();
+  }
+  expect(grants).toContain('workspace-1');
+  expect(grants).toContain('workspace-2');
+  expect(writes).toEqual([]);
+});
 
 async function openFile(page: Page, path: string): Promise<void> {
   // Exercise the existing tree intent without requiring access through the file overlay.

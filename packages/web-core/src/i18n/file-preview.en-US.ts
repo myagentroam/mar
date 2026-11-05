@@ -120,6 +120,14 @@ export const filePreviewEnUS = {
   },
   htmlPreview: {
     open: 'Run HTML preview',
+    browser: 'Browser',
+    preview: 'Preview',
+    empty: 'Open an HTML file from a conversation or Files to preview it here.',
+    reload: 'Reload',
+    source: 'Open source',
+    external: 'Open in browser',
+    savedVersion: 'Preview shows the saved version.',
+    saving: 'Wait for file saving to finish before previewing.',
     trustedWarning:
       'Trusted code: this HTML shares the Console hostname, may access your signed-in permissions, and may send files to external sites.',
     isolatedWarning:

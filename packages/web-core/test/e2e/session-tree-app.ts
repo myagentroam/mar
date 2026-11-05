@@ -181,6 +181,9 @@ createTooltipApp({
                           }))
                 } as T;
               },
+              onShow: (id: string) => {
+                selected.value = id;
+              },
               onOpen: (id: string) => {
                 selected.value = id;
               }

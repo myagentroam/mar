@@ -109,66 +109,71 @@ function openContext(event: MouseEvent): void {
     </p>
     <div v-if="tree?.parent" class="session-tree-parent" @contextmenu="openContext">
       <span>{{ translate('sessionGroups.parent') }}</span>
-      <button
-        type="button"
-        class="session-tree-node"
-        :aria-label="`${tree.parent.title}, ${translate(`sessionGroups.status${tree.parent.status}`)}`"
-        @click="emit('open', tree.parent.id, 'aside')"
-      >
-        <span v-tooltip="tree.parent.title" class="session-tree-title">{{
-          tree.parent.title
-        }}</span>
-        <span
-          v-if="tree.parent.status !== 'IDLE'"
-          class="session-activity"
-          :class="tree.parent.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
-          aria-hidden="true"
-          ><i
-        /></span>
-        <time
-          class="session-tree-time"
-          v-tooltip="activityTitle(tree.parent)"
-          :datetime="activityDateTime(tree.parent)"
-          >{{ formatRelativeSessionActivity(tree.parent.lastActivityAt) }}</time
-        >
-      </button>
-      <span v-if="tree.parent.id === mainSessionId" class="session-tree-location">{{
-        translate('sessionGroups.inMain')
-      }}</span>
-      <span v-else-if="tree.parent.id === activeAsideId" class="session-tree-location">{{
-        translate('sessionGroups.inActiveAside')
-      }}</span>
-      <span v-else-if="asideSessionIds.includes(tree.parent.id)" class="session-tree-location">{{
-        translate('sessionGroups.inAside')
-      }}</span>
-      <el-dropdown
-        ref="parentMenu"
-        trigger="click"
-        popper-class="session-tree-menu"
-        @visible-change="emit('menu', $event)"
-        @command="emit('open', tree!.parent!.id, $event)"
-      >
+      <div class="session-tree-item" :class="{ 'is-current': tree.parent.id === mainSessionId }">
         <button
           type="button"
-          class="icon-button utility-control session-tree-actions"
-          v-tooltip="translate('sessionGroups.actions')"
-          :aria-label="translate('sessionGroups.actions')"
+          class="session-tree-node"
+          :aria-current="tree.parent.id === mainSessionId ? 'true' : undefined"
+          :aria-label="`${tree.parent.title}, ${translate(`sessionGroups.status${tree.parent.status}`)}`"
+          @click="emit('open', tree.parent.id, 'aside')"
         >
-          <MarIcon name="more" />
+          <span v-tooltip="tree.parent.title" class="session-tree-title">{{
+            tree.parent.title
+          }}</span>
+          <span
+            v-if="tree.parent.status !== 'IDLE'"
+            class="session-activity"
+            :class="tree.parent.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
+            aria-hidden="true"
+            ><i
+          /></span>
+          <time
+            class="session-tree-time"
+            v-tooltip="activityTitle(tree.parent)"
+            :datetime="activityDateTime(tree.parent)"
+            >{{ formatRelativeSessionActivity(tree.parent.lastActivityAt) }}</time
+          >
         </button>
-        <template #dropdown
-          ><el-dropdown-menu>
-            <el-dropdown-item command="aside"
-              ><MarIcon name="split" />{{ translate('sessionGroups.openAside') }}</el-dropdown-item
-            >
-            <el-dropdown-item command="main"
-              ><MarIcon name="conversation" />{{
-                translate('sessionGroups.openMain')
-              }}</el-dropdown-item
-            >
-          </el-dropdown-menu></template
+        <span v-if="tree.parent.id === mainSessionId" class="session-tree-location">{{
+          translate('sessionGroups.inMain')
+        }}</span>
+        <span v-else-if="tree.parent.id === activeAsideId" class="session-tree-location">{{
+          translate('sessionGroups.inActiveAside')
+        }}</span>
+        <span v-else-if="asideSessionIds.includes(tree.parent.id)" class="session-tree-location">{{
+          translate('sessionGroups.inAside')
+        }}</span>
+        <el-dropdown
+          ref="parentMenu"
+          trigger="click"
+          popper-class="session-tree-menu"
+          @visible-change="emit('menu', $event)"
+          @command="emit('open', tree!.parent!.id, $event)"
         >
-      </el-dropdown>
+          <button
+            type="button"
+            class="icon-button utility-control session-tree-actions"
+            v-tooltip="translate('sessionGroups.actions')"
+            :aria-label="translate('sessionGroups.actions')"
+          >
+            <MarIcon name="more" />
+          </button>
+          <template #dropdown
+            ><el-dropdown-menu>
+              <el-dropdown-item command="aside"
+                ><MarIcon name="split" />{{
+                  translate('sessionGroups.openAside')
+                }}</el-dropdown-item
+              >
+              <el-dropdown-item command="main"
+                ><MarIcon name="conversation" />{{
+                  translate('sessionGroups.openMain')
+                }}</el-dropdown-item
+              >
+            </el-dropdown-menu></template
+          >
+        </el-dropdown>
+      </div>
     </div>
     <p v-if="tree && rows.length === 0">{{ translate('sessionGroups.noDescendants') }}</p>
     <ul v-if="tree && rows.length > 0" class="session-tree-list">
@@ -201,69 +206,74 @@ function openContext(event: MouseEvent): void {
           aria-hidden="true"
           :style="{ insetInlineStart: `${row.branches.length * 1.25 + 0.75}rem` }"
         />
-        <button
-          type="button"
-          class="session-tree-node"
+        <div
+          class="session-tree-item"
+          :class="{ 'is-current': row.node.id === mainSessionId }"
           :style="{ marginInlineStart: `${(row.branches.length + 1) * 1.25}rem` }"
-          :aria-current="row.node.id === mainSessionId ? 'true' : undefined"
-          :aria-label="`${row.node.title}, ${translate(`sessionGroups.status${row.node.status}`)}`"
-          @click="emit('open', row.node.id, 'aside')"
-        >
-          <span v-tooltip="row.node.title" class="session-tree-title">{{ row.node.title }}</span>
-          <span v-if="row.node.id === mainSessionId" class="session-tree-location">{{
-            translate('sessionGroups.inMain')
-          }}</span>
-          <span v-else-if="row.node.id === activeAsideId" class="session-tree-location">{{
-            translate('sessionGroups.inActiveAside')
-          }}</span>
-          <span v-else-if="asideSessionIds.includes(row.node.id)" class="session-tree-location">{{
-            translate('sessionGroups.inAside')
-          }}</span>
-          <span
-            v-if="row.node.status !== 'IDLE'"
-            class="session-activity"
-            :class="row.node.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
-            aria-hidden="true"
-            ><i />
-          </span>
-          <time
-            v-tooltip="activityTitle(row.node)"
-            class="session-tree-time"
-            :datetime="activityDateTime(row.node)"
-            >{{ formatRelativeSessionActivity(row.node.lastActivityAt) }}</time
-          >
-        </button>
-        <el-dropdown
-          ref="nodeMenus"
-          trigger="click"
-          popper-class="session-tree-menu"
-          @visible-change="emit('menu', $event)"
-          @command="emit('open', row.node.id, $event)"
         >
           <button
             type="button"
-            class="icon-button utility-control session-tree-actions"
-            v-tooltip="translate('sessionGroups.actions')"
-            :aria-label="translate('sessionGroups.actions')"
-            @click.stop
+            class="session-tree-node"
+            :aria-current="row.node.id === mainSessionId ? 'true' : undefined"
+            :aria-label="`${row.node.title}, ${translate(`sessionGroups.status${row.node.status}`)}`"
+            @click="emit('open', row.node.id, 'aside')"
           >
-            <MarIcon name="more" />
+            <span v-tooltip="row.node.title" class="session-tree-title">{{ row.node.title }}</span>
+            <span v-if="row.node.id === mainSessionId" class="session-tree-location">{{
+              translate('sessionGroups.inMain')
+            }}</span>
+            <span v-else-if="row.node.id === activeAsideId" class="session-tree-location">{{
+              translate('sessionGroups.inActiveAside')
+            }}</span>
+            <span v-else-if="asideSessionIds.includes(row.node.id)" class="session-tree-location">{{
+              translate('sessionGroups.inAside')
+            }}</span>
+            <span
+              v-if="row.node.status !== 'IDLE'"
+              class="session-activity"
+              :class="row.node.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
+              aria-hidden="true"
+              ><i />
+            </span>
+            <time
+              v-tooltip="activityTitle(row.node)"
+              class="session-tree-time"
+              :datetime="activityDateTime(row.node)"
+              >{{ formatRelativeSessionActivity(row.node.lastActivityAt) }}</time
+            >
           </button>
-          <template #dropdown
-            ><el-dropdown-menu>
-              <el-dropdown-item command="aside"
-                ><MarIcon name="split" />{{
-                  translate('sessionGroups.openAside')
-                }}</el-dropdown-item
-              >
-              <el-dropdown-item command="main"
-                ><MarIcon name="conversation" />{{
-                  translate('sessionGroups.openMain')
-                }}</el-dropdown-item
-              >
-            </el-dropdown-menu></template
+          <el-dropdown
+            ref="nodeMenus"
+            trigger="click"
+            popper-class="session-tree-menu"
+            @visible-change="emit('menu', $event)"
+            @command="emit('open', row.node.id, $event)"
           >
-        </el-dropdown>
+            <button
+              type="button"
+              class="icon-button utility-control session-tree-actions"
+              v-tooltip="translate('sessionGroups.actions')"
+              :aria-label="translate('sessionGroups.actions')"
+              @click.stop
+            >
+              <MarIcon name="more" />
+            </button>
+            <template #dropdown
+              ><el-dropdown-menu>
+                <el-dropdown-item command="aside"
+                  ><MarIcon name="split" />{{
+                    translate('sessionGroups.openAside')
+                  }}</el-dropdown-item
+                >
+                <el-dropdown-item command="main"
+                  ><MarIcon name="conversation" />{{
+                    translate('sessionGroups.openMain')
+                  }}</el-dropdown-item
+                >
+              </el-dropdown-menu></template
+            >
+          </el-dropdown>
+        </div>
       </li>
     </ul>
     <p v-if="tree?.truncated" class="session-tree-truncated">
@@ -286,10 +296,17 @@ function openContext(event: MouseEvent): void {
   gap: 0.4rem;
   padding: 0.25rem 0.5rem;
 }
-.session-tree-parent > button {
+.session-tree-item {
+  display: flex;
+  align-items: center;
   flex: 1;
   min-width: 0;
-  text-align: start;
+  margin-block: 2px;
+  padding-inline-end: 0.25rem;
+  border-radius: var(--mar-radius-control);
+}
+.session-tree-item > .el-dropdown {
+  flex: none;
 }
 .session-tree-location {
   flex: none;
@@ -324,7 +341,6 @@ function openContext(event: MouseEvent): void {
   min-height: var(--mar-session-row-min-height);
   align-items: center;
   gap: 0.5rem;
-  margin-block: 2px;
   padding: var(--mar-session-row-padding-block) 0.5rem;
   border: 0;
   border-radius: var(--mar-radius-control);
@@ -335,12 +351,27 @@ function openContext(event: MouseEvent): void {
   cursor: pointer;
   text-align: start;
 }
-.session-tree-node:hover {
+.session-tree-row:hover > .session-tree-item,
+.session-tree-item:hover,
+.session-tree-item:focus-within,
+.session-tree-item:has([aria-expanded='true']) {
   background: var(--mar-fill-row-hover);
 }
-.session-tree-node[aria-current='true'],
-.session-tree-node[aria-current='true']:hover {
+.session-tree-item.is-current {
   background: var(--mar-fill-selection);
+}
+@media (hover: hover) and (pointer: fine) {
+  .session-tree-actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .session-tree-row:hover .session-tree-actions,
+  .session-tree-parent:hover .session-tree-actions,
+  .session-tree-item:focus-within .session-tree-actions,
+  .session-tree-item:has([aria-expanded='true']) .session-tree-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .session-tree-node:focus-visible {
   outline: 2px solid var(--mar-color-brand);

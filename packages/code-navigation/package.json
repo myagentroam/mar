@@ -1,5 +1,6 @@
 {
   "name": "@myagentroam/code-navigation",
+  "private": true,
   "version": "0.11.1",
   "description": "Shared pure language detection and file-reference extraction for MyAgentRoam.",
   "license": "Apache-2.0",
@@ -8,9 +9,6 @@
     "dist/**/*.js",
     "dist/**/*.d.ts"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "exports": {
     "./package.json": "./package.json",
     ".": {

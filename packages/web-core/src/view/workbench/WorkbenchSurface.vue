@@ -26,6 +26,7 @@ import type { Workspace } from '../../model/workbench.js';
 import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
 import { errorMessage, hostedConversationTitle } from '../../util/workbench-presentation.js';
 import WorkspaceInspector from '../../view/workspace/WorkspaceInspector.vue';
+import WorkspaceHtmlBrowser from '../workspace/WorkspaceHtmlBrowser.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
@@ -136,6 +137,7 @@ const asideTools = computed(() => [
   { id: 'search' as const, label: translate('generated.workspaceInspector.search') },
   { id: 'changes' as const, label: translate('generated.workspaceInspector.gitChanges') },
   { id: 'history' as const, label: translate('generated.workspaceInspector.gitHistory') },
+  { id: 'browser' as const, label: translate('htmlPreview.browser') },
   { id: 'terminal' as const, label: translate('generated.terminalDock.workspaceTerminal') }
 ]);
 const asideSessions = computed(() =>
@@ -148,9 +150,15 @@ const asideSessions = computed(() =>
     };
   })
 );
-function inspectorTool(tool: AsideTool | undefined): Exclude<AsideTool, 'terminal'> | null {
+function inspectorTool(
+  tool: AsideTool | undefined
+): Exclude<AsideTool, 'terminal' | 'browser'> | null {
   const active = props.page.asideState?.active;
-  return !asideVisible.value || active?.kind !== 'tool' || active.id !== tool || tool === 'terminal'
+  return !asideVisible.value ||
+    active?.kind !== 'tool' ||
+    active.id !== tool ||
+    tool === 'terminal' ||
+    tool === 'browser'
     ? null
     : tool;
 }
@@ -580,6 +588,23 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 @resize="page.setPanelWidth(asideMode, $event)"
                 @close-surface="page.closeMobileWorkspaceSurface"
               >
+                <template #browser>
+                  <WorkspaceHtmlBrowser
+                    v-if="
+                      asideVisible &&
+                      page.workspaceTarget &&
+                      page.asideState.active?.kind === 'tool' &&
+                      page.asideState.active.id === 'browser'
+                    "
+                    :node-id="page.workspaceTarget.nodeId"
+                    :workspace-id="page.workspaceTarget.workspaceId"
+                    :path="page.asideState.htmlPath"
+                    :csrf-token="page.csrfToken"
+                    :renew-csrf-token="page.renewCsrfToken"
+                    @source="page.workspaceInspector?.openFile($event)"
+                    @external="page.openHtmlExternal($event)"
+                  />
+                </template>
                 <template #tool="{ tool }">
                   <WorkspaceInspector
                     :aside-tool="inspectorTool(tool)"
@@ -623,6 +648,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :direct-git-file-read-range="page.directGitFileReadRange"
                     :standalone-file-mode="page.standaloneFileMode"
                     @directory="page.changeWorkspaceWatchDirectory"
+                    @open-html-preview="page.openHtmlAside"
                     @retry-watch="page.retryWorkspaceWatch"
                     @branch="
                       (workspaceId, branch) =>

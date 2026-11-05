@@ -70,6 +70,9 @@ onBeforeUnmount(() => {
     :show-arrow="false"
     popper-class="session-tree-popover"
     width="min(480px, calc(100vw - 24px))"
+    :popper-options="{
+      modifiers: [{ name: 'preventOverflow', options: { padding: 12, tether: false } }]
+    }"
   >
     <section ref="root" class="session-tree-popup" role="dialog" :aria-label="title">
       <header class="session-tree-header">{{ title }}</header>

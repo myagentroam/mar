@@ -46,7 +46,11 @@ const agentWaitText = computed(() => {
     </template>
     <template v-else>
       <div class="agent-detail-row agent-detail-meta">
-        <span>{{ agentDetail.targets[0]?.title ?? agentDetail.title }}</span
+        <span
+          ><span v-if="agentDetail.messageIsGoal" class="agent-detail-goal">{{
+            translate('presentation.agentGoal')
+          }}</span
+          >{{ agentDetail.targets[0]?.title ?? agentDetail.title }}</span
         ><span v-if="agentDetail.delivery">{{ agentDetail.delivery.toLowerCase() }}</span>
       </div>
       <p v-if="agentDetail.outputTruncation === 'HEAD'" class="agent-detail-meta">
@@ -98,6 +102,9 @@ const agentWaitText = computed(() => {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-detail);
   font-weight: 400;
+}
+.agent-detail-goal {
+  margin-inline-end: 0.5rem;
 }
 .agent-detail-text {
   color: var(--mar-conversation-text);

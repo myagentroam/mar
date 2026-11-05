@@ -22,6 +22,7 @@ export interface WorkspaceFilePageHandle {
   toggleEdit(): 'CHANGED' | 'UNAVAILABLE';
   canClose(): Promise<boolean>;
   captureDirtyDrafts?(): readonly unknown[];
+  isSaving?(): boolean;
   prepareForConfirmedClose?(): void;
 }
 
@@ -199,6 +200,9 @@ function activate(id: number): void {
 function captureDirtyDrafts(): readonly unknown[] {
   return [...pageHandles.values()].flatMap((handle) => handle.captureDirtyDrafts?.() ?? []);
 }
+function hasPendingSave(): boolean {
+  return [...pageHandles.values()].some((handle) => handle.isSaving?.() === true);
+}
 
 function cursorPosition(
   id: number
@@ -250,6 +254,7 @@ defineExpose({
   requestClose,
   requestCloseAll,
   captureDirtyDrafts,
+  hasPendingSave,
   cursorPosition,
   navigateTo,
   focusPage

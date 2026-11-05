@@ -11,6 +11,7 @@ import { localePreferenceService, translate } from '../../service/locale-prefere
 import FileTypeIcon from './FileTypeIcon.vue';
 import { errorMessage } from '../../util/error-presentation.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
+import { isHtmlFile } from '../../util/file-preview.js';
 
 const props = defineProps<{
   readonly root: WorkspaceFileTreeNode;
@@ -31,6 +32,7 @@ const emit = defineEmits<{
     action:
       | 'OPEN'
       | 'OPEN_EXTERNAL'
+      | 'PREVIEW_HTML'
       | 'CREATE_FILE'
       | 'CREATE_DIRECTORY'
       | 'DOWNLOAD'
@@ -56,9 +58,6 @@ const actionNodePath = ref<string>();
 const actionMenuVisible = ref(false);
 const hoveredActionNodePath = ref<string>();
 const focusedActionNodePath = ref<string>();
-const nodeActionPopperOptions = {
-  modifiers: [{ name: 'offset', options: { offset: [0, -6] } }]
-};
 const rows = computed(() => visibleWorkspaceFileTreeRows(props.root, props.filter));
 const scrollTop = ref(0);
 const viewportHeight = ref(0);
@@ -338,6 +337,7 @@ function action(command: string, node: WorkspaceFileTreeNode): void {
   if (
     command === 'OPEN' ||
     command === 'OPEN_EXTERNAL' ||
+    command === 'PREVIEW_HTML' ||
     command === 'CREATE_FILE' ||
     command === 'CREATE_DIRECTORY' ||
     command === 'DOWNLOAD' ||
@@ -484,7 +484,6 @@ defineExpose({ reveal });
               trigger="click"
               placement="bottom-start"
               :persistent="false"
-              :popper-options="nodeActionPopperOptions"
               @command="action($event, row.node)"
               @visible-change="setActionMenuVisible($event, row.node.path)"
             >
@@ -512,6 +511,11 @@ defineExpose({ reveal });
                     ><MarIcon name="external-link" />{{
                       translate('generated.workspaceFileTree.openInNewWindow')
                     }}</el-dropdown-item
+                  >
+                  <el-dropdown-item
+                    v-if="row.node.kind === 'FILE' && isHtmlFile(row.node.path)"
+                    command="PREVIEW_HTML"
+                    ><MarIcon name="view" />{{ translate('htmlPreview.preview') }}</el-dropdown-item
                   >
                   <el-dropdown-item v-if="row.node.kind === 'FILE'" command="DOWNLOAD"
                     ><MarIcon name="download" />{{

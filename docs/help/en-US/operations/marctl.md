@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-11-03
+lastUpdated: 2026-11-05
 ---
 
 # Manage Nodes with marctl
@@ -38,7 +38,7 @@ marssh --version
 marscp --version
 ```
 
-Each entrypoint also supports `-V` and writes one line, `marctl <version>`, to standard output, followed by a newline. No banner, dependency versions, or diagnostics are appended; successful queries exit with code 0. This is the installed `@myagentroam/marctl` package version, not the Node or Server version. No configuration, authorization, or Server connection is required. Use `marctl help version` or `marctl version --help` for version-command help. In `marssh <node> --version`, the option remains part of the remote command rather than showing the local CLI version.
+Each entrypoint also supports `-V` and writes one line, `marctl <version>`, to standard output, followed by a newline. No banner, dependency versions, or diagnostics are appended; successful queries exit with code 0. This is the installed Node package version, not the Server version. No configuration, authorization, or Server connection is required. Use `marctl help version` or `marctl version --help` for version-command help. In `marssh <node> --version`, the option remains part of the remote command rather than showing the local CLI version.
 
 ## Execution-context authorization
 

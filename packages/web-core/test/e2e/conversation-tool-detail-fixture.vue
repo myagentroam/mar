@@ -211,6 +211,17 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (new URL(location.href).searchParams.has('reasoning-pair')) {
+  detailSamples.splice(detailSamples.findIndex((item) => item.kind === 'reasoning') + 1, 0, {
+    id: 'thinking-next',
+    kind: 'reasoning',
+    status: 'COMPLETED',
+    payload: {
+      sections: [{ text: 'Check the shared reading start.' }],
+      representation: 'visible_thinking'
+    }
+  });
+}
 if (new URL(location.href).searchParams.has('detail-layout')) {
   detailSamples.push(
     {
@@ -371,7 +382,14 @@ if (new URL(location.href).searchParams.has('agent-cards')) {
       [task],
       'start receipt'
     ],
-    ['SEND', { message: 'Please check the patch.', delivery: 'QUEUE' }, [task], 'send receipt'],
+    [
+      'SEND',
+      params.has('agent-goal')
+        ? { message: 'Review the Goal.\n继续验证', messageIsGoal: true }
+        : { message: 'Please check the patch.', delivery: 'QUEUE' },
+      [task],
+      'send receipt'
+    ],
     [
       'WAIT',
       { wait: { waitFor: 'completion', waitMs, ...(singleWait ? {} : { mode: 'any' }) } },

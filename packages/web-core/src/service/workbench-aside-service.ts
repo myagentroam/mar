@@ -1,6 +1,6 @@
 import { shallowRef } from 'vue';
 
-export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'terminal';
+export type AsideTool = 'files' | 'search' | 'changes' | 'history' | 'browser' | 'terminal';
 export type AsideViewMode = 'compact' | 'content';
 export type AsideTarget =
   | { readonly kind: 'tool'; readonly id: AsideTool }
@@ -17,6 +17,7 @@ export interface AsideSnapshot {
   readonly active?: AsideTarget | undefined;
   readonly recentTool?: AsideTool | undefined;
   readonly terminalReturn?: AsideTarget | undefined;
+  readonly htmlPath?: string | undefined;
 }
 export interface AsideState extends AsideSnapshot {
   readonly tools: readonly AsideTool[];
@@ -27,12 +28,14 @@ export const ASIDE_TOOLS: readonly AsideTool[] = [
   'search',
   'changes',
   'history',
+  'browser',
   'terminal'
 ];
 const empty: AsideState = { tools: [], sessions: [] };
 
 export function asideViewMode(target: AsideTarget | undefined): AsideViewMode {
-  return target?.kind === 'session' || (target?.kind === 'tool' && target.id === 'terminal')
+  return target?.kind === 'session' ||
+    (target?.kind === 'tool' && (target.id === 'terminal' || target.id === 'browser'))
     ? 'content'
     : 'compact';
 }
@@ -124,6 +127,13 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     });
   }
 
+  function openHtml(target: AsideWorkspace, path: string): boolean {
+    const state = current(target);
+    if (!state.tools.includes('browser')) return false;
+    put(target, { ...state, htmlPath: path });
+    return selectTool(target, 'browser');
+  }
+
   function replaceSession(target: AsideSession, nextSessionId: string): boolean {
     const state = current(target);
     if (!state.sessions.includes(target.sessionId)) return false;
@@ -188,8 +198,8 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     return true;
   }
   function snapshot(target: AsideWorkspace): AsideSnapshot {
-    const { sessions, active, recentTool, terminalReturn } = current(target);
-    return { sessions: [...sessions], active, recentTool, terminalReturn };
+    const { sessions, active, recentTool, terminalReturn, htmlPath } = current(target);
+    return { sessions: [...sessions], active, recentTool, terminalReturn, htmlPath };
   }
   function restore(
     target: AsideWorkspace,
@@ -204,9 +214,21 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
       sessions,
       active: saved.active,
       recentTool: saved.recentTool,
-      terminalReturn: saved.terminalReturn
+      terminalReturn: saved.terminalReturn,
+      htmlPath: saved.htmlPath
     });
     ensure(target, tools);
+  }
+  function clearHtmlWorkspace(target: AsideWorkspace): void {
+    const state = workspaces.value.get(target.nodeId)?.get(target.workspaceId);
+    if (state?.htmlPath !== undefined) put(target, { ...state, htmlPath: undefined });
+  }
+  function clearHtmlNode(nodeId: string): void {
+    for (const workspaceId of workspaces.value.get(nodeId)?.keys() ?? [])
+      clearHtmlWorkspace({ nodeId, workspaceId });
+  }
+  function clearHtml(): void {
+    for (const nodeId of workspaces.value.keys()) clearHtmlNode(nodeId);
   }
   function removeWorkspace(target: AsideWorkspace): void {
     const nodes = new Map(workspaces.value);
@@ -220,6 +242,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     current,
     ensure,
     selectTool,
+    openHtml,
     openSession,
     replaceSession,
     activateSession,
@@ -228,6 +251,9 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     toggleTerminal,
     snapshot,
     restore,
-    removeWorkspace
+    removeWorkspace,
+    clearHtmlWorkspace,
+    clearHtmlNode,
+    clearHtml
   };
 }

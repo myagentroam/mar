@@ -28,6 +28,18 @@ test('File tree updates rendered rows, permissions and locale while keeping its 
     const englishLabel = await actions.getAttribute('aria-label');
     await row.click({ button: 'right' });
     await expect(page.locator('.el-dropdown-menu:visible')).toBeVisible();
+    const menu = page.locator('.el-popper:visible').filter({ has: page.getByRole('menu') });
+    const rowBox = await row.locator('..').boundingBox();
+    await expect
+      .poll(async () => {
+        const menuBox = await menu.boundingBox();
+        return menuBox!.y - rowBox!.y - rowBox!.height;
+      })
+      .toBeGreaterThanOrEqual(8);
+    await page.screenshot({
+      path: test.info().outputPath('file-tree-menu-below-row.png'),
+      animations: 'disabled'
+    });
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Change locale' }).click();
     await row.hover();

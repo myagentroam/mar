@@ -747,6 +747,12 @@ describe('Web Conversation Projection State', () => {
         },
         sequence
       );
+      if (sequence === 2) {
+        const initialGroup = conversationDisplayItems(turns.value[0]!.items)[0];
+        expect(initialGroup?.type === 'reasoning_group' && initialGroup.preview?.text).toBe(
+          'Second segment'
+        );
+      }
     }
 
     expect(turns.value[0]?.items[0]?.payload).toEqual({
@@ -761,7 +767,7 @@ describe('Web Conversation Projection State', () => {
     if (group?.type === 'reasoning_group') {
       expect(group.preview).toEqual({
         id: 'reasoning-1',
-        text: 'Second segment',
+        text: 'First segment',
         representation: 'summary'
       });
     }
@@ -782,6 +788,9 @@ describe('Web Conversation Projection State', () => {
     const completedGroup = conversationDisplayItems(turns.value[0]!.items)[0];
     expect(completedGroup?.type === 'reasoning_group' && completedGroup.text).toBe(
       'First segment\n\nSecond segment finished'
+    );
+    expect(completedGroup?.type === 'reasoning_group' && completedGroup.preview?.text).toBe(
+      'First segment'
     );
   });
 

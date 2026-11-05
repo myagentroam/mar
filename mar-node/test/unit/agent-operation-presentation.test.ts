@@ -3,7 +3,8 @@ import type { AgentEvent } from '@myagentroam/agent';
 import { agentOperationPresentationSchema, conversationItemSchema } from '@myagentroam/protocol';
 import {
   agentOperationAction,
-  agentOperationEvent
+  agentOperationEvent,
+  agentOperationPresentation
 } from '../../src/runner/mar-agent/agent-operation-presentation.js';
 import { MarAgentConversationNormalizer } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
@@ -22,6 +23,103 @@ function event(value: Record<string, unknown>): AgentEvent {
 }
 
 describe('public Agent operations', () => {
+  it('normalizes Goal-only sends as marked messages before and after completion', () => {
+    const input = { agentId: 'peer', goal: { objective: 'Inspect the change.\n继续验证' } };
+    const normalizer = new MarAgentConversationNormalizer();
+    const [started] = normalizer.normalize(
+      event({ type: 'tool.started', toolName: 'agent_send', callId: 'goal', input })
+    );
+    const [completed] = normalizer.normalize(
+      event({
+        type: 'tool.completed',
+        toolName: 'agent_send',
+        callId: 'goal',
+        data: {
+          agentOperation: {
+            action: 'SEND',
+            targets: [{ agentId: 'peer', sessionId: 'peer', title: 'Review' }]
+          }
+        }
+      })
+    );
+    for (const item of [started, completed]) {
+      expect(item?.payload.agentOperation).toMatchObject({
+        action: 'SEND',
+        detail: { message: input.goal.objective, messageIsGoal: true }
+      });
+      expect(agentOperationPresentationSchema.safeParse(item?.payload.agentOperation).success).toBe(
+        true
+      );
+    }
+    expect(completed?.payload.agentOperation).toMatchObject({
+      targets: [{ agentId: 'peer', sessionId: 'peer', title: 'Review' }]
+    });
+    expect(started?.payload.agentOperation).toMatchObject({ targets: [{ agentId: 'peer' }] });
+    expect(JSON.stringify(started?.payload.agentOperation)).not.toContain('sessionId');
+  });
+
+  it('projects only the current Goal objective without inventing delivery or hiding errors', () => {
+    const input = { agentId: 'peer', goal: { objective: 'Inspect', extra: 'NOT_PUBLIC' } };
+    const result = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      goal: { status: 'applied', result: { delivery: 'QUEUED' } },
+      message: null
+    });
+    expect(result.eventData.agentOperation.detail).toEqual({
+      message: 'Inspect',
+      messageIsGoal: true
+    });
+    expect(JSON.stringify(result.eventData)).not.toContain('NOT_PUBLIC');
+    const failure = agentOperationEvent('send', input, {
+      agentId: 'peer',
+      goal: { status: 'failed', code: 'AGENT_GOAL_FAILED' },
+      message: { status: 'not_attempted' }
+    });
+    expect(failure.eventData.agentOperation.detail).toMatchObject({
+      message: 'Inspect',
+      messageIsGoal: true,
+      failed: true
+    });
+    expect(failure.eventData.agentOperation.detail).not.toHaveProperty('delivery');
+  });
+
+  it('keeps explicit content and authoritative clipping ahead of Goal fallback', () => {
+    const input = { agentId: 'peer', content: 'Message', goal: { objective: 'Goal' } };
+    expect(agentOperationEvent('send', input, {}).eventData.agentOperation.detail).toEqual({
+      message: 'Message'
+    });
+    expect(
+      agentOperationPresentation('agent_send', { agentId: 'peer', goal: { clear: true } })
+    ).not.toHaveProperty('detail');
+    const goalInput = { agentId: 'peer', goal: { objective: '文'.repeat(3000) } };
+    const result = agentOperationEvent('send', goalInput, {
+      agentId: 'peer',
+      title: '题'.repeat(500)
+    });
+    expect(result.eventData.agentOperation.detail).toMatchObject({
+      messageIsGoal: true,
+      messageTruncated: true
+    });
+    expect(result.eventData.agentOperation.detail?.message).toBeTruthy();
+    expect(agentOperationPresentation('agent_send', goalInput, result.eventData)?.detail).toEqual(
+      result.eventData.agentOperation.detail
+    );
+    expect(Buffer.byteLength(JSON.stringify(result.eventData))).toBeLessThan(7001);
+    expect(
+      agentOperationPresentationSchema.safeParse(result.eventData.agentOperation).success
+    ).toBe(true);
+    expect(
+      agentOperationPresentation('agent_send', {
+        agentId: 'peer',
+        goal: { objective: `${'x'.repeat(1999)}😀` }
+      })?.detail
+    ).toEqual({
+      message: 'x'.repeat(1999),
+      messageIsGoal: true,
+      messageTruncated: true
+    });
+  });
+
   it.each(['tree', 'active'])('projects the effective LIST scope %s from the result', (scope) => {
     const operation = agentOperationEvent('list', {}, { scope, sessions: [] });
     expect(operation.eventData.agentOperation).toMatchObject({

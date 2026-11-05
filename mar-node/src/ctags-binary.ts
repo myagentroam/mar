@@ -1,6 +1,6 @@
 import { chmod } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 export const BUNDLED_CTAGS_VERSION = '6.2.0-ab95af1';
 
@@ -14,8 +14,11 @@ const TARGETS = {
 
 export function bundledCtagsDirectory(packageRoot?: string): string {
   return packageRoot === undefined
-    ? resolve(dirname(fileURLToPath(import.meta.url)), '..', 'vendor/ctags')
-    : resolve(packageRoot, 'mar-node/vendor/ctags');
+    ? resolve(
+        dirname(createRequire(import.meta.url).resolve('@myagentroam/binaries/package.json')),
+        'vendor/ctags'
+      )
+    : resolve(packageRoot, 'packages/binaries/vendor/ctags');
 }
 
 export function bundledCtagsPath(

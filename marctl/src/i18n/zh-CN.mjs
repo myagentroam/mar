@@ -203,8 +203,8 @@ ${configurationHelp}`,
 输出：
   marctl <version>
 
-读取已安装的 @myagentroam/marctl 包版本，输出单行并以换行符结尾。
-该版本独立于 Node 和 Server；无需配置、授权或连接 Server。`
+读取已安装的 Node 包版本，输出单行并以换行符结尾。
+无需配置、授权或连接 Server。`
   }),
   nodesHeader: '节点 ID\t名称\t状态\t平台',
   connected: '在线',

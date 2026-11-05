@@ -12,6 +12,8 @@ import WorkspaceTextFilePage from './WorkspaceTextFilePage.vue';
 import WorkspaceFormatFilePage from './WorkspaceFormatFilePage.vue';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import FilePreviewLoading from './FilePreviewLoading.vue';
+import HtmlPreviewFrame from './HtmlPreviewFrame.vue';
+import { createHtmlPreviewService } from '../../service/html-preview-service.js';
 import MarkdownFilePreview from './MarkdownFilePreview.vue';
 import { markdownPreviewPreferenceService } from '../../service/markdown-preview-preference-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -108,11 +110,8 @@ const standaloneRoot = ref<HTMLElement>();
 const errorKey = ref('');
 const error = computed(() => (errorKey.value === '' ? '' : translate(errorKey.value)));
 const contentUrl = ref<string>();
-const htmlUrl = ref<string>();
-const htmlTrusted = ref(false);
 const objectUrl = ref<string>();
 const loading = ref(true);
-const htmlFrameLoaded = ref(false);
 const downloading = ref(false);
 const csrfToken = ref(
   shareAccess === undefined ? (sessionStorage.getItem('mar.user.csrf-token') ?? '') : ''
@@ -125,6 +124,12 @@ const http =
     csrfToken: () => csrfToken.value,
     renewCsrfToken: renewCsrfToken
   });
+const htmlPreview = createHtmlPreviewService(http);
+const htmlState = htmlPreview.state;
+const htmlTrusted = computed(
+  () =>
+    htmlState.value.url !== undefined && new URL(htmlState.value.url).hostname === location.hostname
+);
 const preference = markdownPreviewPreferenceService().preference;
 const watermarkStyle = computed(() => ({
   backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(
@@ -329,18 +334,9 @@ onMounted(async () => {
   document.title = `${path.split('/').at(-1) ?? path} · MyAgentRoam`;
   if (htmlPreviewMode) {
     loading.value = true;
-    htmlFrameLoaded.value = false;
     if (!hostedMode && isHtmlFile(path) && Object.keys(fileTarget).length === 0) {
-      try {
-        const result = await http.request<{ readonly url: string }>('/api/html-preview/grants', {
-          method: 'POST',
-          body: JSON.stringify({ nodeId, workspaceId, path })
-        });
-        htmlUrl.value = result.url;
-        htmlTrusted.value = new URL(result.url).hostname === location.hostname;
-      } catch {
-        errorKey.value = 'htmlPreview.unavailable';
-      }
+      await htmlPreview.open({ nodeId, workspaceId, path });
+      if (htmlState.value.error) errorKey.value = 'htmlPreview.unavailable';
     } else {
       errorKey.value = 'htmlPreview.unavailable';
     }
@@ -563,6 +559,7 @@ async function saveFile(content: string, expectedRevision: string): Promise<stri
 }
 
 onBeforeUnmount(() => {
+  htmlPreview.release();
   if (renderedPreviewMode) windowInteraction.dispose();
   else window.removeEventListener('mar-before-standalone-navigation', captureDirtyDrafts);
   window.removeEventListener('online', handleNetworkChange);
@@ -691,9 +688,8 @@ const windowInteraction = createFilePreviewWindowInteractionService({
   closeTab: closeRenderedPreview
 });
 
-function bindHtmlFrame(event: Event): void {
-  htmlFrameLoaded.value = true;
-  if (event.target instanceof HTMLIFrameElement) windowInteraction.bindFrame(event.target);
+function bindHtmlFrame(frame: HTMLIFrameElement): void {
+  windowInteraction.bindFrame(frame);
 }
 
 function workspaceResourceUrl(path: string): string {
@@ -763,26 +759,16 @@ function rawContentUrl(
     <template v-else-if="htmlPreviewMode">
       <header class="standalone-markdown-header html-preview-header">
         <code v-tooltip="query.get('path') ?? ''">{{ query.get('path') }}</code>
-        <small v-if="htmlUrl">{{
+        <small v-if="htmlState.url">{{
           translate(htmlTrusted ? 'htmlPreview.trustedWarning' : 'htmlPreview.isolatedWarning')
         }}</small>
       </header>
-      <div class="standalone-preview-body">
-        <FilePreviewLoading
-          v-if="loading || (htmlUrl && !htmlFrameLoaded)"
-          variant="page"
-          overlay
-        />
-        <iframe
-          v-if="htmlUrl"
-          class="html-preview-frame"
-          :src="htmlUrl"
-          :title="query.get('path') ?? ''"
-          sandbox="allow-scripts allow-same-origin"
-          referrerpolicy="no-referrer"
-          @load="bindHtmlFrame"
-        />
-      </div>
+      <HtmlPreviewFrame
+        :url="htmlState.url"
+        :loading="loading || htmlState.loading"
+        :title="query.get('path') ?? ''"
+        @load="bindHtmlFrame"
+      />
     </template>
     <template v-else-if="markdownPreviewMode">
       <header class="standalone-markdown-header">
@@ -936,13 +922,6 @@ function rawContentUrl(
   flex: 1;
   text-align: right;
   white-space: normal;
-}
-.html-preview-frame {
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-  border: 0;
-  background: white;
 }
 .markdown-preview-page {
   position: relative;

@@ -11,7 +11,7 @@ const protectionMarker = '/* mar-release-protected */';
 const privateIdentifier =
   /(?:my-agent-roam-enterprise|mar-server-enterprise|mar-web-enterprise|packages\/enterprise-[a-z0-9-]+|harness\/|docs\/design\/)/u;
 const inspectableReleaseText = /\.(?:js|mjs|css|html|json|webmanifest|txt)$/u;
-const nodeVendorAllowlist = new Set([
+export const binaryVendorAllowlist = new Set([
   'vendor/ripgrep/linux-x64/rg',
   'vendor/ripgrep/linux-arm64/rg',
   'vendor/ripgrep/darwin-x64/rg',
@@ -117,12 +117,13 @@ export function unexpectedNpmPackageFiles(packageName, files) {
   const isProtocol = packageName === '@myagentroam/protocol';
   const isCodeNavigation = packageName === '@myagentroam/code-navigation';
   const isNode = packageName === '@myagentroam/node';
+  const isBinaries = packageName === '@myagentroam/binaries';
   return files.filter(
     (path) =>
       !['package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'NOTICE'].includes(path) &&
       !(isNode && path === 'scripts/install-web-browser.mjs') &&
       !(isNode && path === 'dist/config.d.ts') &&
-      !(isNode && nodeVendorAllowlist.has(path)) &&
+      !(isBinaries && binaryVendorAllowlist.has(path)) &&
       (!path.startsWith('dist/') ||
         sourceMap.test(path) ||
         rawTypeScript.test(path) ||
@@ -144,23 +145,25 @@ async function checkNpmPackage(directory) {
   const isProtocol = packageName === '@myagentroam/protocol';
   const isCodeNavigation = packageName === '@myagentroam/code-navigation';
   const isNode = packageName === '@myagentroam/node';
+  const isBinaries = packageName === '@myagentroam/binaries';
   const unexpected = unexpectedNpmPackageFiles(packageName, files);
   check(
     unexpected.length === 0,
     `${directory} contains files outside the release allowlist: ${unexpected.join(', ')}`
   );
-  if (isNode)
-    for (const resource of nodeVendorAllowlist)
+  if (isBinaries)
+    for (const resource of binaryVendorAllowlist)
       check(files.includes(resource), `${directory} is missing bundled resource: ${resource}`);
   if (isNode)
     check(
       files.every((path) => !path.startsWith('vendor/computer-use/')),
       `${directory} contains a bundled Computer Use runtime`
     );
-  check(
-    files.some((path) => path.endsWith('.js')),
-    `${directory} is missing JavaScript output`
-  );
+  if (!isBinaries)
+    check(
+      files.some((path) => path.endsWith('.js')),
+      `${directory} is missing JavaScript output`
+    );
   if (isAgent || isProtocol || isCodeNavigation)
     check(
       files.some((path) => declaration.test(path)),
@@ -185,7 +188,7 @@ export async function checkProductReleaseArtifacts(directory = root) {
   await Promise.all(
     [
       'packages/protocol',
-      'packages/code-navigation',
+      'packages/binaries',
       'mar-agent',
       'mar-agent/extensions/subagent',
       'mar-node'

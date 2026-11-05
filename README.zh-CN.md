@@ -194,4 +194,4 @@ Server 负责身份、授权与受控中继，Node 负责执行和工作区存�
 
 社区功能允许免费内部自用，包括公司内部商业工作。企业激活**不授予**含 EE 产品的二次分发、转售、对外托管、SaaS/API 服务、OEM、白标或捆绑交付权。独立许可的公共核心及第三方组件保留各自权利与条款。
 
-分发的 `@myagentroam/node` 包包含 GPL-2.0-or-later 授权的 Universal Ctags。许可文本、声明及对应源码位于 `mar-node/vendor/ctags/`；同时请核对所用发行版附带的第三方许可声明。
+Node 使用的 `@myagentroam/binaries` 包包含 GPL-2.0-or-later 授权的 Universal Ctags。许可文本、声明及对应源码位于该包的 `vendor/ctags/`；同时请核对所用发行版附带的第三方许可声明。

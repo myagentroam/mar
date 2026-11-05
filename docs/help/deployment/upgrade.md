@@ -1,11 +1,11 @@
 ---
 title: 升级 MyAgentRoam
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-05
 ---
 
 # 升级 MyAgentRoam
 
-升级前先完成可恢复备份。Server/Web、EE、公共 Core、Node、Agent、Protocol 统一使用同一主版本，当前基线为 `0.10.1`。Code Navigation、marctl 和 Computer Use Runtime 同步从 `0.10.1` 起步，保留独立修订。
+升级前先完成可恢复备份。Server/Web、EE、公共 Core、Node、Agent、Protocol 统一使用同一主版本，当前基线为 `0.10.1`。公共二进制包与 Computer Use Runtime 从 `0.10.1` 起步并保留独立修订；Code Navigation 不独立发布，marctl 随 Node 交付。
 
 ## 步骤
 

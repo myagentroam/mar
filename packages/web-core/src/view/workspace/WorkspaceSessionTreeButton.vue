@@ -51,8 +51,8 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
 .tree-active-indicator {
   --mar-icon-status-size: 4px;
   --mar-icon-status-surface: var(--mar-bg-panel);
-  inset-block-end: 0;
-  inset-inline-end: 0;
+  inset-block-end: 3px;
+  inset-inline-end: 3px;
 }
 .tree-active-indicator.paused {
   opacity: 0.6;

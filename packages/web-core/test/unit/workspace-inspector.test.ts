@@ -121,6 +121,7 @@ vi.mock('../../src/view/workspace/WorkspaceFileTabs.vue', async () => {
         });
         expose({
           captureDirtyDrafts: () => [],
+          hasPendingSave: () => false,
           cursorPosition: fakeViews.cursorPosition,
           focusPage: fakeViews.focusPage,
           navigateTo: fakeViews.navigateTo,
@@ -342,6 +343,148 @@ function latestFormatPage(path: string): FakeView | undefined {
 function latestTabs(): FakeView | undefined {
   return fakeViews.tabs.at(-1);
 }
+
+describe('Workspace file restoration ownership', () => {
+  function fileResponse(path: string) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        file: {
+          path,
+          encoding: 'utf-8',
+          content: `content of ${path}`,
+          size: 20,
+          nextOffset: null,
+          revision: 'a'.repeat(64)
+        }
+      })
+    };
+  }
+
+  async function snapshotOfFiles(paths: readonly string[]) {
+    fetchRequest.mockImplementation(async (url: string) =>
+      fileResponse(new URL(url, 'http://test.local').searchParams.get('path') ?? '.')
+    );
+    const first = mountInspector();
+    try {
+      for (const path of paths) await first.inspector.value!.openWorkspaceFile(path);
+      return first.inspector.value!.snapshot();
+    } finally {
+      first.app.unmount();
+      fakeViews.textPages.length = 0;
+      fakeViews.tabs.length = 0;
+    }
+  }
+
+  it('finishes restoring remaining pages after an HTML handoff without stealing the selected tab', async () => {
+    const saved = await snapshotOfFiles(['index.html', 'second.ts', 'third.ts']);
+    let finishSecond: (() => void) | undefined;
+    fetchRequest.mockImplementation(async (url: string) => {
+      const path = new URL(url, 'http://test.local').searchParams.get('path') ?? '.';
+      if (path === 'second.ts')
+        await new Promise<void>((resolve) => {
+          finishSecond = resolve;
+        });
+      return fileResponse(path);
+    });
+    const restored = mountInspector();
+    try {
+      restored.inspector.value!.restore(saved);
+      await vi.waitFor(() => expect(finishSecond).toBeDefined());
+      latestTextPage('index.html')!.emit('open-html-preview');
+      await nextTick();
+      await restored.inspector.value!.openFile('index.html');
+      finishSecond!();
+      await vi.waitFor(() => expect(latestTextPage('third.ts')).toBeDefined());
+      const tabs = latestTabs()!.props.tabs as { id: number; path: string }[];
+      expect(latestTabs()!.props.activeTabId).toBe(
+        tabs.find((tab) => tab.path === 'index.html')!.id
+      );
+      latestTabs()!.emit('activate', tabs.find((tab) => tab.path === 'third.ts')!.id);
+      await nextTick();
+      expect(latestTextPage('third.ts')!.props.active).toBe(true);
+    } finally {
+      finishSecond?.();
+      restored.app.unmount();
+    }
+  });
+
+  it('does not append files from a superseded snapshot after its pending read finishes', async () => {
+    const saved = (await snapshotOfFiles(['old.html', 'old-next.ts', 'new.html'])) as {
+      fileTabs: { tabs: { path: string; identity: string }[]; activeIdentity?: string };
+    };
+    const snapshotWith = (paths: string[]) => ({
+      ...saved,
+      fileTabs: {
+        ...saved.fileTabs,
+        tabs: saved.fileTabs.tabs.filter((tab) => paths.includes(tab.path)),
+        activeIdentity: saved.fileTabs.tabs.find((tab) => tab.path === paths[0])!.identity
+      }
+    });
+    let finishOld: (() => void) | undefined;
+    let oldReadFinished = false;
+    fetchRequest.mockImplementation(async (url: string) => {
+      const path = new URL(url, 'http://test.local').searchParams.get('path') ?? '.';
+      if (path === 'old.html') {
+        await new Promise<void>((resolve) => {
+          finishOld = resolve;
+        });
+        oldReadFinished = true;
+      }
+      return fileResponse(path);
+    });
+    const restored = mountInspector();
+    try {
+      restored.inspector.value!.restore(snapshotWith(['old.html', 'old-next.ts']));
+      await vi.waitFor(() => expect(finishOld).toBeDefined());
+      restored.inspector.value!.restore(snapshotWith(['new.html']));
+      await vi.waitFor(() => expect(latestTextPage('new.html')).toBeDefined());
+      finishOld!();
+      await vi.waitFor(() => expect(oldReadFinished).toBe(true));
+      await nextTick();
+      expect((latestTabs()!.props.tabs as { path: string }[]).map((tab) => tab.path)).toEqual([
+        'new.html'
+      ]);
+    } finally {
+      finishOld?.();
+      restored.app.unmount();
+    }
+  });
+
+  it('does not reopen a pending restored tab that the user has closed', async () => {
+    const saved = await snapshotOfFiles(['index.html', 'second.ts', 'third.ts']);
+    let finishFirst: (() => void) | undefined;
+    fetchRequest.mockImplementation(async (url: string) => {
+      const path = new URL(url, 'http://test.local').searchParams.get('path') ?? '.';
+      if (path === 'index.html')
+        await new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        });
+      return fileResponse(path);
+    });
+    const restored = mountInspector();
+    try {
+      restored.inspector.value!.restore(saved);
+      await vi.waitFor(() => expect(finishFirst).toBeDefined());
+      const third = (latestTabs()!.props.tabs as { id: number; path: string }[]).find(
+        (tab) => tab.path === 'third.ts'
+      )!;
+      latestTabs()!.emit('close', third.id);
+      finishFirst!();
+      await vi.waitFor(() => expect(latestTextPage('second.ts')).toBeDefined());
+      await nextTick();
+      expect((latestTabs()!.props.tabs as { path: string }[]).map((tab) => tab.path)).toEqual([
+        'index.html',
+        'second.ts'
+      ]);
+      expect(latestTextPage('third.ts')).toBeUndefined();
+    } finally {
+      finishFirst?.();
+      restored.app.unmount();
+    }
+  });
+});
 
 it('keeps the file window owner mounted while the Aside tool is hidden and restored', async () => {
   fetchRequest.mockImplementation(async (url: string) => {

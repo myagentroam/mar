@@ -167,12 +167,9 @@ importers:
       '@myagentroam/agent':
         specifier: workspace:*
         version: link:../mar-agent
-      '@myagentroam/code-navigation':
-        specifier: workspace:*
-        version: link:../packages/code-navigation
-      '@myagentroam/marctl':
-        specifier: workspace:*
-        version: link:../marctl
+      '@myagentroam/binaries':
+        specifier: workspace:0.10.1
+        version: link:../packages/binaries
       '@myagentroam/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
@@ -210,6 +207,12 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@myagentroam/code-navigation':
+        specifier: workspace:*
+        version: link:../packages/code-navigation
+      '@myagentroam/marctl':
+        specifier: workspace:*
+        version: link:../marctl
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
@@ -263,6 +266,8 @@ importers:
       ws:
         specifier: 8.21.3
         version: 8.21.3
+
+  packages/binaries: {}
 
   packages/code-navigation: {}
 

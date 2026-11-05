@@ -76,7 +76,7 @@ for (const [language, theme, width] of [
       for (const overlap of seams) expect(overlap).toBeCloseTo(width < 768 ? -4 : 1, 1);
       const borders = await tabs.evaluate((element) => ({
         strip: getComputedStyle(element).borderBottomWidth,
-        header: getComputedStyle(element.parentElement!).borderBottomWidth
+        header: getComputedStyle(element.closest('header')!).borderBottomWidth
       }));
       expect(borders).toEqual({ strip: '0px', header: '1px' });
       const colors = await tabs.evaluate((element) => {
@@ -129,6 +129,144 @@ for (const [language, theme, width] of [
       await tabs.getByRole('button', { name: /^Close / }).click();
       await expect(session).toHaveCount(0);
     } finally {
+      await fixture.close();
+    }
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`MarTab overflow stays compact and navigable at ${width}px`, async ({
+    browser,
+    browserName
+  }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      hasTouch: width < 768,
+      isMobile: browserName === 'chromium' && width < 768,
+      locale: 'en-US',
+      reducedMotion: 'reduce'
+    });
+    try {
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'mar.locale.v2',
+          new URLSearchParams(location.search).get('ui-locale') ?? 'en-US'
+        );
+      });
+      for (const theme of ['light', 'dark', 'custom']) {
+        await page.goto(
+          `${fixture.url}workbench-aside.html?active-child&long-title=en&theme=${theme}${width < 768 ? '&mobile' : ''}${theme === 'custom' ? '&ui-locale=zh-CN' : ''}`
+        );
+        const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+        const host = page.locator('.workbench-aside-tabs');
+        const selected = tabs.getByRole('tab', { name: /A long readable/ });
+        await expect(selected).toHaveAttribute('aria-selected', 'true');
+        await expect(tabs).toHaveCSS('scrollbar-width', 'none');
+        expect(
+          await tabs.evaluate((el) => (el as HTMLElement).offsetHeight - el.clientHeight)
+        ).toBe(0);
+        await expect(page.locator('.workbench-aside-header')).toHaveJSProperty('offsetHeight', 32);
+        await expect(host).toHaveClass(/can-scroll-previous/);
+        const controls = host.locator('.mar-tab-scroll');
+        await expect(controls).toHaveCount(2);
+        const before = await tabs.evaluate((el) => el.scrollLeft);
+        if (width >= 768) {
+          await expect(controls.first()).toBeVisible();
+          await expect(controls.first()).toHaveAccessibleName(
+            theme === 'custom' ? '向左浏览标签' : 'Browse previous tabs'
+          );
+          await controls.first().hover();
+          const tooltip = page.locator('[role="tooltip"]:visible');
+          await expect(tooltip).toHaveText(
+            theme === 'custom' ? '向左浏览标签' : 'Browse previous tabs'
+          );
+          expect(
+            await controls.first().evaluate((el) => getComputedStyle(el).backgroundColor)
+          ).not.toBe('rgba(0, 0, 0, 0)');
+          await page.mouse.move(0, 100);
+          await controls.first().focus();
+          await expect(tooltip).toBeVisible();
+          await page.keyboard.press('Escape');
+          await expect(tooltip).toHaveCount(0);
+          await expect(controls.first()).toBeFocused();
+          await controls.first().click();
+          await expect.poll(() => tabs.evaluate((el) => el.scrollLeft)).toBeLessThan(before);
+          await expect(selected).toHaveAttribute('aria-selected', 'true');
+          await expect(controls.last()).toBeEnabled();
+          await page.mouse.move(0, 100);
+          await controls.last().focus();
+          await expect(tooltip).toHaveText(
+            theme === 'custom' ? '向右浏览标签' : 'Browse next tabs'
+          );
+          await controls.last().click();
+          await expect.poll(() => tabs.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+        } else {
+          await expect(controls.first()).toBeHidden();
+          await expect(controls.last()).toBeHidden();
+          await expect(tabs).toHaveCSS('mask-image', /linear-gradient/);
+          const box = await tabs.boundingBox();
+          if (box === null) throw new Error('Tab strip is missing');
+          if (browserName === 'chromium') {
+            const cdp = await context.newCDPSession(page);
+            try {
+              const y = box.y + box.height / 2;
+              const x = box.x + box.width * 0.2;
+              await cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchStart',
+                touchPoints: [{ x, y }]
+              });
+              for (let step = 1; step <= 8; step++) {
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchMove',
+                  touchPoints: [{ x: x + (box.width * 0.6 * step) / 8, y }]
+                });
+              }
+              await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            } finally {
+              await cdp.detach();
+            }
+          } else {
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.wheel(-box.width / 2, 0);
+          }
+          await expect.poll(() => tabs.evaluate((el) => el.scrollLeft)).toBeLessThan(before);
+        }
+        await page.locator('.workbench-aside-header').screenshot({
+          path: test.info().outputPath(`tab-overflow-idle-${width}-${theme}.png`)
+        });
+        await selected.focus();
+        await page.keyboard.press('Home');
+        await expect(tabs.getByRole('tab', { name: 'Files', exact: true })).toBeFocused();
+        await page.keyboard.press('End');
+        await expect(selected).toBeFocused();
+        await expect(selected).toHaveAttribute('aria-selected', 'true');
+        if (width >= 768) {
+          await page.locator('.workbench-aside').evaluate((el) => (el.style.width = '800px'));
+          await expect(controls.first()).toBeHidden();
+          await page.locator('.workbench-aside').evaluate((el) => (el.style.width = '240px'));
+          await expect(controls.first()).toBeVisible();
+        } else await page.setViewportSize({ width: 320, height: 900 });
+        await expect
+          .poll(() =>
+            selected.evaluate((el) => {
+              const item = el.closest('.tab-strip-item')!.getBoundingClientRect();
+              const viewport = el.closest('[role="tablist"]')!.getBoundingClientRect();
+              return item.left >= viewport.left - 1 && item.right <= viewport.right + 1;
+            })
+          )
+          .toBe(true);
+        await page.locator('.workbench-aside-header').screenshot({
+          path: test.info().outputPath(`tab-overflow-${width}-${theme}.png`)
+        });
+        if (width < 768) await page.setViewportSize({ width, height: 900 });
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
       await fixture.close();
     }
   });

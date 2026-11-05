@@ -342,6 +342,7 @@ export const conversationUiEnUS = {
     subagentOperationCount: '{count} operation | {count} operations',
     subagentCallFailed: 'Call failed',
     noAgentSessions: 'No sessions',
+    agentGoal: 'Goal',
     approvalPending: 'Awaiting confirmation',
     approvalApproved: 'Allowed',
     approvalRejected: 'Rejected',

@@ -51,7 +51,6 @@ export function agentOperationPresentation(
   const parsed = agentOperationPresentationSchema.safeParse(
     isPlainRecord(data) ? data.agentOperation : undefined
   );
-  if (parsed.success && parsed.data.action === action) return parsed.data;
   const value = isPlainRecord(input) ? input : {};
   const ids =
     typeof value.agentId === 'string'
@@ -59,14 +58,32 @@ export function agentOperationPresentation(
       : Array.isArray(value.agentIds)
         ? value.agentIds
         : [];
-  return {
-    action,
-    targets: ids
-      .filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 128)
-      .slice(0, 8)
-      .map((agentId) => ({ agentId })),
-    ...(text(value.scope, 32) ? { scope: text(value.scope, 32) } : {})
-  };
+  const operation: AgentOperationPresentation =
+    parsed.success && parsed.data.action === action
+      ? parsed.data
+      : {
+          action,
+          targets: ids
+            .filter(
+              (id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 128
+            )
+            .slice(0, 8)
+            .map((agentId) => ({ agentId })),
+          ...(text(value.scope, 32) ? { scope: text(value.scope, 32) } : {})
+        };
+  const goal = isPlainRecord(value.goal) ? value.goal : undefined;
+  const objective =
+    action === 'SEND' && !operation.detail?.message && !text(value.content) && goal?.clear !== true
+      ? text(goal?.objective, 2000)
+      : undefined;
+  if (objective)
+    operation.detail = {
+      ...operation.detail,
+      message: objective,
+      messageIsGoal: true,
+      ...(objective !== goal?.objective ? { messageTruncated: true as const } : {})
+    };
+  return operation;
 }
 
 /** Whitelist public receipts; never serialize configuration, credentials or full history. */

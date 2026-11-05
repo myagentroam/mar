@@ -27,7 +27,7 @@ describe('Node bundled ripgrep', () => {
     expect(
       bundledRipgrepPath(platform, arch, root)
         .replaceAll('\\', '/')
-        .endsWith(`/mar-node/vendor/ripgrep/${suffix}`)
+        .endsWith(`/packages/binaries/vendor/ripgrep/${suffix}`)
     ).toBe(true);
   });
 

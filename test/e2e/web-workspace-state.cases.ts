@@ -448,6 +448,43 @@ test('tree and node icon badges retain surface isolation on desktop and mobile',
   await expect(nodeButton).toHaveAttribute('aria-label', /node-1/);
 });
 
+test('Workspace HTML links from Aside sessions open the shared browser', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await prepareDescendantTree(page, undefined, true);
+  await page.route('**/api/html-preview/grants', (route) =>
+    json(route, { url: new URL('/html-preview-aside', page.url()).href })
+  );
+  await page.route('**/html-preview-aside', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<h1>Aside document</h1>' })
+  );
+  const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+  await main.getByRole('button', { name: '查看会话树' }).click();
+  await page
+    .locator('.session-tree-popup')
+    .getByRole('button', { name: '树会话 2, 空闲', exact: true })
+    .click();
+  const aside = page.locator('.workspace-aside');
+  await expect(aside.getByText('正文 tree-2', { exact: true })).toBeVisible();
+  await emitMockSessionEvent(page, 'conversation', {
+    sessionId: 'tree-2',
+    runId: 'tree-run-2',
+    item: {
+      itemId: 'aside-html',
+      kind: 'assistant_message',
+      status: 'COMPLETED',
+      segmentId: 'turn-tree-2:segment:0',
+      segmentIndex: 0,
+      payload: { text: '[Aside HTML](aside.html)', format: 'markdown', model: null }
+    }
+  });
+  await aside.locator('.agent-markdown').getByRole('link', { name: 'Aside HTML' }).click();
+  await expect(
+    page.frameLocator('iframe[title="aside.html"]').getByText('Aside document')
+  ).toBeVisible();
+  await expect(main.getByText('正文 tree-1', { exact: true })).toBeVisible();
+});
+
 test('live descendant tree uses Workspace Watch and routes nodes to Aside or Main', async ({
   page
 }) => {

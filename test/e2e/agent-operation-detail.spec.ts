@@ -11,6 +11,40 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [width, theme, locale, goalLabel] of [
+  [1280, 'daylight', 'en-US', 'Goal'],
+  [390, 'dark', 'zh-CN', '目标']
+] as const) {
+  test(`Goal-only Agent send at ${width}px ${locale}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&agent-cards&agent-goal&theme=${theme}&locale=${locale}`
+    );
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const group = page.locator('.subagent-group');
+    await group.locator('.conversation-record-group > summary').click();
+    const send = group.locator('.conversation-tool-detail').filter({
+      has: page.locator('summary').filter({ hasText: /^send Review the boundary/ })
+    });
+    await send.locator(':scope > summary').click();
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+    await expect(send.locator('.agent-detail-goal')).toHaveText(goalLabel);
+    await expect(send.locator('.agent-detail-text')).toBeInViewport({ ratio: 1 });
+    expect(await send.locator('.agent-detail-text').textContent()).toBe(
+      'Review the Goal.\n继续验证'
+    );
+    await expect(send.locator('.agent-detail-meta')).not.toContainText(/queue|steer/);
+    await expect(send.locator('.agent-detail')).not.toContainText('Hidden public input');
+    expect(
+      await send
+        .locator('.agent-detail')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth)
+    ).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`agent-goal-${width}.png`), fullPage: true });
+  });
+}
+
 for (const [width, theme] of [
   [1280, 'daylight'],
   [390, 'dark']
@@ -46,6 +80,7 @@ for (const [width, theme] of [
       await row.locator(':scope > summary').click();
       await expect(row.locator('.agent-detail')).toHaveCount(1);
     }
+    await expect(group.locator('.agent-detail-goal')).toHaveCount(0);
     const start = rows
       .filter({ has: page.locator('summary').filter({ hasText: /^start\b/ }) })
       .last();
