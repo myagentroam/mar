@@ -329,6 +329,7 @@ export const conversationUiZhCN = {
     subagentOperationCount: '{count} 次操作',
     subagentCallFailed: '调用失败',
     noAgentSessions: '没有会话',
+    agentGoal: '目标',
     approvalPending: '等待确认',
     approvalApproved: '已允许',
     approvalRejected: '已拒绝',

@@ -4,6 +4,47 @@ import { mergeConversationPayload } from '../../src/util/conversation-history';
 import { conversationItemText } from '../../src/util/conversation-presentation';
 
 describe('Agent operation card projection', () => {
+  it('consumes the public Goal message marker without interpreting raw inputs', () => {
+    const payload = {
+      agentOperation: {
+        action: 'SEND',
+        targets: [{ agentId: 'peer', title: 'Review' }],
+        detail: { message: 'Inspect\n继续验证', messageIsGoal: true }
+      },
+      inputSummary: '{"goal":{"objective":"NOT_A_SOURCE"}}'
+    };
+    expect(agentOperationDetail(payload, 'COMPLETED')).toMatchObject({
+      action: 'SEND',
+      message: 'Inspect\n继续验证',
+      messageIsGoal: true
+    });
+    expect(
+      agentOperationDetail(
+        {
+          ...payload,
+          agentOperation: {
+            ...payload.agentOperation,
+            detail: { message: 'Ordinary message' }
+          }
+        },
+        'COMPLETED'
+      )
+    ).not.toHaveProperty('messageIsGoal');
+    expect(
+      agentOperationDetail(
+        {
+          ...payload,
+          agentOperation: {
+            action: 'SEND',
+            targets: []
+          }
+        },
+        'COMPLETED'
+      )
+    ).toBeUndefined();
+    expect(agentOperationDetail(payload, 'FAILED')).toBeUndefined();
+  });
+
   it.each(['tree', 'active'])('shows the LIST query scope %s even with no results', (scope) => {
     for (const targets of [[], [{ agentId: 'child', title: 'Task' }]])
       expect(

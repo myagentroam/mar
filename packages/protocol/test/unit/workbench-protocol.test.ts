@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NODE_PROTOCOL_VERSION,
+  agentOperationPresentationSchema,
   capabilityAvailabilitySchema,
   codexCredentialSummarySchema,
   conversationItemDeltaSchema,
@@ -48,6 +49,19 @@ import {
 } from '../../src/index.js';
 
 describe('Workbench protocol contracts', () => {
+  it('preserves the optional Goal message marker while accepting ordinary Agent messages', () => {
+    const operation = { action: 'SEND', targets: [], detail: { message: 'Inspect' } };
+    expect(agentOperationPresentationSchema.parse(operation)).toEqual(operation);
+    const goal = { ...operation, detail: { ...operation.detail, messageIsGoal: true } };
+    expect(agentOperationPresentationSchema.parse(goal)).toEqual(goal);
+    expect(
+      agentOperationPresentationSchema.safeParse({
+        ...goal,
+        detail: { ...goal.detail, messageIsGoal: 'GOAL' }
+      }).success
+    ).toBe(false);
+  });
+
   it('declares the complete session Aside capability and bounds navigation query shapes', () => {
     expect(sessionAsideCapabilitySchema.safeParse({ apiVersion: 1 }).success).toBe(true);
     expect(sessionAsideCapabilitySchema.safeParse({ apiVersion: 2 }).success).toBe(false);

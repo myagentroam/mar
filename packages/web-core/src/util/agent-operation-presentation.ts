@@ -31,6 +31,7 @@ export function agentOperationDetail(
       targets: { title?: string; status?: string; message?: string; messageTruncated?: true }[];
       title?: string;
       message?: string;
+      messageIsGoal?: true;
       messageTruncated?: true;
       delivery?: 'QUEUE' | 'STEER';
       wait?: NonNullable<AgentOperationPresentation['detail']>['wait'];
@@ -81,6 +82,7 @@ export function agentOperationDetail(
     targets,
     ...(operation.detail.title ? { title: operation.detail.title } : {}),
     ...(operation.detail.message ? { message: operation.detail.message } : {}),
+    ...(operation.detail.messageIsGoal ? { messageIsGoal: true as const } : {}),
     ...(operation.detail.messageTruncated ? { messageTruncated: true as const } : {}),
     ...(operation.detail.delivery ? { delivery: operation.detail.delivery } : {}),
     ...(operation.action === 'WAIT' && operation.detail.wait

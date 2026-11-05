@@ -2217,6 +2217,7 @@ export const agentOperationPresentationSchema = z.object({
     .object({
       title: z.string().min(1).max(500).optional(),
       message: z.string().min(1).max(2000).optional(),
+      messageIsGoal: z.literal(true).optional(),
       messageTruncated: z.literal(true).optional(),
       delivery: z.enum(['QUEUE', 'STEER']).optional(),
       wait: z
