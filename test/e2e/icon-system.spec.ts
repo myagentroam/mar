@@ -142,9 +142,26 @@ for (const theme of ['dark', 'light']) {
       await expect(glyph).toHaveCSS('width', '14px');
       await expect(glyph).toHaveCSS('height', '14px');
       await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
-      if (width < 768) {
-        await expect(page.locator('.changes-refresh-button svg')).toHaveCSS('width', '18px');
-      }
+      const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
+      const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
+      await expect(refreshGlyph).toHaveCSS('width', '14px');
+      await expect(refreshGlyph).toHaveCSS('height', '14px');
+      const refreshBounds = (await refresh.boundingBox())!;
+      expect(refreshBounds.width).toBe(width >= 768 ? 26 : 24);
+      expect(refreshBounds.height).toBe(width >= 768 ? 26 : 24);
+      const refreshGlyphBounds = (await refreshGlyph.boundingBox())!;
+      expect(refreshGlyphBounds.x + refreshGlyphBounds.width / 2).toBeCloseTo(
+        refreshBounds.x + refreshBounds.width / 2,
+        1
+      );
+      expect(refreshGlyphBounds.y + refreshGlyphBounds.height / 2).toBeCloseTo(
+        refreshBounds.y + refreshBounds.height / 2,
+        1
+      );
+      await refresh.focus();
+      await expect(refresh).toBeFocused();
+      await refresh.hover();
+      await expect(refreshGlyph).toHaveCSS('width', '14px');
       const bounds = (await restore.boundingBox())!;
       expect(bounds.width).toBe(20);
       expect(bounds.height).toBeGreaterThanOrEqual(18);
