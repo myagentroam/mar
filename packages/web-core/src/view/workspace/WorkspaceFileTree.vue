@@ -56,9 +56,6 @@ const actionNodePath = ref<string>();
 const actionMenuVisible = ref(false);
 const hoveredActionNodePath = ref<string>();
 const focusedActionNodePath = ref<string>();
-const nodeActionPopperOptions = {
-  modifiers: [{ name: 'offset', options: { offset: [0, -6] } }]
-};
 const rows = computed(() => visibleWorkspaceFileTreeRows(props.root, props.filter));
 const scrollTop = ref(0);
 const viewportHeight = ref(0);
@@ -484,7 +481,6 @@ defineExpose({ reveal });
               trigger="click"
               placement="bottom-start"
               :persistent="false"
-              :popper-options="nodeActionPopperOptions"
               @command="action($event, row.node)"
               @visible-change="setActionMenuVisible($event, row.node.path)"
             >

@@ -61,7 +61,9 @@ function makeTree(): NonNullable<NavigationSnapshot['tree']> {
   );
   return {
     anchorSessionId: 'tree-root',
-    parent: null,
+    parent: query.has('parent')
+      ? session('tree-parent', 'tree-grandparent', 'Parent session', 'IDLE', 0)
+      : null,
     // The child may precede its parent in the Node payload; the view must still rebuild the branch.
     nodes: [activeChild, ...siblings],
     truncated: false
@@ -147,6 +149,7 @@ const FixtureApp = defineComponent({
                 title: 'View session tree',
                 tree: tree.value,
                 status: status.value,
+                mainSessionId: 'running-older',
                 asideSessionIds: [],
                 onClose: (restoreFocus: boolean) => {
                   closeRestoredFocus.value = String(restoreFocus);

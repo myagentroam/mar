@@ -128,3 +128,111 @@ test('retries a failed tree read, reaches ready, and closes on Escape', async ({
   await expect(page.getByTestId('close-restored-focus')).toHaveText('true');
   await expect(page.getByTestId('tree-anchor')).toBeFocused();
 });
+
+test('keeps mobile popovers inside equal viewport gutters', async ({ page }, testInfo) => {
+  for (const width of [320, 390, 440]) {
+    await openTree(page, 'dark', width);
+    const popover = page.locator('.session-tree-popover');
+    await expect(popover).toHaveCSS('opacity', '1');
+    await expect
+      .poll(async () => {
+        const box = await popover.boundingBox();
+        return box ? [Math.round(box.x), Math.round(width - box.x - box.width)] : [];
+      })
+      .toEqual([12, 12]);
+    await setFixtureState(page, 'ready');
+    await expect
+      .poll(async () => {
+        const box = await popover.boundingBox();
+        return box ? [Math.round(box.x), Math.round(width - box.x - box.width)] : [];
+      })
+      .toEqual([12, 12]);
+    if (width === 390)
+      await page.screenshot({
+        path: testInfo.outputPath('mobile-tree-gutters.png'),
+        animations: 'disabled'
+      });
+  }
+});
+
+test('reveals row actions on hover, focus, and while its menu is open', async ({ page }) => {
+  const { tree } = await openTree(page, 'daylight', 1280);
+  await setFixtureState(page, 'ready');
+  const row = tree.locator('.session-tree-row').first();
+  const action = row.getByRole('button', { name: 'Session actions' });
+  await page.mouse.move(0, 0);
+  await expect(action).toHaveCSS('opacity', '0');
+  await row.hover();
+  await expect(action).toHaveCSS('opacity', '1');
+  await action.focus();
+  await page.mouse.move(0, 0);
+  await expect(action).toHaveCSS('opacity', '1');
+  await action.click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem').first().focus();
+  await page.mouse.move(0, 0);
+  await expect(action).toHaveCSS('opacity', '1');
+});
+
+test('includes the action button in the selected row surface', async ({ page }, testInfo) => {
+  const { tree } = await openTree(page, 'dark', 1280);
+  await setFixtureState(page, 'ready');
+  const row = tree
+    .locator('.session-tree-row')
+    .filter({ has: page.locator('[aria-current="true"]') });
+  const action = row.locator('.session-tree-actions');
+  const surfaceContainsAction = await action.evaluate((element) => {
+    const action = element.getBoundingClientRect();
+    for (
+      let parent = element.parentElement;
+      parent && !parent.classList.contains('session-tree-row');
+      parent = parent.parentElement
+    ) {
+      const color = getComputedStyle(parent).backgroundColor;
+      if (color === 'transparent' || color === 'rgba(0, 0, 0, 0)') continue;
+      const surface = parent.getBoundingClientRect();
+      return (
+        surface.left <= action.left &&
+        surface.right >= action.right &&
+        surface.top <= action.top &&
+        surface.bottom >= action.bottom
+      );
+    }
+    return false;
+  });
+  expect(surfaceContainsAction).toBe(true);
+  await row.hover();
+  await page.screenshot({
+    path: testInfo.outputPath('selected-tree-actions.png'),
+    animations: 'disabled'
+  });
+});
+
+test('keeps parent context actions reachable with the keyboard', async ({ page }) => {
+  await page.goto(`${fixture.url}session-tree-loading.html?theme=dark&parent=1`);
+  await setFixtureState(page, 'ready');
+  const parent = page.locator('.session-tree-parent');
+  const action = parent.getByRole('button', { name: 'Session actions' });
+  await page.mouse.move(0, 0);
+  await expect(action).toHaveCSS('opacity', '0');
+  await action.focus();
+  await expect(action).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toBeHidden();
+  await expect(page.getByRole('dialog')).toBeVisible();
+});
+
+test.describe('touch input', () => {
+  test.use({ hasTouch: true });
+  test('keeps row actions available without hover', async ({ page }) => {
+    const { tree } = await openTree(page, 'daylight', 390);
+    await setFixtureState(page, 'ready');
+    const action = tree.locator('.session-tree-row').first().locator('.session-tree-actions');
+    await expect(action).toHaveCSS('opacity', '1');
+    await action.tap();
+    await expect(page.getByRole('menu')).toBeVisible();
+  });
+});
