@@ -63,7 +63,18 @@ export function createWorkspaceSessionService(options: {
   const synchronizationGenerations = new Map<string, number>();
   let latestSnapshot:
     { readonly id: string; readonly generation: number; readonly page: SessionPage } | undefined;
+  let pendingSnapshot:
+    | {
+        id: string;
+        generation: number;
+        page: SessionPage;
+        workspace: WorkspaceTarget;
+        visibleCount: number;
+      }
+    | undefined;
   let searchGeneration = 0;
+  let searchContext:
+    { workspace: WorkspaceTarget | undefined; group: SessionGroup | undefined } | undefined;
   let loadMoreOperation = 0;
 
   watch(
@@ -74,6 +85,7 @@ export function createWorkspaceSessionService(options: {
       const id = options.tabId(target.nodeId, target.workspaceId);
       synchronizationGenerations.set(id, (synchronizationGenerations.get(id) ?? 0) + 1);
       latestSnapshot = undefined;
+      pendingSnapshot = undefined;
       loadMoreOperation += 1;
       options.paging.loadingMore.value = false;
       options.paging.reset(id);
@@ -218,18 +230,74 @@ export function createWorkspaceSessionService(options: {
     const generation = (synchronizationGenerations.get(id) ?? 0) + 1;
     synchronizationGenerations.set(id, generation);
     latestSnapshot = { id, generation, page };
-    listedSessionIds.value = new Set(page.sessions.map((session) => session.id));
-    options.paging.initialize(id);
-    merge(page.sessions, { authoritativeOrder: true, authoritativeActivity: true });
-    options.paging.nextCursors.value.set(id, page.nextCursor);
-    options.paging.loadMoreErrors.value.delete(id);
-    if (
-      options.workspaceTarget.value?.nodeId === nodeId &&
-      options.workspaceTarget.value?.workspaceId === workspaceId
-    ) {
+    const visibleCount = listedSessionIds.value.size;
+    const workspace = options.workspaceTarget.value;
+    const isActive = workspace?.nodeId === nodeId && workspace.workspaceId === workspaceId;
+    pendingSnapshot = undefined;
+    if (isActive) {
       loadMoreOperation += 1;
       options.paging.loadingMore.value = false;
+    }
+    options.paging.initialize(id);
+    options.paging.nextCursors.value.set(id, page.nextCursor);
+    options.paging.loadMoreErrors.value.delete(id);
+    if (isActive && visibleCount > page.sessions.length && page.nextCursor !== null) {
+      pendingSnapshot = { id, generation, page, workspace, visibleCount };
+      merge(page.sessions, { authoritativeActivity: true });
+      void restoreSnapshot();
+    } else {
+      listedSessionIds.value = new Set(page.sessions.map((session) => session.id));
+      merge(page.sessions, { authoritativeOrder: true, authoritativeActivity: true });
+    }
+    if (isActive) {
       if (searchQuery.value && currentGroup.value !== undefined) void search(searchQuery.value);
+    }
+  }
+
+  async function restoreSnapshot(): Promise<void> {
+    const snapshot = pendingSnapshot;
+    if (snapshot === undefined) return;
+    const operation = ++loadMoreOperation;
+    const isCurrent = () =>
+      pendingSnapshot === snapshot &&
+      synchronizationGenerations.get(snapshot.id) === snapshot.generation &&
+      options.workspaceTarget.value === snapshot.workspace;
+    const restoredIds = new Set(snapshot.page.sessions.map((session) => session.id));
+    let cursor = snapshot.page.nextCursor;
+    options.paging.loadingMore.value = true;
+    options.paging.loadMoreErrors.value.delete(snapshot.id);
+    try {
+      // Rebuild only the already-loaded range, keeping the old rows until it is ready.
+      while (restoredIds.size < snapshot.visibleCount && cursor !== null) {
+        const beforeRead = new Map(options.sessions.value.map((session) => [session.id, session]));
+        const page = await options.request<SessionPage>(
+          `/api/agent-sessions?nodeId=${encodeURIComponent(snapshot.workspace.nodeId)}&workspaceId=${encodeURIComponent(snapshot.workspace.workspaceId)}&limit=${Math.min(options.pageSize, snapshot.visibleCount - restoredIds.size)}${groupQuery()}&cursor=${encodeURIComponent(cursor)}`
+        );
+        if (!isCurrent()) return;
+        if (page.nextCursor === cursor) throw new Error('SESSION_PAGINATION_NO_PROGRESS');
+        const current = new Map(options.sessions.value.map((session) => [session.id, session]));
+        merge(
+          page.sessions.filter((session) => current.get(session.id) === beforeRead.get(session.id))
+        );
+        for (const session of page.sessions) restoredIds.add(session.id);
+        cursor = page.nextCursor;
+      }
+      if (!isCurrent()) return;
+      const currentById = new Map(options.sessions.value.map((session) => [session.id, session]));
+      listedSessionIds.value = restoredIds;
+      merge(
+        [...restoredIds].flatMap((id) => {
+          const session = currentById.get(id);
+          return session === undefined ? [] : [session];
+        }),
+        { authoritativeOrder: true }
+      );
+      options.paging.nextCursors.value.set(snapshot.id, cursor);
+      pendingSnapshot = undefined;
+    } catch (error) {
+      if (isCurrent()) options.paging.loadMoreErrors.value.set(snapshot.id, error);
+    } finally {
+      if (operation === loadMoreOperation) options.paging.loadingMore.value = false;
     }
   }
 
@@ -245,6 +313,7 @@ export function createWorkspaceSessionService(options: {
     )
       return;
     const id = options.tabId(nodeId, workspaceId);
+    if (pendingSnapshot?.id === id) return restoreSnapshot();
     const cursor = options.paging.nextCursors.value.get(id);
     if (typeof cursor !== 'string') return;
     const generation = synchronizationGenerations.get(id) ?? 0;
@@ -282,9 +351,16 @@ export function createWorkspaceSessionService(options: {
     const workspaceId = options.workspaceTarget.value?.workspaceId;
     const normalized = query.trim().slice(0, 160);
     const generation = ++searchGeneration;
+    const sameQuery =
+      normalized === searchQuery.value &&
+      searchContext?.workspace === workspaceSelection &&
+      searchContext?.group === currentGroup.value;
+    searchContext = { workspace: workspaceSelection, group: currentGroup.value };
     searchQuery.value = normalized;
-    searchResults.value = [];
-    searchNextCursor.value = null;
+    if (!sameQuery) {
+      searchResults.value = [];
+      searchNextCursor.value = null;
+    }
     loadingMoreSearchResults.value = false;
     loadMoreSearchResultsError.value = undefined;
     searching.value = false;
@@ -314,6 +390,7 @@ export function createWorkspaceSessionService(options: {
 
   function clearSearch(): void {
     searchGeneration += 1;
+    searchContext = undefined;
     searchQuery.value = '';
     searchResults.value = [];
     searchNextCursor.value = null;
@@ -324,6 +401,7 @@ export function createWorkspaceSessionService(options: {
 
   watch(options.workspaceTarget, () => {
     clearSearch();
+    pendingSnapshot = undefined;
     listedSessionIds.value = new Set();
     runningCounts.value = { MAIN: 0, CHILD: 0 };
     loadMoreOperation += 1;
@@ -385,6 +463,9 @@ export function createWorkspaceSessionService(options: {
     const id = options.tabId(nodeId, workspaceId);
     const generation = (synchronizationGenerations.get(id) ?? 0) + 1;
     synchronizationGenerations.set(id, generation);
+    if (pendingSnapshot?.id === id) pendingSnapshot = { ...pendingSnapshot, generation };
+    loadMoreOperation += 1;
+    options.paging.loadingMore.value = false;
     const isCurrent = () =>
       synchronizationGenerations.get(id) === generation &&
       options.workspaceTarget.value === workspaceSelection &&
@@ -419,6 +500,7 @@ export function createWorkspaceSessionService(options: {
       return;
     }
     if (firstPage !== undefined) {
+      pendingSnapshot = undefined;
       options.paging.reset(id);
       listedSessionIds.value = new Set(firstPage.sessions.map((session) => session.id));
       merge(firstPage.sessions, { authoritativeOrder: true });

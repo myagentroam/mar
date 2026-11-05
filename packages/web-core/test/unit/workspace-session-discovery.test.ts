@@ -125,10 +125,12 @@ describe('Web Workspace Session Discovery', () => {
       runner: 'mar-agent' as const
     }));
     let finish!: (page: unknown) => void;
+    let finishRebase!: (page: unknown) => void;
     const request = vi
       .fn()
       .mockResolvedValueOnce({ sessions: second, nextCursor: 'old-next' })
-      .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+      .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+      .mockImplementationOnce(() => new Promise((resolve) => (finishRebase = resolve)));
     const { controller, paging, sessions } = state([], request);
     controller.applySnapshot('node-1', 'workspace-1', {
       sessions: first,
@@ -144,16 +146,249 @@ describe('Web Workspace Session Discovery', () => {
       ],
       nextCursor: 'new-cursor'
     });
+    expect(controller.listedSessionIds.value.size).toBe(20);
     finish({
       sessions: [{ id: 'stale-page', workspaceId: 'workspace-1' }],
       nextCursor: 'stale-cursor'
     });
     await loading;
-    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('new-cursor');
+    expect(paging.loadingMore.value).toBe(true);
+    const rebasedTail = [...first.slice(9), ...second.slice(0, 9)];
+    finishRebase({ sessions: rebasedTail, nextCursor: 'rebased-cursor' });
+    await vi.waitFor(() => expect(paging.loadingMore.value).toBe(false));
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('rebased-cursor');
     expect(paging.visibleLimits.value.get('node-1:workspace-1')).toBe(20);
     expect(sessions.value[0]?.id).toBe('slow-pinned');
     expect(sessions.value.some((session) => session.id === 'stale-page')).toBe(false);
     expect(sessions.value.some((session) => session.id === 'second-9')).toBe(true);
+    expect(controller.listedSessionIds.value.has('second-9')).toBe(false);
+    expect(controller.listedSessionIds.value.has('first-9')).toBe(true);
+    expect(controller.listedSessionIds.value.size).toBe(20);
+    expect(request.mock.calls[2]?.[0]).toContain('limit=10&cursor=new-cursor');
+  });
+
+  it('Does not replay older snapshot or page metadata over events received while rebuilding the directory', async () => {
+    const entries = Array.from({ length: 25 }, (_, index) => ({
+      id: `session-${index}`,
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const,
+      runnerTitle: `Original ${index}`,
+      lastActivityAt: index
+    }));
+    let finish!: (page: unknown) => void;
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ sessions: entries.slice(10, 20), nextCursor: 'old-20' })
+      .mockResolvedValueOnce({ sessions: entries.slice(20), nextCursor: null })
+      .mockResolvedValueOnce({ sessions: entries.slice(10, 20), nextCursor: 'new-20' })
+      .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const { controller, paging, sessions } = state([], request);
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: entries.slice(0, 10),
+      nextCursor: 'old-10'
+    });
+    await controller.loadMore();
+    await controller.loadMore();
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: entries.slice(0, 10),
+      nextCursor: 'new-10'
+    });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(4));
+    controller.merge([
+      { ...entries[0]!, runnerTitle: 'Newer head title', lastActivityAt: 1000 },
+      { ...entries[10]!, runnerTitle: 'Newer page title', lastActivityAt: 1001 },
+      { ...entries[20]!, runnerTitle: 'Updated before page response', lastActivityAt: 1002 }
+    ]);
+    finish({ sessions: entries.slice(20), nextCursor: null });
+    await vi.waitFor(() => expect(paging.loadingMore.value).toBe(false));
+    expect(sessions.value.find((entry) => entry.id === entries[0]!.id)).toMatchObject({
+      runnerTitle: 'Newer head title',
+      lastActivityAt: 1000
+    });
+    expect(sessions.value.find((entry) => entry.id === entries[10]!.id)).toMatchObject({
+      runnerTitle: 'Newer page title',
+      lastActivityAt: 1001
+    });
+    expect(sessions.value.find((entry) => entry.id === entries[20]!.id)).toMatchObject({
+      runnerTitle: 'Updated before page response',
+      lastActivityAt: 1002
+    });
+    expect(controller.listedSessionIds.value.size).toBe(25);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBeNull();
+  });
+
+  it('Continues snapshot pagination when a changed session repeats but the cursor advances', async () => {
+    const entries = Array.from({ length: 11 }, (_, index) => ({
+      id: `session-${index}`,
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const
+    }));
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ sessions: entries.slice(10), nextCursor: null })
+      .mockResolvedValueOnce({ sessions: [entries[0]], nextCursor: 'advanced-cursor' })
+      .mockResolvedValueOnce({ sessions: entries.slice(10), nextCursor: null });
+    const { controller, paging } = state([], request);
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: entries.slice(0, 10),
+      nextCursor: 'original-cursor'
+    });
+    await controller.loadMore();
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: entries.slice(0, 10),
+      nextCursor: 'fresh-cursor'
+    });
+    await vi.waitFor(() => expect(paging.loadingMore.value).toBe(false));
+    expect(paging.loadMoreErrors.value.get('node-1:workspace-1')).toBeUndefined();
+    expect([...controller.listedSessionIds.value]).toEqual(entries.map((entry) => entry.id));
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBeNull();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls[2]?.[0]).toContain('cursor=advanced-cursor');
+  });
+
+  it('Rebuilds only the loaded range across multiple pages without prefetching the remaining directory', async () => {
+    const entries = Array.from({ length: 40 }, (_, index) => ({
+      id: `session-${index}`,
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const
+    }));
+    let catalog = entries.slice(15);
+    const request = vi.fn(async (path: string) => {
+      const query = new URL(path, 'http://localhost').searchParams;
+      const start = Number(query.get('cursor'));
+      const limit = catalog === entries && start === 10 ? 4 : Number(query.get('limit'));
+      const end = Math.min(catalog.length, start + limit);
+      return {
+        sessions: catalog.slice(start, end),
+        nextCursor: end < catalog.length ? String(end) : null
+      };
+    });
+    const { controller, paging } = state([], request);
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: catalog.slice(0, 10),
+      nextCursor: '10'
+    });
+    await controller.loadMore();
+    await controller.loadMore();
+    expect(controller.listedSessionIds.value.size).toBe(25);
+    catalog = entries;
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: catalog.slice(0, 10),
+      nextCursor: '10'
+    });
+    await vi.waitFor(() => expect(paging.loadingMore.value).toBe(false));
+    expect([...controller.listedSessionIds.value]).toEqual(
+      catalog.slice(0, 25).map((entry) => entry.id)
+    );
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBe('25');
+    expect(request).toHaveBeenCalledTimes(5);
+    expect(request.mock.calls[4]?.[0]).toContain('limit=1&cursor=24');
+  });
+
+  it('Keeps loaded rows when snapshot pagination fails and retries from the latest authoritative cursor', async () => {
+    const first = Array.from({ length: 10 }, (_, index) => ({
+      id: `session-${index}`,
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const
+    }));
+    const tail = { id: 'cached-tail', workspaceId: 'workspace-1', runner: 'codex' as const };
+    const error = new Error('Snapshot page unavailable');
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ sessions: [tail], nextCursor: null })
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ sessions: [], nextCursor: null });
+    const { controller, paging } = state([], request);
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: first,
+      nextCursor: 'original-cursor'
+    });
+    await controller.loadMore();
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: first,
+      nextCursor: 'fresh-cursor'
+    });
+    await vi.waitFor(() =>
+      expect(paging.loadMoreErrors.value.get('node-1:workspace-1')).toBe(error)
+    );
+    expect(controller.listedSessionIds.value.has(tail.id)).toBe(true);
+    expect(controller.listedSessionIds.value.size).toBe(11);
+    await controller.loadMore();
+    expect(controller.listedSessionIds.value.has(tail.id)).toBe(false);
+    expect(controller.listedSessionIds.value.size).toBe(10);
+    expect(paging.nextCursors.value.get('node-1:workspace-1')).toBeNull();
+    expect(paging.loadMoreErrors.value.has('node-1:workspace-1')).toBe(false);
+    expect(request.mock.calls[1]?.[0]).toContain('limit=1&cursor=fresh-cursor');
+    expect(request.mock.calls[2]?.[0]).toContain('limit=1&cursor=fresh-cursor');
+  });
+
+  it.each(['snapshot', 'workspace', 'group'] as const)(
+    'Discards snapshot pagination after a newer %s supersedes it',
+    async (change) => {
+      const first = Array.from({ length: 10 }, (_, index) => ({
+        id: `session-${index}`,
+        workspaceId: 'workspace-1',
+        runner: 'codex' as const
+      }));
+      let finish!: (page: unknown) => void;
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce({
+          sessions: [{ id: 'tail', workspaceId: 'workspace-1', runner: 'codex' }],
+          nextCursor: null
+        })
+        .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+      const { controller, paging, selectedWorkspaceId, sessions } = state([], request, () => true);
+      controller.applySnapshot('node-1', 'workspace-1', { sessions: first, nextCursor: 'first' });
+      await controller.loadMore();
+      controller.applySnapshot('node-1', 'workspace-1', { sessions: first, nextCursor: 'new' });
+      expect(paging.loadingMore.value).toBe(true);
+      if (change === 'workspace') selectedWorkspaceId.value = 'workspace-2';
+      if (change === 'group') controller.selectGroup('CHILD');
+      await nextTick();
+      controller.applySnapshot('node-1', selectedWorkspaceId.value, {
+        sessions: [],
+        nextCursor: null
+      });
+      finish({
+        sessions: [{ id: 'stale-tail', workspaceId: 'workspace-1', runner: 'codex' }],
+        nextCursor: 'stale-cursor'
+      });
+      await vi.waitFor(() => expect(paging.loadingMore.value).toBe(false));
+      expect(controller.listedSessionIds.value.size).toBe(0);
+      expect(sessions.value.some((session) => session.id === 'stale-tail')).toBe(false);
+      expect(paging.nextCursors.value.get(`node-1:${selectedWorkspaceId.value}`)).toBeNull();
+    }
+  );
+
+  it('Stops snapshot pagination on a non-advancing cursor without dropping loaded rows', async () => {
+    const first = Array.from({ length: 10 }, (_, index) => ({
+      id: `session-${index}`,
+      workspaceId: 'workspace-1',
+      runner: 'codex' as const
+    }));
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        sessions: [{ id: 'tail', workspaceId: 'workspace-1', runner: 'codex' }],
+        nextCursor: null
+      })
+      .mockResolvedValue({ sessions: [], nextCursor: 'new-cursor' });
+    const { controller, paging } = state([], request);
+    controller.applySnapshot('node-1', 'workspace-1', { sessions: first, nextCursor: 'first' });
+    await controller.loadMore();
+    controller.applySnapshot('node-1', 'workspace-1', {
+      sessions: first,
+      nextCursor: 'new-cursor'
+    });
+    await vi.waitFor(() =>
+      expect(paging.loadMoreErrors.value.get('node-1:workspace-1')).toEqual(
+        new Error('SESSION_PAGINATION_NO_PROGRESS')
+      )
+    );
+    expect(controller.listedSessionIds.value.size).toBe(11);
+    expect(paging.loadingMore.value).toBe(false);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it('Retains existing sessions and the cursor after a page failure, then retries successfully', async () => {
@@ -380,6 +615,76 @@ describe('Web Workspace Session Discovery', () => {
     expect(controller.searchResults.value.map((session) => session.id)).toEqual(['remote-match']);
     expect(controller.searchNextCursor.value).toBe('next-search-page');
     expect(sessions.value.map((session) => session.id)).toEqual(['loaded-only']);
+  });
+
+  it.each(['resolve', 'reject'] as const)(
+    'Keeps results and cursor during a same-query refresh that will %s',
+    async (completion) => {
+      let finish!: (page: unknown) => void;
+      let fail!: (error: Error) => void;
+      const original = { id: 'match', workspaceId: 'workspace-1', runner: 'codex' };
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce({ sessions: [original], nextCursor: 'original-cursor' })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finish = resolve;
+              fail = reject;
+            })
+        );
+      const { controller, notice } = state([], request);
+      await controller.search('release');
+      const rows = controller.searchResults.value;
+      const refreshing = controller.refresh();
+      expect(controller.searchResults.value).toBe(rows);
+      expect(controller.searchNextCursor.value).toBe('original-cursor');
+      expect(controller.searching.value).toBe(true);
+      if (completion === 'resolve') {
+        finish({ sessions: [{ ...original, runnerTitle: 'Updated title' }], nextCursor: null });
+      } else fail(new Error('Search unavailable'));
+      await refreshing;
+      expect(controller.searchResults.value.map((session) => session.id)).toEqual(['match']);
+      if (completion === 'resolve') {
+        expect(controller.searchResults.value[0]?.runnerTitle).toBe('Updated title');
+        expect(controller.searchNextCursor.value).toBeNull();
+      } else {
+        expect(controller.searchResults.value).toBe(rows);
+        expect(controller.searchNextCursor.value).toBe('original-cursor');
+        expect(notice).toHaveBeenCalledOnce();
+      }
+      expect(controller.searching.value).toBe(false);
+    }
+  );
+
+  it('Clears results for a different query and ignores a late background search refresh', async () => {
+    let finishOld!: (page: unknown) => void;
+    let finishNew!: (page: unknown) => void;
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        sessions: [{ id: 'release-match', workspaceId: 'workspace-1', runner: 'codex' }],
+        nextCursor: 'original-cursor'
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => (finishOld = resolve)))
+      .mockImplementationOnce(() => new Promise((resolve) => (finishNew = resolve)));
+    const { controller } = state([], request);
+    await controller.search('release');
+    const refreshing = controller.refresh();
+    const searching = controller.search('different');
+    expect(controller.searchResults.value).toEqual([]);
+    expect(controller.searchNextCursor.value).toBeNull();
+    finishNew({
+      sessions: [{ id: 'different-match', workspaceId: 'workspace-1', runner: 'codex' }],
+      nextCursor: 'new-cursor'
+    });
+    await searching;
+    finishOld({ sessions: [], nextCursor: null });
+    await refreshing;
+    expect(controller.searchResults.value.map((session) => session.id)).toEqual([
+      'different-match'
+    ]);
+    expect(controller.searchNextCursor.value).toBe('new-cursor');
   });
 
   it('keeps group selection per Workspace and leaves unsupported Nodes on the mixed list', async () => {
