@@ -16,6 +16,7 @@ const props = defineProps<{
   readonly workspace: AsideWorkspace;
   readonly state: AsideState;
   readonly tools: readonly { readonly id: AsideTool; readonly label: string }[];
+  readonly browserLabel: string;
   readonly sessions: readonly {
     readonly sessionId: string;
     readonly title: string;
@@ -33,6 +34,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   selectTool: [target: AsideWorkspace & { readonly id: AsideTool }];
+  selectBrowser: [target: AsideWorkspace];
+  closeBrowser: [target: AsideWorkspace];
   selectSession: [target: AsideSession];
   closeSession: [target: AsideSession];
   resize: [width: number];
@@ -61,23 +64,34 @@ const entries = computed(() => [
       target: { kind: 'session', sessionId } as AsideTarget,
       active: session?.active ?? false
     };
-  })
+  }),
+  ...(props.state.htmlPath !== undefined && props.state.tools.includes('files')
+    ? [
+        {
+          id: 'browser',
+          label: props.browserLabel,
+          closeLabel: props.closeLabel(props.browserLabel),
+          separatorBefore: props.state.sessions.length === 0 && props.state.tools.length > 0,
+          target: { kind: 'browser' } as AsideTarget,
+          active: false
+        }
+      ]
+    : [])
 ]);
 const activeId = computed(() => {
   const target = props.state.active;
   return target?.kind === 'tool'
     ? `tool:${target.id}`
-    : target?.kind === 'session'
-      ? `session:${target.sessionId}`
-      : undefined;
+    : target?.kind === 'browser'
+      ? 'browser'
+      : target?.kind === 'session'
+        ? `session:${target.sessionId}`
+        : undefined;
 });
 // The Inspector owns file windows and drafts, so moving between tools must not remount it.
 const inspectorEntry = computed(() => {
   const tools = entries.value.filter(
-    (entry) =>
-      entry.target.kind === 'tool' &&
-      entry.target.id !== 'terminal' &&
-      entry.target.id !== 'browser'
+    (entry) => entry.target.kind === 'tool' && entry.target.id !== 'terminal'
   );
   return (
     tools.find((entry) => entry.id === activeId.value) ??
@@ -90,12 +104,14 @@ const inspectorEntry = computed(() => {
 function activate(id: string | number): void {
   const target = entries.value.find((entry) => entry.id === id)?.target;
   if (target?.kind === 'tool') emit('selectTool', { ...props.workspace, id: target.id });
+  else if (target?.kind === 'browser') emit('selectBrowser', props.workspace);
   else if (target?.kind === 'session')
     emit('selectSession', { ...props.workspace, sessionId: target.sessionId });
 }
 function close(id: string | number): void {
   const target = entries.value.find((entry) => entry.id === id)?.target;
-  if (target?.kind === 'session')
+  if (target?.kind === 'browser') emit('closeBrowser', props.workspace);
+  else if (target?.kind === 'session')
     emit('closeSession', { ...props.workspace, sessionId: target.sessionId });
 }
 </script>
@@ -150,7 +166,6 @@ function close(id: string | number): void {
           (item) =>
             item.target.kind === 'tool' &&
             item.target.id !== 'terminal' &&
-            item.target.id !== 'browser' &&
             item.id !== inspectorEntry?.id
         )"
         :id="tabStripIdentity(tabPrefix, entry.id).panel"
@@ -181,10 +196,7 @@ function close(id: string | number): void {
       </div>
       <div
         v-for="entry in entries.filter(
-          (item) =>
-            item.target.kind === 'session' ||
-            item.target.id === 'terminal' ||
-            item.target.id === 'browser'
+          (item) => item.target.kind !== 'tool' || item.target.id === 'terminal'
         )"
         v-show="entry.id === activeId"
         :id="tabStripIdentity(tabPrefix, entry.id).panel"
@@ -193,12 +205,7 @@ function close(id: string | number): void {
         role="tabpanel"
         :aria-labelledby="tabStripIdentity(tabPrefix, entry.id).tab"
       >
-        <slot
-          v-if="
-            entry.target.kind === 'tool' && entry.target.id === 'browser' && entry.id === activeId
-          "
-          name="browser"
-        />
+        <slot v-if="entry.target.kind === 'browser' && entry.id === activeId" name="browser" />
         <slot
           v-if="entry.target.kind === 'tool' && entry.target.id === 'terminal'"
           name="terminal"

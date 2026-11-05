@@ -337,7 +337,7 @@ export function createWorkbenchPageController<
   }
   function openHtmlAside(path: string): void {
     const target = workspaceTarget.value;
-    if (target === undefined || !workbenchAsideService.current(target).tools.includes('browser')) {
+    if (target === undefined || !workbenchAsideService.current(target).tools.includes('files')) {
       notice(
         translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
         'error'
@@ -3074,7 +3074,7 @@ export function createWorkbenchPageController<
     ([target, manifest, kind]) => {
       if (target === undefined || manifest === undefined) return;
       const tools: AsideTool[] = [];
-      if (manifest.files?.available === true) tools.push('files', 'search', 'browser');
+      if (manifest.files?.available === true) tools.push('files', 'search');
       if (kind === 'GIT_WORKSPACE') {
         tools.push('changes');
         if (manifest.git?.supportsHistory === true) tools.push('history');
@@ -3092,6 +3092,19 @@ export function createWorkbenchPageController<
     workbenchAsideService.selectTool(target, target.id);
     if (mobileViewport.value)
       openMobileWorkspaceSurface(target.id === 'terminal' ? 'terminal' : 'inspector');
+  }
+
+  function selectAsideBrowser(target: AsideWorkspace): void {
+    const current = workspaceTarget.value;
+    if (current?.nodeId !== target.nodeId || current.workspaceId !== target.workspaceId) return;
+    if (workbenchAsideService.current(target).active?.kind === 'session') saveAsideContext();
+    if (workbenchAsideService.activateHtml(target) && mobileViewport.value)
+      openMobileWorkspaceSurface('inspector');
+  }
+  function closeAsideBrowser(target: AsideWorkspace): void {
+    const current = workspaceTarget.value;
+    if (current?.nodeId !== target.nodeId || current.workspaceId !== target.workspaceId) return;
+    workbenchAsideService.clearHtmlWorkspace(target);
   }
 
   function toggleAsideTerminal(): void {
@@ -3770,6 +3783,8 @@ export function createWorkbenchPageController<
       asideSurfaceVisible.value = visible;
     },
     selectAsideTool,
+    selectAsideBrowser,
+    closeAsideBrowser,
     reloadAsideSession,
     openAsideSession: workbenchSessionSelectionService.openAsideSession,
     closeAsideSession: workbenchSessionSelectionService.closeAsideSession,

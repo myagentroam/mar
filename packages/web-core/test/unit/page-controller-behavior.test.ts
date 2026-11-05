@@ -203,6 +203,13 @@ describe('Workbench controller composition behavior', () => {
     await nextTick();
     page.workspaceTabService.remember(node.id, node, { id: 'a', path: '/a', kind: 'DIRECTORY' });
     page.openHtmlAside('a.html');
+    page.selectAsideTool({ ...a, id: 'files' });
+    page.selectAsideBrowser(b);
+    expect(page.asideState.value?.active).toEqual({ kind: 'tool', id: 'files' });
+    page.selectAsideBrowser(a);
+    page.closeAsideBrowser(b);
+    expect(page.asideState.value?.active).toEqual({ kind: 'browser' });
+    expect(page.asideState.value?.htmlPath).toBe('a.html');
     page.workspaceTarget.value = b;
     await nextTick();
     expect(page.asideState.value?.htmlPath).toBeUndefined();
@@ -216,6 +223,10 @@ describe('Workbench controller composition behavior', () => {
     page.workspaceTarget.value = a;
     await nextTick();
     expect(page.asideState.value?.htmlPath).toBeUndefined();
+    page.openHtmlAside('again.html');
+    page.closeAsideBrowser(a);
+    expect(page.asideState.value?.htmlPath).toBeUndefined();
+    expect(page.asideState.value?.active).toEqual({ kind: 'tool', id: 'files' });
     page.openHtmlAside('again.html');
     page.workspaceTabService.restore(
       Array.from({ length: 8 }, (_, index) => ({

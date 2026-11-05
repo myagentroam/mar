@@ -137,7 +137,6 @@ const asideTools = computed(() => [
   { id: 'search' as const, label: translate('generated.workspaceInspector.search') },
   { id: 'changes' as const, label: translate('generated.workspaceInspector.gitChanges') },
   { id: 'history' as const, label: translate('generated.workspaceInspector.gitHistory') },
-  { id: 'browser' as const, label: translate('htmlPreview.browser') },
   { id: 'terminal' as const, label: translate('generated.terminalDock.workspaceTerminal') }
 ]);
 const asideSessions = computed(() =>
@@ -150,15 +149,9 @@ const asideSessions = computed(() =>
     };
   })
 );
-function inspectorTool(
-  tool: AsideTool | undefined
-): Exclude<AsideTool, 'terminal' | 'browser'> | null {
+function inspectorTool(tool: AsideTool | undefined): Exclude<AsideTool, 'terminal'> | null {
   const active = props.page.asideState?.active;
-  return !asideVisible.value ||
-    active?.kind !== 'tool' ||
-    active.id !== tool ||
-    tool === 'terminal' ||
-    tool === 'browser'
+  return !asideVisible.value || active?.kind !== 'tool' || active.id !== tool || tool === 'terminal'
     ? null
     : tool;
 }
@@ -561,6 +554,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 :workspace="page.workspaceTarget!"
                 :state="page.asideState"
                 :tools="asideTools"
+                :browser-label="translate('htmlPreview.browser')"
                 :sessions="asideSessions"
                 :tab-label="translate('generated.workbenchAside.tabs')"
                 :close-label="
@@ -583,6 +577,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                 "
                 :mode="asideMode"
                 @select-tool="page.selectAsideTool"
+                @select-browser="page.selectAsideBrowser"
+                @close-browser="page.closeAsideBrowser"
                 @select-session="page.openAsideSession"
                 @close-session="page.closeAsideSession"
                 @resize="page.setPanelWidth(asideMode, $event)"
@@ -593,8 +589,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     v-if="
                       asideVisible &&
                       page.workspaceTarget &&
-                      page.asideState.active?.kind === 'tool' &&
-                      page.asideState.active.id === 'browser'
+                      page.asideState.htmlPath !== undefined &&
+                      page.asideState.active?.kind === 'browser'
                     "
                     :node-id="page.workspaceTarget.nodeId"
                     :workspace-id="page.workspaceTarget.workspaceId"

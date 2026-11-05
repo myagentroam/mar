@@ -14,6 +14,7 @@
       import 'element-plus/dist/index.css';
       import '/packages/web-core/src/styles.css';
       import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
+      import WorkspaceHtmlBrowser from '/packages/web-core/src/view/workspace/WorkspaceHtmlBrowser.vue';
       import MarTab from '/packages/web-core/src/view/common/MarTab.vue';
       import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
@@ -99,10 +100,23 @@
           const activations = ref(0);
           return () => [
             h(
+              'button',
+              {
+                id: 'open-browser',
+                onClick: () =>
+                  aside.openHtml(
+                    workspace,
+                    new URLSearchParams(location.search).get('html-file') ?? 'index.html'
+                  )
+              },
+              'Preview HTML'
+            ),
+            h(
               WorkbenchAside,
               {
                 workspace,
                 state: state.value,
+                browserLabel: 'Browser',
                 tools: ['files', 'search', 'changes', 'history', 'terminal'].map((id) => ({
                   id,
                   label: language === 'zh' ? toolLabels[id] : id[0].toUpperCase() + id.slice(1)
@@ -119,11 +133,23 @@
                 maxWidth: 800,
                 mode: 'content',
                 onSelectTool: (target) => aside.selectTool(target, target.id),
+                onSelectBrowser: (target) => aside.activateHtml(target),
+                onCloseBrowser: (target) => aside.clearHtmlWorkspace(target),
                 onSelectSession: (target) => aside.activateSession(target),
                 onCloseSession: (target) => aside.closeSession(target)
               },
               {
                 tool: ({ tool }) => h(Inspector, { tool }),
+                browser: () =>
+                  state.value.htmlPath !== undefined && state.value.active?.kind === 'browser'
+                    ? h(WorkspaceHtmlBrowser, {
+                        nodeId: workspace.nodeId,
+                        workspaceId: workspace.workspaceId,
+                        path: state.value.htmlPath,
+                        csrfToken: '',
+                        renewCsrfToken: async () => ''
+                      })
+                    : undefined,
                 terminal: ({ visible }) => h(Terminal, { visible }),
                 session: ({ target }) => h('div', { id: 'session' }, `Session ${target.sessionId}`)
               }
