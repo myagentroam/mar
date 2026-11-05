@@ -1934,7 +1934,8 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item.reasoning-group,
 .conversation-item:has(> .conversation-tool-presentation) {
-  --conversation-detail-start: calc(1em + 1.125rem + 1rem);
+  /* Match grouped leaf details; the type icon is not another nesting level. */
+  --conversation-detail-start: calc(1em + 1rem);
 }
 
 .conversation-record-group > details > summary > .mar-disclosure-icon {

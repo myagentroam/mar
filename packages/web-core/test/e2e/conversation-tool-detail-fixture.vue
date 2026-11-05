@@ -211,6 +211,17 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (new URL(location.href).searchParams.has('reasoning-pair')) {
+  detailSamples.splice(detailSamples.findIndex((item) => item.kind === 'reasoning') + 1, 0, {
+    id: 'thinking-next',
+    kind: 'reasoning',
+    status: 'COMPLETED',
+    payload: {
+      sections: [{ text: 'Check the shared reading start.' }],
+      representation: 'visible_thinking'
+    }
+  });
+}
 if (new URL(location.href).searchParams.has('detail-layout')) {
   detailSamples.push(
     {

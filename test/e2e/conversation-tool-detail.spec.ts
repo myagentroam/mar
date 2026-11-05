@@ -133,6 +133,7 @@ for (const { width, theme, locale } of [
     await expect(sleepBody).not.toContainText('raw input for copying');
     await sleepBody.scrollIntoViewIfNeeded();
     await expectUnclippedDetail(sleepBody);
+    const sleepBounds = await sleep.locator('.conversation-detail-body').boundingBox();
     for (const [name, expected] of [
       ['tool_search', 'tools <query>'],
       ['view_image', '/fixture/example.png'],
@@ -144,6 +145,8 @@ for (const { width, theme, locale } of [
         .first();
       await row.locator('> summary').click();
       const body = row.locator('.compact-detail');
+      const bounds = await row.locator('.conversation-detail-body').boundingBox();
+      expect(Math.abs(bounds!.x - sleepBounds!.x)).toBeLessThan(1);
       await expect(body).toContainText(expected);
       await expect(body).not.toContainText('raw input for copying');
       const meta = body.locator('.tool-detail-meta').first();
@@ -411,6 +414,9 @@ for (const [width, theme, locale] of [
     const skill = page.locator('[data-tool-presentation="SKILL"]');
     await skill.locator('> summary').click();
     await expect(skill.locator('.tool-detail-heading')).toHaveText('mar-web-spec');
+    const readBounds = await read.locator('.conversation-detail-body').boundingBox();
+    const skillBounds = await skill.locator('.conversation-detail-body').boundingBox();
+    expect(Math.abs(skillBounds!.x - readBounds!.x)).toBeLessThan(1);
     const description = skill.locator('.conversation-detail-text');
     await expect(description).toHaveText(
       'Design <plain> interfaces.\nKeep the original description and its line breaks.'
@@ -973,8 +979,9 @@ for (const width of [1280, 390]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       try {
         const page = await context.newPage();
+        const reasoningQuery = theme === 'dark' ? '&reasoning-pair' : '';
         await page.goto(
-          `${fixture.url}conversation-tool-detail.html?timeline=1&long=1&unified=1&theme=${theme}`
+          `${fixture.url}conversation-tool-detail.html?timeline=1&long=1&unified=1&theme=${theme}${reasoningQuery}`
         );
         const process = page.locator('.process-heading').first();
         if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
@@ -1030,9 +1037,10 @@ for (const width of [1280, 390]) {
         const reasoning = page.locator('.reasoning-group');
         await reasoning.locator('summary').click();
         const thinking = reasoning.locator('.conversation-detail-text');
+        await expect(thinking).toContainText('Keep the changes focused.');
+        if (reasoningQuery) await expect(thinking).toContainText('Check the shared reading start.');
         const thinkingBounds = await thinking.boundingBox();
-        const reasoningTitleBounds = await reasoning.locator('summary strong').boundingBox();
-        expect(Math.abs(thinkingBounds!.x - reasoningTitleBounds!.x)).toBeLessThan(3);
+        expect(Math.abs(thinkingBounds!.x - textBounds!.x)).toBeLessThan(1);
         const thinkingStyle = await thinking.evaluate((element) => ({
           fontSize: getComputedStyle(element).fontSize,
           lineHeight: getComputedStyle(element).lineHeight,
@@ -1076,13 +1084,18 @@ for (const width of [1280, 390]) {
               ':scope > strong, :scope > span:not(.mar-disclosure-icon):not(.conversation-record-icon)'
             )!;
             return {
+              hasTypeIcon: !!heading.querySelector(':scope > .conversation-record-icon'),
+              left: element.getBoundingClientRect().left,
+              textLeft: text.getBoundingClientRect().left,
               inset: text.getBoundingClientRect().left - element.getBoundingClientRect().left,
               expectedInset: parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.75,
               titleOffset: text.getBoundingClientRect().left - title.getBoundingClientRect().left
             };
           });
+          expect(Math.abs(spacing.left - bounds!.x)).toBeLessThan(1);
+          expect(Math.abs(spacing.textLeft - textBounds!.x)).toBeLessThan(1);
           expect(Math.abs(spacing.inset - spacing.expectedInset)).toBeLessThan(1);
-          expect(Math.abs(spacing.titleOffset)).toBeLessThan(3);
+          if (!spacing.hasTypeIcon) expect(Math.abs(spacing.titleOffset)).toBeLessThan(3);
           await expect(surface).toHaveCSS('background-color', thinkingStyle.background);
           const radius = await surface.evaluate((element) =>
             getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
