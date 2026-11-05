@@ -307,6 +307,16 @@ describe('File preview window interaction', () => {
         };
         if (deferredBack) traversals.push(traverse);
         else traverse();
+      }),
+      forward: vi.fn(() => {
+        const traverse = () => {
+          if (index >= entries.length - 1) return;
+          index += 1;
+          for (const listener of [...(listeners.get('popstate') ?? [])])
+            listener({ state: entries[index] } as PopStateEvent);
+        };
+        if (deferredBack) traversals.push(traverse);
+        else traverse();
       })
     };
     vi.stubGlobal('document', {
@@ -588,6 +598,9 @@ describe('File preview window interaction', () => {
     expect(f.entries).toHaveLength(2);
     expect(f.history.state).not.toEqual(f.originalState);
     f.history.back();
+    f.flushBack();
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(f.history.forward).toHaveBeenCalledOnce();
     f.flushBack();
     await Promise.resolve();
     await Promise.resolve();

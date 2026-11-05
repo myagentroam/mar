@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MarIcon from './MarIcon.vue';
 import { tabStripIdentity } from '../../util/tab-strip-identity.js';
+import { translate } from '../../service/locale-preference-service.js';
 
 export interface MarTabItem {
   readonly id: string | number;
@@ -25,6 +26,11 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ activate: [id: string | number]; close: [id: string | number] }>();
 const root = ref<HTMLElement>();
+const container = ref<HTMLElement>();
+const hasOverflow = ref(false);
+const canScrollPrevious = ref(false);
+const canScrollNext = ref(false);
+let resizeObserver: ResizeObserver | undefined;
 const focusedId = ref<string | number | undefined>(props.activeId);
 const rovingId = computed(() => {
   const enabled = props.items.filter((item) => !item.disabled);
@@ -37,8 +43,65 @@ const rovingId = computed(() => {
 let pendingClose: { id: string | number; index: number } | undefined;
 
 function revealTab(tab: HTMLElement | undefined): void {
-  tab?.parentElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const list = root.value;
+  const item = tab?.closest('.tab-strip-item');
+  if (list === undefined || item === null || item === undefined) return;
+  const bounds = item.getBoundingClientRect();
+  const viewport = list.getBoundingClientRect();
+  if (bounds.left < viewport.left + 3) list.scrollLeft += bounds.left - viewport.left - 4;
+  else if (bounds.right > viewport.right - 3) list.scrollLeft += bounds.right - viewport.right + 4;
 }
+
+function revealCurrentTab(): void {
+  const list = root.value;
+  if (list === undefined) return;
+  const focused = list.contains(document.activeElement)
+    ? document.activeElement?.closest('.tab-strip-item')?.querySelector<HTMLElement>('[role="tab"]')
+    : undefined;
+  revealTab(focused ?? list.querySelector<HTMLElement>('[aria-selected="true"]') ?? undefined);
+}
+
+function updateOverflow(): void {
+  const list = root.value;
+  const host = container.value;
+  if (list === undefined || host === undefined) return;
+  // Measure against the full host so removing the controls cannot retain false overflow.
+  hasOverflow.value = list.scrollWidth > host.clientWidth + 1;
+  canScrollPrevious.value = hasOverflow.value && list.scrollLeft > 1;
+  canScrollNext.value =
+    hasOverflow.value && list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
+}
+
+function observeTabs(): void {
+  const list = root.value;
+  if (resizeObserver === undefined || list === undefined) return;
+  resizeObserver.disconnect();
+  resizeObserver.observe(list);
+  for (const item of list.querySelectorAll('.tab-strip-item')) resizeObserver.observe(item);
+}
+
+function scrollTabs(direction: number): void {
+  const list = root.value;
+  list?.scrollBy({
+    left: direction * list.clientWidth * 0.75,
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+  });
+}
+
+onMounted(() => {
+  if (typeof HTMLElement === 'undefined' || !(root.value instanceof HTMLElement)) return;
+  resizeObserver = new ResizeObserver(() => {
+    updateOverflow();
+    revealCurrentTab();
+  });
+  observeTabs();
+  updateOverflow();
+  revealCurrentTab();
+});
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  resizeObserver = undefined;
+});
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
@@ -60,7 +123,7 @@ function onKeydown(event: KeyboardEvent): void {
   if (target === undefined) return;
   event.preventDefault();
   focusedId.value = props.items[target]!.id;
-  tabs[target]?.focus();
+  tabs[target]?.focus({ preventScroll: true });
   if (props.activationMode === 'automatic') emit('activate', props.items[target]!.id);
   revealTab(tabs[target]);
 }
@@ -87,8 +150,15 @@ function close(id: string | number, event: MouseEvent): void {
 }
 
 watch(
-  () => props.items.map((item) => item.id),
-  (ids) => {
+  () => props.items.map((item) => [item.id, item.label, item.separatorBefore, item.closeLabel]),
+  () => {
+    void nextTick(() => {
+      if (resizeObserver === undefined) return;
+      observeTabs();
+      updateOverflow();
+      revealCurrentTab();
+    });
+    const ids = props.items.map((item) => item.id);
     const pending = pendingClose;
     if (pending === undefined || ids.includes(pending.id)) return;
     pendingClose = undefined;
@@ -103,7 +173,7 @@ watch(
         return;
       const index = props.items.findIndex((item) => item.id === next.id);
       const tab = root.value?.querySelectorAll<HTMLElement>('[role="tab"]').item(index);
-      tab?.focus();
+      tab?.focus({ preventScroll: true });
       revealTab(tab ?? undefined);
     });
   },
@@ -112,58 +182,115 @@ watch(
 </script>
 
 <template>
-  <nav
-    ref="root"
-    class="tab-strip"
-    :class="{ 'is-small': size === 'small' }"
-    role="tablist"
-    :aria-label="label"
-    @keydown="onKeydown"
-    @focusout="!root?.contains($event.relatedTarget as Node | null) && (focusedId = activeId)"
+  <div
+    ref="container"
+    class="mar-tab"
+    :class="{
+      'is-small': size === 'small',
+      'can-scroll-previous': canScrollPrevious,
+      'can-scroll-next': canScrollNext
+    }"
   >
-    <template v-for="item in items" :key="item.id">
-      <span v-if="item.separatorBefore" class="tab-strip-separator" aria-hidden="true" />
-      <div class="tab-strip-item" :class="[itemClass, { 'is-active': item.id === activeId }]">
-        <button
-          v-tooltip="item.description ?? item.label"
-          class="tab-strip-tab"
-          :class="tabClass"
-          type="button"
-          role="tab"
-          :id="tabStripIdentity(idPrefix, item.id).tab"
-          :aria-controls="tabStripIdentity(idPrefix, item.id).panel"
-          :aria-description="item.description"
-          :aria-selected="item.id === activeId"
-          :tabindex="item.id === rovingId ? 0 : -1"
-          :disabled="item.disabled"
-          @focus="focusedId = item.id"
-          @click="
-            focusedId = item.id;
-            emit('activate', item.id);
-          "
-        >
-          <slot name="label" :item="item"
-            ><span>{{ item.label }}</span></slot
+    <button
+      v-if="hasOverflow"
+      v-tooltip="translate('marTab.scrollPrevious')"
+      class="icon-button mar-tab-scroll"
+      type="button"
+      :aria-label="translate('marTab.scrollPrevious')"
+      :aria-controls="`${idPrefix}-tablist`"
+      :disabled="!canScrollPrevious"
+      @click="scrollTabs(-1)"
+    >
+      <MarIcon name="chevron-left" />
+    </button>
+    <nav
+      ref="root"
+      class="tab-strip"
+      :id="`${idPrefix}-tablist`"
+      :class="{ 'is-small': size === 'small' }"
+      role="tablist"
+      :aria-label="label"
+      @scroll.passive="updateOverflow"
+      @keydown="onKeydown"
+      @focusout="!root?.contains($event.relatedTarget as Node | null) && (focusedId = activeId)"
+    >
+      <template v-for="item in items" :key="item.id">
+        <span v-if="item.separatorBefore" class="tab-strip-separator" aria-hidden="true" />
+        <div class="tab-strip-item" :class="[itemClass, { 'is-active': item.id === activeId }]">
+          <button
+            v-tooltip="item.description ?? item.label"
+            class="tab-strip-tab"
+            :class="tabClass"
+            type="button"
+            role="tab"
+            :id="tabStripIdentity(idPrefix, item.id).tab"
+            :aria-controls="tabStripIdentity(idPrefix, item.id).panel"
+            :aria-description="item.description"
+            :aria-selected="item.id === activeId"
+            :tabindex="item.id === rovingId ? 0 : -1"
+            :disabled="item.disabled"
+            @focus="focusedId = item.id"
+            @click="
+              focusedId = item.id;
+              emit('activate', item.id);
+            "
           >
-        </button>
-        <button
-          v-if="item.closeLabel"
-          v-tooltip="item.closeLabel"
-          class="icon-button utility-control tab-strip-close"
-          :class="closeClass"
-          type="button"
-          :disabled="item.closeDisabled"
-          :aria-label="item.closeLabel"
-          @click.stop="close(item.id, $event)"
-        >
-          <MarIcon name="close" />
-        </button>
-      </div>
-    </template>
-  </nav>
+            <slot name="label" :item="item"
+              ><span>{{ item.label }}</span></slot
+            >
+          </button>
+          <button
+            v-if="item.closeLabel"
+            v-tooltip="item.closeLabel"
+            class="icon-button utility-control tab-strip-close"
+            :class="closeClass"
+            type="button"
+            :disabled="item.closeDisabled"
+            :aria-label="item.closeLabel"
+            @click.stop="close(item.id, $event)"
+          >
+            <MarIcon name="close" />
+          </button>
+        </div>
+      </template>
+    </nav>
+    <button
+      v-if="hasOverflow"
+      v-tooltip="translate('marTab.scrollNext')"
+      class="icon-button mar-tab-scroll"
+      type="button"
+      :aria-label="translate('marTab.scrollNext')"
+      :aria-controls="`${idPrefix}-tablist`"
+      :disabled="!canScrollNext"
+      @click="scrollTabs(1)"
+    >
+      <MarIcon name="chevron-right" />
+    </button>
+  </div>
 </template>
 
 <style scoped>
+.mar-tab {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.mar-tab.is-small {
+  height: auto;
+}
+.mar-tab-scroll {
+  --mar-action-icon-size: 14px;
+  flex: 0 0 20px;
+  width: 20px;
+  min-width: 20px;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mar-text-secondary);
+}
 .tab-strip {
   display: flex;
   min-width: 0;
@@ -171,8 +298,12 @@ watch(
   flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none;
   gap: 0;
   padding: 3px 4px 0;
+}
+.tab-strip::-webkit-scrollbar {
+  display: none;
 }
 .tab-strip.is-small {
   --mar-tab-strip-item-height: 28px;
@@ -262,6 +393,26 @@ watch(
   }
 }
 @media (max-width: 767px) {
+  .mar-tab-scroll {
+    display: none;
+  }
+  .mar-tab .tab-strip:not(:focus-within) {
+    --mar-tab-fade-start: 0px;
+    --mar-tab-fade-end: 100%;
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--mar-tab-fade-start),
+      #000 var(--mar-tab-fade-end),
+      transparent
+    );
+  }
+  .mar-tab.can-scroll-previous .tab-strip {
+    --mar-tab-fade-start: 12px;
+  }
+  .mar-tab.can-scroll-next .tab-strip {
+    --mar-tab-fade-end: calc(100% - 12px);
+  }
   .tab-strip {
     align-items: center;
     gap: 4px;

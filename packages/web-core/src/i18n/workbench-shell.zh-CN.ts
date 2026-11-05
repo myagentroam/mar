@@ -1,4 +1,8 @@
 export const workbenchShellZhCN = {
+  marTab: {
+    scrollPrevious: '向左浏览标签',
+    scrollNext: '向右浏览标签'
+  },
   generated: {
     workbenchAside: {
       tabs: '工作区工具和会话',
