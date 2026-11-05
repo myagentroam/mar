@@ -53,6 +53,30 @@ const ticket = {
 };
 
 describe('Conversation model purpose', () => {
+  it('defaults unified Compact off and preserves explicit values in all model projections', () => {
+    for (const unifiedCompact of [undefined, false, true]) {
+      const value = {
+        ...baseModel,
+        credential: { type: 'INLINE_API_KEY', value: 'test-key' },
+        ...(unifiedCompact === undefined ? {} : { unifiedCompact })
+      };
+      for (const schema of [
+        marAgentStoredModelConfigurationSchema,
+        marAgentRuntimeModelConfigurationSchema
+      ]) {
+        expect(schema.parse(value).unifiedCompact).toBe(unifiedCompact ?? false);
+        expect(schema.safeParse({ ...value, unifiedCompact: 'true' }).success).toBe(false);
+      }
+      expect(
+        marAgentModelSummarySchema.parse({
+          ...baseModel,
+          sortOrder: 0,
+          access: 'RESTRICTED',
+          ...(unifiedCompact === undefined ? {} : { unifiedCompact })
+        }).unifiedCompact
+      ).toBe(unifiedCompact ?? false);
+    }
+  });
   it('defaults subagent use off and preserves explicit model purpose in every projection', () => {
     for (const subagentModel of [undefined, false, true]) {
       const value = {

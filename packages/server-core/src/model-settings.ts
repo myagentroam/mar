@@ -37,7 +37,7 @@ const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const CHATGPT_BASE_URL = 'https://api.openai.com/v1';
 
 type ModelSettingsV1 = z.infer<typeof responses> | z.infer<typeof anthropic>;
-export type ModelSettings = ModelSettingsV1 & { gcEnabled?: boolean };
+export type ModelSettings = ModelSettingsV1 & { gcEnabled?: boolean; unifiedCompact?: boolean };
 export const modelSettingsKey = (id: string): string => `mar_agent_model_config:${id}`;
 
 type Executor = Pick<Pool | PoolConnection, 'execute'>;
@@ -92,12 +92,15 @@ export function parseModelSettings(
 ): ModelSettings {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
-  const { gcEnabled, ...legacy } = value as Record<string, unknown>;
+  const { gcEnabled, unifiedCompact, ...legacy } = value as Record<string, unknown>;
   if (gcEnabled !== undefined && typeof gcEnabled !== 'boolean')
+    throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
+  if (unifiedCompact !== undefined && typeof unifiedCompact !== 'boolean')
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
   return {
     ...parseModelSettingsV1(protocol, legacy),
-    ...(gcEnabled === undefined ? {} : { gcEnabled })
+    ...(gcEnabled === undefined ? {} : { gcEnabled }),
+    ...(unifiedCompact === undefined ? {} : { unifiedCompact })
   };
 }
 
@@ -125,6 +128,7 @@ export function modelSettingsFromInput(model: {
   responsesTransport?: MarAgentModelSummary['responsesTransport'] | undefined;
   responsesPreviousResponseId?: boolean | undefined;
   gcEnabled?: boolean | undefined;
+  unifiedCompact?: boolean | undefined;
 }): ModelSettings {
   if (model.protocol === 'ANTHROPIC_MESSAGES') {
     if (
@@ -134,11 +138,16 @@ export function modelSettingsFromInput(model: {
       model.responsesPreviousResponseId
     )
       throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
-    return parseModelSettings(model.protocol, { version: 1, gcEnabled: model.gcEnabled ?? true });
+    return parseModelSettings(model.protocol, {
+      version: 1,
+      gcEnabled: model.gcEnabled ?? true,
+      unifiedCompact: model.unifiedCompact ?? false
+    });
   }
   return parseModelSettings(model.protocol, {
     version: 1,
     gcEnabled: model.gcEnabled ?? true,
+    unifiedCompact: model.unifiedCompact ?? false,
     hostedWebSearch: model.hostedWebSearch,
     ...(model.serviceTier === undefined ? {} : { serviceTier: model.serviceTier }),
     ...(model.responsesTransport === undefined

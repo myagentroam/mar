@@ -573,6 +573,70 @@ for (const english of [false, true]) {
     });
   });
 
+  test(`Unified Compact defaults off and preserves saved model choices ${language}`, async ({
+    page
+  }) => {
+    await mockEnterpriseConsole(page, english);
+    await page.route(/\/api\/admin\/mar-agent\/codex-credentials$/u, (route) =>
+      json(route, { credentials: [] })
+    );
+    await page.route('**/api/organizations', (route) =>
+      json(route, { organizations: [{ id: 1, name: 'Root', parentOrganizationId: null }] })
+    );
+    let current = model('compact-opt-in', 'Compact opt-in model');
+    const updates: Record<string, unknown>[] = [];
+    await page.route(/\/api\/admin\/mar-agent\/models$/u, (route) =>
+      json(route, { models: [current] })
+    );
+    await page.route(/\/api\/admin\/mar-agent\/models\/compact-opt-in$/u, (route) => {
+      expect(route.request().method()).toBe('PUT');
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      updates.push(body);
+      current = { ...current, ...body };
+      return json(route, { model: current });
+    });
+    await openModels(page, strings);
+    const label = english ? 'Unified Compact' : '统一 Compact';
+    await page.getByRole('button', { name: strings.add, exact: true }).click();
+    const added = page.getByRole('dialog', { name: strings.add, exact: true });
+    await expect(added.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked();
+    await added.getByRole('button', { name: strings.cancel, exact: true }).click();
+
+    const row = page.locator('.el-table__row').filter({ hasText: 'Compact opt-in model' });
+    async function edit(): Promise<Locator> {
+      await row.getByRole('button', { name: strings.edit, exact: true }).click();
+      return page.getByRole('dialog', { name: strings.edit, exact: true });
+    }
+    const legacy = await edit();
+    await expect(legacy.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked();
+    await legacy.locator('label.el-checkbox').filter({ hasText: label }).click();
+    await expect(legacy.getByRole('checkbox', { name: label, exact: true })).toBeChecked();
+    await expect(
+      legacy.getByRole('checkbox', {
+        name: english ? 'Supports Subagent' : '支持 Subagent',
+        exact: true
+      })
+    ).not.toBeChecked();
+    await legacy.getByRole('button', { name: strings.save, exact: true }).click();
+    await expect.poll(() => updates.at(-1)?.unifiedCompact).toBe(true);
+    expect(updates.at(-1)?.subagentModel).toBe(false);
+    await row.locator('td').first().click();
+    const details = page.getByRole('dialog', { name: strings.details, exact: true });
+    await expect(
+      details.getByRole('row').filter({ has: page.getByText(label, { exact: true }) })
+    ).toContainText(english ? 'Yes' : '是');
+    await details.getByRole('button', { name: strings.close, exact: true }).click();
+
+    const reopened = await edit();
+    await expect(reopened.getByRole('checkbox', { name: label, exact: true })).toBeChecked();
+    await reopened.locator('label.el-checkbox').filter({ hasText: label }).click();
+    await reopened.getByRole('button', { name: strings.save, exact: true }).click();
+    await expect.poll(() => updates.at(-1)?.unifiedCompact).toBe(false);
+    const disabled = await edit();
+    await expect(disabled.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked();
+    await disabled.getByRole('button', { name: strings.cancel, exact: true }).click();
+  });
+
   test(`Model speed settings support edits, details, and legacy Fast compatibility ${language}`, async ({
     page
   }) => {
@@ -762,6 +826,7 @@ for (const english of [false, true]) {
       defaultReasoningEffort: 'high',
       conversationModel: true,
       titleGeneration: true,
+      unifiedCompact: true,
       codeMode: true,
       responsesTransport: { transport: 'HTTP', httpVersion: '2' },
       responsesPreviousResponseId: true,
@@ -813,6 +878,12 @@ for (const english of [false, true]) {
       return page.getByRole('dialog', { name: duplicateLabel, exact: true });
     };
     const firstCopy = await openCopy();
+    await expect(
+      firstCopy.getByRole('checkbox', {
+        name: english ? 'Unified Compact' : '统一 Compact',
+        exact: true
+      })
+    ).toBeChecked();
     await expect(firstCopy.getByRole('textbox', { name: strings.modelName })).toHaveValue(copyName);
     await expect(firstCopy.getByRole('textbox', { name: strings.modelId })).toHaveValue(
       'source-model-id'
@@ -878,6 +949,7 @@ for (const english of [false, true]) {
     expect(duplicateBodies[0]).toMatchObject({
       name: copyName,
       protocol: 'OPENAI_RESPONSES',
+      unifiedCompact: true,
       baseUrl: 'https://gateway.example/v1',
       modelId: 'source-model-id',
       contextWindowTokens: 262_144,

@@ -13,6 +13,7 @@ import type { ModelRequestUsage } from '../model/usage-observer.js';
 
 /** Bounds Extension diagnostics and validates its candidate before native fallback. */
 export function createExecutionCompactExtension(ports: {
+  readonly modelId: string;
   readonly contextWindowTokens: number;
   readonly maxOutputTokens: number;
   hasInterceptor(): boolean;
@@ -40,6 +41,7 @@ export function createExecutionCompactExtension(ports: {
       const result = await compaction.generate((signal) =>
         ports.invoke(
           Object.freeze({
+            modelId: ports.modelId,
             reason,
             messages: compactExtensionMessages(history),
             ...(focus === undefined ? {} : { focus }),

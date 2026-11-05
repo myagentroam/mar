@@ -126,6 +126,7 @@ export const modelManagementEnUS = {
       'The default reasoning effort must be included in the selected supported range.',
     conversationModel: 'Conversation model',
     subagentModel: 'Supports Subagent',
+    unifiedCompact: 'Unified Compact',
     titleGeneration: 'Session title generation',
     codeMode: 'Code Mode',
     gcEnabled: 'Context GC',
