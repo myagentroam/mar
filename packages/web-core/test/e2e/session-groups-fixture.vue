@@ -12,6 +12,7 @@ import { consoleKeyboardShortcutService } from '../../src/service/console-keyboa
 import { translate } from '../../src/service/locale-preference-service.js';
 
 const mobile = matchMedia('(max-width: 767px)').matches;
+const watchStatus = new URL(location.href).searchParams.get('watch-status');
 const mobileOpen = ref(false);
 const mobileTarget = document.getElementById('recent-mobile')!;
 const group = ref<SessionGroup>('MAIN');
@@ -102,14 +103,16 @@ function openTarget(sessionId: string): void {
   group.value = sessionId === 'main' ? 'MAIN' : 'CHILD';
 }
 const shown = computed(() =>
-  sessions.value.filter((session) => session.sessionGroup === group.value)
+  new URL(location.href).searchParams.has('empty-sessions')
+    ? []
+    : sessions.value.filter((session) => session.sessionGroup === group.value)
 );
 const props = {
   mobileViewport: mobile,
   canLoadMore: false,
   loadingMore: false,
   active: true,
-  watchStatus: 'ready' as const,
+  watchStatus: watchStatus === 'loading' || watchStatus === 'failed' ? watchStatus : 'ready',
   nodeReady: true,
   asideSupported: true,
   loading: false,

@@ -3,6 +3,49 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'vscode-dark-2026']
+] as const) {
+  test(`Session list watch loading uses the shared spinner and retains rows at ${width}px ${theme}`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture();
+    try {
+      await page.setViewportSize({ width, height: 850 });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(
+        `${fixture.url}session-groups.html?locale=en-US&theme=${theme}&watch-status=loading`
+      );
+      const sidebar = page.locator('.conversation-sidebar');
+      const status = sidebar.getByRole('status', { name: 'Loading sessions…' });
+      await expect(status).toBeVisible();
+      await expect(status).toHaveText('');
+      await expect(status.locator('.busy-indicator')).toBeVisible();
+      const indicatorSize = await status.locator('.busy-indicator').evaluate((indicator) => ({
+        width: parseFloat(getComputedStyle(indicator).width),
+        rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize)
+      }));
+      expect(indicatorSize.width).toBeCloseTo(indicatorSize.rootSize * 0.875, 1);
+      await expect(status.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await expect(sidebar.locator('.session-row')).toHaveCount(1);
+
+      await page.goto(
+        `${fixture.url}session-groups.html?locale=en-US&watch-status=loading&empty-sessions`
+      );
+      await expect(status).toBeVisible();
+      await expect(sidebar.locator('.session-row')).toHaveCount(0);
+
+      await page.goto(`${fixture.url}session-groups.html?locale=en-US&watch-status=failed`);
+      await expect(sidebar.getByRole('status', { name: 'Loading sessions…' })).toHaveCount(0);
+      await expect(sidebar.locator('.watch-status.failed')).toBeVisible();
+      await expect(sidebar.locator('.session-row')).toHaveCount(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('Session rows keep their desktop and mobile density', async ({ page }) => {
   const fixture = await startCustomThemeFixture();
   try {
