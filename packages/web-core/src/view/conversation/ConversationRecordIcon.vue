@@ -5,13 +5,20 @@ import MarIcon from '../common/MarIcon.vue';
 import type { MarIconName } from '../../util/icon-shapes.js';
 
 const props = defineProps<{
-  kind: 'reasoning' | 'command_execution' | 'tool_call' | 'file_change' | ToolPresentation['kind'];
+  kind:
+    | 'reasoning'
+    | 'command_execution'
+    | 'tool_call'
+    | 'file_change'
+    | 'todo_list'
+    | ToolPresentation['kind'];
 }>();
 const names: Readonly<Record<string, MarIconName>> = {
   reasoning: 'reasoning',
   command_execution: 'terminal',
   READ: 'document',
   file_change: 'file-change',
+  todo_list: 'task-list',
   SKILL: 'skill',
   WEB_SEARCH: 'search',
   WEB_FETCH: 'web',

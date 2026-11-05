@@ -1223,6 +1223,16 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     for (const key of keys) expect(i18n.global.te(key, locale), key).toBe(true);
   });
 
+  it('keeps one task-list icon when there are no tasks to expand', async () => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn([conversationItem('empty-tasks', 'todo_list', { items: [] })])]
+    });
+    expect(html.match(/data-mar-icon="task-list"/gu)).toHaveLength(1);
+    expect(html).not.toContain('data-mar-icon="chevron-right"');
+    expect(html).not.toContain('task-list-items');
+  });
+
   it('keeps task, plan, generated-image text and fallback content in the shared detail surface', async () => {
     const html = await render(ConversationTimeline, {
       ...timelineProps,
@@ -1249,6 +1259,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
     expect(html.match(/\bconversation-content-detail\b/gu)).toHaveLength(4);
     expect(html).toMatch(/<details\b[^>]*class="task-list"[^>]*open/u);
+    expect(html).toMatch(
+      /<summary\b[^>]*class="[^"]*\btask-list-heading\b[^>]*>[\s\S]*?data-mar-icon="chevron-right"[\s\S]*?class="[^"]*\bconversation-record-icon\b[^>]*data-mar-icon="task-list"[\s\S]*?<strong\b/u
+    );
     for (const text of [
       'Preserve **task Markdown**',
       'Preserve the plan explanation',

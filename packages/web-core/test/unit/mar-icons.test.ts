@@ -113,6 +113,7 @@ describe('shared MAR icons', () => {
     ['SLEEP', 'clock'],
     ['command_execution', 'terminal'],
     ['file_change', 'file-change'],
+    ['todo_list', 'task-list'],
     ['tool_call', 'tool']
   ] as const)('maps %s to the shared %s geometry', async (kind, name) => {
     const html = await renderToString(createSSRApp(ConversationRecordIcon, { kind }));
