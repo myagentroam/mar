@@ -10,7 +10,9 @@ import { marIcon } from '../../src/util/mar-icons.js';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
-import { changeKey } from '../../src/service/workspace-git-service.js';
+import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
+import { changeKey, createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
+import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
@@ -76,6 +78,22 @@ document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { ca
 const app = createApp({
   setup() {
     const captureRenderAnchor = createConversationScrollService().captureRenderAnchor;
+    if (new URL(location.href).searchParams.has('git-history-icons')) {
+      const service = createWorkspaceGitService({
+        http: createScopedHttpService({
+          csrfToken: () => 'fixture-csrf',
+          renewCsrfToken: async () => 'fixture-csrf'
+        }),
+        target: () => ({ nodeId: 'host', workspaceId: 'project' }),
+        gitEnabled: () => true,
+        historyEnabled: () => true,
+        onFailure: () => {},
+        onWorkspace: () => {},
+        onBranch: () => {}
+      });
+      void service.openHistory();
+      return () => h('main', { style: 'max-width:360px' }, [h(WorkspaceGitHistory, { service })]);
+    }
     if (new URL(location.href).searchParams.has('git-change-icons')) {
       const manyChanges = new URL(location.href).searchParams.has('many-changes');
       const entry = {
