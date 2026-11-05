@@ -50,6 +50,32 @@ it.each(['page', 'region'] as const)(
   }
 );
 
+it.each(['text', 'image'] as const)(
+  'renders %s read failures instead of empty content',
+  async (kind) => {
+    stubBrowserEnvironment();
+    const html = await render(kind === 'text' ? WorkspaceFilePage : WorkspaceFormatFilePage, {
+      file: {
+        path: kind === 'text' ? 'app.ts' : 'image.png',
+        encoding: kind === 'text' ? 'utf-8' : 'base64',
+        content: '',
+        truncated: false
+      },
+      kind,
+      downloading: false,
+      targetLine: undefined,
+      contentUrl: undefined,
+      loadError: 'File not found.'
+    });
+    expect(html).toContain('file-preview-state');
+    expect(html).toContain('File not found.');
+    expect(html).toContain(translate('common.retry'));
+    expect(html).not.toContain('cm-content');
+    expect(html).not.toContain('<textarea');
+    expect(html).not.toContain('<iframe');
+  }
+);
+
 function buttonTag(html: string, label: string): string {
   const button = html
     .match(/<button\b[^>]*>/gu)

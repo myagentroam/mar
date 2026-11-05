@@ -8,10 +8,9 @@ import type {
   Session,
   WorkspaceQueue
 } from '../../src/model/workbench.js';
-import { createWorkbenchWorkspaceCacheController } from '../../src/service/workbench-workspace-cache-controller.js';
+import { createWorkbenchWorkspaceCache } from '../../src/service/workbench-workspace-cache-controller.js';
 import type { SessionContextUsage } from '../../src/service/conversation-state-service.js';
 import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
-import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 import { createConversationProjectionService } from '../../src/service/conversation-projection-service.js';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
 
@@ -32,13 +31,12 @@ function fileWorkbench(snapshot = emptyFileSnapshot()) {
 
 function fixture(
   domains: Pick<
-    Parameters<typeof createWorkbenchWorkspaceCacheController>[0],
+    Parameters<ReturnType<typeof createWorkbenchWorkspaceCache>['connect']>[0],
     'files' | 'git' | 'search'
   > = {}
 ) {
-  const cacheService = createWorkspaceViewCacheService(
-    (nodeId, workspaceId) => `${nodeId}:${workspaceId}`
-  );
+  const owner = createWorkbenchWorkspaceCache((nodeId, workspaceId) => `${nodeId}:${workspaceId}`);
+  const cacheService = owner.cache;
   const paging = createWorkspaceSessionPagingService(20);
   const selectedNodeId = ref<string>();
   const selectedWorkspaceId = ref<string>();
@@ -73,14 +71,20 @@ function fixture(
     onRecentWindowOverflow: vi.fn(),
     limitHistory: (values) => [...values]
   });
-  const controller = createWorkbenchWorkspaceCacheController({
-    cacheService,
+  const controller = owner.connect({
     paging,
     sessions,
-    runs,
-    turns,
-    nextCursor,
-    contextUsage,
+    captureDetail: (sessionId) => {
+      projection.flushPendingTextDeltas();
+      return {
+        sessionId,
+        runs: runs.value,
+        turns: turns.value,
+        nextCursor: nextCursor.value,
+        contextUsage: contextUsage.value ?? null,
+        lastAccessedAt: Date.now()
+      };
+    },
     queue,
     runner,
     modelId,
@@ -93,7 +97,6 @@ function fixture(
     restoreDraftConfiguration: normalizeDraft,
     persistDraft,
     flushConversation: projection.flushPendingTextDeltas,
-    tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
     maximumDetails: 5
   });
 
@@ -140,7 +143,7 @@ describe('Public Workspace Cache Controller', () => {
     f.controller.saveCurrentWorkspaceView();
     f.turns.value = [];
     f.projection.resetHistory();
-    const cached = f.controller.restoreCachedSessionDetail('session-1')!;
+    const cached = f.cacheService.touchDetail('node-1', 'workspace-1', 'session-1')!;
     f.projection.restoreWindow(cached.turns, cached.nextCursor);
 
     expect(f.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'pending tail' });
@@ -276,7 +279,7 @@ describe('Public Workspace Cache Controller', () => {
     );
     const cached = f.cacheService.detail('node-1', 'workspace-1', 'session-1');
 
-    const restored = f.controller.restoreCachedSessionDetail('session-1');
+    const restored = f.cacheService.touchDetail('node-1', 'workspace-1', 'session-1');
 
     expect(restored).toBe(cached);
     expect(restored?.runs).toEqual(detail.runs);
@@ -286,7 +289,7 @@ describe('Public Workspace Cache Controller', () => {
     expect(f.turns.value).toEqual([]);
     expect(f.nextCursor.value).toBeNull();
     expect(cached?.lastAccessedAt).toBeGreaterThan(1);
-    expect(f.controller.restoreCachedSessionDetail('missing')).toBeUndefined();
+    expect(f.cacheService.touchDetail('node-1', 'workspace-1', 'missing')).toBeUndefined();
   });
 
   it('restores only cached Runner configuration without overwriting the draft owner', () => {

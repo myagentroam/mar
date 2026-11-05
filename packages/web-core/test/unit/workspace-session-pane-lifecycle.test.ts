@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { effectScope, ref, watch } from 'vue';
-import { createWorkspaceSessionPaneLifecycle } from '../../src/service/workspace-session-pane-loader.js';
+import {
+  createWorkspaceSessionPaneLifecycle,
+  createWorkspaceSessionPaneRead
+} from '../../src/service/workspace-session-pane-loader.js';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import type { DraftTarget } from '../../src/service/session-draft-service.js';
+
+function fakeLoader(load: Parameters<typeof createWorkspaceSessionPaneRead>[0]) {
+  return { load, read: createWorkspaceSessionPaneRead(load) };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -13,6 +20,64 @@ function deferred<T>() {
 }
 
 describe('secondary session Pane lifecycle', () => {
+  it.each([false, true])(
+    'keeps failure diagnostics inline and supports explicit retry (cached=%s)',
+    async (cached) => {
+      const failed = ref(false);
+      const failureCause = ref<unknown>();
+      const loading = ref(false);
+      const loadingContent = ref(false);
+      const failure = new Error('SESSION_HISTORY_INITIAL_FAILED');
+      const load = vi
+        .fn()
+        .mockRejectedValueOnce(failure)
+        .mockResolvedValue({
+          session: { id: 's', workspaceId: 'w', runner: 'codex' },
+          changed: true
+        });
+      const scope = effectScope();
+      const lifecycle = scope.run(() =>
+        createWorkspaceSessionPaneLifecycle({
+          target: ref({ kind: 'session', nodeId: 'n', workspaceId: 'w', sessionId: 's' }),
+          visible: ref(true),
+          loading,
+          loadingContent,
+          failed,
+          failureCause,
+          currentRequest: () => 0,
+          loader: fakeLoader(load),
+          restore: () => cached,
+          save: vi.fn(),
+          cancel: vi.fn(),
+          stopWatch: vi.fn(),
+          beginInitialRender: async () => {},
+          scrollElement: () => undefined,
+          scrollLatest: async () => {},
+          markRead: vi.fn()
+        })
+      )!;
+      try {
+        await lifecycle.reload();
+        expect(failed.value).toBe(true);
+        expect(failureCause.value).toBe(failure);
+        expect(loading.value).toBe(false);
+        expect(loadingContent.value).toBe(false);
+        expect(load).toHaveBeenCalledOnce();
+        const retry = lifecycle.reload();
+        expect(failed.value).toBe(false);
+        expect(failureCause.value).toBeUndefined();
+        expect(loading.value).toBe(true);
+        expect(loadingContent.value).toBe(!cached);
+        await retry;
+        expect(load).toHaveBeenCalledTimes(2);
+        expect(loading.value).toBe(false);
+        expect(failed.value).toBe(false);
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
   it('preserves the same visible session reading position and follow intent while positioning a different target', async () => {
     const target = ref<DraftTarget>({
       kind: 'session',
@@ -41,12 +106,12 @@ describe('secondary session Pane lifecycle', () => {
         loadingContent: ref(false),
         failed: ref(false),
         currentRequest: () => 0,
-        loader: {
-          load: vi.fn().mockResolvedValue({
+        loader: fakeLoader(
+          vi.fn().mockResolvedValue({
             session: { id: 'a', workspaceId: 'w', runner: 'codex' },
             changed: true
           })
-        },
+        ),
         restore: () => cached,
         save: () => {
           cached = true;
@@ -59,7 +124,7 @@ describe('secondary session Pane lifecycle', () => {
           scroll.scrollToLatest();
         },
         markRead: vi.fn(),
-        notice: vi.fn()
+        failureCause: ref<unknown>()
       })
     )!;
     visible.value = true;
@@ -118,7 +183,7 @@ describe('secondary session Pane lifecycle', () => {
     const first = deferred<never>();
     const markRead = vi.fn();
     const scroll = vi.fn();
-    const notice = vi.fn();
+    const failureCause = ref<unknown>();
     const scope = effectScope();
     let revision = 0;
     let current!: () => boolean;
@@ -137,12 +202,12 @@ describe('secondary session Pane lifecycle', () => {
         loadingContent: ref(false),
         failed: ref(false),
         currentRequest: () => revision,
-        loader: {
-          load: vi.fn((input) => {
+        loader: fakeLoader(
+          vi.fn((input) => {
             current = input.isCurrent;
             return first.promise;
           })
-        },
+        ),
         restore: () => false,
         save: vi.fn(),
         cancel: vi.fn(),
@@ -151,7 +216,7 @@ describe('secondary session Pane lifecycle', () => {
         scrollElement: () => undefined,
         scrollLatest: scroll,
         markRead,
-        notice
+        failureCause
       });
     });
     const oldCurrent = current;
@@ -164,7 +229,7 @@ describe('secondary session Pane lifecycle', () => {
     await Promise.resolve();
     expect(scroll).not.toHaveBeenCalled();
     expect(markRead).not.toHaveBeenCalled();
-    expect(notice).not.toHaveBeenCalled();
+    expect(failureCause.value).toBeUndefined();
   });
 
   it('does not scroll or mark read when disposed during initial rendering', async () => {
@@ -178,7 +243,7 @@ describe('secondary session Pane lifecycle', () => {
     const scroll = vi.fn();
     const markRead = vi.fn();
     const cancel = vi.fn();
-    const notice = vi.fn();
+    const failureCause = ref<unknown>();
     const scope = effectScope();
     scope.run(() =>
       createWorkspaceSessionPaneLifecycle({
@@ -188,12 +253,12 @@ describe('secondary session Pane lifecycle', () => {
         loadingContent: ref(false),
         failed: ref(false),
         currentRequest: () => 0,
-        loader: {
-          load: vi.fn().mockResolvedValue({
+        loader: fakeLoader(
+          vi.fn().mockResolvedValue({
             session: { id: 's', workspaceId: 'w', runner: 'codex' },
             changed: true
           })
-        },
+        ),
         restore: () => false,
         save: vi.fn(),
         cancel,
@@ -202,7 +267,7 @@ describe('secondary session Pane lifecycle', () => {
         scrollElement: () => undefined,
         scrollLatest: scroll,
         markRead,
-        notice
+        failureCause
       })
     );
     await Promise.resolve();
@@ -213,7 +278,7 @@ describe('secondary session Pane lifecycle', () => {
     expect(cancel).toHaveBeenCalledOnce();
     expect(scroll).not.toHaveBeenCalled();
     expect(markRead).not.toHaveBeenCalled();
-    expect(notice).not.toHaveBeenCalled();
+    expect(failureCause.value).toBeUndefined();
   });
 
   it.each(['target change', 'scope disposal'])(
@@ -236,12 +301,12 @@ describe('secondary session Pane lifecycle', () => {
           loadingContent: ref(false),
           failed: ref(false),
           currentRequest: () => 0,
-          loader: {
-            load: vi.fn().mockResolvedValue({
+          loader: fakeLoader(
+            vi.fn().mockResolvedValue({
               session: { id: 'a', workspaceId: 'w', runner: 'codex' },
               changed: true
             })
-          },
+          ),
           restore: () => false,
           save: vi.fn(),
           cancel: vi.fn(),
@@ -253,7 +318,7 @@ describe('secondary session Pane lifecycle', () => {
             if (isCurrent()) positioned();
           },
           markRead: vi.fn(),
-          notice: vi.fn()
+          failureCause: ref<unknown>()
         })
       )!;
       const old = lifecycle.reload();

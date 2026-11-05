@@ -4,7 +4,7 @@ import MarTab from '../common/MarTab.vue';
 import type { SessionGroup } from '@myagentroam/protocol';
 import type {
   WorkbenchNotification,
-  WorkbenchNotificationService,
+  WorkbenchNotificationView,
   RecentRun
 } from '../../service/workbench-notification-service.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
@@ -20,7 +20,7 @@ import WorkbenchRecentSessionList from './WorkbenchRecentSessionList.vue';
 import WorkbenchNotificationList from './WorkbenchNotificationList.vue';
 
 const props = defineProps<{
-  service: WorkbenchNotificationService;
+  service: WorkbenchNotificationView;
   uploads: readonly WorkspaceUploadTask[];
   statusLabel: (task: WorkspaceUploadTask) => string;
   page: 'recent-sessions' | 'notifications';

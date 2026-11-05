@@ -1,6 +1,7 @@
+import { absoluteSessionTime as formatSessionTime } from '../util/workbench-presentation.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { UserSessionSummary } from '../model/workbench.js';
-import { ref, type Ref } from 'vue';
+import { computed, proxyRefs, ref, type Ref } from 'vue';
 import type { AppLocale } from '../i18n/locale-config.js';
 import { ApiError } from '../util/api-error.js';
 
@@ -341,6 +342,29 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   }
 
   return {
+    view: proxyRefs({
+      admin: options.admin,
+      adminLoaded: options.loaded,
+      authenticationUnknown,
+      authenticationRestoring: restoring,
+      adminSessions: options.sessions,
+      changePassword,
+      csrfToken: options.csrfToken,
+      formatSessionTime,
+      loading: options.loading,
+      locked: computed(
+        () => options.admin.value.authenticated && options.admin.value.mustChangePassword
+      ),
+      login,
+      logout,
+      logoutAdminSession: logoutSession,
+      newPassword: options.password,
+      passwordValidationError: options.passwordError,
+      refreshAdmin: refresh,
+      refreshAdminSessions: refreshSessions,
+      renewCsrfToken: options.renewCsrfToken,
+      request: options.request
+    }),
     authenticationUnknown,
     restoring,
     returnToLogin,
@@ -351,4 +375,48 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     changePassword,
     logout
   };
+}
+
+export interface WorkbenchIdentityView {
+  admin: {
+    readonly authenticated: boolean;
+    readonly mustChangePassword: boolean;
+    readonly username?: string;
+    readonly isAdmin?: boolean;
+    readonly edition?: 'COMMUNITY' | 'ENTERPRISE';
+    readonly licenseState?: 'COMMUNITY' | 'ENTERPRISE_VALID' | 'ENTERPRISE_FROZEN';
+    readonly role?: 'ADMIN' | 'ORG_ADMIN' | 'MEMBER' | null;
+    readonly organizationId?: number | null;
+    readonly managementWritable?: boolean;
+    readonly locale?: AppLocale;
+  };
+  adminLoaded: boolean;
+  authenticationUnknown: boolean;
+  authenticationRestoring: boolean;
+  adminSessions: readonly {
+    readonly id: string;
+    readonly createdAt: number;
+    readonly expiresAt: number;
+    readonly ipAddress: string;
+    readonly userAgent: string;
+    readonly current: boolean;
+  }[];
+  changePassword: (input: {
+    readonly currentPassword: string;
+    readonly password: string;
+    readonly confirmation: string;
+  }) => Promise<boolean>;
+  csrfToken: string;
+  formatSessionTime: (value: number, timeZone?: string) => string;
+  loading: boolean;
+  locked: boolean;
+  login: (credentials: { readonly username: string; readonly password: string }) => Promise<void>;
+  logout: () => Promise<void>;
+  logoutAdminSession: (session: UserSessionSummary) => Promise<void>;
+  newPassword: string;
+  passwordValidationError: string;
+  refreshAdmin: () => Promise<void>;
+  refreshAdminSessions: () => Promise<void>;
+  renewCsrfToken: () => Promise<string>;
+  request: <T>(path: string, init?: RequestInit) => Promise<T>;
 }

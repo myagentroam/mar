@@ -30,7 +30,7 @@ const workbench = defineComponent({
         webVersion: '0.11.19'
       })
     );
-    return () => h(WorkbenchPage, { page });
+    return () => h(WorkbenchPage, { page, surface: page });
   }
 });
 bootstrapConsole({ workbench, filePreview: defineComponent(() => () => null), management });

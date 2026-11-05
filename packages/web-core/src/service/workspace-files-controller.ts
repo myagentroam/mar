@@ -46,7 +46,6 @@ export function createWorkspaceFilesController(options: {
     path: string,
     cursor?: string
   ) => Promise<WorkspaceFileTreePage>;
-  readonly onListFailure: (error: unknown) => void;
   readonly onWorkspace: (workspace: WorkspaceFileTreeWorkspace) => void;
   readonly onDeletedSelection: () => void;
   readonly onRevealSelection: (path: string, current: () => boolean) => Promise<void>;
@@ -127,19 +126,7 @@ export function createWorkspaceFilesController(options: {
     async list(path, cursor) {
       const target = options.target();
       if (target === undefined) throw new Error('FILE_TREE_NOT_READY');
-      const current = treeGeneration;
-      try {
-        return await options.list({ ...target }, path, cursor);
-      } catch (error) {
-        const active = options.target();
-        if (
-          current === treeGeneration &&
-          active?.nodeId === target.nodeId &&
-          active.workspaceId === target.workspaceId
-        )
-          options.onListFailure(error);
-        throw error;
-      }
+      return options.list({ ...target }, path, cursor);
     }
   });
   async function refresh(): Promise<void> {

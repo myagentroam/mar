@@ -57,7 +57,6 @@ function fixture() {
     onChange: vi.fn()
   });
   const showWorkbench = vi.fn();
-  const loading = ref(false);
   const notice = vi.fn();
   const releaseTerminalDock = vi.fn();
   const deleteTerminalDock = vi.fn();
@@ -85,13 +84,15 @@ function fixture() {
   const controller = createWorkbenchWorkspaceTreeController({
     nodes,
     workspaces,
+    replaceWorkspaces: (values) => {
+      workspaces.value = [...values];
+    },
     sessions: ref([]),
+    removeWorkspaceSessions: vi.fn(),
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId,
-    selectedRunId,
     activeTabId,
     showWorkbench,
-    loading,
     notice,
     workspacesByNode: tree.workspacesByNode,
     tabs,
@@ -130,7 +131,7 @@ function fixture() {
     activeTabId,
     tabs,
     showWorkbench,
-    loading,
+    loading: controller.loading,
     notice,
     releaseTerminalDock,
     deleteTerminalDock,

@@ -2,12 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, proxyRefs, ref } from 'vue';
 import type { ComposerAttachment, WorkspaceQueueItem } from '../../model/workbench.js';
 import type { NavigationSummary } from '../../service/session-navigation-projection.js';
-import type { createWorkspaceSessionPaneController } from '../../service/workspace-session-pane-controller.js';
+import type { WorkspaceSessionPaneView } from '../../service/workspace-session-pane-controller.js';
 import { runnerBrandIcon } from '../../util/runner-brand-icon.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { runnerLabel } from '../../util/workbench-presentation.js';
 import { userInputQuestions } from '../../util/conversation-presentation.js';
 import { sessionTitle } from '../../util/session-presentation.js';
+import { errorMessage } from '../../util/error-presentation.js';
 import WorkspaceSessionTreeButton from '../workspace/WorkspaceSessionTreeButton.vue';
 import ConversationHeader from '../conversation/ConversationHeader.vue';
 import ConversationScroll from '../conversation/ConversationScroll.vue';
@@ -21,7 +22,7 @@ import ComposerReferencePicker from '../composer/ComposerReferencePicker.vue';
 import ConversationComposer from '../composer/ConversationComposer.vue';
 
 const props = defineProps<{
-  controller: ReturnType<typeof createWorkspaceSessionPaneController>;
+  controller: WorkspaceSessionPaneView;
   treeSupported?: boolean;
   asideReady?: boolean;
   treeOpenSessionId?: string | undefined;
@@ -139,6 +140,11 @@ onBeforeUnmount(() => {
         :loading-initial="controller.status.initialContentLoading()"
         :initial-sync-pending="state.conversation.loadingInitial.value"
         :initial-load-failed="state.conversation.initialLoadFailed.value"
+        :initial-error="
+          state.conversation.initialLoadFailed.value
+            ? errorMessage(state.conversation.initialFailureCause.value)
+            : undefined
+        "
         :loading-older="state.conversation.loadingOlder.value"
         :older-error="olderHistoryError"
         :has-turns="state.conversation.turns.value.length > 0"

@@ -468,9 +468,14 @@ function submitSessionSearch(): void {
       :model-value="sessionGroup"
       @update:model-value="emit('selectGroup', $event)"
     />
-    <p v-if="watchStatus === 'loading'" class="watch-status">
-      {{ translate('workspaceWatch.loadingSessions') }}
-    </p>
+    <div
+      v-if="watchStatus === 'loading'"
+      class="watch-status"
+      role="status"
+      :aria-label="translate('workspaceWatch.loadingSessions')"
+    >
+      <BusyIndicator class="read-loading-indicator" />
+    </div>
     <p v-else-if="watchStatus === 'failed'" class="watch-status failed">
       {{ translate('workspaceWatch.sessionsFailed') }}
     </p>

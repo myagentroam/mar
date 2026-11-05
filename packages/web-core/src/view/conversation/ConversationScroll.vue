@@ -19,6 +19,7 @@ const props = defineProps<{
   readonly loadingInitial: boolean;
   readonly initialSyncPending?: boolean;
   readonly initialLoadFailed: boolean;
+  readonly initialError?: string | undefined;
   readonly loadingOlder: boolean;
   readonly olderError?: string;
   readonly hasTurns: boolean;
@@ -327,6 +328,8 @@ onBeforeUnmount(() => {
         <el-button
           v-if="initialLoadFailed || reloading"
           class="conversation-load-older conversation-reload"
+          v-tooltip="!loadingInitial && !reloading ? initialError : ''"
+          :aria-description="!loadingInitial && !reloading ? initialError : undefined"
           link
           size="small"
           native-type="button"
@@ -362,6 +365,8 @@ onBeforeUnmount(() => {
           <el-button
             v-if="olderAction === 'retry' || (olderError && !loadingOlder)"
             class="conversation-load-older conversation-history-error"
+            v-tooltip="!loadingOlder && olderAction === undefined ? olderError : ''"
+            :aria-description="!loadingOlder && olderAction === undefined ? olderError : undefined"
             link
             size="small"
             native-type="button"

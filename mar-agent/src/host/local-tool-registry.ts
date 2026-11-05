@@ -173,7 +173,8 @@ export class LocalToolRegistry {
                       })
                 },
                 context.waitInterrupt,
-                context.onOutput
+                context.onOutput,
+                context.onExecutionSource
               );
               return formatExecResult(result);
             }

@@ -9,6 +9,7 @@ import { fileSizeLabel } from '../../util/file-presentation.js';
 import FilePreviewLoading from './FilePreviewLoading.vue';
 import PdfFilePreview from './PdfFilePreview.vue';
 import WorkspaceFilePageFrame from './WorkspaceFilePageFrame.vue';
+import FilePreviewState from './FilePreviewState.vue';
 
 const VueOfficeDocx = defineAsyncComponent(async () => {
   await import('@vue-office/docx/lib/index.css');
@@ -35,6 +36,7 @@ const props = withDefaults(
     readonly contentUrl: string | undefined;
     readonly kind: FilePreviewKind;
     readonly loading?: boolean;
+    readonly loadError?: string | undefined;
     readonly fullscreen?: boolean;
     readonly contained?: boolean;
     readonly downloading: boolean;
@@ -46,6 +48,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: [];
   download: [];
+  reload: [];
 }>();
 
 const root = ref<{ readonly root: HTMLElement | undefined }>();
@@ -105,6 +108,8 @@ defineExpose({
     :file-name="file.path.split('/').at(-1) ?? file.path"
     :path="file.path"
     :loading="loading"
+    :load-error="loadError"
+    @retry="emit('reload')"
     :fullscreen="fullscreen"
     :contained="contained"
     mobile-actions-layout="compact"
@@ -170,9 +175,20 @@ defineExpose({
     </template>
     <main class="file-preview-content">
       <template v-if="!loading">
-        <p v-if="rendererError" class="empty">
-          {{ translate('generated.filePreviewDialog.previewFailedDownloadInstead') }}
-        </p>
+        <FilePreviewState
+          v-if="rendererError"
+          :message="translate('generated.filePreviewDialog.previewFailedDownloadInstead')"
+        >
+          <template #actions
+            ><el-button
+              size="small"
+              :loading="downloading"
+              :loading-icon="marIcon('loading-action')"
+              @click="emit('download')"
+              >{{ translate('generated.filePreviewDialog.downloadFile') }}</el-button
+            ></template
+          >
+        </FilePreviewState>
         <img
           v-else-if="kind === 'image' && contentUrl"
           class="file-binary-preview"
@@ -237,9 +253,20 @@ defineExpose({
           />
           <FilePreviewLoading v-if="rendererLoading" overlay />
         </div>
-        <p v-else class="empty">
-          {{ translate('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn') }}
-        </p>
+        <FilePreviewState
+          v-else
+          :message="translate('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn')"
+        >
+          <template #actions
+            ><el-button
+              size="small"
+              :loading="downloading"
+              :loading-icon="marIcon('loading-action')"
+              @click="emit('download')"
+              >{{ translate('generated.filePreviewDialog.downloadFile') }}</el-button
+            ></template
+          >
+        </FilePreviewState>
       </template>
     </main>
   </WorkspaceFilePageFrame>

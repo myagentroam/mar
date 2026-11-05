@@ -3,6 +3,7 @@ import { onBeforeUnmount, watch } from 'vue';
 import { createHtmlPreviewService } from '../../service/html-preview-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import { translate } from '../../service/locale-preference-service.js';
+import { filePreviewErrorMessage } from '../../util/error-presentation.js';
 import HtmlPreviewFrame from './HtmlPreviewFrame.vue';
 import MarIcon from '../common/MarIcon.vue';
 
@@ -62,7 +63,9 @@ onBeforeUnmount(preview.release);
         /></el-button>
       </div>
     </header>
-    <p v-if="state.error" class="error">{{ translate('htmlPreview.unavailable') }}</p>
+    <p v-if="state.error !== undefined" class="html-browser-error" role="alert">
+      {{ filePreviewErrorMessage(state.error, path) }}
+    </p>
     <HtmlPreviewFrame :url="state.url" :loading="state.loading" :title="path" />
   </section>
 </template>
@@ -97,8 +100,10 @@ header {
 .html-browser-actions :deep(.el-button + .el-button) {
   margin-left: 0;
 }
-.error {
+.html-browser-error {
   margin: 0.5rem;
-  color: var(--mar-color-danger-text);
+  color: var(--mar-color-warning-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 </style>

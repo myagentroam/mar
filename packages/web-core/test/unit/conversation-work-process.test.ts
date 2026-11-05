@@ -906,6 +906,38 @@ describe('Conversation work process blocks', () => {
     });
   });
 
+  it('replaces task snapshots across pages of one process while retaining other processes', () => {
+    const task = (id: string, group: string) =>
+      item(id, 'todo_list', {
+        processGroup: { id: group, isStart: true },
+        payload: { items: [{ text: id, status: 'IN_PROGRESS' }] }
+      });
+    const first = turn([task('tasks-old', 'first')]);
+    const latest = task('tasks-latest', 'first');
+    const next = turn([latest, task('other-tasks', 'second')], {
+      id: 'segment-2',
+      segmentIndex: 1
+    });
+    const records = [first, next];
+    const original = structuredClone(records);
+    const initial = conversationWorkProcessBlocks([first]);
+    expect(processBlock(initial, 'first').entries.map(({ displayItem }) => displayItem.id)).toEqual(
+      ['tasks-old']
+    );
+    const full = conversationWorkProcessBlocks(records);
+    expect(processBlock(full, 'first').entries).toEqual([
+      { turn: next, displayItem: { type: 'item', id: latest.id, item: latest } }
+    ]);
+    expect(processBlock(full, 'second').entries.map(({ displayItem }) => displayItem.id)).toEqual([
+      'other-tasks'
+    ]);
+    // Backfilling the old page must not resurrect the superseded snapshot.
+    const mounted = conversationWorkProcessProjection(records, [next]);
+    const backfilled = conversationWorkProcessVisibleBlocks(records, mounted.metadataBlocks);
+    expect(processBlock(backfilled, 'first').entries).toEqual(processBlock(full, 'first').entries);
+    expect(records).toEqual(original);
+  });
+
   it('keeps Agent calls independent under one stable category across segments', () => {
     const groupId = 'agent-process';
     const first = item('agent-first', 'tool_call', {

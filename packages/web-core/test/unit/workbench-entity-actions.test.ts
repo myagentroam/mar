@@ -13,12 +13,10 @@ const node = { id: 'node', displayName: 'before' } as NodeSummary;
 function state(
   request: ReturnType<typeof vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>>
 ) {
-  const loading = ref(false);
   const renewCsrfToken = vi.fn().mockResolvedValue('renewed');
   const notice = vi.fn();
   const canDeleteSession = vi.fn(() => true);
   const service = createWorkbenchEntityService({
-    loading,
     workspaceTarget: workspaceTargetRef(ref('node')),
     request: async <T>(path: string, init?: RequestInit) => (await request(path, init)) as T,
     renewCsrfToken,
@@ -29,7 +27,7 @@ function state(
     notice,
     errorMessage: String
   });
-  return { service, loading, renewCsrfToken, notice, canDeleteSession };
+  return { service, loading: service.loading, renewCsrfToken, notice, canDeleteSession };
 }
 
 beforeEach(() => vi.resetAllMocks());

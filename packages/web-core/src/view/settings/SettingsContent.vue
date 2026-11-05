@@ -64,6 +64,7 @@ const props = defineProps<{
   readonly newPassword: string;
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
+  readonly registrationLoading: boolean;
   readonly loading: boolean;
   readonly changePassword: (input: {
     readonly currentPassword: string;
@@ -366,7 +367,7 @@ async function confirmLogout(): Promise<void> {
       <div class="registration-action">
         <slot name="registration-owner" />
         <el-button
-          :loading="loading"
+          :loading="registrationLoading"
           type="primary"
           @click="emit('createRegistrationToken')"
           :loading-icon="marIcon('loading-action')"

@@ -17,8 +17,8 @@ interface WorkbenchComposerInteractionOptions {
   readonly filesReady: Readonly<Ref<boolean>>;
   readonly mobileViewport: Readonly<Ref<boolean>>;
   readonly canInterruptTurn: Readonly<Ref<boolean>>;
-  readonly runnerProfilesLoading: Ref<boolean>;
-  readonly runnerProfilesFailed: Ref<boolean>;
+  readonly runnerProfilesLoading: Readonly<Ref<boolean>>;
+  readonly runnerProfilesFailed: Readonly<Ref<boolean>>;
   readonly commandPickerOpen: Ref<boolean>;
   readonly fileReferences: ReturnType<typeof createComposerReferenceService>;
   readonly runnerInteractions: ReturnType<typeof createRunnerInteractionService>;

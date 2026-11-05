@@ -1,11 +1,22 @@
+import type { PromptCompletionBinding } from './prompt-completion-client-service.js';
+import type { WorkbenchNotification } from './workbench-notification-service.js';
+import type { SettingsSection } from '../model/settings.js';
+import type { createWebPerformanceDiagnostics } from './web-performance-diagnostic-service.js';
+import type { WorkspaceWatchTopicStatus } from './workspace-watch-service.js';
+import type {
+  ComposerAttachment,
+  WorkspaceTarget,
+  NodeSummary,
+  Session,
+  Workspace,
+  WorkspaceTab
+} from '../model/workbench.js';
 import { createWorkbenchPageShortcuts } from './workbench-page-shortcuts.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
-import type { WorkspaceTarget } from '../model/workbench.js';
 import type { ComposerAttachmentFile } from '@myagentroam/protocol';
-import { nextTick, type Ref } from 'vue';
+import { computed, nextTick, ref, type Ref } from 'vue';
 import { runnerBrandIcon } from '../util/runner-brand-icon.js';
-import type { NodeSummary, Session, Workspace, WorkspaceTab } from '../model/workbench.js';
-import type { WorkspaceFileWorkbenchHandle } from './workbench-surface-state-service.js';
+import type { WorkspaceFileWorkbenchHandle } from '../model/workspace-file-workbench.js';
 import type { WorkspaceFileOpenIntent } from '../util/workspace-file-tab.js';
 import type { WorkbenchView } from '../util/workbench-route.js';
 import { nodePresentation, sessionActivityTitle } from '../util/workbench-presentation.js';
@@ -18,7 +29,7 @@ import { isHtmlFile } from '../util/file-preview.js';
 
 export interface WorkbenchPageInteractionOptions {
   readonly view: Readonly<Ref<WorkbenchView>>;
-  readonly nodes: Ref<NodeSummary[]>;
+  readonly nodes: Readonly<Ref<readonly NodeSummary[]>>;
   readonly workspaceTabs: Readonly<Ref<readonly WorkspaceTab[]>>;
   readonly activeWorkspaceTabId: Readonly<Ref<string | undefined>>;
   readonly activateWorkspaceTab: (tab: WorkspaceTab) => Promise<unknown>;
@@ -32,7 +43,6 @@ export interface WorkbenchPageInteractionOptions {
   readonly filesReady: Readonly<Ref<boolean>>;
   readonly contentSearchReady: Readonly<Ref<boolean>>;
   readonly terminalReady: Readonly<Ref<boolean>>;
-  readonly quickOpenFileVisible: Ref<boolean>;
   readonly workspaceFileWorkbench: Ref<WorkspaceFileWorkbenchHandle | null | undefined>;
   readonly openWorkspaceFileExternal: (path: string, line?: number, column?: number) => void;
   readonly fileWorkbench: {
@@ -51,6 +61,7 @@ export interface WorkbenchPageInteractionOptions {
 }
 
 export function createWorkbenchPageInteractionService(options: WorkbenchPageInteractionOptions) {
+  const quickOpenFileVisible = ref(false);
   function openAgentFileChange(entry: FileChangeEntry): void {
     const target = options.workspaceTarget.value;
     const sessionId = options.selectedSessionId?.value;
@@ -159,19 +170,24 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       return;
     quickOpenOrigin =
       document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-    options.quickOpenFileVisible.value = true;
+    quickOpenFileVisible.value = true;
   }
 
   function closeQuickOpenFile(selected = false): void {
-    options.quickOpenFileVisible.value = false;
+    quickOpenFileVisible.value = false;
     if (!selected) void nextTick(() => quickOpenOrigin?.focus());
   }
 
-  const workspaceShortcuts = createWorkbenchPageShortcuts(options, openQuickOpenFile);
+  const workspaceShortcuts = createWorkbenchPageShortcuts(
+    options,
+    openQuickOpenFile,
+    quickOpenFileVisible
+  );
   const copyConversationMessage = (text: string, onSuccess: () => void): Promise<void> =>
     copyMessage(text, onSuccess, options.notice);
 
   return {
+    quickOpenFileVisible: computed(() => quickOpenFileVisible.value),
     openAgentFileChange,
     closeQuickOpenFile,
     copyConversationMessage,
@@ -183,5 +199,77 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     sessionActivityTitle: sessionActivityTooltip,
     sessionRelativeActivity,
     workspaceTabNodeLabel
+  };
+}
+
+export interface WorkbenchInteractionsView {
+  attachmentPreview: ComposerAttachment | undefined;
+  attachmentPreviewOpen: boolean;
+  closeQuickOpenFile: (selected?: boolean) => void;
+  conversationImagePreview: { readonly name: string; readonly url: string } | undefined;
+  conversationImagePreviewOpen: boolean;
+  handleConversationImagePreviewError: (url: string) => Promise<void>;
+  openQuickWorkspaceFile: (
+    path: string,
+    line?: number,
+    column?: number,
+    external?: boolean
+  ) => void;
+  openQuickWorkspace: (nodeId: string, workspaceId: string) => Promise<boolean>;
+  openAttachmentPreview: (attachment: ComposerAttachment) => void;
+  quickOpenFileVisible: boolean;
+}
+
+export interface WorkbenchApplicationView<ManagementSection extends string> {
+  workPromptCompletion: PromptCompletionBinding;
+  webVersion: string;
+  pwaState:
+    | {
+        readonly offline: 'preparing' | 'ready' | 'degraded' | 'online';
+        readonly checked: boolean;
+        readonly update?: {
+          readonly mode: 'worker' | 'online';
+          readonly action: 'activate' | 'reload';
+          readonly version: string;
+          readonly buildId: string;
+        };
+        readonly reload?: {
+          readonly mode: 'worker' | 'online';
+          readonly action: 'activate' | 'reload';
+          readonly version: string;
+          readonly buildId: string;
+        };
+      }
+    | { offline: 'online'; checked: false };
+  checkingForUpdates: boolean;
+  checkForUpdates: () => Promise<void>;
+  applyWebUpdate: () => Promise<void>;
+  retryWorkspaceWatch: () => Promise<void>;
+  liveConnected: boolean;
+  codeNavigationReady: boolean;
+  managementItems: { id: ManagementSection; label: string }[];
+  managementSection: ManagementSection;
+  navigationItems: readonly {
+    readonly id: WorkbenchView;
+    readonly label: string;
+    readonly icon: string;
+  }[];
+  notice: MessageFeedback;
+  openHtmlExternal: (path: string) => void;
+  openWorkbenchNotification: (notification: WorkbenchNotification | string) => Promise<void>;
+  openRecentRun: (run: import('./workbench-notification-service.js').RecentRun) => Promise<void>;
+  runnerBrandIcon: (value: Session['runner']) => string;
+  selectManagementSection: (section: ManagementSection) => void;
+  selectNavigation: (nextView: WorkbenchView) => void;
+  selectSettingsSection: (section: SettingsSection) => void;
+  settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
+  settingsSection: SettingsSection;
+  view: WorkbenchView;
+  webPerformanceDiagnostics: ReturnType<typeof createWebPerformanceDiagnostics>;
+  workspaceWatchTopicStatus: {
+    readonly files: WorkspaceWatchTopicStatus;
+    readonly sessions: WorkspaceWatchTopicStatus;
+    readonly changes: WorkspaceWatchTopicStatus;
+    readonly sessionNavigation: WorkspaceWatchTopicStatus;
   };
 }

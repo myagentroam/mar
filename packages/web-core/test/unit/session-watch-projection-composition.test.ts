@@ -60,20 +60,14 @@ describe('Session Watch projection composition', () => {
     const invalidateWorkspace = vi.fn();
     const projection = createWorkbenchEventProjectionService({
       ...effects,
-      nodes: ref([
-        {
-          id: 'node-1',
-          displayName: null,
-          registeredAddress: '',
-          platform: 'linux',
-          architecture: 'x64',
-          nodeAppVersion: '0.10.1',
-          nodeVersion: 'v24',
-          connected: false,
-          disabled: false,
-          capabilities: {}
-        }
-      ]),
+      setNodeConnection: (() => {
+        let connected = false;
+        return (_nodeId, next) => {
+          const previous = connected;
+          connected = next;
+          return previous;
+        };
+      })(),
       sessions,
       workspaceTarget,
       selectedSessionId,

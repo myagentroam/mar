@@ -1,3 +1,4 @@
+import type { createWorkbenchDirectTransportCoordinator } from './workbench-direct-transport-coordinator.js';
 import {
   terminalDataFrameSchema,
   terminalDirectAttachedFrameSchema,
@@ -6,6 +7,11 @@ import {
   type TerminalDataFrame
 } from '@myagentroam/protocol';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
+
+export interface TerminalDockHandle {
+  toggle(): Promise<void>;
+  release(): Promise<void>;
+}
 
 type Transport = NonNullable<
   ReturnType<ReturnType<typeof createWorkspaceDirectTransferService>['acquireTerminalTransport']>
@@ -238,4 +244,10 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
   }
 
   return { attach, handle, invalidate };
+}
+
+export interface WorkbenchTerminalView {
+  terminalDocks: Map<string, TerminalDockHandle>;
+  terminalDirectClient: ReturnType<typeof createWorkbenchDirectTransportCoordinator>['terminal'];
+  terminalReady: boolean;
 }

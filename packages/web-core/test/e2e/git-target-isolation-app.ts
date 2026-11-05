@@ -5,13 +5,13 @@ import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vu
 import WorkspaceGitHistory from '../../src/view/workspace/WorkspaceGitHistory.vue';
 import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
 import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
-import type { Workspace, WorkspaceTarget } from '../../src/model/workbench.js';
+import type { Session, Workspace, WorkspaceTarget } from '../../src/model/workbench.js';
 import { createWorkbenchWorkspaceSelectionService } from '../../src/service/workbench-workspace-selection-service.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 import {
   mergeWorkspaceWatchSnapshot,
   type WorkspaceWatchSnapshot
-} from '../../src/service/workspace-runtime-state-service.js';
+} from '../../src/service/workspace-file-tools-controller.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
@@ -55,16 +55,32 @@ watch(
 const status = ref('ready');
 const activeTool = ref<'files' | 'changes' | 'history'>('files');
 const noop = () => {};
+const selectedSessionId = ref<string>();
+const selectedWorkspaces = ref<Workspace[]>([]);
+const selectedSessions = ref<Session[]>([]);
+const draftOpen = ref(false);
 const selection = createWorkbenchWorkspaceSelectionService({
   workspaceTarget: target,
-  selectedSessionId: ref(),
-  selectedRunId: ref(),
-  workspaces: ref([]),
-  sessions: ref([]),
-  draftOpen: ref(false),
+  setWorkspaceTarget: (value) => {
+    target.value = value;
+  },
+  selectedSessionId,
+  setSelectedSessionId: (value) => {
+    selectedSessionId.value = value;
+  },
+  workspaces: selectedWorkspaces,
+  replaceWorkspaces: (value) => {
+    selectedWorkspaces.value = [...value];
+  },
+  sessions: selectedSessions,
+  replaceSessions: (value) => {
+    selectedSessions.value = [...value];
+  },
+  draftOpen,
+  setDraftOpen: (value) => {
+    draftOpen.value = value;
+  },
   profilesLoading: ref(false),
-  manifest: ref(),
-  manifestLoading: ref(false),
   isCacheActive: cache.isActive,
   hasNode: () => true,
   isHostAvailable: () => true,
@@ -79,7 +95,7 @@ const selection = createWorkbenchWorkspaceSelectionService({
   showWorkbench: noop,
   closeSidebar: noop,
   restoreProfiles: noop,
-  restoreManifest: () => undefined,
+  selectManifestNode: noop,
   refreshManifest: async () => {},
   refreshTransport: noop,
   // Session/manifest loading and Watch transport are controlled boundaries.

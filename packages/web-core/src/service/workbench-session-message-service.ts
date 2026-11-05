@@ -32,13 +32,17 @@ export interface WorkbenchSessionMessageOptions {
   readonly selectedSessionId: Readonly<Ref<string | undefined>>;
   readonly selectedWorkspace: ComputedRef<Workspace | undefined>;
   readonly selectedSession: ComputedRef<Session | undefined>;
-  readonly sessions: Ref<Session[]>;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly removeSessionExact: (session: Session) => void;
   readonly attachments: Ref<ComposerAttachment[]>;
   readonly attachmentsPending: ComputedRef<boolean>;
   readonly composerOpen: ComputedRef<boolean>;
   readonly composerBusy: ComputedRef<boolean>;
   readonly draftOpen: Readonly<Ref<boolean>>;
-  readonly restoreDraft: () => void;
+  readonly draft?: {
+    readonly restore: () => void;
+    readonly create: (title: string) => Promise<Session | undefined>;
+  };
   readonly selectedCommand: Ref<RunnerCommand | undefined>;
   readonly commandAvailable?: (command: RunnerCommand) => boolean;
   readonly submissionAvailable?: () => boolean;
@@ -48,7 +52,6 @@ export interface WorkbenchSessionMessageOptions {
   readonly notice: MessageFeedback;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly stageDraftCommand: (command: RunnerCommand, input: string) => void;
-  readonly createDraftSession: (title: string) => Promise<Session | undefined>;
   readonly executeCommand: (
     session: Session,
     command: RunnerCommand,
@@ -321,7 +324,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       const createdDraft = draftSession;
       startedDraft = createdDraft;
       const session = options.draftOpen.value
-        ? await options.createDraftSession(options.temporaryTitle(titleBody))
+        ? await options.draft?.create(options.temporaryTitle(titleBody))
         : options.selectedSession.value;
       if (!active()) return;
       if (session === undefined) throw new Error('SESSION_NOT_FOUND');
@@ -483,16 +486,14 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         const provisionalStillCurrent =
           submittedProvisional !== undefined &&
           options.sessions.value.includes(submittedProvisional);
-        if (sameWorkspace() && provisionalStillCurrent)
-          options.sessions.value = options.sessions.value.filter(
-            (session) => session !== submittedProvisional
-          );
+        if (sameWorkspace() && provisionalStillCurrent && submittedProvisional !== undefined)
+          options.removeSessionExact(submittedProvisional);
         if (
           sameWorkspace() &&
           provisionalStillCurrent &&
           options.selectedSessionId.value === submittedSession?.id
         ) {
-          options.restoreDraft();
+          options.draft?.restore();
         }
       }
       if (completedInSubmissionWindow)

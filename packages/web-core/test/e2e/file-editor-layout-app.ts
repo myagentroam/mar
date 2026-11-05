@@ -70,6 +70,30 @@ const content = longContent
   : 'Original content';
 createApp({
   setup: () => () => {
+    const state = query.get('preview-state');
+    if (state === 'unsupported' || state === 'render-failed') {
+      return h(
+        FilePreviewSurface,
+        { overlay: true, label: 'File preview' },
+        {
+          default: () =>
+            h(WorkspaceFormatFilePage, {
+              file: {
+                path: state === 'unsupported' ? 'archive.bin' : 'broken.png',
+                encoding: 'base64',
+                content: '',
+                truncated: false
+              },
+              kind: state === 'unsupported' ? 'unsupported' : 'image',
+              contentUrl: state === 'unsupported' ? undefined : 'data:image/png;base64,invalid',
+              downloading: false,
+              onDownload: () => {
+                document.documentElement.dataset.stateAction = 'download';
+              }
+            })
+        }
+      );
+    }
     const image = query.get('image');
     if (image) {
       const [width, height] =
@@ -158,13 +182,22 @@ createApp({
           },
           source,
           diff: {
+            binary: query.get('diff-state') === 'binary',
             afterText: source === 'WORKING_TREE' ? content : undefined,
             text:
-              '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-old\n+new\n' +
-              (longContent ? content : '')
+              query.get('diff-state') === 'empty'
+                ? undefined
+                : '--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n-old\n+new\n' +
+                  (longContent ? content : '')
           },
           loading: false,
           loadFailed: query.has('load-failed'),
+          loadErrorMessage: query.has('load-failed')
+            ? i18n.global.t('errors.FILE_NOT_FOUND')
+            : undefined,
+          onPreview: () => {
+            document.documentElement.dataset.stateAction = 'preview';
+          },
           onRetry: () => {
             document.documentElement.dataset.diffRetries = String(
               Number(document.documentElement.dataset.diffRetries ?? '0') + 1

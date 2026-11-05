@@ -514,7 +514,10 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
       await page.goto(
         `${fixture.url}file-editor-layout.html?diff=HISTORY&load-failed=1&theme=${theme}`
       );
-      const retry = page.locator('.diff-state-message').getByRole('button', { name: 'Retry' });
+      const retry = page.locator('.file-preview-state').getByRole('button', { name: 'Retry' });
+      await expect(retry).toHaveClass(/is-link/);
+      await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(retry).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
       const color = await retry.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.color = 'var(--el-text-color-regular)';
@@ -526,10 +529,10 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
         return { action, message };
       });
       await expect(retry).toHaveCSS('color', color.action);
-      await expect(page.locator('.diff-state-message p')).toHaveCSS('color', color.message);
+      await expect(page.locator('.file-preview-state p')).toHaveCSS('color', color.message);
       await retry.click();
       await expect(page.locator('html')).toHaveAttribute('data-diff-retries', '1');
-      await expect(page.locator('.diff-state-message p')).toBeVisible();
+      await expect(page.locator('.file-preview-state p')).toBeVisible();
     }
   }
 });

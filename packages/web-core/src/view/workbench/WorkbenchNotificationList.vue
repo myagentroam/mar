@@ -7,11 +7,11 @@ import { fileSizeLabel } from '../../util/file-presentation.js';
 import type { WorkspaceUploadTask } from '../../service/workspace-upload-service.js';
 import type {
   WorkbenchNotification,
-  WorkbenchNotificationService
+  WorkbenchNotificationView
 } from '../../service/workbench-notification-service.js';
 
 const props = defineProps<{
-  service: WorkbenchNotificationService;
+  service: WorkbenchNotificationView;
   uploads: readonly WorkspaceUploadTask[];
   statusLabel: (task: WorkspaceUploadTask) => string;
   previewId?: string | undefined;

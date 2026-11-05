@@ -10,7 +10,7 @@ import type {
   HostedConversationSummary
 } from '@myagentroam/protocol';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { createConversationImageService } from '../../service/conversation-image-service.js';
 import { createConversationScrollService } from '../../service/conversation-scroll-service.js';
 import {
@@ -30,7 +30,7 @@ import type { ConversationItem, ConversationTurn } from '../../model/workbench.j
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
-import { errorMessage } from '../../util/error-presentation.js';
+import { errorMessage, filePreviewErrorSummary } from '../../util/error-presentation.js';
 import { fileSizeLabel } from '../../util/file-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
@@ -156,13 +156,31 @@ function retryDirectoryAppend(): void {
   void props.workspace.loadMoreConversations();
 }
 const openingConversationKey = ref<string>();
+const openingFailure = shallowRef<{ readonly key: string; readonly error: unknown }>();
 let openingConversationSequence = 0;
 const waitingForSnapshot = computed(
   () =>
     props.connected !== false &&
-    props.workspace.watchFailureCode.value === undefined &&
-    (openingConversationKey.value !== undefined || props.restoringRoute)
+    (props.workspace.watchLoading.value ||
+      (props.workspace.watchFailureCode.value === undefined &&
+        (openingConversationKey.value !== undefined || props.restoringRoute)))
 );
+const conversationLoadFailed = computed(
+  () =>
+    props.workspace.watchFailureCode.value !== undefined ||
+    (!props.workspace.watchReady.value &&
+      openingFailure.value?.key === selectedConversationKey.value)
+);
+const conversationLoadError = computed(() => {
+  const failure =
+    props.workspace.watchFailure.value ??
+    (openingFailure.value?.key === selectedConversationKey.value
+      ? openingFailure.value.error
+      : undefined);
+  if (failure !== undefined) return hostedErrorMessage(failure);
+  const code = props.workspace.watchFailureCode.value;
+  return code === undefined ? undefined : hostedErrorMessage(new Error(code));
+});
 const mutatingConversationKey = ref<string>();
 const actionConversationKey = ref<string>();
 const actionMenuVisible = ref(false);
@@ -276,9 +294,13 @@ const conversationImages = createConversationImageService(props.workspace.select
 });
 const filePage = ref<{ focus(): void }>();
 const filePreview = createHostedConversationFilePreviewService({
-  source: props.workspace,
-  onError: (error) => showMessage(hostedErrorMessage(error), 'error', error)
+  source: props.workspace
 });
+const filePreviewError = computed(() =>
+  filePreview.error.value === undefined
+    ? undefined
+    : filePreviewErrorSummary(filePreview.error.value, filePreview.file.value?.relativePath ?? '')
+);
 
 function closeMobileHistory(): void {
   emit('closeMobileHistory');
@@ -412,6 +434,7 @@ async function openConversation(
   if (openingConversationKey.value === key) return;
   const sequence = ++openingConversationSequence;
   openingConversationKey.value = key;
+  openingFailure.value = undefined;
   entry.suspend();
   draftingNewConversation.value = false;
   if (closePanels) closeMobilePanels();
@@ -419,10 +442,16 @@ async function openConversation(
     await props.selectConversation(conversation);
   } catch (error) {
     if (sequence === openingConversationSequence)
-      showMessage(hostedErrorMessage(error), 'error', error);
+      openingFailure.value = { key: `${conversation.nodeId}:${conversation.id}`, error };
   } finally {
     if (sequence === openingConversationSequence) openingConversationKey.value = undefined;
   }
+}
+
+function retryConversation(): void {
+  const conversation = selectedSummary.value;
+  if (conversation === undefined || waitingForSnapshot.value || props.connected === false) return;
+  void openConversation(conversation, false);
 }
 
 function beginNewConversation(): void {
@@ -1188,24 +1217,15 @@ onBeforeUnmount(() => {
           @started="firstMessageStarted"
         />
       </section>
-      <section
-        v-else-if="workspace.snapshot.value === undefined"
-        class="page-loading-state"
-        :aria-busy="waitingForSnapshot"
-        :role="waitingForSnapshot ? 'status' : undefined"
-        :aria-label="
-          waitingForSnapshot ? translate('hostedConversations.loadingConversation') : undefined
-        "
-      >
-        <BusyIndicator v-if="waitingForSnapshot" />
-      </section>
       <template v-else>
         <ConversationScroll
           class="hosted-timeline-scroll"
           :context-key="selectedConversationKey"
           :has-older="workspace.historyNextCursor.value !== null"
-          :loading-initial="false"
-          :initial-load-failed="false"
+          :loading-initial="waitingForSnapshot"
+          :initial-sync-pending="waitingForSnapshot"
+          :initial-load-failed="conversationLoadFailed"
+          :initial-error="conversationLoadError"
           :loading-older="workspace.loadingOlderHistory.value"
           :older-error="
             workspace.olderHistoryError.value === undefined
@@ -1214,14 +1234,16 @@ onBeforeUnmount(() => {
           "
           :has-turns="timelineTurns.length > 0"
           :following="conversationScrollService.following.value"
-          :empty-prompt="interactionReady && !workspace.snapshot.value.run ? 'hosted' : undefined"
+          :empty-prompt="interactionReady && !workspace.snapshot.value?.run ? 'hosted' : undefined"
           @scroll-element="setConversationScrollElement"
           @scroll="handleConversationScroll"
           @scroll-intent="conversationScrollService.stopFollowing"
           @load-older="loadOlderConversationHistory"
+          @reload="retryConversation"
           @latest="conversationScrollService.scrollToLatest"
         >
           <ConversationTimeline
+            v-if="workspace.snapshot.value !== undefined"
             :runs="workspace.snapshot.value?.run ? [workspace.snapshot.value.run] : []"
             :turns="timelineTurns"
             workspace-root="/workspace"
@@ -1248,6 +1270,7 @@ onBeforeUnmount(() => {
           />
         </ConversationScroll>
         <HostedConversationComposer
+          v-if="workspace.snapshot.value !== undefined"
           :connected="connected"
           ref="composer"
           :key="selectedConversationKey"
@@ -1410,6 +1433,9 @@ onBeforeUnmount(() => {
           "
           :downloading="filePreview.downloading.value"
           :file="filePreview.content.value"
+          :loading="filePreview.loading.value"
+          :load-error="filePreviewError"
+          @reload="filePreview.retry"
           :fullscreen="true"
           :contained="true"
           :kind="filePreview.kind.value"
@@ -1434,6 +1460,9 @@ onBeforeUnmount(() => {
           :content-url="filePreview.contentUrl.value"
           :downloading="filePreview.downloading.value"
           :file="filePreview.content.value"
+          :loading="filePreview.loading.value"
+          :load-error="filePreviewError"
+          @reload="filePreview.retry"
           :fullscreen="true"
           :contained="true"
           :kind="filePreview.kind.value"

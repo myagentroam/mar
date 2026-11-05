@@ -20,11 +20,10 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
-  watch,
-  type ShallowUnwrapRef
+  watch
 } from 'vue';
 import type { Workspace } from '../../model/workbench.js';
-import type { createWorkbenchPageController } from '../../service/workbench-page-controller.js';
+import type { WorkbenchSurfaceView } from '../workbench-contract.js';
 import { errorMessage, hostedConversationTitle } from '../../util/workbench-presentation.js';
 import WorkspaceFileWorkbench from '../workspace/WorkspaceFileWorkbench.vue';
 import WorkspaceGitChanges from '../workspace/WorkspaceGitChanges.vue';
@@ -60,19 +59,11 @@ const SettingsContent = defineAsyncComponent({
 });
 
 const props = defineProps<{
-  page: ShallowUnwrapRef<
-    ReturnType<
-      typeof createWorkbenchPageController<
-        ManagementSection,
-        RegistrationContext,
-        NodeRegistrationContext
-      >
-    >
-  >;
+  page: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
 }>();
 const managementComposition = useManagementComposition<ManagementSection>();
 const managementPage = computed(() =>
-  managementComposition.resolve(props.page.managementSection, props.page.admin)
+  managementComposition.resolve(props.page.application.managementSection, props.page.identity.admin)
 );
 const cleanupDialogOpen = ref(false);
 const workspaceGrid = ref<HTMLElement>();
@@ -88,7 +79,7 @@ watch(
           .width ?? 0;
       asideAvailableWidth.value = Math.max(
         0,
-        element.clientWidth - (props.page.mobileViewport ? 0 : sidebar)
+        element.clientWidth - (props.page.layout.mobileViewport ? 0 : sidebar)
       );
     };
     const observer = new ResizeObserver(measure);
@@ -100,42 +91,51 @@ watch(
   },
   { flush: 'post' }
 );
-const asideMode = computed(() => props.page.asideViewMode(props.page.asideState?.active));
+const asideMode = computed(() =>
+  props.page.aside.asideViewMode(props.page.aside.asideState?.active)
+);
+const workspaceCapabilitiesLoading = computed(
+  () => props.page.resources.nodeManifestLoading && props.page.resources.nodeManifest === undefined
+);
 const asideWidth = computed(() =>
-  props.page.mobileViewport
+  props.page.layout.mobileViewport
     ? asideAvailableWidth.value
-    : props.page.asideWidth(asideMode.value, asideAvailableWidth.value, 360)
+    : props.page.aside.asideWidth(asideMode.value, asideAvailableWidth.value, 360)
 );
 const asideStacked = computed(
   () =>
-    !props.page.mobileViewport && asideAvailableWidth.value > 0 && asideWidth.value === undefined
+    !props.page.layout.mobileViewport &&
+    asideAvailableWidth.value > 0 &&
+    asideWidth.value === undefined
 );
 const treeStatus = computed(() =>
-  props.page.workspaceHost?.connected === false
+  props.page.resources.workspaceHost?.connected === false
     ? 'failed'
-    : props.page.workspaceWatchTopicStatus.sessionNavigation
+    : props.page.application.workspaceWatchTopicStatus.sessionNavigation
 );
 const asideVisible = computed(
   () =>
-    props.page.view === 'nodes' &&
-    props.page.workspaceTarget !== undefined &&
-    props.page.asideState !== undefined &&
+    props.page.application.view === 'nodes' &&
+    props.page.selection.workspaceTarget !== undefined &&
+    props.page.aside.asideState !== undefined &&
     (asideStacked.value || (asideWidth.value !== undefined && asideWidth.value > 0)) &&
-    (!props.page.mobileViewport ||
-      props.page.mobileWorkspaceSurface === 'inspector' ||
-      props.page.mobileWorkspaceSurface === 'terminal')
+    (!props.page.layout.mobileViewport ||
+      props.page.layout.mobileWorkspaceSurface === 'inspector' ||
+      props.page.layout.mobileWorkspaceSurface === 'terminal')
 );
-watch(asideVisible, (visible) => props.page.setAsideSurfaceVisible(visible), { immediate: true });
-onBeforeUnmount(() => props.page.setAsideSurfaceVisible(false));
+watch(asideVisible, (visible) => props.page.aside.setAsideSurfaceVisible(visible), {
+  immediate: true
+});
+onBeforeUnmount(() => props.page.aside.setAsideSurfaceVisible(false));
 const terminalVisible = computed(
   () =>
     asideVisible.value &&
-    props.page.asideState?.active?.kind === 'tool' &&
-    props.page.asideState.active.id === 'terminal'
+    props.page.aside.asideState?.active?.kind === 'tool' &&
+    props.page.aside.asideState.active.id === 'terminal'
 );
 function openPaneSurface(surface: 'sessions' | 'inspector' | 'terminal'): void {
-  if (surface === 'terminal') props.page.toggleAsideTerminal();
-  else props.page.openMobileWorkspaceSurface(surface);
+  if (surface === 'terminal') props.page.aside.toggleAsideTerminal();
+  else props.page.layout.openMobileWorkspaceSurface(surface);
 }
 const asideTools = computed(() => [
   { id: 'files' as const, label: translate('generated.workspaceInspector.files3') },
@@ -145,8 +145,8 @@ const asideTools = computed(() => [
   { id: 'terminal' as const, label: translate('generated.terminalDock.workspaceTerminal') }
 ]);
 const asideSessions = computed(() =>
-  (props.page.asideState?.sessions ?? []).map((sessionId) => {
-    const session = props.page.asideSessionMetadata.find((item) => item.id === sessionId);
+  (props.page.aside.asideState?.sessions ?? []).map((sessionId) => {
+    const session = props.page.aside.asideSessionMetadata.find((item) => item.id === sessionId);
     return {
       sessionId,
       title: session?.title ?? sessionId,
@@ -155,101 +155,26 @@ const asideSessions = computed(() =>
   })
 );
 function activeTool(tool: AsideTool | undefined): AsideTool | null {
-  const active = props.page.asideState?.active;
+  const active = props.page.aside.asideState?.active;
   return !asideVisible.value || active?.kind !== 'tool' || active.id !== tool || tool === 'terminal'
     ? null
     : tool;
 }
 const filesVisible = computed(
-  () => asideVisible.value && props.page.filesReady && activeTool('files') === 'files'
-);
-watch(
-  [
-    filesVisible,
-    () => props.page.workspaceTarget?.nodeId,
-    () => props.page.workspaceTarget?.workspaceId
-  ],
-  ([visible, nodeId, workspaceId], [wasVisible, oldNodeId, oldWorkspaceId]) => {
-    if (wasVisible && !visible && nodeId === oldNodeId && workspaceId === oldWorkspaceId)
-      props.page.workspaceFiles.invalidate();
-    if (visible && (!wasVisible || nodeId !== oldNodeId || workspaceId !== oldWorkspaceId))
-      void props.page.workspaceFiles.requestRefresh();
-  },
-  { flush: 'sync' }
-);
-watch(
-  () => props.page.workspaceFilesRevision,
-  () => {
-    if (filesVisible.value) void props.page.workspaceFiles.requestRefresh();
-  }
+  () => asideVisible.value && props.page.files.filesReady && activeTool('files') === 'files'
 );
 const searchVisible = computed(() => {
-  const active = props.page.asideState?.active;
+  const active = props.page.aside.asideState?.active;
   return (
     asideVisible.value &&
-    props.page.filesReady &&
-    props.page.contentSearchReady &&
+    props.page.files.filesReady &&
+    props.page.files.contentSearchReady &&
     active?.kind === 'tool' &&
     active.id === 'search'
   );
 });
-watch(
-  searchVisible,
-  (visible, previous) => {
-    if (previous && !visible) props.page.workspaceSearch.cancelPending();
-  },
-  { flush: 'sync' }
-);
-const historyVisible = computed(
-  () =>
-    asideVisible.value &&
-    props.page.filesReady &&
-    props.page.selectedWorkspace?.kind === 'GIT_WORKSPACE' &&
-    props.page.nodeManifest?.git?.supportsHistory === true &&
-    activeTool('history') === 'history'
-);
-watch(
-  historyVisible,
-  (visible, previous) => {
-    if (previous && !visible) props.page.workspaceGit.cancelHistoryPending();
-  },
-  { flush: 'sync' }
-);
-function loadVisibleGitTool(): void {
-  if (!asideVisible.value || !props.page.filesReady) return;
-  const active = props.page.asideState?.active;
-  if (active?.kind !== 'tool') return;
-  if (active.id === 'changes') void props.page.workspaceGit.loadChanges(true);
-  else if (active.id === 'history' && historyVisible.value)
-    void props.page.workspaceGit.openHistory();
-}
-watch(
-  [
-    () => asideVisible.value,
-    () => props.page.filesReady,
-    () => props.page.workspaceTarget?.nodeId,
-    () => props.page.workspaceTarget?.workspaceId,
-    () => props.page.selectedWorkspace?.kind,
-    () => props.page.nodeManifest?.git?.supportsHistory,
-    () => props.page.asideState?.active?.kind,
-    () =>
-      props.page.asideState?.active?.kind === 'tool' ? props.page.asideState.active.id : undefined
-  ],
-  loadVisibleGitTool,
-  { flush: 'post' }
-);
-watch(
-  () => props.page.workspaceChangesRevision,
-  () => {
-    const active = props.page.asideState?.active;
-    if (asideVisible.value && active?.kind === 'tool' && active.id === 'changes')
-      void props.page.workspaceGit.loadChanges();
-  }
-);
-onMounted(loadVisibleGitTool);
-onMounted(() => {
-  if (filesVisible.value) void props.page.workspaceFiles.requestRefresh();
-});
+onMounted(() => props.page.files.mountSurface());
+onBeforeUnmount(() => props.page.files.unmountSurface());
 const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
 const treePopup = ref<{
   nodeId: string;
@@ -261,34 +186,35 @@ const treePopup = ref<{
 function closeSessionTree(restoreFocus = false): void {
   const previous = treePopup.value;
   treePopup.value = undefined;
-  props.page.setSessionTreeAnchor(undefined);
+  props.page.sessionList.setSessionTreeAnchor(undefined);
   if (restoreFocus && previous)
     void nextTick(() => {
       if (previous.anchor.isConnected) previous.anchor.focus();
     });
 }
 function showSessionTree(sessionId: string, anchor: HTMLElement, title: string): void {
-  const target = props.page.workspaceTarget;
-  if (!target || !props.page.asideSupported) return;
+  const target = props.page.selection.workspaceTarget;
+  if (!target || !props.page.aside.asideSupported) return;
   if (treePopup.value?.anchor === anchor) {
     closeSessionTree(true);
     return;
   }
   treePopup.value = { ...target, sessionId, anchor, title };
-  props.page.setSessionTreeAnchor(sessionId);
+  props.page.sessionList.setSessionTreeAnchor(sessionId);
 }
 function openAsideTarget(target: {
   nodeId: string;
   workspaceId: string;
   sessionId: string;
 }): boolean {
-  const accepted = props.page.openAsideSession(target);
-  if (accepted && props.page.mobileViewport) props.page.openMobileWorkspaceSurface('inspector');
+  const accepted = props.page.aside.openAsideSession(target);
+  if (accepted && props.page.layout.mobileViewport)
+    props.page.layout.openMobileWorkspaceSurface('inspector');
   return accepted;
 }
 function openSessionFromTree(sessionId: string, destination: 'aside' | 'main'): void {
   const popup = treePopup.value;
-  const current = props.page.workspaceTarget;
+  const current = props.page.selection.workspaceTarget;
   if (
     !popup ||
     !current ||
@@ -300,25 +226,25 @@ function openSessionFromTree(sessionId: string, destination: 'aside' | 'main'): 
   if (destination === 'aside') {
     if (openAsideTarget(target)) closeSessionTree(false);
   } else {
-    void props.page.openSessionGroupTarget(target);
+    void props.page.selection.openSessionGroupTarget(target);
     closeSessionTree(false);
   }
 }
 watch(
   () => [
-    props.page.workspaceTarget?.nodeId,
-    props.page.workspaceTarget?.workspaceId,
-    props.page.view,
-    props.page.asideSupported
+    props.page.selection.workspaceTarget?.nodeId,
+    props.page.selection.workspaceTarget?.workspaceId,
+    props.page.application.view,
+    props.page.aside.asideSupported
   ],
   () => {
     const popup = treePopup.value;
     if (
       popup &&
-      (props.page.view !== 'nodes' ||
-        !props.page.asideSupported ||
-        props.page.workspaceTarget?.nodeId !== popup.nodeId ||
-        props.page.workspaceTarget.workspaceId !== popup.workspaceId)
+      (props.page.application.view !== 'nodes' ||
+        !props.page.aside.asideSupported ||
+        props.page.selection.workspaceTarget?.nodeId !== popup.nodeId ||
+        props.page.selection.workspaceTarget.workspaceId !== popup.workspaceId)
     )
       closeSessionTree();
   }
@@ -327,7 +253,7 @@ onBeforeUnmount(() => {
   if (treePopup.value) closeSessionTree();
 });
 const hostedConversationHeader = computed(() => {
-  const workspace = props.page.hostedConversationWorkspace;
+  const workspace = props.page.hosted.hostedConversationWorkspace;
   return (
     workspace.snapshot.value?.conversation ??
     workspace.conversations.value.find(
@@ -339,8 +265,8 @@ const hostedConversationHeader = computed(() => {
 });
 
 function openWorkspaceSessionCleanupDialog(): void {
-  const nodeId = props.page.workspaceTarget?.nodeId;
-  const workspace = props.page.selectedWorkspace;
+  const nodeId = props.page.selection.workspaceTarget?.nodeId;
+  const workspace = props.page.resources.selectedWorkspace;
   if (nodeId === undefined || workspace === undefined) return;
   cleanupTarget.value = { nodeId, workspace };
   cleanupDialogOpen.value = true;
@@ -349,7 +275,11 @@ function openWorkspaceSessionCleanupDialog(): void {
 async function cleanupWorkspaceSessions(inactiveDays: number) {
   const target = cleanupTarget.value;
   if (target === undefined) return undefined;
-  return props.page.cleanupWorkspaceSessions(target.nodeId, target.workspace, inactiveDays);
+  return props.page.sessionList.cleanupWorkspaceSessions(
+    target.nodeId,
+    target.workspace,
+    inactiveDays
+  );
 }
 
 function updateCleanupDialogOpen(value: boolean): void {
@@ -358,16 +288,17 @@ function updateCleanupDialogOpen(value: boolean): void {
 }
 
 const mobileToolsFocus = createMobileSurfaceFocusService({
-  isOpen: () => props.page.mobileViewport && props.page.mobileWorkspaceSurface !== 'conversation',
+  isOpen: () =>
+    props.page.layout.mobileViewport && props.page.layout.mobileWorkspaceSurface !== 'conversation',
   regions: () => [
     document.querySelector<HTMLElement>(
-      props.page.mobileWorkspaceSurface === 'sessions'
+      props.page.layout.mobileWorkspaceSurface === 'sessions'
         ? '.workspace-grid.mobile-surface-sessions .conversation-sidebar'
         : '.workspace-grid .workspace-aside'
     ),
     document.querySelector<HTMLElement>('.activity-rail')
   ],
-  close: () => props.page.closeMobileWorkspaceSurface(),
+  close: () => props.page.layout.closeMobileWorkspaceSurface(),
   terminal: () => terminalVisible.value
 });
 onBeforeUnmount(mobileToolsFocus.dispose);
@@ -378,87 +309,90 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     :class="[
       'workbench',
       {
-        settings: page.view !== 'nodes' && page.view !== 'conversations',
-        standalone: page.view === 'conversations',
-        compact: page.sidebarCollapsed
+        settings: page.application.view !== 'nodes' && page.application.view !== 'conversations',
+        standalone: page.application.view === 'conversations',
+        compact: page.layout.sidebarCollapsed
       }
     ]"
   >
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
-      v-if="page.workspaceRegistrationNodeId !== undefined"
+      v-if="page.registration.workspaceRegistrationNodeId !== undefined"
       :model-value="true"
       :title="translate('generated.workbenchSurface.registerWorkspace')"
       width="min(980px, calc(100vw - 32px))"
       destroy-on-close
       @update:model-value="
         (value: boolean) => {
-          if (!value) page.closeWorkspaceRegistration();
+          if (!value) page.registration.closeWorkspaceRegistration();
         }
       "
       :close-icon="marIcon('close')"
     >
       <slot name="workspace-registration">
         <WorkspaceRegistrationPicker
-          v-model="page.openWorkspaceTools"
-          v-model:preserve-git-config="page.workspacePreserveGitConfig"
-          :directory="page.workspaceDirectory"
-          :selected-path="page.workspacePath"
-          :pending-directory-name="page.pendingWorkspaceDirectoryName"
-          :loading-directory="page.loadingWorkspaceDirectory"
-          :loading="page.loading"
-          :node-ready="page.workspaceRegistrationReady"
-          :selected-path-valid="page.selectedWorkspaceDirectorySelectable"
-          @navigate="page.loadWorkspaceDirectories"
-          @select="page.selectWorkspaceDirectory"
-          @select-pending="page.selectPendingWorkspaceDirectory"
-          @discard-pending="page.discardPendingWorkspaceDirectory"
-          @register="page.registerWorkspace"
+          v-model="page.registration.openWorkspaceTools"
+          v-model:preserve-git-config="page.registration.workspacePreserveGitConfig"
+          :directory="page.registration.workspaceDirectory"
+          :selected-path="page.resources.workspacePath"
+          :pending-directory-name="page.registration.pendingWorkspaceDirectoryName"
+          :loading-directory="page.registration.loadingWorkspaceDirectory"
+          :loading="page.registration.registrationLoading"
+          :node-ready="page.registration.workspaceRegistrationReady"
+          :selected-path-valid="page.registration.selectedWorkspaceDirectorySelectable"
+          @navigate="page.registration.loadWorkspaceDirectories"
+          @select="page.registration.selectWorkspaceDirectory"
+          @select-pending="page.registration.selectPendingWorkspaceDirectory"
+          @discard-pending="page.registration.discardPendingWorkspaceDirectory"
+          @register="page.registration.registerWorkspace"
         />
       </slot>
     </el-dialog>
     <WorkbenchHeader
-      :mobile-viewport="page.mobileViewport"
-      :view="page.view"
-      :sidebar-collapsed="page.sidebarCollapsed"
-      :settings-section="page.settingsSection"
-      :management-section="page.managementSection"
-      :settings-items="page.settingsItems"
-      :management-items="page.managementItems"
+      :mobile-viewport="page.layout.mobileViewport"
+      :view="page.application.view"
+      :sidebar-collapsed="page.layout.sidebarCollapsed"
+      :settings-section="page.application.settingsSection"
+      :management-section="page.application.managementSection"
+      :settings-items="page.application.settingsItems"
+      :management-items="page.application.managementItems"
       :conversation-title="
         hostedConversationHeader === undefined
           ? translate('hostedConversations.temporaryTitle')
           : hostedConversationTitle(hostedConversationHeader)
       "
-      @toggle-sidebar="page.sidebarCollapsed = !page.sidebarCollapsed"
+      @toggle-sidebar="page.layout.sidebarCollapsed = !page.layout.sidebarCollapsed"
     >
-      <template v-if="page.view === 'nodes' && !page.mobileViewport" #workspace-tabs>
+      <template
+        v-if="page.application.view === 'nodes' && !page.layout.mobileViewport"
+        #workspace-tabs
+      >
         <WorkspaceTabs
           placement="header"
-          :tabs="page.workspaceTabs"
-          :active-tab-id="page.activeWorkspaceTabId"
+          :tabs="page.selection.workspaceTabs"
+          :active-tab-id="page.selection.activeWorkspaceTabId"
           :empty-label="
-            page.workspaceHost === undefined
+            page.resources.workspaceHost === undefined
               ? translate('workspaceTabs.newTab')
-              : page.nodeLabel(page.workspaceHost)
+              : page.resources.nodeLabel(page.resources.workspaceHost)
           "
           :empty-context="translate('navigation.selectWorkspace')"
-          :node-label="page.workspaceTabNodeLabel"
-          :direct-available="page.workspaceDirectAvailable"
-          :direct-description="page.workspaceDirectDescription"
-          :has-active-run="page.workbenchNotificationService.hasActiveWorkspaceRun"
-          :has-unread="page.workbenchNotificationService.hasUnreadWorkspace"
-          @activate="page.activateWorkspaceTab"
-          @close="page.closeWorkspaceTab"
-          @reorder="page.workspaceTabService.move"
-          @pin="page.workspaceTabService.setPinned"
+          :node-label="page.selection.workspaceTabNodeLabel"
+          :direct-available="page.resources.workspaceDirectAvailable"
+          :direct-description="page.resources.workspaceDirectDescription"
+          :has-active-run="page.notifications.hasActiveWorkspaceRun"
+          :has-unread="page.notifications.hasUnreadWorkspace"
+          @activate="page.selection.activateWorkspaceTab"
+          @close="page.selection.closeWorkspaceTab"
+          @reorder="page.selection.moveWorkspaceTab"
+          @pin="page.selection.pinWorkspaceTab"
         />
       </template>
     </WorkbenchHeader>
-    <section v-show="page.view === 'nodes'" class="session-layout">
+    <section v-show="page.application.view === 'nodes'" class="session-layout">
       <section
-        v-if="page.view === 'nodes' && page.workspaceTarget === undefined"
+        v-if="page.application.view === 'nodes' && page.selection.workspaceTarget === undefined"
         class="welcome-panel compact-welcome"
       >
         <h1>{{ translate('generated.workbenchSurface.selectAWorkspace') }}</h1>
@@ -467,45 +401,49 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         </p>
         <p class="workspace-selection-hint">
           {{ translate('generated.workbenchSurface.noNodeConnectedYetCreateARegistration') }}
-          <el-button link type="primary" @click="page.openNodeRegistration">{{
+          <el-button link type="primary" @click="page.registration.openNodeRegistration">{{
             translate('generated.workbenchSurface.openNodeManagement')
           }}</el-button>
         </p>
       </section>
-      <template v-else-if="page.view === 'nodes' && page.workspaceTarget !== undefined">
+      <template
+        v-else-if="
+          page.application.view === 'nodes' && page.selection.workspaceTarget !== undefined
+        "
+      >
         <WorkspaceTabs
-          v-if="page.mobileViewport"
+          v-if="page.layout.mobileViewport"
           placement="body"
-          :tabs="page.workspaceTabs"
-          :active-tab-id="page.activeWorkspaceTabId"
-          :node-label="page.workspaceTabNodeLabel"
-          :direct-available="page.workspaceDirectAvailable"
-          :direct-description="page.workspaceDirectDescription"
-          :has-active-run="page.workbenchNotificationService.hasActiveWorkspaceRun"
-          :has-unread="page.workbenchNotificationService.hasUnreadWorkspace"
-          @activate="page.activateWorkspaceTab"
-          @close="page.closeWorkspaceTab"
-          @reorder="page.workspaceTabService.move"
-          @pin="page.workspaceTabService.setPinned"
+          :tabs="page.selection.workspaceTabs"
+          :active-tab-id="page.selection.activeWorkspaceTabId"
+          :node-label="page.selection.workspaceTabNodeLabel"
+          :direct-available="page.resources.workspaceDirectAvailable"
+          :direct-description="page.resources.workspaceDirectDescription"
+          :has-active-run="page.notifications.hasActiveWorkspaceRun"
+          :has-unread="page.notifications.hasUnreadWorkspace"
+          @activate="page.selection.activateWorkspaceTab"
+          @close="page.selection.closeWorkspaceTab"
+          @reorder="page.selection.moveWorkspaceTab"
+          @pin="page.selection.pinWorkspaceTab"
         />
         <el-alert
           v-if="
-            page.workspaceHost?.connected !== false &&
-            !page.nodeReady &&
-            page.selectedNodeStatus !== undefined
+            page.resources.workspaceHost?.connected !== false &&
+            !page.resources.nodeReady &&
+            page.resources.selectedNodeStatus !== undefined
           "
           class="readonly-banner"
           :closable="false"
           show-icon
           :title="
-            page.selectedNodeStatus ??
+            page.resources.selectedNodeStatus ??
             translate('generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable')
           "
           type="error"
           ><template #icon><MarIcon name="error" /></template
         ></el-alert>
         <section
-          v-if="page.workspaceHost?.connected === false"
+          v-if="page.resources.workspaceHost?.connected === false"
           class="workspace-offline-placeholder"
           role="status"
         >
@@ -516,14 +454,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         </section>
         <section
           v-if="
-            page.workspaceHost?.connected !== false &&
-            page.workspaceTarget !== undefined &&
-            page.selectedWorkspace === undefined
+            page.resources.workspaceHost?.connected !== false &&
+            page.selection.workspaceTarget !== undefined &&
+            page.resources.selectedWorkspace === undefined
           "
           class="welcome-panel compact-welcome workspace-selection-panel workspace-recovery-panel"
         >
           <div
-            v-if="page.workspaceSelectionLoading"
+            v-if="page.selection.workspaceSelectionLoading"
             class="page-loading-state"
             role="status"
             :aria-label="translate('common.loading')"
@@ -534,82 +472,86 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             <p role="status">
               {{ translate('generated.workbenchSurface.workspaceMetadataUnavailable') }}
             </p>
-            <el-button link size="small" @click="page.retryWorkspaceSelection">
+            <el-button link size="small" @click="page.selection.retryWorkspaceSelection">
               {{ translate('common.loadFailedRetry') }}
             </el-button>
           </div>
         </section>
         <div
           ref="workspaceGrid"
-          v-else-if="page.selectedWorkspace !== undefined"
-          v-show="page.workspaceHost?.connected !== false"
+          v-else-if="page.resources.selectedWorkspace !== undefined"
+          v-show="page.resources.workspaceHost?.connected !== false"
           :class="[
             'workspace-grid',
-            `mobile-surface-${page.mobileWorkspaceSurface}`,
+            `mobile-surface-${page.layout.mobileWorkspaceSurface}`,
             { stacked: asideStacked }
           ]"
           :style="{ '--aside-width': `${asideWidth ?? 0}px` }"
         >
           <WorkspaceSessionList
-            :aside-supported="page.asideSupported"
+            :aside-supported="page.aside.asideSupported"
             @open-aside="openAsideTarget"
-            :session-group="page.workspaceSessionGroup"
-            @select-group="page.selectWorkspaceSessionGroup"
+            :session-group="page.sessionList.workspaceSessionGroup"
+            @select-group="page.sessionList.selectWorkspaceSessionGroup"
             @open-tree="showSessionTree"
-            :sessions="page.visibleWorkspaceSessions"
-            :selected-session-id="page.selectedSessionId"
-            :mobile-viewport="page.mobileViewport"
-            :can-load-more="page.canLoadMoreWorkspaceSessions"
-            :loading-more="page.loadingMoreWorkspaceSessions"
-            :load-more-error="page.loadMoreWorkspaceSessionsError"
+            :sessions="page.sessionList.visibleWorkspaceSessions"
+            :selected-session-id="page.selection.selectedSessionId"
+            :mobile-viewport="page.layout.mobileViewport"
+            :can-load-more="page.sessionList.canLoadMoreWorkspaceSessions"
+            :loading-more="page.sessionList.loadingMoreWorkspaceSessions"
+            :load-more-error="page.sessionList.loadMoreWorkspaceSessionsError"
             :active="
-              (!page.mobileViewport || page.mobileWorkspaceSurface === 'sessions') &&
-              page.workspaceHost?.connected !== false
+              (!page.layout.mobileViewport || page.layout.mobileWorkspaceSurface === 'sessions') &&
+              page.resources.workspaceHost?.connected !== false
             "
-            :watch-status="page.workspaceWatchTopicStatus.sessions"
-            :node-ready="page.nodeReady"
-            :loading="page.loading"
-            :workspace-kind="page.selectedWorkspace?.kind"
-            :workspace-kind-label="page.workspaceKindLabel(page.selectedWorkspace)"
-            :workspace-branch="page.workspaceBranchLabel(page.selectedWorkspace)"
-            :title="page.sessionTitle"
-            :runner-icon="page.runnerBrandIcon"
-            :activity="page.sessionActivity"
-            :can-delete-session="page.canDeleteSession"
-            :activity-label="page.sessionActivityLabel"
-            :activity-date-time="page.sessionActivityDateTime"
-            :activity-title="page.sessionActivityTitle"
-            :relative-activity="page.sessionRelativeActivity"
-            :node-id="page.workspaceTarget?.nodeId"
-            :workspace-id="page.selectedWorkspace.id"
+            :watch-status="page.application.workspaceWatchTopicStatus.sessions"
+            :node-ready="page.resources.nodeReady"
+            :loading="page.sessionList.mutationLoading"
+            :workspace-kind="page.resources.selectedWorkspace?.kind"
+            :workspace-kind-label="
+              page.resources.workspaceKindLabel(page.resources.selectedWorkspace)
+            "
+            :workspace-branch="
+              page.resources.workspaceBranchLabel(page.resources.selectedWorkspace)
+            "
+            :title="page.sessionList.sessionTitle"
+            :runner-icon="page.application.runnerBrandIcon"
+            :activity="page.sessionList.sessionActivity"
+            :can-delete-session="page.sessionList.canDeleteSession"
+            :activity-label="page.sessionList.sessionActivityLabel"
+            :activity-date-time="page.sessionList.sessionActivityDateTime"
+            :activity-title="page.sessionList.sessionActivityTitle"
+            :relative-activity="page.sessionList.sessionRelativeActivity"
+            :node-id="page.selection.workspaceTarget?.nodeId"
+            :workspace-id="page.resources.selectedWorkspace.id"
             :skill-supported="true"
             :mcp-supported="true"
-            :cleanup-sessions-supported="page.cleanupSessionsEnabled"
-            :search-supported="page.workspaceSessionSearchEnabled"
-            :search-query="page.workspaceSessionSearchQuery"
-            :searching="page.searchingWorkspaceSessions"
-            :refreshing="page.refreshingWorkspaceSessions"
-            :workspace-manageable="page.selectedWorkspace.manageable !== false"
-            :request="page.request"
+            :cleanup-sessions-supported="page.sessionList.cleanupSessionsEnabled"
+            :search-supported="page.sessionList.workspaceSessionSearchEnabled"
+            :search-query="page.sessionList.workspaceSessionSearchQuery"
+            :searching="page.sessionList.searchingWorkspaceSessions"
+            :refreshing="page.sessionList.refreshingWorkspaceSessions"
+            :workspace-manageable="page.resources.selectedWorkspace.manageable !== false"
+            :request="page.identity.request"
             :has-unread="
               (sessionId) =>
-                page.workbenchNotificationService.hasUnreadSession(
-                  page.workspaceTarget?.nodeId!,
-                  page.selectedWorkspace!.id,
+                page.notifications.hasUnreadSession(
+                  page.selection.workspaceTarget?.nodeId!,
+                  page.resources.selectedWorkspace!.id,
                   sessionId
                 )
             "
-            @create="page.openNewSessionComposer"
-            @open="page.openSessionFromList"
-            @rename="page.renameSession"
-            @pin="page.setSessionPinned"
-            @move-pin="page.movePinnedSession"
-            @move-pin-to="page.movePinnedSessionTo"
-            @delete-session="page.deleteSession"
+            @create="page.selection.openNewSessionComposer"
+            @open="page.selection.openSessionFromList"
+            @rename="page.sessionList.renameSession"
+            @pin="page.sessionList.setSessionPinned"
+            @move-pin="page.sessionList.movePinnedSession"
+            @move-pin-to="page.sessionList.movePinnedSessionTo"
+            @delete-session="page.sessionList.deleteSession"
             @cleanup-sessions="openWorkspaceSessionCleanupDialog"
-            @load-more="page.loadMoreWorkspaceSessions"
-            @search="page.searchWorkspaceSessions"
-            @refresh="page.refreshWorkspaceSessions"
+            @load-more="page.sessionList.loadMoreWorkspaceSessions"
+            @search="page.sessionList.searchWorkspaceSessions"
+            @refresh="page.sessionList.refreshWorkspaceSessions"
           />
           <WorkspaceSessionCleanupDialog
             v-if="cleanupDialogOpen && cleanupTarget !== undefined"
@@ -619,44 +561,44 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           />
           <WorkspaceSessionPane
             :controller="page.mainPaneController"
-            :aside-ready="page.asideState?.active !== undefined"
-            :tree-supported="page.asideSupported"
+            :aside-ready="page.aside.asideState?.active !== undefined"
+            :tree-supported="page.aside.asideSupported"
             :tree-open-session-id="treePopup?.sessionId"
-            :tree-summaries="page.sessionNavigationSnapshot?.summaries"
+            :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
             :tree-status="treeStatus"
             @open-tree="showSessionTree"
             @open-surface="openPaneSurface"
-            @preview-attachment="page.openAttachmentPreview"
-            @reload="page.reloadSelectedSession"
+            @preview-attachment="page.interactions.openAttachmentPreview"
+            @reload="page.sessionList.reloadSelectedSession"
           />
           <WorkspaceFileWorkbench
-            :key="`${page.workspaceTarget?.nodeId}:${page.workspaceTarget?.workspaceId}`"
-            :ref="(instance) => (page.workspaceFileWorkbench = instance as never)"
-            :node-id="page.workspaceTarget?.nodeId"
-            :workspace-id="page.workspaceTarget?.workspaceId"
-            :controller="page.fileWorkbench"
-            :register-page="page.setWorkspaceFilePage"
-            :adjacent-diff="page.adjacentWorkspaceDiff"
-            :load-diff="page.loadWorkspaceDiff"
-            :open-external="page.openWorkspaceFileExternal"
-            :enabled="page.filesReady"
-            :prediction-enabled="page.workPromptCompletion.enabled"
-            :code-navigation-enabled="page.codeNavigationReady"
-            :file-write-enabled="page.fileWriteReady"
-            :standalone-file-mode="page.standaloneFileMode"
-            @open-html-preview="page.openHtmlAside"
-            @notice="page.notice"
+            :key="`${page.selection.workspaceTarget?.nodeId}:${page.selection.workspaceTarget?.workspaceId}`"
+            :ref="(instance) => (page.files.workspaceFileWorkbench = instance as never)"
+            :node-id="page.selection.workspaceTarget?.nodeId"
+            :workspace-id="page.selection.workspaceTarget?.workspaceId"
+            :controller="page.files.fileWorkbench"
+            :register-page="page.files.setWorkspaceFilePage"
+            :adjacent-diff="page.files.adjacentWorkspaceDiff"
+            :load-diff="page.files.loadWorkspaceDiff"
+            :open-external="page.files.openWorkspaceFileExternal"
+            :enabled="page.files.filesReady"
+            :prediction-enabled="page.application.workPromptCompletion.enabled"
+            :code-navigation-enabled="page.application.codeNavigationReady"
+            :file-write-enabled="page.files.fileWriteReady"
+            :standalone-file-mode="page.files.standaloneFileMode"
+            @open-html-preview="page.aside.openHtmlAside"
+            @notice="page.application.notice"
           />
           <Transition
             name="workspace-aside"
             :css="
-              page.mobileViewport &&
-              page.workspaceTarget !== undefined &&
-              page.workspaceHost?.connected !== false
+              page.layout.mobileViewport &&
+              page.selection.workspaceTarget !== undefined &&
+              page.resources.workspaceHost?.connected !== false
             "
           >
             <div
-              v-if="page.asideState"
+              v-if="page.aside.asideState"
               v-show="asideVisible"
               class="workspace-aside"
               tabindex="-1"
@@ -664,8 +606,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             >
               <WorkbenchAside
                 :inert="!asideVisible"
-                :workspace="page.workspaceTarget!"
-                :state="page.asideState"
+                :workspace="page.selection.workspaceTarget!"
+                :state="page.aside.asideState"
                 :tools="asideTools"
                 :browser-label="translate('htmlPreview.browser')"
                 :sessions="asideSessions"
@@ -679,7 +621,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     ? asideAvailableWidth
                     : (asideWidth ?? WORKBENCH_PANEL_LIMITS[asideMode].min)
                 "
-                :mobile="page.mobileViewport"
+                :mobile="page.layout.mobileViewport"
                 :close-surface-label="translate('workbench.closeWorkspaceTools')"
                 :min-width="WORKBENCH_PANEL_LIMITS[asideMode].min"
                 :max-width="
@@ -689,84 +631,91 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   )
                 "
                 :mode="asideMode"
-                @select-tool="page.selectAsideTool"
-                @select-browser="page.selectAsideBrowser"
-                @close-browser="page.closeAsideBrowser"
-                @select-session="page.openAsideSession"
-                @close-session="page.closeAsideSession"
-                @resize="page.setPanelWidth(asideMode, $event)"
-                @close-surface="page.closeMobileWorkspaceSurface"
+                @select-tool="page.aside.selectAsideTool"
+                @select-browser="page.aside.selectAsideBrowser"
+                @close-browser="page.aside.closeAsideBrowser"
+                @select-session="page.aside.openAsideSession"
+                @close-session="page.aside.closeAsideSession"
+                @resize="page.layout.setPanelWidth(asideMode, $event)"
+                @close-surface="page.layout.closeMobileWorkspaceSurface"
               >
                 <template #browser>
                   <WorkspaceHtmlBrowser
                     v-if="
                       asideVisible &&
-                      page.workspaceTarget &&
-                      page.asideState.htmlPath !== undefined &&
-                      page.asideState.active?.kind === 'browser'
+                      page.selection.workspaceTarget &&
+                      page.aside.asideState.htmlPath !== undefined &&
+                      page.aside.asideState.active?.kind === 'browser'
                     "
-                    :node-id="page.workspaceTarget.nodeId"
-                    :workspace-id="page.workspaceTarget.workspaceId"
-                    :path="page.asideState.htmlPath"
-                    :csrf-token="page.csrfToken"
-                    :renew-csrf-token="page.renewCsrfToken"
-                    @source="page.fileWorkbench.openFile($event)"
-                    @external="page.openHtmlExternal($event)"
+                    :node-id="page.selection.workspaceTarget.nodeId"
+                    :workspace-id="page.selection.workspaceTarget.workspaceId"
+                    :path="page.aside.asideState.htmlPath"
+                    :csrf-token="page.identity.csrfToken"
+                    :renew-csrf-token="page.identity.renewCsrfToken"
+                    @source="page.files.fileWorkbench.openFile($event)"
+                    @external="page.application.openHtmlExternal($event)"
                   />
                 </template>
                 <template #tool="{ tool }">
                   <WorkspaceFilesPanel
-                    v-if="tool === 'files' && page.workspaceTarget !== undefined"
+                    v-if="tool === 'files' && page.selection.workspaceTarget !== undefined"
                     v-show="filesVisible"
-                    :key="`${page.workspaceTarget.nodeId}:${page.workspaceTarget.workspaceId}`"
-                    :ref="(instance) => page.setWorkspaceFilesPanel(instance as never)"
-                    :service="page.workspaceFiles"
+                    :key="`${page.selection.workspaceTarget.nodeId}:${page.selection.workspaceTarget.workspaceId}`"
+                    :ref="(instance) => page.files.setWorkspaceFilesPanel(instance as never)"
+                    :service="page.files.workspaceFiles"
                     :visible="filesVisible"
-                    :watch-status="page.workspaceWatchTopicStatus.files"
-                    :workspace-path="page.selectedWorkspace?.path"
-                    :local-file-manager-enabled="page.workspaceLocalFileManagerAvailable"
-                    :mobile-viewport="page.mobileViewport"
-                    @refresh="page.workspaceFiles.requestRefresh()"
+                    :watch-status="page.application.workspaceWatchTopicStatus.files"
+                    :workspace-path="page.resources.selectedWorkspace?.path"
+                    :local-file-manager-enabled="page.resources.workspaceLocalFileManagerAvailable"
+                    :mobile-viewport="page.layout.mobileViewport"
+                    @refresh="page.files.workspaceFiles.requestRefresh()"
                     @open="
                       (path, external) =>
                         external
-                          ? page.openWorkspaceFileExternal(path)
-                          : page.fileWorkbench.openFile(path)
+                          ? page.files.openWorkspaceFileExternal(path)
+                          : page.files.fileWorkbench.openFile(path)
                     "
-                    @html="page.openHtmlAside"
-                    @download="page.downloadWorkspaceFile($event)"
-                    @failure="(error, action) => page.reportWorkspaceFileFailure(error, action)"
-                    @notice="(message, type) => page.notice(message, type)"
-                    @retry-watch="page.retryWorkspaceWatch"
+                    @html="page.aside.openHtmlAside"
+                    @download="page.files.downloadWorkspaceFile($event)"
+                    @failure="
+                      (error, action) => page.files.reportWorkspaceFileFailure(error, action)
+                    "
+                    @notice="(message, type) => page.application.notice(message, type)"
+                    @retry-watch="page.application.retryWorkspaceWatch"
                   />
                   <WorkspaceContentSearch
-                    v-if="tool === 'search' && page.workspaceTarget !== undefined"
-                    :key="`${page.workspaceTarget.nodeId}:${page.workspaceTarget.workspaceId}`"
-                    :ref="(instance) => page.setWorkspaceSearchPanel(instance as never)"
+                    v-if="tool === 'search' && page.selection.workspaceTarget !== undefined"
+                    :key="`${page.selection.workspaceTarget.nodeId}:${page.selection.workspaceTarget.workspaceId}`"
+                    :ref="(instance) => page.files.setWorkspaceSearchPanel(instance as never)"
                     v-show="searchVisible"
-                    :service="page.workspaceSearch"
-                    :enabled="page.contentSearchReady"
-                    :node-id="page.workspaceTarget?.nodeId"
-                    :workspace-id="page.workspaceTarget?.workspaceId"
+                    :service="page.files.workspaceSearch"
+                    :enabled="page.files.contentSearchReady"
+                    :node-id="page.selection.workspaceTarget?.nodeId"
+                    :workspace-id="page.selection.workspaceTarget?.workspaceId"
                     @open="
                       (path, line, column, external) =>
                         external
-                          ? page.openWorkspaceFileExternal(path, line, column)
-                          : page.fileWorkbench.openFile(path, line, column)
+                          ? page.files.openWorkspaceFileExternal(path, line, column)
+                          : page.files.fileWorkbench.openFile(path, line, column)
                     "
                   />
                   <p
                     v-if="
                       (activeTool(tool) === 'files' || activeTool(tool) === 'search') &&
-                      !page.filesReady
+                      !page.files.filesReady
                     "
                     class="workspace-tool-unavailable"
+                    :class="{
+                      'workspace-tool-loading': workspaceCapabilitiesLoading
+                    }"
+                    :role="workspaceCapabilitiesLoading ? 'status' : undefined"
                   >
+                    <MarIcon v-if="workspaceCapabilitiesLoading" name="loading-action" />
                     {{
-                      page.nodeManifestLoading && page.nodeManifest === undefined
+                      workspaceCapabilitiesLoading
                         ? translate('generated.workspaceInspector.loading')
-                        : page.workspaceHost?.connected === true &&
-                            page.workspaceHost.disabled !== true
+                        : page.resources.workspaceHost?.connected === true &&
+                            page.resources.workspaceHost.disabled !== true
                           ? translate('generated.workspaceInspector.capabilityUnavailable')
                           : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
                     }}
@@ -775,18 +724,26 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     v-if="activeTool(tool) === 'changes' || activeTool(tool) === 'history'"
                     :key="
                       JSON.stringify([
-                        page.workspaceTarget?.nodeId,
-                        page.workspaceTarget?.workspaceId
+                        page.selection.workspaceTarget?.nodeId,
+                        page.selection.workspaceTarget?.workspaceId
                       ])
                     "
                     class="workspace-git-panel"
                   >
-                    <p v-if="!page.filesReady" class="empty">
+                    <p
+                      v-if="!page.files.filesReady"
+                      class="empty"
+                      :class="{
+                        'workspace-tool-loading': workspaceCapabilitiesLoading
+                      }"
+                      :role="workspaceCapabilitiesLoading ? 'status' : undefined"
+                    >
+                      <MarIcon v-if="workspaceCapabilitiesLoading" name="loading-action" />
                       {{
-                        page.nodeManifestLoading && page.nodeManifest === undefined
+                        workspaceCapabilitiesLoading
                           ? translate('generated.workspaceInspector.loading')
-                          : page.workspaceHost?.connected === true &&
-                              page.workspaceHost.disabled !== true
+                          : page.resources.workspaceHost?.connected === true &&
+                              page.resources.workspaceHost.disabled !== true
                             ? translate('generated.workspaceInspector.capabilityUnavailable')
                             : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
                       }}
@@ -795,24 +752,31 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                       <el-button
                         v-if="
                           activeTool(tool) === 'changes' &&
-                          (page.workspaceWatchTopicStatus.changes === 'loading' ||
-                            page.workspaceWatchTopicStatus.changes === 'failed') &&
-                          !page.workspaceGit.changesRefreshing.value &&
-                          !page.workspaceGit.changesError.value
+                          (page.application.workspaceWatchTopicStatus.changes === 'loading' ||
+                            page.application.workspaceWatchTopicStatus.changes === 'failed') &&
+                          !page.files.workspaceGit.changesRefreshing.value &&
+                          !page.files.workspaceGit.changesError.value
                         "
                         class="workspace-git-watch-status"
                         link
-                        :class="{ failed: page.workspaceWatchTopicStatus.changes === 'failed' }"
-                        :aria-disabled="page.workspaceWatchTopicStatus.changes === 'loading'"
+                        :class="{
+                          failed: page.application.workspaceWatchTopicStatus.changes === 'failed'
+                        }"
+                        :aria-disabled="
+                          page.application.workspaceWatchTopicStatus.changes === 'loading'
+                        "
                         :aria-busy="
-                          page.workspaceWatchTopicStatus.changes === 'loading' || undefined
+                          page.application.workspaceWatchTopicStatus.changes === 'loading' ||
+                          undefined
                         "
                         @click="
-                          page.workspaceWatchTopicStatus.changes === 'failed' &&
-                          page.retryWorkspaceWatch()
+                          page.application.workspaceWatchTopicStatus.changes === 'failed' &&
+                          page.application.retryWorkspaceWatch()
                         "
                       >
-                        <template v-if="page.workspaceWatchTopicStatus.changes === 'loading'">
+                        <template
+                          v-if="page.application.workspaceWatchTopicStatus.changes === 'loading'"
+                        >
                           <MarIcon name="loading-action" />
                           {{ translate('generated.workspaceInspector.loading') }}
                         </template>
@@ -820,32 +784,32 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                       </el-button>
                       <WorkspaceGitChanges
                         v-if="activeTool(tool) === 'changes'"
-                        :service="page.workspaceGit"
-                        :target="page.workspaceTarget"
-                        @open="page.openWorkspaceGitChange"
-                        @notice="page.notice"
+                        :service="page.files.workspaceGit"
+                        :target="page.selection.workspaceTarget"
+                        @open="page.files.openWorkspaceGitChange"
+                        @notice="page.application.notice"
                       />
                       <WorkspaceGitHistory
                         v-else
-                        :service="page.workspaceGit"
-                        @open="page.openWorkspaceHistoryDiff"
-                        @notice="page.notice"
+                        :service="page.files.workspaceGit"
+                        @open="page.files.openWorkspaceHistoryDiff"
+                        @notice="page.application.notice"
                       />
                     </template>
                   </section>
                 </template>
                 <template #session>
                   <WorkspaceSessionPane
-                    :controller="page.asidePaneController"
-                    :aside-ready="page.asideState?.active !== undefined"
-                    :tree-supported="page.asideSupported"
+                    :controller="page.aside.asidePaneController"
+                    :aside-ready="page.aside.asideState?.active !== undefined"
+                    :tree-supported="page.aside.asideSupported"
                     :tree-open-session-id="treePopup?.sessionId"
-                    :tree-summaries="page.sessionNavigationSnapshot?.summaries"
+                    :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
                     :tree-status="treeStatus"
                     @open-tree="showSessionTree"
                     @open-surface="openPaneSurface"
-                    @preview-attachment="page.openAttachmentPreview"
-                    @reload="page.reloadAsideSession"
+                    @preview-attachment="page.interactions.openAttachmentPreview"
+                    @reload="page.aside.reloadAsideSession"
                   />
                 </template>
                 <template #terminal>
@@ -858,9 +822,13 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       </template>
       <Teleport :to="terminalMount ?? 'body'" :disabled="terminalMount === undefined">
         <div
-          v-for="tab in page.workspaceTabs"
+          v-for="tab in page.selection.workspaceTabs"
           :key="tab.id"
-          v-show="terminalVisible && tab.id === page.activeWorkspaceTabId && page.terminalReady"
+          v-show="
+            terminalVisible &&
+            tab.id === page.selection.activeWorkspaceTabId &&
+            page.terminal.terminalReady
+          "
           tabindex="-1"
           :inert="!terminalVisible"
           class="terminal-dock"
@@ -870,9 +838,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             embedded
             :ref="
               (instance) => {
-                if (instance === null) page.terminalDocks.delete(tab.id);
+                if (instance === null) page.terminal.terminalDocks.delete(tab.id);
                 else
-                  page.terminalDocks.set(
+                  page.terminal.terminalDocks.set(
                     tab.id,
                     instance as unknown as {
                       release(): Promise<void>;
@@ -882,85 +850,99 @@ onBeforeUnmount(mobileToolsFocus.dispose);
               }
             "
             :node-id="tab.nodeId"
-            :direct="page.terminalDirectClient"
+            :direct="page.terminal.terminalDirectClient"
             :workspace-id="tab.workspaceId"
-            :csrf-token="page.csrfToken"
-            :renew-csrf-token="page.renewCsrfToken"
+            :csrf-token="page.identity.csrfToken"
+            :renew-csrf-token="page.identity.renewCsrfToken"
             :enabled="
-              page.view === 'nodes' && tab.id === page.activeWorkspaceTabId && page.terminalReady
+              page.application.view === 'nodes' &&
+              tab.id === page.selection.activeWorkspaceTabId &&
+              page.terminal.terminalReady
             "
-            :capability="page.nodeManifest?.terminal"
+            :capability="page.resources.nodeManifest?.terminal"
             :node-os-release="
-              page.nodes.find((node) => node.id === tab.nodeId)?.metadata?.osRelease
+              page.resources.nodes.find((node) => node.id === tab.nodeId)?.metadata?.osRelease
             "
             :visible="
-              page.view === 'nodes' &&
-              tab.id === page.activeWorkspaceTabId &&
-              page.terminalReady &&
+              page.application.view === 'nodes' &&
+              tab.id === page.selection.activeWorkspaceTabId &&
+              page.terminal.terminalReady &&
               terminalVisible
             "
-            :mobile-mode="page.mobileViewport"
-            :active="page.view === 'nodes' && tab.id === page.activeWorkspaceTabId"
-            @collapse="page.mobileViewport && page.closeMobileWorkspaceSurface()"
-            @notice="page.notice"
+            :mobile-mode="page.layout.mobileViewport"
+            :active="
+              page.application.view === 'nodes' && tab.id === page.selection.activeWorkspaceTabId
+            "
+            @collapse="page.layout.mobileViewport && page.layout.closeMobileWorkspaceSurface()"
+            @notice="page.application.notice"
           />
         </div>
       </Teleport>
     </section>
     <HostedConversationWorkspacePage
-      v-if="page.view === 'conversations'"
-      :connected="page.liveConnected"
-      :workspace="page.hostedConversationWorkspace"
-      :request="page.request"
-      :mobile-viewport="page.mobileViewport"
-      :mobile-history-open="page.hostedConversationMobileHistoryOpen"
-      v-model:mobile-files-open="page.hostedConversationMobileFilesOpen"
-      :sidebar-collapsed="page.sidebarCollapsed"
-      :select-conversation="page.selectHostedConversation"
-      :route-target="page.hostedConversationRoute"
-      :restoring-route="page.restoringHostedConversationRoute"
-      :clear-conversation="page.clearHostedConversation"
-      :has-unread-conversation="page.workbenchNotificationService.hasUnreadConversation"
-      @close-mobile-history="page.closeHostedConversationMobileHistory"
+      v-if="page.application.view === 'conversations'"
+      :connected="page.application.liveConnected"
+      :workspace="page.hosted.hostedConversationWorkspace"
+      :request="page.identity.request"
+      :mobile-viewport="page.layout.mobileViewport"
+      :mobile-history-open="page.hosted.hostedConversationMobileHistoryOpen"
+      v-model:mobile-files-open="page.hosted.hostedConversationMobileFilesOpen"
+      :sidebar-collapsed="page.layout.sidebarCollapsed"
+      :select-conversation="page.hosted.selectHostedConversation"
+      :route-target="page.hosted.hostedConversationRoute"
+      :restoring-route="page.hosted.restoringHostedConversationRoute"
+      :clear-conversation="page.hosted.clearHostedConversation"
+      :has-unread-conversation="page.notifications.hasUnreadConversation"
+      @close-mobile-history="page.hosted.closeHostedConversationMobileHistory"
     />
-    <template v-else-if="page.view === 'settings'">
+    <template v-else-if="page.application.view === 'settings'">
       <slot name="settings">
         <SettingsContent
-          :web-version="page.webVersion"
-          :pwa-state="page.pwaState"
-          :checking-for-updates="page.checkingForUpdates"
-          v-model:new-password="page.newPassword"
-          :section="page.settingsSection"
-          :sessions="page.adminSessions"
-          :password-validation-error="page.passwordValidationError"
-          :registration-token="page.registrationToken"
-          :loading="page.loading"
-          :format-session-time="page.formatSessionTime"
-          :request="page.request"
-          :quick-prompts="page.quickPrompts"
-          :quick-prompts-loading="page.quickPromptsLoading"
-          :quick-prompts-failed="page.quickPromptsFailed"
-          :refresh-quick-prompts="page.refreshQuickPrompts"
-          :system-notifications="page.workbenchNotificationService.systemNotifications"
-          @clear-password-error="page.passwordValidationError = ''"
-          @refresh-sessions="page.refreshAdminSessions"
-          @logout-session="page.logoutAdminSession"
-          :change-password="page.changePassword"
-          @logout="page.logout"
-          @create-registration-token="page.createRegistrationToken"
-          @check-for-updates="page.checkForUpdates"
-          @apply-web-update="page.applyWebUpdate"
+          :web-version="page.application.webVersion"
+          :pwa-state="page.application.pwaState"
+          :checking-for-updates="page.application.checkingForUpdates"
+          v-model:new-password="page.identity.newPassword"
+          :section="page.application.settingsSection"
+          :sessions="page.identity.adminSessions"
+          :password-validation-error="page.identity.passwordValidationError"
+          :registration-token="page.settings.registrationToken"
+          :registration-loading="page.settings.registrationLoading"
+          :loading="page.identity.loading"
+          :format-session-time="page.identity.formatSessionTime"
+          :request="page.identity.request"
+          :quick-prompts="page.settings.quickPrompts"
+          :quick-prompts-loading="page.settings.quickPromptsLoading"
+          :quick-prompts-failed="page.settings.quickPromptsFailed"
+          :refresh-quick-prompts="page.settings.refreshQuickPrompts"
+          :system-notifications="page.notifications.systemNotifications"
+          @clear-password-error="page.identity.passwordValidationError = ''"
+          @refresh-sessions="page.identity.refreshAdminSessions"
+          @logout-session="page.identity.logoutAdminSession"
+          :change-password="page.identity.changePassword"
+          @logout="page.identity.logout"
+          @create-registration-token="page.settings.createRegistrationToken"
+          @check-for-updates="page.application.checkForUpdates"
+          @apply-web-update="page.application.applyWebUpdate"
         />
       </slot>
     </template>
-    <template v-else-if="page.view === 'management'">
+    <template v-else-if="page.application.view === 'management'">
       <slot name="management-notice" />
       <component
         :is="managementPage.component"
         :key="managementPage.id"
-        v-bind="managementPage.props(page)"
-        @changed="page.refreshNodes"
-        @extension-changed="page.refreshAdmin"
+        v-bind="
+          managementPage.props({
+            admin: page.identity.admin,
+            request: page.identity.request,
+            nodes: page.resources.nodes,
+            nodeUpgradeProgress: page.resources.nodeUpgradeProgress,
+            onlineNodeCount: page.resources.onlineNodeCount,
+            serverVersion: page.resources.serverVersion
+          })
+        "
+        @changed="page.resources.refreshNodes"
+        @extension-changed="page.identity.refreshAdmin"
       />
     </template>
     <WorkspaceSessionTreePopover
@@ -969,16 +951,20 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :anchor="treePopup.anchor"
       :session-id="treePopup.sessionId"
       :title="treePopup.title"
-      :tree="page.sessionNavigationSnapshot?.tree"
+      :tree="page.sessionList.sessionNavigationSnapshot?.tree"
       :status="treeStatus"
-      :main-session-id="page.draftSessionOpen ? undefined : page.selectedSessionId"
-      :aside-session-ids="page.asideState?.sessions ?? []"
+      :main-session-id="
+        page.selection.draftSessionOpen ? undefined : page.selection.selectedSessionId
+      "
+      :aside-session-ids="page.aside.asideState?.sessions ?? []"
       :active-aside-id="
-        page.asideState?.active?.kind === 'session' ? page.asideState.active.sessionId : undefined
+        page.aside.asideState?.active?.kind === 'session'
+          ? page.aside.asideState.active.sessionId
+          : undefined
       "
       @close="closeSessionTree"
       @open="openSessionFromTree"
-      @retry="page.retryWorkspaceWatch"
+      @retry="page.application.retryWorkspaceWatch"
     />
   </section>
 </template>
@@ -1273,6 +1259,12 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 </style>
 
 <style scoped>
+.workspace-tool-loading {
+  margin: 0.2rem 0.55rem;
+  color: var(--mar-text-muted);
+  font-size: var(--mar-font-size-meta);
+}
+
 .workspace-git-panel {
   display: flex;
   height: 100%;

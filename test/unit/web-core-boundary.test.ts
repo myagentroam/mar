@@ -604,8 +604,7 @@ describe('single shared Web implementation', () => {
       ['conversation-state-service', 'conversation-state'],
       ['conversation-projection-service', 'conversation-projection'],
       ['workbench-conversation-snapshot-service', 'conversation-snapshot'],
-      ['workspace-view-cache-service', 'workspace-cache'],
-      ['workspace-runtime-state-service', 'workspace-runtime']
+      ['workspace-view-cache-service', 'workspace-cache']
     ]) {
       expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
       expect(read(`${root}/src/service/${file}.ts`)).not.toMatch(
@@ -647,7 +646,7 @@ describe('single shared Web implementation', () => {
     ]) {
       expectSharedEntry(`ee/web/src/service/${file}.ts`, entry!);
     }
-    expect(read(`${root}/src/service/workbench-selection-state-service.ts`)).not.toMatch(
+    expect(read(`${root}/src/service/workbench-workspace-selection-service.ts`)).not.toMatch(
       /ownership|Organization|Hosted/u
     );
   });
@@ -679,7 +678,7 @@ describe('single shared Web implementation', () => {
   });
 
   it('has one Workspace identity and no independently selectable foreground Node', () => {
-    const selection = read(`${root}/src/service/workbench-selection-state-service.ts`);
+    const selection = read(`${root}/src/service/workbench-workspace-selection-service.ts`);
     expect(selection).toContain('workspaceTarget');
     expect(selection).not.toMatch(/selectedNodeId|selectedWorkspaceId/u);
     expect(read(`${root}/src/service/workbench-workspace-tree-controller.ts`)).not.toMatch(
@@ -746,10 +745,10 @@ describe('single shared Web implementation', () => {
     const page = read('packages/web-core/src/service/workbench-page-controller.ts');
     expect(page).toContain('createWorkbenchPageStateService({');
     expect(page).toContain('navigation: options.navigation');
-    expectSharedEntry('ee/web/src/service/workbench-surface-state-service.ts', 'surface-state');
-    expect(read('packages/web-core/src/service/workbench-surface-state-service.ts')).not.toMatch(
-      /WorkbenchWorkspaceCacheController|workbench-workspace-cache-controller/u
+    expect(existsSync('packages/web-core/src/service/workbench-surface-state-service.ts')).toBe(
+      false
     );
+    expect(JSON.parse(read(`${root}/package.json`)).exports).not.toHaveProperty('./surface-state');
   });
 
   it('keeps the ordinary execution transaction chain public without enterprise copies', () => {

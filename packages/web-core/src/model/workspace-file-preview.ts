@@ -1,8 +1,3 @@
-import type {
-  WorkspaceDirectFileIdentity,
-  WorkspaceDirectFileRange
-} from './workspace-direct-file.js';
-
 export interface WorkspaceFilePreviewContent {
   readonly path: string;
   readonly size?: number;
@@ -24,61 +19,4 @@ export interface WorkspaceFilePreviewTarget {
     readonly repositoryPath: string;
     readonly refs: readonly string[];
   };
-}
-
-type DownloadResult = 'COMPLETED' | 'UNAVAILABLE' | 'CANCELLED' | 'FAILED';
-
-/** These ports are already bound to the host's authorized file transport. */
-export interface WorkspaceFilePreviewTransfers {
-  readonly directFileDownload?:
-    | ((path: string, worktreePath?: string, repositoryPath?: string) => Promise<DownloadResult>)
-    | undefined;
-  readonly directFileObjectUrl?:
-    | ((
-        path: string,
-        worktreePath?: string,
-        repositoryPath?: string,
-        signal?: AbortSignal
-      ) => Promise<string | undefined>)
-    | undefined;
-  readonly directFileReadRange?:
-    | ((
-        path: string,
-        offset: number,
-        length: number,
-        worktreePath?: string,
-        identity?: WorkspaceDirectFileIdentity,
-        repositoryPath?: string,
-        signal?: AbortSignal
-      ) => Promise<WorkspaceDirectFileRange | undefined>)
-    | undefined;
-  readonly directGitFileDownload?:
-    | ((
-        commit: string,
-        path: string,
-        repositoryPath: string,
-        refs: readonly string[]
-      ) => Promise<DownloadResult>)
-    | undefined;
-  readonly directGitFileObjectUrl?:
-    | ((
-        commit: string,
-        path: string,
-        repositoryPath: string,
-        refs: readonly string[],
-        signal?: AbortSignal
-      ) => Promise<string | undefined>)
-    | undefined;
-  readonly directGitFileReadRange?:
-    | ((
-        commit: string,
-        path: string,
-        repositoryPath: string,
-        refs: readonly string[],
-        offset: number,
-        length: number,
-        identity?: WorkspaceDirectFileIdentity,
-        signal?: AbortSignal
-      ) => Promise<Omit<WorkspaceDirectFileRange, 'offset'> | undefined>)
-    | undefined;
 }

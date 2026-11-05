@@ -35,6 +35,8 @@ export interface ToolExecutionContext {
   waitInterrupt?: import('./wait.js').ToolWaitInterrupt | undefined;
   /** Live-only process output; does not consume the eventual tool result. */
   onOutput?: (output: ExecOutputSnapshot) => Promise<void>;
+  /** Publish owner-confirmed source metadata before waiting, without consuming output. */
+  onExecutionSource?: (source: ExecutionSource) => Promise<void> | void;
   sessionId: string;
   executionId: string;
   /** Current model identity for neutral Host-owned tool policies. */

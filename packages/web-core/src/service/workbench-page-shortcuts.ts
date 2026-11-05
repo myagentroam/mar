@@ -1,4 +1,5 @@
 import type { WorkbenchPageInteractionOptions } from './workbench-page-interaction-service.js';
+import type { Ref } from 'vue';
 import {
   consoleKeyboardShortcutService,
   type ConsoleShortcutBinding
@@ -7,7 +8,8 @@ import { workspaceKeys } from './console-shortcut-keys.js';
 
 export function createWorkbenchPageShortcuts(
   options: WorkbenchPageInteractionOptions,
-  openQuickOpenFile: () => void
+  openQuickOpenFile: () => void,
+  quickOpenFileVisible: Readonly<Ref<boolean>>
 ): readonly ConsoleShortcutBinding[] {
   const workspaceReady = (event: KeyboardEvent): boolean => {
     const target = event.target;
@@ -18,7 +20,7 @@ export function createWorkbenchPageShortcuts(
           'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
         ) !== null &&
           !consoleKeyboardShortcutService.isWithin('pane', target)));
-    return options.view.value === 'nodes' && !options.quickOpenFileVisible.value && !blocked;
+    return options.view.value === 'nodes' && !quickOpenFileVisible.value && !blocked;
   };
   const workspaceBinding = (
     command: string,

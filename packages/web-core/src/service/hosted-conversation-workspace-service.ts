@@ -1,3 +1,4 @@
+import type { HostedConversationRoute } from '../util/workbench-route.js';
 import {
   createHostedConversationDirectoryService,
   mergeConversationSummary,
@@ -63,8 +64,6 @@ export function hostedConversationFileForPath(
 interface HostedConversationWorkspaceServiceOptions {
   readonly request: HostedConversationRequest;
   readonly workbenchConnectionId: () => string | undefined;
-  readonly selectedNodeId?: Ref<string | undefined>;
-  readonly selectedConversationId?: Ref<string | undefined>;
   readonly heartbeatMs: number;
   readonly requestTimeoutMs: number;
   readonly confirmationTimeoutMs: number;
@@ -76,8 +75,8 @@ interface HostedConversationWorkspaceServiceOptions {
 export function createHostedConversationWorkspaceService(
   options: HostedConversationWorkspaceServiceOptions
 ) {
-  const selectedNodeId = options.selectedNodeId ?? ref<string>();
-  const selectedConversationId = options.selectedConversationId ?? ref<string>();
+  const selectedNodeId = ref<string>();
+  const selectedConversationId = ref<string>();
   const snapshotMetadata = ref<Omit<HostedConversationSnapshot, 'turns'>>();
   const loadingOlderHistory = ref(false);
   const olderHistoryError = ref<unknown>();
@@ -145,6 +144,8 @@ export function createHostedConversationWorkspaceService(
   const {
     watchReady,
     watchFailureCode,
+    watchFailure,
+    watchLoading,
     selectedWatchId,
     beginSelectedConversationWatch,
     restartSelectedConversationWatch,
@@ -971,6 +972,8 @@ export function createHostedConversationWorkspaceService(
     watchReady,
     watchFailureCode,
     selectedWatchId,
+    watchFailure,
+    watchLoading,
     messageSubmitting: messageSubmission.pending,
     messageSubmissionContext: messageSubmission.context,
     templateChanging,
@@ -1132,4 +1135,18 @@ export function hostedConversationSubmissionContext(
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export interface WorkbenchHostedView {
+  clearHostedConversation: () => void;
+  closeHostedConversationMobileHistory: () => void;
+  hostedConversationMobileHistoryOpen: boolean;
+  hostedConversationMobileFilesOpen: boolean;
+  hostedConversationRoute: HostedConversationRoute | undefined;
+  hostedConversationWorkspace: ReturnType<typeof createHostedConversationWorkspaceService>;
+  restoringHostedConversationRoute: boolean;
+  selectHostedConversation: (
+    conversation: HostedConversationSummary,
+    snapshot?: HostedConversationSnapshot
+  ) => Promise<void>;
 }

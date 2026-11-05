@@ -404,6 +404,8 @@ export class CodeCells {
         'MAR_AGENT_CODE_CELL_NOT_FOUND',
         'Code Exec cell is unavailable in this Session.'
       );
+    if (context.onExecutionSource) await context.onExecutionSource({ ...cell.source });
+    context.signal.throwIfAborted();
     if (input.action === 'cancel' && cell.status === 'running') {
       cell.controller.abort(
         new AgentError('MAR_AGENT_CODE_CANCELLED', 'Code Exec cell was terminated.')

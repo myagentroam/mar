@@ -72,16 +72,8 @@ export function createSessionShareConversationService(options: {
   const notice = options.notice;
   const skillTokens = ref<readonly ComposerSkillToken[]>([]);
   const references = ref<readonly ComposerReference[]>([]);
-  const skills = ref<readonly EffectiveWorkspaceSkill[]>([]);
-  const skillsLoading = ref(false);
-  const skillsFailed = ref(false);
-  const skillService = createComposerSkillService({
-    workspaceTarget,
-    skills,
-    loading: skillsLoading,
-    failed: skillsFailed,
-    request
-  });
+  const skillService = createComposerSkillService({ workspaceTarget, request });
+  const { skills, loading: skillsLoading, failed: skillsFailed } = skillService;
   const tokens = createComposerSkillTokenService(skillTokens);
   const state = createConversationStateService(() => void paging.refreshRecentConversationTurns());
   const scroll = createConversationScrollService();
@@ -116,7 +108,6 @@ export function createSessionShareConversationService(options: {
     return changed;
   };
   const events = createWorkbenchEventProjectionService({
-    nodes: ref([]),
     sessions,
     workspaceTarget,
     selectedSessionId,
@@ -310,6 +301,9 @@ export function createSessionShareConversationService(options: {
     selectedWorkspace: computed(() => undefined),
     selectedSession,
     sessions,
+    removeSessionExact: (session) => {
+      sessions.value = sessions.value.filter((candidate) => candidate !== session);
+    },
     captureDraft: () => ({ input, skillTokens, references, persist: () => {} }),
     attachments: attachments.attachments,
     attachmentsPending,
@@ -317,10 +311,6 @@ export function createSessionShareConversationService(options: {
     composerBusy: busy,
     submissionAvailable: () => ready.value && !submission.pending.value,
     draftOpen,
-    restoreDraft: () => {
-      draftOpen.value = true;
-      selectedSessionId.value = undefined;
-    },
     selectedCommand,
     commandAvailable,
     commandPickerOpen,
@@ -329,7 +319,6 @@ export function createSessionShareConversationService(options: {
     notice,
     request,
     stageDraftCommand: () => undefined,
-    createDraftSession: async () => undefined,
     executeCommand: async (session, command, value) =>
       request(`/api/agent-sessions/${encodeURIComponent(session.id)}/commands`, {
         method: 'POST',

@@ -4,6 +4,7 @@ import { createConversationScrollService } from './conversation-scroll-service.j
 import { createConversationStateService } from './conversation-state-service.js';
 import { createRunService } from './run-service.js';
 import { createWorkspaceQueueService } from './workspace-queue-service.js';
+import { createWorkspaceQueueProjection } from './workspace-queue-projection-service.js';
 import { consoleKeyboardShortcutService } from './console-keyboard-shortcut-service.js';
 import { createWorkbenchComposerInteractionController } from './workbench-composer-interaction-controller.js';
 import { createWorkbenchApprovalService } from './workbench-approval-service.js';
@@ -23,9 +24,11 @@ import { createComposerSkillTokenService } from './composer-skill-token-service.
 import { createRunnerInteractionService } from './runner-interaction-service.js';
 import { createWorkbenchConversationComposition } from './workbench-conversation-composition.js';
 import type { createWorkbenchSubmissionOwner } from './workbench-submission-service.js';
+import type { createWorkspaceViewCacheService } from './workspace-view-cache-service.js';
 import { createWorkbenchSessionWatchController } from './workbench-session-watch-controller.js';
 import type {
   AgentRun,
+  CachedSessionDetail,
   ConversationSegmentPage,
   ConversationTurnPage,
   WorkspaceQueue,
@@ -149,8 +152,115 @@ export function createWorkspaceSessionPaneState(options: {
   });
   const scroll = createConversationScrollService();
   const run = createRunService(sessionId);
+  const queueProjection = createWorkspaceQueueProjection(run.runs);
   const reader = createWorkspaceSessionPaneReader();
   const conversation = createConversationStateService(options.onConversationOverflow);
+  function captureDetail(sessionId: string): CachedSessionDetail {
+    conversation.projection.flushPendingTextDeltas();
+    return {
+      sessionId,
+      runs: run.runs.value,
+      turns: conversation.turns.value,
+      nextCursor: conversation.nextCursor.value,
+      contextUsage: conversation.contextUsage.value ?? null,
+      lastAccessedAt: Date.now()
+    };
+  }
+  function restoreDetail(
+    detail: Readonly<CachedSessionDetail> | undefined,
+    emptyContext: null | undefined = undefined
+  ): void {
+    run.replaceRuns(detail?.runs ?? []);
+    conversation.projection.restoreWindow(detail?.turns ?? [], detail?.nextCursor ?? null);
+    conversation.contextUsage.value =
+      detail === undefined ? emptyContext : (detail.contextUsage ?? null);
+  }
+  function clearContent(): void {
+    conversation.nextDetailRequest();
+    restoreDetail(undefined);
+  }
+  function clearSelection(): void {
+    run.selectedRunId.value = undefined;
+    clearContent();
+  }
+  function prepareDraft(): void {
+    clearSelection();
+    conversation.loadingOlder.value = false;
+    conversation.loadingInitial.value = false;
+    conversation.initialLoadFailed.value = false;
+  }
+  function saveCachedSession(
+    session: Session | undefined,
+    queue: WorkspaceQueue,
+    cache: Pick<ReturnType<typeof createWorkspaceViewCacheService>, 'captureSession'>,
+    maximumDetails: number
+  ): void {
+    const target = options.draftTarget.value;
+    if (target?.kind !== 'session' || session === undefined || session.id !== target.sessionId)
+      return;
+    draft.persist();
+    cache.captureSession(
+      target.nodeId,
+      target.workspaceId,
+      session,
+      queue,
+      captureDetail(target.sessionId),
+      maximumDetails
+    );
+  }
+  function restoreCachedSession(
+    target: WorkspaceTarget & { readonly sessionId: string },
+    cache: Pick<ReturnType<typeof createWorkspaceViewCacheService>, 'touchDetail' | 'queueFor'>,
+    restoreQueue: (queue: WorkspaceQueue) => void
+  ): boolean {
+    return restoreSessionProjection(target, cache, restoreQueue, undefined, false, null).restored;
+  }
+  function restoreSessionProjection(
+    target: (WorkspaceTarget & { readonly sessionId: string }) | undefined,
+    cache: Pick<ReturnType<typeof createWorkspaceViewCacheService>, 'touchDetail' | 'queueFor'>,
+    restoreQueue: (queue: WorkspaceQueue) => void,
+    configure: (() => void) | undefined,
+    resetSelection: boolean,
+    emptyContext: null | undefined
+  ): { restored: boolean; activeRunId: string | undefined } {
+    const cachedAside =
+      !resetSelection && target !== undefined
+        ? cache.touchDetail(target.nodeId, target.workspaceId, target.sessionId)
+        : undefined;
+    restoreQueue(
+      target === undefined
+        ? { version: 0, paused: false, items: [] }
+        : (cache.queueFor(target.nodeId, target.workspaceId, target.sessionId) ?? {
+            version: 0,
+            paused: false,
+            items: []
+          })
+    );
+    configure?.();
+    const detail =
+      !resetSelection || target === undefined
+        ? cachedAside
+        : cache.touchDetail(target.nodeId, target.workspaceId, target.sessionId);
+    if (resetSelection) run.selectedRunId.value = undefined;
+    restoreDetail(detail, emptyContext);
+    const active =
+      target === undefined
+        ? undefined
+        : run.runs.value.find(
+            (candidate) =>
+              candidate.sessionId === target.sessionId &&
+              ['STARTING', 'RUNNING', 'CANCELLING'].includes(candidate.status)
+          );
+    return { restored: detail !== undefined, activeRunId: active?.id };
+  }
+  function prepareSession(
+    target: (WorkspaceTarget & { readonly sessionId: string }) | undefined,
+    cache: Pick<ReturnType<typeof createWorkspaceViewCacheService>, 'touchDetail' | 'queueFor'>,
+    restoreQueue: (queue: WorkspaceQueue) => void,
+    configure: () => void
+  ): { restored: boolean; activeRunId: string | undefined } {
+    return restoreSessionProjection(target, cache, restoreQueue, configure, true, undefined);
+  }
   // A visible session may be absent from the paginated Workspace list (for example, a child).
   // This is a target-scoped projection of the loaded session, not another durable session store.
   const resolvedSession = ref<Session>();
@@ -220,11 +330,25 @@ export function createWorkspaceSessionPaneState(options: {
       }
     };
   };
+  function resetRealtime(): void {
+    queueProjection.reset();
+    if (sessionId.value !== undefined)
+      conversation.projection.clearSession(
+        sessionId.value,
+        run.runs.value.map((item) => item.id)
+      );
+  }
   return {
+    resetRealtime,
+    clearContent,
+    clearSelection,
+    prepareDraft,
+    clearRuns: () => run.replaceRuns([]),
     workspaceTarget,
     sessionId,
     acceptResolvedSession,
     run,
+    queueProjection,
     conversation,
     draft,
     attachments,
@@ -631,6 +755,12 @@ export function createWorkspaceSessionPaneState(options: {
         projection: conversation.projection
       }),
     draggingAttachments: ref(false),
+    captureDetail,
+    restoreDetail,
+    saveCachedSession,
+    restoreCachedSession,
+    prepareSession,
+    hasContent: () => conversation.turns.value.some((turn) => turn.items.length > 0),
     queue,
     submission,
     scroll,

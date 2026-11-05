@@ -1,5 +1,7 @@
 export const filePreviewEnUS = {
+  filePreview: { loadFailed: 'Unable to load the file.' },
   common: {
+    retry: 'Retry',
     save: 'Save',
     cancel: 'Cancel',
     gitDiff: 'Git Diff'
@@ -69,10 +71,8 @@ export const filePreviewEnUS = {
       onlyTheFirst512KiBIsShown:
         'Only the first 512 KiB is shown. Download reads the complete text file within Node limits.',
       filePreview2: '{value0} file preview',
-      thisFileTypeCannotBePreviewedIn:
-        'This file type cannot be previewed in the browser. Use the button in the upper-right corner to download it.',
-      previewFailedDownloadInstead:
-        'The file preview failed. Use the button in the upper-right corner to download it.',
+      thisFileTypeCannotBePreviewedIn: 'This file type cannot be previewed.',
+      previewFailedDownloadInstead: 'Unable to preview this file.',
       loadingPreview: 'Loading…',
       filePreviewTabs: 'File preview tabs'
     }

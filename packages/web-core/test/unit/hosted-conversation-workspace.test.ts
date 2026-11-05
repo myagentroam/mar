@@ -210,6 +210,65 @@ function recoveryHarness() {
 }
 
 describe('Web Hosted Conversation Workspace Service', () => {
+  it('retains the request timeout instead of a transport AbortError in inline diagnostics', async () => {
+    vi.useFakeTimers();
+    const workspace = createHostedConversationWorkspaceService({
+      request: (_path, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+            { once: true }
+          );
+        }),
+      workbenchConnectionId: () => 'connection-current',
+      heartbeatMs: 100,
+      requestTimeoutMs: 10,
+      confirmationTimeoutMs: 100
+    });
+    workspace.selectConversation('node-1', 'conversation-1');
+    try {
+      const rejected = expect(workspace.beginSelectedConversationWatch()).rejects.toMatchObject({
+        code: 'WATCH_REQUEST_TIMEOUT'
+      });
+      await vi.advanceTimersByTimeAsync(20);
+      await rejected;
+      expect(workspace.watchFailureCode.value).toBe('WATCH_REQUEST_TIMEOUT');
+      expect(workspace.watchFailure.value).toBeInstanceOf(ApiError);
+      expect(workspace.watchLoading.value).toBe(false);
+    } finally {
+      workspace.stopSelectedConversationWatch();
+      vi.useRealTimers();
+    }
+  });
+
+  it('retains initial Watch failure diagnostics for explicit retry without automatic requests', async () => {
+    vi.useFakeTimers();
+    const failure = new ApiError(
+      'NODE_OFFLINE',
+      'Node is offline.',
+      {},
+      'Reconnect the Node.',
+      'history-request'
+    );
+    const request = vi.fn().mockRejectedValue(failure);
+    const workspace = service(request);
+    workspace.selectConversation('node-1', 'conversation-1');
+    try {
+      const opening = workspace.beginSelectedConversationWatch();
+      expect(workspace.watchLoading.value).toBe(true);
+      await expect(opening).rejects.toBe(failure);
+      expect(workspace.watchLoading.value).toBe(false);
+      expect(workspace.watchFailure.value).toBe(failure);
+      expect(workspace.watchFailureCode.value).toBe('NODE_OFFLINE');
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(request).toHaveBeenCalledOnce();
+    } finally {
+      workspace.stopSelectedConversationWatch();
+      vi.useRealTimers();
+    }
+  });
+
   it('does not let a late old Watch response cancel the new initial waiter', async () => {
     const requests = new Map<string, ReturnType<typeof deferred<unknown>>>();
     const node = ref<string | undefined>('node-1');
@@ -387,6 +446,8 @@ describe('Web Hosted Conversation Workspace Service', () => {
         h.failRenew(error);
         await vi.advanceTimersByTimeAsync(100);
         expect(h.workspace.watchFailureCode.value).toBeDefined();
+        expect(h.workspace.watchLoading.value).toBe(true);
+        expect(h.workspace.watchFailure.value).toBe(error);
         expect(h.workspace.snapshot.value?.run?.status).toBe('RUNNING');
         await vi.advanceTimersByTimeAsync(100);
         expect(h.requests.map((request) => request.mode)).toEqual(['initial', 'renew', 'initial']);
@@ -439,6 +500,8 @@ describe('Web Hosted Conversation Workspace Service', () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(h.workspace.snapshot.value?.run).toBeNull();
         expect(h.workspace.watchFailureCode.value).toBeUndefined();
+        expect(h.workspace.watchLoading.value).toBe(false);
+        expect(h.workspace.watchFailure.value).toBeUndefined();
         expect(h.workspace.turns.value[0]?.items[0]?.payload).toMatchObject({
           text: 'Completed while disconnected.'
         });
@@ -453,7 +516,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     }
   );
 
-  it('stops automatic initial-watch recovery after the consecutive-failure limit and shows one prompt', async () => {
+  it('stops automatic initial-watch recovery after the consecutive-failure limit and retains inline failure', async () => {
     vi.useFakeTimers();
     const h = recoveryHarness();
     try {
@@ -470,6 +533,8 @@ describe('Web Hosted Conversation Workspace Service', () => {
       ]);
       expect(h.workspace.snapshot.value?.run?.status).toBe('RUNNING');
       expect(h.workspace.watchFailureCode.value).toBeDefined();
+      expect(h.workspace.watchLoading.value).toBe(false);
+      expect(h.workspace.watchFailure.value).toBeInstanceOf(TypeError);
       expect(h.expired).toHaveBeenCalledOnce();
     } finally {
       h.workspace.stopSelectedConversationWatch();
@@ -563,30 +628,43 @@ describe('Web Hosted Conversation Workspace Service', () => {
     }
   });
 
-  it('Retain authorization error when resuming initial receipt of watch.failed, not overwritten by cancel error', async () => {
-    vi.useFakeTimers();
-    const h = recoveryHarness();
-    try {
-      await h.begin();
-      h.failRenew(new TypeError('Failed to fetch'));
-      await vi.advanceTimersByTimeAsync(200);
-      expect(
-        h.workspace.handleWatchEvent({
-          ...h.frame(),
-          type: 'watch.failed',
-          watchType: 'hosted-conversation',
-          code: 'CONVERSATION_TEMPLATE_NOT_AUTHORIZED'
-        })
-      ).toBe(true);
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(h.requests.map((request) => request.mode)).toEqual(['initial', 'renew', 'initial']);
-      expect(h.workspace.watchFailureCode.value).toBe('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
-      expect(h.workspace.handleWatchEvent(h.frame())).toBe(false);
-    } finally {
-      h.workspace.stopSelectedConversationWatch();
-      vi.useRealTimers();
+  it.each(['CONVERSATION_TEMPLATE_NOT_AUTHORIZED', 'REMOTE_SESSION_HISTORY_UNAVAILABLE'])(
+    'retains received Watch failure code %s and diagnostics instead of a generic failure',
+    async (code) => {
+      vi.useFakeTimers();
+      const h = recoveryHarness();
+      try {
+        await h.begin();
+        h.failRenew(new TypeError('Failed to fetch'));
+        await vi.advanceTimersByTimeAsync(200);
+        expect(
+          h.workspace.handleWatchEvent({
+            ...h.frame(),
+            type: 'watch.failed',
+            watchType: 'hosted-conversation',
+            code,
+            message: 'The template is no longer authorized.',
+            details: 'Access was revoked.',
+            requestId: 'watch-failure-request'
+          })
+        ).toBe(true);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(h.requests.map((request) => request.mode)).toEqual(['initial', 'renew', 'initial']);
+        expect(h.workspace.watchFailureCode.value).toBe(code);
+        expect(h.workspace.watchFailure.value).toMatchObject({
+          code,
+          message: 'The template is no longer authorized.',
+          details: 'Access was revoked.',
+          requestId: 'watch-failure-request'
+        });
+        expect(h.workspace.watchLoading.value).toBe(false);
+        expect(h.workspace.handleWatchEvent(h.frame())).toBe(false);
+      } finally {
+        h.workspace.stopSelectedConversationWatch();
+        vi.useRealTimers();
+      }
     }
-  });
+  );
 
   it('Only explicit dialog file paths are resolved to the current authoritative file projection', () => {
     const files = [
@@ -668,7 +746,6 @@ describe('Web Hosted Conversation Workspace Service', () => {
         readFile,
         contentUrl
       },
-      onError: vi.fn(),
       triggerDownload
     });
 
@@ -728,16 +805,43 @@ describe('Web Hosted Conversation Workspace Service', () => {
         file: { ...file, updatedAt: 2 },
         content: btoa('after!')
       });
-    const onError = vi.fn();
     const preview = createHostedConversationFilePreviewService({
-      source: { selectedConversationId: ref(file.conversationId), readFile, contentUrl: vi.fn() },
-      onError
+      source: { selectedConversationId: ref(file.conversationId), readFile, contentUrl: vi.fn() }
     });
 
     await preview.openFile(file);
 
     expect(readFile).toHaveBeenCalledTimes(2);
-    expect(onError).toHaveBeenCalledExactlyOnceWith(new Error('FILE_PREVIEW_REVISION_CHANGED'));
+    expect(preview.error.value).toEqual(new Error('FILE_PREVIEW_REVISION_CHANGED'));
+    expect(preview.visible.value).toBe(true);
+    expect(preview.loading.value).toBe(false);
+    expect(preview.content.value?.content).toBe('');
+    readFile.mockResolvedValue({
+      ...probe,
+      file: { ...file, updatedAt: 2 },
+      content: btoa('recovered'),
+      eof: true,
+      nextOffset: null
+    });
+    await preview.retry();
+    expect(preview.error.value).toBeUndefined();
+    expect(preview.content.value?.content).toBe('recovered');
+    expect(preview.visible.value).toBe(true);
+
+    let rejectRead!: (error: Error) => void;
+    readFile.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRead = reject;
+        })
+    );
+    const reopening = preview.openFile(file);
+    expect(preview.loading.value).toBe(true);
+    preview.close();
+    rejectRead(new Error('late read failure'));
+    await reopening;
+    expect(preview.error.value).toBeUndefined();
+    expect(preview.loading.value).toBe(false);
     expect(preview.visible.value).toBe(false);
     expect(preview.content.value).toBeUndefined();
     preview.dispose();
@@ -769,8 +873,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
         selectedConversationId: ref('conversation-1'),
         readFile,
         contentUrl: vi.fn()
-      },
-      onError: vi.fn()
+      }
     });
 
     await preview.openFile(file, 23, 7);
@@ -812,8 +915,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
           eof: true
         }),
         contentUrl: vi.fn()
-      },
-      onError: vi.fn()
+      }
     });
     await preview.openFile(file);
     expect(preview.kind.value).toBe('text');
@@ -853,11 +955,9 @@ describe('Web Hosted Conversation Workspace Service', () => {
       nextOffset: null,
       eof: true
     }));
-    const onError = vi.fn();
     const contentUrl = vi.fn(() => '/controlled-content');
     const preview = createHostedConversationFilePreviewService({
-      source: { selectedConversationId: ref('conversation-1'), readFile, contentUrl },
-      onError
+      source: { selectedConversationId: ref('conversation-1'), readFile, contentUrl }
     });
 
     await preview.openFile(file);
@@ -867,7 +967,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(preview.kind.value).toBe(text ? 'text' : 'unsupported');
     expect(preview.content.value?.content).toBe(text ? new TextDecoder().decode(bytes) : '');
     expect(contentUrl).not.toHaveBeenCalled();
-    expect(onError).not.toHaveBeenCalled();
+    expect(preview.error.value).toBeUndefined();
   });
 
   it('Consume only a single opaque cursor for Server aggregation and reject unknown response fields', async () => {

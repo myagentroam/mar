@@ -6,6 +6,7 @@ export function createAdminSessionStateService() {
   return {
     admin: ref<AdminState>({ authenticated: false, mustChangePassword: false, isAdmin: false }),
     loaded: ref(false),
+    loading: ref(false),
     sessions: ref<readonly UserSessionSummary[]>([]),
     newPassword: ref(''),
     passwordValidationError: ref(''),

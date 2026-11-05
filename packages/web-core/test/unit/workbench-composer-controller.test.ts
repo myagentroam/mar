@@ -16,11 +16,21 @@ function ref<T>(value: T): { value: T } {
 function createTestComposerController(
   options: Omit<
     Parameters<typeof createWorkbenchComposerController>[0],
-    'setModel' | 'setEffort' | 'setAccess' | 'clearModelEffortSelection'
+    | 'setModel'
+    | 'setEffort'
+    | 'setAccess'
+    | 'clearModelEffortSelection'
+    | 'replaceSessionProjection'
   > & { modelEffortSelection: { value: string | undefined } }
 ) {
   return createWorkbenchComposerController({
     ...options,
+    replaceSessionProjection: (session) => {
+      const sessions = options.sessions as unknown as { value: Session[] };
+      sessions.value = sessions.value.map((current) =>
+        current.id === session.id ? session : current
+      );
+    },
     setModel: (model, effort) => {
       (options.modelId as { value: string }).value = model;
       (options.effort as { value: string }).value = effort;
@@ -540,6 +550,11 @@ describe('Workbench Composer Controller', () => {
       workspaceTarget: workspaceTargetRef(reactiveRef<string | undefined>('node-a')),
       selectedSession,
       sessions,
+      replaceSessionProjection: (session) => {
+        sessions.value = sessions.value.map((current) =>
+          current.id === session.id ? session : current
+        );
+      },
       profiles,
       draftOpen: reactiveRef(false),
       loading: reactiveRef(false),

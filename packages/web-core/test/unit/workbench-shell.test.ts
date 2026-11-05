@@ -35,34 +35,43 @@ async function renderComponent(component: Component, props: Record<string, unkno
 
 async function renderOfflineSurface() {
   const page = {
-    view: 'nodes',
-    mobileViewport: false,
-    sidebarCollapsed: true,
-    settingsSection: 'account',
-    settingsItems: [],
-    managementSection: 'overview',
-    managementItems: [],
-    workspaceRegistrationNodeId: undefined,
-    hostedConversationWorkspace: {
-      snapshot: ref({ conversation: undefined }),
-      conversations: ref([] as { nodeId: string; id: string }[]),
-      selectedNodeId: ref(undefined as string | undefined),
-      selectedConversationId: ref(undefined as string | undefined)
+    application: {
+      view: 'nodes',
+      settingsSection: 'account',
+      settingsItems: [],
+      managementSection: 'overview',
+      managementItems: []
     },
-    setComposerInputFocus: vi.fn(),
-    setComposerRangeEditor: vi.fn(),
-    setAsideSurfaceVisible: vi.fn(),
-    workspaceHost: { connected: false },
-    workspaceTarget: { nodeId: 'node-1', workspaceId: 'workspace-1' },
-    selectedWorkspace: undefined,
-    workspaceTabs: [],
-    activeWorkspaceTabId: undefined,
-    nodeLabel: () => 'Node',
-    workspaceTabNodeLabel: () => 'Node',
-    workspaceDirectAvailable: () => false,
-    workspaceDirectDescription: () => undefined,
-    workspaceTabService: { move: vi.fn(), setPinned: vi.fn() },
-    workbenchNotificationService: {
+    identity: { admin: {} },
+    layout: { mobileViewport: false, sidebarCollapsed: true },
+    registration: { workspaceRegistrationNodeId: undefined },
+    hosted: {
+      hostedConversationWorkspace: {
+        snapshot: ref({ conversation: undefined }),
+        conversations: ref([] as { nodeId: string; id: string }[]),
+        selectedNodeId: ref(undefined as string | undefined),
+        selectedConversationId: ref(undefined as string | undefined)
+      }
+    },
+    aside: {
+      asideViewMode: () => 'none',
+      asideWidth: () => undefined,
+      setAsideSurfaceVisible: vi.fn()
+    },
+    files: {},
+    selection: {
+      workspaceTarget: { nodeId: 'node-1', workspaceId: 'workspace-1' },
+      workspaceTabs: [],
+      workspaceTabNodeLabel: () => 'Node'
+    },
+    resources: {
+      workspaceHost: { connected: false },
+      selectedWorkspace: undefined,
+      nodeLabel: () => 'Node',
+      workspaceDirectAvailable: () => false,
+      workspaceDirectDescription: () => undefined
+    },
+    notifications: {
       hasActiveWorkspaceRun: () => false,
       hasUnreadWorkspace: () => false
     }

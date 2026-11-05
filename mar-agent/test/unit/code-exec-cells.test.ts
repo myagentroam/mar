@@ -37,6 +37,62 @@ async function fixture() {
 }
 
 describe('Code Exec retained cells', () => {
+  it('publishes a bounded source before retained waits and keeps it available after wait cancellation', async () => {
+    const cells = new CodeCells();
+    let finish!: () => void;
+    const source = '// @options: {"yieldMs":0}\n' + ' '.repeat(10000) + '1;';
+    try {
+      const started = await cells.start(source, context(), async (_code, _context, output) => {
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        output.text('unconsumed');
+        return { content: '' };
+      });
+      const cellId = data(started).cellId;
+      const onExecutionSource = vi.fn();
+      await expect(
+        cells.wait(
+          { cellId },
+          {
+            ...context(),
+            sessionId: 'other',
+            onExecutionSource
+          }
+        )
+      ).rejects.toMatchObject({ code: 'MAR_AGENT_CODE_CELL_NOT_FOUND' });
+      expect(onExecutionSource).not.toHaveBeenCalled();
+      const controller = new AbortController();
+      const waiting = cells.wait(
+        { cellId, yieldMs: 300000 },
+        {
+          ...context(controller.signal),
+          executionId: 'later',
+          onExecutionSource
+        }
+      );
+      expect(onExecutionSource).toHaveBeenCalledWith({
+        kind: 'CODE',
+        text: source.slice(0, 10000),
+        truncated: true
+      });
+      controller.abort(new Error('stop wait'));
+      await expect(waiting).rejects.toThrow('stop wait');
+      finish();
+      const completed = await cells.wait({ cellId }, context());
+      expect(data(completed).output).toBe('unconsumed');
+      onExecutionSource.mockClear();
+      const cached = await cells.wait({ cellId }, { ...context(), onExecutionSource });
+      expect(data(cached).cached).toBe(true);
+      expect(onExecutionSource).toHaveBeenCalledWith(completed.eventData!.executionSource);
+      expect(cached.content).not.toContain('executionSource');
+      expect(cached.data).not.toHaveProperty('executionSource');
+    } finally {
+      finish?.();
+      await cells.dispose();
+    }
+  });
+
   it('keeps the public terminal and cached tail independent from the model capture budget', async () => {
     const host = await fixture();
     const result = await host.executeTool(

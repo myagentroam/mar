@@ -610,6 +610,9 @@ test('Retrying initial history keeps focus and shows one ring without action tex
   await page.getByTestId('finish-initial').click();
   const retry = page.locator('button.conversation-reload');
   await expect(retry).toHaveText('Failed to load. Retry');
+  await expect(retry).toHaveAttribute('aria-description', /history-request-1/);
+  await retry.hover();
+  await expect(page.getByRole('tooltip')).toContainText('SESSION_HISTORY_INITIAL_FAILED');
   await retry.click();
   await expect(retry).toBeFocused();
   await expect(retry).toHaveText('');
@@ -1446,8 +1449,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(page.locator('.theme-preview .user-message')).toHaveCSS(property, actual);
       }
       for (const [selector, edge, size] of [
-        ['.task-list-items', 'border-top-width', '1px'],
-        ['.task-list-items > li', 'border-bottom-width', '1px'],
+        ['.task-list-items', 'border-top-width', '0px'],
+        ['.task-list-items > li', 'border-bottom-width', '0px'],
         ['.conversation-record-group', 'border-left-width', '0px'],
         ['.conversation-record-group > .conversation-tool-detail', 'padding-top', '0px'],
         ['.conversation-record-group > .conversation-tool-detail', 'border-top-width', '0px'],

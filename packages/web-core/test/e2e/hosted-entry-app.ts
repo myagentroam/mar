@@ -2,7 +2,8 @@ import { h } from 'vue';
 import { createTooltipApp } from './tooltip-app.js';
 import HostedConversationEntryPage from '../../src/view/conversation/HostedConversationEntryPage.vue';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
-import type { HostedConversationSnapshot } from '@myagentroam/protocol';
+import HostedConversationWorkspacePage from '../../src/view/conversation/HostedConversationWorkspacePage.vue';
+import type { HostedConversationSnapshot, HostedConversationSummary } from '@myagentroam/protocol';
 import { ApiError } from '../../src/util/api-error.js';
 import { createHostedConversationEntryService } from '../../src/service/hosted-conversation-entry-service.js';
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
@@ -18,13 +19,17 @@ themePreferenceService().setTheme(
 
 // Only HTTP responses are controlled by Playwright; the page and domain services are real.
 const existing = new URL(location.href).searchParams.has('existing');
+const workspacePage = new URL(location.href).searchParams.has('workspace-page');
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   const value = await response.json();
   if (!response.ok)
     throw new ApiError(
       value.error?.code ?? `REQUEST_FAILED_${response.status}`,
-      value.error?.message ?? 'Hosted entry fixture request failed.'
+      value.error?.message ?? 'Hosted entry fixture request failed.',
+      {},
+      value.error?.details,
+      value.error?.requestId
     );
   if (existing && path.endsWith('/watch') && init?.method === 'POST') {
     const body = JSON.parse(String(init.body));
@@ -76,7 +81,12 @@ if (existing) {
   const snapshot = await request<HostedConversationSnapshot>(
     '/api/hosted-template-fixture/current'
   );
-  workspace.selectConversation(snapshot.conversation.nodeId, snapshot.conversation.id, snapshot);
+  if (workspacePage) await workspace.loadConversations();
+  workspace.selectConversation(
+    snapshot.conversation.nodeId,
+    snapshot.conversation.id,
+    new URL(location.href).searchParams.has('initial-empty') ? undefined : snapshot
+  );
   const watch = workspace.beginSelectedConversationWatch();
   if (new URL(location.href).searchParams.has('watch-pending')) void watch.catch(() => undefined);
   else await watch;
@@ -84,23 +94,40 @@ if (existing) {
 
 createTooltipApp({
   render: () =>
-    existing
-      ? h('main', { style: 'padding: 1rem; max-width: 54rem; margin: 6rem auto;' }, [
-          h(HostedConversationComposer, {
-            workspace,
-            readonly: false,
-            readonlyReason: '',
-            connected: true,
-            mobileViewport: matchMedia('(max-width: 767px)').matches
-          })
-        ])
-      : h(HostedConversationEntryPage, {
-          request,
+    workspacePage
+      ? h(HostedConversationWorkspacePage, {
           workspace,
-          entry,
+          request,
+          connected: true,
           mobileViewport: matchMedia('(max-width: 767px)').matches,
-          connected: true
+          mobileHistoryOpen: false,
+          sidebarCollapsed: false,
+          restoringRoute: false,
+          routeTarget: undefined,
+          hasUnreadConversation: () => false,
+          clearConversation: workspace.clearSelectedConversation,
+          selectConversation: async (conversation: HostedConversationSummary) => {
+            workspace.selectConversation(conversation.nodeId, conversation.id);
+            await workspace.restartSelectedConversationWatch();
+          }
         })
+      : existing
+        ? h('main', { style: 'padding: 1rem; max-width: 54rem; margin: 6rem auto;' }, [
+            h(HostedConversationComposer, {
+              workspace,
+              readonly: false,
+              readonlyReason: '',
+              connected: true,
+              mobileViewport: matchMedia('(max-width: 767px)').matches
+            })
+          ])
+        : h(HostedConversationEntryPage, {
+            request,
+            workspace,
+            entry,
+            mobileViewport: matchMedia('(max-width: 767px)').matches,
+            connected: true
+          })
 })
   .use(i18n)
   .mount('#app');

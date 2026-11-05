@@ -11,7 +11,7 @@ function setup() {
   const onRegistered = vi.fn(async () => undefined);
   const service = createWorkspaceRegistrationService({
     targetNodeId: ref<string | undefined>('node-a'),
-    globalLoading: ref(false),
+
     request,
     onRegistered,
     notice: vi.fn(),
@@ -22,6 +22,27 @@ function setup() {
 }
 
 describe('public workspace registration', () => {
+  it('owns its pending state until the registration completes', async () => {
+    let finish!: (value: unknown) => void;
+    const service = createWorkspaceRegistrationService({
+      targetNodeId: ref<string | undefined>('node-a'),
+      request: <T>() =>
+        new Promise<T>((resolve) => {
+          finish = resolve as (value: unknown) => void;
+        }),
+      onRegistered: vi.fn(),
+      notice: vi.fn(),
+      error: vi.fn(),
+      errorMessage: String
+    });
+    service.path.value = '/project';
+    const pending = service.register();
+    expect(service.loading.value).toBe(true);
+    finish({ workspace: { id: 'workspace-new' } });
+    await pending;
+    expect(service.loading.value).toBe(false);
+  });
+
   it('refreshes a Windows drive root without dropping its separator or directory entries', async () => {
     const directory = {
       homePath: 'C:\\Users\\node',
@@ -35,7 +56,7 @@ describe('public workspace registration', () => {
     const request = vi.fn(async (_path: string) => ({ directory }));
     const service = createWorkspaceRegistrationService({
       targetNodeId: ref<string | undefined>('node-a'),
-      globalLoading: ref(false),
+
       request: async <T>(path: string) => (await request(path)) as T,
       onRegistered: vi.fn(),
       notice: vi.fn(),
@@ -70,12 +91,11 @@ describe('public workspace registration', () => {
     expect(onRegistered).toHaveBeenCalledWith('node-a', 'workspace-new');
   });
   it('keeps the selected path and releases loading when submission fails', async () => {
-    const loading = ref(false);
     const error = vi.fn();
     const failure = new Error('FAILED');
     const service = createWorkspaceRegistrationService({
       targetNodeId: ref<string | undefined>('node-a'),
-      globalLoading: loading,
+
       request: async () => {
         throw failure;
       },
@@ -87,7 +107,7 @@ describe('public workspace registration', () => {
     service.path.value = '/project';
     await service.register();
     expect(service.path.value).toBe('/project');
-    expect(loading.value).toBe(false);
+    expect(service.loading.value).toBe(false);
     expect(error).toHaveBeenCalledOnce();
     expect(error).toHaveBeenCalledWith(expect.any(String), failure);
   });
@@ -98,7 +118,7 @@ describe('public workspace registration', () => {
     const onRegistered = vi.fn();
     const service = createWorkspaceRegistrationService({
       targetNodeId: selectedNodeId,
-      globalLoading: ref(false),
+
       request: <T>() =>
         new Promise<T>((done) => {
           resolve = done as (value: unknown) => void;
@@ -165,11 +185,10 @@ describe('public workspace registration', () => {
   it('passes opaque context only to the host submission callback', async () => {
     const submit = vi.fn(async () => ({ workspace: { id: 'enterprise-workspace' } }));
     const request = vi.fn();
-    const loading = ref(false);
     const onRegistered = vi.fn(async () => undefined);
     const service = createWorkspaceRegistrationService<{ scopeId: number }>({
       targetNodeId: ref<string | undefined>('node-a'),
-      globalLoading: loading,
+
       request,
       submit,
       onRegistered,
@@ -184,7 +203,7 @@ describe('public workspace registration', () => {
       { scopeId: 7 }
     );
     expect(request).not.toHaveBeenCalled();
-    expect(loading.value).toBe(false);
+    expect(service.loading.value).toBe(false);
     expect(onRegistered).toHaveBeenCalledWith('node-a', 'enterprise-workspace');
   });
 });

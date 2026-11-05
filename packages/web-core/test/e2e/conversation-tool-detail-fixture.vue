@@ -9,6 +9,94 @@ import { goalMessage } from './support/localized-fixture-data.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
 const integrated = new URL(location.href).searchParams.has('timeline');
+const listLayout = new URL(location.href).searchParams.has('list-layout');
+const listSamples: ConversationItem[] = [
+  {
+    id: 'list-tasks',
+    kind: 'todo_list',
+    status: 'COMPLETED',
+    processGroup: { id: 'process' },
+    payload: {
+      items: ['PENDING', 'IN_PROGRESS', 'COMPLETED'].map((status) => ({
+        text: `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)}`,
+        status
+      }))
+    }
+  },
+  {
+    id: 'list-files',
+    kind: 'file_change',
+    status: 'COMPLETED',
+    processGroup: { id: 'process' },
+    payload: {
+      changes: ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED'].map(
+        (change) => ({
+          path: `src/nested/long-path-for-layout-check/${change.toLowerCase()}.ts`,
+          change,
+          additions: 12,
+          deletions: 3
+        })
+      )
+    }
+  }
+];
+const taskSnapshotProbe = new URL(location.href).searchParams.has('task-snapshots');
+function taskSnapshot(id: string, groupId: string, text: string): ConversationItem {
+  return {
+    id,
+    kind: 'todo_list',
+    status: 'COMPLETED',
+    processGroup: { id: groupId },
+    payload: { items: [{ text, status: 'COMPLETED' }] }
+  };
+}
+const taskSnapshots = ref([taskSnapshot('tasks-initial', 'process', 'Initial task snapshot')]);
+const otherProcessTasks = taskSnapshot('tasks-other', 'other-process', 'Separate process task');
+const spacingProbe = new URL(location.href).searchParams.has('spacing-probe');
+const spacingCases: [string, Record<string, unknown>][] = [
+  ['generic-input', { inputSummary: 'Only input' }],
+  ['generic-output', { output: { blocks: [{ channel: 'TEXT', text: 'Only output' }] } }],
+  [
+    'generic-sections',
+    { inputSummary: 'Input', output: { blocks: [{ channel: 'TEXT', text: 'Output' }] } }
+  ],
+  [
+    'execution-output',
+    {
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL', output: [{ channel: 'STDOUT', text: 'Only output' }] }
+      }
+    }
+  ],
+  [
+    'execution-error',
+    {
+      toolPresentation: {
+        kind: 'EXECUTION',
+        execution: { kind: 'CONTROL', error: { code: 'EXEC_FAILED', message: 'Only error' } }
+      }
+    }
+  ],
+  [
+    'execution-heading',
+    {
+      toolPresentation: { kind: 'EXECUTION', execution: { kind: 'CONTROL', toolName: 'exec_wait' } }
+    }
+  ],
+  ['skill-error', { toolPresentation: { kind: 'SKILL' }, errorCode: 'SKILL_FAILED' }],
+  ['skill-heading', { toolPresentation: { kind: 'SKILL', name: 'Only skill' } }],
+  ['search-heading', { toolPresentation: { kind: 'WEB_SEARCH' } }],
+  ['fetch-heading', { toolPresentation: { kind: 'WEB_FETCH' } }],
+  ['tool-search-query', { toolPresentation: { kind: 'TOOL_SEARCH', query: 'Only query' } }],
+  ['tool-search-heading', { toolName: 'tool_search', toolPresentation: { kind: 'TOOL_SEARCH' } }]
+];
+const spacingSamples: ConversationItem[] = spacingCases.map(([id, payload]) => ({
+  id,
+  kind: 'tool_call',
+  status: 'COMPLETED',
+  payload
+}));
 const outputUpdates = new URL(location.href).searchParams.has('updates');
 const performanceProbe = new URL(location.href).searchParams.has('performance');
 const previewProbe = new URL(location.href).searchParams.has('preview-probe');
@@ -212,6 +300,40 @@ const detailSamples: ConversationItem[] = [
     }
   }
 ];
+if (spacingProbe) {
+  detailSamples.push(
+    {
+      id: 'spacing-file',
+      kind: 'file_change',
+      status: 'COMPLETED',
+      payload: {
+        changes: [{ path: '/fixture/spacing.ts', change: 'ADDED', additions: 1, deletions: 0 }]
+      }
+    },
+    {
+      id: 'spacing-plan-steps',
+      kind: 'plan',
+      status: 'COMPLETED',
+      payload: { steps: [{ text: 'Only step' }] }
+    },
+    {
+      id: 'spacing-plan-intro',
+      kind: 'plan',
+      status: 'COMPLETED',
+      payload: { explanation: 'Plan introduction', steps: [{ text: 'Following step' }] }
+    },
+    {
+      id: 'spacing-image',
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'generate_image',
+        toolCategory: 'IMAGE_GENERATION',
+        outputSummary: 'Image generation detail'
+      }
+    }
+  );
+}
 if (new URL(location.href).searchParams.has('reasoning-pair')) {
   detailSamples.splice(detailSamples.findIndex((item) => item.kind === 'reasoning') + 1, 0, {
     id: 'thinking-next',
@@ -559,6 +681,8 @@ const turns = computed<ConversationTurn[]>(() => [
         payload: { text: 'Check the command output' }
       },
       { ...command.value, status: 'COMPLETED', processGroup: { id: 'process', isStart: true } },
+      ...(listLayout ? listSamples : []),
+      ...(taskSnapshotProbe ? [...taskSnapshots.value, otherProcessTasks] : []),
       ...(new URL(location.href).searchParams.has('unified')
         ? detailSamples.map((item) => ({
             ...item,
@@ -681,6 +805,22 @@ function finish() {
 
 <template>
   <main class="fixture">
+    <button
+      v-if="taskSnapshotProbe"
+      data-testid="append-task-snapshot"
+      @click="taskSnapshots.push(taskSnapshot('tasks-latest', 'process', 'Latest task snapshot'))"
+    >
+      Append task snapshot
+    </button>
+    <section v-if="spacingProbe" data-testid="spacing-probe">
+      <ConversationToolDetail
+        v-for="item in spacingSamples"
+        :key="item.id"
+        :data-testid="`spacing-${item.id}`"
+        :item="item"
+        @copy="copy"
+      />
+    </section>
     <section v-if="lifecycleProbe" data-testid="lifecycle-probe">
       <button data-testid="toggle-slot" @click="showLifecycleSlot = !showLifecycleSlot">
         Toggle slot

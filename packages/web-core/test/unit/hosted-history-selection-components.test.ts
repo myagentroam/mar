@@ -5,7 +5,7 @@ import { createHostedConversationWorkspaceService } from '../../src/service/host
 import { createHostedConversationSelectionService } from '../../src/service/hosted-conversation-selection-service.js';
 import { createHostedConversationWatchCoordinator } from '../../src/service/hosted-conversation-watch-coordinator.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
-import { localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
 import { marIcon } from '../../src/util/mar-icons.js';
 import {
   flushComponent,
@@ -47,6 +47,15 @@ const first: HostedConversationSummary = {
 const second = { ...first, nodeId: 'node-b', sessionId: 'session-b', title: 'History B' };
 
 beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  );
+  vi.stubGlobal('requestAnimationFrame', () => 1);
+  vi.stubGlobal('cancelAnimationFrame', () => {});
   vi.stubGlobal('HTMLElement', class {});
   vi.stubGlobal('window', {
     addEventListener() {},
@@ -136,9 +145,16 @@ async function fixture(hasUnread = false) {
       .findAll('button')
       .find((node) => node.props['class'] === 'history-open' && textContent(node).includes(title))!;
   const busy = () =>
-    view.findAll('section').find((node) => node.props['class'] === 'page-loading-state')?.props[
-      'aria-busy'
-    ];
+    view
+      .findAll('div')
+      .some((node) => String(node.props.class).includes('conversation-loading-initial')) ||
+    view
+      .findAll('ElButton')
+      .some(
+        (node) =>
+          String(node.props.class).includes('conversation-reload') &&
+          node.props['aria-busy'] === true
+      );
   return { view, row, busy, workspace, select, openings };
 }
 
@@ -264,21 +280,32 @@ describe('Hosted history selection during initial opening', () => {
     }
   });
 
-  it('reports the current opening failure and allows an explicit retry', async () => {
+  it('keeps the current opening failure inline without a message and allows an explicit retry', async () => {
     const f = await fixture();
     try {
       await trigger(f.row(first.title), 'onClick');
       const error = new Error('Current opening failed');
       f.openings[0]!.reject(error);
       await flushComponent();
-      expect(showMessage).toHaveBeenCalledExactlyOnceWith(expect.any(String), 'error', error);
+      expect(showMessage).not.toHaveBeenCalled();
+      const retry = () =>
+        f.view
+          .findAll('ElButton')
+          .find((node) => String(node.props.class).includes('conversation-reload'));
+      expect(retry()?.props['aria-description']).toContain(error.message);
+      expect(textContent(retry()!)).toContain(translate('common.loadFailedRetry'));
       expect(f.busy()).toBe(false);
-      await trigger(f.row(first.title), 'onClick');
+      await trigger(retry()!, 'onClick');
       expect(f.select).toHaveBeenCalledTimes(2);
       expect(f.busy()).toBe(true);
+      expect(retry()?.props['aria-busy']).toBe(true);
+      expect(retry()?.props['aria-description']).toBeUndefined();
+      await trigger(retry()!, 'onClick');
+      expect(f.select).toHaveBeenCalledTimes(2);
       f.openings[1]!.resolve();
       await flushComponent();
       expect(f.busy()).toBe(false);
+      expect(retry()).toBeUndefined();
     } finally {
       f.view.unmount();
     }

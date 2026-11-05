@@ -1,26 +1,33 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
-import { ref, type Ref } from 'vue';
-import type {
-  Session,
-  Workspace,
-  WorkspaceTarget,
-  NodeWorkbenchManifest
-} from '../model/workbench.js';
+import { computed, ref, type Ref } from 'vue';
+
+export function createWorkbenchWorkspaceSelectionState() {
+  const target = ref<WorkspaceTarget>();
+  return {
+    target: computed(() => target.value),
+    setTarget: (next: WorkspaceTarget | undefined) => {
+      target.value = next;
+    }
+  };
+}
+import type { Session, Workspace, WorkspaceTarget } from '../model/workbench.js';
 import type { WorkspaceCacheView } from './workspace-view-cache-service.js';
 import { translate } from './locale-preference-service.js';
 import { errorCode } from '../util/api-error.js';
 import { sessionHasNativeIdentity } from '../util/session-presentation.js';
 
 interface WorkbenchWorkspaceSelectionOptions {
-  readonly workspaceTarget: Ref<WorkspaceTarget | undefined>;
-  readonly selectedSessionId: Ref<string | undefined>;
-  readonly selectedRunId: Ref<string | undefined>;
-  readonly workspaces: Ref<Workspace[]>;
-  readonly sessions: Ref<Session[]>;
-  readonly draftOpen: Ref<boolean>;
-  readonly profilesLoading: Ref<boolean>;
-  readonly manifest: Ref<NodeWorkbenchManifest | undefined>;
-  readonly manifestLoading: Ref<boolean>;
+  readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
+  readonly setWorkspaceTarget: (target: WorkspaceTarget | undefined) => void;
+  readonly selectedSessionId: Readonly<Ref<string | undefined>>;
+  readonly setSelectedSessionId: (id: string | undefined) => void;
+  readonly workspaces: Readonly<Ref<readonly Workspace[]>>;
+  readonly replaceWorkspaces: (workspaces: readonly Workspace[]) => void;
+  readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly replaceSessions: (sessions: readonly Session[]) => void;
+  readonly draftOpen: Readonly<Ref<boolean>>;
+  readonly setDraftOpen: (open: boolean) => void;
+  readonly profilesLoading: Readonly<Ref<boolean>>;
   readonly hasNode: (nodeId: string) => boolean;
   readonly isHostAvailable: (nodeId: string) => boolean;
   readonly cachedWorkspaces: (nodeId: string) => readonly Workspace[];
@@ -32,7 +39,7 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly showWorkbench: () => void;
   readonly closeSidebar: () => void;
   readonly restoreProfiles: (nodeId: string) => void;
-  readonly restoreManifest: (nodeId: string) => NodeWorkbenchManifest | undefined;
+  readonly selectManifestNode: (nodeId?: string) => void;
   readonly refreshManifest: (nodeId: string) => Promise<void>;
   readonly refreshTransport: (nodeId: string) => void;
   readonly request: <T>(path: string) => Promise<T>;
@@ -77,14 +84,12 @@ export function createWorkbenchWorkspaceSelectionService(
     loading.value = false;
     options.stopWatch();
     options.deactivateCache();
-    options.workspaceTarget.value = undefined;
-    options.selectedSessionId.value = undefined;
-    options.selectedRunId.value = undefined;
-    options.workspaces.value = [];
-    options.sessions.value = [];
-    options.manifest.value = undefined;
-    options.manifestLoading.value = false;
-    options.draftOpen.value = false;
+    options.setWorkspaceTarget(undefined);
+    options.setSelectedSessionId(undefined);
+    options.replaceWorkspaces([]);
+    options.replaceSessions([]);
+    options.selectManifestNode();
+    options.setDraftOpen(false);
     options.clearContent();
     options.resetQueue();
   }
@@ -103,11 +108,10 @@ export function createWorkbenchWorkspaceSelectionService(
       options.saveCurrent();
       options.stopWatch();
       options.deactivateCache();
-      options.selectedSessionId.value = undefined;
-      options.selectedRunId.value = undefined;
-      options.draftOpen.value = false;
+      options.setSelectedSessionId(undefined);
+      options.setDraftOpen(false);
       options.clearContent();
-      options.workspaceTarget.value = { nodeId: target.nodeId, workspaceId: target.workspaceId };
+      options.setWorkspaceTarget({ nodeId: target.nodeId, workspaceId: target.workspaceId });
       options.restoreProfiles(target.nodeId);
     }
     const selected = options.workspaceTarget.value!;
@@ -116,7 +120,7 @@ export function createWorkbenchWorkspaceSelectionService(
 
     options.closeSidebar();
     options.showWorkbench();
-    options.workspaces.value = [...options.cachedWorkspaces(target.nodeId)];
+    options.replaceWorkspaces([...options.cachedWorkspaces(target.nodeId)]);
     const workspace = options.workspaces.value.find(
       (candidate) => candidate.id === target.workspaceId
     );
@@ -126,18 +130,15 @@ export function createWorkbenchWorkspaceSelectionService(
     if (!options.isHostAvailable(target.nodeId)) {
       options.stopWatch();
       options.deactivateCache();
-      options.workspaces.value = [];
-      options.sessions.value = [];
-      options.selectedSessionId.value = undefined;
-      options.selectedRunId.value = undefined;
+      options.replaceWorkspaces([]);
+      options.replaceSessions([]);
+      options.setSelectedSessionId(undefined);
       options.clearContent();
-      options.manifest.value = undefined;
-      options.manifestLoading.value = false;
+      options.selectManifestNode();
       return true;
     }
 
-    options.manifest.value = options.restoreManifest(target.nodeId);
-    options.manifestLoading.value = options.manifest.value === undefined;
+    options.selectManifestNode(target.nodeId);
     const cache = options.viewCache(target.nodeId, target.workspaceId);
     const restoreView = switching || !options.isCacheActive(target.nodeId, target.workspaceId);
     if (restoreView) {
@@ -145,7 +146,7 @@ export function createWorkbenchWorkspaceSelectionService(
       options.restoreWorkspaceView(target.nodeId, target.workspaceId);
       if (cache.files !== undefined || cache.git !== undefined)
         options.refreshVisibleTool(target.nodeId, target.workspaceId);
-      options.sessions.value = [...cache.sessions];
+      options.replaceSessions(cache.sessions);
       options.restoreDraft(cache);
     }
     options.initializePaging(options.tabId(target.nodeId, target.workspaceId));
@@ -197,7 +198,7 @@ export function createWorkbenchWorkspaceSelectionService(
         );
         return;
       }
-      options.workspaces.value = [...result.workspaces];
+      options.replaceWorkspaces([...result.workspaces]);
       options.rememberWorkspace(target.nodeId, workspace);
       if (startWatch) void options.startWatch(target.workspaceId);
     } catch (error) {
@@ -225,4 +226,21 @@ export function createWorkbenchWorkspaceSelectionService(
   }
 
   return { select, clear, loading, currentSelectionRevision: () => selectionRevision };
+}
+
+/** A workspace selection owns its target before its cross-domain ports are connected. */
+export function createWorkbenchWorkspaceSelection() {
+  const state = createWorkbenchWorkspaceSelectionState();
+  return {
+    target: state.target,
+    connect(
+      options: Omit<WorkbenchWorkspaceSelectionOptions, 'workspaceTarget' | 'setWorkspaceTarget'>
+    ) {
+      return createWorkbenchWorkspaceSelectionService({
+        ...options,
+        workspaceTarget: state.target,
+        setWorkspaceTarget: state.setTarget
+      });
+    }
+  };
 }

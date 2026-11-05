@@ -105,6 +105,40 @@ for (const theme of ['daylight', 'dark', 'custom']) {
   });
 }
 
+for (const locale of ['en-US', 'zh-CN']) {
+  test(`Standalone HTML reports a missing file with diagnostics in ${locale}`, async ({ page }) => {
+    await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
+    await page.route('**/api/html-preview/grants', (route) =>
+      route.fulfill({
+        status: 404,
+        json: {
+          error: {
+            code: 'FILE_NOT_FOUND',
+            message: 'File not found.',
+            details: 'Missing HTML document.',
+            requestId: 'preview-request',
+            upstreamRequestId: 'node-request'
+          }
+        }
+      })
+    );
+    await page.goto(
+      `${fixture.url}standalone-preview.html?htmlPreview=1&nodeId=node&workspaceId=workspace&path=missing.html`
+    );
+    const failure = page.locator('.standalone-error');
+    await expect(failure).toContainText(locale === 'zh-CN' ? '文件不存在。' : 'File not found.');
+    for (const fact of [
+      'FILE_NOT_FOUND',
+      'Missing HTML document.',
+      'preview-request',
+      'node-request'
+    ])
+      await expect(failure).toContainText(fact);
+    await expect(failure).toHaveCSS('white-space', 'pre-wrap');
+    await expect(page.locator('iframe')).toHaveCount(0);
+  });
+}
+
 test('Standalone preview errors remain readable on the light surface', async ({ page }) => {
   await page.goto(`${fixture.url}standalone-preview.html?markdownPreview=1`);
   await expect(page.locator('.standalone-error')).toBeVisible();

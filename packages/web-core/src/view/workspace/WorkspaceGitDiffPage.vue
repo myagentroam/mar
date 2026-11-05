@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { filePreviewErrorSummary } from '../../util/error-presentation.js';
 import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 import type { FileNavigationRequest } from './CodeFileEditor.vue';
 import GitDiffViewer from './GitDiffViewer.vue';
@@ -18,7 +19,6 @@ const emit = defineEmits<{
   moveFile: [direction: -1 | 1];
   preview: [diff: unknown];
   edit: [];
-  loadError: [error: unknown];
   navigateSymbol: [symbol: string];
   navigateFile: [request: FileNavigationRequest];
 }>();
@@ -33,7 +33,7 @@ const viewer = ref<{
   canClose(): Promise<boolean>;
 }>();
 const loading = ref(false);
-const loadFailed = ref(false);
+const loadError = shallowRef<unknown>();
 watch(
   () => [props.active, diff.value],
   () => {
@@ -56,15 +56,14 @@ async function load(): Promise<void> {
   controller = new AbortController();
   const generation = ++requestGeneration;
   diff.value = undefined;
-  loadFailed.value = false;
+  loadError.value = undefined;
   loading.value = true;
   try {
     const nextDiff = await props.load(props.tab, controller.signal);
     if (generation === requestGeneration) diff.value = nextDiff;
   } catch (error) {
     if (generation === requestGeneration) {
-      loadFailed.value = true;
-      emit('loadError', error);
+      loadError.value = error;
     }
   } finally {
     if (generation === requestGeneration) loading.value = false;
@@ -101,7 +100,10 @@ defineExpose({
     :diff="diff"
     :embedded="true"
     @pointerup="props.active && !loading && emit('viewed')"
-    :load-failed="loadFailed"
+    :load-failed="loadError !== undefined"
+    :load-error-message="
+      loadError === undefined ? undefined : filePreviewErrorSummary(loadError, props.tab.path)
+    "
     :loading="loading"
     :path="props.tab.path"
     :paths="props.tab.paths ?? [props.tab.path]"

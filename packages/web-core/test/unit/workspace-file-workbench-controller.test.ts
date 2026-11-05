@@ -1,5 +1,6 @@
+import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { expect, it, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
 import { filePreviewKind } from '../../src/util/file-preview.js';
 import { standaloneFileOpenIntent } from '../../src/service/standalone-file-window-service.js';
@@ -29,10 +30,8 @@ it.each([
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: {
+      access: createFileAccessFixture({
         http,
-        onFailure: vi.fn(),
-        onWritten: vi.fn(),
         transfers: () => ({
           directFileReadRange: async () => ({
             bytes,
@@ -42,7 +41,8 @@ it.each([
             revision: 'r'
           })
         })
-      },
+      }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     try {
@@ -95,12 +95,11 @@ it.each([false, true])(
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: {
+      access: createFileAccessFixture({
         http,
-        onFailure: vi.fn(),
-        onWritten: vi.fn(),
         transfers: () => ({ directFileReadRange: range, directGitFileReadRange: range })
-      },
+      }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     try {
@@ -165,10 +164,8 @@ it('opens previews independently of a slow reveal and prevents its late failure 
     comparison: async () => undefined,
     onOpenFailure: vi.fn(),
     onRevealFailure,
-    preview: {
+    access: createFileAccessFixture({
       http,
-      onFailure: vi.fn(),
-      onWritten: vi.fn(),
       transfers: () => ({
         directFileReadRange: async () => ({
           bytes,
@@ -178,7 +175,8 @@ it('opens previews independently of a slow reveal and prevents its late failure 
           revision: 'r'
         })
       })
-    },
+    }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   try {
@@ -221,12 +219,8 @@ it('shows an unknown-extension tab while its bounded content read is pending', a
     comparison: async () => undefined,
     onOpenFailure: vi.fn(),
     onRevealFailure: vi.fn(),
-    preview: {
-      http,
-      onFailure: vi.fn(),
-      onWritten: vi.fn(),
-      transfers: () => ({ directFileReadRange: read })
-    },
+    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange: read }) }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   try {
@@ -264,7 +258,8 @@ it.each(['WORKTREE_DIFF', 'HISTORY_DIFF'] as const)(
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: { http, onFailure: vi.fn(), onWritten: vi.fn(), transfers: () => ({}) },
+      access: createFileAccessFixture({ http, transfers: () => ({}) }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     try {
@@ -301,19 +296,19 @@ it('retains historical cursor location when opening and restoring a text tab', a
     comparison: async () => undefined,
     onOpenFailure: vi.fn(),
     onRevealFailure: vi.fn(),
-    preview: {
+    access: createFileAccessFixture({
       http,
-      onFailure: vi.fn(),
-      onWritten: vi.fn(),
       transfers: () => ({
         directGitFileReadRange: async () => ({
+          offset: 0,
           bytes,
           size: bytes.length,
           revision: 'a'.repeat(64),
           nextOffset: null
         })
       })
-    },
+    }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   try {
@@ -356,7 +351,8 @@ it('keeps a Git media preview scoped to its linked worktree', async () => {
     comparison: async () => undefined,
     onOpenFailure: vi.fn(),
     onRevealFailure: vi.fn(),
-    preview: { http, onFailure: vi.fn(), onWritten: vi.fn(), transfers: () => ({}) },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   try {
@@ -404,19 +400,19 @@ it.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)(
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: {
+      access: createFileAccessFixture({
         http,
-        onFailure: vi.fn(),
-        onWritten: vi.fn(),
         transfers: () => ({
           directGitFileReadRange: async () => ({
+            offset: 0,
             bytes: new Uint8Array([0]),
             size: 20,
             nextOffset: null,
             revision: 'r'
           })
         })
-      },
+      }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     const intent = {
@@ -487,21 +483,21 @@ it.each(['WORKTREE_DIFF', 'HISTORY_TEXT'] as const)(
         comparison: async () => undefined,
         onOpenFailure: vi.fn(),
         onRevealFailure: vi.fn(),
-        preview: {
+        access: createFileAccessFixture({
           http,
-          onFailure: vi.fn(),
-          onWritten: vi.fn(),
           transfers: () => ({
             directFileObjectUrl: readObject,
             directGitFileObjectUrl: readObject,
             directGitFileReadRange: async () => ({
+              offset: 0,
               bytes: new Uint8Array([0]),
               size: 20,
               nextOffset: null,
               revision: 'r'
             })
           })
-        },
+        }),
+        preview: { onWritten: vi.fn() },
         navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
       });
       const intent = (path: string) => ({
@@ -561,19 +557,19 @@ it.each([
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: {
+      access: createFileAccessFixture({
         http,
-        onFailure: vi.fn(),
-        onWritten: vi.fn(),
         transfers: () => ({
           directGitFileReadRange: async () => ({
+            offset: 0,
             bytes: new Uint8Array([0]),
             size: 20,
             nextOffset: null,
             revision: 'revision'
           })
         })
-      },
+      }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     try {
@@ -650,7 +646,8 @@ it('uses one navigation entry for same-page positions and cross-file targets', a
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => port,
-    preview: { http, transfers: () => ({}), onFailure: vi.fn(), onWritten: vi.fn() },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFailure: vi.fn(), onFileTarget: vi.fn() }
   });
   try {
@@ -708,7 +705,8 @@ it('owns external file, Git and HTML window intents with live target and write c
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => undefined,
-    preview: { http, transfers: () => ({}), onFailure: vi.fn(), onWritten: vi.fn() },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFailure: vi.fn(), onFileTarget: vi.fn() }
   });
   try {
@@ -793,7 +791,8 @@ it.each(['new open', 'new snapshot', 'closed tab'] as const)(
       onRevealFailure: vi.fn(),
       comparison: async () => undefined,
       page: () => port,
-      preview: { http, transfers: () => ({}), onFailure: vi.fn(), onWritten: vi.fn() },
+      access: createFileAccessFixture({ http, transfers: () => ({}) }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     const tabs = createWorkspaceFileTabService();
@@ -872,7 +871,8 @@ it('owns file navigation independently of tool visibility and removes closed loc
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => page,
-    preview: { http, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: () => {} },
     navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
   });
   const intent = {
@@ -920,12 +920,8 @@ it('releases an in-flight preview when its confirmed tab closes', async () => {
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => undefined,
-    preview: {
-      http,
-      transfers: () => ({ directFileReadRange }),
-      onFailure: () => {},
-      onWritten: () => {}
-    },
+    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange }) }),
+    preview: { onWritten: () => {} },
     navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
   });
   const target = { nodeId: 'n', workspaceId: 'w', path: 'a.txt' };
@@ -965,7 +961,8 @@ it('does not deliver deferred navigation to a replacement page or tab', async ()
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => page,
-    preview: { http, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: () => {} },
     navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
   });
   const intent = {
@@ -1004,7 +1001,8 @@ it('does not reopen an old comparison after a newer file intent', async () => {
         finish = resolve;
       }),
     page: () => undefined,
-    preview: { http, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: () => {} },
     navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
   });
   const intent = {
@@ -1054,10 +1052,8 @@ it.each(['target', 'failure'] as const)(
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
-      preview: {
+      access: createFileAccessFixture({
         http,
-        onFailure: vi.fn(),
-        onWritten: vi.fn(),
         transfers: () => ({
           directFileReadRange: async () => ({
             bytes,
@@ -1067,7 +1063,8 @@ it.each(['target', 'failure'] as const)(
             revision: 'r'
           })
         })
-      },
+      }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget, onFailure }
     });
     onFileTarget.mockImplementation((location, pageId) => {
@@ -1140,7 +1137,8 @@ it('captures dirty drafts and cursor when suspending, but refuses while saving',
       ],
       hasPendingSave: () => saving
     }),
-    preview: { http, transfers: () => ({}), onFailure: vi.fn(), onWritten: vi.fn() },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   const fixtureTabs = createWorkspaceFileTabService();
@@ -1168,6 +1166,145 @@ it('captures dirty drafts and cursor when suspending, but refuses while saving',
   expect(owner.hasSuspendedDrafts()).toBe(false);
 });
 
+it('keeps full reset semantics for target switches and explicit reset', async () => {
+  const target = ref({ nodeId: 'n', workspaceId: 'a' });
+  const http = createScopedHttpService();
+  let identity = '';
+  let path = 'a.ts';
+  const owner = createWorkspaceFileWorkbenchController({
+    externalTarget: () => target.value,
+    fileWriteEnabled: () => false,
+    onPopupBlocked: vi.fn(),
+    target: () => target.value,
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: () => undefined,
+    reveal: async () => {},
+    onOpenFailure: vi.fn(),
+    onRevealFailure: vi.fn(),
+    comparison: async () => undefined,
+    page: () => ({
+      requestCloseAll: async () => true,
+      captureDirtyDrafts: () => [
+        { tabIdentity: identity, path, content: 'unsaved', expectedRevision: 'r1' }
+      ],
+      hasPendingSave: () => false,
+      cursorPosition: () => undefined,
+      navigateTo: vi.fn(),
+      focusPage: vi.fn(() => true)
+    }),
+    access: createFileAccessFixture({
+      http,
+      transfers: () => ({
+        directFileReadRange: async () => ({
+          bytes: new TextEncoder().encode('text'),
+          size: 4,
+          offset: 0,
+          nextOffset: null,
+          revision: 'r1'
+        })
+      })
+    }),
+    preview: { onWritten: vi.fn() },
+    navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() },
+    lifecycle: {
+      ready: () => true,
+      workspaceKind: () => 'GIT_WORKSPACE',
+      isReloadingForUpdate: () => false,
+      bootstrap: {
+        authenticated: () => true,
+        hasNodes: () => true,
+        manifestLoading: () => false,
+        selectWorkspace: async () => true,
+        captureRoute: vi.fn()
+      }
+    }
+  });
+
+  try {
+    await owner.openFile(path);
+    identity = owner.activeTab.value!.identity;
+    expect(owner.suspendForHtml()).toBe(true);
+    expect(owner.hasSuspendedDrafts()).toBe(true);
+
+    target.value = { nodeId: 'n', workspaceId: 'b' };
+    await nextTick();
+    expect(owner.tabList.value).toEqual([]);
+    expect(owner.frames.value).toEqual([]);
+    expect(owner.suspended.value).toBe(false);
+    expect(owner.hasDraft(identity)).toBe(false);
+
+    path = 'b.ts';
+    await owner.openFile(path);
+    identity = owner.activeTab.value!.identity;
+    expect(owner.suspendForHtml()).toBe(true);
+    expect(owner.hasSuspendedDrafts()).toBe(true);
+    owner.reset();
+    expect(owner.tabList.value).toEqual([]);
+    expect(owner.frames.value).toEqual([]);
+    expect(owner.suspended.value).toBe(false);
+    expect(owner.hasDraft(identity)).toBe(false);
+  } finally {
+    owner.dispose();
+  }
+});
+
+it('aborts a pending preview read on dispose and ignores its late result', async () => {
+  const target = { nodeId: 'n', workspaceId: 'w' };
+  let finishRead!: (value: WorkspaceDirectFileRange) => void;
+  let readSignal: AbortSignal | undefined;
+  const pendingRead = new Promise<WorkspaceDirectFileRange>((resolve) => {
+    finishRead = resolve;
+  });
+  const directFileReadRange = vi.fn(
+    (
+      ...args: [string, number, number, string?, unknown?, string?, AbortSignal?]
+    ): Promise<WorkspaceDirectFileRange> => {
+      readSignal = args[6];
+      return pendingRead;
+    }
+  );
+  const http = createScopedHttpService();
+  const owner = createWorkspaceFileWorkbenchController({
+    externalTarget: () => target,
+    fileWriteEnabled: () => false,
+    onPopupBlocked: vi.fn(),
+    target: () => target,
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: () => undefined,
+    reveal: async () => {},
+    onOpenFailure: vi.fn(),
+    onRevealFailure: vi.fn(),
+    comparison: async () => undefined,
+    page: () => undefined,
+    access: createFileAccessFixture({ http, transfers: () => ({ directFileReadRange }) }),
+    preview: { onWritten: vi.fn() },
+    navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
+  });
+  let disposed = false;
+
+  try {
+    const opening = owner.openFile('pending.ts');
+    await vi.waitFor(() => expect(readSignal).toBeDefined());
+    const frame = owner.frames.value[0]!;
+    owner.dispose();
+    disposed = true;
+    expect(readSignal?.aborted).toBe(true);
+
+    finishRead({
+      bytes: new Uint8Array([108, 97, 116, 101]),
+      size: 4,
+      offset: 0,
+      nextOffset: null,
+      revision: 'r1'
+    });
+    await opening;
+    expect(frame.fileContent.value?.content).toBe('');
+    expect(frame.loading.value).toBe(false);
+  } finally {
+    if (!disposed) owner.dispose();
+  }
+});
+
 it('commits confirmed closure of an unmounted dirty tab without retaining its draft', () => {
   const http = createScopedHttpService();
   const owner = createWorkspaceFileWorkbenchController({
@@ -1182,7 +1319,8 @@ it('commits confirmed closure of an unmounted dirty tab without retaining its dr
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => undefined,
-    preview: { http, transfers: () => ({}), onFailure: vi.fn(), onWritten: vi.fn() },
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   const fixtureTabs = createWorkspaceFileTabService();
@@ -1224,7 +1362,7 @@ it('restores before the page mounts and delivers only the latest ordinary open f
     onRevealFailure: vi.fn(),
     comparison: async () => undefined,
     page: () => port,
-    preview: {
+    access: createFileAccessFixture({
       http,
       transfers: () => ({
         directFileReadRange: async () => ({
@@ -1234,10 +1372,9 @@ it('restores before the page mounts and delivers only the latest ordinary open f
           bytes: new Uint8Array(),
           nextOffset: null
         })
-      }),
-      onFailure: vi.fn(),
-      onWritten: vi.fn()
-    },
+      })
+    }),
+    preview: { onWritten: vi.fn() },
     navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
   });
   const fixtureTabs = createWorkspaceFileTabService();
@@ -1302,7 +1439,7 @@ it.each(['diff', 'scoped-file'] as const)(
       onOpenFailure: vi.fn(),
       onRevealFailure: vi.fn(),
       comparison: async () => undefined,
-      preview: {
+      access: createFileAccessFixture({
         http,
         transfers: () => ({
           directFileReadRange: async () => ({
@@ -1312,10 +1449,9 @@ it.each(['diff', 'scoped-file'] as const)(
             bytes: new Uint8Array(),
             nextOffset: null
           })
-        }),
-        onFailure: vi.fn(),
-        onWritten: vi.fn()
-      },
+        })
+      }),
+      preview: { onWritten: vi.fn() },
       navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
     });
     const open = (path: string) =>

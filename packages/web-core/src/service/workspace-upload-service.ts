@@ -692,3 +692,13 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     dispose
   };
 }
+
+export interface WorkbenchUploadsView {
+  cancelWorkspaceUpload: (task: WorkspaceUploadTask) => Promise<boolean>;
+  deleteWorkspaceUpload: (task: WorkspaceUploadTask) => void;
+  recoverWorkspaceUpload: (event: Event) => void;
+  retryWorkspaceUpload: (task: WorkspaceUploadTask) => Promise<void>;
+  workspaceUploadRecoveryInput: HTMLInputElement | undefined;
+  workspaceUploadStatusLabel: (task: WorkspaceUploadTask) => string;
+  workspaceUploadTasks: WorkspaceUploadTask[];
+}

@@ -8,16 +8,8 @@ function state(
   request: ReturnType<typeof vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>>,
   onNodeConnected = vi.fn<(nodeId: string) => void>()
 ) {
-  const manifest = ref<NodeWorkbenchManifest>();
-  const manifestLoading = ref(false);
-  const serverVersion = ref('');
   const selectedNodeId = ref<string | undefined>('node');
-  const nodes = ref<NodeSummary[]>([]);
   const service = createWorkbenchCapabilityService({
-    nodes,
-    manifest,
-    manifestLoading,
-    serverVersion,
     workspaceTarget: workspaceTargetRef(selectedNodeId),
     onNodeConnected,
     request: async <T>(path: string, init?: RequestInit) => (await request(path, init)) as T,
@@ -26,11 +18,11 @@ function state(
   });
   return {
     service,
-    nodes,
+    nodes: service.nodes,
     onNodeConnected,
-    manifest,
-    manifestLoading,
-    serverVersion,
+    manifest: service.manifest,
+    manifestLoading: service.manifestLoading,
+    serverVersion: service.serverVersion,
     selectedNodeId
   };
 }
@@ -49,11 +41,12 @@ describe('Public workbench capabilities', () => {
       disabled: false,
       capabilities: {}
     };
-    const request = vi.fn().mockResolvedValue({
-      nodes: [node]
-    });
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ nodes: [{ ...node, connected: false }] })
+      .mockResolvedValue({ nodes: [node] });
     const current = state(request);
-    current.nodes.value = [{ ...node, connected: false }];
+    await current.service.refreshNodes();
 
     await current.service.refreshNodes();
     expect(current.nodes.value[0]).toMatchObject({ connected: true, nodeAppVersion: '0.9.73' });
@@ -92,7 +85,7 @@ describe('Public workbench capabilities', () => {
     request.mockResolvedValueOnce({ manifest: other });
     await current.service.refreshNodeManifest('other');
     current.selectedNodeId.value = 'node';
-    current.manifest.value = current.service.restoreNodeManifest('node');
+    current.service.selectNode('node');
     expect(current.manifest.value).toEqual(first);
     request.mockImplementationOnce(
       () =>
@@ -195,8 +188,13 @@ describe('Public workbench capabilities', () => {
   });
 
   it('settles the current failed manifest request without stale capabilities', async () => {
-    const current = state(vi.fn().mockRejectedValue(new Error('offline')));
-    current.manifest.value = { manifestVersion: 1 } as NodeWorkbenchManifest;
+    const current = state(
+      vi
+        .fn()
+        .mockResolvedValueOnce({ manifest: { manifestVersion: 1 } })
+        .mockRejectedValue(new Error('offline'))
+    );
+    await current.service.refreshNodeManifest('node');
     await current.service.refreshNodeManifest('node');
     expect(current.manifest.value).toBeUndefined();
     expect(current.manifestLoading.value).toBe(false);

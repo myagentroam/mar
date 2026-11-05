@@ -29,6 +29,174 @@ async function expectUnclippedDetail(content: Locator) {
     .toBe(true);
 }
 
+test('replaces only the current process task snapshot and keeps other processes after reopening', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&task-snapshots`);
+  const first = page.locator('[data-process-id="process"]');
+  const second = page.locator('[data-process-id="other-process"]');
+  for (const process of [first, second]) {
+    const heading = process.locator('.process-heading');
+    if ((await heading.getAttribute('aria-expanded')) === 'false') await heading.click();
+  }
+  await expect(first.locator('.task-list')).toHaveCount(1);
+  await expect(first.locator('.task-list')).toContainText('Initial task snapshot');
+  await expect(second.locator('.task-list')).toContainText('Separate process task');
+  await first.locator('.task-list > summary').click();
+  await expect(first.getByText('Initial task snapshot', { exact: true })).toBeHidden();
+  await page.getByTestId('append-task-snapshot').click();
+  await expect(first.locator('.task-list')).toHaveCount(1);
+  await expect(first.locator('.task-list')).toContainText('Latest task snapshot');
+  await expect(first.getByText('Latest task snapshot', { exact: true })).toBeVisible();
+  await expect(first).not.toContainText('Initial task snapshot');
+  await expect(second.locator('.task-list')).toContainText('Separate process task');
+  await first.locator('.process-heading').click();
+  await expect(first.locator('.task-list')).toHaveCount(0);
+  await first.locator('.process-heading').click();
+  await expect(first.locator('.task-list')).toHaveCount(1);
+  await expect(first.locator('.task-list')).toContainText('Latest task snapshot');
+  await expect(first).not.toContainText('Initial task snapshot');
+});
+
+for (const [width, theme, locale] of [
+  [1280, 'daylight', 'en-US'],
+  [390, 'dark', 'en-US'],
+  [1280, 'dark', 'zh-CN'],
+  [390, 'daylight', 'zh-CN']
+] as const) {
+  test(`task and file lists share compact borderless rows and equal tags at ${width}px in ${locale}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&list-layout&theme=${theme}&locale=${locale}`
+    );
+    const process = page.locator('[data-process-id="process"]');
+    await process.locator('.process-heading').click();
+    await process.locator('.conversation-file-change-details > summary').click();
+    const tasks = process.locator('.task-list-items');
+    const files = process.locator('.conversation-file-change-list');
+    await expect(tasks.locator('li')).toHaveCount(3);
+    await expect(files.locator('li')).toHaveCount(6);
+    await expect(tasks.locator('.task-list-status')).toHaveText(
+      locale === 'en-US' ? ['To-do', 'In progress', 'Done'] : ['待办', '进行中', '已完成']
+    );
+    await expect(files.locator('.conversation-file-change-status')).toHaveText(
+      locale === 'en-US'
+        ? ['Added', 'Modified', 'Deleted', 'Renamed', 'Copied', 'Type changed']
+        : ['新增', '修改', '删除', '重命名', '复制', '类型变更']
+    );
+    await expect(tasks).toHaveCSS(
+      'row-gap',
+      await files.evaluate((element) => getComputedStyle(element).rowGap)
+    );
+    await expect(tasks).toHaveCSS('border-top-width', '0px');
+    for (const row of await tasks.locator('li').all())
+      await expect(row).toHaveCSS('border-bottom-width', '0px');
+    const markers = process.locator('.task-list-status, .conversation-file-change-status');
+    await expect(markers).toHaveCount(9);
+    const sizes = await markers.evaluateAll((elements) =>
+      elements.map((element) => ({
+        width: element.getBoundingClientRect().width,
+        clipped: element.scrollWidth > element.clientWidth + 1
+      }))
+    );
+    expect(sizes.every((size) => Math.abs(size.width - sizes[0]!.width) < 0.5)).toBe(true);
+    expect(sizes.some((size) => size.clipped)).toBe(false);
+    for (const list of [tasks, files]) {
+      const bounds = await list.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      await expect
+        .poll(() => list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+        .toBe(true);
+    }
+    await process.screenshot({
+      path: testInfo.outputPath(`task-file-lists-${width}-${locale}.png`)
+    });
+  });
+}
+
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`detail edges use container padding without losing section gaps at ${width}px ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&unified&spacing-probe&theme=${theme}`
+    );
+    const probe = page.getByTestId('spacing-probe');
+    const tools = probe.locator('.tool-content');
+    await expect(probe.locator('.generic-detail')).toHaveCount(3);
+    await expect(probe.locator('.execution-detail')).toHaveCount(3);
+    await expect(probe.locator('.skill-detail')).toHaveCount(2);
+    await expect(probe.locator('.web-detail')).toHaveCount(2);
+    await expect(probe.locator('.compact-detail')).toHaveCount(2);
+    await expect(probe.getByTestId('spacing-execution-error')).toContainText('EXEC_FAILED');
+    await expect(probe.getByTestId('spacing-skill-error')).toContainText('SKILL_FAILED');
+    for (const root of await tools.all()) {
+      const edges = await root.evaluate((element) => ({
+        name: element.parentElement?.closest('[data-testid]')?.getAttribute('data-testid'),
+        top: parseFloat(getComputedStyle(element.firstElementChild!).marginTop),
+        bottom: parseFloat(getComputedStyle(element.lastElementChild!).marginBottom)
+      }));
+      expect.soft(edges.top, `${edges.name} first content margin`).toBe(0);
+      expect.soft(edges.bottom, `${edges.name} last content margin`).toBe(0);
+    }
+    const sectionGap = await probe
+      .getByTestId('spacing-generic-sections')
+      .locator('.tool-content-section')
+      .last()
+      .evaluate((element) => parseFloat(getComputedStyle(element).marginTop));
+    expect(sectionGap).toBeGreaterThan(0);
+    const process = page.locator('.process-heading').first();
+    if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
+    const closed = page.locator('.conversation-timeline details:not([open]) > summary');
+    for (let i = 0; i < 40 && (await closed.count()); i++) await closed.first().click();
+    await expect(closed).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+    const contents = page.locator('.conversation-content-detail');
+    await expect(contents).toHaveCount(4);
+    for (const root of await contents.all()) {
+      const edges = await root.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const first = element.firstElementChild!;
+        const last = element.lastElementChild!;
+        const style = getComputedStyle(element);
+        return {
+          name: element.textContent,
+          top: first.getBoundingClientRect().top - bounds.top,
+          bottom: bounds.bottom - last.getBoundingClientRect().bottom,
+          paddingTop: parseFloat(style.paddingTop),
+          paddingBottom: parseFloat(style.paddingBottom)
+        };
+      });
+      expect
+        .soft(Math.abs(edges.top - edges.paddingTop), `${edges.name} top padding`)
+        .toBeLessThan(1);
+      expect
+        .soft(Math.abs(edges.bottom - edges.paddingBottom), `${edges.name} bottom padding`)
+        .toBeLessThan(1);
+    }
+    const plans = page.locator('.plan-step-list');
+    await expect(plans).toHaveCount(2);
+    const followingSteps = plans.filter({ hasText: 'Following step' });
+    expect(
+      await followingSteps.evaluate((element) => parseFloat(getComputedStyle(element).marginTop))
+    ).toBeGreaterThan(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`detail-edges-${width}.png`),
+      fullPage: true
+    });
+  });
+}
+
 test('updates a conditional fallback slot and does not schedule copy feedback after unmount', async ({
   page
 }) => {

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { createFileAccessFixture } from '../support/file-access-fixture.js';
+
 import { computed, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue';
 import HostedComposerGestureFixture from './hosted-composer-gesture-fixture.vue';
 import type { AgentRun, NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
@@ -173,7 +175,8 @@ const fixtureFileWorkbench = createWorkspaceFileWorkbenchController({
   onPopupBlocked: () => {},
   onOpenFailure: () => {},
   onRevealFailure: () => {},
-  preview: { http: toolHttp, transfers: () => ({}), onFailure: () => {}, onWritten: () => {} },
+  access: createFileAccessFixture({ http: toolHttp, transfers: () => ({}) }),
+  preview: { onWritten: () => {} },
   navigation: { http: toolHttp, onFileTarget: () => {}, onFailure: () => {} }
 });
 onBeforeUnmount(() => fixtureFileWorkbench.dispose());

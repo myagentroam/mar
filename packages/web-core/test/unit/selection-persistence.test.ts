@@ -46,6 +46,9 @@ function setup(sessionId: string | undefined = 'saved') {
     sessions: sessions as never,
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId: selectedSessionId as never,
+    setSelectedSessionId: (id) => {
+      selectedSessionId.value = id;
+    },
     isWorkbenchActive: () => true,
     activateWorkspace,
     synchronizeSessions: synchronizeSessions as never,

@@ -171,6 +171,99 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
+for (const [width, theme, cached] of [
+  [1280, 'daylight', false],
+  [390, 'vscode-dark-2026', true]
+] as const) {
+  test(`Hosted Watch failure stays inline and retries at ${width} in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const conversation = {
+      id: 'conversation-1',
+      nodeId: 'node-1',
+      sessionId: 'session-1',
+      templateId: template.id,
+      templateName: template.name,
+      activeVersionId: 'version-1',
+      title: 'Recoverable conversation',
+      titleSource: 'CUSTOM',
+      status: 'ACTIVE',
+      modelId: 'model-1',
+      createdAt: 1,
+      updatedAt: 1,
+      lastActivityAt: 1,
+      pinnedAt: null,
+      activity: { status: 'IDLE', version: 0, updatedAt: 0 }
+    };
+    const snapshot = {
+      nodeAppVersion: '0.11.31',
+      conversation,
+      template,
+      turns: [],
+      run: null,
+      historyNextCursor: null,
+      files: [],
+      models,
+      error: null,
+      snapshotSequence: 1
+    };
+    let initialRequests = 0;
+    let releaseRetry!: () => void;
+    const retrying = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/hosted-template-fixture/current') return route.fulfill({ json: snapshot });
+      if (path === '/api/hosted-conversations')
+        return route.fulfill({ json: { items: [conversation], nextCursor: null } });
+      if (path.endsWith('/watch')) {
+        if (route.request().method() === 'DELETE') return route.fulfill({ json: {} });
+        const body = route.request().postDataJSON();
+        if (body.mode === 'initial' && ++initialRequests === 1)
+          return route.fulfill({
+            status: 503,
+            json: {
+              error: {
+                code: 'NODE_OFFLINE',
+                message: 'Node is offline.',
+                details: 'Reconnect the Node.',
+                requestId: 'hosted-watch-request'
+              }
+            }
+          });
+        await retrying;
+        return route.fulfill({
+          json: {
+            accepted: true,
+            watchId: body.watchId,
+            nodeGeneration: 'fixture-generation',
+            expiresAt: Date.now() + 30_000
+          }
+        });
+      }
+      return route.fulfill({ json: {} });
+    });
+    await page.goto(
+      `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&watch-pending=1&theme=${theme}${cached ? '' : '&initial-empty=1'}`
+    );
+    const retry = page.locator('.conversation-reload');
+    await expect(retry).toHaveText('Failed to load. Retry');
+    await expect(retry).toHaveAttribute('aria-description', /hosted-watch-request/);
+    await expect(page.locator('.el-message')).toHaveCount(0);
+    await retry.click();
+    await expect(retry).toHaveAttribute('aria-busy', 'true');
+    await expect(retry).toBeDisabled();
+    await expect(retry.locator('.busy-indicator')).toHaveCount(1);
+    expect(initialRequests).toBe(2);
+    releaseRetry();
+    await expect(retry).toHaveCount(0);
+    await expect(page.locator('.composer-input')).not.toHaveAttribute('readonly', '');
+    await expect(page.locator('.el-message')).toHaveCount(0);
+  });
+}
+
 for (const [width, theme] of [
   [1280, 'daylight'],
   [390, 'vscode-dark-2026']

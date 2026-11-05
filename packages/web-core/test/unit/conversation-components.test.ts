@@ -1560,14 +1560,22 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       hasTurns: true,
       following: true
     });
-    const failed = await render(ConversationScroll, {
-      hasOlder: true,
-      loadingInitial: false,
-      initialLoadFailed: true,
-      loadingOlder: false,
-      hasTurns: true,
-      following: true
-    });
+    const diagnostics = 'SESSION_HISTORY_INITIAL_FAILED\nRequest ID: history-request-1';
+    const tooltipValues: unknown[] = [];
+    const failed = await render(
+      ConversationScroll,
+      {
+        hasOlder: true,
+        loadingInitial: false,
+        initialLoadFailed: true,
+        initialError: diagnostics,
+        loadingOlder: false,
+        hasTurns: true,
+        following: true
+      },
+      undefined,
+      tooltipValues
+    );
 
     expect(loading).toContain(
       i18n.global.t('generated.conversationScroll.loadingConversationHistory')
@@ -1578,6 +1586,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
     expect(loading).not.toContain(i18n.global.t('common.loadFailedRetry'));
     expect(failed).toContain(i18n.global.t('common.loadFailedRetry'));
+    expect(failed).toContain(`aria-description="${diagnostics}"`);
+    expect(tooltipValues).toContain(diagnostics);
     expect(failed).not.toContain(i18n.global.t('generated.conversationScroll.loadEarlierMessages'));
   });
 
@@ -1626,7 +1636,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       following: false,
       olderError: 'PAGE_FAILED <details>'
     });
-    expect(html).not.toContain('PAGE_FAILED');
+    expect(html).toContain('aria-description="PAGE_FAILED &lt;details&gt;"');
+    expect(html).not.toContain('<details>');
     expect(html).toContain(i18n.global.t('common.loadFailedRetry'));
     expect(html).not.toContain(
       i18n.global.t('generated.conversationScroll.reloadConversationHistory')

@@ -172,6 +172,101 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
   });
 }
 
+test('Workspace snapshots and repeated searches keep loaded rows mounted and preserve list scroll', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const items = Array.from({ length: 45 }, (_, index) =>
+    session(
+      index === 0 ? 'session-1' : `session-${index + 1}`,
+      `Loaded session ${index}`,
+      1000 - index
+    )
+  );
+  let holdRebase = false;
+  let rebaseRequested = false;
+  let holdSearch = false;
+  let searchRequested = false;
+  let releaseRebase!: () => void;
+  let releaseSearch!: () => void;
+  const rebaseGate = new Promise<void>((resolve) => (releaseRebase = resolve));
+  const searchGate = new Promise<void>((resolve) => (releaseSearch = resolve));
+  await page.route(/\/api\/agent-sessions\?nodeId=node-1(?:&.*)?$/, async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.has('query')) {
+      if (holdSearch) {
+        searchRequested = true;
+        await searchGate;
+      }
+      return json(route, { sessions: items.slice(0, 2), nextCursor: null });
+    }
+    const offset = Number(query.get('cursor') ?? 0);
+    if (offset > 0 && holdRebase) {
+      rebaseRequested = true;
+      await rebaseGate;
+    }
+    const end = Math.min(items.length, offset + Number(query.get('limit') ?? 30));
+    return json(route, {
+      sessions: items.slice(offset, end),
+      nextCursor: end < items.length ? String(end) : null
+    });
+  });
+  try {
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    const rows = page.locator('.session-list .session-link');
+    const list = page.locator('.session-list');
+    await expect(rows).toHaveCount(30);
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(rows).toHaveCount(45);
+    const retainedRow = await rows.nth(35).elementHandle();
+    const scrollTop = await list.evaluate((element) => {
+      element.scrollTop = 200;
+      return element.scrollTop;
+    });
+    holdRebase = true;
+    await emitMockWorkspaceSnapshot(page, 'sessions', {
+      sessions: items.slice(0, 30),
+      nextCursor: '30'
+    });
+    await expect.poll(() => rebaseRequested).toBe(true);
+    await expect(rows).toHaveCount(45);
+    expect(await retainedRow!.evaluate((element) => element.isConnected)).toBe(true);
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+    releaseRebase();
+    await expect(page.locator('.session-list .list-append-state')).toHaveCount(0);
+    await expect(rows).toHaveCount(45);
+    expect(await retainedRow!.evaluate((element) => element.isConnected)).toBe(true);
+
+    const search = page.locator('.session-search input');
+    await search.fill('Loaded');
+    await search.press('Enter');
+    await expect(rows).toHaveCount(2);
+    const retainedMatch = await rows.first().elementHandle();
+    holdSearch = true;
+    await search.press('Enter');
+    await expect.poll(() => searchRequested).toBe(true);
+    await expect(rows).toHaveCount(2);
+    expect(await retainedMatch!.evaluate((element) => element.isConnected)).toBe(true);
+    releaseSearch();
+    await expect(page.locator('.session-search-button')).toBeEnabled();
+    await expect(rows).toHaveCount(2);
+    expect(await retainedMatch!.evaluate((element) => element.isConnected)).toBe(true);
+  } finally {
+    releaseRebase();
+    releaseSearch();
+  }
+});
+
 test('Hosted session activity moves keyed history cards and filtering stays static', async ({
   page
 }) => {
