@@ -113,6 +113,14 @@ export const filePreviewZhCN = {
     watermarkRequired: '启用水印时请输入水印文本。'
   },
   htmlPreview: {
+    browser: '浏览器',
+    preview: '预览',
+    empty: '从会话或文件中打开 HTML 文件，即可在此预览。',
+    reload: '重新加载',
+    source: '打开源码',
+    external: '在浏览器中打开',
+    savedVersion: '预览显示已保存的版本。',
+    saving: '请等待文件保存完成后再预览。',
     open: '运行 HTML 预览',
     trustedWarning:
       '受信任代码：此 HTML 与控制台共用主机名，可能使用当前登录权限并将文件发送到外部站点。',

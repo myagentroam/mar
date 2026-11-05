@@ -20,6 +20,7 @@ import {
 } from '../../service/workspace-content-search-service.js';
 import {
   computed,
+  inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -87,6 +88,8 @@ import type {
 } from '../../model/workspace-file-preview.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
+import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
+import { confirmDiscardFileDraft } from '../../service/file-draft-confirm-service.js';
 import type {
   WorkspaceFileOpenIntent,
   WorkspaceFileTab,
@@ -227,6 +230,7 @@ const emit = defineEmits<{
   workspace: [value: WorkspaceFileTreeWorkspace];
   directory: [path: string];
   retryWatch: [];
+  openHtmlPreview: [path: string];
   uploads: [
     value: readonly {
       readonly file: File;
@@ -240,6 +244,8 @@ const http = createScopedHttpService({
   renewCsrfToken: props.renewCsrfToken
 });
 const standaloneFileWindow = createStandaloneFileWindowService();
+const pwaApplication = inject(PWA_APPLICATION_SERVICE_KEY, undefined);
+const fileWindowSuspended = ref(false);
 const workspaceFileTabService = createWorkspaceFileTabService();
 const fileNavigationHistory = createWorkspaceFileNavigationHistoryService();
 let fileOpenGeneration = 0;
@@ -254,6 +260,7 @@ const canGoFileForward = computed(() => {
 });
 const workspaceFileTabsRef = ref<{
   captureDirtyDrafts(): readonly unknown[];
+  hasPendingSave(): boolean;
   cursorPosition(id: number): { readonly line: number; readonly column: number } | undefined;
   navigateTo(id: number, line: number, column?: number): void;
   focusPage(id: number): void;
@@ -804,8 +811,10 @@ function openWorkspaceFile(
   worktreePath?: string,
   stacked = false,
   column?: number,
-  repositoryPath?: string
+  repositoryPath?: string,
+  showWindow = true
 ): Promise<void> {
+  if (showWindow) fileWindowSuspended.value = false;
   const name = path.split('/').at(-1) ?? path;
   return open(
     { path, name, kind: 'FILE', size: null },
@@ -820,6 +829,7 @@ function openWorkspaceFile(
 }
 
 async function openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void> {
+  fileWindowSuspended.value = false;
   if (
     usesRawFilePreview(intent.path) &&
     (intent.kind === 'WORKTREE_DIFF' ||
@@ -895,6 +905,7 @@ async function openFile(path: string, line?: number, column?: number): Promise<v
     }
     if (generation !== inspectorGeneration || navigation !== fileOpenGeneration) return;
   }
+  fileWindowSuspended.value = false;
   if (props.asideTool === undefined) activeSection.value = 'files';
   const existing = filePageFrames.value.find(
     (preview) =>
@@ -902,8 +913,8 @@ async function openFile(path: string, line?: number, column?: number): Promise<v
   );
   if (existing !== undefined) {
     workspaceFileTabService.activate(existing.id);
-    existing.targetLine.value = line;
-    existing.targetColumn.value = column;
+    if (line !== undefined) existing.targetLine.value = line;
+    if (column !== undefined) existing.targetColumn.value = column;
   }
   const opening =
     existing === undefined
@@ -1010,6 +1021,16 @@ function openCurrentRenderedPreview(): boolean {
   const preview = isMarkdownFile(path) ? 'markdown' : isHtmlFile(path) ? 'html' : undefined;
   if (preview === undefined || activePreview.value?.repositoryPath !== undefined) return false;
   if (preview === 'html' && activePreview.value?.worktreePath.value !== undefined) return false;
+  if (
+    preview === 'html' &&
+    props.standaloneFileMode !== true &&
+    (path.startsWith('/') || /^[a-z]:[\\/]/i.test(path) || path.split(/[\\/]/).includes('..'))
+  )
+    return false;
+  if (preview === 'html' && props.standaloneFileMode !== true) {
+    suspendFileWindowForHtml(path);
+    return true;
+  }
   openWorkspaceFileExternal(
     path,
     previewTargetLine.value,
@@ -1019,6 +1040,49 @@ function openCurrentRenderedPreview(): boolean {
     activePreview.value?.repositoryPath
   );
   return true;
+}
+
+function suspendFileWindowForHtml(path: string): void {
+  if (!ready.value) {
+    emit(
+      'notice',
+      translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
+      'error'
+    );
+    return;
+  }
+  if (workspaceFileTabsRef.value?.hasPendingSave()) {
+    emit('notice', translate('htmlPreview.saving'), 'info');
+    return;
+  }
+  for (const draft of workspaceFileTabsRef.value?.captureDirtyDrafts() ?? [])
+    if (isDirtyTextDraft(draft)) restoredDirtyDrafts.set(draft.tabIdentity, draft);
+  for (const preview of filePageFrames.value) {
+    const position = workspaceFileTabsRef.value?.cursorPosition(preview.id);
+    if (position !== undefined) {
+      preview.targetLine.value = position.line;
+      preview.targetColumn.value = position.column;
+    }
+  }
+  fileOpenGeneration += 1;
+  fileWindowSuspended.value = true;
+  emit('openHtmlPreview', path);
+}
+
+async function canCloseUnmountedTab(id: number): Promise<boolean> {
+  const tab = workspaceFileTabService.tabs.value.find((item) => item.id === id);
+  return tab === undefined || !restoredDirtyDrafts.has(tab.identity) || confirmDiscardFileDraft();
+}
+
+function protectSuspendedDrafts(event: BeforeUnloadEvent): void {
+  if (
+    !fileWindowSuspended.value ||
+    restoredDirtyDrafts.size === 0 ||
+    pwaApplication?.isReloadingForUpdate()
+  )
+    return;
+  event.preventDefault();
+  event.returnValue = '';
 }
 
 function childPath(directory: string, name: string): string {
@@ -1090,6 +1154,7 @@ async function onFileTreeAction(
   action:
     | 'OPEN'
     | 'OPEN_EXTERNAL'
+    | 'PREVIEW_HTML'
     | 'CREATE_FILE'
     | 'CREATE_DIRECTORY'
     | 'DOWNLOAD'
@@ -1110,6 +1175,10 @@ async function onFileTreeAction(
     }
     if (action === 'OPEN_EXTERNAL') {
       openWorkspaceFileExternal(node.path);
+      return;
+    }
+    if (action === 'PREVIEW_HTML') {
+      emit('openHtmlPreview', node.path);
       return;
     }
     if (action === 'COPY_PATH') {
@@ -1266,6 +1335,7 @@ interface WorkspaceInspectorSnapshot extends WorkspaceGitSnapshot {
   readonly contentSearchTruncated: boolean;
   readonly fileTabs: WorkspaceFileTabsSnapshot;
   readonly dirtyTextDrafts: readonly DirtyTextDraft[];
+  readonly fileWindowSuspended?: boolean;
 }
 
 let pendingWorkspaceRestore:
@@ -1283,6 +1353,18 @@ function snapshot(): WorkspaceInspectorSnapshot {
   for (const draft of workspaceFileTabsRef.value?.captureDirtyDrafts() ?? []) {
     if (isDirtyTextDraft(draft)) drafts.set(draft.tabIdentity, draft);
   }
+  const fileTabs = workspaceFileTabService.snapshot();
+  const tabs = fileTabs.tabs.map((tab) => {
+    const preview = filePageFrames.value.find((item) => item.id === tab.id);
+    const position = workspaceFileTabsRef.value?.cursorPosition(tab.id);
+    const line = position?.line ?? preview?.targetLine.value;
+    const column = position?.column ?? preview?.targetColumn.value;
+    return {
+      ...tab,
+      ...(line === undefined ? {} : { targetLine: line }),
+      ...(column === undefined ? {} : { targetColumn: column })
+    };
+  });
   return {
     activeSection: activeSection.value,
     fileTree: fileTree.snapshot(),
@@ -1293,8 +1375,9 @@ function snapshot(): WorkspaceInspectorSnapshot {
     contentMatches: [...contentMatches.value],
     contentSearchTruncated: contentSearchTruncated.value,
     ...git.snapshot(),
-    fileTabs: workspaceFileTabService.snapshot(),
-    dirtyTextDrafts: [...drafts.values()]
+    fileTabs: { ...fileTabs, tabs },
+    dirtyTextDrafts: [...drafts.values()],
+    fileWindowSuspended: fileWindowSuspended.value
   };
 }
 
@@ -1310,6 +1393,7 @@ function restore(snapshot: unknown): void {
     return;
   if (typeof value.fileTree !== 'object' || value.fileTree === null) return;
   inspectorGeneration += 1;
+  fileWindowSuspended.value = value.fileWindowSuspended === true;
   activeSection.value =
     ((value.activeSection === 'changes' || value.activeSection === 'history') &&
       props.workspaceKind !== 'GIT_WORKSPACE') ||
@@ -1386,29 +1470,34 @@ function isDirtyTextDraft(value: unknown): value is DirtyTextDraft {
 }
 
 async function restoreWorkspaceFileTabs(): Promise<void> {
-  const activeIdentity = workspaceFileTabService.activeTab.value?.identity;
+  const generation = inspectorGeneration;
   for (const tab of workspaceFileTabService.tabs.value) {
+    if (generation !== inspectorGeneration) return;
+    if (!workspaceFileTabService.tabs.value.some((current) => current.id === tab.id)) continue;
+    const activeId = workspaceFileTabService.activeTabId.value;
+    let opening: Promise<void>;
     if (tab.kind === 'WORKTREE_TEXT' || tab.kind === 'WORKTREE_PREVIEW') {
-      await openWorkspaceFile(
+      opening = openWorkspaceFile(
         tab.path,
         tab.targetLine,
         tab.worktreePath === '' ? undefined : tab.worktreePath,
         true,
         tab.targetColumn,
-        tab.gitFile ? tab.repositoryPath : undefined
+        tab.gitFile ? tab.repositoryPath : undefined,
+        false
       );
-      continue;
-    }
-    if (tab.kind !== 'HISTORY_TEXT' || tab.commit === undefined) continue;
-    const { previousPath: _previousPath, ...historyText } = tab;
-    await openHistoryText({
-      ...historyText,
-      kind: 'HISTORY_DIFF',
-      paths: [tab.path]
-    });
+    } else if (tab.kind === 'HISTORY_TEXT' && tab.commit !== undefined) {
+      const { previousPath: _previousPath, ...historyText } = tab;
+      opening = openHistoryText({
+        ...historyText,
+        kind: 'HISTORY_DIFF',
+        paths: [tab.path]
+      });
+    } else continue;
+    // Restoring content must not turn background loads into navigation.
+    if (activeId !== undefined) workspaceFileTabService.activate(activeId);
+    await opening;
   }
-  const active = workspaceFileTabService.tabs.value.find((tab) => tab.identity === activeIdentity);
-  if (active !== undefined) workspaceFileTabService.activate(active.id);
 }
 
 defineExpose({
@@ -1500,6 +1589,8 @@ function activateFilePreview(id: number): void {
 }
 
 function removeWorkspaceFileTab(id: number): void {
+  const tab = workspaceFileTabService.tabs.value.find((item) => item.id === id);
+  if (tab !== undefined) restoredDirtyDrafts.delete(tab.identity);
   const preview = filePageFrames.value.find((candidate) => candidate.id === id);
   if (preview !== undefined) {
     closeFilePreview(preview);
@@ -1811,6 +1902,8 @@ function resetGitState(): void {
 
 function reset(): void {
   inspectorGeneration += 1;
+  fileWindowSuspended.value = false;
+  restoredDirtyDrafts.clear();
   closeAllFilePreviews();
   workspaceFileTabService.clear();
   appliedFilesWatchRevision = -1;
@@ -1900,11 +1993,13 @@ function appliedWatchRevision(revision: number | undefined): number {
 }
 watch(() => props.subscriptionSnapshot, applySubscriptionSnapshot);
 onMounted(() => {
+  window.addEventListener('beforeunload', protectSuspendedDrafts);
   reset();
   applySubscriptionSnapshot();
   syncAsideTool();
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', protectSuspendedDrafts);
   inspectorDisposed = true;
   inspectorGeneration += 1;
   fileTree.reset();
@@ -2248,13 +2343,14 @@ onBeforeUnmount(() => filePreviews.reset());
   </Teleport>
   <Teleport to="body">
     <WorkspaceFileTabs
-      v-if="workspaceFileTabs.length > 0"
+      v-if="workspaceFileTabs.length > 0 && !fileWindowSuspended"
       ref="workspaceFileTabsRef"
       :tabs="workspaceFileTabs"
       :presentation="standaloneFileMode ? 'window' : 'overlay'"
       :active-tab-id="activeWorkspaceFileTabId"
       :can-go-back="canGoFileBack"
       :can-go-forward="canGoFileForward"
+      :can-close-unmounted-tab="canCloseUnmountedTab"
       @back="travelFileNavigation(-1)"
       @forward="travelFileNavigation(1)"
       @activate="activateWorkspaceFileTab"
@@ -2287,6 +2383,10 @@ onBeforeUnmount(() => filePreviews.reset());
             preview.repositoryPath === undefined &&
             preview.worktreePath.value === undefined &&
             preview.fileContent.value.encoding === 'utf-8' &&
+            (standaloneFileMode ||
+              (!preview.fileContent.value.path.startsWith('/') &&
+                !/^[a-z]:[\\/]/i.test(preview.fileContent.value.path) &&
+                !preview.fileContent.value.path.split(/[\\/]/).includes('..'))) &&
             isHtmlFile(preview.fileContent.value.path)
           "
           :write-enabled="previewFileWriteEnabled(preview)"
@@ -2318,7 +2418,14 @@ onBeforeUnmount(() => filePreviews.reset());
             )
           "
           @open-html-preview="
-            openWorkspaceFileExternal(preview.fileContent.value.path, undefined, undefined, 'html')
+            standaloneFileMode
+              ? openWorkspaceFileExternal(
+                  preview.fileContent.value.path,
+                  undefined,
+                  undefined,
+                  'html'
+                )
+              : suspendFileWindowForHtml(preview.fileContent.value.path)
           "
           @navigate-symbol="navigateSymbol"
           @navigate-file="navigateFile"

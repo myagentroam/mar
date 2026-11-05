@@ -13,6 +13,7 @@ import { translate } from '../service/locale-preference-service.js';
 import { toolChangeOpenIntent } from './tool-change-review-service.js';
 import type { FileChangeEntry } from '../util/conversation-presentation.js';
 import { copyConversationMessage as copyMessage } from './workbench-conversation-copy-service.js';
+import { isHtmlFile } from '../util/file-preview.js';
 
 export interface WorkbenchPageInteractionOptions {
   readonly view: Readonly<Ref<WorkbenchView>>;
@@ -34,6 +35,8 @@ export interface WorkbenchPageInteractionOptions {
   readonly workspaceInspector: Ref<WorkspaceInspectorHandle | null | undefined>;
   readonly showInspectorTool: (tool: 'search' | 'changes') => void;
   readonly openAttachmentImage?: (attachment: ComposerAttachmentFile) => Promise<void>;
+  readonly openHtml: (path: string) => void;
+  readonly openHtmlExternal: (path: string) => void;
   readonly toggleTerminal: () => void;
   readonly sessionActivityClockNow: Readonly<Ref<number>>;
   readonly notice: MessageFeedback;
@@ -101,13 +104,6 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     external: boolean,
     preferGitChanges = false
   ): void {
-    if (options.workspaceInspector.value == null) {
-      options.notice(
-        translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
-        'error'
-      );
-      return;
-    }
     const workspaceRoot = options.selectedWorkspace.value?.path
       .replaceAll('\\', '/')
       .replace(/\/+$/, '');
@@ -121,6 +117,24 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       comparablePath.startsWith(`${comparableRoot}/`)
         ? normalizedPath.slice(workspaceRoot.length + 1)
         : normalizedPath;
+    if (
+      preferGitChanges &&
+      isHtmlFile(workspacePath) &&
+      !workspacePath.startsWith('/') &&
+      !/^[a-z]:\//i.test(workspacePath) &&
+      !workspacePath.split('/').some((segment) => segment === '..' || segment === '')
+    ) {
+      if (external) options.openHtmlExternal(workspacePath);
+      else options.openHtml(workspacePath);
+      return;
+    }
+    if (options.workspaceInspector.value == null) {
+      options.notice(
+        translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
+        'error'
+      );
+      return;
+    }
     if (external) {
       options.workspaceInspector.value.openWorkspaceFileExternal(workspacePath, line, column);
       return;

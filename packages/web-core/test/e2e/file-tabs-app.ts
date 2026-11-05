@@ -1,10 +1,11 @@
-import { h, ref } from 'vue';
+import { h, nextTick, ref } from 'vue';
 import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import Tabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
 import Inspector from '../../src/view/workspace/WorkspaceInspector.vue';
 import TextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
+import WorkspaceHtmlBrowser from '../../src/view/workspace/WorkspaceHtmlBrowser.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import type {
   WorkspaceFileOpenIntent,
@@ -65,11 +66,102 @@ const active = ref(1);
 const loading = ref(true);
 const inspector = ref<{
   openWorkspaceFileTab(intent: WorkspaceFileOpenIntent): Promise<void>;
+  openWorkspaceFile(path: string): Promise<void>;
+  openFile(path: string): Promise<void>;
+  snapshot(): unknown;
+  restore(value: unknown): void;
 }>();
+const htmlPath = ref<string>();
+const showInspector = ref(true);
+let savedInspectorSnapshot: unknown;
 const completedOpens = ref(0);
 const formatOpens = ref(0);
 createTooltipApp({
   render: () => {
+    if (query.has('html-handoff'))
+      return h('div', [
+        h(
+          'button',
+          { id: 'open-html-source', onClick: () => void inspector.value?.openFile('index.html') },
+          'Open HTML source'
+        ),
+        h(
+          'button',
+          {
+            id: 'snapshot-html-source',
+            onClick: () => {
+              savedInspectorSnapshot = inspector.value?.snapshot();
+            }
+          },
+          'Snapshot source'
+        ),
+        h(
+          'button',
+          {
+            id: 'restore-html-source',
+            onClick: () => inspector.value?.restore(savedInspectorSnapshot)
+          },
+          'Restore source snapshot'
+        ),
+        h(
+          'button',
+          {
+            id: 'remount-html-source',
+            onClick: async () => {
+              showInspector.value = false;
+              await nextTick();
+              showInspector.value = true;
+              await nextTick();
+              inspector.value?.restore(savedInspectorSnapshot);
+            }
+          },
+          'Remount source snapshot'
+        ),
+        h(
+          'button',
+          {
+            id: 'resume-html-source',
+            onClick: () => void inspector.value?.openWorkspaceFile('index.html')
+          },
+          'Resume source directly'
+        ),
+        showInspector.value &&
+          h(Inspector, {
+            ref: inspector,
+            nodeId: 'node',
+            workspaceId: 'workspace',
+            workspaceName: 'project',
+            workspaceKind: 'GIT_WORKSPACE',
+            csrfToken: 'fixture-csrf',
+            renewCsrfToken: async () => 'fixture-csrf',
+            enabled: true,
+            mobileViewport: window.innerWidth < 768,
+            contentSearchEnabled: false,
+            codeNavigationEnabled: false,
+            codeNavigationPrewarmEnabled: false,
+            filesWatchStatus: 'ready',
+            changesWatchStatus: 'ready',
+            historyCapability: false,
+            fileWriteEnabled: true,
+            subscriptionSnapshot: {
+              nodeId: 'node',
+              workspaceId: 'workspace',
+              files: { files: { entries: [], nextCursor: null, truncated: false } }
+            },
+            onOpenHtmlPreview: (path: string) => {
+              htmlPath.value = path;
+            }
+          }),
+        htmlPath.value &&
+          h(WorkspaceHtmlBrowser, {
+            nodeId: 'node',
+            workspaceId: 'workspace',
+            path: htmlPath.value,
+            csrfToken: 'fixture-csrf',
+            renewCsrfToken: async () => 'fixture-csrf',
+            onSource: (path: string) => void inspector.value?.openFile(path)
+          })
+      ]);
     if (query.has('text-shortcuts'))
       return h('div', [
         h('button', { id: 'outside-text-preview' }, 'Outside preview'),

@@ -107,6 +107,7 @@ import { userInputQuestions } from '../util/conversation-presentation.js';
 import { createWorkspaceTabService } from './workspace-tab-service.js';
 import {
   STANDALONE_FILE_OPEN_EVENT,
+  createStandaloneFileWindowService,
   standaloneFileOpenIntent,
   type StandaloneFileOpenIntent
 } from './standalone-file-window-service.js';
@@ -322,6 +323,31 @@ export function createWorkbenchPageController<
   });
 
   const workbenchAsideService = createWorkbenchAsideService();
+  const htmlPreviewWindows = createStandaloneFileWindowService();
+
+  function openHtmlExternal(path: string): void {
+    const target = workspaceTarget.value;
+    if (target === undefined) return;
+    const params = new URLSearchParams({ standaloneFile: '1', ...target, path, htmlPreview: '1' });
+    if (htmlPreviewWindows.openNew(`/console?${params}`) === undefined)
+      notice(
+        translate('generated.workspaceInspector.theBrowserBlockedTheFilePreviewWindow'),
+        'error'
+      );
+  }
+  function openHtmlAside(path: string): void {
+    const target = workspaceTarget.value;
+    if (target === undefined || !workbenchAsideService.current(target).tools.includes('browser')) {
+      notice(
+        translate('generated.workbenchPageInteractionService.filePreviewIsCurrentlyUnavailable'),
+        'error'
+      );
+      return;
+    }
+    if (workbenchAsideService.current(target).active?.kind === 'session') saveAsideContext();
+    if (workbenchAsideService.openHtml(target, path) && mobileViewport.value)
+      openMobileWorkspaceSurface('inspector');
+  }
   const asideTarget = computed(() => {
     const workspace = workspaceTarget.value;
     if (workspace === undefined) return undefined;
@@ -492,6 +518,7 @@ export function createWorkbenchPageController<
     nodeLabel,
     onEvict: (tab) => {
       discardWorkspaceViewCache(tab.nodeId, tab.workspaceId);
+      workbenchAsideService.clearHtmlWorkspace(tab);
       void terminalDocks.get(tab.id)?.release();
     },
     onChange: persistWorkbenchState
@@ -2081,6 +2108,7 @@ export function createWorkbenchPageController<
   }
 
   function handleSignedOut(): void {
+    workbenchAsideService.clearHtml();
     clearMessages();
     authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
@@ -2146,7 +2174,10 @@ export function createWorkbenchPageController<
     deleteTerminalDock: (tabId) => terminalDocks.delete(tabId),
     request,
     saveCurrent: saveCurrentWorkspaceView,
-    discardCache: discardWorkspaceViewCache,
+    discardCache: (nodeId, workspaceId) => {
+      discardWorkspaceViewCache(nodeId, workspaceId);
+      workbenchAsideService.clearHtmlWorkspace({ nodeId, workspaceId });
+    },
     activateWorkspace: (target, restoreSession) => selectWorkspace(target, restoreSession),
     workspaceTabSession: workbenchNotificationService.workspaceTabSession,
     openWorkspaceTabSession: (sessionId) => openNavigatedSession(sessionId, true),
@@ -2212,6 +2243,8 @@ export function createWorkbenchPageController<
       });
     },
     openAttachmentImage: conversationImageService.openFileAttachment,
+    openHtml: openHtmlAside,
+    openHtmlExternal,
     toggleTerminal: () => toggleAsideTerminal(),
     sessionActivityClockNow,
     notice,
@@ -2405,6 +2438,7 @@ export function createWorkbenchPageController<
         watchCoordinator.current?.stopSession();
       }
       discardWorkspaceViewCache(target.nodeId, target.workspaceId);
+      workbenchAsideService.clearHtmlWorkspace(target);
       if (tab !== undefined) closeWorkspaceTab(tab, true);
       else if (
         workspaceTarget.value?.nodeId === target.nodeId &&
@@ -2758,7 +2792,10 @@ export function createWorkbenchPageController<
     tree: workspaceTreeService,
     replaceSession,
     refreshSessions: refreshWorkspaceSessions,
-    discardNodeCaches: discardNodeViewCaches,
+    discardNodeCaches: (nodeId) => {
+      discardNodeViewCaches(nodeId);
+      workbenchAsideService.clearHtmlNode(nodeId);
+    },
     openDraft: () => openDraftSessionComposer(),
     replaceUrl: syncWorkbenchRoute,
     clearNodeDetails
@@ -3037,7 +3074,7 @@ export function createWorkbenchPageController<
     ([target, manifest, kind]) => {
       if (target === undefined || manifest === undefined) return;
       const tools: AsideTool[] = [];
-      if (manifest.files?.available === true) tools.push('files', 'search');
+      if (manifest.files?.available === true) tools.push('files', 'search', 'browser');
       if (kind === 'GIT_WORKSPACE') {
         tools.push('changes');
         if (manifest.git?.supportsHistory === true) tools.push('history');
@@ -3554,6 +3591,8 @@ export function createWorkbenchPageController<
     onNewSessionPaste,
     onlineNodeCount,
     openAgentWorkspaceFile,
+    openHtmlExternal,
+    openHtmlAside,
     openAgentFileChange,
     openQuickWorkspaceFile,
     openQuickWorkspace,

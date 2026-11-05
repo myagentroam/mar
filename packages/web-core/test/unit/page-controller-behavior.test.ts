@@ -14,6 +14,7 @@ import type {
   PwaApplicationState
 } from '../../src/service/pwa-application-service.js';
 import { STANDALONE_FILE_OPEN_EVENT } from '../../src/service/standalone-file-window-service.js';
+import { ElMessageBox } from '../../src/service/message-box-service.js';
 import * as feedback from '../../src/service/message-feedback-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 import type { NodeSummary } from '../../src/model/node.js';
@@ -26,6 +27,7 @@ const captured = vi.hoisted(() => ({
   lifecycle: undefined as Parameters<typeof installWorkbenchPageLifecycle>[0] | undefined,
   authenticated: undefined as
     Parameters<typeof createAdminAuthService>[0]['onAuthenticated'] | undefined,
+  signedOut: undefined as Parameters<typeof createAdminAuthService>[0]['onSignedOut'] | undefined,
   notificationOptions: undefined as Parameters<typeof createWorkbenchNotificationService>[1],
   waitForReady: vi.fn(async () => true),
   startWorkspace: vi.fn(async () => undefined),
@@ -96,6 +98,7 @@ vi.mock('../../src/service/admin-auth-service.js', async (original) => {
     ...module,
     createAdminAuthService: (options: Parameters<typeof module.createAdminAuthService>[0]) => {
       captured.authenticated = options.onAuthenticated;
+      captured.signedOut = options.onSignedOut;
       return module.createAdminAuthService(options);
     }
   };
@@ -185,6 +188,85 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('retains browser targets across Workspace switches but clears them on actual tab close and LRU eviction', async () => {
+    const { page } = controller();
+    const a = { nodeId: node.id, workspaceId: 'a' };
+    const b = { nodeId: node.id, workspaceId: 'b' };
+    page.nodes.value = [node];
+    page.workspaceTarget.value = a;
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null }
+    };
+    await nextTick();
+    page.workspaceTabService.remember(node.id, node, { id: 'a', path: '/a', kind: 'DIRECTORY' });
+    page.openHtmlAside('a.html');
+    page.workspaceTarget.value = b;
+    await nextTick();
+    expect(page.asideState.value?.htmlPath).toBeUndefined();
+    page.openHtmlAside('b.html');
+    page.workspaceTarget.value = a;
+    await nextTick();
+    expect(page.asideState.value?.htmlPath).toBe('a.html');
+    page.workspaceTarget.value = b;
+    await nextTick();
+    page.closeWorkspaceTab(page.workspaceTabs.value.find((tab) => tab.workspaceId === 'a')!);
+    page.workspaceTarget.value = a;
+    await nextTick();
+    expect(page.asideState.value?.htmlPath).toBeUndefined();
+    page.openHtmlAside('again.html');
+    page.workspaceTabService.restore(
+      Array.from({ length: 8 }, (_, index) => ({
+        id: `${node.id}:${index === 0 ? 'a' : `other-${index}`}`,
+        nodeId: node.id,
+        workspaceId: index === 0 ? 'a' : `other-${index}`,
+        label: String(index),
+        lastActiveAt: index + 1
+      }))
+    );
+    page.workspaceTabService.remember(node.id, node, {
+      id: 'new',
+      path: '/new',
+      kind: 'DIRECTORY'
+    });
+    expect(page.asideState.value?.htmlPath).toBeUndefined();
+  });
+
+  it('clears browser metadata when its Node is removed and on account sign-out', async () => {
+    const { page } = controller();
+    const a = { nodeId: node.id, workspaceId: 'a' };
+    page.nodes.value = [node];
+    page.workspaceTarget.value = a;
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null }
+    };
+    await nextTick();
+    page.openHtmlAside('a.html');
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    );
+    await page.deleteNode(node);
+    page.workspaceTarget.value = a;
+    page.nodeManifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null }
+    };
+    await nextTick();
+    expect(page.asideState.value?.htmlPath).toBeUndefined();
+    page.openHtmlAside('new.html');
+    captured.signedOut!();
+    page.workspaceTarget.value = a;
+    await nextTick();
+    expect(page.asideState.value?.htmlPath).toBeUndefined();
+  });
+
   it('projects and closes the image preview from its owning Main or Aside pane', () => {
     const { page } = controller();
     const main = page.mainPaneController.images;

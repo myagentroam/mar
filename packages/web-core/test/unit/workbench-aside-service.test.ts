@@ -1,7 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkbenchAsideService } from '../../src/service/workbench-aside-service.js';
+import {
+  asideViewMode,
+  createWorkbenchAsideService
+} from '../../src/service/workbench-aside-service.js';
 
 describe('Workspace Aside metadata', () => {
+  it('owns one browser target per workspace and clears it with its scope', () => {
+    const service = createWorkbenchAsideService();
+    const a = { nodeId: 'node', workspaceId: 'a' };
+    const b = { nodeId: 'node', workspaceId: 'b' };
+    service.ensure(a, ['files', 'browser', 'terminal']);
+    service.ensure(b, ['files', 'browser']);
+    service.openSession({ ...a, sessionId: 'session-a' });
+    service.openHtml(a, 'first.html');
+    service.openHtml(a, 'next.htm');
+    service.openHtml(b, 'other.html');
+    expect(service.current(a).htmlPath).toBe('next.htm');
+    expect(asideViewMode(service.current(a).active)).toBe('content');
+    service.toggleTerminal(a);
+    service.toggleTerminal(a);
+    expect(service.current(a).active).toEqual({ kind: 'tool', id: 'browser' });
+    const restored = createWorkbenchAsideService();
+    restored.restore(a, service.snapshot(a), ['files', 'browser']);
+    expect(restored.current(a).htmlPath).toBe('next.htm');
+    restored.restore(a, { sessions: [] }, ['files', 'browser']);
+    expect(restored.current(a).htmlPath).toBeUndefined();
+    service.clearHtmlWorkspace(a);
+    expect(service.current(a).htmlPath).toBeUndefined();
+    expect(service.current(a).sessions).toEqual(['session-a']);
+    expect(service.current(b).htmlPath).toBe('other.html');
+    service.clearHtmlNode('node');
+    expect(service.current(b).htmlPath).toBeUndefined();
+    service.ensure(a, ['browser']);
+    service.openHtml(a, 'again.html');
+    service.clearHtml();
+    expect(service.current(a).htmlPath).toBeUndefined();
+  });
   it('replaces the sole session tab without removing tools or retaining a stale Terminal return', () => {
     const service = createWorkbenchAsideService();
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };

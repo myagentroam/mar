@@ -11,6 +11,200 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: resolve(directory, name), fullPage: true, animations: 'disabled' });
 }
 
+test('HTML preview waits for a pending save without handing off the editor', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+  let finishSave: (() => void) | undefined;
+  try {
+    await page.route('**/api/workspaces/workspace/files/read?*', (route) =>
+      route.fulfill({
+        json: {
+          file: {
+            encoding: 'utf-8',
+            size: 13,
+            content: '<h1>disk</h1>',
+            nextOffset: null,
+            revision: 'r1'
+          }
+        }
+      })
+    );
+    await page.route('**/api/workspaces/workspace/files/write', async (route) => {
+      await new Promise<void>((resolve) => {
+        finishSave = resolve;
+      });
+      await route.fulfill({ json: { file: { revision: 'r2', size: 20 } } });
+    });
+    let grants = 0;
+    await page.route('**/api/html-preview/grants', (route) => {
+      grants += 1;
+      return grants === 1
+        ? route.fulfill({ status: 403, json: {} })
+        : route.fulfill({ json: { url: `${fixture.url}rendered-html` } });
+    });
+    await page.route('**/rendered-html', (route) =>
+      route.fulfill({ contentType: 'text/html', body: 'Recovered' })
+    );
+    await page.goto(`${fixture.url}file-tabs.html?html-handoff`);
+    await page.locator('#open-html-source').click();
+    const editor = page.locator('.cm-content');
+    await expect(editor).toBeVisible();
+    if ((await editor.getAttribute('contenteditable')) !== 'true')
+      await page.getByRole('button', { name: 'Edit file', exact: true }).first().click();
+    await editor.fill('unsaved content');
+    await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+    await expect.poll(() => finishSave !== undefined).toBe(true);
+    await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
+    await expect(editor).toContainText('unsaved content');
+    expect(grants).toBe(0);
+    finishSave?.();
+    await expect(page.getByRole('button', { name: 'Save', exact: true }).first()).toBeDisabled();
+    await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+    await expect.poll(() => grants).toBe(1);
+    await expect(page.locator('.error')).toBeVisible();
+    for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+      await page
+        .locator('html')
+        .evaluate((element, value) => element.setAttribute('data-theme', value), theme);
+      expect(
+        await page.locator('.error').evaluate((element) => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--mar-color-danger-text)';
+          element.appendChild(probe);
+          const matches = getComputedStyle(element).color === getComputedStyle(probe).color;
+          probe.remove();
+          return matches;
+        })
+      ).toBe(true);
+    }
+    await page.screenshot({ path: test.info().outputPath('html-preview-dark-error.png') });
+    await page.getByRole('button', { name: 'Reload' }).click();
+    await expect(
+      page.frameLocator('iframe[title="index.html"]').getByText('Recovered')
+    ).toBeVisible();
+    expect(grants).toBe(2);
+  } finally {
+    finishSave?.();
+    await fixture.close();
+  }
+});
+
+test('restored unmounted drafts reject close until the user confirms', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+  let releaseRead: (() => void) | undefined;
+  let holdReads = false;
+  const pendingRead = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  try {
+    await page.route('**/api/workspaces/workspace/files/read?*', async (route) => {
+      if (holdReads) await pendingRead;
+      await route.fulfill({
+        json: {
+          file: { encoding: 'utf-8', size: 4, content: 'disk', nextOffset: null, revision: 'r1' }
+        }
+      });
+    });
+    await page.route('**/api/html-preview/grants', (route) =>
+      route.fulfill({ json: { url: `${fixture.url}rendered-html` } })
+    );
+    await page.route('**/rendered-html', (route) =>
+      route.fulfill({ contentType: 'text/html', body: 'saved disk' })
+    );
+    await page.goto(`${fixture.url}file-tabs.html?html-handoff`);
+    await page.locator('#open-html-source').click();
+    const editor = page.locator('.cm-content');
+    await expect(editor).toBeVisible();
+    if ((await editor.getAttribute('contenteditable')) !== 'true')
+      await page.getByRole('button', { name: 'Edit file', exact: true }).first().click();
+    await editor.fill('unsaved draft');
+    await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
+    await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+    await page.locator('#snapshot-html-source').click();
+    holdReads = true;
+    await page.locator('#remount-html-source').click();
+    await page.locator('#resume-html-source').click();
+    await expect(page.locator('.workspace-file-tab')).toHaveCount(1);
+    await page.locator('.workspace-file-tab-close').click();
+    const dialog = page.getByRole('dialog', { name: 'Unsaved changes' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.workspace-file-tab')).toHaveCount(1);
+    releaseRead();
+    await expect(editor).toContainText('unsaved draft');
+  } finally {
+    releaseRead?.();
+    await fixture.close();
+  }
+});
+
+for (const width of [1280, 390]) {
+  test(`HTML preview hands off and restores unsaved source at ${width}px`, async ({ page }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+    try {
+      await page.setViewportSize({ width, height: 800 });
+      await page.route('**/api/workspaces/workspace/files/read?*', (route) =>
+        route.fulfill({
+          json: {
+            file: {
+              encoding: 'utf-8',
+              size: 18,
+              content: '<h1>disk</h1>',
+              nextOffset: null,
+              revision: 'r1'
+            }
+          }
+        })
+      );
+      await page.route('**/api/html-preview/grants', (route) =>
+        route.fulfill({
+          json: { url: `${fixture.url}rendered-html` }
+        })
+      );
+      await page.route('**/rendered-html', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<h1>saved disk</h1>' })
+      );
+      await page.goto(`${fixture.url}file-tabs.html?html-handoff`);
+      await page.locator('#open-html-source').click();
+      const editor = page.locator('.cm-content');
+      await expect(editor).toBeVisible();
+      if ((await editor.getAttribute('contenteditable')) !== 'true')
+        await page.getByRole('button', { name: 'Edit file', exact: true }).first().click();
+      await editor.click();
+      await page.keyboard.press('Control+End');
+      await page.keyboard.type(' draft');
+      await expect(editor).toContainText('draft');
+      await page.getByRole('button', { name: 'Run HTML preview' }).first().click();
+      await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+      expect(
+        await page.evaluate(() => {
+          const event = new Event('beforeunload', { cancelable: true });
+          return !window.dispatchEvent(event);
+        })
+      ).toBe(true);
+      await expect(
+        page.frameLocator('iframe[title="index.html"]').getByText('saved disk')
+      ).toBeVisible();
+      expect(
+        await page
+          .locator('.html-browser')
+          .evaluate((element) => element.scrollWidth - element.clientWidth)
+      ).toBeLessThanOrEqual(1);
+      if (width === 390)
+        await page.screenshot({ path: test.info().outputPath('html-preview-mobile.png') });
+      await page.locator('#snapshot-html-source').click();
+      await page.locator('#restore-html-source').click();
+      await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Open source' }).click();
+      await expect(editor).toContainText('draft');
+      await expect(page.getByRole('tab', { name: /index\.html/ })).toHaveCount(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
 test('Text file commands follow the focused preview and ignore composition', async ({ page }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
   try {

@@ -1,6 +1,6 @@
 ---
 title: Continue on Mobile
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-05
 ---
 
 # Continue on Mobile
@@ -10,6 +10,8 @@ Mobile Workbench keeps the current Agent conversation as the main Work surface. 
 **Recent Sessions** and **Notifications** open a scrolling list directly in the side menu used by Work, Admin and Settings. Top-bar menus have no additional X close button; use the scrim, Escape, or the active top-bar entry to dismiss them. Browser Back, including the browser's edge-swipe back gesture, closes the menu before leaving the current work surface. Switching menu entries replaces the current panel rather than stacking panels; switching to Work or Chat closes existing menus. **Mark all as read** remains available when there are unread notifications. Opening the list alone does not mark all notifications read. Brief previews of new notifications do not automatically open the full panel or mark notifications read.
 
 Browser Back also dismisses the current session, file or terminal tool layer, or the topmost file/image preview or task dialog, keeping the underlying work surface. Editing follows the existing close policy. If a discard confirmation appears, Back cancels that confirmation and preserves the edits. Closing a preview does not download or delete a file, and hiding Terminal does not end its process. Gallery navigation, image zoom and horizontal content scrolling are not back gestures. Native browser or system dialogs retain their own behavior.
+
+HTML previews use the same auxiliary work surface. Previewing from source temporarily hides the file window; return to source to continue editing the draft. See [file preview](files.md).
 
 The Composer stays above the on-screen keyboard. Enter inserts a newline; use the send button to submit. Agent and model controls remain compact, while file previews and diffs use the full viewport.
 

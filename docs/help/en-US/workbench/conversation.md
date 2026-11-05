@@ -1,9 +1,11 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-05
 ---
 
 # Conversations, Tools, and Notifications
+
+In regular Workspace sessions, an HTML/HTM file link opens in the Aside browser; Ctrl/Cmd-click opens a rendered page in a new window. See [file preview and security](files.md).
 
 **Recent Sessions** also provides **Main Sessions / Child Sessions**, defaulting to Main Sessions and following the [session list rules](sessions.md). Tabs have no running or unread badges and only switch the list, without opening a session; the total running count appears within Recent Sessions. Opening a notification, recent-session item, or Workspace tab synchronizes the target session's group in Chats; individual session indicators stay unchanged.
 

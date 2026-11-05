@@ -52,6 +52,8 @@ function fixture() {
   const openWorkspaceFileComparison = vi.fn(async () => undefined);
   const openWorkspaceFileExternal = vi.fn();
   const openAttachmentImage = vi.fn(async () => undefined);
+  const openHtml = vi.fn();
+  const openHtmlExternal = vi.fn();
   const workspaceInspector = ref<WorkspaceInspectorHandle | null>({
     openFile,
     openWorkspaceFileTab: vi.fn(),
@@ -99,6 +101,8 @@ function fixture() {
       else workspaceInspector.value?.openChanges();
     },
     openAttachmentImage,
+    openHtml,
+    openHtmlExternal,
     toggleTerminal: vi.fn(),
     sessionActivityClockNow: ref(0),
     notice,
@@ -122,11 +126,28 @@ function fixture() {
     openFile,
     openWorkspaceFileComparison,
     openWorkspaceFileExternal,
-    openAttachmentImage
+    openAttachmentImage,
+    openHtml,
+    openHtmlExternal
   };
 }
 
 describe('Workbench page file interaction', () => {
+  it('routes only current-workspace conversation HTML to rendered preview', () => {
+    const state = fixture();
+    state.service.openAgentWorkspaceFile('/workspace/site/index.HTML', 3);
+    state.service.openAgentWorkspaceFile('site/next.htm', undefined, undefined, true);
+    expect(state.openHtml).toHaveBeenCalledWith('site/index.HTML');
+    expect(state.openHtmlExternal).toHaveBeenCalledWith('site/next.htm');
+    state.service.openAgentWorkspaceFile('/outside/file.html');
+    expect(state.openWorkspaceFileComparison).toHaveBeenCalledWith(
+      '/outside/file.html',
+      undefined,
+      undefined
+    );
+    state.service.openQuickWorkspaceFile('site/index.html');
+    expect(state.openFile).toHaveBeenCalledWith('site/index.html', undefined, undefined);
+  });
   it('opens image attachments in the shared dialog but preserves file and modified-click navigation', () => {
     const state = fixture();
     const image = {

@@ -12,6 +12,7 @@ import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import { ElMessageBox } from '../../service/message-box-service.js';
+import { confirmDiscardFileDraft } from '../../service/file-draft-confirm-service.js';
 import {
   computed,
   defineAsyncComponent,
@@ -575,13 +576,7 @@ async function canClose(): Promise<boolean> {
   if (dirty.value) {
     confirmingClose.value = true;
     try {
-      await ElMessageBox.confirm(
-        translate('fileEditor.unsavedMessage'),
-        translate('fileEditor.unsavedTitle'),
-        { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
-      );
-    } catch {
-      return false;
+      return await confirmDiscardFileDraft();
     } finally {
       confirmingClose.value = false;
     }
@@ -651,7 +646,11 @@ function captureDirtyDrafts(): readonly DirtyTextDraft[] {
   return [...editorTabStates.entries()].flatMap(([key, state]) => {
     if (state.content === state.savedContent || state.revision === undefined) return [];
     const separator = key.indexOf('\u0000');
-    const tabIdentity = key.slice(0, separator);
+    const stateIdentity = key.slice(0, separator);
+    const tabIdentity =
+      stateIdentity === String(props.editorIdentity ?? '')
+        ? (props.tabIdentity ?? stateIdentity)
+        : stateIdentity;
     const path = key.slice(separator + 1);
     return tabIdentity === '' || path === ''
       ? []
@@ -705,6 +704,7 @@ defineExpose({
   toggleEdit,
   canClose,
   captureDirtyDrafts,
+  isSaving: () => saving.value,
   prepareForConfirmedClose
 });
 </script>
@@ -792,7 +792,7 @@ defineExpose({
       <template v-if="html">
         <el-button
           class="file-toolbar-control"
-          v-tooltip="translate('htmlPreview.open')"
+          v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
           circle
           size="small"
           :aria-label="translate('htmlPreview.open')"
@@ -894,7 +894,7 @@ defineExpose({
       <template v-if="html">
         <el-button
           class="file-toolbar-control"
-          v-tooltip="translate('htmlPreview.open')"
+          v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
           circle
           size="small"
           :aria-label="translate('htmlPreview.open')"

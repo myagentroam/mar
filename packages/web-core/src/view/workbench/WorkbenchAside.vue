@@ -74,7 +74,10 @@ const activeId = computed(() => {
 // The Inspector owns file windows and drafts, so moving between tools must not remount it.
 const inspectorEntry = computed(() => {
   const tools = entries.value.filter(
-    (entry) => entry.target.kind === 'tool' && entry.target.id !== 'terminal'
+    (entry) =>
+      entry.target.kind === 'tool' &&
+      entry.target.id !== 'terminal' &&
+      entry.target.id !== 'browser'
   );
   return (
     tools.find((entry) => entry.id === activeId.value) ??
@@ -147,6 +150,7 @@ function close(id: string | number): void {
           (item) =>
             item.target.kind === 'tool' &&
             item.target.id !== 'terminal' &&
+            item.target.id !== 'browser' &&
             item.id !== inspectorEntry?.id
         )"
         :id="tabStripIdentity(tabPrefix, entry.id).panel"
@@ -177,7 +181,10 @@ function close(id: string | number): void {
       </div>
       <div
         v-for="entry in entries.filter(
-          (item) => item.target.kind === 'session' || item.target.id === 'terminal'
+          (item) =>
+            item.target.kind === 'session' ||
+            item.target.id === 'terminal' ||
+            item.target.id === 'browser'
         )"
         v-show="entry.id === activeId"
         :id="tabStripIdentity(tabPrefix, entry.id).panel"
@@ -186,6 +193,12 @@ function close(id: string | number): void {
         role="tabpanel"
         :aria-labelledby="tabStripIdentity(tabPrefix, entry.id).tab"
       >
+        <slot
+          v-if="
+            entry.target.kind === 'tool' && entry.target.id === 'browser' && entry.id === activeId
+          "
+          name="browser"
+        />
         <slot
           v-if="entry.target.kind === 'tool' && entry.target.id === 'terminal'"
           name="terminal"

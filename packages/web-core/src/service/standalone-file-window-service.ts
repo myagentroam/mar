@@ -2,6 +2,7 @@ import type { WorkspaceFileOpenIntent } from '../util/workspace-file-tab.js';
 
 export interface StandaloneFileWindowService {
   open(url: string): Window | undefined;
+  openNew(url: string): Window | undefined;
 }
 
 export const STANDALONE_FILE_OPEN_EVENT = 'mar-open-standalone-file';
@@ -91,6 +92,16 @@ export function createStandaloneFileWindowService(
   let markdownWindow: Window | undefined;
   let htmlWindow: Window | undefined;
   return {
+    openNew(url) {
+      if (standaloneFileContext(url) !== context) return undefined;
+      const opener =
+        openWindow ?? (typeof window === 'undefined' ? undefined : window.open.bind(window));
+      const popup = opener?.(url, '_blank');
+      if (popup == null) return undefined;
+      popup.opener = null;
+      popup.focus();
+      return popup;
+    },
     open(url) {
       if (standaloneFileContext(url) !== context) return undefined;
       const opener =
