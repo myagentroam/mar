@@ -28,6 +28,51 @@ function fixture(
 }
 
 describe('public page-level Workbench relay', () => {
+  it('delivers a large Session snapshot and following control frames without reconnecting', async () => {
+    const { relay, attach } = fixture();
+    const socket = attach();
+    try {
+      const message = {
+        type: 'watch.event',
+        nodeId: 'node-1',
+        event: {
+          type: 'watch.session.snapshot',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1',
+          content: 'x'.repeat(1_800_000)
+        }
+      };
+      const id = String(socket.sent[0]!.workbenchConnectionId);
+      expect(await relay.sendConnection(id, message)).toBe('delivered');
+      socket.bufferedAmount = Buffer.byteLength(JSON.stringify(message));
+      socket.receive({ type: 'ping', id: 'after-snapshot' });
+      expect(socket.sent.slice(1)).toEqual([message, { type: 'pong', id: 'after-snapshot' }]);
+      expect(socket.close).not.toHaveBeenCalled();
+    } finally {
+      relay.close();
+    }
+  });
+
+  it('disconnects a browser above the buffer limit without interrupting another page', () => {
+    const { relay, attach } = fixture();
+    const socket = attach('slow-session');
+    const healthy = attach('healthy-session');
+    try {
+      socket.bufferedAmount = 16 * 1024 * 1024;
+      socket.receive({ type: 'ping', id: 'at-limit' });
+      expect(socket.sent.at(-1)).toEqual({ type: 'pong', id: 'at-limit' });
+      expect(socket.close).not.toHaveBeenCalled();
+      socket.bufferedAmount++;
+      relay.sendUser(1, { type: 'delta', content: 'still-live' });
+      expect(socket.close).toHaveBeenCalledWith(4009, 'WORKBENCH_BACKPRESSURE');
+      expect(socket.sent.at(-1)).toEqual({ type: 'pong', id: 'at-limit' });
+      expect(healthy.close).not.toHaveBeenCalled();
+      expect(healthy.sent.at(-1)).toEqual({ type: 'delta', content: 'still-live' });
+    } finally {
+      relay.close();
+    }
+  });
+
   it('authorizes upgrade progress separately and never sends it when denied', async () => {
     const { relay, database, attach } = fixture();
     const socket = attach();
