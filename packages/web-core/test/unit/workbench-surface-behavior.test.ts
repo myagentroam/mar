@@ -263,6 +263,11 @@ describe('Workbench surface composition behavior', () => {
         workspaceFileWorkbench: {},
         workspaceWatchTopicStatus: {},
         setWorkspaceFilesPanel: vi.fn(),
+        setWorkspaceSearchPanel: vi.fn(),
+        workspaceSearch: createWorkspaceContentSearchService({
+          http: { request: vi.fn() } as unknown as ScopedHttpService,
+          onFailure: vi.fn()
+        }),
         workspaceFiles: createWorkspaceFilesController({
           target: () => undefined,
           workspaceName: () => 'workspace',
@@ -297,9 +302,16 @@ describe('Workbench surface composition behavior', () => {
         expect(offline).not.toContain('role="tree"');
         page.workspaceHost = { connected: true };
         page.nodeManifestLoading = true;
-        const loading = await renderUnavailable();
-        expect(loading).toContain(translate('generated.workspaceInspector.loading'));
-        expect(loading).not.toContain('role="tree"');
+        for (const tool of ['files', 'search', 'changes', 'history']) {
+          page.asideState = { tools: [tool], sessions: [], active: { kind: 'tool', id: tool } };
+          const loading = await renderUnavailable();
+          expect(loading).toContain(translate('generated.workspaceInspector.loading'));
+          expect(loading).toMatch(
+            /<p[^>]*workspace-tool-loading[^>]*role="status"[^>]*>\s*<svg[^>]*data-mar-icon="loading-action"/u
+          );
+          expect(loading).not.toContain('role="tree"');
+        }
+        page.asideState = { tools: ['files'], sessions: [], active: { kind: 'tool', id: 'files' } };
         page.nodeManifestLoading = false;
         page.nodeManifest = {};
         const unsupported = await renderUnavailable();

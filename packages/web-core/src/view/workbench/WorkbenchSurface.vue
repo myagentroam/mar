@@ -101,6 +101,9 @@ watch(
   { flush: 'post' }
 );
 const asideMode = computed(() => props.page.asideViewMode(props.page.asideState?.active));
+const workspaceCapabilitiesLoading = computed(
+  () => props.page.nodeManifestLoading && props.page.nodeManifest === undefined
+);
 const asideWidth = computed(() =>
   props.page.mobileViewport
     ? asideAvailableWidth.value
@@ -761,9 +764,14 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                       !page.filesReady
                     "
                     class="workspace-tool-unavailable"
+                    :class="{
+                      'workspace-tool-loading': workspaceCapabilitiesLoading
+                    }"
+                    :role="workspaceCapabilitiesLoading ? 'status' : undefined"
                   >
+                    <MarIcon v-if="workspaceCapabilitiesLoading" name="loading-action" />
                     {{
-                      page.nodeManifestLoading && page.nodeManifest === undefined
+                      workspaceCapabilitiesLoading
                         ? translate('generated.workspaceInspector.loading')
                         : page.workspaceHost?.connected === true &&
                             page.workspaceHost.disabled !== true
@@ -781,9 +789,17 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     "
                     class="workspace-git-panel"
                   >
-                    <p v-if="!page.filesReady" class="empty">
+                    <p
+                      v-if="!page.filesReady"
+                      class="empty"
+                      :class="{
+                        'workspace-tool-loading': workspaceCapabilitiesLoading
+                      }"
+                      :role="workspaceCapabilitiesLoading ? 'status' : undefined"
+                    >
+                      <MarIcon v-if="workspaceCapabilitiesLoading" name="loading-action" />
                       {{
-                        page.nodeManifestLoading && page.nodeManifest === undefined
+                        workspaceCapabilitiesLoading
                           ? translate('generated.workspaceInspector.loading')
                           : page.workspaceHost?.connected === true &&
                               page.workspaceHost.disabled !== true
@@ -1273,6 +1289,12 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 </style>
 
 <style scoped>
+.workspace-tool-loading {
+  margin: 0.2rem 0.55rem;
+  color: var(--mar-text-muted);
+  font-size: var(--mar-font-size-meta);
+}
+
 .workspace-git-panel {
   display: flex;
   height: 100%;
