@@ -1,6 +1,6 @@
 ---
 title: 工作模式、Node 与 Workspace
-lastUpdated: 2026-11-04
+lastUpdated: 2026-11-05
 ---
 
 # 工作模式、Node 与 Workspace
@@ -40,7 +40,7 @@ Node 只用于资源树分组和主机管理。点击 Node 名称只展开或收
 
 状态点表示 Node/会话近期状态：绿色表示可用或活动，灰色表示空闲或未加载，黄色/离线提示需进一步查看详情。切换 Workspace 不会停止该 Node 上仍在运行的 Agent 或关闭终端。
 
-移动端通过顶部菜单按“工作、对话、管理、设置”切换；“工作”打开 Node → Workspace 资源树，“对话”进入对话模式，再次点击已激活的“对话”可打开历史抽屉。其他面板也会以抽屉形式展开。管理菜单不再提供独立“技能中心”，“技能配置”“技能源管理”“环境密钥”连续排列，“MCP 源管理”仍作为独立管理分区；技能配置页面内可切换 Skill 与 MCP。设置菜单包含“账户安全”“外观”“系统通知”“快捷提示词”“个性化提示词”“快捷键”和“关于”；“个性化提示词”用于为当前账号的后续 Agent 执行提供额外指引，按公共、MAR Agent、Codex、Claude Code、OpenCode 分别保存；MAR Agent 标签在中英文界面中都固定显示为 `MAR Agent`。执行时自动使用公共内容与当前 Runner 专属内容，不会修改 Node 或 Workspace 的 `AGENTS.md`、`CLAUDE.md`。“外观”默认使用深色配色与 Material 文件图标，可切换浅色/深色配色及 Seti/Material 图标主题。选择立即生效且只保存在当前浏览器；已保存的有效选择不会被默认值覆盖，终端始终保持固定深色配色。“关于”可查看当前 Web 版本、打开文档中心，并按类别查看 Web、Server、Node/MAR Agent、随包工具、图标与可选 Computer Use Runtime 的主要开源组件。这是精选展示，不是完整依赖清单。“查看 Web 第三方许可声明”只覆盖 Web；Server、Node 和可选运行时的许可与声明应查看对应发行包，Node 随包工具的材料位于包内的 `vendor/ripgrep/` 与 `vendor/ctags/`。外部 Agent、SDK 和单独安装工具仍适用各自条款。系统运行状态和 License 管理位于管理员的“系统信息”。下一步：[创建、查找与管理会话](sessions.md)。
+移动端通过顶部菜单按“工作、对话、管理、设置”切换；“工作”打开 Node → Workspace 资源树，“对话”进入对话模式，再次点击已激活的“对话”可打开历史抽屉。其他面板也会以抽屉形式展开。管理菜单不再提供独立“技能中心”，“技能配置”“技能源管理”“环境密钥”连续排列，“MCP 源管理”仍作为独立管理分区；技能配置页面内可切换 Skill 与 MCP。设置菜单包含“账户安全”“外观”“系统通知”“快捷提示词”“个性化提示词”“快捷键”和“关于”；“个性化提示词”用于为当前账号的后续 Agent 执行提供额外指引，按公共、MAR Agent、Codex、Claude Code、OpenCode 分别保存；MAR Agent 标签在中英文界面中都固定显示为 `MAR Agent`。执行时自动使用公共内容与当前 Runner 专属内容，不会修改 Node 或 Workspace 的 `AGENTS.md`、`CLAUDE.md`。“外观”默认使用深色配色与 Material 文件图标，可切换浅色/深色配色及 Seti/Material 图标主题。选择立即生效且只保存在当前浏览器；已保存的有效选择不会被默认值覆盖，终端始终保持固定深色配色。“关于”可查看当前 Web 版本、打开文档中心，并按类别查看 Web、Server、Node/MAR Agent、随包工具、图标与可选 Computer Use Runtime 的主要开源组件。这是精选展示，不是完整依赖清单。“查看 Web 第三方许可声明”只覆盖 Web；Server、Node 和可选运行时的许可与声明应查看对应发行包，Node 依赖的 `@myagentroam/binaries` 包内分别通过 `vendor/ripgrep/` 与 `vendor/ctags/` 提供工具材料。外部 Agent、SDK 和单独安装工具仍适用各自条款。系统运行状态和 License 管理位于管理员的“系统信息”。下一步：[创建、查找与管理会话](sessions.md)。
 
 ## 常见失败
 

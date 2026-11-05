@@ -215,9 +215,8 @@ Examples:
 Output:
   marctl <version>
 
-Prints one line from the installed @myagentroam/marctl package, followed by a newline.
-The version is independent of Node and Server. No configuration, authorization,
-or Server connection is required.`
+Prints the installed Node package version on one line, followed by a newline.
+No configuration, authorization, or Server connection is required.`
   }),
   nodesHeader: 'ID\tNAME\tSTATUS\tPLATFORM',
   connected: 'connected',

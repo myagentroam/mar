@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-11-03
+lastUpdated: 2026-11-05
 ---
 
 # 使用 marctl 管理节点
@@ -38,7 +38,7 @@ marssh --version
 marscp --version
 ```
 
-这些入口也支持 `-V`，以单行 `marctl <版本号>` 输出到标准输出并以换行结束，不附加横幅、依赖版本或诊断信息；查询成功时退出码为 0。显示的是当前安装的 `@myagentroam/marctl` 包版本，不是 Node 或 Server 版本；查看版本不需要配置或授权，也不会连接 Server。`marctl help version` 或 `marctl version --help` 查看版本命令说明。`marssh <节点> --version` 中的选项属于远端命令，不会改为显示本机 CLI 版本。
+这些入口也支持 `-V`，以单行 `marctl <版本号>` 输出到标准输出并以换行结束，不附加横幅、依赖版本或诊断信息；查询成功时退出码为 0。显示的是当前安装的 Node 包版本，不是 Server 版本；查看版本不需要配置或授权，也不会连接 Server。`marctl help version` 或 `marctl version --help` 查看版本命令说明。`marssh <节点> --version` 中的选项属于远端命令，不会改为显示本机 CLI 版本。
 
 ## 执行上下文授权
 

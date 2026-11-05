@@ -194,4 +194,4 @@ The independent public core is licensed under [Apache-2.0](LICENSE). EE and prod
 
 Community features are free for internal use, including a company's own commercial work. Enterprise activation does **not** grant redistribution, resale, third-party hosting, SaaS/API service, OEM, white-label, or bundled-delivery rights for the EE-containing product. Independently licensed core and third-party components retain their own rights and terms.
 
-The distributed `@myagentroam/node` package includes Universal Ctags under GPL-2.0-or-later. Its license texts, notices, and corresponding source are included under `mar-node/vendor/ctags/`; also review the third-party notices accompanying your release.
+The `@myagentroam/binaries` package used by Node includes Universal Ctags under GPL-2.0-or-later. Its license texts, notices, and corresponding source are included under `vendor/ctags/` in that package; also review the third-party notices accompanying your release.

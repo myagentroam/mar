@@ -38,7 +38,7 @@ describe('Node bundled Universal Ctags', () => {
     expect(
       bundledCtagsPath(platform, arch, root)
         .replaceAll('\\', '/')
-        .endsWith(`/mar-node/vendor/ctags/${suffix}`)
+        .endsWith(`/packages/binaries/vendor/ctags/${suffix}`)
     ).toBe(true);
   });
 

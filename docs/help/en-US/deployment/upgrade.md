@@ -1,11 +1,11 @@
 ---
 title: Upgrade MyAgentRoam
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-05
 ---
 
 # Upgrade MyAgentRoam
 
-Server, Web, EE, shared cores, Node, Agent, and Protocol share one version, starting at `0.10.1`. Code Navigation, marctl, and Computer Use Runtime also start at `0.10.1` and retain independent patch releases.
+Server, Web, EE, shared cores, Node, Agent, and Protocol share one version, starting at `0.10.1`. The shared binaries package and Computer Use Runtime start at `0.10.1` and retain independent patch releases. Code Navigation is internal, and marctl ships with Node.
 
 The unified product preserves the existing enterprise schema, migration history, License activation, and private data directory. Community and Enterprise use the same installation; activation does not migrate the database. No migration from the retired personal product is provided.
 

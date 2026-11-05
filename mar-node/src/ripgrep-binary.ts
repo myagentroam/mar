@@ -1,5 +1,5 @@
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 export const BUNDLED_RIPGREP_VERSION = '15.1.0';
 
@@ -14,8 +14,11 @@ const TARGETS = {
 
 export function bundledRipgrepDirectory(packageRoot?: string): string {
   return packageRoot === undefined
-    ? resolve(dirname(fileURLToPath(import.meta.url)), '..', 'vendor/ripgrep')
-    : resolve(packageRoot, 'mar-node/vendor/ripgrep');
+    ? resolve(
+        dirname(createRequire(import.meta.url).resolve('@myagentroam/binaries/package.json')),
+        'vendor/ripgrep'
+      )
+    : resolve(packageRoot, 'packages/binaries/vendor/ripgrep');
 }
 
 export function bundledRipgrepPath(

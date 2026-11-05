@@ -314,7 +314,11 @@ test('uses a consistent product heading and documents the exact version output i
       assert.match(output, locale.startsWith('zh') ? /选项：/u : /Options:/u);
       assert.match(output, locale.startsWith('zh') ? /示例：/u : /Examples:/u);
       if (args.includes('version')) {
-        assert.match(output, /@myagentroam\/marctl/u);
+        assert.match(
+          output,
+          locale.startsWith('zh') ? /已安装的 Node 包版本/u : /installed Node package version/u
+        );
+        assert.doesNotMatch(output, /independent of Node|独立于 Node/u);
         assert.match(output, /marctl <version>/u);
         assert.match(output, /marctl --version/u);
         assert.match(output, /marctl -V/u);

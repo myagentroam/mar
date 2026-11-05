@@ -128,7 +128,7 @@ test('all main packages require one stable release version', () => {
   assert.throws(() => validateVersionGroups(['1.2.0-rc.1'], commonVersions));
 });
 
-test('Code Navigation version is independent and Node pins its exact release', async () => {
+test('Node pins binaries while navigation and CLI remain private workspace modules', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mar-release-version-lines-'));
   try {
     const packages = [
@@ -150,13 +150,16 @@ test('Code Navigation version is independent and Node pins its exact release', a
           name: '@myagentroam/node',
           version: '1.0.0',
           dependencies: {
-            '@myagentroam/code-navigation': '0.9.7',
-            '@myagentroam/marctl': '1.0.1'
+            '@myagentroam/binaries': 'workspace:0.9.7'
           }
         }
       ],
-      ['packages/code-navigation', { name: '@myagentroam/code-navigation', version: '0.9.7' }],
-      ['marctl', { name: '@myagentroam/marctl', version: '1.0.1' }]
+      ['packages/binaries', { name: '@myagentroam/binaries', version: '0.9.7' }],
+      [
+        'packages/code-navigation',
+        { name: '@myagentroam/code-navigation', version: '0.9.7', private: true }
+      ],
+      ['marctl', { name: '@myagentroam/marctl', version: '1.0.0', private: true }]
     ];
     for (const [path, pkg] of packages) {
       await mkdir(join(directory, path), { recursive: true });
@@ -165,14 +168,16 @@ test('Code Navigation version is independent and Node pins its exact release', a
     assert.deepEqual(await readReleaseVersions(directory), {
       productVersion: '1.0.0',
       commonVersion: '1.0.0',
-      codeNavigationVersion: '0.9.7',
-      marctlVersion: '1.0.1'
+      binariesVersion: '0.9.7'
     });
     const nodePackage = join(directory, 'mar-node/package.json');
     const node = JSON.parse(await readFile(nodePackage, 'utf8'));
-    node.dependencies['@myagentroam/code-navigation'] = '1.0.0';
+    node.dependencies['@myagentroam/binaries'] = 'workspace:1.0.0';
     await writeFile(nodePackage, JSON.stringify(node));
-    await assert.rejects(readReleaseVersions(directory), /RELEASE_COMMON_DEPENDENCY_INVALID/u);
+    await assert.rejects(readReleaseVersions(directory), /RELEASE_BINARIES_DEPENDENCY_INVALID/u);
+    node.dependencies['@myagentroam/binaries'] = '0.9.7';
+    await writeFile(nodePackage, JSON.stringify(node));
+    await assert.rejects(readReleaseVersions(directory), /RELEASE_BINARIES_DEPENDENCY_INVALID/u);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

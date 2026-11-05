@@ -17,6 +17,7 @@ const productPaths = [
   'ee/server',
   'ee/web',
   'mar-web-console',
+  'marctl',
   'packages/server-core',
   'packages/web-core',
   'mar-agent/extensions/subagent'
@@ -80,11 +81,17 @@ export async function readReleaseVersions(directory = root) {
   );
   const marctl = await json(resolve(directory, 'marctl/package.json'));
   check(marctl.name === '@myagentroam/marctl', 'RELEASE_PACKAGE_NAME_INVALID');
-  const { marctlVersion } = validateMarctlVersionLine(marctl.version, versions.commonVersion);
   check(
-    common[2].dependencies?.['@myagentroam/marctl'] === 'workspace:*' ||
-      common[2].dependencies?.['@myagentroam/marctl'] === marctlVersion,
-    'RELEASE_MARCTL_DEPENDENCY_INVALID'
+    marctl.private === true && marctl.version === versions.commonVersion,
+    'RELEASE_MARCTL_VERSION_LINE_MISMATCH'
+  );
+  check(codeNavigation.private === true, 'RELEASE_CODE_NAVIGATION_PUBLIC');
+  const binaries = await json(resolve(directory, 'packages/binaries/package.json'));
+  check(
+    binaries.name === '@myagentroam/binaries' &&
+      stable.test(binaries.version) &&
+      common[2].dependencies?.['@myagentroam/binaries'] === `workspace:${binaries.version}`,
+    'RELEASE_BINARIES_DEPENDENCY_INVALID'
   );
   const versioned = [
     ...common.map((pkg, index) => ({
@@ -105,7 +112,7 @@ export async function readReleaseVersions(directory = root) {
             'RELEASE_COMMON_DEPENDENCY_INVALID'
           );
   }
-  return { ...versions, codeNavigationVersion: codeNavigation.version, marctlVersion };
+  return { ...versions, binariesVersion: binaries.version };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
