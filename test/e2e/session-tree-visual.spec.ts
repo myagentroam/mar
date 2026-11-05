@@ -25,6 +25,55 @@ test('session tree active indicator stays static with normal motion preferences'
   await expect(indicator).toHaveCount(0);
 });
 
+for (const width of [390, 1280]) {
+  test(`active indicator slightly overlaps the tree icon at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    for (const theme of ['dark', 'daylight']) {
+      await page.goto(`${fixture.url}session-tree.html?locale=en-US&activity=1&theme=${theme}`);
+      const trigger = page.getByRole('button', { name: 'View session tree' });
+      const indicator = trigger.locator('.tree-active-indicator');
+      await expect(indicator).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      const geometry = await trigger.evaluate((button) => {
+        const svg = button.querySelector('svg')!;
+        const artwork = svg.getBBox();
+        const corner = new DOMPoint(
+          artwork.x + artwork.width,
+          artwork.y + artwork.height
+        ).matrixTransform(svg.getScreenCTM()!);
+        const dot = button.querySelector('.tree-active-indicator')!.getBoundingClientRect();
+        return {
+          artworkRight: corner.x,
+          artworkBottom: corner.y,
+          dot: {
+            left: dot.left,
+            right: dot.right,
+            top: dot.top,
+            bottom: dot.bottom,
+            width: dot.width,
+            height: dot.height
+          }
+        };
+      });
+      expect(geometry.dot.width).toBe(4);
+      expect(geometry.dot.height).toBe(4);
+      expect(geometry.dot.left).toBeLessThan(geometry.artworkRight);
+      expect(geometry.dot.top).toBeLessThan(geometry.artworkBottom);
+      expect(geometry.dot.right).toBeGreaterThan(geometry.artworkRight);
+      expect(geometry.dot.bottom).toBeGreaterThan(geometry.artworkBottom);
+      await page.locator('.conversation-header').screenshot({
+        path: testInfo.outputPath(`tree-badge-${theme}.png`),
+        animations: 'disabled'
+      });
+      const dot = (await indicator.boundingBox())!;
+      await page.mouse.click(dot.x + dot.width / 2, dot.y + dot.height / 2);
+      await expect(page.getByTestId('selected')).toHaveText('child');
+    }
+  });
+}
+
 test('tree dialog keeps one snapshot, orders active branches and closes by keyboard and backdrop', async ({
   page
 }) => {
