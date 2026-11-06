@@ -90,6 +90,7 @@ describe('compaction task retention', () => {
       { role: 'user' as const, content: 'objective', contextKind: 'environment' as const },
       providerItem,
       privateProviderItem,
+      { role: 'user' as const, content: 'private context', contextKind: 'private' as const },
       {
         role: 'user' as const,
         content: 'image conclusion',
@@ -102,6 +103,7 @@ describe('compaction task retention', () => {
     expect(compact.slice(0, -1)).toEqual([
       messages[0],
       providerItem,
+      privateProviderItem,
       { role: 'user', content: 'image conclusion' }
     ]);
     expect(compact.at(-1)?.content).toContain('Compaction focus: preserve exact state');

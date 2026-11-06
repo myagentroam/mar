@@ -421,18 +421,12 @@ describe('asynchronous Compact', () => {
     });
     expect(followupCopies).toBe(1);
   });
-  it('keeps sidecar instructions out of native Compact evidence and its checkpoint', async () => {
+  it('keeps sidecar instructions in the native request prefix but out of its durable checkpoint', async () => {
     const marker = 'PRIVATE_COMPACT_EVIDENCE_MARKER';
     const f = await fixture(
       (request, index) => {
-        if (request.toolChoice === 'none')
-          return response(
-            request.messages.some((message) => message.content.includes(marker))
-              ? marker
-              : 'SAFE_HANDOFF',
-            100
-          );
-        return response('answer', index === 1 ? 100 : 8500);
+        if (request.toolChoice === 'none') return response('SAFE_HANDOFF', 100);
+        return response('answer', index === 2 ? 8500 : 100);
       },
       async () => undefined
     );
@@ -442,13 +436,26 @@ describe('asynchronous Compact', () => {
     expect(f.requests[0]!.messages.some((message) => message.content.includes(marker))).toBe(true);
     const compact = f.requests.find((request) => request.toolChoice === 'none');
     expect(compact).toBeDefined();
-    expect(compact!.messages.some((message) => message.content.includes(marker))).toBe(false);
+    expect(compact!.messages.slice(0, f.requests[1]!.messages.length)).toEqual(
+      f.requests[1]!.messages
+    );
+    expect(compact!.messages.some((message) => message.content.includes(marker))).toBe(true);
     const store = await JsonlSessionStore.open(f.home);
     try {
       expect(JSON.stringify(await store.read(f.session.id))).not.toContain(marker);
     } finally {
       await store.close();
     }
+    await writeFile(join(f.home, 'workspace', 'AGENTS.md'), 'RELOADED_COMPACT_RULE');
+    expect((await f.session.run({ prompt: 'After checkpoint' }).result()).status).toBe('completed');
+    const followup = f.requests.at(-1)!.messages;
+    expect(
+      followup.findLast((message) => message.contextualBlock?.id === 'runtime:instructions')
+        ?.content
+    ).toContain('RELOADED_COMPACT_RULE');
+    expect(
+      JSON.stringify(followup.filter((message) => message.contextKind === 'summary'))
+    ).not.toContain(marker);
   });
 
   it('anchors a closed tool prefix by its public identity, never contextual text', () => {

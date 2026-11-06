@@ -13,6 +13,7 @@ it('disposes its deadline and progress timer if the independent Turn cannot be c
     generateExecutionCompaction({
       snapshot: {
         history: [],
+        requestMessages: [],
         system: '',
         tools: [],
         contextWindowTokens: 1000,

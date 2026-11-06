@@ -10,7 +10,6 @@ import type {
   ModelUsage
 } from '../../model/contracts.js';
 import { isProviderContextOverflow, recoverModelStream } from '../../model/recovery.js';
-import { normalizeMessagesForModel } from '../context/normalize.js';
 import { estimatedRequestTokens } from '../context/request-budget.js';
 import { shouldUseNativeCompaction, type AuthoritativeModelUsage } from '../context/usage.js';
 import {
@@ -19,10 +18,11 @@ import {
   buildNativeCompactionMessages
 } from './history.js';
 import type { CompactionOperation } from './operation.js';
-import { projectSmartCompactionMessage } from './smart.js';
 
 interface CompactionSnapshot {
+  // Durable evidence excludes runtime-only context; requestMessages is its captured model projection.
   readonly history: readonly ModelMessage[];
+  readonly requestMessages: readonly ModelMessage[];
   readonly system: string;
   readonly systemBlocks?: ModelRequest['systemBlocks'];
   readonly tools: readonly ClientToolDefinition[];
@@ -59,10 +59,7 @@ export async function generateCompactionCandidate(
   dependencies: CompactionGeneration
 ): Promise<ExtensionCompactResult> {
   const { operation, turn } = dependencies;
-  const projectedHistory = normalizeMessagesForModel(snapshot.history, {
-    supportsImages: false
-  }).map(projectSmartCompactionMessage);
-  const nativeMessages = buildNativeCompactionMessages(projectedHistory, {
+  const nativeMessages = buildNativeCompactionMessages(snapshot.requestMessages, {
     ...(snapshot.focus === undefined ? {} : { focus: snapshot.focus })
   });
   const overhead = estimatedRequestTokens(
@@ -76,7 +73,7 @@ export async function generateCompactionCandidate(
     contextWindowTokens: snapshot.contextWindowTokens,
     latestUsage: snapshot.latestUsage,
     historyMessages: snapshot.history,
-    appendedMessages: nativeMessages.slice(projectedHistory.length)
+    appendedMessages: nativeMessages.slice(-1)
   });
   const fallbackMessages = () =>
     buildCompactionMessages(

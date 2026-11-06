@@ -23,6 +23,11 @@ describe('execution compaction', () => {
       { role: 'assistant', content: 'answer' }
     ];
     const world = worldState('before');
+    const contextual: SessionModelMessage = {
+      role: 'user',
+      contextKind: 'contextual',
+      content: 'CAPTURED_CONTEXT'
+    };
     const compact = vi.fn();
     const leaf = createExecutionCompaction({
       mode: 'compact',
@@ -46,11 +51,17 @@ describe('execution compaction', () => {
       boundary: () => messages.length,
       updateBoundary: () => {},
       snapshotTools: () => [],
+      projectRequest: (history, tools) => ({ messages: [contextual, ...history], tools }),
       usage: () => undefined,
       effort: () => 'low',
       environment,
-      compose: async () => ({ text: 'system' }),
-      generate: async () => {
+      compose: async () => {
+        contextual.content = 'LATER_CONTEXT';
+        return { text: 'system' };
+      },
+      generate: async (snapshot) => {
+        expect(snapshot.requestMessages[0]!.content).toBe('CAPTURED_CONTEXT');
+        expect(snapshot.history).toEqual(messages);
         world.generation = 'after';
         return { summary: 'summary' };
       },
@@ -125,6 +136,7 @@ describe('execution compaction', () => {
       boundary: () => messages.length,
       updateBoundary: () => {},
       snapshotTools: () => [],
+      projectRequest: (history, tools) => ({ messages: history, tools }),
       usage: () => undefined,
       effort: () => 'low',
       environment,

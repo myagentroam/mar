@@ -3,20 +3,30 @@ import { AgentError } from '../../src/error.js';
 import type { ModelEvent, ModelRequest, ModelTurnSession } from '../../src/model/contracts.js';
 import { generateCompactionCandidate } from '../../src/runtime/compaction/generate.js';
 import { CompactionOperation } from '../../src/runtime/compaction/operation.js';
+import { projectSessionRequestMessages } from '../../src/sdk/request-preparation.js';
 
-const snapshot = () => ({
-  history: [
+const snapshot = () => {
+  const history = [
     { role: 'user' as const, content: 'Keep the original objective.' },
     { role: 'assistant' as const, content: 'Verified the first step.' }
-  ],
-  system: 'System.',
-  tools: [],
-  contextWindowTokens: 100_000,
-  latestUsage: undefined,
-  reasoningEffort: 'medium' as const,
-  reason: 'manual' as const,
-  promptCacheKey: 'candidate-only'
-});
+  ];
+  return {
+    history,
+    requestMessages: projectSessionRequestMessages(
+      history,
+      [{ index: 0, kind: 'instructions', content: 'PRIVATE_RUNTIME_CONTEXT' }],
+      false,
+      false
+    ),
+    system: 'System.',
+    tools: [],
+    contextWindowTokens: 100_000,
+    latestUsage: undefined,
+    reasoningEffort: 'medium' as const,
+    reason: 'manual' as const,
+    promptCacheKey: 'candidate-only'
+  };
+};
 const answer: ModelEvent[] = [
   { type: 'text.completed', itemId: 'summary', text: '  Complete handoff.  ' },
   { type: 'usage', usage: { inputTokens: 25, outputTokens: 5 } },
@@ -36,7 +46,7 @@ function dependencies(
   return {
     operation,
     turn,
-    generateExtension: vi.fn(async () => undefined),
+    generateExtension: vi.fn(async (_history: ModelRequest['messages']) => undefined),
     transformRequest: vi.fn(async (request: ModelRequest) => request),
     stream: (start: (signal: AbortSignal) => AsyncIterable<ModelEvent>, signal: AbortSignal) =>
       start(signal),
@@ -66,6 +76,10 @@ describe('compaction candidate generation', () => {
       })
     );
     expect(d.observeUsage).toHaveBeenCalledExactlyOnceWith({ inputTokens: 25, outputTokens: 5 });
+    expect(d.transformRequest.mock.calls[0]![0].messages).toContainEqual(
+      expect.objectContaining({ content: 'PRIVATE_RUNTIME_CONTEXT' })
+    );
+    expect(d.generateExtension.mock.calls[0]![0]).toEqual(input.history);
   });
 
   it('retries an overflowing native prefix as bounded text without re-entering the extension', async () => {
@@ -87,6 +101,27 @@ describe('compaction candidate generation', () => {
       'Keep the original objective.'
     );
     expect(fallback.retryState).toBe(first.retryState);
+    expect(JSON.stringify(first.messages)).toContain('PRIVATE_RUNTIME_CONTEXT');
+    expect(JSON.stringify(fallback.messages)).not.toContain('PRIVATE_RUNTIME_CONTEXT');
+  });
+
+  it('budgets the captured request projection before choosing bounded durable evidence', async () => {
+    const input = snapshot();
+    input.requestMessages = projectSessionRequestMessages(
+      input.history,
+      [{ index: 0, kind: 'instructions', content: 'PRIVATE_LARGE_CONTEXT'.repeat(20_000) }],
+      false,
+      false
+    );
+    const d = dependencies(async function* () {
+      yield* answer;
+    });
+    await generateCompactionCandidate(input, d);
+    expect(d.transformRequest).toHaveBeenCalledTimes(1);
+    const request = d.transformRequest.mock.calls[0]![0];
+    expect(request.messages).toHaveLength(2);
+    expect(JSON.stringify(request.messages)).not.toContain('PRIVATE_LARGE_CONTEXT');
+    expect(JSON.stringify(request.messages)).toContain('Keep the original objective.');
   });
 
   it.each(['max_output', 'cancelled'] as const)(
