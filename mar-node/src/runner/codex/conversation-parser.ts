@@ -1465,6 +1465,7 @@ export function codexImageAttachments(value: unknown): readonly NodeMessageAttac
 
 export function codexUserInputQuestions(value: unknown): readonly {
   readonly id: string;
+  readonly nativeId: string;
   readonly prompt: string;
   readonly options: readonly {
     readonly value: string;
@@ -1494,15 +1495,19 @@ export function codexUserInputQuestions(value: unknown): readonly {
         )
       : [];
     return {
-      id: compactRunnerText(raw.id, 128),
+      id: raw.id,
+      nativeId: raw.id,
       prompt: compactRunnerText(raw.question, 5_000),
       options,
       allowOther: raw.isOther === true
     };
   });
-  return questions.some((question) => question === undefined)
-    ? []
-    : (questions as NonNullable<(typeof questions)[number]>[]);
+  if (questions.some((question) => question === undefined)) return [];
+  const normalized = questions as NonNullable<(typeof questions)[number]>[];
+  // Alias the whole request so an existing short ID cannot collide with a generated one.
+  return normalized.some((question) => question.id.length > 128)
+    ? normalized.map((question, index) => ({ ...question, id: `question-${index}` }))
+    : normalized;
 }
 
 export function codexItemStatus(

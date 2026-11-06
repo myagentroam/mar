@@ -1096,6 +1096,7 @@ export class CodexExecutionState {
       readonly requestId: string | number;
       readonly questions: readonly {
         readonly id: string;
+        readonly nativeId: string;
         readonly options: readonly string[];
         readonly allowOther: boolean;
       }[];

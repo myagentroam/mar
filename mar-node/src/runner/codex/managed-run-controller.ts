@@ -757,6 +757,7 @@ export class CodexManagedRunController<TAttachment> {
       requestId: nativeRequestId,
       questions: questions.map((question) => ({
         id: question.id,
+        nativeId: question.nativeId,
         options: question.options.map((option) => option.value),
         allowOther: question.allowOther
       }))
