@@ -1919,7 +1919,7 @@ export function createWorkbenchPageController<
     persistWorkbenchState,
     syncWorkbenchRoute,
     normalizeNewSessionOptions,
-    clearRunnerCommand,
+    clearRunnerCommand: runnerInteractionService.reset,
     clearComposerModelEffort: composerConfigurationService.clearModelEffortSelection,
     closeFileReferences: () => {
       composerReferenceService.cancelSearch();

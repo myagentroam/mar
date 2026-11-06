@@ -21,8 +21,24 @@ test.beforeEach(({ page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
-async function openWorkspace(page: Page, grouping = true) {
+async function openWorkspace(page: Page, grouping = true, marOnly = false) {
   await mockConsoleApi(page, 'MANAGED', ['turn.start'], [], 'DIRECTORY');
+  if (marOnly)
+    await page.route('**/api/runner-profiles?*', (route) =>
+      route.fulfill({
+        json: {
+          profiles: [
+            {
+              runner: 'mar-agent',
+              models: [{ id: 'model', label: 'Model', supportedEfforts: [] }],
+              accessOptions: [{ id: 'auto', label: 'Auto' }],
+              commands: [],
+              capabilities: ['turn.start']
+            }
+          ]
+        }
+      })
+    );
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
       json: {
@@ -164,11 +180,38 @@ for (const entry of ['button', 'shortcut'] as const) {
     await expect(page.locator('.conversation-header h2')).toContainText('Created main');
     await mainTab.click();
     await expect(row).toBeVisible();
-    await page.locator('.new-session-button').click();
+    await input.fill('Keep this message when opening a new session');
+    if (entry === 'shortcut') await page.keyboard.press('Alt+n');
+    else await page.locator('.new-session-button').click();
     await expect(row).not.toHaveClass(/selected/);
+    await expect(input).toHaveValue('Keep this message when opening a new session');
     await row.locator('.session-link').click();
     await expect(row).toHaveClass(/selected/);
     await expect(page.locator('.conversation-header h2')).toContainText('Created main');
+    await expect(input).toHaveValue('Keep this message when opening a new session');
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`New preserves a slash-prefixed draft when selecting an available Runner at ${width}px`, async ({
+    page
+  }) => {
+    const { main } = await openWorkspace(page, true, true);
+    await emitMockWorkspaceSnapshot(page, 'sessions', { sessions: [main], sessionGroup: 'MAIN' });
+    await page
+      .locator('.session-row')
+      .filter({ hasText: 'Created main' })
+      .locator('.session-link')
+      .click();
+    await expect(page.locator('.conversation-header h2')).toContainText('Created main');
+    await page.setViewportSize({ width, height: 900 });
+    const input = page.locator('.composer-input');
+    await input.fill('/src/review.ts — keep this draft');
+    if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+    await page.locator('.new-session-button').click();
+    await expect(page.locator('.session-row.selected')).toHaveCount(0);
+    await expect(input).toHaveValue('/src/review.ts — keep this draft');
+    await expect(input).toBeFocused();
   });
 }
 

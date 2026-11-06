@@ -1646,6 +1646,29 @@ describe('Workbench controller composition behavior', () => {
     }
   );
 
+  it.each(['unfinished message', '/review unfinished message'])(
+    'preserves the Main composer when opening a new session from an existing session: %s',
+    async (input) => {
+      const { page } = controller();
+      captured.setTarget!({ nodeId: 'node-a', workspaceId: 'workspace-a' });
+      captured.setSessions!([{ id: 'existing', workspaceId: 'workspace-a', runner: 'codex' }]);
+      captured.setSession!('existing');
+      const draft = page.mainPaneController.state.draft;
+      draft.input.value = input;
+      draft.references.value = [{ type: 'file', path: 'ref.ts', label: 'ref.ts' }];
+      await flushComponent();
+
+      page.selection.openNewSessionComposer();
+      // The lifecycle fixture captures the Runner-change callback instead of installing its watcher.
+      captured.lifecycle!.clearRunnerCommand();
+      await flushComponent();
+
+      expect(page.selection.draftSessionOpen).toBe(true);
+      expect(draft.input.value).toBe(input);
+      expect(draft.references.value).toEqual([{ type: 'file', path: 'ref.ts', label: 'ref.ts' }]);
+    }
+  );
+
   it('returns an already open draft to Main only on explicit New, preserving manual group changes', async () => {
     const { page } = controller();
     await captured.seedNodes!([{ ...node, nodeAppVersion: '0.11.19' }]);
