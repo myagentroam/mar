@@ -1,6 +1,6 @@
 ---
 title: Git Changes and Diff
-lastUpdated: 2026-10-30
+lastUpdated: 2026-11-06
 ---
 
 # Git Changes and Diff
@@ -19,7 +19,7 @@ Select a text file to open its working-tree Diff in the unified file-tab strip. 
 
 You may revert tracked changes or delete untracked files after confirmation. These actions affect the real Workspace and cannot be undone by MyAgentRoam. Stage, commit, branch, and remote operations remain available through your normal Git tools or terminal.
 
-If a branch or status is stale, refresh the view to reread every group. The Files tab continues to browse only the current Workspace; linked worktrees are exposed through Git Changes rather than added to that file tree. Git features are unavailable for ordinary directories.
+If a branch or status is stale, use Refresh or press `Ctrl+Shift+K` (`Command+Shift+K` on macOS) to reread every group and attempt a background fetch under the limits above. The shortcut opens Git Changes and also refreshes it when already visible. The Files tab continues to browse only the current Workspace; linked worktrees are exposed through Git Changes rather than added to that file tree. Git features are unavailable for ordinary directories.
 
 In the Work view, a new Run completion notification for any session in the current Workspace automatically refreshes the visible Git Changes or Files tab. The completed session need not be selected, and read notifications also trigger refresh. A session becoming idle does not trigger this refresh on its own; if no completion notification arrives, refresh manually or reopen the tab. Other Workspaces and hidden tabs are not refreshed. Existing content remains visible during refresh or after a failed read; use Refresh to retry.
 

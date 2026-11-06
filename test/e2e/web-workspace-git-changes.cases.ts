@@ -170,6 +170,66 @@ for (const language of [
   });
 }
 
+test('Git Changes shortcut refreshes an already visible list from the session composer', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  let path = 'shortcut-initial.txt';
+  let reads = 0;
+  let fetches = 0;
+  await page.unroute(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/);
+  await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, (route) => {
+    reads += 1;
+    const changes = [{ path, state: 'UNTRACKED', change: 'ADDED', diffAvailable: false }];
+    return json(route, {
+      branch: 'main',
+      changes,
+      repositories: [
+        {
+          repositoryPath: '',
+          repositoryName: 'project',
+          source: 'ROOT',
+          branch: 'main',
+          status: 'DIRTY',
+          changes
+        }
+      ]
+    });
+  });
+  await page.route(/\/api\/workspaces\/workspace-1\/git\/fetch(?:\?.*)?$/, (route) => {
+    fetches += 1;
+    return json(route, { fetchFailed: false, updated: false });
+  });
+
+  await page.goto('/console');
+  await page.getByLabel('密码').fill('test-password');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page.locator('.session-list button').first().click();
+  await page.getByRole('tab', { name: 'Git 变更', exact: true }).click();
+  await expect(page.getByText(path, { exact: true })).toBeVisible();
+  await expect.poll(() => fetches).toBe(1);
+  await expect(page.getByRole('button', { name: '刷新 Git 变更', exact: true })).toBeEnabled();
+  const composer = page.locator('.composer-input').first();
+  await composer.fill('Keep this draft');
+
+  for (const key of ['Control+Shift+K', 'Meta+Shift+K']) {
+    const previousReads = reads;
+    path = `shortcut-refresh-${previousReads}.txt`;
+    await composer.press(key);
+    await expect(page.getByText(path, { exact: true })).toBeVisible();
+    expect(reads).toBe(previousReads + 1);
+    expect(fetches).toBe(1);
+    await expect(composer).toHaveValue('Keep this draft');
+    await expect(composer).toBeFocused();
+  }
+});
+
 test('Git Changes progressively renders large result sets without losing repository groups', async ({
   page
 }) => {

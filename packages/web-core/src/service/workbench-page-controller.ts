@@ -1330,7 +1330,15 @@ export function createWorkbenchPageController<
     showAsideTool: (tool) => {
       const target = workspaceTarget.value;
       if (target === undefined) return;
+      const active = workbenchAsideService.current(target).active;
+      const refreshChanges =
+        tool === 'changes' &&
+        asideSurfaceVisible.value &&
+        active?.kind === 'tool' &&
+        active.id === 'changes';
       selectAsideTool({ ...target, id: tool });
+      // Entering Changes loads via the surface lifecycle; reselecting needs an explicit refresh.
+      if (refreshChanges) void fileTools.git.loadChanges(true);
       void nextTick(() => {
         if (tool === 'search') fileTools.focusSearch();
       });
