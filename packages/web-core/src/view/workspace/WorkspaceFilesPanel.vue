@@ -498,9 +498,8 @@ button.watch-status[aria-disabled='true'] {
   justify-content: flex-start;
   gap: 0.25rem;
   align-items: center;
-  margin: 0.3rem 0 0;
   border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0 0 0.25rem;
+  padding: 0.375rem;
 }
 
 .file-display-filter {
