@@ -577,13 +577,10 @@ defineExpose({ reveal });
             </el-dropdown>
             <span v-else class="file-tree-more" aria-hidden="true"></span>
           </div>
-          <div
-            v-else
-            class="file-tree-load-more utility-control"
-            :style="{ '--tree-depth': row.depth }"
-          >
+          <div v-else class="file-tree-load-more" :style="{ '--tree-depth': row.depth }">
             <el-button
               v-if="row.node.failedAppend !== undefined"
+              class="utility-control"
               link
               v-tooltip="!row.node.loading ? errorMessage(row.node.failure) : ''"
               :aria-description="!row.node.loading ? errorMessage(row.node.failure) : undefined"
@@ -775,6 +772,7 @@ defineExpose({ reveal });
 .file-tree-load-more > span {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 4px;
   min-width: 0;
   height: 100%;
@@ -783,8 +781,14 @@ defineExpose({ reveal });
   background: transparent;
   font: inherit;
   margin: 0;
-  padding: 0 6px 0 calc(34px + var(--tree-depth) * 8px);
+  padding: 0;
   text-align: left;
+}
+
+.file-tree-load-more {
+  --mar-action-icon-size: 1em;
+  font-size: var(--mar-font-size-meta);
+  padding: 0 6px 0 calc(4px + 0.8rem + 18px + var(--tree-depth) * 8px);
 }
 
 .file-tree-load-more > button {

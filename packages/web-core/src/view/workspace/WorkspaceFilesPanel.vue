@@ -553,22 +553,6 @@ button.watch-status[aria-disabled='true'] {
   font-size: var(--mar-font-size-meta);
 }
 
-:deep(.el-button) {
-  min-width: 26px;
-  min-height: 26px;
-  width: 26px;
-  height: 26px;
-  border-radius: 5px;
-  background: transparent;
-  padding-inline: 0.35rem;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-body);
-}
-
-:deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
 button.file-explorer-utility-button {
   display: inline-grid;
   width: 26px;
@@ -588,12 +572,6 @@ button.file-explorer-utility-button {
 button.file-explorer-utility-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-:deep(.el-button:not(.utility-control):hover:not(:disabled)),
-:deep(.el-button:not(.utility-control):focus-visible) {
-  background: var(--mar-fill-muted);
-  color: var(--mar-text-primary);
 }
 
 :deep(.el-input__wrapper) {
