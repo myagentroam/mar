@@ -29,6 +29,7 @@ export function compactRuntimeConfigurations(
 
 export interface MarAgentCompactState {
   revision: number;
+  unifiedCompactModelIds?: readonly string[];
   current?: {
     readonly model: AgentModelConfiguration;
     readonly reasoningEffort: AgentReasoningEffort;
@@ -42,11 +43,14 @@ const system =
 export function updateMarAgentCompactState(
   state: MarAgentCompactState,
   raw: unknown,
-  models: readonly AgentModelConfiguration[],
+  models: readonly (AgentModelConfiguration & { readonly unifiedCompact?: boolean })[],
   visibleModelIds?: readonly string[]
 ): void {
   state.revision++;
   delete state.current;
+  state.unifiedCompactModelIds = models
+    .filter((model) => model.enabled && model.unifiedCompact === true)
+    .map((model) => model.id);
   const parsed = marAgentRuntimeCompactConfigurationSchema.safeParse(raw);
   if (!parsed.success) return;
   const model = models.find(
@@ -75,6 +79,7 @@ export function marAgentCompactExtensionSource(state: MarAgentCompactState): Ext
     async resolve({ signal }) {
       signal.throwIfAborted();
       const selected = state.current;
+      const enabledModelIds = new Set(state.unifiedCompactModelIds);
       return {
         revision: `node-compact-${state.revision}`,
         extensions:
@@ -89,8 +94,10 @@ export function marAgentCompactExtensionSource(state: MarAgentCompactState): Ext
                       ? () => selected.model.credentialProvider?.close()
                       : undefined,
                   attachSession(context) {
-                    context.hooks.intercept('compact.generate', (input, call) =>
-                      generateMarAgentCompact(input, selected, call.signal)
+                    context.hooks.intercept('compact.generate', (input, call, next) =>
+                      input.modelId !== undefined && enabledModelIds.has(input.modelId)
+                        ? generateMarAgentCompact(input, selected, call.signal)
+                        : next(input)
                     );
                   }
                 }

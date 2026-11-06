@@ -102,12 +102,6 @@ const asideWidth = computed(() =>
     ? asideAvailableWidth.value
     : props.page.aside.asideWidth(asideMode.value, asideAvailableWidth.value, 360)
 );
-const asideStacked = computed(
-  () =>
-    !props.page.layout.mobileViewport &&
-    asideAvailableWidth.value > 0 &&
-    asideWidth.value === undefined
-);
 const treeStatus = computed(() =>
   props.page.resources.workspaceHost?.connected === false
     ? 'failed'
@@ -118,7 +112,8 @@ const asideVisible = computed(
     props.page.application.view === 'nodes' &&
     props.page.selection.workspaceTarget !== undefined &&
     props.page.aside.asideState !== undefined &&
-    (asideStacked.value || (asideWidth.value !== undefined && asideWidth.value > 0)) &&
+    asideWidth.value !== undefined &&
+    asideWidth.value > 0 &&
     (!props.page.layout.mobileViewport ||
       props.page.layout.mobileWorkspaceSurface === 'inspector' ||
       props.page.layout.mobileWorkspaceSurface === 'terminal')
@@ -481,11 +476,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           ref="workspaceGrid"
           v-else-if="page.resources.selectedWorkspace !== undefined"
           v-show="page.resources.workspaceHost?.connected !== false"
-          :class="[
-            'workspace-grid',
-            `mobile-surface-${page.layout.mobileWorkspaceSurface}`,
-            { stacked: asideStacked }
-          ]"
+          :class="['workspace-grid', `mobile-surface-${page.layout.mobileWorkspaceSurface}`]"
           :style="{ '--aside-width': `${asideWidth ?? 0}px` }"
         >
           <WorkspaceSessionList
@@ -616,11 +607,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   (title) => translate('generated.workbenchAside.close', { value0: title })
                 "
                 :resize-label="translate('generated.workbenchAside.resize')"
-                :width="
-                  asideStacked
-                    ? asideAvailableWidth
-                    : (asideWidth ?? WORKBENCH_PANEL_LIMITS[asideMode].min)
-                "
+                :width="asideWidth ?? WORKBENCH_PANEL_LIMITS[asideMode].min"
                 :mobile="page.layout.mobileViewport"
                 :close-surface-label="translate('workbench.closeWorkspaceTools')"
                 :min-width="WORKBENCH_PANEL_LIMITS[asideMode].min"
@@ -1154,28 +1141,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   overflow: hidden;
 }
 
-@media (min-width: 768px) {
-  .workspace-grid.stacked {
-    grid-template-columns: var(--mar-session-sidebar-width) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .workspace-grid.stacked > :deep(.conversation-sidebar) {
-    grid-column: 1;
-    grid-row: 1 / 3;
-  }
-  .workspace-grid.stacked > :deep(.conversation-panel) {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .workspace-grid.stacked > .workspace-aside {
-    grid-column: 2;
-    grid-row: 2;
-  }
-  .workspace-grid.stacked :deep(.workbench-aside-resize) {
-    display: none;
-  }
-}
-
 @media (max-width: 1180px) {
   .inspector-resize {
     display: none;
@@ -1186,9 +1151,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         --aside-width,
         0px
       );
-  }
-  .workspace-grid.stacked {
-    grid-template-columns: min(242px, var(--mar-session-sidebar-width)) minmax(0, 1fr);
   }
 }
 

@@ -1339,6 +1339,7 @@ function stepDuration(item: ConversationItem): string | undefined {
           >
             <summary class="mar-disclosure-summary conversation-record-heading task-list-heading">
               <MarIcon class="mar-disclosure-icon" name="chevron-right" />
+              <ConversationRecordIcon kind="todo_list" class="conversation-record-icon" />
               <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
               <span class="conversation-group-meta">{{
                 conversationItemText(displayItem.item.kind, displayItem.item.payload)
@@ -1372,6 +1373,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             </div>
           </details>
           <div v-else class="conversation-item-heading">
+            <ConversationRecordIcon kind="todo_list" class="conversation-record-icon" />
             <strong>{{ conversationItemLabel(displayItem.item.kind) }}</strong>
           </div>
         </template>

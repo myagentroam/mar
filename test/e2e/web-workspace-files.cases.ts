@@ -274,7 +274,9 @@ test('samples first and warm mobile Files opening with a populated directory', a
   ).toBe(true);
 });
 
-test('Stacking the Aside preserves the dirty file window and its owner', async ({ page }) => {
+test('Hiding a constrained Aside preserves the dirty file window and its owner', async ({
+  page
+}) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'GIT_WORKSPACE', true);
@@ -307,9 +309,16 @@ test('Stacking the Aside preserves the dirty file window and its owner', async (
     (window as unknown as { asideEditor: Element }).asideEditor = element;
   });
   await page.setViewportSize({ width: 768, height: 900 });
-  await expect(page.locator('.workspace-grid')).toHaveClass(/stacked/);
-  await expect(page.locator('.workspace-aside')).toBeVisible();
-  await expect(page.locator('.conversation-panel')).toBeVisible();
+  await expect(page.locator('.workspace-aside')).toBeHidden();
+  const main = page.locator('.workspace-grid > .conversation-panel');
+  await expect(main).toBeVisible();
+  await expect
+    .poll(async () => {
+      const gridBounds = await page.locator('.workspace-grid').boundingBox();
+      const mainBounds = await main.boundingBox();
+      return Math.abs((gridBounds?.height ?? 0) - (mainBounds?.height ?? 0));
+    })
+    .toBeLessThanOrEqual(2);
   await expect(editor).toContainText('unsaved aside content');
   expect(
     await editor.evaluate(
@@ -317,7 +326,6 @@ test('Stacking the Aside preserves the dirty file window and its owner', async (
     )
   ).toBe(true);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.locator('.workspace-grid')).not.toHaveClass(/stacked/);
   await expect(page.locator('.workspace-aside')).toBeVisible();
   await expect(editor).toContainText('unsaved aside content');
   await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
@@ -326,7 +334,7 @@ test('Stacking the Aside preserves the dirty file window and its owner', async (
   await expect(editor).toContainText('unsaved aside content');
 });
 
-test('Wide session sidebar stays stable when the Aside stacks and restores its content width', async ({
+test('Wide session sidebar stays stable when the Aside hides and restores its content width', async ({
   page
 }) => {
   test.setTimeout(90_000);
@@ -356,22 +364,39 @@ test('Wide session sidebar stays stable when the Aside stacks and restores its c
   await expect
     .poll(() => aside.evaluate((element) => Math.round(element.getBoundingClientRect().width)))
     .toBe(760);
+  const terminalDock = page.locator('.terminal-dock');
+  await expect(terminalDock).toBeVisible();
+  const terminalOwner = await terminalDock.elementHandle();
   await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(grid).toHaveClass(/stacked/);
+  await expect(aside).toBeHidden();
+  await expect(terminalDock).toBeHidden();
   await expect
     .poll(() => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().width)))
     .toBe(420);
   const stability = await grid.evaluate(async (element) => {
-    const samples: boolean[] = [];
+    const samples: number[] = [];
     for (let index = 0; index < 8; index++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      samples.push(element.classList.contains('stacked'));
+      samples.push(element.querySelector('.workspace-aside')!.getBoundingClientRect().width);
     }
     return samples;
   });
-  expect(stability).toEqual(Array(8).fill(true));
+  expect(stability).toEqual(Array(8).fill(0));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开辅助工作面', exact: true }).click();
+  await expect(aside).toBeVisible();
+  await expect(terminalDock).toBeVisible();
+  expect(await terminalDock.evaluate((element, owner) => element === owner, terminalOwner)).toBe(
+    true
+  );
+  await aside.getByRole('button', { name: '关闭工作区工具', exact: true }).click();
+  await expect(aside).toBeHidden();
   await page.setViewportSize({ width: 2400, height: 900 });
-  await expect(grid).not.toHaveClass(/stacked/);
+  await expect(aside).toBeVisible();
+  await expect(terminalDock).toBeVisible();
+  expect(await terminalDock.evaluate((element, owner) => element === owner, terminalOwner)).toBe(
+    true
+  );
   await expect
     .poll(() => aside.evaluate((element) => Math.round(element.getBoundingClientRect().width)))
     .toBe(760);

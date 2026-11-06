@@ -7,10 +7,12 @@ it('drops late diagnostics and falls back after an Extension failure', async () 
   let report!: (value: unknown) => void;
   const diagnostic = vi.spyOn(operation, 'observeExtension');
   const extension = createExecutionCompactExtension({
+    modelId: 'execution-model',
     contextWindowTokens: 1000,
     maxOutputTokens: 100,
     hasInterceptor: () => true,
     invoke: async (context) => {
+      expect(context.modelId).toBe('execution-model');
       report = context.reportDiagnostic;
       throw new Error('extension failure');
     }

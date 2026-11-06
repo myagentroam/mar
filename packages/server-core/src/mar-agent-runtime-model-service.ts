@@ -118,7 +118,8 @@ export class MarAgentRuntimeModelService {
         resourceUrlsEnabled
       )
     );
-    const compact = await this.compact?.runtime(models);
+    const compact =
+      capability?.unifiedCompactControl === true ? await this.compact?.runtime(models) : undefined;
     return {
       runtimeScopeId,
       ...(compact === undefined ? {} : { compact }),
@@ -346,6 +347,7 @@ function runtimeModel(
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
     gcEnabled: model.gcEnabled ?? true,
+    unifiedCompact: model.unifiedCompact ?? false,
     ...(supportsTier ? { serviceTier } : {}),
     hostedWebSearch: model.hostedWebSearch,
     useResourceUrl: resourceUrlsEnabled && model.metadata?.useResourceUrl === true,

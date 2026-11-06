@@ -31,6 +31,7 @@ test('enterprise model summaries preserve Subagent usage after saving and reload
       enabled: true
     });
     expect(created.subagentModel).toBe(false);
+    expect(created.unifiedCompact).toBe(false);
 
     for (const subagentModel of [true, false]) {
       expect(await models.update(userId, created.id, { subagentModel })).toMatchObject({
@@ -112,36 +113,54 @@ test('model settings follow transactional create, duplicate, update and deletion
       serviceTier: 'priority',
       responsesTransport: { transport: 'HTTP', httpVersion: '2' },
       responsesPreviousResponseId: true,
+      unifiedCompact: true,
       enabled: true,
       sortOrder: 0
     };
     const created = await models.create(userId, input);
     expect(created).toMatchObject({
       id: 'm'.repeat(128),
+      unifiedCompact: true,
       modelId: input.modelId,
       serviceTier: 'priority'
     });
     const copy = await models.duplicate(userId, created.id, { ...input, name: 'Settings Copy' });
     expect(copy).toMatchObject({
       id: 'copy-model',
+      unifiedCompact: true,
       modelId: input.modelId,
       serviceTier: 'priority'
     });
     await models.update(userId, created.id, { name: 'Updated Source', serviceTier: 'flex' });
     expect(await models.stored(created.id)).toMatchObject({
       name: 'Updated Source',
+      unifiedCompact: true,
       serviceTier: 'flex'
     });
 
     rejectSettingsWrite = true;
     await expect(
-      models.update(userId, created.id, { name: 'Must Roll Back', serviceTier: 'priority' })
+      models.update(userId, created.id, {
+        name: 'Must Roll Back',
+        serviceTier: 'priority',
+        unifiedCompact: false
+      })
     ).rejects.toThrow('injected settings failure');
     rejectSettingsWrite = false;
     expect(await models.stored(created.id)).toMatchObject({
       name: 'Updated Source',
+      unifiedCompact: true,
       serviceTier: 'flex'
     });
+    await models.update(userId, created.id, { unifiedCompact: false });
+    const reloaded = new MarAgentModelService({ raw: pool });
+    expect(await reloaded.stored(created.id)).toMatchObject({ unifiedCompact: false });
+    expect(await reloaded.listManagedForUser(userId)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: created.id, unifiedCompact: false }),
+        expect.objectContaining({ id: copy.id, unifiedCompact: true })
+      ])
+    );
     await models.remove(created.id, userId);
     await models.remove(copy.id, userId);
     const [settings] = await pool.execute<mysql.RowDataPacket[]>(

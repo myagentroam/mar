@@ -33,6 +33,7 @@ describe('Node MAR Agent runtime credentials', () => {
           {
             ...runtimeModel(ticket('options', 1_000)),
             gcEnabled: false,
+            unifiedCompact: true,
             responsesTransport: { transport: 'HTTP', httpVersion: '2', future: 'transport-secret' },
             responsesOptionalParameters: {
               reasoningEffort: true,
@@ -46,6 +47,8 @@ describe('Node MAR Agent runtime credentials', () => {
         { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
       );
       provider = model!.credentialProvider;
+      expect(model!.unifiedCompact).toBe(true);
+      expect(sdkModelConfigurations([model!])[0]).not.toHaveProperty('unifiedCompact');
       expect(provider).toBeDefined();
       let received: AgentModelConfiguration | undefined;
       const agent = await createAgentWithAdapter(

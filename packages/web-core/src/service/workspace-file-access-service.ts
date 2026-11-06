@@ -1,3 +1,8 @@
+/**
+ * Workspace-bound file protocol and transport access for file tools and conversation attachments.
+ * Captures full resource identity; attachment checks intentionally use uncached relay reads.
+ * Preview UI/generations, file tab state and subscription lifetimes remain with their callers.
+ */
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type { NodeWorkbenchManifest, WorkspaceTarget } from '../model/workbench.js';
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
@@ -14,6 +19,11 @@ import {
   readGitDirectFileMetadata,
   readWorkspaceDirectFileRange
 } from './workspace-direct-file-read-service.js';
+
+export interface WorkspaceFileAttachmentAccess {
+  revalidate(file: { readonly path: string }): Promise<unknown>;
+  sourceUrl(file: { readonly path: string }, revision?: number): string;
+}
 
 function workspaceFilePreviewUrl(target: WorkspaceFilePreviewTarget, download = false): string {
   const parameters = new URLSearchParams({ nodeId: target.nodeId, path: target.path });
@@ -43,7 +53,7 @@ export function createWorkspaceFileAccessService(input: {
     function contentUrl(file: FileSource, download = false): string {
       return workspaceFilePreviewUrl({ ...file, ...workspace }, download);
     }
-    function read(file: FileSource, limit: number, signal?: AbortSignal): Promise<unknown> {
+    function readUrl(file: FileSource, limit: number): string {
       const parameters = new URLSearchParams({
         nodeId: workspace.nodeId,
         path: file.path,
@@ -52,9 +62,19 @@ export function createWorkspaceFileAccessService(input: {
       });
       if (file.repositoryPath !== undefined) parameters.set('repositoryPath', file.repositoryPath);
       if (file.worktreePath !== undefined) parameters.set('worktreePath', file.worktreePath);
-      const path = `/api/workspaces/${encodeURIComponent(workspace.workspaceId)}/files/read?${parameters}`;
+      return `/api/workspaces/${encodeURIComponent(workspace.workspaceId)}/files/read?${parameters}`;
+    }
+    function read(file: FileSource, limit: number, signal?: AbortSignal): Promise<unknown> {
+      const path = readUrl(file, limit);
       return signal === undefined ? input.http.request(path) : input.http.request(path, { signal });
     }
+    const attachments: WorkspaceFileAttachmentAccess = {
+      revalidate: (file) => input.request(readUrl(file, 1), { cache: 'no-store' }),
+      sourceUrl: (file, revision) => {
+        const url = contentUrl(file);
+        return revision === undefined ? url : `${url}&preview=${encodeURIComponent(revision)}`;
+      }
+    };
     function write(path: string, content: string, expectedRevision: string) {
       return input.http.request<{
         readonly file?: { readonly revision?: unknown; readonly size?: unknown };
@@ -256,6 +276,7 @@ export function createWorkspaceFileAccessService(input: {
     }
 
     return {
+      attachments,
       contentUrl,
       read,
       write,

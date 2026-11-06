@@ -11,6 +11,7 @@ import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import type { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
 import type { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
+import type { WorkspaceSessionPaneServices } from '../../src/service/workspace-session-pane-controller.js';
 import type { installWorkbenchPageLifecycle } from '../../src/service/workbench-page-lifecycle-service.js';
 import type { createAdminAuthService } from '../../src/service/admin-auth-service.js';
 import type { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
@@ -32,6 +33,12 @@ import type {
 import { renderComponent, flushComponent } from './support/component-renderer.js';
 
 const captured = vi.hoisted(() => ({
+  paneConstruction: [] as {
+    workspace: Workspace | undefined;
+    ready: boolean;
+    revision: number;
+    connected: boolean;
+  }[],
   live: undefined as Parameters<typeof createWorkbenchLiveService>[0] | undefined,
   workspaceWatch: undefined as Parameters<typeof createWorkspaceWatchService>[0] | undefined,
   lifecycle: undefined as Parameters<typeof installWorkbenchPageLifecycle>[0] | undefined,
@@ -86,6 +93,33 @@ const captured = vi.hoisted(() => ({
   >[],
   submissionAvailable: [] as (() => boolean)[]
 }));
+vi.mock('../../src/service/workspace-session-pane-controller.js', async (original) => {
+  const module =
+    await original<typeof import('../../src/service/workspace-session-pane-controller.js')>();
+  return {
+    ...module,
+    createWorkspaceSessionPane: (...args: Parameters<typeof module.createWorkspaceSessionPane>) => {
+      const owner = module.createWorkspaceSessionPane(...args);
+      return {
+        ...owner,
+        connect: (
+          services: WorkspaceSessionPaneServices,
+          location: Parameters<typeof owner.connect>[1]
+        ) => {
+          // Constructors may inspect supplied state, without reading later page aggregates.
+          captured.paneConstruction.push({
+            workspace: services.selectedWorkspace.value,
+            ready: services.completion.ready.value,
+            revision: services.workspaceRevision(),
+            connected: services.watchConnection.connected()
+          });
+          void services.completion.host.value;
+          return owner.connect(services, location);
+        }
+      };
+    }
+  };
+});
 vi.mock('../../src/service/workbench-session-message-service.js', async (original) => {
   const module =
     await original<typeof import('../../src/service/workbench-session-message-service.js')>();
@@ -219,12 +253,16 @@ vi.mock('../../src/service/workbench-workspace-selection-service.js', async (ori
       };
       return {
         target: state.target,
+        currentSelectionRevision: state.currentSelectionRevision,
         connect: (options: Parameters<typeof module.createWorkbenchWorkspaceSelectionService>[0]) =>
-          module.createWorkbenchWorkspaceSelectionService({
-            ...options,
-            workspaceTarget: state.target,
-            setWorkspaceTarget: state.setTarget
-          })
+          module.createWorkbenchWorkspaceSelectionService(
+            {
+              ...options,
+              workspaceTarget: state.target,
+              setWorkspaceTarget: state.setTarget
+            },
+            state
+          )
       };
     }
   };
@@ -348,6 +386,7 @@ beforeEach(() => {
   captured.standaloneOpen = undefined;
   captured.histories.length = 0;
   captured.submissionAvailable.length = 0;
+  captured.paneConstruction.length = 0;
   captured.waitForReady.mockResolvedValue(true);
   const location = new URL('https://console.example.test/console');
   const storage = { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() };
@@ -417,6 +456,14 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('provides complete resource and selection state before either Pane connects', () => {
+    controller();
+    expect(captured.paneConstruction).toEqual([
+      { workspace: undefined, ready: false, revision: 0, connected: false },
+      { workspace: undefined, ready: false, revision: 0, connected: false }
+    ]);
+  });
+
   it('keeps history operation loading independent for Main and Aside', () => {
     const { page } = controller();
     const main = page.mainPaneController;
@@ -1063,6 +1110,53 @@ describe('Workbench controller composition behavior', () => {
     await page.interactions.handleConversationImagePreviewError('/api/aside-image');
     expect(aside).toHaveBeenCalledWith('/api/aside-image');
     expect(main).not.toHaveBeenCalled();
+  });
+
+  it('supplies file-owned image resolvers for Main and Aside without losing captured targets', async () => {
+    const { page } = controller();
+    const a = { nodeId: node.id, workspaceId: 'workspace-a' };
+    const b = { nodeId: 'node-b', workspaceId: 'workspace-b' };
+    await captured.seedNodes!([
+      { ...node, nodeAppVersion: '0.11.69' },
+      { ...node, id: b.nodeId }
+    ]);
+    captured.setTarget!(a);
+    captured.setWorkspaces!([{ id: a.workspaceId, path: '/project', kind: 'DIRECTORY' }]);
+    await captured.seedManifest!({
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 }
+    });
+    expect(page.aside.openAsideSession({ ...a, sessionId: 'aside-a' })).toBe(true);
+    const path = 'images/a & b.png';
+    const main = page.mainPaneController.imageResourceUrl.value!;
+    const aside = page.aside.asidePaneController.imageResourceUrl.value!;
+    const target = (resolver: (path: string) => string) => {
+      const url = new URL(resolver(path), 'https://console.example.test');
+      return {
+        pathname: url.pathname,
+        node: url.searchParams.get('nodeId'),
+        path: url.searchParams.get('path')
+      };
+    };
+    expect(target(main)).toEqual({
+      pathname: '/api/workspaces/workspace-a/files/content',
+      node: node.id,
+      path
+    });
+    expect(target(aside)).toEqual(target(main));
+    captured.setTarget!(b);
+    expect(target(page.mainPaneController.imageResourceUrl.value!)).toEqual({
+      pathname: '/api/workspaces/workspace-b/files/content',
+      node: b.nodeId,
+      path
+    });
+    expect(target(main).node).toBe(a.nodeId);
+    expect(target(aside)).toEqual(target(main));
+    expect(page.aside.asidePaneController.imageResourceUrl.value).toBeUndefined();
+    captured.setTarget!(undefined);
+    expect(page.mainPaneController.imageResourceUrl.value).toBeUndefined();
   });
 
   it('projects only actually visible Main and Aside sessions to the notification owner', async () => {

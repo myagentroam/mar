@@ -225,7 +225,12 @@ describe('Core compact generation extension', () => {
         });
         const f = await compactFixture({
           extensions: [compact.extension],
-          model: { contextWindowTokens: 10_000, maxOutputTokens: 1_000 },
+          model: {
+            id: 'execution-model',
+            modelId: 'upstream-model',
+            contextWindowTokens: 10_000,
+            maxOutputTokens: 1_000
+          },
           script: (request) =>
             request.toolChoice === 'none'
               ? modelSummary('NATIVE_FALLBACK')
@@ -240,6 +245,7 @@ describe('Core compact generation extension', () => {
         expect(execution.result.status).toBe('completed');
         expect(compact.contexts).toHaveLength(1);
         expect(compact.contexts[0]!.reason).toBe(reason);
+        expect(compact.contexts[0]!.modelId).toBe('execution-model');
         expect(start).toHaveBeenCalledTimes(1);
         expect(f.adapter.requests.some((request) => request.toolChoice === 'none')).toBe(false);
         const records = await readRecords(f.home, f.session.id);

@@ -66,6 +66,7 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
     responsesOptionalParameters: z.boolean().optional(),
     responsesHttpContinuation: z.boolean().optional(),
     contextGcControl: z.boolean().optional(),
+    unifiedCompactControl: z.boolean().optional(),
     conversationModels: z.boolean().optional(),
     resourceInput: z.boolean().optional(),
     httpVersions: z
@@ -892,6 +893,7 @@ const marAgentModelShape = {
   defaultReasoningEffort: marAgentReasoningEffortSchema.optional(),
   conversationModel: z.boolean().default(true),
   subagentModel: z.boolean().default(false),
+  unifiedCompact: z.boolean().default(false),
   titleGeneration: z.boolean().default(false),
   codeMode: z.boolean().default(false),
   gcEnabled: z.boolean().default(true),
@@ -980,6 +982,7 @@ export interface MarAgentModelSummary {
   defaultReasoningEffort?: MarAgentReasoningEffort;
   conversationModel?: boolean;
   subagentModel?: boolean;
+  unifiedCompact?: boolean;
   titleGeneration: boolean;
   codeMode: boolean;
   gcEnabled?: boolean;

@@ -16,13 +16,16 @@ import type { RuntimeCredentialControlService } from '../../service/runtime-cred
 import type { ImageGenerationConfiguration } from './image-generation.js';
 
 export interface MarAgentRuntimeModel extends AgentModelConfiguration {
+  readonly unifiedCompact?: boolean;
   readonly imageGeneration?: ImageGenerationConfiguration;
 }
 
 export function sdkModelConfigurations(
   models: readonly MarAgentRuntimeModel[]
 ): AgentModelConfiguration[] {
-  return models.map(({ imageGeneration: _imageGeneration, ...model }) => model);
+  return models.map(
+    ({ imageGeneration: _imageGeneration, unifiedCompact: _unifiedCompact, ...model }) => model
+  );
 }
 
 export async function closeImageCredentialProviders(
@@ -123,6 +126,7 @@ export class MarAgentRuntimeModelFactory {
           ),
           conversationModel: configuration.conversationModel ?? true,
           subagentModel: configuration.subagentModel ?? false,
+          unifiedCompact: configuration.unifiedCompact ?? false,
           titleGeneration: configuration.titleGeneration,
           codeMode: configuration.codeMode,
           gcEnabled: configuration.gcEnabled ?? true,

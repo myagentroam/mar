@@ -21,7 +21,11 @@ import {
   type AgentModelConfiguration,
   type AgentReasoningEffort
 } from '@myagentroam/agent';
-import type { ExtensionCompactContext, ExtensionSource } from '@myagentroam/agent/extensions';
+import type {
+  ExtensionCompactContext,
+  ExtensionCompactResult,
+  ExtensionSource
+} from '@myagentroam/agent/extensions';
 import type { MarAgentRuntimeModelConfiguration } from '@myagentroam/protocol';
 import { highDensityCompactionPrompt } from '../../src/runner/mar-agent/compact-prompt.js';
 import { MarAgentManagedRunController } from '../../src/runner/mar-agent/managed-run-controller.js';
@@ -61,6 +65,7 @@ function model(overrides: Partial<AgentModelConfiguration> = {}): AgentModelConf
 function compactContext(overrides: Partial<ExtensionCompactContext> = {}): ExtensionCompactContext {
   return {
     operationId: 'operation',
+    modelId: 'main-model',
     reason: 'manual',
     summaryTokenBudget: 1_000,
     getPrompt: () => 'Core continuation contract: preserve evidence and output only the handoff.',
@@ -87,7 +92,11 @@ type CompactAttachContext = {
   hooks: {
     intercept: (
       key: string,
-      handler: (input: ExtensionCompactContext, call: { signal: AbortSignal }) => unknown
+      handler: (
+        input: ExtensionCompactContext,
+        call: { signal: AbortSignal },
+        next: (input: ExtensionCompactContext) => Promise<ExtensionCompactResult | undefined>
+      ) => unknown
     ) => { dispose: () => Promise<void> };
   };
 };
@@ -366,7 +375,7 @@ describe('MAR Agent compact extension', () => {
         );
         if (credentialType === 'RUNTIME_TICKET') {
           expect(createModels).toHaveBeenLastCalledWith(
-            [main, { ...compact, useResourceUrl: false }],
+            [main, { ...compact, useResourceUrl: false, unifiedCompact: false }],
             {
               runtimeScopeId: 'scope',
               executionId: 'second'
@@ -661,6 +670,7 @@ describe('MAR Agent compact extension', () => {
     const managed = model();
     const state: MarAgentCompactState = {
       revision: 7,
+      unifiedCompactModelIds: ['main-model'],
       current: { model: managed, reasoningEffort: 'low' }
     };
     const snapshot = await marAgentCompactExtensionSource(state).resolve({
@@ -692,6 +702,67 @@ describe('MAR Agent compact extension', () => {
     expect((generateModelText.mock.calls.at(-1)![0] as { model: { id: string } }).model.id).toBe(
       'compact-model'
     );
+  });
+
+  it('uses the actual execution model opt-in and retains the captured model flags', async () => {
+    const managed = model();
+    const main = { ...model({ id: 'main-model' }), unifiedCompact: true };
+    const child = { ...model({ id: 'child-model' }), unifiedCompact: false };
+    const legacy = model({ id: 'legacy-model' });
+    const state: MarAgentCompactState = { revision: 0 };
+    const configuration = { model: runtimeModel(managed), reasoningEffort: 'high' };
+    updateMarAgentCompactState(state, configuration, [managed, main, child, legacy]);
+    const source = marAgentCompactExtensionSource(state);
+    const signal = new AbortController().signal;
+    async function capture() {
+      const snapshot = await source.resolve({ signal });
+      let handler!: Parameters<CompactAttachContext['hooks']['intercept']>[1];
+      const attach = snapshot.extensions[0]!.attachSession as (
+        context: CompactAttachContext
+      ) => void;
+      attach({
+        hooks: {
+          intercept: (_key, value) => {
+            handler = value;
+            return { dispose: async () => undefined };
+          }
+        }
+      });
+      return handler;
+    }
+    const handler = await capture();
+    // Updating the catalog must not change an already captured execution snapshot.
+    updateMarAgentCompactState(state, configuration, [
+      managed,
+      { ...main, unifiedCompact: false },
+      { ...child, unifiedCompact: true },
+      legacy
+    ]);
+    for (const reason of ['manual', 'automatic'] as const) {
+      for (const modelId of ['child-model', 'legacy-model', 'missing-model', undefined]) {
+        const next = vi.fn(async () => undefined);
+        const { modelId: _modelId, ...context } = compactContext({ reason });
+        const input = modelId === undefined ? context : { ...context, modelId };
+        await expect(handler(input, { signal }, next)).resolves.toBeUndefined();
+        expect(next).toHaveBeenCalledWith(input);
+      }
+      expect(generateModelText).not.toHaveBeenCalled();
+      generateModelText.mockResolvedValueOnce({ text: 'opted-in summary' });
+      const next = vi.fn(async () => undefined);
+      await expect(handler(compactContext({ reason }), { signal }, next)).resolves.toEqual({
+        summary: 'opted-in summary'
+      });
+      expect(next).not.toHaveBeenCalled();
+      generateModelText.mockClear();
+    }
+    const updated = await capture();
+    const next = vi.fn(async () => undefined);
+    await expect(updated(compactContext(), { signal }, next)).resolves.toBeUndefined();
+    expect(next).toHaveBeenCalledOnce();
+    generateModelText.mockResolvedValueOnce({ text: 'child summary' });
+    await expect(
+      updated(compactContext({ modelId: 'child-model' }), { signal }, next)
+    ).resolves.toEqual({ summary: 'child summary' });
   });
 
   it('keeps the legacy three-argument update without credential ownership', () => {

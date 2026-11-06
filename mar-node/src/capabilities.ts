@@ -17,6 +17,7 @@ const runtimeCredentialCapability = (): NonNullable<
   responsesOptionalParameters: true,
   responsesHttpContinuation: true,
   contextGcControl: true,
+  unifiedCompactControl: true,
   conversationModels: true,
   resourceInput: true,
   httpVersions: ['1.1', '2']

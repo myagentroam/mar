@@ -11,6 +11,34 @@ import {
 
 describe('model settings documents', () => {
   it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
+    'round-trips opt-in unified Compact for %s without changing legacy defaults',
+    (protocol) => {
+      for (const unifiedCompact of [true, false]) {
+        const settings = modelSettingsFromInput({
+          protocol,
+          hostedWebSearch: false,
+          unifiedCompact
+        });
+        expect(parseStoredModelSettings(protocol, JSON.stringify(settings)).unifiedCompact).toBe(
+          unifiedCompact
+        );
+      }
+      expect(modelSettingsFromInput({ protocol, hostedWebSearch: false }).unifiedCompact).toBe(
+        false
+      );
+      const legacy =
+        protocol === 'ANTHROPIC_MESSAGES'
+          ? { version: 1 }
+          : { version: 1, hostedWebSearch: false, responsesPreviousResponseId: false };
+      expect(
+        parseStoredModelSettings(protocol, JSON.stringify(legacy)).unifiedCompact ?? false
+      ).toBe(false);
+      expect(() => parseModelSettings(protocol, { ...legacy, unifiedCompact: 'true' })).toThrow(
+        'MAR_AGENT_MODEL_CONFIG_INVALID'
+      );
+    }
+  );
+  it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
     'round-trips explicit GC control for %s and accepts legacy documents',
     (protocol) => {
       for (const gcEnabled of [true, false]) {

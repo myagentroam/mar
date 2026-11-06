@@ -115,6 +115,61 @@ test('Git changes append on scroll within the inspector', async ({ page }) => {
 });
 
 for (const theme of ['dark', 'light']) {
+  test(`Git History refresh stays compact on desktop and mobile in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    let holdHistory = false;
+    let releaseHistory: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    await page.route('**/api/workspaces/project/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/git/history')) {
+        if (holdHistory) await gate;
+        return route.fulfill({ json: { commits: [], nextCursor: null } });
+      }
+      if (path.endsWith('/git/refs')) return route.fulfill({ json: { refs: [] } });
+      if (path.endsWith('/git/fetch'))
+        return route.fulfill({ json: { fetchFailed: false, updated: false } });
+      return route.fulfill({ json: { changes: [], repositories: [] } });
+    });
+    await page.goto(`${fixture.url}icon-system.html?git-history-icons=1&theme=${theme}`);
+    const refresh = page.getByRole('button', { name: 'Refresh Git history', exact: true });
+    const glyph = refresh.locator('[data-mar-icon="refresh"]');
+    await expect(refresh).toBeEnabled();
+    for (const width of [1280, 320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(glyph).toHaveCSS('width', '14px');
+      await expect(glyph).toHaveCSS('height', '14px');
+      const button = (await refresh.boundingBox())!;
+      const graphic = (await glyph.boundingBox())!;
+      expect(button.width).toBe(24);
+      expect(button.height).toBe(24);
+      expect(graphic.x + graphic.width / 2).toBeCloseTo(button.x + button.width / 2, 1);
+      expect(graphic.y + graphic.height / 2).toBeCloseTo(button.y + button.height / 2, 1);
+      await refresh.focus();
+      await expect(refresh).toBeFocused();
+      await refresh.hover();
+      await expect(glyph).toHaveCSS('width', '14px');
+      await page.locator('.git-history').screenshot({
+        path: testInfo.outputPath(`git-history-icons-${theme}-${width}.png`)
+      });
+    }
+    holdHistory = true;
+    try {
+      await refresh.click();
+      await expect(refresh).toBeDisabled();
+      await expect(refresh).toHaveAttribute('aria-busy', 'true');
+      await expect(glyph).toHaveCSS('width', '14px');
+      await expect(glyph).toHaveCSS('height', '14px');
+    } finally {
+      releaseHistory?.();
+    }
+    await expect(refresh).toBeEnabled();
+    await expect(refresh).not.toHaveAttribute('aria-busy');
+  });
+
   test(`Git change status columns and restore icons stay aligned in ${theme}`, async ({
     page
   }, testInfo) => {

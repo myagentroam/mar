@@ -33,6 +33,45 @@ function model(
 }
 
 describe('Server MAR Agent runtime model service', () => {
+  it('projects each model opt-in and omits dedicated Compact on Nodes without model control', async () => {
+    const main = {
+      ...model('main', { type: 'INLINE_API_KEY', value: 'key' }),
+      responsesPreviousResponseId: false,
+      unifiedCompact: true
+    };
+    const legacy = {
+      ...model('legacy', { type: 'INLINE_API_KEY', value: 'key' }),
+      responsesPreviousResponseId: false
+    };
+    const compact = vi.fn(async () => ({ model: main, reasoningEffort: 'high' as const }));
+    let supported = false;
+    const service = new MarAgentRuntimeModelService({
+      models: {
+        storedConfigurationsForUser: vi.fn(async () => [main, legacy]),
+        stored: vi.fn(async () => main)
+      },
+      tickets: { issue: vi.fn() },
+      compact: { runtime: compact },
+      capability: () => ({
+        apiVersion: 1,
+        websocket: true,
+        httpVersions: ['1.1'],
+        unifiedCompactControl: supported
+      })
+    });
+    const context = { userId: 1, nodeId: 'node', workspaceId: 'workspace' };
+    const fallback = await service.prepare(context);
+    expect(fallback).not.toHaveProperty('compact');
+    expect(compact).not.toHaveBeenCalled();
+    supported = true;
+    await expect(service.prepare(context)).resolves.toMatchObject({
+      compact: { reasoningEffort: 'high' },
+      models: [
+        { id: 'main', unifiedCompact: true },
+        { id: 'legacy', unifiedCompact: false }
+      ]
+    });
+  });
   it('requires explicit Node capability only when GC is disabled', async () => {
     const configured = {
       ...model('api', { type: 'INLINE_API_KEY', value: 'key' }),

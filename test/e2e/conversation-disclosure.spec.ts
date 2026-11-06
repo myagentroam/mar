@@ -99,9 +99,28 @@ for (const [width, theme] of [
 
     const tasks = page.locator('.task-list');
     await expect(tasks).toHaveAttribute('open', '');
+    const taskIcon = tasks.locator(':scope > summary > [data-mar-icon="task-list"]');
+    await expect(taskIcon).toHaveCount(1);
+    await expect(tasks.locator(':scope > summary > .conversation-record-icon')).toHaveCount(1);
+    await expect(taskIcon).toBeVisible();
+    await expect(taskIcon).toHaveAttribute('aria-hidden', 'true');
+    const fileIcon = page.locator(
+      '.conversation-file-change-details > summary > .conversation-record-icon'
+    );
+    const iconStyle = await fileIcon.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: style.width, height: style.height, color: style.color };
+    });
+    for (const [property, value] of Object.entries(iconStyle))
+      await expect(taskIcon).toHaveCSS(property, value);
+    await tasks.locator(':scope > summary').screenshot({
+      path: testInfo.outputPath('task-list-heading.png')
+    });
     await expect(tasks.locator('.task-list-items > li')).toHaveCount(3);
     await tasks.locator(':scope > summary').click();
     await expect(tasks.locator('.conversation-detail-body')).toHaveCount(0);
+    await expect(taskIcon).toHaveCount(1);
+    await expect(taskIcon).toBeVisible();
     await tasks.locator(':scope > summary').click();
     await expect(tasks.locator('.task-list-items > li')).toHaveCount(3);
 

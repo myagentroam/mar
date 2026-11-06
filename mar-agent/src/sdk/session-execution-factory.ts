@@ -877,6 +877,7 @@ export function createSessionExecutionFactory(ports: {
               ? buildExecutionSystemPrompt(toolCatalog.tools, 'run')
               : buildExecutionSystemPrompt();
           const generateCompactExtension = createExecutionCompactExtension({
+            modelId: selectedModel.id,
             contextWindowTokens: selectedModel.contextWindowTokens,
             maxOutputTokens: selectedModel.maxOutputTokens,
             hasInterceptor: () => coreExtensions.hooks.hasInterceptors('compact.generate'),

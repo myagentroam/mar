@@ -1279,7 +1279,7 @@ test('mobile Aside preserves reading position after Back and repositions a remou
   }
 });
 
-test('Main and Aside keep independent visible session watches through stacked layout and tab hiding', async ({
+test('Main and Aside keep independent session watches through width constraints and tab hiding', async ({
   page
 }) => {
   test.setTimeout(90_000);
@@ -1495,13 +1495,50 @@ test('Main and Aside keep independent visible session watches through stacked la
   await expect
     .poll(() => messages)
     .toContainEqual({ sessionId: 'session-1', content: 'main keyboard message' });
+  const beforeConstraint = watches.length;
   await page.setViewportSize({ width: 1000, height: 900 });
-  await expect(page.locator('.workspace-grid')).toHaveClass(/stacked/);
+  await expect(aside).toBeHidden();
   await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      watches
+        .slice(beforeConstraint)
+        .some(
+          (item) =>
+            item.sessionId === 'session-2' &&
+            item.method === 'DELETE' &&
+            item.position === 'secondary'
+        )
+    )
+    .toBe(true);
+  expect(
+    watches
+      .slice(beforeConstraint)
+      .some((item) => item.sessionId === 'session-1' && item.method === 'DELETE')
+  ).toBe(false);
+  const beforeRestore = watches.length;
+  await page.setViewportSize({ width: 1920, height: 900 });
   await expect(aside.getByText('正文 session-2', { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      watches
+        .slice(beforeRestore)
+        .some(
+          (item) =>
+            item.sessionId === 'session-2' &&
+            item.mode === 'initial' &&
+            item.position === 'secondary'
+        )
+    )
+    .toBe(true);
+  const beforeToolSwitch = watches.length;
   await aside.getByRole('tab', { name: '文件', exact: true }).click();
   await expect
-    .poll(() => watches.some((item) => item.sessionId === 'session-2' && item.method === 'DELETE'))
+    .poll(() =>
+      watches
+        .slice(beforeToolSwitch)
+        .some((item) => item.sessionId === 'session-2' && item.method === 'DELETE')
+    )
     .toBe(true);
   await expect(page.getByText('正文 session-1', { exact: true })).toBeVisible();
 
@@ -1619,7 +1656,7 @@ test('Main and Aside keep independent visible session watches through stacked la
   await expect(aside.getByText('正文 session-3', { exact: true })).toBeVisible();
   await expect(aside.getByRole('tab', { name: /^session-/ })).toHaveCount(1);
   await expect(aside.getByRole('tab', { name: 'session-2', exact: true })).toHaveCount(0);
-  await expect(asideComposer).toHaveValue('');
+  await expect(asideComposer).toHaveValue('retained Aside draft');
   await expect(aside.locator('.composer-attachments')).toHaveCount(0);
   await expect
     .poll(() =>

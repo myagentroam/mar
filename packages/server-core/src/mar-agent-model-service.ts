@@ -877,6 +877,7 @@ interface ParsedModel {
   titleGeneration: boolean;
   codeMode: boolean;
   gcEnabled: boolean;
+  unifiedCompact: boolean;
   serviceTier?: MarAgentModelSummary['serviceTier'];
   hostedWebSearch: boolean;
   responsesTransport?: MarAgentModelSummary['responsesTransport'];
@@ -914,6 +915,7 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
     titleGeneration: record.titleGeneration ?? false,
     codeMode: record.codeMode ?? false,
     gcEnabled: record.gcEnabled ?? true,
+    unifiedCompact: record.unifiedCompact ?? false,
     metadata: record.metadata,
     serviceTier: record.serviceTier,
     hostedWebSearch: record.hostedWebSearch,
@@ -993,6 +995,7 @@ function runtimeConfiguration(
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
     gcEnabled: value.gcEnabled ?? true,
+    unifiedCompact: value.unifiedCompact ?? false,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
     hostedWebSearch: value.hostedWebSearch,
     useResourceUrl: resourceUrlsEnabled && value.metadata?.useResourceUrl === true,
@@ -1032,6 +1035,7 @@ function storedConfiguration(
     titleGeneration: value.titleGeneration,
     codeMode: value.codeMode,
     gcEnabled: value.gcEnabled ?? true,
+    unifiedCompact: value.unifiedCompact ?? false,
     ...(value.serviceTier === undefined ? {} : { serviceTier: value.serviceTier }),
     hostedWebSearch: value.hostedWebSearch,
     ...(value.responsesTransport === undefined
@@ -1147,6 +1151,7 @@ function summary(row: RowDataPacket, settings: ModelSettings): MarAgentModelSumm
     titleGeneration: Boolean(row.title_generation),
     codeMode: Boolean(row.code_mode),
     gcEnabled: settings.gcEnabled ?? true,
+    unifiedCompact: settings.unifiedCompact ?? false,
     ...(serviceTier === undefined ? {} : { serviceTier }),
     hostedWebSearch: responses?.hostedWebSearch ?? false,
     ...(responsesTransport === undefined ? {} : { responsesTransport }),

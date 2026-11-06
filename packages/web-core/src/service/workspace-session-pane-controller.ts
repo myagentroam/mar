@@ -1,3 +1,11 @@
+/**
+ * Application behavior for one ordinary Workspace Session Pane, shared by Main and Aside.
+ * PaneState owns local mutable projections; domain services own protocol, cache and Run rules.
+ * This module connects narrow capabilities and exposes Pane presentation/actions to the View.
+ * Location-specific opening/visibility policy belongs in createWorkspaceSessionPane below.
+ * Connect domain capabilities, then the shared Watch coordinator, before activating the page.
+ * Do not add page-wide selection state, file HTTP protocols or a second Watch lifecycle here.
+ */
 import { computed, getCurrentScope, onScopeDispose, ref, watch as watchRef, type Ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { sessionSubmissionContext } from './workbench-submission-service.js';
@@ -177,6 +185,9 @@ export function createWorkspaceSessionPaneController(
     readonly files: {
       readonly openChange: (intent: NonNullable<ReturnType<typeof toolChangeOpenIntent>>) => void;
       readonly openFile: (path: string, line?: number, column?: number, external?: boolean) => void;
+      readonly attachments: (
+        target: import('../model/workbench.js').WorkspaceTarget
+      ) => import('./workspace-file-access-service.js').WorkspaceFileAttachmentAccess;
     };
     readonly capabilities: Pick<
       ReturnType<
@@ -184,18 +195,29 @@ export function createWorkspaceSessionPaneController(
       >,
       'nodes' | 'manifest' | 'manifestLoading' | 'setNodeConnection'
     >;
-    readonly profiles: ReturnType<
-      typeof import('./runner-profile-service.js').createRunnerProfileService
+    readonly profiles: Pick<
+      ReturnType<typeof import('./runner-profile-service.js').createRunnerProfileService>,
+      'profiles' | 'loading' | 'failed' | 'has' | 'load' | 'defaultFor' | 'save'
     >;
-    readonly skills: ReturnType<
-      typeof import('./composer-skill-service.js').createComposerSkillService
+    readonly skills: Pick<
+      ReturnType<typeof import('./composer-skill-service.js').createComposerSkillService>,
+      'skills' | 'loading' | 'failed' | 'ensureFresh'
     >;
-    readonly prompts: ReturnType<
-      typeof import('./quick-prompt-service.js').createQuickPromptService
+    readonly prompts: Pick<
+      ReturnType<typeof import('./quick-prompt-service.js').createQuickPromptService>,
+      'prompts' | 'loading' | 'failed' | 'refresh'
     >;
-    readonly discovery: ReturnType<
-      typeof import('./workspace-session-service.js').createWorkspaceSessionService
-    >;
+    readonly discovery: Pick<
+      ReturnType<typeof import('./workspace-session-service.js').createWorkspaceSessionService>,
+      'merge' | 'markManagedActive'
+    > & {
+      readonly projection: Pick<
+        ReturnType<
+          typeof import('./workspace-session-service.js').createWorkspaceSessionService
+        >['projection'],
+        'sessions' | 'replaceExisting' | 'removeExact'
+      >;
+    };
     readonly mobileViewport: Readonly<Ref<boolean>>;
     readonly events: Omit<
       EventOptions,
@@ -399,28 +421,10 @@ export function createWorkspaceSessionPaneController(
             ? undefined
             : JSON.stringify([target.nodeId, target.workspaceId, state.sessionId.value]);
         }),
-        revalidate: (file) => {
-          const target = state.workspaceTarget.value!;
-          const parameters = new URLSearchParams({
-            nodeId: target.nodeId,
-            path: file.path,
-            offset: '0',
-            limit: '1'
-          });
-          return common.request(
-            `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/read?${parameters}`,
-            { cache: 'no-store' }
-          );
-        },
-        sourceUrl: (file, revision) => {
-          const target = state.workspaceTarget.value!;
-          const parameters = new URLSearchParams({
-            nodeId: target.nodeId,
-            path: file.path,
-            preview: String(revision)
-          });
-          return `/api/workspaces/${encodeURIComponent(target.workspaceId)}/files/content?${parameters}`;
-        },
+        revalidate: (file) =>
+          options.files.attachments(state.workspaceTarget.value!).revalidate(file),
+        sourceUrl: (file, revision) =>
+          options.files.attachments(state.workspaceTarget.value!).sourceUrl(file, revision),
         onError: (error, path) => showMessage(filePreviewErrorMessage(error, path), 'error', error)
       }
     }
@@ -1189,6 +1193,12 @@ export function createWorkspaceSessionPaneController(
     clearGoal
   };
   const view = {
+    imageResourceUrl: computed(() => {
+      const target = state.workspaceTarget.value;
+      if (target === undefined) return undefined;
+      const access = options.files.attachments(target);
+      return (path: string) => access.sourceUrl({ path });
+    }),
     state: {
       attachments: state.attachments,
       conversation: state.conversation,
@@ -1445,8 +1455,8 @@ export type WorkspaceSessionPaneServices = Pick<
   | 'ensureDraftSupported'
   | 'identity'
   | 'events'
-  | 'watchConnection'
 > & {
+  readonly watchConnection: Omit<PaneControllerPorts['watchConnection'], 'coordinator'>;
   readonly completion: {
     readonly client: PromptCompletionClientService;
     readonly enabled: Readonly<Ref<boolean>>;
@@ -1495,11 +1505,12 @@ type SessionPaneLocation = {
     }
 );
 
-/** Own the position first, then connect only cross-domain application capabilities. */
+/** Owns Pane state and location policy; connects services before linking shared Watch actions. */
 export function createWorkspaceSessionPane(
   options: Parameters<typeof createWorkspaceSessionPaneState>[0]
 ) {
   const state = createWorkspaceSessionPaneState(options);
+  let coordinator: ReturnType<PaneControllerPorts['watchConnection']['coordinator']>;
   function connect(services: WorkspaceSessionPaneServices, location: SessionPaneLocation) {
     const completion = {
       client: services.completion.client,
@@ -1533,6 +1544,7 @@ export function createWorkspaceSessionPane(
     };
     const common = {
       ...services,
+      watchConnection: { ...services.watchConnection, coordinator: () => coordinator },
       completion,
       state,
       queue,
@@ -1542,7 +1554,6 @@ export function createWorkspaceSessionPane(
       watchRef(
         location.visible,
         (visible) => {
-          const coordinator = services.watchConnection.coordinator();
           if (!visible) {
             coordinator?.stopSession();
             return;
@@ -1619,7 +1630,7 @@ export function createWorkspaceSessionPane(
         selectedWorkspace: services.selectedWorkspace,
         temporaryTitle: temporarySessionTitle,
         beginSessionWatch: (id) => {
-          void services.watchConnection.coordinator()?.restartSecondarySession(id);
+          void coordinator?.restartSecondarySession(id);
         }
       },
       history: {
@@ -1631,5 +1642,11 @@ export function createWorkspaceSessionPane(
       }
     });
   }
-  return { state, connect };
+  return {
+    state,
+    connect,
+    connectWatchCoordinator: (next: NonNullable<typeof coordinator>) => {
+      coordinator = next;
+    }
+  };
 }

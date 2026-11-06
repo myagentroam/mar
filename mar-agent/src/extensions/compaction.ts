@@ -22,6 +22,8 @@ export interface ExtensionCompactContext {
     | ((usage: import('../model/usage-observer.js').ModelRequestUsage) => Promise<void> | void)
     | undefined;
   readonly operationId: string;
+  /** Actual execution model configuration ID, not the session default or summary model. */
+  readonly modelId?: string;
   readonly reason: 'manual' | 'automatic';
   readonly messages: readonly ExtensionCompactMessage[];
   readonly focus?: string;
