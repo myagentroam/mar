@@ -6,6 +6,7 @@ import { ExecutionLifecycle } from './application/execution-lifecycle.js';
 import { NodeOperationAdmission } from './application/node-operation-admission.js';
 import { normalizeMarAgentUsage } from './runner/mar-agent/conversation-normalizer.js';
 import { NodeLifecycle } from './application/node-lifecycle.js';
+import { ScheduledExecutionService } from './application/scheduled-execution-service.js';
 import { isImageAttachment } from './session/attachments.js';
 import { ModelUsageOutbox } from './service/model-usage-outbox.js';
 import { NodeModelUsageService } from './service/model-usage-service.js';
@@ -38,10 +39,8 @@ import { CommandStateStore } from './runner-command-engine.js';
 import { GoalRuntime } from './service/goal-runtime.js';
 import { GoalContinuationCoordinator } from './service/goal-continuation-coordinator.js';
 import { GoalMcpBridge } from './service/goal-mcp-bridge.js';
-import {
-  AgentNetworkObservations,
-  agentObservationFromRunEvent
-} from './service/agent-network-observations.js';
+import { AgentNetworkObservations } from './service/agent-network-observations.js';
+import { AgentNetworkRunProjection } from './service/agent-network-run-projection.js';
 import { createNodeAgentNetwork } from './service/agent-network-bindings.js';
 import {
   agentNetworkExecutionCommand,
@@ -89,7 +88,7 @@ import { SessionWatchSlotCoordinator } from './service/session-watch-slot-coordi
 import { SessionContextService } from './session/session-context-service.js';
 import { RunWorkbenchService } from './service/run-workbench-service.js';
 import { SessionQueryService } from './session/session-query-service.js';
-import { marctlSessionDetail, marctlSessionProgress } from './service/session-recent-activity.js';
+import { marctlSessionProgress } from './service/session-recent-activity.js';
 import { WorkspaceQueueWorkbenchService } from './workspace/workspace-queue-workbench-service.js';
 import { ContinuousRunCoordinator } from './service/continuous-run-coordinator.js';
 import { SessionIdentityService } from './session/session-identity-service.js';
@@ -215,6 +214,12 @@ export function nextReconnectDelay(attempt: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** Math.min(Math.max(attempt, 0), 16));
 }
 
+/** Application composition and resource-lifetime root, not a domain workflow owner.
+ * Field initializers create local state/ports; the constructor creates domain owners, connects
+ * runtime event feedback, registers operations, then connects lifecycle. Callbacks for genuine
+ * Session/Workspace feedback are dormant until composition completes; start() activates resources.
+ * Session queries, Agent observations and execution preparation stay with their respective owners.
+ */
 export class NodeConnector {
   private usageOutbox: ModelUsageOutbox | undefined;
   private readonly modelUsage = new NodeModelUsageService(
@@ -254,35 +259,9 @@ export class NodeConnector {
     if (!this.config) throw new Error('NODE_CONFIG_UNAVAILABLE');
     return nodeDataDirectory(this.config, this.configPath);
   });
-  private readonly lifecycle = new NodeLifecycle(
-    () => this.startResources(),
-    () => {
-      this.continuousRunCoordinator.suspend();
-      this.goalCoordinator.freeze();
-      this.scheduledSessions.stop();
-    },
-    {
-      waitForRecovery: () => this.restartHandoff.wait(),
-      drainInput: async () => {
-        this.sessionMessageService.setAccepting(false);
-        await this.operationAdmission.drain();
-        await this.sessionMessageService.drain();
-      },
-      closeResume: () => this.externalSessionResumeService.close(),
-      capture: () => {
-        if (!this.config?.nodeId) return;
-        return this.restartHandoff.capture();
-      },
-      dispose: () => this.disposeRuntime(),
-      publish: (snapshot) => this.restartHandoff.publish(snapshot),
-      diagnose: (stage, error) =>
-        nodeLog('node.shutdown.failed', {
-          stage,
-          errorCode: safeErrorCode(error, 'NODE_SHUTDOWN_FAILED'),
-          ...(stage === 'capture' ? plannedRestartCaptureDiagnostic(error) : undefined)
-        })
-    }
-  );
+  private readonly lifecycle: NodeLifecycle<
+    NonNullable<Awaited<ReturnType<PlannedRestartHandoff['capture']>>>
+  >;
   private get stopped(): boolean {
     return this.lifecycle.stopped;
   }
@@ -415,27 +394,16 @@ export class NodeConnector {
   private readonly runnerUsageReader: RunnerUsageReader;
   private readonly terminalManager: TerminalManager;
   private readonly upgradeCoordinator: NodeUpgradeCoordinator;
-  private readonly workspaceResources = composeWorkspaceResources({
-    discover: (workspaceId, onRunnerDiscovered) =>
-      this.discoverWorkspaceSessions(workspaceId, onRunnerDiscovered),
-    listPage: (workspaceId) =>
-      this.executeNodeOperation('session.list', { workspaceId, limit: 30 }),
-    invalidateSessions: (workspaceId) =>
-      void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions'),
-    invalidateFiles: (workspaceId) => {
-      this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
-      this.workspaceCoordinator.invalidate(workspaceId);
-    },
-    releaseWatch: (workspaceId) => this.workspaceWorkbenchService?.releaseWorkspace(workspaceId),
-    removeWatch: (watch) => this.workspaceWorkbenchService?.cancelFilePrewarm(watch),
-    temporaryRoot: () => this.attachmentTemporaryRoot(),
-    attachmentResource: (id, path) => this.runAttachmentService.fileResource(id, path)
-  });
-  private readonly workspaceWatchService = this.workspaceResources.watch;
-  private readonly workspaceSessionService = this.workspaceResources.sessions;
-  private readonly workspaceFileService = this.workspaceResources.files;
-  private readonly workspaceUploadService = this.workspaceResources.uploads;
-  private readonly invalidateWorkspaceFiles = this.workspaceResources.invalidateFiles;
+  private readonly workspaceResources: ReturnType<typeof composeWorkspaceResources>;
+  private readonly workspaceWatchService: ReturnType<typeof composeWorkspaceResources>['watch'];
+  private readonly workspaceSessionService: ReturnType<
+    typeof composeWorkspaceResources
+  >['sessions'];
+  private readonly workspaceFileService: ReturnType<typeof composeWorkspaceResources>['files'];
+  private readonly workspaceUploadService: ReturnType<typeof composeWorkspaceResources>['uploads'];
+  private readonly invalidateWorkspaceFiles: ReturnType<
+    typeof composeWorkspaceResources
+  >['invalidateFiles'];
   private directTransferService: DirectTransferService | undefined;
 
   private attachmentTemporaryRoot(): string {
@@ -456,119 +424,14 @@ export class NodeConnector {
     Date.now,
     (run, session, userMessage) => this.recentRunProjectionService.record(run, session, userMessage)
   );
-  private readonly goalCoordinator = new GoalContinuationCoordinator({
-    goals: this.goalRuntime,
-    runners: () => this.runners,
-    runtime: this.runtime,
-    commands: this.commandStates,
-    queue: () => this.continuousRunCoordinator,
-    submit: (input) => this.sessionMessageService.submitGoal(input),
-    emitRun: (...args) => this.runEventBridge.emitRun(...args),
-    present: (session) => this.sessionPresentationService.present(session),
-    emitSession: (session) =>
-      this.emitSessionWorkbenchEvent({ session: this.sessionPresentationService.present(session) }),
-    database: () => this.database
-  });
+  private readonly goalCoordinator: GoalContinuationCoordinator;
   private readonly metrics = new NodeMetrics();
   private readonly agentNetworkObservations = new AgentNetworkObservations();
-  private readonly transientAgentObservers = new Map<string, string>();
-  private readonly runEventService = new RunEventService({
-    runtime: this.runtime,
-    metrics: this.metrics,
-    isBootstrapSession: (sessionId) => this.sessionIdentityService.bootstrapIds.has(sessionId),
-    presentSession: (session) => this.sessionPresentationService.present(session),
-    rejectBootstrap: (sessionId, code) => this.sessionIdentityService.reject(sessionId, code),
-    emitWorkbench: (category, payload) => this.publishWorkbenchEvent(category, payload),
-    cleanupAttachments: (runId) => this.runAttachmentService.cleanup(runId),
-    refreshAttachments: (sessionId) => this.runAttachmentService.refreshSession(sessionId),
-    expireImages: (runId) => this.runAttachmentService.expire(runId),
-    scheduleContextRefresh: (sessionId) => this.sessionContextService.schedule(sessionId),
-    refreshWorkspaceSessions: (workspaceId) =>
-      this.workspaceWorkbenchService.ensureTopicSnapshot(workspaceId, 'sessions'),
-    onTerminalRun: (run, status) => this.executionLifecycle.terminal(run, status),
-    observeAgentEvent: ({ run, executionId, eventType, payload, terminalStatus }) => {
-      const child = this.runtime.getAgentSession(run.sessionId);
-      if (!child) return;
-      const parent =
-        child.parentSessionId == null
-          ? undefined
-          : this.runtime.getAgentSession(child.parentSessionId);
-      let observation = agentObservationFromRunEvent({ eventType, payload, terminalStatus });
-      if (eventType === 'approval.request') {
-        const approvals = marctlSessionDetail(this.runtime, child, 0).pendingApprovals;
-        if (approvals.length)
-          observation = {
-            kind: 'message',
-            value: JSON.stringify({
-              pendingApprovals: approvals
-            })
-          };
-      }
-      if (observation)
-        this.agentNetworkObservations.publishChild({
-          ...(parent?.workspaceId === child.workspaceId ? { parentId: parent.id } : {}),
-          childId: child.id,
-          runId: run.id,
-          executionId,
-          ...observation
-        });
-      if (
-        terminalStatus !== undefined &&
-        this.transientAgentObservers.get(run.sessionId) === run.id
-      ) {
-        this.transientAgentObservers.delete(run.sessionId);
-        this.agentNetworkObservations.get(run.sessionId)?.close();
-      }
-    },
-    dispatchQueue: (sessionId, delayMs) =>
-      this.executionLifecycle.dispatchQueue(sessionId, delayMs),
-    executionStarted: (executionId) => this.continuousRunCoordinator.executionStarted(executionId),
-    acceptExecutionTerminal: (input) =>
-      this.continuousRunCoordinator.acceptExecutionTerminal(input),
-    publishGoalUpdate: ({ session, goal }) => this.goalCoordinator.publishGoalState(session, goal),
-    publishQueueChange: (sessionId) => this.continuousRunCoordinator.publish(sessionId),
-    releaseExecution: (executionId) => this.executionLifecycle.release(executionId)
-  });
+  private readonly agentNetworkProjection: AgentNetworkRunProjection;
+  private readonly runEventService: RunEventService;
 
   private readonly sessionWatchSlots = new SessionWatchSlotCoordinator();
-  private readonly nativeSessionWatchService = new NativeSessionWatchService({
-    resolve: async (sessionId) =>
-      this.runtime.getAgentSession(sessionId) ??
-      this.nativeSessionProjectionService.resolveCurrent(sessionId),
-    managedActive: (session) => hasManagedActiveRun(this.runtime, session),
-    suspended: (sessionId) => this.externalSessionResumeService.transitioning(sessionId),
-    refreshActivity: (session) => this.conversationHistoryService.refreshExternalActivity(session),
-    present: (session) => this.sessionPresentationService.present(session),
-    readPage: (session, limit) => this.conversationHistoryService.read(session, { limit }),
-    readHistoryPage: (session, limit) =>
-      this.conversationHistoryService.readHistoryPage(session, { limit }),
-    projectInitialPage: (session, page, _unit, limit) => {
-      const context = this.sessionContextService.snapshot(session.id);
-      this.sessionContextService.schedule(session);
-      return {
-        kind: 'session-watch-snapshot',
-        sequence: this.workbenchEventService.snapshotSequence(),
-        session: this.sessionPresentationService.present(session),
-        runs: this.runtime.listRunsForSession(session.id, { includeTerminal: true }),
-        progress: marctlSessionProgress(this.runtime, session.id),
-        performance: this.runtime.sessionPerformance(session.id),
-        queue: this.workspaceQueueWorkbenchService.snapshot(session.id),
-        context,
-        conversation: this.conversationSegmentService.projectInitial(session, page, limit)
-      };
-    },
-    emitSession: (session) => this.emitSessionWorkbenchEvent({ session }),
-    emitPage: (session, page) =>
-      this.emitWorkbenchEvent('conversation', {
-        sessionId: session.id,
-        snapshot: this.conversationSegmentService.projectInitial(session, page, 3)
-      }),
-    nodeId: () => this.config?.nodeId ?? 'runtime-node',
-    nodeGeneration: () => this.nodeGeneration,
-    emitWatchEvent: (payload) => this.send('watch.event', payload),
-    sessionWatchSlots: this.sessionWatchSlots,
-    log: nodeLog
-  });
+  private readonly nativeSessionWatchService: NativeSessionWatchService;
 
   constructor(options: NodeConnectorOptions = {}) {
     this.config = options.config;
@@ -1292,6 +1155,109 @@ export class NodeConnector {
       goal: (input) => this.goalCoordinator.start(input),
       clearGoal: (session) => this.goalCoordinator.clear(session)
     });
+    this.nativeSessionWatchService = new NativeSessionWatchService({
+      resolve: async (sessionId) =>
+        this.runtime.getAgentSession(sessionId) ??
+        this.nativeSessionProjectionService.resolveCurrent(sessionId),
+      managedActive: (session) => hasManagedActiveRun(this.runtime, session),
+      suspended: (sessionId) => this.externalSessionResumeService.transitioning(sessionId),
+      refreshActivity: (session) =>
+        this.conversationHistoryService.refreshExternalActivity(session),
+      present: (session) => this.sessionPresentationService.present(session),
+      readPage: (session, limit) => this.conversationHistoryService.read(session, { limit }),
+      readHistoryPage: (session, limit) =>
+        this.conversationHistoryService.readHistoryPage(session, { limit }),
+      projectInitialPage: (session, page, _unit, limit) => {
+        const context = this.sessionContextService.snapshot(session.id);
+        this.sessionContextService.schedule(session);
+        return {
+          kind: 'session-watch-snapshot',
+          sequence: this.workbenchEventService.snapshotSequence(),
+          session: this.sessionPresentationService.present(session),
+          runs: this.runtime.listRunsForSession(session.id, { includeTerminal: true }),
+          progress: marctlSessionProgress(this.runtime, session.id),
+          performance: this.runtime.sessionPerformance(session.id),
+          queue: this.workspaceQueueWorkbenchService.snapshot(session.id),
+          context,
+          conversation: this.conversationSegmentService.projectInitial(session, page, limit)
+        };
+      },
+      emitSession: (session) => this.emitSessionWorkbenchEvent({ session }),
+      emitPage: (session, page) =>
+        this.emitWorkbenchEvent('conversation', {
+          sessionId: session.id,
+          snapshot: this.conversationSegmentService.projectInitial(session, page, 3)
+        }),
+      nodeId: () => this.config?.nodeId ?? 'runtime-node',
+      nodeGeneration: () => this.nodeGeneration,
+      emitWatchEvent: (payload) => this.send('watch.event', payload),
+      sessionWatchSlots: this.sessionWatchSlots,
+      log: nodeLog
+    });
+    // Create the Session query owner, then connect its Workspace cache/observation ports below.
+    this.sessionCatalogService = new SessionCatalogService({
+      resolveExecutionDirectory,
+      database: () => {
+        if (this.database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
+        return this.database;
+      },
+      nodeId: () => this.config?.nodeId ?? 'recorded-session',
+      runtime: this.runtime,
+      runners: this.runners,
+      runnerAvailable: (runner) => this.runners.require(runner).available(this.capabilities),
+      projection: this.nativeSessionProjectionService,
+      cachedNative: () => this.nativeSessionProjectionService.cachedNative(),
+      cachedWorkspace: (workspaceId) => this.workspaceSessionService.cached(workspaceId),
+      discoveryPending: (workspaceId) => this.workspaceSessionService.discoveryPending(workspaceId),
+      discoverWorkspace: (workspaceId, cleanup) =>
+        this.nativeSessionProjectionService.discoverWorkspace(workspaceId, undefined, cleanup),
+      present: (session) => this.sessionPresentationService.present(session),
+      nativeIds: (session) => this.nativeSessionProjectionService.nativeIds(session),
+      forget: (session, nativeIds) => {
+        this.nativeSessionProjectionService.forget(session, nativeIds);
+        this.promptCompletion.invalidateSession(session.workspaceId, session.id);
+        void this.runAttachmentService.releaseSession(session.id);
+      },
+      refreshActivity: (session) =>
+        this.conversationHistoryService.refreshExternalActivity(session),
+      externalActivity: (sessionId) => this.externalSessionResumeService.activity(sessionId),
+      isWatching: (sessionId) => this.nativeSessionWatchService.isWatching(sessionId),
+      isRecovering: (sessionId) => this.restartHandoff.blocks(sessionId),
+      history: (session, input) => this.conversationHistoryService.read(session, input),
+      invalidateHistory: (sessionId, workspaceId) => {
+        this.nativeSessionWatchService.invalidate(sessionId);
+        this.promptCompletion.invalidateSession(workspaceId, sessionId);
+      },
+      invalidateWorkspaceSessions: (workspaceId) => {
+        this.workspaceSessionService.invalidateCache(workspaceId);
+        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions');
+      },
+      emitSession: (session) =>
+        this.emitSessionWorkbenchEvent({
+          session: this.sessionPresentationService.present(session)
+        })
+    });
+    this.workspaceResources = composeWorkspaceResources({
+      discover: (workspaceId, onRunnerDiscovered) =>
+        this.discoverWorkspaceSessions(workspaceId, onRunnerDiscovered),
+      listPage: (workspaceId, group) =>
+        this.sessionCatalogService.listWorkspacePage(workspaceId, group),
+      invalidateSessions: (workspaceId) =>
+        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions'),
+      invalidateFiles: (workspaceId) => {
+        this.workspaceWorkbenchService?.invalidateWorkspaceFiles(workspaceId);
+        this.workspaceCoordinator.invalidate(workspaceId);
+      },
+      releaseWatch: (workspaceId) => this.workspaceWorkbenchService?.releaseWorkspace(workspaceId),
+      removeWatch: (watch) => this.workspaceWorkbenchService?.cancelFilePrewarm(watch),
+      temporaryRoot: () => this.attachmentTemporaryRoot(),
+      attachmentResource: (id, path) => this.runAttachmentService.fileResource(id, path)
+    });
+    this.workspaceWatchService = this.workspaceResources.watch;
+    this.workspaceSessionService = this.workspaceResources.sessions;
+    this.workspaceFileService = this.workspaceResources.files;
+    this.workspaceUploadService = this.workspaceResources.uploads;
+    this.invalidateWorkspaceFiles = this.workspaceResources.invalidateFiles;
     this.sessionMessageService = new SessionMessageService({
       resolveExecutionDirectory,
       runtime: this.runtime,
@@ -1318,6 +1284,25 @@ export class NodeConnector {
       goalPreparationFailed: (session, goal, activated) =>
         this.goalCoordinator.handleGoalPreparationFailed(session, goal, activated)
     });
+    this.goalCoordinator = new GoalContinuationCoordinator({
+      goals: this.goalRuntime,
+      runners: () => this.runners,
+      runtime: this.runtime,
+      commands: this.commandStates,
+      queue: () => this.continuousRunCoordinator,
+      submit: (input) => this.sessionMessageService.submitGoal(input),
+      emitRun: (...args) => this.runEventBridge.emitRun(...args),
+      present: (session) => this.sessionPresentationService.present(session),
+      emitSession: (session) =>
+        this.emitSessionWorkbenchEvent({
+          session: this.sessionPresentationService.present(session)
+        }),
+      database: () => this.database
+    });
+    this.agentNetworkProjection = new AgentNetworkRunProjection(
+      this.runtime,
+      this.agentNetworkObservations
+    );
     this.agentNetworkService = createNodeAgentNetwork({
       runtime: this.runtime,
       database: () => this.database,
@@ -1330,31 +1315,9 @@ export class NodeConnector {
       goals: this.goalRuntime,
       runs: this.runWorkbenchService,
       observations: this.agentNetworkObservations,
-      ensureObservations: (actor) => {
-        const existing = this.agentNetworkObservations.get(actor.observationId ?? actor.sessionId);
-        if (existing) return existing;
-        const run = actor.runId === undefined ? undefined : this.runtime.getRun(actor.runId);
-        if (
-          !run ||
-          run.sessionId !== actor.sessionId ||
-          this.runtime.activeSessionRun(actor.sessionId)?.id !== run.id
-        )
-          throw new Error('AGENT_ACTOR_NOT_ACTIVE');
-        const observer = this.agentNetworkObservations.attach(actor.sessionId);
-        this.transientAgentObservers.set(actor.sessionId, run.id);
-        return observer;
-      },
+      ensureObservations: this.agentNetworkProjection.ensureObservations,
       withGrant: (actor, work) => this.modelUsage.withGrant(actor.usageGrant, work)
     });
-    this.operationRouter.register(
-      'agent.network',
-      agentNetworkExecutionCommand({
-        runtime: this.runtime,
-        coordinator: this.continuousRunCoordinator,
-        service: this.agentNetworkService,
-        observations: this.agentNetworkObservations
-      })
-    );
     const inputState = (
       entry: import('./service/planned-restart-handoff.js').RestartSession,
       message: import('./service/planned-restart-handoff.js').RestartMessage
@@ -1423,48 +1386,7 @@ export class NodeConnector {
       diagnose: (code, sessionId, errorCode) =>
         nodeLog('node.restart.diagnostic', { code, sessionId, errorCode })
     });
-    this.sessionCatalogService = new SessionCatalogService({
-      resolveExecutionDirectory,
-      database: () => {
-        if (this.database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
-        return this.database;
-      },
-      nodeId: () => this.config?.nodeId ?? 'recorded-session',
-      runtime: this.runtime,
-      runners: this.runners,
-      runnerAvailable: (runner) => this.runners.require(runner).available(this.capabilities),
-      projection: this.nativeSessionProjectionService,
-      cachedNative: () => this.nativeSessionProjectionService.cachedNative(),
-      cachedWorkspace: (workspaceId) => this.workspaceCoordinator.cachedSessions(workspaceId),
-      discoveryPending: (workspaceId) => this.workspaceSessionService.discoveryPending(workspaceId),
-      discoverWorkspace: (workspaceId, cleanup) =>
-        this.nativeSessionProjectionService.discoverWorkspace(workspaceId, undefined, cleanup),
-      present: (session) => this.sessionPresentationService.present(session),
-      nativeIds: (session) => this.nativeSessionProjectionService.nativeIds(session),
-      forget: (session, nativeIds) => {
-        this.nativeSessionProjectionService.forget(session, nativeIds);
-        this.promptCompletion.invalidateSession(session.workspaceId, session.id);
-        void this.runAttachmentService.releaseSession(session.id);
-      },
-      refreshActivity: (session) =>
-        this.conversationHistoryService.refreshExternalActivity(session),
-      externalActivity: (sessionId) => this.externalSessionResumeService.activity(sessionId),
-      isWatching: (sessionId) => this.nativeSessionWatchService.isWatching(sessionId),
-      isRecovering: (sessionId) => this.restartHandoff.blocks(sessionId),
-      history: (session, input) => this.conversationHistoryService.read(session, input),
-      invalidateHistory: (sessionId, workspaceId) => {
-        this.nativeSessionWatchService.invalidate(sessionId);
-        this.promptCompletion.invalidateSession(workspaceId, sessionId);
-      },
-      invalidateWorkspaceSessions: (workspaceId) => {
-        this.workspaceSessionService.invalidateCache(workspaceId);
-        void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions');
-      },
-      emitSession: (session) =>
-        this.emitSessionWorkbenchEvent({
-          session: this.sessionPresentationService.present(session)
-        })
-    });
+    // Connect Runner control feedback after Session owners and Workspace resources exist.
     this.codexClient.bindControl({
       start: (envelope) => this.codexRunController.start(envelope),
       cancel: (runId, intent) => {
@@ -1695,11 +1617,7 @@ export class NodeConnector {
       resources: this.workspaceResources,
       changes: this.workspaceChangeService,
       listSessions: (workspaceId, sessionGroup) =>
-        this.executeNodeOperation('session.list', {
-          workspaceId,
-          limit: 30,
-          ...(sessionGroup === undefined ? {} : { sessionGroup })
-        }),
+        this.workspaceSessionService.listPage(workspaceId, sessionGroup),
       sessionNavigation: async (workspaceId, query) =>
         this.sessionCatalogService.navigation({ workspaceId, ...query }),
       invalidatePrompt: (id) => this.promptCompletion?.invalidateWorkspace(id),
@@ -1713,6 +1631,33 @@ export class NodeConnector {
     this.workspaceService = workspaceApplication.workspace;
     this.workspaceWorkbenchService = workspaceApplication.workbench;
     this.publishWorkspaceSession = workspaceApplication.publishSession;
+    // Connect normalized event projection and terminal feedback; no execution starts here.
+    this.runEventService = new RunEventService({
+      runtime: this.runtime,
+      metrics: this.metrics,
+      isBootstrapSession: (sessionId) => this.sessionIdentityService.bootstrapIds.has(sessionId),
+      presentSession: (session) => this.sessionPresentationService.present(session),
+      rejectBootstrap: (sessionId, code) => this.sessionIdentityService.reject(sessionId, code),
+      emitWorkbench: (category, payload) => this.publishWorkbenchEvent(category, payload),
+      cleanupAttachments: (runId) => this.runAttachmentService.cleanup(runId),
+      refreshAttachments: (sessionId) => this.runAttachmentService.refreshSession(sessionId),
+      expireImages: (runId) => this.runAttachmentService.expire(runId),
+      scheduleContextRefresh: (sessionId) => this.sessionContextService.schedule(sessionId),
+      refreshWorkspaceSessions: (workspaceId) =>
+        this.workspaceWorkbenchService.ensureTopicSnapshot(workspaceId, 'sessions'),
+      onTerminalRun: (run, status) => this.executionLifecycle.terminal(run, status),
+      observeAgentEvent: this.agentNetworkProjection.accept,
+      dispatchQueue: (sessionId, delayMs) =>
+        this.executionLifecycle.dispatchQueue(sessionId, delayMs),
+      executionStarted: (executionId) =>
+        this.continuousRunCoordinator.executionStarted(executionId),
+      acceptExecutionTerminal: (input) =>
+        this.continuousRunCoordinator.acceptExecutionTerminal(input),
+      publishGoalUpdate: ({ session, goal }) =>
+        this.goalCoordinator.publishGoalState(session, goal),
+      publishQueueChange: (sessionId) => this.continuousRunCoordinator.publish(sessionId),
+      releaseExecution: (executionId) => this.executionLifecycle.release(executionId)
+    });
     this.runEventBridge = new NodeRunEventBridge({
       bindModelUsage: (runId) => {
         const run = this.runtime.getRun(runId);
@@ -1769,6 +1714,14 @@ export class NodeConnector {
     this.scheduledRunAuthorization = new RunAuthorizationControl((envelope) =>
       this.controlChannel.sendEnvelope(envelope)
     );
+    const scheduledExecution = new ScheduledExecutionService({
+      runtime: this.runtime,
+      projection: this.nativeSessionProjectionService,
+      authorization: this.scheduledRunAuthorization,
+      runners: this.runners,
+      git: this.gitOperationService,
+      messages: this.sessionMessageService
+    });
     this.scheduledSessions = new ScheduledSessionCoordinator({
       store: () => new ScheduledSessionStore(requireDatabase().raw),
       busy: (task) =>
@@ -1776,65 +1729,8 @@ export class NodeConnector {
         this.restartHandoff.blocks(task.sessionId) ||
         this.runtime.activeSessionRun(task.sessionId) !== undefined ||
         this.runtime.sessionQueue(task.sessionId).itemIds.length > 0,
-      authorize: async (task, occurrenceId) => {
-        const session =
-          this.runtime.getAgentSession(task.sessionId) ??
-          (await this.nativeSessionProjectionService.resolveCurrent(task.sessionId));
-        if (
-          session === undefined ||
-          session.workspaceId !== task.workspaceId ||
-          session.runner !== task.runner
-        )
-          throw new Error('SCHEDULE_SESSION_NOT_FOUND');
-        const configuredSession =
-          this.nativeSessionProjectionService.ensureResumedConfiguration(session);
-        const context = await this.scheduledRunAuthorization.authorize({
-          taskId: task.id,
-          revision: task.revision,
-          occurrenceId,
-          sessionId: task.sessionId,
-          workspaceId: task.workspaceId,
-          ownerUserId: task.ownerUserId,
-          runner: task.runner,
-          modelId: configuredSession.modelId
-        });
-        return {
-          ...(context.gitConfiguration === undefined
-            ? {}
-            : { gitConfiguration: context.gitConfiguration }),
-          secretEnvironment: context.secretEnvironment,
-          personalInstructions: context.personalInstructions,
-          usageGrant: context.usageGrant,
-          executionContext: this.runners.require(task.runner).prepareExecutionContext(context)
-        };
-      },
-      submit: async (task, occurrenceId, context) => {
-        const result = (await this.gitOperationService.execute(
-          'session.message',
-          {
-            sessionId: task.sessionId,
-            workspaceId: task.workspaceId,
-            __requestUserId: task.ownerUserId,
-            secretEnvironment: context.secretEnvironment,
-            ...(context.gitConfiguration === undefined
-              ? {}
-              : { gitConfiguration: context.gitConfiguration })
-          },
-          async (data) =>
-            this.sessionMessageService.submitScheduled({
-              sessionId: task.sessionId,
-              occurrenceId,
-              objective: task.objective,
-              initiatedByUserId: task.ownerUserId,
-              secretEnvironment: (data as { secretEnvironment: Record<string, string> })
-                .secretEnvironment,
-              personalInstructions: context.personalInstructions,
-              ...(context.usageGrant === undefined ? {} : { usageGrant: context.usageGrant }),
-              executionContext: context.executionContext
-            })
-        )) as { run: { id: string } };
-        return { runId: result.run.id };
-      },
+      authorize: scheduledExecution.authorize,
+      submit: scheduledExecution.submit,
       sessionTitle: (sessionId) => {
         const session = this.runtime.getAgentSession(sessionId);
         return session?.customTitle ?? session?.runnerTitle ?? sessionId;
@@ -1851,6 +1747,19 @@ export class NodeConnector {
         ),
       emitNotification: (payload) => this.emitWorkbenchEvent('conversation', payload)
     });
+    this.executionLifecycle = new ExecutionLifecycle(
+      () => this.database !== undefined,
+      this.scheduledSessions,
+      this.continuousRunCoordinator,
+      this.goalCoordinator,
+      this.modelUsage,
+      this.goalMcpBridge,
+      this.scheduleMcpBridge,
+      this.notificationMcpBridge,
+      this.runEventBridge,
+      this.upgradeCoordinator
+    );
+    // Register public operations only after domain workflows are connected.
     this.runnerService = new RunnerService(
       requireDatabase,
       () => this.capabilities,
@@ -1925,6 +1834,15 @@ export class NodeConnector {
       references: (workspaceId, _actor, signal) =>
         completionWorkspace.references(workspaceId, signal)
     });
+    this.operationRouter.register(
+      'agent.network',
+      agentNetworkExecutionCommand({
+        runtime: this.runtime,
+        coordinator: this.continuousRunCoordinator,
+        service: this.agentNetworkService,
+        observations: this.agentNetworkObservations
+      })
+    );
     this.operationRouter.registerAll(this.promptCompletion.operations());
     for (const operation of CONVERSATION_TEMPLATE_OPERATIONS)
       this.operationRouter.register(operation, (data) => {
@@ -2017,18 +1935,6 @@ export class NodeConnector {
       manifest: await this.workbenchManifestService.read(),
       binaryTerminal: true
     }));
-    this.executionLifecycle = new ExecutionLifecycle(
-      () => this.database !== undefined,
-      this.scheduledSessions,
-      this.continuousRunCoordinator,
-      this.goalCoordinator,
-      this.modelUsage,
-      this.goalMcpBridge,
-      this.scheduleMcpBridge,
-      this.notificationMcpBridge,
-      this.runEventBridge,
-      this.upgradeCoordinator
-    );
     this.operationAdmission = new NodeOperationAdmission(
       () => this.stopped,
       () => this.database !== undefined,
@@ -2037,6 +1943,38 @@ export class NodeConnector {
       this.upgradeCoordinator,
       this.gitOperationService,
       this.operationRouter
+    );
+    // Lifecycle is connected last; start() is the only resource activation boundary.
+    this.lifecycle = new NodeLifecycle(
+      () => this.startResources(),
+      () => {
+        this.continuousRunCoordinator.suspend();
+        this.goalCoordinator.freeze();
+        this.scheduledSessions.stop();
+        void this.workspaceSessionService.stop();
+      },
+      {
+        waitForRecovery: () => this.restartHandoff.wait(),
+        drainInput: async () => {
+          this.sessionMessageService.setAccepting(false);
+          await this.operationAdmission.drain();
+          await this.sessionMessageService.drain();
+          await this.workspaceSessionService.stop();
+        },
+        closeResume: () => this.externalSessionResumeService.close(),
+        capture: () => {
+          if (!this.config?.nodeId) return;
+          return this.restartHandoff.capture();
+        },
+        dispose: () => this.disposeRuntime(),
+        publish: (snapshot) => this.restartHandoff.publish(snapshot),
+        diagnose: (stage, error) =>
+          nodeLog('node.shutdown.failed', {
+            stage,
+            errorCode: safeErrorCode(error, 'NODE_SHUTDOWN_FAILED'),
+            ...(stage === 'capture' ? plannedRestartCaptureDiagnostic(error) : undefined)
+          })
+      }
     );
   }
 
@@ -2052,6 +1990,7 @@ export class NodeConnector {
   }
 
   private async startResources(): Promise<void> {
+    this.workspaceSessionService.resume();
     this.continuousRunCoordinator.resumeScheduling();
     this.sessionMessageService.setAccepting(true);
     this.config ??= await loadNodeConfig(this.configPath);
@@ -2164,6 +2103,8 @@ export class NodeConnector {
   }
 
   private disposeRuntime(): Promise<void> {
+    // Earlier shutdown stages may fail; disposal must still join internal reads before DB release.
+    const workspaceSessionDrain = this.workspaceSessionService.stop();
     this.recentRunProjectionService.dispose();
     this.upgradeCoordinator.stop();
     this.connectionLifecycle.stop();
@@ -2175,6 +2116,7 @@ export class NodeConnector {
     this.gitOperationService.clear();
     this.goalCoordinator.dispose();
     this.runEventService.clear();
+    this.agentNetworkProjection.dispose();
     this.sessionContextService.dispose();
     this.runAttachmentService.dispose();
     this.modelResourcePublicationService.dispose();
@@ -2207,6 +2149,7 @@ export class NodeConnector {
     this.controlChannel.stop();
     const database = this.database;
     const drains = Promise.allSettled([
+      workspaceSessionDrain,
       scheduledDrain,
       marAgentDrain,
       runnerDrain,

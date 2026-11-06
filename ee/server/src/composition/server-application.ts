@@ -21,11 +21,7 @@ import { registerNodeRoutes } from '../route/node-routes.js';
 import { registerNodeRegistrationRoute } from '@myagentroam/server-core/node-registration-route';
 import { registerWorkspaceRoutes } from '../route/workspace-routes.js';
 import { registerSessionRunRoutes } from '../route/session-run-routes.js';
-import { prepareSessionExecutionContext } from '@myagentroam/server-core/session-execution-context';
-import {
-  executionPrepareResponseSchema,
-  type ExecutionPrepareRequest
-} from '@myagentroam/protocol';
+import { BackgroundExecutionPreparationService } from '../service/background-execution-preparation-service.js';
 import { registerRunControlRoutes } from '../route/run-control-routes.js';
 import { registerEnvironmentSecretRoutes } from '../route/environment-secret-routes.js';
 import { prepareMysqlDatabase } from '../mysql/connection.js';
@@ -112,7 +108,10 @@ export interface ServerApplicationStorage {
   readonly database: MysqlServerDatabase;
   readonly pool: Pool;
 }
-/** Compose the complete MySQL-backed Server product. */
+/** Compose the complete MySQL-backed Server product and own construction/shutdown order.
+ * Domain services own authorization and execution-preparation workflows. NodeControl consumers
+ * are runtime ports: constructors store them; HTTP/Node input starts only after composition.
+ */
 export async function composeServerApplication(
   options: ServerAppOptions,
   storage: ServerApplicationStorage
@@ -204,24 +203,9 @@ export async function composeServerApplication(
         modelUsage,
         mailNotifications: { send: (...args) => mailNotifications.send(...args) },
         notificationChannels: { send: (...args) => notificationChannels.send(...args) },
-        scheduleAuthorizer: async (nodeId, request) => {
-          const context = await prepareBackgroundExecution(
-            nodeId,
-            {
-              userId: request.ownerUserId,
-              sessionId: request.sessionId,
-              workspaceId: request.workspaceId,
-              runner: request.runner,
-              modelId: request.modelId
-            },
-            'SCHEDULE_MODEL_UNAVAILABLE'
-          );
-          if (request.executionResources === 1) return context;
-          const { gitConfiguration: _git, ...legacyContext } = context;
-          return legacyContext;
-        },
-        executionPreparer: (nodeId, request) =>
-          prepareBackgroundExecution(nodeId, request, 'EXECUTION_MODEL_UNAVAILABLE'),
+        scheduleAuthorizer: (nodeId, request) =>
+          executionPreparation.prepareSchedule(nodeId, request),
+        executionPreparer: (nodeId, request) => executionPreparation.prepare(nodeId, request),
         marctlExecutionCredential: (nodeId, request) =>
           userCredentials.deriveExecution({
             ...request,
@@ -326,50 +310,16 @@ export async function composeServerApplication(
       skillFavorites
     );
     constructedMaintenance = maintenance;
-    const prepareBackgroundExecution = async (
-      nodeId: string,
-      request: ExecutionPrepareRequest,
-      unavailableCode: string
-    ) => {
-      const allowed = await authorizeNodeRequest(
-        request.userId,
-        nodeId,
-        'session.message',
-        { workspaceId: request.workspaceId, sessionId: request.sessionId },
-        request.workspaceId
-      );
-      if (!allowed) throw new Error('WORKSPACE_ACCESS_DENIED');
-      if (request.runner === 'mar-agent' && request.modelId === null)
-        throw new Error(unavailableCode);
-      const prepared = await prepareSessionExecutionContext({
-        user: { userId: request.userId },
-        nodeId,
-        workspaceId: request.workspaceId,
-        serverUrl: publicOrigin,
-        secrets: environmentSecrets,
-        credentials: userCredentials,
-        instructions: personalInstructions,
-        git: personalGit,
-        ...(request.runner !== 'mar-agent'
-          ? {}
-          : {
-              model: {
-                sessionId: request.sessionId,
-                selectedModelId: request.modelId!,
-                marAgentModels,
-                marAgentRuntimeModels
-              }
-            })
-      });
-      const response = executionPrepareResponseSchema.parse({
-        context: {
-          ...prepared,
-          usageGrant: modelUsage.grants.issue(nodeId, request.userId, 'work')
-        }
-      });
-      if ('error' in response) throw new Error('EXECUTION_CONTEXT_INVALID');
-      return response.context;
-    };
+    const executionPreparation = new BackgroundExecutionPreparationService({
+      authorize: authorizeNodeRequest,
+      serverUrl: publicOrigin,
+      secrets: environmentSecrets,
+      credentials: userCredentials,
+      instructions: personalInstructions,
+      git: personalGit,
+      runtimeModels: marAgentRuntimeModels,
+      usageGrants: modelUsage.grants
+    });
     const conversationTemplates = new ConversationTemplateService(
       database,
       resources,

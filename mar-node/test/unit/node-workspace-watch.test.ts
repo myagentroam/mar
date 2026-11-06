@@ -36,9 +36,11 @@ describe('Node Workspace watch', () => {
       const internals = connector as unknown as {
         discoverWorkspaceSessions: WorkspaceSessionServiceOptions['discover'];
         send(type: string, payload: unknown): void;
+        operationRouter: { execute(operation: string, data: unknown): Promise<unknown> };
       };
       vi.spyOn(internals, 'discoverWorkspaceSessions').mockResolvedValue(sessions);
       const send = vi.spyOn(internals, 'send');
+      const dispatch = vi.spyOn(internals.operationRouter, 'execute');
       await operation(connector, 'workspace.watch', {
         workspaceId: workspace.id,
         watchId: 'session-page-watch',
@@ -60,6 +62,7 @@ describe('Node Workspace watch', () => {
           })
         )
       );
+      expect(dispatch.mock.calls.map(([name]) => name)).not.toContain('session.list');
     } finally {
       connector.stop();
       await rm(root, { recursive: true, force: true });
