@@ -668,7 +668,7 @@ defineExpose({ reveal });
   width: auto;
   flex: 1;
   align-items: center;
-  padding: 2px 6px 2px calc(4px + var(--tree-depth) * 8px);
+  padding: 0 6px 0 calc(4px + var(--tree-depth) * 8px);
   cursor: pointer;
 }
 
@@ -765,6 +765,7 @@ defineExpose({ reveal });
   min-width: 0;
   overflow: hidden;
   padding-right: 2px;
+  line-height: 1.5;
   text-overflow: ellipsis;
 }
 
