@@ -1,6 +1,6 @@
 ---
 title: 部署 MyAgentRoam Server 与 Web
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-06
 ---
 
 # 部署 MyAgentRoam Server 与 Web
@@ -11,7 +11,7 @@ lastUpdated: 2026-10-29
 
 产品只有一套源码、构建和部署，入口为 `mar-server/`、`mar-web-console/` 和根 `compose.yaml`。未激活时显示社区版，提供工作区会话、文件、Git、终端、模型与凭据管理、Skill/MCP，以及个人模板和托管对话；有效企业 License 在同一安装中启用组织、用户、共享授权、SSO 和审计，无需更换镜像。
 
-两种授权状态都使用 `/console` 工作台和 `/docs/` 文档中心。原有指向 `/` 的链接继续可用，浏览器在产品内进入 `/console`，保留查询参数与片段，不跳转营销网站。部署后应验证实际登录和一次工作区操作，不能仅凭 `/health` 成功判断完整工作台已可用。
+两种授权状态都使用 `/console` 工作台和 `/docs/` 文档中心。原有指向 `/` 的链接继续可用，浏览器在产品内进入 `/console`，保留查询参数与片段。部署后应验证实际登录和一次工作区操作，不能仅凭 `/health` 成功判断完整工作台已可用。
 
 ## 前置条件
 
