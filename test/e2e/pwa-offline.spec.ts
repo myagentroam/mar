@@ -240,6 +240,63 @@ test('a requested update reloads other open application windows', async ({ brows
   }
 });
 
+for (const offline of [false, true]) {
+  test(`browser reload applies a prepared PWA update without clicking a notification (offline=${offline})`, async ({
+    browser
+  }) => {
+    test.setTimeout(120_000);
+    const fixture = await startPwaOfflineFixture({
+      suffix: `reload-${offline}`,
+      includePrevious: true
+    });
+    const context = await browser.newContext({ serviceWorkers: 'allow' });
+    try {
+      const source = await context.newPage();
+      const peer = await context.newPage();
+      for (const page of [source, peer]) {
+        await page.goto(`${fixture.origin}/console`, { waitUntil: 'domcontentloaded' });
+        await waitForController(page);
+      }
+      const previousScript = await source
+        .locator('script[type="module"][src]')
+        .first()
+        .getAttribute('src');
+      let sourceNavigations = 0;
+      source.on('domcontentloaded', () => sourceNavigations++);
+      fixture.setRelease('current');
+      expect(await observeWorkerUpdate(source)).toBe('installed');
+      expect(await readWorkerStatus(source, 'waiting')).toMatchObject({
+        buildId: fixture.current.buildId,
+        entry: true
+      });
+      expect(await readWorkerStatus(source, 'active')).toMatchObject({
+        buildId: fixture.previous!.buildId
+      });
+      expect(sourceNavigations).toBe(0);
+
+      await context.setOffline(offline);
+      await source.reload({ waitUntil: 'domcontentloaded' });
+      for (const page of [source, peer]) {
+        // Wait for document replacement before querying the newly active worker.
+        await expect(page.locator('script[type="module"][src]').first()).not.toHaveAttribute(
+          'src',
+          previousScript!
+        );
+        await expect(page.locator('#app')).not.toBeEmpty();
+        await expect
+          .poll(async () => (await readWorkerStatus(page, 'active').catch(() => null))?.buildId, {
+            timeout: 30_000
+          })
+          .toBe(fixture.current.buildId);
+      }
+      expect(sourceNavigations).toBe(2);
+    } finally {
+      await context.close();
+      await fixture.close();
+    }
+  });
+}
+
 test('failed Worker updates retain the previous artifact before a successful retry', async ({
   browser
 }) => {
@@ -457,6 +514,12 @@ async function applyWaitingWorker(
     const worker = registration.waiting;
     if (!worker) return null;
     const channel = new MessageChannel();
+    let takeoverTimeout: number | undefined;
+    let controllerChanged!: () => void;
+    const takeover = new Promise<void>((resolve) => {
+      controllerChanged = resolve;
+      navigator.serviceWorker.addEventListener('controllerchange', controllerChanged);
+    });
     const response = new Promise<Record<string, unknown>>((resolve, reject) => {
       const timeout = window.setTimeout(
         () => reject(new Error('PWA update apply timed out.')),
@@ -469,6 +532,24 @@ async function applyWaitingWorker(
       };
     });
     worker.postMessage({ type: 'MAR_PWA_APPLY', pageBuildId: buildId }, [channel.port2]);
-    return response;
+    try {
+      const reply = await response;
+      if (reply.applied === true) {
+        // Observe takeover without repeatedly messaging and restarting the retiring worker.
+        await Promise.race([
+          takeover,
+          new Promise<never>((_, reject) => {
+            takeoverTimeout = window.setTimeout(
+              () => reject(new Error('PWA worker takeover timed out.')),
+              30_000
+            );
+          })
+        ]);
+      }
+      return reply;
+    } finally {
+      window.clearTimeout(takeoverTimeout);
+      navigator.serviceWorker.removeEventListener('controllerchange', controllerChanged);
+    }
   }, pageBuildId);
 }
