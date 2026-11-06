@@ -87,6 +87,14 @@ const hoveredWorkspaceKey = ref<string>();
 const focusedWorkspaceKey = ref<string>();
 const openNodeActionsId = ref<string>();
 const openWorkspaceActionsKey = ref<string>();
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible !== false) return;
+    openNodeActionsId.value = undefined;
+    openWorkspaceActionsKey.value = undefined;
+  }
+);
 const workspaceGroupMoveDialogVisible = ref(false);
 const workspaceGroupMoveTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
 const workspaceGroupMoveName = ref<string | undefined>('');
@@ -359,6 +367,7 @@ function moveWorkspaceToGroup(node: NodeSummary, groupName: string | null): void
 }
 
 function nodeActionsVisible(nodeId: string): boolean {
+  if (props.visible === false) return false;
   return (
     props.mobileViewport ||
     hoveredNodeId.value === nodeId ||
@@ -368,6 +377,7 @@ function nodeActionsVisible(nodeId: string): boolean {
 }
 
 function workspaceActionsVisible(nodeId: string, workspaceId: string): boolean {
+  if (props.visible === false) return false;
   const key = workspaceKey(nodeId, workspaceId);
   return (
     props.mobileViewport ||
@@ -1203,6 +1213,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .workspace-branches .workspace-branch-button:active {
   cursor: grabbing;
+}
+
+@media (max-width: 767px) {
+  .workspace-group-toggle > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (min-width: 768px) {

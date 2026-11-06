@@ -39,6 +39,19 @@ export function createMobileSurfaceFocusService(options: {
     );
   }
 
+  function hasOpenPopup(): boolean {
+    return options.regions().some((region) =>
+      [
+        ...(region?.querySelectorAll('[aria-haspopup][aria-expanded="true"][aria-controls]') ?? [])
+      ].some((control) =>
+        control
+          .getAttribute('aria-controls')
+          ?.split(/\s+/)
+          .some((id) => (document.getElementById(id)?.getClientRects().length ?? 0) > 0)
+      )
+    );
+  }
+
   function focusSurface(): void {
     const region = options.regions().find((element) => element?.getClientRects().length);
     region?.focus({ preventScroll: true });
@@ -119,7 +132,8 @@ export function createMobileSurfaceFocusService(options: {
         scope: 'overlay',
         priority: 20,
         keys: [{ key: 'Escape' }],
-        when: () => options.isOpen() && !options.terminal?.() && !hasModal(),
+        // Owned popups retain their native Escape handling before the surface closes.
+        when: () => options.isOpen() && !options.terminal?.() && !hasModal() && !hasOpenPopup(),
         execute: () => {
           options.close?.();
           return 'HANDLED';
