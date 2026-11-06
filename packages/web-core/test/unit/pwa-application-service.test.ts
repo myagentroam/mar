@@ -96,12 +96,15 @@ describe('PWA application registration', () => {
 });
 
 describe('PWA application update coordination', () => {
-  function fixture(pageBuild = 'page', controlled = true) {
+  function fixture(pageBuild = 'page', controlled = true, navigationType = 'navigate') {
     const reload = vi.fn();
     const window = Object.assign(new EventTarget(), { location: { reload } });
     const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
     vi.stubGlobal('window', window);
     vi.stubGlobal('document', document);
+    vi.stubGlobal('performance', {
+      getEntriesByType: () => [{ type: navigationType }]
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new Error('unexpected network version request'))
@@ -452,7 +455,109 @@ describe('PWA application update coordination', () => {
     expect(f.reload).not.toHaveBeenCalled();
   });
 
-  it('leaves a prepared update waiting until clicked, then reloads the browser once after takeover', async () => {
+  it('activates an already prepared update on browser reload and reloads once after takeover', async () => {
+    const f = fixture('active', true, 'reload');
+    const waiting = f.makeWorker('next');
+    const status = waiting.postMessage.getMockImplementation()!;
+    let reply: MessagePort | undefined;
+    waiting.postMessage.mockImplementation((data, ports) => {
+      if (data.type === 'MAR_PWA_APPLY') reply = ports[0];
+      else status(data, ports);
+    });
+    f.registration.waiting = waiting as unknown as ServiceWorker;
+    await f.service.start();
+    await vi.waitFor(() => expect(reply).toBeDefined());
+    expect(f.reload).not.toHaveBeenCalled();
+    const applying = f.service.applyUpdate();
+    reply!.postMessage({ applied: true });
+    f.registration.waiting = null;
+    f.registration.active = waiting as unknown as ServiceWorker;
+    f.container.controller = waiting as unknown as ServiceWorker;
+    f.container.dispatchEvent(new Event('controllerchange'));
+    await expect(applying).resolves.toBe('APPLIED');
+    await vi.waitFor(() => expect(f.reload).toHaveBeenCalledOnce());
+    expect(
+      waiting.postMessage.mock.calls.filter(([data]) => data.type === 'MAR_PWA_APPLY')
+    ).toHaveLength(1);
+    f.container.dispatchEvent(new Event('controllerchange'));
+    await f.service.checkForUpdate(false);
+    expect(f.reload).toHaveBeenCalledOnce();
+    f.service.dispose();
+  });
+
+  it('does not auto-activate an update that finishes downloading after reload startup', async () => {
+    const f = fixture('active', true, 'reload');
+    await f.service.start();
+    await vi.waitFor(() => expect(f.service.state.value.checked).toBe(true));
+    const waiting = f.makeWorker('next');
+    f.registration.waiting = waiting as unknown as ServiceWorker;
+    f.registration.dispatchEvent(new Event('updatefound'));
+    await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('next'));
+    expect(waiting.postMessage.mock.calls.some(([data]) => data.type === 'MAR_PWA_APPLY')).toBe(
+      false
+    );
+    expect(f.reload).not.toHaveBeenCalled();
+    f.service.dispose();
+  });
+
+  it('does not auto-activate a replacement for the worker waiting at reload startup', async () => {
+    const f = fixture('active', true, 'reload');
+    f.registration.waiting = f.makeWorker('first') as unknown as ServiceWorker;
+    const replacement = f.makeWorker('replacement');
+    f.registration.update.mockImplementation(async () => {
+      f.registration.waiting = replacement as unknown as ServiceWorker;
+    });
+    await f.service.start();
+    await vi.waitFor(() => expect(f.service.state.value.update?.buildId).toBe('replacement'));
+    expect(replacement.postMessage.mock.calls.some(([data]) => data.type === 'MAR_PWA_APPLY')).toBe(
+      false
+    );
+    expect(f.reload).not.toHaveBeenCalled();
+    f.service.dispose();
+  });
+
+  it.each([
+    { degraded: false, entry: false },
+    { degraded: true, entry: true }
+  ])('does not auto-activate an unhealthy target on reload: %o', async (health) => {
+    const f = fixture('active', true, 'reload');
+    const waiting = f.makeWorker('next', health);
+    f.registration.waiting = waiting as unknown as ServiceWorker;
+    await expect(f.service.checkForUpdate()).rejects.toThrow('Waiting worker not ready');
+    expect(waiting.postMessage.mock.calls.some(([data]) => data.type === 'MAR_PWA_APPLY')).toBe(
+      false
+    );
+    expect(f.reload).not.toHaveBeenCalled();
+    f.service.dispose();
+  });
+
+  it('does not retry rejected automatic activation on visibility or network recovery', async () => {
+    const f = fixture('active', true, 'reload');
+    const waiting = f.makeWorker('next');
+    const status = waiting.postMessage.getMockImplementation()!;
+    waiting.postMessage.mockImplementation((data, ports) => {
+      if (data.type === 'MAR_PWA_APPLY') ports[0]!.postMessage({ applied: false });
+      else status(data, ports);
+    });
+    f.registration.waiting = waiting as unknown as ServiceWorker;
+    await f.service.start();
+    await vi.waitFor(() =>
+      expect(
+        waiting.postMessage.mock.calls.filter(([data]) => data.type === 'MAR_PWA_APPLY')
+      ).toHaveLength(1)
+    );
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('online'));
+    await f.service.checkForUpdate();
+    expect(
+      waiting.postMessage.mock.calls.filter(([data]) => data.type === 'MAR_PWA_APPLY')
+    ).toHaveLength(1);
+    expect(f.service.state.value.update?.buildId).toBe('next');
+    expect(f.reload).not.toHaveBeenCalled();
+    f.service.dispose();
+  });
+
+  it('leaves a prepared update waiting on ordinary navigation until clicked, then reloads once after takeover', async () => {
     const f = fixture('active');
     expect(f.service.isReloadingForUpdate()).toBe(false);
     f.reload.mockImplementation(() => expect(f.service.isReloadingForUpdate()).toBe(true));

@@ -6,12 +6,175 @@ import {
   conversationWorkProcessBlocks,
   conversationWorkProcessProjection,
   conversationWorkProcessVisibleBlocks,
+  conversationFileChangeResultBlocks,
   nextConversationRenderItemCount
 } from '../../src/util/conversation-work-process.js';
 import { localePreferenceService } from '../../src/service/locale-preference-service.js';
 
 const sessionId = 'session-1';
 const runId = 'run-1';
+
+describe('Latest completed reply file changes', () => {
+  const changes = (id: string, group: string) =>
+    item(id, 'file_change', {
+      processGroup: { id: group, isStart: true },
+      payload: { changes: [{ path: `${id}.ts`, change: 'MODIFIED' }] }
+    });
+  const reply = () => item('final-reply', 'assistant_message', { payload: { text: 'Done.' } });
+  const result = (
+    turns: readonly ConversationTurn[],
+    runs: { id: string; status: string }[] = []
+  ) => conversationFileChangeResultBlocks(turns, conversationWorkProcessBlocks(turns, runs), runs);
+  const replyBlock = (blocks: ReturnType<typeof result>) =>
+    blocks.find((block) => block.id === `${sessionId}:final-reply`)!;
+
+  it('adds loaded change groups after the final reply without moving original process entries', () => {
+    const turns = [
+      turn([changes('first', 'first-process')], { turnId: 'round', segmentIndex: 3 }),
+      turn([changes('second', 'second-process'), reply()], {
+        id: 'segment-2',
+        turnId: 'round',
+        segmentIndex: 4,
+        status: 'SUCCEEDED'
+      })
+    ];
+    const original = conversationWorkProcessBlocks(turns);
+    const blocks = conversationFileChangeResultBlocks(turns, original);
+    expect(replyBlock(blocks).entries.map(({ displayItem }) => displayItem.type)).toEqual([
+      'item',
+      'file_change_group'
+    ]);
+    expect(
+      blocks.filter((block) => block.groupId !== undefined).map((block) => block.entries)
+    ).toEqual(
+      original.filter((block) => block.groupId !== undefined).map((block) => block.entries)
+    );
+    expect(blocks[0]).toBe(original[0]);
+    expect(
+      original.filter((block) => block.groupId !== undefined).map((block) => block.entries.length)
+    ).toEqual([1, 1]);
+    expect(blocks[0]).toMatchObject({ partial: false, status: 'history' });
+    const result = replyBlock(blocks).entries[1]!.displayItem;
+    expect(result.type).toBe('file_change_group');
+    if (result.type === 'file_change_group')
+      expect(result.items.map((item) => item.id)).toEqual(['first', 'second']);
+  });
+
+  it.each(['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED'])(
+    'keeps recorded changes visible after a %s round',
+    (status) => {
+      expect(
+        replyBlock(result([turn([changes('change', 'process'), reply()], { status })])).entries
+      ).toHaveLength(2);
+    }
+  );
+
+  it('hides only the extra result when the next round starts and keeps process entries unchanged', () => {
+    const completed = turn([changes('change', 'process'), reply()], { status: 'SUCCEEDED' });
+    const next = turn([item('next-input', 'user_message')], {
+      id: 'next-turn',
+      runId: 'next-run',
+      status: 'RUNNING'
+    });
+    const blocks = result([completed, next]);
+    expect(replyBlock(blocks).entries).toHaveLength(1);
+    expect(processBlock(blocks, 'process').entries).toHaveLength(1);
+  });
+
+  it('does not show a terminal snapshot result while a Run is active', () => {
+    const turns = [turn([changes('change', 'process'), reply()], { status: 'SUCCEEDED' })];
+    expect(
+      replyBlock(result(turns, [{ id: 'next-run', status: 'PREPARING' }])).entries
+    ).toHaveLength(1);
+  });
+
+  it('does not move changes from another round or fabricate a reply in a partial window', () => {
+    const previous = turn([changes('previous', 'previous-process')], { id: 'previous-round' });
+    const latest = turn([changes('current', 'current-process'), reply()], { status: 'SUCCEEDED' });
+    const blocks = result([previous, latest]);
+    expect(processBlock(blocks, 'previous-process').entries).toHaveLength(1);
+    expect(replyBlock(blocks).entries).toHaveLength(2);
+    const withoutReply = [turn([changes('current', 'current-process')], { status: 'SUCCEEDED' })];
+    const original = conversationWorkProcessBlocks(withoutReply);
+    expect(conversationFileChangeResultBlocks(withoutReply, original)).toBe(original);
+  });
+
+  it('does not create an empty result or revive an older round after a later round completes', () => {
+    const empty = turn(
+      [
+        item('empty-change', 'file_change', {
+          payload: { changes: [] },
+          processGroup: { id: 'empty-process', isStart: true }
+        }),
+        reply()
+      ],
+      { status: 'SUCCEEDED' }
+    );
+    expect(replyBlock(result([empty])).entries).toHaveLength(1);
+    const previous = turn([changes('old-change', 'old-process'), reply()], {
+      id: 'previous',
+      status: 'SUCCEEDED'
+    });
+    const next = turn([{ ...reply(), id: 'next-reply' }], {
+      id: 'next-round',
+      status: 'SUCCEEDED'
+    });
+    const blocks = result([previous, next]);
+    expect(blocks.at(-1)!.entries).toHaveLength(1);
+    expect(
+      blocks.find((block) => block.groupId === 'old-process')!.entries[0]!.displayItem.type
+    ).toBe('file_change_group');
+  });
+
+  it('keeps the result identity when an older segment joins the same change group', () => {
+    const current = changes('current-change', 'process');
+    const loaded = turn([current], { turnId: 'round', segmentIndex: 2 });
+    const latest = turn([reply()], {
+      id: 'reply-segment',
+      turnId: 'round',
+      segmentIndex: 3,
+      status: 'SUCCEEDED'
+    });
+    const before = replyBlock(result([loaded, latest])).entries[1]!.displayItem;
+    const prefix = turn([changes('older-change', 'process')], {
+      id: 'older-segment',
+      turnId: 'round',
+      segmentIndex: 1
+    });
+    const after = replyBlock(result([prefix, loaded, latest])).entries[1]!.displayItem;
+    expect(after.id).toBe(before.id);
+    expect(after.type).toBe('file_change_group');
+    if (after.type === 'file_change_group') {
+      expect(after.items.map((item) => item.id)).toEqual(['older-change', 'current-change']);
+      expect(after.items[1]).toBe(current);
+    }
+  });
+
+  it('includes received changes from a segment that is not mounted', () => {
+    const prefix = turn([changes('older-change', 'process')], { turnId: 'round', segmentIndex: 2 });
+    const latest = turn([changes('current-change', 'process'), reply()], {
+      id: 'latest',
+      turnId: 'round',
+      segmentIndex: 3,
+      status: 'SUCCEEDED'
+    });
+    const turns = [prefix, latest];
+    const mounted = conversationWorkProcessProjection(turns, [latest]).blocks;
+    const result = replyBlock(conversationFileChangeResultBlocks(turns, mounted)).entries[1]!
+      .displayItem;
+    expect(result.type).toBe('file_change_group');
+    if (result.type === 'file_change_group')
+      expect(result.items.map((item) => item.id)).toEqual(['older-change', 'current-change']);
+  });
+
+  it('waits for the real final reply to mount instead of attaching results to an earlier reply', () => {
+    const prefix = turn([changes('change', 'process'), item('earlier-reply', 'assistant_message')]);
+    const latest = turn([reply()], { id: 'last-segment', turnId: prefix.id, status: 'SUCCEEDED' });
+    const turns = [prefix, latest];
+    const projection = conversationWorkProcessProjection(turns, [prefix]);
+    expect(conversationFileChangeResultBlocks(turns, projection.blocks)).toBe(projection.blocks);
+  });
+});
 
 describe('Visible history render budget', () => {
   const commands = (group: string, count: number) =>

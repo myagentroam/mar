@@ -137,8 +137,8 @@ export function registerSessionShareResourceRoutes(input: {
     });
     app.get('/effective-skills', async (request, reply) => {
       const [nodeResult, workspaceResult] = await Promise.all([
-        call(request, 'node.skills.inspect', { includeClaudeCompatibility: true }),
-        call(request, 'workspace.skills.inspect')
+        call(request, 'node.skills.inspect'),
+        call(request, 'workspace.skills.inspect', { includeClaudeCompatibility: false })
       ]);
       return reply.send({ skills: effectiveSkills(nodeResult, workspaceResult) });
     });

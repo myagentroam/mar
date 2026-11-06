@@ -110,6 +110,17 @@ describe('Product resource input preparation', () => {
       await expect(
         validateComposerSkills(tag(join(home, 'wrong.md')), workspace, home)
       ).rejects.toThrow('MESSAGE_INVALID');
+      await mkdir(join(workspace, '.claude/skills/review'), { recursive: true });
+      await writeFile(
+        join(workspace, '.claude/skills/review/SKILL.md'),
+        '---\nname: review\ndescription: Claude-only override\n---\n'
+      );
+      await expect(
+        validateComposerSkills(tag(skillPath), workspace, home)
+      ).resolves.toBeUndefined();
+      await expect(
+        validateComposerSkills(tag('.claude/skills/review/SKILL.md', 'WORKSPACE'), workspace, home)
+      ).rejects.toThrow('MESSAGE_INVALID');
       await mkdir(join(workspace, '.agents/skills/review'), { recursive: true });
       await writeFile(join(workspace, '.agents/skills/review/SKILL.md'), 'Workspace Skill');
       await expect(validateComposerSkills(tag(skillPath), workspace, home)).rejects.toThrow(

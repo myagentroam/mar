@@ -1238,8 +1238,8 @@ export class NodeConnector {
         })
     });
     this.workspaceResources = composeWorkspaceResources({
-      discover: (workspaceId, onRunnerDiscovered) =>
-        this.discoverWorkspaceSessions(workspaceId, onRunnerDiscovered),
+      discover: (workspaceId, onRunnerDiscovered, signal) =>
+        this.discoverWorkspaceSessions(workspaceId, onRunnerDiscovered, signal),
       listPage: (workspaceId, group) =>
         this.sessionCatalogService.listWorkspacePage(workspaceId, group),
       invalidateSessions: (workspaceId) =>
@@ -2214,9 +2214,15 @@ export class NodeConnector {
     onRunnerDiscovered?: (
       runner: NodeAgentSession['runner'],
       sessions: readonly NodeAgentSession[]
-    ) => void
+    ) => void,
+    signal?: AbortSignal
   ): Promise<readonly NodeAgentSession[]> =>
-    this.nativeSessionProjectionService.discoverWorkspace(workspaceId, onRunnerDiscovered);
+    this.nativeSessionProjectionService.discoverWorkspace(
+      workspaceId,
+      onRunnerDiscovered,
+      false,
+      signal
+    );
   private readonly invalidateWorkspaceWatchTopics = (workspaceId: string): void =>
     this.workspaceCoordinator.invalidate(workspaceId);
   private readonly startCapabilityRefresh = (): void =>

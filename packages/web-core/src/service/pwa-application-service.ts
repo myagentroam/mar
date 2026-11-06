@@ -36,7 +36,7 @@ function isWorkerStatus(value: unknown): value is WorkerStatus {
   );
 }
 
-/** Owns one mounted Console's Service Worker registration. */
+/** Owns one mounted Console's registration, update checks and activation/reload lifecycle. */
 export function createPwaApplicationService(
   container: ServiceWorkerContainer | undefined,
   identity?: { readonly version: string; readonly buildId: string }
@@ -58,6 +58,15 @@ export function createPwaApplicationService(
   let checking: Promise<void> | undefined;
   let checkingUpdate = false;
   let checkAgain = false;
+  let startupRegistration = true;
+  let reloadCandidate: ServiceWorker | null = null;
+  let applying: Promise<'APPLIED' | 'UNAVAILABLE'> | undefined;
+  const reloadNavigation =
+    typeof performance !== 'undefined' &&
+    typeof performance.getEntriesByType === 'function' &&
+    performance
+      .getEntriesByType('navigation')
+      .some((entry) => (entry as PerformanceNavigationTiming).type === 'reload');
 
   function publish(next: PwaApplicationState): void {
     if (disposed) return;
@@ -181,15 +190,22 @@ export function createPwaApplicationService(
         registration = container
           .register('/service-worker.js', { scope: '/' })
           .then((value) => {
+            if (startupRegistration) {
+              startupRegistration = false;
+              // Only a target already waiting at reload startup may interrupt this new page.
+              if (reloadNavigation) reloadCandidate = value.waiting;
+            }
             observeRegistration(value);
             return value;
           })
           .catch(() => {
+            startupRegistration = false;
             registration = undefined;
             registrationRejected = true;
             return undefined;
           });
       } catch {
+        startupRegistration = false;
         registrationRejected = true;
         return Promise.resolve(undefined);
       }
@@ -257,6 +273,8 @@ export function createPwaApplicationService(
       if (disposed) return;
       const active = value?.active ?? null;
       const waiting = value?.waiting ?? null;
+      const startupTarget = reloadCandidate;
+      reloadCandidate = null;
       observeWorker(value?.installing ?? null);
       observeWorker(waiting);
       observeWorker(active);
@@ -321,6 +339,8 @@ export function createPwaApplicationService(
           ...(update === undefined ? {} : { update }),
           ...(reload === undefined ? {} : { reload })
         });
+        if (waiting !== null && waiting === startupTarget && (update ?? reload) !== undefined)
+          await applyUpdate();
         if (waitingStatus?.supported === true && (!waitingStatus.entry || waitingStatus.degraded))
           throw new Error('Waiting worker not ready');
         if (!updateSucceeded) throw new Error('Update check failed');
@@ -401,7 +421,15 @@ export function createPwaApplicationService(
     window.location.reload();
   }
 
-  async function applyUpdate(): Promise<'APPLIED' | 'UNAVAILABLE'> {
+  function applyUpdate(): Promise<'APPLIED' | 'UNAVAILABLE'> {
+    if (applying !== undefined) return applying;
+    applying = performApplyUpdate().finally(() => {
+      applying = undefined;
+    });
+    return applying;
+  }
+
+  async function performApplyUpdate(): Promise<'APPLIED' | 'UNAVAILABLE'> {
     if (identity === undefined || disposed) return 'UNAVAILABLE';
     const update = state.value.update ?? state.value.reload;
     if (update === undefined) return 'UNAVAILABLE';

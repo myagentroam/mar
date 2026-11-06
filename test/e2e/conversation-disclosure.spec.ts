@@ -2,6 +2,65 @@ import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
+
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`latest file changes follow the final reply and disappear on the next round (${width}px, ${theme})`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}conversation-style.html?file-change-result&theme=${theme}`);
+    const process = page.locator('[data-process-id="result-process"]');
+    const heading = process.locator(':scope > .process-heading');
+    await expect(heading).toBeVisible();
+    if ((await heading.getAttribute('aria-expanded')) === 'false') await heading.click();
+    await expect(process.locator('.conversation-file-change-details')).toBeVisible();
+    await process.locator('.file-change-group').evaluate((element) => {
+      (element as HTMLElement).dataset.originalFileCard = 'preserved';
+    });
+    await page.getByTestId('finish-file-result').click();
+    const reply = page
+      .locator('.assistant_message')
+      .filter({ hasText: 'File-change result final reply' });
+    const changes = reply.locator('..').locator('.file-change-group');
+    await expect(reply).toBeVisible();
+    await expect(changes).toHaveCount(1);
+    await expect(process.locator('.file-change-group')).toHaveAttribute(
+      'data-original-file-card',
+      'preserved'
+    );
+    expect(
+      await reply.evaluate((element) =>
+        element.nextElementSibling?.classList.contains('file-change-group')
+      )
+    ).toBe(true);
+    const details = changes.locator('.conversation-file-change-details');
+    if (!(await details.evaluate((element) => (element as HTMLDetailsElement).open)))
+      await details.locator(':scope > summary').click();
+    await changes.getByRole('button', { name: /src\/current\.ts/u }).click();
+    await expect(page.getByTestId('result-opened-file')).toHaveText('src/current.ts');
+    if ((await heading.getAttribute('aria-expanded')) === 'true') await heading.click();
+    await expect(changes.locator('.conversation-file-change-list')).toBeVisible();
+    await page.mouse.move(0, 0);
+    await page
+      .locator('.conversation-timeline')
+      .screenshot({ path: testInfo.outputPath(`file-change-result-${width}-${theme}.png`) });
+    await page.getByTestId('backfill-file-result').click();
+    await expect(changes).toHaveCount(1);
+    await expect(changes.getByRole('button', { name: /src\/older\.ts/u })).toBeVisible();
+    await expect(changes.getByRole('button', { name: /src\/current\.ts/u })).toHaveCount(1);
+    await page.getByTestId('next-file-result-round').click();
+    await expect(page.getByText('Next round request', { exact: true })).toBeVisible();
+    await expect(reply.locator('..').locator('.file-change-group')).toHaveCount(0);
+    await heading.click();
+    await expect(process.locator('.conversation-file-change-details')).toBeVisible();
+    await expect(page.locator('.file-change-group')).toHaveCount(1);
+  });
+}
+
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/conversation-style.html');
 });

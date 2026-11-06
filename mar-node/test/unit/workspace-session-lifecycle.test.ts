@@ -6,8 +6,65 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import { unavailableCapabilities } from '../../src/capabilities.js';
 import type { SessionCatalogService } from '../../src/session/session-catalog-service.js';
+import type { CodexRunner } from '../../src/runner/codex-runner.js';
+import type { RunnerDiscoveryContext } from '../../src/runner/contracts.js';
+import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 
 describe('Workspace Session query lifecycle', () => {
+  it('cancels a blocked discovery and revokes late projection before closing the database', async () => {
+    const database = new NodeDatabase(':memory:', 'discovery-cancellation');
+    const workspace = database.saveWorkspace({
+      path: '/workspace',
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({ database, capabilities: unavailableCapabilities() });
+    const owners = connector as unknown as {
+      workspaceSessionService: WorkspaceSessionService;
+      codexClient: CodexRunner;
+      nativeSessionProjectionService: NativeSessionProjectionService;
+    };
+    const started = Promise.withResolvers<RunnerDiscoveryContext>();
+    const native = Promise.withResolvers<readonly NodeAgentSession[]>();
+    vi.spyOn(owners.codexClient, 'available').mockReturnValue(true);
+    vi.spyOn(owners.codexClient, 'discoverSessions').mockImplementation((context) => {
+      started.resolve(context);
+      return native.promise;
+    });
+    const project = vi.spyOn(owners.nativeSessionProjectionService, 'project');
+    const page = owners.workspaceSessionService
+      .listPage(workspace.id)
+      .catch((error: unknown) => error);
+    const context = await started.promise;
+    let stopped = false;
+    const stopping = connector.stop().then(() => {
+      stopped = true;
+    });
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(context.signal?.aborted).toBe(true);
+      expect(stopped).toBe(true);
+      expect(await page).toEqual(new Error('NODE_STOPPED'));
+      expect(() => database.listWorkspaces()).toThrow();
+      expect(() =>
+        context.createProjection({
+          workspace,
+          runner: 'codex',
+          externalSessionId: 'late',
+          cwd: workspace.path
+        })
+      ).toThrow('NODE_STOPPED');
+      expect(project).not.toHaveBeenCalled();
+      native.resolve([]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(owners.nativeSessionProjectionService.cachedNative()).toEqual([]);
+    } finally {
+      native.resolve([]);
+      await page;
+      await stopping;
+    }
+  });
+
   it.each([false, true])(
     'keeps the Node database open until an internal page read settles (failed recovery: %s)',
     async (failedRecovery) => {
@@ -50,8 +107,10 @@ describe('Workspace Session query lifecycle', () => {
     });
     const pending = Promise.withResolvers<readonly NodeAgentSession[]>();
     const invalidate = vi.fn();
+    const signals: AbortSignal[] = [];
     const service: WorkspaceSessionService = new WorkspaceSessionService({
-      discover: async (_id, batch) => {
+      discover: async (_id, batch, signal) => {
+        signals.push(signal);
         batch('codex', [session]);
         return pending.promise;
       },
@@ -67,9 +126,15 @@ describe('Workspace Session query lifecycle', () => {
     });
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(stopped).toBe(false);
+    expect(signals[0]?.aborted).toBe(true);
     pending.resolve([session]);
     await stopping;
     expect(invalidate).not.toHaveBeenCalled();
+    service.resume();
+    await expect(service.listPage('workspace')).resolves.toEqual({ sessions: [session] });
+    expect(signals[1]).not.toBe(signals[0]);
+    expect(signals[1]?.aborted).toBe(false);
+    await service.stop();
   });
 
   it.each(['resolve', 'reject'] as const)(

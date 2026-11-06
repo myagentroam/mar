@@ -147,7 +147,6 @@ describe('Session-share resource routes', () => {
       'node-fixed',
       'node.skills.inspect',
       {
-        includeClaudeCompatibility: true,
         workspaceId: 'workspace-fixed',
         sessionId: 'session-current'
       },
@@ -160,7 +159,11 @@ describe('Session-share resource routes', () => {
     expect(f.requestNode).toHaveBeenCalledWith(
       'node-fixed',
       'workspace.skills.inspect',
-      { workspaceId: 'workspace-fixed', sessionId: 'session-current' },
+      {
+        workspaceId: 'workspace-fixed',
+        sessionId: 'session-current',
+        includeClaudeCompatibility: false
+      },
       expect.objectContaining({
         userId: 7,
         sessionHash: 'share-session',

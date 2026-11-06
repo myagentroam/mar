@@ -97,7 +97,7 @@ function activity(runtime: NodeRuntimeState, sessionId: string) {
 
 export function marctlSessionProgress(runtime: NodeRuntimeState, sessionId: string) {
   const { latestActivity: _latest, ...progress } = activity(runtime, sessionId);
-  return { ...progress, ...pendingApprovals(runtime, sessionId) };
+  return { ...progress, ...sessionPendingApprovals(runtime, sessionId) };
 }
 
 export function sessionActivityStatus(runtime: NodeRuntimeState, sessionId: string) {
@@ -126,7 +126,7 @@ function isSleepingTool(item: NodeConversationItem): boolean {
 }
 
 /** Summarizes current approval facts without exposing tool input or native payloads. */
-function pendingApprovals(runtime: NodeRuntimeState, sessionId: string) {
+export function sessionPendingApprovals(runtime: NodeRuntimeState, sessionId: string) {
   const run = runtime.activeSessionRun(sessionId);
   const executionId = run && runtime.currentExecutionId(run.id);
   const approvals =
@@ -189,7 +189,7 @@ export function marctlSessionDetail(
     queuedCount,
     latestMessage,
     recentTools,
-    ...pendingApprovals(runtime, session.id)
+    ...sessionPendingApprovals(runtime, session.id)
   };
 }
 

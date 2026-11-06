@@ -822,6 +822,34 @@ const timelineProps = {
   rollbackEnabled: false
 };
 
+it('shows loaded file changes after the latest final reply and hides the result on the next round', async () => {
+  const turn = conversationTurn([
+    {
+      ...conversationItem('changed-file', 'file_change', {
+        changes: [{ path: 'src/a.ts', change: 'MODIFIED', additions: 2, deletions: 1 }]
+      }),
+      processGroup: { id: 'change-process', isStart: true }
+    },
+    conversationItem('final-reply', 'assistant_message', { text: 'Final reply marker' })
+  ]);
+  const html = await render(ConversationTimeline, { ...timelineProps, turns: [turn] });
+  expect(html).toContain('conversation-file-change-details');
+  expect(html.indexOf('file-change-group')).toBeGreaterThan(html.indexOf('Final reply marker'));
+  expect(html.match(/class="conversation-file-change-details"/gu)).toHaveLength(1);
+  expect(html).not.toContain('conversation-file-change-list');
+  const next = conversationTurn(
+    [conversationItem('next-input', 'user_message', { text: 'Next round' })],
+    {
+      id: 'next-turn',
+      runId: 'next-run',
+      status: 'RUNNING'
+    }
+  );
+  const history = await render(ConversationTimeline, { ...timelineProps, turns: [turn, next] });
+  expect(history).toContain('Final reply marker');
+  expect(history).not.toContain('conversation-file-change-details');
+});
+
 it('only enables Markdown caching for completed items in terminal turns and runs', async () => {
   const turns = [
     conversationTurn([conversationItem('complete', 'assistant_message', { text: 'complete' })]),

@@ -11,18 +11,24 @@ export interface WorkspaceSessionServiceOptions {
     onRunnerDiscovered: (
       runner: NodeAgentSession['runner'],
       sessions: readonly NodeAgentSession[]
-    ) => void
+    ) => void,
+    signal: AbortSignal
   ) => Promise<readonly NodeAgentSession[]>;
   listPage: (workspaceId: string, sessionGroup?: SessionGroup) => Promise<unknown>;
   active: (workspaceId: string) => boolean;
   invalidate: (workspaceId: string) => void;
 }
 
-/** Owns native discovery caches, periodic observation and the lifetime of internal page reads. */
+/** Owns native discovery caches, periodic observation and internal page/discovery admission.
+ * Cancels owned discovery generations before joining reads; Runner execution remains with the Runner.
+ */
 export class WorkspaceSessionService {
   private accepting = true;
   private readonly pageReads = new Set<Promise<unknown>>();
-  private readonly discoveryReads = new Set<Promise<readonly NodeAgentSession[]>>();
+  private readonly discoveryReads = new Map<
+    Promise<readonly NodeAgentSession[]>,
+    AbortController
+  >();
   private readonly cacheGenerations = new Map<string, symbol>();
   private readonly initialReads = new Map<string, Promise<readonly NodeAgentSession[]>>();
   private readonly incompleteDiscoveries = new Set<string>();
@@ -56,11 +62,12 @@ export class WorkspaceSessionService {
 
   async stop(): Promise<void> {
     this.accepting = false;
+    for (const controller of this.discoveryReads.values())
+      controller.abort(new Error('NODE_STOPPED'));
     for (const id of this.sessionWatchTimers.keys()) this.stopWatch(id);
     await Promise.allSettled([...this.pageReads, ...this.sessionWatchReads.values()]);
-    // A first page can return a partial batch while native discovery still owns I/O.
-    // Retired cache generations also remain owned until their reads actually settle.
-    await Promise.allSettled([...this.discoveryReads]);
+    // Retired cache generations also remain owned until their cancellable projections settle.
+    await Promise.allSettled([...this.discoveryReads.keys()]);
   }
 
   cachedSnapshot(workspaceId: string): readonly NodeAgentSession[] {
@@ -86,10 +93,13 @@ export class WorkspaceSessionService {
   }
 
   async cached(workspaceId: string): Promise<readonly NodeAgentSession[]> {
+    if (!this.accepting) throw new Error('NODE_STOPPED');
     const cached = this.sessionCache.get(workspaceId);
     if (cached !== undefined && cached.expiresAt > Date.now()) return cached.sessions;
     let discovery = this.sessionCacheReads.get(workspaceId);
     if (discovery === undefined) {
+      const controller = new AbortController();
+      const signal = controller.signal;
       // A retired read must not regain ownership when its Workspace state is reclaimed.
       const generation = Symbol();
       this.cacheGenerations.set(workspaceId, generation);
@@ -109,6 +119,7 @@ export class WorkspaceSessionService {
       let batchPublished = false;
       let notifyCompletion = false;
       const publish = (sessions: readonly NodeAgentSession[], notify = true): void => {
+        if (signal.aborted) return;
         if (this.cacheGenerations.get(workspaceId) !== generation) return;
         const previous = this.sessionCache.get(workspaceId)?.sessions;
         this.sessionCache.set(workspaceId, {
@@ -124,20 +135,26 @@ export class WorkspaceSessionService {
           this.options.invalidate(workspaceId);
       };
       const read = this.options
-        .discover(workspaceId, (runner, sessions) => {
-          if (!acceptingBatches || this.cacheGenerations.get(workspaceId) !== generation) return;
-          const previous = this.sessionCache.get(workspaceId)?.sessions;
-          const merged = [
-            ...(previous ?? []).filter((session) => session.runner !== runner),
-            ...sessions
-          ];
-          // An empty early Runner must not turn an undiscovered Workspace into an empty list.
-          if (previous === undefined && merged.length === 0) return;
-          publish(merged);
-          batchPublished = true;
-          resolveInitial(merged);
-        })
+        .discover(
+          workspaceId,
+          (runner, sessions) => {
+            if (signal.aborted) return;
+            if (!acceptingBatches || this.cacheGenerations.get(workspaceId) !== generation) return;
+            const previous = this.sessionCache.get(workspaceId)?.sessions;
+            const merged = [
+              ...(previous ?? []).filter((session) => session.runner !== runner),
+              ...sessions
+            ];
+            // An empty early Runner must not turn an undiscovered Workspace into an empty list.
+            if (previous === undefined && merged.length === 0) return;
+            publish(merged);
+            batchPublished = true;
+            resolveInitial(merged);
+          },
+          signal
+        )
         .then((sessions) => {
+          signal.throwIfAborted();
           if (this.cacheGenerations.get(workspaceId) === generation)
             this.incompleteDiscoveries.delete(workspaceId);
           const previous = this.sessionCache.get(workspaceId)?.sessions;
@@ -150,7 +167,7 @@ export class WorkspaceSessionService {
         })
         .catch((error: unknown) => {
           rejectInitial(error);
-          if (this.cacheGenerations.get(workspaceId) === generation) {
+          if (!signal.aborted && this.cacheGenerations.get(workspaceId) === generation) {
             nodeLog('native.session.discovery.failed', { workspaceId });
             const partial = this.sessionCache.get(workspaceId);
             if (partial !== undefined)
@@ -169,6 +186,7 @@ export class WorkspaceSessionService {
           if (this.initialReads.get(workspaceId) === initial) this.initialReads.delete(workspaceId);
           if (
             this.accepting &&
+            !signal.aborted &&
             notifyCompletion &&
             this.cacheGenerations.get(workspaceId) === generation
           )
@@ -181,7 +199,7 @@ export class WorkspaceSessionService {
             this.cacheGenerations.delete(workspaceId);
         });
       discovery = read;
-      this.discoveryReads.add(read);
+      this.discoveryReads.set(read, controller);
       this.sessionCacheReads.set(workspaceId, discovery);
       // Later Runner failures cannot become unhandled after the first batch was returned.
       void discovery.catch(() => undefined);

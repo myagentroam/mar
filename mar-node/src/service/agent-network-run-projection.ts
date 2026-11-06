@@ -7,7 +7,7 @@ import {
   agentObservationFromRunEvent,
   type ParentObservations
 } from './agent-network-observations.js';
-import { marctlSessionDetail } from './session-recent-activity.js';
+import { sessionPendingApprovals } from './session-recent-activity.js';
 
 /** Projects normalized Run events and owns transient observers from attachment through terminal cleanup.
  * Run-keyed handles survive Session identity promotion without borrowing a replacement's lifetime.
@@ -57,7 +57,7 @@ export class AgentNetworkRunProjection {
         : this.runtime.getAgentSession(child.parentSessionId);
     let observation = agentObservationFromRunEvent({ eventType, payload, terminalStatus });
     if (eventType === 'approval.request') {
-      const approvals = marctlSessionDetail(this.runtime, child, 0).pendingApprovals;
+      const approvals = sessionPendingApprovals(this.runtime, child.id).pendingApprovals;
       if (approvals.length)
         observation = { kind: 'message', value: JSON.stringify({ pendingApprovals: approvals }) };
     }

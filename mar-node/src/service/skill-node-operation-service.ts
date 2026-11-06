@@ -27,11 +27,9 @@ export class SkillNodeOperationService {
 
   operations() {
     return {
-      'node.skills.inspect': async (data: unknown) => {
+      'node.skills.inspect': async (_data: unknown) => {
         await this.installer.recoverNodeHome(homedir());
-        return this.directories.inspectNodeHome(homedir(), {
-          includeClaudeCompatibility: record(data)['includeClaudeCompatibility'] === true
-        });
+        return this.directories.inspectNodeHome(homedir());
       },
       'node.skills.install': (data: unknown) => this.install('NODE', data),
       'node.skills.remove': (data: unknown) => this.remove('NODE', data),
@@ -40,7 +38,8 @@ export class SkillNodeOperationService {
         await this.installer.recoverWorkspace(workspace);
         return this.directories.inspectWorkspace(
           workspace,
-          this.database().getWorkspaceByPath(workspace)?.includeParentRepository ?? true
+          this.database().getWorkspaceByPath(workspace)?.includeParentRepository ?? true,
+          { includeClaudeCompatibility: record(data)['includeClaudeCompatibility'] !== false }
         );
       },
       'workspace.skills.install': (data: unknown) => this.install('WORKSPACE', data),

@@ -39,10 +39,12 @@ const livePerformance = ref<{ runId: string; latencyMs: number; tokensPerSecond?
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
 const historyActionsFixture = new URL(location.href).searchParams.has('history-actions');
+const fileChangeResultFixture = new URL(location.href).searchParams.has('file-change-result');
+const resultOpenedFile = ref('');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
 const stressFixture = new URL(location.href).searchParams.has('reasoning-stress');
 const loadingFixture = new URL(location.href).searchParams.has('loading-lifecycle');
-const synchronized = ref(previewFixture);
+const synchronized = ref(previewFixture || fileChangeResultFixture);
 const renderedVersion = ref(0);
 const timelineVisible = ref(true);
 const initializing = ref(false);
@@ -187,6 +189,102 @@ const turns = ref<ConversationTurn[]>([
         : items
   }
 ]);
+if (fileChangeResultFixture) {
+  const base = { ...turns.value[0]!, turnId: 'file-result-round', status: 'RUNNING' as const };
+  turns.value = [
+    {
+      ...base,
+      id: 'file-result-segment',
+      segmentIndex: 2,
+      items: [
+        {
+          id: 'result-command',
+          kind: 'command_execution',
+          status: 'COMPLETED',
+          processGroup: { id: 'result-process' },
+          payload: { command: 'verify changes', outputPreview: 'Verified' }
+        },
+        {
+          id: 'result-change',
+          kind: 'file_change',
+          status: 'COMPLETED',
+          processGroup: { id: 'result-process' },
+          payload: {
+            changes: [{ path: 'src/current.ts', change: 'MODIFIED', additions: 2, deletions: 1 }]
+          }
+        }
+      ]
+    },
+    {
+      ...base,
+      id: 'file-result-reply',
+      segmentIndex: 3,
+      items: [
+        {
+          id: 'result-reply',
+          kind: 'assistant_message',
+          status: 'IN_PROGRESS',
+          payload: { text: 'Working reply' }
+        }
+      ]
+    }
+  ];
+}
+function finishFileChangeResult() {
+  previewRunStatus.value = 'SUCCEEDED';
+  turns.value = turns.value.map((turn) => ({
+    ...turn,
+    status: 'SUCCEEDED',
+    items: turn.items.map((item) =>
+      item.id === 'result-reply'
+        ? { ...item, status: 'COMPLETED', payload: { text: 'File-change result final reply' } }
+        : item
+    )
+  }));
+}
+function backfillFileChangeResult() {
+  turns.value = [
+    {
+      ...turns.value[0]!,
+      id: 'file-result-prefix',
+      segmentIndex: 1,
+      items: [
+        {
+          id: 'older-result-change',
+          kind: 'file_change',
+          status: 'COMPLETED',
+          processGroup: { id: 'result-process', isStart: true },
+          payload: {
+            changes: [{ path: 'src/older.ts', change: 'ADDED', additions: 3, deletions: 0 }]
+          }
+        }
+      ]
+    },
+    ...turns.value
+  ];
+}
+function startFileChangeNextRound() {
+  previewRunStatus.value = 'RUNNING';
+  turns.value = [
+    ...turns.value,
+    {
+      ...turns.value.at(-1)!,
+      id: 'file-result-next-round',
+      turnId: 'file-result-next-round',
+      runId: 'next-run',
+      segmentIndex: 0,
+      status: 'RUNNING',
+      items: [
+        {
+          id: 'result-next-user',
+          kind: 'user_message',
+          status: 'COMPLETED',
+          payload: { text: 'Next round request' }
+        }
+      ]
+    }
+  ];
+}
 if (historyActionsFixture) {
   localePreferenceService().setLocale(
     new URL(location.href).searchParams.get('language') === 'zh-CN' ? 'zh-CN' : 'en-US'
@@ -494,8 +592,15 @@ function finishPreview() {
     <ConversationTimeline
       v-if="timelineVisible"
       :turns="turns"
+      @open-file="(path) => (resultOpenedFile = path)"
       :performance="livePerformance"
-      :runs="previewFixture || loadingFixture ? [{ id: 'run', status: previewRunStatus }] : []"
+      :runs="
+        fileChangeResultFixture
+          ? [{ id: turns.at(-1)!.runId!, status: previewRunStatus }]
+          : previewFixture || loadingFixture
+            ? [{ id: 'run', status: previewRunStatus }]
+            : []
+      "
       :synchronized="synchronized"
       :loading="false"
       :initializing="initializing"
@@ -575,6 +680,16 @@ function finishPreview() {
       Finish process
     </button>
     <button data-testid="toggle-following" @click="following = !following">Toggle following</button>
+    <template v-if="fileChangeResultFixture">
+      <output data-testid="result-opened-file">{{ resultOpenedFile }}</output>
+      <button data-testid="finish-file-result" @click="finishFileChangeResult">Finish round</button>
+      <button data-testid="backfill-file-result" @click="backfillFileChangeResult">
+        Load older segment
+      </button>
+      <button data-testid="next-file-result-round" @click="startFileChangeNextRound">
+        Start next round
+      </button>
+    </template>
     <section class="scroll-sample">
       <ConversationScroll
         :has-older="false"

@@ -159,7 +159,8 @@ for (const [width, theme] of [
     await expect(closed).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
     const contents = page.locator('.conversation-content-detail');
-    await expect(contents).toHaveCount(4);
+    await expect(page.locator('.conversation-file-change-list')).toHaveCount(2);
+    await expect(contents).toHaveCount(5);
     for (const root of await contents.all()) {
       const edges = await root.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
