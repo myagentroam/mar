@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed } from 'vue';
 import { executionPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
 import type { ConversationItem } from '../../../model/workbench.js';
 import { translate } from '../../../service/locale-preference-service.js';
-import MarIcon from '../../common/MarIcon.vue';
+import ConversationRecordCopy from '../ConversationRecordCopy.vue';
 import ConversationDetailPreview from '../ConversationDetailPreview.vue';
 import {
   conversationItemDetail,
@@ -36,9 +36,6 @@ const props = defineProps<{
   readPath?: string | undefined;
 }>();
 const emit = defineEmits<{ copy: [text: string, onSuccess: () => void] }>();
-const copyState = ref(false);
-let copyTimer: ReturnType<typeof setTimeout> | undefined;
-let disposed = false;
 const payload = computed(() =>
   props.item.payload && typeof props.item.payload === 'object'
     ? (props.item.payload as Record<string, unknown>)
@@ -101,25 +98,6 @@ const detailText = computed(() => {
     .filter(Boolean)
     .join('\n');
 });
-const copyLabel = computed(() =>
-  translate(copyState.value ? 'toolPresentation.detail.copied' : 'toolPresentation.detail.copy')
-);
-function copyRecord() {
-  const text = JSON.stringify(props.item, null, 2);
-  emit('copy', text, () => {
-    if (disposed) return;
-    if (copyTimer !== undefined) clearTimeout(copyTimer);
-    copyState.value = true;
-    copyTimer = setTimeout(() => {
-      copyState.value = false;
-      copyTimer = undefined;
-    }, 500);
-  });
-}
-onBeforeUnmount(() => {
-  disposed = true;
-  if (copyTimer !== undefined) clearTimeout(copyTimer);
-});
 </script>
 
 <template>
@@ -131,15 +109,11 @@ onBeforeUnmount(() => {
     }"
     :aria-label="translate('toolPresentation.detail.output')"
   >
-    <button
-      v-tooltip="copyLabel"
-      type="button"
-      class="tool-detail-copy icon-button utility-control"
-      :aria-label="copyLabel"
-      @click.stop="copyRecord"
-    >
-      <MarIcon :name="copyState ? 'check' : 'copy'" />
-    </button>
+    <ConversationRecordCopy
+      :key="item.id"
+      :record="item"
+      @copy="(text, done) => emit('copy', text, done)"
+    />
     <ConversationDetailPreview v-if="!copyOnly">
       <AgentOperationDetail v-if="selection.kind === 'agent'" :agent-detail="selection.value" />
       <ReadFileDetail
@@ -259,24 +233,11 @@ onBeforeUnmount(() => {
   min-height: var(--mar-utility-control-size);
 }
 .tool-detail:not(.conversation-detail-body) {
+  --conversation-copy-end: 0px;
   padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
 }
 .tool-detail.conversation-detail-body {
+  --conversation-copy-end: 0.5rem;
   --conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
-}
-.conversation-detail-body .tool-detail-copy {
-  right: 0.5rem;
-}
-.tool-detail-copy {
-  position: absolute;
-  top: 0.5rem;
-  right: 0;
-  display: inline-flex;
-  width: var(--mar-utility-control-size);
-  height: var(--mar-utility-control-size);
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  padding: 0;
 }
 </style>

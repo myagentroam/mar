@@ -28,6 +28,7 @@ import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
 import ConversationToolDetail from './tool-detail/ConversationToolDetail.vue';
 import ConversationDetailPreview from './ConversationDetailPreview.vue';
+import ConversationRecordCopy from './ConversationRecordCopy.vue';
 import {
   conversationWorkProcessProjection,
   conversationWorkProcessVisibleBlocks,
@@ -922,16 +923,23 @@ function stepDuration(item: ConversationItem): string | undefined {
             </summary>
             <div
               v-if="groupedItemDisclosure[displayItem.id]"
-              class="conversation-detail-body conversation-content-detail"
+              class="conversation-detail-body conversation-content-detail conversation-list-detail"
             >
-              <ul class="conversation-file-change-list">
+              <ConversationRecordCopy
+                :record="displayItem.items"
+                @copy="(text, done) => emit('copy', text, done)"
+              />
+              <ul
+                class="conversation-file-change-list conversation-detail-list conversation-detail-list--with-meta"
+              >
                 <li
                   v-for="(entry, index) in conversationFileChangeEntries(displayItem.items)"
                   :key="entry.sourceId ?? `${index}:${entry.status}:${entry.path}`"
+                  class="conversation-list-row"
                 >
                   <span
                     v-if="entry.status"
-                    class="conversation-file-change-status"
+                    class="conversation-file-change-status conversation-list-marker"
                     :class="`conversation-file-change-status--${entry.change.toLowerCase()}`"
                     >{{ entry.status }}</span
                   >
@@ -946,7 +954,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                         }
                       )
                     "
-                    class="conversation-file-change-button"
+                    class="conversation-file-change-button conversation-list-content"
                     type="button"
                     :aria-label="
                       translate(
@@ -1356,14 +1364,26 @@ function stepDuration(item: ConversationItem): string | undefined {
             </summary>
             <div
               v-if="groupedItemDisclosure[displayItem.id] !== false"
-              class="conversation-detail-body conversation-content-detail"
+              class="conversation-detail-body conversation-content-detail conversation-list-detail"
             >
-              <ul class="task-list-items">
-                <li v-for="(task, index) in taskListItems(displayItem.item.payload)" :key="index">
-                  <span class="task-list-status" :class="`task-list-status--${task.tone}`">
+              <ConversationRecordCopy
+                :key="displayItem.item.id"
+                :record="displayItem.item"
+                @copy="(text, done) => emit('copy', text, done)"
+              />
+              <ul class="task-list-items conversation-detail-list">
+                <li
+                  v-for="(task, index) in taskListItems(displayItem.item.payload)"
+                  :key="index"
+                  class="conversation-list-row"
+                >
+                  <span
+                    class="task-list-status conversation-list-marker"
+                    :class="`task-list-status--${task.tone}`"
+                  >
                     {{ task.status }}
                   </span>
-                  <div class="task-list-content">
+                  <div class="task-list-content conversation-list-content">
                     <AgentMarkdown
                       :content="task.text"
                       v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
@@ -1628,37 +1648,9 @@ function stepDuration(item: ConversationItem): string | undefined {
   gap: 0.5rem;
 }
 
-.task-list-items {
-  display: grid;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.task-list-items > li {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: start;
-  gap: 0.5rem;
-  padding: 0;
-}
-
-.task-list-status {
-  align-self: start;
-  display: inline-flex;
-  justify-content: center;
-  line-height: 1.45;
-  white-space: nowrap;
-}
-
-.task-list-content {
-  min-width: 0;
-}
-
 .task-list-content :deep(.agent-markdown) {
-  line-height: 1.45;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .task-list-content :deep(.agent-markdown > p) {
@@ -1756,6 +1748,7 @@ function stepDuration(item: ConversationItem): string | undefined {
 }
 
 .conversation-item:has(> details.conversation-tool-presentation),
+.conversation-item:has(> details.task-list),
 .conversation-item:where(
   .reasoning-group,
   .tool-group,
@@ -1767,6 +1760,7 @@ function stepDuration(item: ConversationItem): string | undefined {
 }
 
 .conversation-item:has(> details.conversation-tool-presentation) > details > summary,
+.conversation-item:has(> details.task-list) > details > summary,
 .conversation-item:where(
     .reasoning-group,
     .tool-group,
@@ -2046,27 +2040,6 @@ details.conversation-record-group[open] > details:last-child {
   font-family: var(--mar-font-mono);
 }
 
-.conversation-file-change-list {
-  display: grid;
-  gap: 0.25rem;
-  margin: 0.45rem 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--mar-text-primary);
-  font: inherit;
-  font-size: var(--mar-font-size-body);
-  line-height: 1.65;
-  word-break: break-all;
-}
-
-.conversation-file-change-list li {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
-  align-items: baseline;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
 .conversation-file-change-stats {
   grid-column: 3;
   display: inline-flex;
@@ -2083,72 +2056,46 @@ details.conversation-record-group[open] > details:last-child {
   color: var(--mar-color-danger-text);
 }
 .conversation-file-change-note {
+  grid-column: 2;
   color: var(--el-text-color-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
-.conversation-file-change-status,
-.task-list-status {
-  flex: 0 0 auto;
-  width: 5.5rem;
-  border: 1px solid color-mix(in srgb, var(--el-color-info) 48%, transparent);
-  border-radius: var(--mar-radius-marker);
-  background: color-mix(in srgb, var(--el-color-info) 12%, transparent);
-  padding: 0 0.3rem;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-  line-height: 1.3;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.conversation-file-change-status {
-  grid-column: 1;
-  line-height: 1.3;
-}
-
-.task-list-status.task-list-status--todo {
-  border-color: var(--mar-border-strong);
-  background: var(--mar-fill-soft);
-  color: var(--mar-text-secondary);
-}
-
 .task-list-status.task-list-status--in-progress {
-  border-color: color-mix(in srgb, var(--el-color-warning) 52%, transparent);
-  background: color-mix(in srgb, var(--el-color-warning) 13%, transparent);
+  border-color: color-mix(in srgb, var(--el-color-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-warning) 8%, transparent);
   color: var(--el-color-warning);
 }
 
 .task-list-status.task-list-status--done {
-  border-color: color-mix(in srgb, var(--el-color-success) 52%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 13%, transparent);
+  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
   color: var(--el-color-success);
 }
 
 .conversation-file-change-status--added {
-  border-color: color-mix(in srgb, var(--el-color-success) 52%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 13%, transparent);
+  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
   color: var(--el-color-success);
 }
 
 .conversation-file-change-status--modified,
 .conversation-file-change-status--type_changed {
-  border-color: color-mix(in srgb, var(--el-color-warning) 52%, transparent);
-  background: color-mix(in srgb, var(--el-color-warning) 13%, transparent);
+  border-color: color-mix(in srgb, var(--el-color-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-warning) 8%, transparent);
   color: var(--el-color-warning);
 }
 
 .conversation-file-change-status--deleted {
-  border-color: color-mix(in srgb, var(--el-color-danger) 52%, transparent);
-  background: color-mix(in srgb, var(--el-color-danger) 13%, transparent);
+  border-color: color-mix(in srgb, var(--el-color-danger) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-danger) 8%, transparent);
   color: var(--el-color-danger);
 }
 
 .conversation-file-change-status--renamed,
 .conversation-file-change-status--copied {
-  border-color: color-mix(in srgb, var(--el-color-primary) 52%, transparent);
-  background: color-mix(in srgb, var(--el-color-primary) 13%, transparent);
+  border-color: color-mix(in srgb, var(--el-color-primary) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
   color: var(--el-color-primary);
 }
 

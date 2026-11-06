@@ -8,6 +8,28 @@ import { mergeConversationPayload } from '../../src/util/conversation-history';
 import { conversationItemText } from '../../src/util/conversation-presentation';
 
 describe('Agent operation card projection', () => {
+  it('renders LIST as semantic rows without inventing statuses or session navigation', async () => {
+    const html = await renderToString(
+      createSSRApp(AgentOperationDetail, {
+        agentDetail: {
+          action: 'LIST',
+          targets: [
+            { title: 'Active review', status: 'RUNNING' },
+            { title: 'Review <layout>', status: 'IDLE' },
+            { title: 'Unknown status' }
+          ]
+        }
+      })
+    );
+    expect(html).toContain('<ul');
+    expect(html.match(/<li\b/gu)).toHaveLength(3);
+    expect(html).toContain('Review &lt;layout&gt;');
+    expect(html).toContain('Unknown status');
+    expect(html).not.toContain('<a');
+    expect(html.match(/conversation-list-marker/gu)).toHaveLength(2);
+    expect(html.match(/agent-list-status--running/gu)).toHaveLength(1);
+  });
+
   it.each(['en-US', 'zh-CN'] as const)(
     'formats WAIT durations with the shared duration units in %s',
     async (locale) => {
