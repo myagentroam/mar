@@ -84,6 +84,37 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             `${fixture.url}inspector-read-state.html?theme=${theme}&locale=${locale}`
           );
           const files = page.getByTestId('Files');
+          for (const [panel, toolbarSelector] of [
+            [files, '.explorer-toolbar'],
+            [page.getByTestId('Search'), '.content-search-toolbar']
+          ] as const) {
+            const toolbar = panel.locator(toolbarSelector);
+            const input = await toolbar.locator('.el-input__wrapper').boundingBox();
+            const action = await toolbar.locator('button').last().boundingBox();
+            const bounds = await toolbar.boundingBox();
+            expect(input!.x - bounds!.x).toBeGreaterThanOrEqual(6);
+            expect(bounds!.x + bounds!.width - action!.x - action!.width).toBeGreaterThanOrEqual(6);
+            expect(bounds!.y + bounds!.height - input!.y - input!.height).toBeGreaterThanOrEqual(6);
+            await toolbar.getByRole('textbox').fill('workspace');
+            await toolbar.getByRole('textbox').focus();
+            await expect(toolbar.getByRole('textbox')).toBeFocused();
+          }
+          const searchPanel = page.getByTestId('Search').locator('.content-search');
+          const searchBounds = await searchPanel.boundingBox();
+          const checkbox = await searchPanel.locator('.el-checkbox').boundingBox();
+          const searchInput = await searchPanel.locator('.el-input__wrapper').boundingBox();
+          expect(checkbox!.x - searchBounds!.x).toBeGreaterThanOrEqual(6);
+          expect(checkbox!.y - searchBounds!.y).toBeGreaterThanOrEqual(6);
+          expect(Math.abs(checkbox!.x - searchInput!.x)).toBeLessThanOrEqual(1);
+          const filesBounds = await files.locator('.file-explorer').boundingBox();
+          const filter = files.locator('.file-display-filter input');
+          const filterBounds = await filter.boundingBox();
+          expect(filterBounds!.y - filesBounds!.y).toBeGreaterThanOrEqual(6);
+          await filter.clear();
+          await files.screenshot({ path: testInfo.outputPath(`files-toolbar-${locale}.png`) });
+          await searchPanel.screenshot({
+            path: testInfo.outputPath(`search-toolbar-${locale}.png`)
+          });
           const nestedRetry = files.locator('.file-tree-load-more button').first();
           await expectReadableState(nestedRetry);
           const retries = files.locator('.file-tree-load-more button');

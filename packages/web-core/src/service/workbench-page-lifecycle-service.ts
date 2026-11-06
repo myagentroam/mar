@@ -77,7 +77,7 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
     () => {
       if (options.followConversation.value) options.scrollConversationToLatest();
     },
-    { deep: true, flush: 'post' }
+    { flush: 'post' }
   );
   watch(options.conversationScroll, (element) => {
     conversationResizeObserver?.disconnect();

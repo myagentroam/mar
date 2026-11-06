@@ -167,7 +167,8 @@ function identity(session: NodeAgentSession) {
   };
 }
 
-export function marctlSessionSummary(runtime: NodeRuntimeState, session: NodeAgentSession) {
+/** Neutral catalog summary shared by CLI presentation and internal Agent context. */
+export function sessionActivitySummary(runtime: NodeRuntimeState, session: NodeAgentSession) {
   const { status, runId, latestActivity } = activity(runtime, session.id);
   if (latestActivity === null) return { ...identity(session), status, runId, latestActivity: null };
   const { runId: _activityRun, ...value } = latestActivity;

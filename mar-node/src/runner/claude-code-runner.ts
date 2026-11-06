@@ -308,19 +308,32 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
   }
 
   override nativeAliasesFor(managedSessionId: string): readonly string[] {
-    return [...this.execution.managedSessionByNativeId]
-      .filter(([, sessionId]) => sessionId === managedSessionId)
-      .map(([nativeSessionId]) => nativeSessionId);
+    return [...(this.execution.nativeIdsByManagedSession.get(managedSessionId) ?? [])];
   }
 
   override forgetNativeAlias(nativeSessionId: string): void {
+    const managedSessionId = this.execution.managedSessionByNativeId.get(nativeSessionId);
+    if (managedSessionId !== undefined) {
+      const aliases = this.execution.nativeIdsByManagedSession.get(managedSessionId);
+      aliases?.delete(nativeSessionId);
+      if (aliases?.size === 0) this.execution.nativeIdsByManagedSession.delete(managedSessionId);
+    }
     this.execution.managedSessionByNativeId.delete(nativeSessionId);
     this.execution.managedNativeIds.delete(nativeSessionId);
   }
 
   override rememberManagedNative(session: NodeAgentSession, nativeSessionId: string): void {
+    const previousId = this.execution.managedSessionByNativeId.get(nativeSessionId);
+    if (previousId !== undefined && previousId !== session.id)
+      this.forgetNativeAlias(nativeSessionId);
     this.execution.managedNativeIds.add(nativeSessionId);
     this.execution.managedSessionByNativeId.set(nativeSessionId, session.id);
+    let aliases = this.execution.nativeIdsByManagedSession.get(session.id);
+    if (aliases === undefined) {
+      aliases = new Set();
+      this.execution.nativeIdsByManagedSession.set(session.id, aliases);
+    }
+    aliases.add(nativeSessionId);
   }
 
   override async readManagedRunnerTitle(
@@ -413,6 +426,7 @@ export class ClaudeExecutionState {
   >();
   readonly managedNativeIds = new Set<string>();
   readonly managedSessionByNativeId = new Map<string, string>();
+  readonly nativeIdsByManagedSession = new Map<string, Set<string>>();
   readonly approvals = new Map<
     string,
     {

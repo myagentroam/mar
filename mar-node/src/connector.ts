@@ -692,20 +692,16 @@ export class NodeConnector {
               const currentSessionId = currentSession.id;
               const run = this.runtime.activeSessionRun(currentSessionId);
               if (!run || !run.initiatedByUserId) return [];
-              const result = await this.sessionCatalogService.operations()['session.list']!({
-                workspaceId: currentSession.workspaceId,
-                registeredOnly: true,
-                view: 'marctl',
-                parentSessionId: currentSessionId,
-                limit: 100
-              });
+              const data = await this.sessionCatalogService.listRegisteredChildren(
+                currentSession.workspaceId,
+                currentSessionId
+              );
               signal.throwIfAborted();
-              const data = result as { sessions?: unknown[]; nextCursor?: string | null };
               const truncated = data.nextCursor != null;
-              if (!data.sessions?.length && !truncated) return [];
+              if (data.sessions.length === 0 && !truncated) return [];
               return [
                 `Child Sessions (use agent_list for details): ${JSON.stringify({
-                  sessions: data.sessions ?? [],
+                  sessions: data.sessions,
                   truncated
                 }).replace(/[<>&]/g, (c) =>
                   c === '<' ? '\\u003c' : c === '>' ? '\\u003e' : '\\u0026'

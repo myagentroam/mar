@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createConversationProjectionService } from '../../src/service/conversation-projection-service.js';
+import { watch } from 'vue';
+import {
+  createConversationProjectionService,
+  createConversationProjectionState
+} from '../../src/service/conversation-projection-service.js';
 import { createWorkbenchConversationSnapshotService } from '../../src/service/workbench-conversation-snapshot-service.js';
 import type { ConversationTurn } from '../../src/model/workbench.js';
 import { MAX_CONVERSATION_ITEM_TEXT_CHARACTERS } from '../../src/util/conversation-history.js';
@@ -1285,6 +1289,65 @@ describe('Web Conversation Projection State', () => {
       })
     ).toBe(false);
     expect(turns.value).toBe(previous);
+  });
+
+  it('Does not publish an unchanged Watch confirmation to synchronous observers', () => {
+    const current = { ...turn('SUCCEEDED'), completedAt: 20 };
+    const { turns, projection } = createConversationProjectionState({
+      limitHistory: (values) => [...values],
+      onRecentWindowOverflow: vi.fn()
+    });
+    projection.restoreWindow([current], null);
+    const previous = turns.value;
+    const published = vi.fn();
+    const stop = watch(turns, published, { flush: 'sync' });
+    try {
+      expect(
+        projection.mergeLatest({
+          turns: [structuredClone(current)],
+          nextCursor: 'older',
+          snapshotSequence: 100
+        })
+      ).toBe(false);
+      expect(turns.value).toBe(previous);
+      expect(published).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
+  it('Publishes only the final bounded snapshot and its reconstructed cursor', () => {
+    const overflow = vi.fn();
+    const { turns, nextCursor, projection } = createConversationProjectionState({
+      limitHistory: (values) => values.slice(-10),
+      onRecentWindowOverflow: overflow
+    });
+    projection.restoreWindow([turn('SUCCEEDED')], 'previous-cursor');
+    const published: { ids: string[]; cursor: string | null }[] = [];
+    const stop = watch(
+      turns,
+      (value) => published.push({ ids: value.map(({ id }) => id), cursor: nextCursor.value }),
+      { flush: 'sync' }
+    );
+    try {
+      expect(
+        projection.mergeLatest({
+          turns: Array.from({ length: 31 }, (_, index) => ({
+            ...turn(),
+            id: `new-${index}`,
+            runId: `run-${index + 2}`
+          })),
+          nextCursor: 'incoming-cursor',
+          snapshotSequence: 100
+        })
+      ).toBe(true);
+      expect(published).toEqual([
+        { ids: Array.from({ length: 10 }, (_, index) => `new-${index + 21}`), cursor: null }
+      ]);
+      expect(overflow).toHaveBeenCalledOnce();
+    } finally {
+      stop();
+    }
   });
 
   it('Preserves the older page cursor when a native history snapshot matches cached content', () => {

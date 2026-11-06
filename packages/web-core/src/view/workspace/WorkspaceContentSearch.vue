@@ -193,7 +193,7 @@ button.watch-status[aria-disabled='true'] {
 }
 
 .content-search-options {
-  margin-top: 0.3rem;
+  padding: 0.375rem 0.375rem 0;
 }
 
 .content-search-options :deep(.el-checkbox) {
@@ -291,7 +291,7 @@ button.watch-status[aria-disabled='true'] {
   align-items: center;
   margin: 0.3rem 0 0;
   border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0 0 0.25rem;
+  padding: 0 0.375rem 0.375rem;
 }
 
 button.file-explorer-utility-button {

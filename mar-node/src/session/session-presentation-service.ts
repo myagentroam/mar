@@ -32,8 +32,12 @@ interface SessionPresentationServiceOptions {
   readonly capabilities: () => NodeCapabilities;
   readonly hasManagedActiveRun: (session: NodeAgentSession) => boolean;
   readonly projectionForNative: (session: NodeAgentSession) => NodeAgentSession | undefined;
+  readonly cachedNativeActivityAt: (session: NodeAgentSession) => number;
 }
 
+/** Projects current ownership and observed native activity for every Session consumer.
+ * Borrows Runtime and the native cache; presentation never discovers or reads history.
+ */
 export class SessionPresentationService {
   constructor(private readonly options: SessionPresentationServiceOptions) {}
 
@@ -46,6 +50,13 @@ export class SessionPresentationService {
         ...current,
         lastActivityAt: latestSessionActivityAt(current.lastActivityAt, session.lastActivityAt)
       };
+    session = {
+      ...session,
+      lastActivityAt: latestSessionActivityAt(
+        session.lastActivityAt,
+        this.options.cachedNativeActivityAt(session)
+      )
+    };
     const database = this.options.database();
     if (session.externalSessionId !== null && database !== undefined) {
       const metadata = database.getNativeSessionMetadata(

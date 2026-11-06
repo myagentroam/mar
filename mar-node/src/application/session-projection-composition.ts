@@ -27,7 +27,8 @@ export function composeSessionProjection(input: {
     runners: input.runners,
     capabilities: input.capabilities,
     hasManagedActiveRun: (session) => hasManagedActiveRun(input.runtime, session),
-    projectionForNative: (session) => native.projectionForNative(session)
+    projectionForNative: (session) => native.projectionForNative(session),
+    cachedNativeActivityAt: (session) => native.cachedActivityAt(session)
   });
   const native: NativeSessionProjectionService = new NativeSessionProjectionService({
     database: input.database,

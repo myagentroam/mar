@@ -6,6 +6,7 @@ import type { RunnerRegistry } from '../runner/runner-registry.js';
 import type { RunnerDiscoveryContext } from '../runner/contracts.js';
 import type { CommandStateStore } from '../runner-command-engine.js';
 import { deduplicateDirectSessions } from './runner-native-session-parsers.js';
+import { latestSessionActivityAt } from './session-presentation-service.js';
 
 interface NativeSessionProjectionServiceOptions {
   readonly database: () => NativeSessionProjectionStore | undefined;
@@ -26,13 +27,38 @@ interface NativeSessionProjectionServiceOptions {
 /** Owns native identity/metadata projection, not Runner execution.
  * Discovery borrows its caller's lifetime; cancellation revokes database projection before
  * releasing the wait on a third-party read that may not itself support interruption.
+ * Ordered revisions keep older discovery snapshots from replacing newer reads or history updates.
  */
 export class NativeSessionProjectionService {
-  private readonly directNative = new Map<string, NodeAgentSession>();
+  private revision = 0;
+  private readonly directNative = new Map<
+    string,
+    { readonly session: NodeAgentSession; readonly revision: number }
+  >();
 
   cachedNative(): readonly NodeAgentSession[] {
-    return [...this.directNative.values()];
+    return [...this.directNative.values()].map((entry) => entry.session);
   }
+
+  private cachedSessionsFor(sessions: readonly NodeAgentSession[]): readonly NodeAgentSession[] {
+    return sessions.flatMap((session) => {
+      const current = this.directNative.get(session.id)?.session;
+      return current?.runner === session.runner && current.workspaceId === session.workspaceId
+        ? [current]
+        : [];
+    });
+  }
+
+  cachedActivityAt(session: NodeAgentSession): number {
+    let at = 0;
+    for (const id of this.nativeIds(session)) {
+      const native = this.directNative.get(id)?.session;
+      if (native?.runner === session.runner && native.workspaceId === session.workspaceId)
+        at = latestSessionActivityAt(at, native.lastActivityAt);
+    }
+    return at;
+  }
+
   constructor(private readonly options: NativeSessionProjectionServiceOptions) {}
 
   async discover(
@@ -42,6 +68,7 @@ export class NativeSessionProjectionService {
     signal?: AbortSignal
   ): Promise<readonly NodeAgentSession[]> {
     signal?.throwIfAborted();
+    const revision = ++this.revision;
     const database = this.requireDatabase();
     const workspace = workspaceId === undefined ? undefined : database.getWorkspace(workspaceId);
     if (workspaceId !== undefined && workspace === undefined)
@@ -67,11 +94,8 @@ export class NativeSessionProjectionService {
     signal?.throwIfAborted();
     const ordered = deduplicateDirectSessions(sessions);
     if (!cleanup) {
-      this.remember(ordered);
-      return ordered.flatMap((session) => {
-        const accepted = this.directNative.get(session.id);
-        return accepted === undefined ? [] : [accepted];
-      });
+      this.rememberAtRevision(ordered, revision);
+      return this.cachedSessionsFor(ordered);
     }
     const candidates = new Map(ordered.map((session) => [session.id, session]));
     return ordered.flatMap((session) => {
@@ -99,6 +123,7 @@ export class NativeSessionProjectionService {
   async list(): Promise<
     readonly (NodeAgentSession & { readonly control: RunnerSessionControl })[]
   > {
+    const revision = ++this.revision;
     const discovered = await Promise.all(
       this.options.runners
         .advertised()
@@ -106,8 +131,8 @@ export class NativeSessionProjectionService {
         .map((runner) => this.discover(runner.name as NodeAgentSession['runner']))
     );
     const sessions = deduplicateDirectSessions(discovered.flat());
-    this.remember(sessions);
-    return sessions.map(this.options.present);
+    this.rememberAtRevision(sessions, revision);
+    return this.cachedSessionsFor(sessions).map(this.options.present);
   }
 
   async discoverWorkspace(
@@ -120,6 +145,7 @@ export class NativeSessionProjectionService {
     signal?: AbortSignal
   ): Promise<readonly NodeAgentSession[]> {
     signal?.throwIfAborted();
+    const revision = ++this.revision;
     const discovered = await Promise.allSettled(
       this.options.runners
         .advertised()
@@ -138,12 +164,12 @@ export class NativeSessionProjectionService {
     const sessions = deduplicateDirectSessions(
       discovered.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
     );
-    if (!cleanup) this.remember(sessions);
-    return sessions;
+    if (!cleanup) this.rememberAtRevision(sessions, revision);
+    return cleanup ? sessions : this.cachedSessionsFor(sessions);
   }
 
   async resolve(sessionId: string, registeredOnly = false): Promise<NodeAgentSession | undefined> {
-    const cached = this.directNative.get(sessionId);
+    const cached = this.directNative.get(sessionId)?.session;
     if (cached !== undefined) return cached;
     const database = this.options.database();
     const record = database?.getSessionRecord(sessionId);
@@ -352,6 +378,10 @@ export class NativeSessionProjectionService {
   }
 
   remember(sessions: readonly NodeAgentSession[]): void {
+    this.rememberAtRevision(sessions, ++this.revision);
+  }
+
+  private rememberAtRevision(sessions: readonly NodeAgentSession[], revision: number): void {
     const database = this.options.database();
     const candidates = new Map(sessions.map((session) => [session.id, session]));
     const valid = new Map(
@@ -393,7 +423,8 @@ export class NativeSessionProjectionService {
     };
     for (const session of accepted) visit(session);
     for (const session of ordered) {
-      this.directNative.set(session.id, session);
+      if ((this.directNative.get(session.id)?.revision ?? 0) > revision) continue;
+      this.directNative.set(session.id, { session, revision });
       if (database === undefined || session.externalSessionId === null) continue;
       const metadata = database.getNativeSessionMetadata(
         session.runner,
@@ -427,10 +458,7 @@ export class NativeSessionProjectionService {
         record.metadata.customTitle ?? record.metadata.runnerTitle ?? 'Untitled session'
       ])
     );
-    for (const session of [
-      ...this.directNative.values(),
-      ...this.options.runtime.listAgentSessions()
-    ]) {
+    for (const session of [...this.cachedNative(), ...this.options.runtime.listAgentSessions()]) {
       if (session.workspaceId !== workspaceId) continue;
       const metadata = recordById.get(session.id)?.metadata;
       known.set(
@@ -536,7 +564,7 @@ export class NativeSessionProjectionService {
       }
     }
     const directIds = new Set<string>();
-    for (const [directId, direct] of this.directNative) {
+    for (const [directId, { session: direct }] of this.directNative) {
       if (
         direct.runner === session.runner &&
         direct.cwd === session.cwd &&
