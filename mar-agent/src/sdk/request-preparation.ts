@@ -31,12 +31,21 @@ export function prepareSessionModelRequest(
       codeMode,
       autoPermission
     ),
-    tools: projectModelRequestTools(
-      model,
-      projectCodeModeTools(candidate.tools, residentTools),
-      new Set(residentTools.map((tool) => tool.name))
-    )
+    tools: projectSessionRequestTools(model, candidate.tools, residentTools)
   };
+}
+
+/** Conversation and Compact keep identical Code Mode and native discovery tool prefixes. */
+export function projectSessionRequestTools(
+  model: Pick<AgentModelConfiguration, 'protocol'>,
+  tools: readonly ClientToolDefinition[],
+  residentTools: readonly ClientToolDefinition[]
+): readonly ClientToolDefinition[] {
+  return projectModelRequestTools(
+    model,
+    projectCodeModeTools(tools, residentTools),
+    new Set(residentTools.map((tool) => tool.name))
+  );
 }
 
 /** The actual candidate and current Session view share the same side-effect-free projection. */

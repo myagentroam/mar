@@ -2763,17 +2763,15 @@ describe('agent runtime', () => {
     expect(adapter.requests[2]?.system).toBe(adapter.requests[1]?.system);
     expect(adapter.requests[2]?.tools).toEqual(adapter.requests[1]?.tools);
     expect(adapter.requests[2]?.toolChoice).toBe('none');
-    const persistedPrefix = baseMessages(adapter.requests[1]!).filter(
-      (message) => message.contextKind !== 'contextual' && message.contextKind !== 'private'
+    const requestPrefix = adapter.requests[1]!.messages.filter(
+      (message) => message.contextKind !== 'private'
     );
-    expect(baseMessages(adapter.requests[2]!).slice(0, persistedPrefix.length)).toEqual(
-      persistedPrefix
-    );
+    expect(adapter.requests[2]!.messages.slice(0, requestPrefix.length)).toEqual(requestPrefix);
     expect(
       adapter.requests[2]?.messages.some(
         (message) => message.contextualBlock?.authority === 'instruction'
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(adapter.requests[2]?.messages.at(-2)).toEqual({
       role: 'assistant',
       content: 'answer-2'
@@ -3904,14 +3902,14 @@ describe('agent runtime', () => {
     );
     expect(
       compactRequest?.messages.filter((message) => message.content.includes('CURRENT_COMPACT_RULE'))
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     const normalRequests = adapter.requests.filter((request) => request.toolChoice !== 'none');
     expect(normalRequests).toHaveLength(2);
-    const persistedPrefix = baseMessages(normalRequests[0]!).filter(
-      (message) => message.contextKind !== 'contextual' && message.contextKind !== 'private'
+    const requestPrefix = normalRequests[0]!.messages.filter(
+      (message) => message.contextKind !== 'private'
     );
-    expect(baseMessages(compactRequest!).slice(0, persistedPrefix.length)).toEqual(
-      persistedPrefix.map(({ images: _images, ...message }) => message)
+    expect(compactRequest!.messages.slice(0, requestPrefix.length)).toEqual(
+      requestPrefix.map(({ images: _images, ...message }) => message)
     );
     expect(
       normalRequests[1]!.messages.filter((message) =>

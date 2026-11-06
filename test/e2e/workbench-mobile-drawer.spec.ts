@@ -618,6 +618,133 @@ test('Forward does not revive a menu and reopening owns a new temporary entry', 
   await expect(page).toHaveURL(route);
 });
 
+test.describe('Touch resource tree', () => {
+  test.use({ hasTouch: true });
+
+  for (const kind of ['Node', 'Workspace']) {
+    test(`Escape closes the ${kind} dropdown before the mobile resource drawer`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width: 390, height: 700 });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?tree-reveal&locale=en-US`);
+      const work = page.getByRole('button', { name: 'Work', exact: true });
+      const drawer = page.locator('.workspace-tree.mobile-open');
+      await work.tap();
+      await expect(drawer).toBeVisible();
+      await drawer.getByRole('button', { name: 'node', exact: true }).tap();
+      const row =
+        kind === 'Node'
+          ? drawer.locator('.tree-node-row').first()
+          : drawer.getByRole('button', { name: '/plain', exact: true }).locator('..');
+      const trigger = row.getByRole('button', { name: `${kind} actions`, exact: true });
+      await trigger.tap();
+      const details = page.getByRole('menuitem', { name: `${kind} details`, exact: true });
+      await expect(details).toBeVisible();
+
+      await page.keyboard.press('Escape');
+      await expect(details).toBeHidden();
+      await expect(drawer).toBeVisible();
+      await expect(trigger).toBeFocused();
+
+      await page.keyboard.press('Escape');
+      await expect(drawer).toHaveCount(0);
+      await expect(work).toBeFocused();
+    });
+  }
+
+  for (const scenario of [
+    { kind: 'Node', close: 'browser Back' },
+    { kind: 'Workspace', close: 'browser Back' },
+    { kind: 'Workspace', close: 'scrim' },
+    { kind: 'Workspace', close: 'header' }
+  ]) {
+    test(`${scenario.close} dismisses the ${scenario.kind} popup and preserves resource tree state`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width: 390, height: 700 });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?tree-reveal&locale=en-US`);
+      const work = page.getByRole('button', { name: 'Work', exact: true });
+      const drawer = page.locator('.workspace-tree.mobile-open');
+      await work.tap();
+      await drawer.getByRole('button', { name: 'node', exact: true }).tap();
+      const group = drawer.locator('.workspace-group-toggle').filter({ hasText: /^Team$/ });
+      await group.tap();
+      const filter = drawer.getByRole('textbox', { name: 'Filter Nodes and Workspaces' });
+      await filter.fill('plain');
+      const row =
+        scenario.kind === 'Node'
+          ? drawer.locator('.tree-node-row').first()
+          : drawer.getByRole('button', { name: '/plain', exact: true }).locator('..');
+      await row.getByRole('button', { name: `${scenario.kind} actions`, exact: true }).tap();
+      const details = page.getByRole('menuitem', {
+        name: `${scenario.kind} details`,
+        exact: true
+      });
+      await expect(details).toBeVisible();
+
+      if (scenario.close === 'browser Back') await page.goBack();
+      else if (scenario.close === 'scrim')
+        await page.locator('.sidebar-scrim').tap({ position: { x: 385, y: 620 } });
+      else await work.tap();
+      await expect(drawer).toHaveCount(0);
+      await expect(details).toBeHidden();
+
+      await work.tap();
+      await expect(filter).toHaveValue('plain');
+      await filter.fill('');
+      await expect(group).toHaveAttribute('aria-expanded', 'true');
+      await expect(drawer.getByRole('button', { name: '/target', exact: true })).toBeVisible();
+      await expect(details).toBeHidden();
+    });
+  }
+
+  for (const scenario of [
+    { width: 320, group: 'productioncommunityoperationsteamwithaverylongunbrokengroupname' },
+    { width: 390, group: '生产环境社区运营团队共享工作区与自动化任务分组名称完整读取验证' }
+  ]) {
+    test(`Long resource group names remain readable and tappable at ${scenario.width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width: scenario.width, height: 700 });
+      await page.goto(
+        `${fixture.url}workbench-mobile-drawer.html?tree-reveal&locale=en-US&tree-group-name=${encodeURIComponent(scenario.group)}`
+      );
+      await page.getByRole('button', { name: 'Work', exact: true }).tap();
+      const drawer = page.locator('.workspace-tree.mobile-open');
+      await drawer.getByRole('button', { name: 'node', exact: true }).tap();
+      const group = page
+        .locator('.workspace-tree .workspace-group-toggle')
+        .filter({ hasText: scenario.group });
+      const label = group.locator(':scope > span');
+      await expect(label).toHaveText(scenario.group);
+      const text = await label.evaluate((element) => ({
+        width: element.clientWidth,
+        contentWidth: element.scrollWidth,
+        height: element.clientHeight,
+        contentHeight: element.scrollHeight
+      }));
+      expect(text.contentWidth).toBeLessThanOrEqual(text.width + 1);
+      expect(text.contentHeight).toBeLessThanOrEqual(text.height + 1);
+      expect((await group.boundingBox())!.height).toBeGreaterThan(30);
+      await expect(group).toHaveAttribute('aria-expanded', 'false');
+      await group.tap();
+      await expect(drawer.getByRole('button', { name: '/target', exact: true })).toBeVisible();
+      await group.tap();
+      await expect(drawer.getByRole('button', { name: '/target', exact: true })).toBeHidden();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBe(scenario.width);
+      await drawer.screenshot({ path: testInfo.outputPath('long-resource-group.png') });
+
+      await page.setViewportSize({ width: 1280, height: 700 });
+      await page.getByRole('button', { name: 'Toggle resource sidebar', exact: true }).click();
+      await expect(label).toHaveCSS('white-space', 'nowrap');
+      expect((await group.boundingBox())!.height).toBeCloseTo(28, 0);
+    });
+  }
+});
+
 test('Escape closes only the visible layer after Quick Open has been closed', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto(`${fixture.url}workbench-mobile-drawer.html`);

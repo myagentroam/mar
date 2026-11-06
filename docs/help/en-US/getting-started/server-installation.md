@@ -1,6 +1,6 @@
 ---
 title: Deploy MyAgentRoam Server and Web
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-06
 ---
 
 # Deploy MyAgentRoam Server and Web
@@ -11,7 +11,7 @@ The public product repository's single root `compose.yaml` runs MySQL, SearXNG, 
 
 There is one source, build, and deployment baseline, using `mar-server/`, `mar-web-console/`, and the root `compose.yaml`. Without activation it is Community, with Workspace sessions, files, Git, terminals, model and credential management, Skill/MCP configuration, personal templates, and hosted conversations. A valid Enterprise license enables organizations, users, sharing, SSO, and auditing in the same installation without replacing images.
 
-Both license states use `/console` for the workbench and `/docs/` for documentation. Existing links to `/` keep working: the browser opens the same product at `/console`, preserving query parameters and fragments without redirecting to the marketing website. Verify sign-in and a Workspace operation rather than treating `/health` alone as proof that the full workbench is usable.
+Both license states use `/console` for the workbench and `/docs/` for documentation. Existing links to `/` keep working: the browser opens the same product at `/console`, preserving query parameters and fragments. Verify sign-in and a Workspace operation rather than treating `/health` alone as proof that the full workbench is usable.
 
 ## Procedure
 

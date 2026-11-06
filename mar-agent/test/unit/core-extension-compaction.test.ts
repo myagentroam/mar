@@ -175,6 +175,73 @@ const imageBase64 =
 
 describe('Core compact generation extension', () => {
   it.each([
+    ['OPENAI_RESPONSES', 'manual', false],
+    ['OPENAI_RESPONSES', 'automatic', true],
+    ['ANTHROPIC_MESSAGES', 'manual', false],
+    ['ANTHROPIC_MESSAGES', 'automatic', true]
+  ] as const)(
+    'preserves the complete conversation request prefix in %s %s native Compact',
+    async (protocol, reason, codeMode) => {
+      const compact = compactExtension(() => undefined);
+      const f = await compactFixture({
+        extensions: [compact.extension],
+        model: { protocol, codeMode, contextWindowTokens: 50_000, maxOutputTokens: 1_000 },
+        script: (request, index) =>
+          request.toolChoice === 'none'
+            ? modelSummary('SAFE_NATIVE_HANDOFF')
+            : [
+                {
+                  type: 'response.item',
+                  provider: protocol,
+                  ...(protocol === 'ANTHROPIC_MESSAGES' ? { contextKind: 'private' as const } : {}),
+                  item:
+                    protocol === 'ANTHROPIC_MESSAGES'
+                      ? { type: 'thinking', thinking: '', signature: `signature-${index}` }
+                      : {
+                          type: 'reasoning',
+                          id: `reasoning-${index}`,
+                          encrypted_content: `opaque-${index}`,
+                          summary: []
+                        }
+                },
+                ...usageAnswer(
+                  'verified answer',
+                  reason === 'automatic' && index === 1 ? 42_500 : 100
+                )
+              ]
+      });
+      expect((await f.session.run({ prompt: 'Seed objective' }).result()).status).toBe('completed');
+      expect((await f.session.run({ prompt: 'Continue objective' }).result()).status).toBe(
+        'completed'
+      );
+      if (reason === 'manual')
+        expect((await f.session.compact().result()).status).toBe('completed');
+
+      const native = f.adapter.requests.find((request) => request.toolChoice === 'none')!;
+      const previous = f.adapter.requests[f.adapter.requests.indexOf(native) - 1]!;
+      expect(native).toBeDefined();
+      expect(JSON.stringify(previous.messages)).toContain('ENV_RULE_MARKER');
+      expect(native.messages.slice(0, previous.messages.length)).toEqual(previous.messages);
+      expect(native.messages.at(-1)).toMatchObject({ contextKind: 'compact_control' });
+      expect(native).toMatchObject({
+        system: previous.system,
+        tools: previous.tools,
+        reasoningEffort: previous.reasoningEffort,
+        promptCacheKey: previous.promptCacheKey
+      });
+      expect(native.systemBlocks).toEqual(previous.systemBlocks);
+      expect(native.messages.at(-1)!.content).toContain(
+        'user-level, project-level, or directory-level AGENTS.md instructions'
+      );
+      expect(compact.contexts).toHaveLength(1);
+      expect(JSON.stringify(compact.contexts[0]!.messages)).not.toContain('ENV_RULE_MARKER');
+      const records = await readRecords(f.home, f.session.id);
+      expect(records.some((record) => record.type === 'compact.completed')).toBe(true);
+      expect(JSON.stringify(records)).not.toContain('ENV_RULE_MARKER');
+    }
+  );
+
+  it.each([
     ['OPENAI_RESPONSES', 'manual'],
     ['OPENAI_RESPONSES', 'automatic'],
     ['ANTHROPIC_MESSAGES', 'manual'],

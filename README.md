@@ -19,7 +19,9 @@
   <img src="docs/assets/mio.png" width="160" alt="Mio, the MyAgentRoam mascot, welcoming you" />
 </p>
 
-![MyAgentRoam development: MAR Agent sessions, recovery checklist, Git changes, context usage, and a live terminal](docs/assets/workbench-hero.en-US.png)
+![MyAgentRoam workbench: continuous conversation, execution details, a task list, and project Git changes](docs/assets/workbench-hero.en-US.png)
+
+_Product screenshots show the real Web interface with synthetic demo data, not customer sessions, actual task completion records, or performance evidence._
 
 ## Agent First
 
@@ -37,24 +39,27 @@ People define goals and constraints, make key decisions, and review outcomes. Ag
 
 Closing the browser or putting it in the background does not automatically stop an active session on the Node. Use your phone for progress, notifications, files, and short replies; keep complex diffs and long terminal work on desktop. Anywhere access requires connectivity to your self-hosted Server and the relevant Node to be online for live work — it is not offline execution. [Continue from mobile](docs/help/en-US/workbench/mobile.md).
 
+<details>
+<summary>See the conversation and progress on mobile</summary>
+
+<img src="docs/assets/workbench-mobile.en-US.png" width="390" alt="Mobile workbench: session progress, task list, context usage, and Composer" />
+
+</details>
+
 ## Built for more than a single prompt
 
 <table>
 <tr>
-<td width="50%"><strong>Real projects. Real tools.</strong><br />Work in an existing Workspace with its files, dependencies, Git history, and shell. No copy-and-paste development environment.</td>
-<td width="50%"><strong>Multiple Agents. One workbench.</strong><br />MAR Agent, Codex, Claude Code, and OpenCode share one interface for history, live output, and the controls each Runner supports.</td>
+<td width="50%"><strong>Configure once. Continue across devices.</strong><br />Prepare projects and tools on your own Windows, Linux, or macOS Node, then continue from a desktop or mobile browser.</td>
+<td width="50%"><strong>Multiple Agents. One workbench.</strong><br />Read history and live output from MAR Agent, Codex, Claude Code, and OpenCode in one interface. Controls follow each Runner's capabilities.</td>
 </tr>
 <tr>
-<td><strong>Built for sustained work</strong><br />Context GC, Smart Compaction, steer, queues, Code Mode, and subagents help MAR Agent continue beyond a single prompt.</td>
-<td><strong>Steer without starting over</strong><br />Add guidance during execution, queue follow-up work, inspect tool activity, or stop and reassess. Controls follow the selected Runner's capabilities.</td>
+<td><strong>Follow the collaboration</strong><br />Persistent sessions keep their own context. Use the session tree and main/auxiliary surfaces to inspect delegation, progress, and independent review.</td>
+<td><strong>Review the actual results</strong><br />Open files and per-operation diffs from replies. Inspect Git changes, project files, or generated HTML alongside the conversation.</td>
 </tr>
 <tr>
-<td><strong>Agent Network</strong><br />Coordinate independent sessions for research, implementation, and review. Share artifacts, exchange handoffs, and inspect results through marctl.</td>
-<td><strong>Tools and spaces you can reuse</strong><br />Configure models, Skills, and MCP. Start isolated template-based conversations with attachments and deliverable artifacts.</td>
-</tr>
-<tr>
-<td><strong>Your work machines, within reach</strong><br />Use authorized Nodes from a desktop or mobile browser without recreating the project environment on every device. Windows / Linux / macOS.</td>
-<td><strong>Goals and recurring work</strong><br />Use Goal mode for multi-turn continuation, or schedule a session for recurring tasks. Review their permission and execution rules before enabling unattended work.</td>
+<td><strong>Keep long tasks moving</strong><br />MAR Agent uses Context GC, background Compact, Smart Compaction, and Code Mode to manage context and tool work across longer tasks.</td>
+<td><strong>Steer without starting over</strong><br />Add guidance, queue follow-up work, or continue with Goals and schedules. Review permission and execution rules before enabling unattended work.</td>
 </tr>
 </table>
 
@@ -62,7 +67,7 @@ Closing the browser or putting it in the background does not automatically stop 
 
 - **Context GC:** reclaim eligible historical context incrementally so long-running work does not carry every old detail into every model request.
 - **Smart Compaction:** let MAR Agent request background compaction at a suitable work-phase transition; fixed capacity protection remains independent.
-- **Visible context:** inspect reported context usage, compaction status, and plans, with a manual Compact entry when needed. These mechanisms do not promise unlimited, lossless memory.
+- **Visible context:** inspect reported context usage, GC counts and reclaimed-token statistics, compaction status, and plans, with a manual Compact entry when needed. Work can continue during background compaction; these mechanisms do not promise unlimited, lossless memory or fixed cost savings.
 
 ### Keep momentum. Keep the work reviewable.
 
@@ -78,21 +83,29 @@ Closing the browser or putting it in the background does not automatically stop 
 
 Use a coordinator to distribute work, researchers to explore alternatives, and a separate reviewer to challenge results. Sessions work in the same authorized Workspace, exchanging messages and artifacts through the existing MAR environment.
 
-![Agent Network research demo: coordinator, parallel research sessions, shared files, evidence table, and terminal](docs/assets/agent-network.en-US.png)
+![Agent Network: coordinator, independent review, and native collaboration records](docs/assets/agent-network.en-US.png)
 
 _User-defined session roles coordinate work; Agent Network is not a separate orchestration dashboard._
 
-- **Independent sessions** retain their own context and can be revisited across research waves.
+<details>
+<summary>See session relationships and activity</summary>
+
+![Session tree showing the coordinator and research, experiment, review, and evidence sessions](docs/assets/session-tree.en-US.png)
+
+</details>
+
+- **Independent sessions** persist their own history and parent relationships and can be revisited across task turns.
+- **Session trees and two work surfaces** show parents, descendants, and activity. Keep the coordinator on the main surface while inspecting another session in the auxiliary surface.
 - **Explicit handoffs** carry the question, scope, and artifact to inspect; a received message is not proof of completion.
 - **Reviewable work** stays in shared files and visible session histories. Concurrent writers still need non-overlapping scopes.
 
-Agent Network uses **marctl session coordination**. It is distinct from MAR Agent's bounded, non-recursive **subagents** inside one parent execution; neither implies automatic task ownership or a workflow engine. [Coordinate Workspace Sessions](docs/help/en-US/operations/marctl.md#coordinate-workspace-sessions).
+In the product, MAR Agent uses native **`agent_*` collaboration tools** to create, message, inspect, wait for, and stop authorized sessions. Relationships support up to three levels: root, child, and grandchild. Other Runners can coordinate through **marctl**, which also provides on-demand management of models, titles, persistent instructions, and schedules. Session relationships do not expand authorization or imply automatic task ownership or a workflow engine. [Agent collaboration](docs/help/en-US/runners/mar-agent.md#advanced-subagent-control) · [marctl session management](docs/help/en-US/operations/marctl.md#coordinate-workspace-sessions).
 
 ## MAR Agent, inside the workbench or on its own
 
 **Context GC · Smart Compaction · Steer · Code Mode · Subagents · Auto · Skills / MCP**
 
-MAR Agent provides incremental Context GC, session continuation, planning, Skills, MCP, and non-recursive subagents. Its SDK and CLI can also be used independently of Server.
+MAR Agent provides incremental Context GC, session continuation, planning, Skills, MCP, and tool orchestration. Use Agent Network in the workbench, or use the SDK and CLI independently with an optional subagent extension.
 
 The SDK, CLI, and workbench share the same MAR Agent core. Smart Compaction is a **Community capability**, not an Enterprise-only feature. Fixed capacity protection remains independent of model-requested compaction. [Configure MAR Agent](docs/help/en-US/runners/mar-agent.md).
 
@@ -100,31 +113,40 @@ The SDK, CLI, and workbench share the same MAR Agent core. Smart Compaction is a
 
 > **A long-session case study:** approximately **50 hours · 6,364 requests · 75 compactions**. Context GC was estimated to reduce cumulative context input by **20.41%** in this anonymized ERP development session. This is a case-specific observational estimate, not a guarantee of capacity, cost savings, or quality. [Method and limitations](CONTEXT_GC_CASE_STUDY.md).
 
-## Two ways to work
-
-| Start with…              | Use it for…                                                                                                 |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| **An existing project**  | Implementing features, investigating bugs, reviewing changes, or coordinating research in a real Workspace. |
-| **A published template** | Starting an isolated hosted conversation with attachments, related files, and deliverable artifacts.        |
-
-### Work mode: keep the project context
+## From execution to reviewable results
 
 Choose an authorized Node and Workspace, create or resume an Agent session, and use the project's files, Git state, and terminal in one workbench. Enterprise sharing lets authorized teammates pick up accessible work without configuring the same environment on every computer.
 
 [Explore sessions](docs/help/en-US/workbench/sessions.md) · [Files](docs/help/en-US/workbench/files.md) · [Git changes](docs/help/en-US/workbench/git-changes.md) · [Web Terminal](docs/help/en-US/workbench/terminal.md)
 
 <details>
-<summary>See the files alongside the conversation</summary>
+<summary>See project files and the auxiliary work surface</summary>
 
-![Project files beside the MAR Agent conversation and terminal](docs/assets/workbench-files.en-US.png)
+![Project file tree and unified auxiliary work surface beside the conversation](docs/assets/workbench-files.en-US.png)
 
 </details>
 
-### Conversation mode: start from a template
+### Inspect the change, not just the final summary
 
-Choose an authorized published template and begin an isolated hosted conversation. Send messages and attachments, work with related files, and retrieve the generated artifacts without first registering a project Workspace. Hosted conversations require a Linux Node with a working Bubblewrap environment; they are not an Enterprise-only capability.
+Supporting MAR Agent Nodes preserve a read-only diff for each `apply_patch` operation, including files and added/removed line counts. Later edits do not change that recorded result. This is not the task's net change and does not cover arbitrary shell writes. Use Git changes and history to inspect the current project state.
 
-[Explore hosted conversations](docs/help/en-US/workbench/hosted-conversations.md)
+<details>
+<summary>See a file change under review</summary>
+
+![Read-only diff showing the added and removed lines from one tool operation](docs/assets/workbench-review.en-US.png)
+
+</details>
+
+### Inspect deliverables beside the conversation
+
+The file window supports code and text, images, PDFs, modern Office documents, and common audio/video formats. Text editing, find, and symbol navigation follow Node capabilities. Preview saved Workspace HTML in the auxiliary browser while retaining source drafts. HTML can run scripts: preview only trusted content. This is not an isolated general-purpose browser or a full IDE. [Files and previews](docs/help/en-US/workbench/files.md) · [Per-operation changes](docs/help/en-US/workbench/conversation.md#inspect-this-file-change).
+
+<details>
+<summary>See an HTML deliverable preview</summary>
+
+![Workspace HTML deliverable preview beside the Agent conversation](docs/assets/workbench-preview.en-US.png)
+
+</details>
 
 ## Get started
 
@@ -138,7 +160,7 @@ Start with the blank-secret [Compose environment template](.env.example); config
 4. [Register a Workspace](docs/help/en-US/getting-started/register-workspace.md) and [configure MAR Agent](docs/help/en-US/runners/mar-agent.md), or prepare your chosen external Agent under the Node service account.
 5. [Start your first Agent session](docs/help/en-US/getting-started/first-agent-session.md). Confirm that the Node is online, files open, and the Agent responds.
 
-After deployment, the same site serves the home page at `/`, the workbench at `/console`, and bilingual help at `/docs/`.
+After deployment, open `/` to enter the workbench (`/console`); `/docs/` serves bilingual help.
 
 ### Self-hosted, with explicit data boundaries
 
@@ -161,7 +183,7 @@ Your Windows / Linux / macOS Node
        └── MAR Agent · Codex · Claude Code · OpenCode
 ```
 
-Server handles identity, authorization, and controlled relay. Node owns execution and Workspace storage. Ordinary Workspace files and terminals may use a Server-authorized direct data channel; hosted conversations stay relayed. [Components and data boundaries](docs/help/en-US/concepts/architecture.md).
+Server handles identity, authorization, and controlled relay. Node owns execution and Workspace storage. Ordinary Workspace files and terminals may use a Server-authorized direct data channel. [Components and data boundaries](docs/help/en-US/concepts/architecture.md).
 
 </details>
 
@@ -172,7 +194,6 @@ There is one source tree, build, and deployment baseline. Activation changes the
 | Capability                                                                  | Community           | Enterprise activation              |
 | --------------------------------------------------------------------------- | ------------------- | ---------------------------------- |
 | Workspace sessions, files, Git, terminals, and personal configuration       | Available           | Available                          |
-| Personal templates and internal hosted conversations                        | Available           | Available                          |
 | Organizations, multi-user administration, roles, and shared-resource grants | Requires activation | Available within the license scope |
 | Enterprise SSO and operation auditing                                       | Requires activation | Available within the license scope |
 

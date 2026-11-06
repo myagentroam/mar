@@ -525,32 +525,57 @@ describe('Workbench controller composition behavior', () => {
     expect(unload()).toBe(true);
   });
 
-  it('leaves Changes loading to the visible tool lifecycle when selected by shortcut', async () => {
-    const { page } = controller();
-    const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
-    const target = { nodeId: node.id, workspaceId: workspace.id };
-    await captured.seedNodes!([node]);
-    captured.setTarget!(target);
-    await nextTick();
-    captured.setWorkspaces!([workspace]);
-    await captured.seedManifest!({
-      manifestVersion: 1,
-      observedAt: 1,
-      conversation: { available: true, reasonCode: null },
-      files: { available: true, reasonCode: null }
-    });
-    await nextTick();
-    page.aside.selectAsideTool({ ...target, id: 'files' });
-    const loadChanges = vi.spyOn(page.files.workspaceGit, 'loadChanges').mockResolvedValue();
-    const shortcut = captured.lifecycle!.workspaceShortcuts.find(
-      (binding) => binding.command === 'workspace.changes'
-    );
-    expect(shortcut).toBeDefined();
-    expect(shortcut!.execute({} as KeyboardEvent)).toBe('HANDLED');
-    await nextTick();
-    expect(page.aside.asideState?.active).toEqual({ kind: 'tool', id: 'changes' });
-    expect(loadChanges).not.toHaveBeenCalled();
-  });
+  it.each([false, true])(
+    'refreshes Changes on each shortcut without duplicate opening reads, initially visible: %s',
+    async (visible) => {
+      const { page } = controller();
+      const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+      const target = { nodeId: node.id, workspaceId: workspace.id };
+      await captured.seedNodes!([node]);
+      captured.setTarget!(target);
+      await nextTick();
+      captured.setWorkspaces!([workspace]);
+      await captured.seedManifest!({
+        manifestVersion: 1,
+        observedAt: 1,
+        conversation: { available: true, reasonCode: null },
+        files: { available: true, reasonCode: null }
+      });
+      await nextTick();
+      page.aside.selectAsideTool({ ...target, id: 'files' });
+      const loadChanges = vi.spyOn(page.files.workspaceGit, 'loadChanges').mockResolvedValue();
+      page.files.mountSurface();
+      page.aside.setAsideSurfaceVisible(visible);
+      await nextTick();
+      const shortcut = captured.lifecycle!.workspaceShortcuts.find(
+        (binding) => binding.command === 'workspace.changes'
+      );
+      expect(shortcut).toBeDefined();
+      expect(shortcut!.execute({} as KeyboardEvent)).toBe('HANDLED');
+      await nextTick();
+      expect(page.aside.asideState?.active).toEqual({ kind: 'tool', id: 'changes' });
+      expect(loadChanges).toHaveBeenCalledTimes(visible ? 1 : 0);
+      if (!visible) {
+        page.aside.setAsideSurfaceVisible(true);
+        await nextTick();
+      }
+      expect(loadChanges).toHaveBeenCalledTimes(1);
+      expect(loadChanges).toHaveBeenLastCalledWith(true);
+
+      expect(shortcut!.execute({} as KeyboardEvent)).toBe('HANDLED');
+      await nextTick();
+      expect(loadChanges).toHaveBeenCalledTimes(2);
+      expect(loadChanges).toHaveBeenLastCalledWith(true);
+      expect(shortcut!.execute({ repeat: true } as KeyboardEvent)).toBe('HANDLED');
+      await nextTick();
+      expect(loadChanges).toHaveBeenCalledTimes(2);
+      expect(shortcut!.execute({} as KeyboardEvent)).toBe('HANDLED');
+      await nextTick();
+      expect(loadChanges).toHaveBeenCalledTimes(3);
+      expect(loadChanges).toHaveBeenLastCalledWith(true);
+      page.files.unmountSurface();
+    }
+  );
 
   it('uses the current CSRF token and renews it for a Files mutation', async () => {
     Object.assign(window, { sessionStorage });
@@ -1643,6 +1668,29 @@ describe('Workbench controller composition behavior', () => {
       expect(starts).toHaveLength(1);
       expect(starts[0]).not.toHaveProperty('parentSessionId');
       expect(starts[0]).not.toHaveProperty('sessionGroup');
+    }
+  );
+
+  it.each(['unfinished message', '/review unfinished message'])(
+    'preserves the Main composer when opening a new session from an existing session: %s',
+    async (input) => {
+      const { page } = controller();
+      captured.setTarget!({ nodeId: 'node-a', workspaceId: 'workspace-a' });
+      captured.setSessions!([{ id: 'existing', workspaceId: 'workspace-a', runner: 'codex' }]);
+      captured.setSession!('existing');
+      const draft = page.mainPaneController.state.draft;
+      draft.input.value = input;
+      draft.references.value = [{ type: 'file', path: 'ref.ts', label: 'ref.ts' }];
+      await flushComponent();
+
+      page.selection.openNewSessionComposer();
+      // The lifecycle fixture captures the Runner-change callback instead of installing its watcher.
+      captured.lifecycle!.clearRunnerCommand();
+      await flushComponent();
+
+      expect(page.selection.draftSessionOpen).toBe(true);
+      expect(draft.input.value).toBe(input);
+      expect(draft.references.value).toEqual([{ type: 'file', path: 'ref.ts', label: 'ref.ts' }]);
     }
   );
 

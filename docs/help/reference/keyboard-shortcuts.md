@@ -1,6 +1,6 @@
 ---
 title: 键盘快捷键
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-06
 ---
 
 # 键盘快捷键
@@ -27,7 +27,7 @@ Aside 和文件标签聚焦后，使用方向键或 Home/End 移动焦点，再�
 | 工作区                       | Ctrl+Shift+O                                      | Cmd+Shift+O                                             | 快速打开工作区、会话、符号或文件                       | 工作模式下存在可用 Node                                                       |
 | 快速打开                     | ↑/↓、Enter/Esc                                    | ↑/↓、Enter/Esc                                          | 选择、打开结果或关闭浮层                               | 快速打开浮层已打开                                                            |
 | 快速打开                     | Ctrl+Enter                                        | Cmd+Enter                                               | 在独立预览窗口打开选中符号或文件                       | 快速打开浮层已打开且选中的是符号或文件                                        |
-| 工作区                       | Ctrl+Shift+K                                      | Cmd+Shift+K                                             | 在检查器打开 Git 变更                                  | 当前工作区为 Git 工作区                                                       |
+| 工作区                       | Ctrl+Shift+K                                      | Cmd+Shift+K                                             | 在检查器打开并刷新 Git 变更                            | 当前工作区为 Git 工作区                                                       |
 | 工作区                       | Ctrl+Shift+F                                      | Cmd+Shift+F                                             | 搜索工作区文件内容                                     | 当前 Node 支持内容搜索                                                        |
 | 文件树/预览                  | Ctrl+点击                                         | Cmd+点击                                                | 在复用的独立预览窗口打开文件                           | 文件项或聊天内的文件链接可用                                                  |
 | 文件标签                     | ←/→、Home/End                                     | ←/→、Home/End                                           | 在标签间移动或跳到首尾                                 | 文件标签获得焦点                                                              |

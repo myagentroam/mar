@@ -121,6 +121,7 @@ const imageOpen = ref(false);
 const draft = ref('Keep this draft');
 const previewQuery = new URLSearchParams(location.search);
 const treeRevealFixture = previewQuery.has('tree-reveal');
+const treeGroupName = previewQuery.get('tree-group-name') ?? 'Team';
 const tree = createWorkspaceTreeService({ persist: () => undefined });
 const treeTarget = ref<WorkspaceTarget>({ nodeId: 'node', workspaceId: 'plain' });
 const treeNodes = ['node', 'other'].map(
@@ -133,7 +134,7 @@ tree.cacheWorkspaces('node', [
     path: `/folder-${index}`,
     kind: 'DIRECTORY' as const
   })),
-  { id: 'shared', path: '/target', kind: 'DIRECTORY', groupName: 'Team' },
+  { id: 'shared', path: '/target', kind: 'DIRECTORY', groupName: treeGroupName },
   { id: 'second', path: '/second-target', kind: 'DIRECTORY', groupName: 'Second team' }
 ]);
 tree.cacheWorkspaces('other', [

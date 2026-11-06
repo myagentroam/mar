@@ -1,7 +1,7 @@
 import { splitContextualPrompt } from '../runtime/context/contextual-blocks.js';
 import { compactSnapshotAnchor } from '../runtime/compaction/retained-context.js';
 import { buildCompactedHistory } from '../runtime/compaction/history.js';
-import type { SessionModelMessage } from '../session/model-request.js';
+import type { SessionModelMessage, SessionModelRequest } from '../session/model-request.js';
 import type { SessionRecord } from '../session/record-contract.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import type { ClientToolDefinition } from '../tools/contracts.js';
@@ -16,7 +16,7 @@ import { commitExecutionCompaction } from './execution-compact-commit.js';
 
 type Snapshot = Parameters<typeof generateExecutionCompaction>[0]['snapshot'];
 
-/** Snapshots one Compact prefix, generates a candidate and adopts only its committed checkpoint. */
+/** Snapshots durable evidence and its request projection separately; adopts only a committed checkpoint. */
 export function createExecutionCompaction(ports: {
   readonly mode: 'run' | 'plan' | 'compact';
   readonly sessionId: string;
@@ -37,6 +37,10 @@ export function createExecutionCompaction(ports: {
   boundary(): number;
   updateBoundary(value: number): void;
   snapshotTools(): readonly ClientToolDefinition[];
+  projectRequest(
+    history: readonly SessionModelMessage[],
+    tools: readonly ClientToolDefinition[]
+  ): Pick<SessionModelRequest, 'messages' | 'tools'>;
   usage(): Snapshot['latestUsage'];
   effort(): Snapshot['reasoningEffort'];
   environment(): EnvironmentContextState;
@@ -79,6 +83,7 @@ export function createExecutionCompaction(ports: {
       return false;
     const history = structuredClone(prefix).map(({ images: _images, ...message }) => message);
     const tools = structuredClone(ports.snapshotTools());
+    const request = structuredClone(ports.projectRequest(history, tools));
     const generation = modelContext.worldState.generation;
     const usage = ports.usage();
     const effort = ports.effort();
@@ -101,11 +106,12 @@ export function createExecutionCompaction(ports: {
     const candidate = await ports.generate(
       {
         history,
+        requestMessages: request.messages,
         system: composition.system,
         ...(composition.systemBlocks === undefined
           ? {}
           : { systemBlocks: composition.systemBlocks }),
-        tools,
+        tools: request.tools,
         contextWindowTokens: ports.model.contextWindowTokens,
         latestUsage: usage,
         reasoningEffort: effort,

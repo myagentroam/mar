@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-06
 ---
 
 # Keyboard Shortcuts
@@ -27,7 +27,7 @@ With an Aside or file tab focused, use the arrow keys or Home/End to move focus,
 | Workspace                     | `Ctrl+Shift+O`                                              | `Cmd+Shift+O`                                                     | Quick open a Workspace, Session, symbol, or file                               | An available Node exists in Work mode                                                                       |
 | Quick Open                    | `↑/↓`, `Enter/Esc`                                          | `↑/↓`, `Enter/Esc`                                                | Select or open a result, or close the dialog                                   | Quick Open is visible                                                                                       |
 | Quick Open                    | `Ctrl+Enter`                                                | `Cmd+Enter`                                                       | Open the selected symbol or file in a separate preview window                  | Quick Open is visible and a symbol or file can be selected                                                  |
-| Workspace                     | `Ctrl+Shift+K`                                              | `Cmd+Shift+K`                                                     | Open Git Changes in the Inspector                                              | The selected Workspace is a Git Workspace                                                                   |
+| Workspace                     | `Ctrl+Shift+K`                                              | `Cmd+Shift+K`                                                     | Open and refresh Git Changes in the Inspector                                  | The selected Workspace is a Git Workspace                                                                   |
 | Workspace                     | `Ctrl+Shift+F`                                              | `Cmd+Shift+F`                                                     | Search Workspace file contents                                                 | The current Node supports content search                                                                    |
 | File tree or preview          | `Ctrl+click`                                                | `Cmd+click`                                                       | Open a file in the reusable companion preview window                           | A file item or file link in the conversation is available                                                   |
 | File tabs                     | `←/→`, `Home/End`                                           | `←/→`, `Home/End`                                                 | Move between tabs or jump to the first or last tab                             | A file tab has focus                                                                                        |

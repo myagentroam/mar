@@ -123,8 +123,8 @@ export function createWorkbenchPageShortcuts(
         options.selectedWorkspace.value?.kind === 'GIT_WORKSPACE' &&
         options.filesReady.value &&
         options.workspaceTarget.value !== undefined,
-      execute: () => {
-        options.showAsideTool('changes');
+      execute: (event) => {
+        if (!event.repeat) options.showAsideTool('changes');
         return 'HANDLED';
       }
     },

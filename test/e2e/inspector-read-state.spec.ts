@@ -111,6 +111,30 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const filterBounds = await filter.boundingBox();
           expect(filterBounds!.y - filesBounds!.y).toBeGreaterThanOrEqual(6);
           await filter.clear();
+          const textBounds = await files.locator('.tree-name').evaluateAll((labels) =>
+            labels.map((label) => {
+              const range = document.createRange();
+              range.selectNodeContents(label);
+              const text = range.getBoundingClientRect();
+              const box = label.getBoundingClientRect();
+              const row = label.closest('.file-tree-row-shell')!;
+              return {
+                name: label.textContent,
+                above: text.top - box.top,
+                below: box.bottom - text.bottom,
+                rowHeight: row.getBoundingClientRect().height,
+                expectedRowHeight: Number.parseFloat(
+                  getComputedStyle(row).getPropertyValue('--mar-compact-row-size')
+                )
+              };
+            })
+          );
+          expect(textBounds.length).toBeGreaterThan(0);
+          for (const bounds of textBounds) {
+            expect(bounds.above, `${bounds.name}: glyph space above`).toBeGreaterThanOrEqual(1);
+            expect(bounds.below, `${bounds.name}: glyph space below`).toBeGreaterThanOrEqual(1);
+            expect(bounds.rowHeight).toBe(bounds.expectedRowHeight);
+          }
           await files.screenshot({ path: testInfo.outputPath(`files-toolbar-${locale}.png`) });
           await searchPanel.screenshot({
             path: testInfo.outputPath(`search-toolbar-${locale}.png`)

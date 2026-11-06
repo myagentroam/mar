@@ -34,7 +34,10 @@ import { ExecutionToolCatalog, initializeExecutionToolCatalog } from './executio
 import { createExecutionToolScope } from './execution-tool-scope.js';
 import type { ResolvedModelConfiguration } from './model-runtime.js';
 import { createNativeSteer } from './native-steer.js';
-import { projectSessionRequestMessages } from './request-preparation.js';
+import {
+  projectSessionRequestMessages,
+  projectSessionRequestTools
+} from './request-preparation.js';
 import { ResourceInputProjection } from './resource-input.js';
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -799,7 +802,7 @@ export function createSessionExecutionFactory(ports: {
                         ? { ...message, images: modelInputImages }
                         : message
                     ),
-                    mode === 'compact' ? [] : modelContext.worldState.entries,
+                    modelContext.worldState.entries,
                     mode !== 'compact' && selectedModel.inputCapabilities.includes('IMAGE'),
                     baseTools().some((tool) => tool.name === 'code_exec'),
                     permissionPolicy.mode === 'auto'
@@ -976,6 +979,20 @@ export function createSessionExecutionFactory(ports: {
               contextCoordinator.setBoundary(value);
             },
             snapshotTools: () => projectTools(toolCatalog.tools),
+            projectRequest: (history, tools) => ({
+              messages: projectSessionRequestMessages(
+                history,
+                modelContext.worldState.entries,
+                false,
+                tools.some((tool) => tool.name === 'code_exec'),
+                permissionPolicy.mode === 'auto'
+              ),
+              tools: projectSessionRequestTools(
+                selectedModel,
+                tools,
+                projectTools(mcpRegistry.projectDirect(baseTools()))
+              )
+            }),
             usage: () => modelLifecycle.usage,
             effort: () => requestReasoningEffort ?? reasoningEffort,
             environment: () => executionEnvironment,
