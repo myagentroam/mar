@@ -845,6 +845,7 @@ describe('Workbench surface composition behavior', () => {
         }
       });
       const paneController = {
+        imageResourceUrl: ref(undefined),
         state: {
           ...page._test.mainPane,
           workspaceTarget: ref(page.selection.workspaceTarget),

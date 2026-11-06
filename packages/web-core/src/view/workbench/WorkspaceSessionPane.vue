@@ -79,14 +79,6 @@ function selectComposerModelEffort(value: string): void {
   composer.value?.focus();
 }
 
-const workspaceImageResourceUrl = computed(() => {
-  const nodeId = state.workspaceTarget.value?.nodeId;
-  const workspaceId = state.workspaceTarget.value?.workspaceId;
-  if (nodeId === undefined || workspaceId === undefined) return undefined;
-  return (path: string) =>
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/files/content?${new URLSearchParams({ nodeId, path })}`;
-});
-
 state.setInputFocus((cursor) => composer.value?.focusAt(cursor));
 state.setRangeEditor((start, end, text) => composer.value?.replaceRange(start, end, text) ?? false);
 onBeforeUnmount(() => {
@@ -165,7 +157,7 @@ onBeforeUnmount(() => {
           :initial-render-version="state.conversation.initialRenderVersion.value"
           :capture-render-anchor="state.scroll.captureRenderAnchor"
           :workspace-root="controller.selectedWorkspace.value?.path"
-          :image-resource-url="workspaceImageResourceUrl"
+          :image-resource-url="controller.imageResourceUrl.value"
           :loading="controller.loading.value || submitting"
           :image-attachments="controller.images.attachments"
           :user-input-questions="userInputQuestions"

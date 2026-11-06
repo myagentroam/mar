@@ -7,6 +7,7 @@ import {
 } from '../../src/service/workbench-presentation-state-service';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service';
 import { createRunService } from '../../src/service/run-service';
+import { createWorkbenchWorkspaceContext } from '../../src/service/workspace-context-service.js';
 import type { SessionContextUsage } from '../../src/service/conversation-state-service';
 import { localePreferenceService } from '../../src/service/locale-preference-service';
 import type {
@@ -120,9 +121,11 @@ function controlsFixture() {
     formatTokenCount: String,
     formatPercentage: String
   } satisfies Parameters<typeof createWorkspaceSessionPresentationStateService>[0] &
-    Omit<Parameters<typeof createWorkbenchPresentationStateService>[0], 'pane'>;
+    Omit<Parameters<typeof createWorkbenchPresentationStateService>[0], 'pane' | 'context'> &
+    Parameters<typeof createWorkbenchWorkspaceContext>[0];
   const state = createWorkbenchPresentationStateService({
     ...inputs,
+    context: createWorkbenchWorkspaceContext(inputs),
     pane: createWorkspaceSessionPresentationStateService(inputs)
   });
   return {

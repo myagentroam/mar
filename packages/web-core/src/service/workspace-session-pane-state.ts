@@ -1,3 +1,10 @@
+/**
+ * Pane-scoped state owner and factories that inject that state into domain services.
+ * Drafts, attachments and submission identities remain owned by the supplied target-bound owners;
+ * conversation, Run, queue and scroll projections live for this Pane's Vue scope.
+ * Application capabilities and Main/Aside coordination belong to the Pane controller, not here.
+ * Do not duplicate global selection, transport protocols or shared Watch subscriptions.
+ */
 import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { createComposerQueueService } from './composer-queue-service.js';
 import { createConversationScrollService } from './conversation-scroll-service.js';

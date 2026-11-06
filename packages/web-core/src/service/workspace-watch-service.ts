@@ -1,3 +1,8 @@
+/**
+ * Owns ordinary Workspace Watch topics, leases and protocol identity/revision acceptance.
+ * Accepted snapshots leave through onSnapshot; cross-domain projection belongs to its receiver.
+ * The shared coordinator controls activation/pausing. Do not add Pane/UI state or another socket.
+ */
 import { reactive, readonly } from 'vue';
 import type { Ref } from 'vue';
 import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-service.js';
@@ -5,7 +10,7 @@ import { createWatchLeaseLifecycleService } from './watch-lease-lifecycle-servic
 export type WorkspaceWatchTopic = 'sessions' | 'files' | 'changes' | 'sessionNavigation';
 export type WorkspaceWatchTopicStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
-interface WorkspaceWatchSnapshot {
+export interface WorkspaceWatchSnapshotPayload {
   readonly sessions?: unknown;
   readonly files?: unknown;
   readonly changes?: unknown;
@@ -42,7 +47,7 @@ export function createWorkspaceWatchService(options: {
   readonly onSnapshot: (
     nodeId: string,
     workspaceId: string,
-    snapshot: WorkspaceWatchSnapshot,
+    snapshot: WorkspaceWatchSnapshotPayload,
     topic: WorkspaceWatchTopic,
     revision: number,
     navigationQuery?: import('@myagentroam/protocol').WorkspaceSessionNavigationQuery

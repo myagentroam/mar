@@ -1,5 +1,15 @@
+/**
+ * Read-only Session and page presentation derived from domain owners.
+ * Resource identity/readiness comes from Workspace context; the page aggregate consumes Pane
+ * presentation but must not supply dependencies back into Pane construction.
+ * This module owns presentation clocks only, not selection, protocol requests or Watch lifetimes.
+ */
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { computed, type ComputedRef, type Ref } from 'vue';
+import {
+  createWorkspaceEnvironment,
+  type createWorkbenchWorkspaceContext
+} from './workspace-context-service.js';
 import type {
   AgentRun,
   ComposerAttachment,
@@ -104,16 +114,7 @@ export function createWorkspaceSessionPresentationStateService(
       ? run
       : undefined;
   });
-  const workspaceHost = computed(() =>
-    options.nodes.value.find((node) => node.id === options.workspaceTarget.value?.nodeId)
-  );
-  const nodeReady = computed(
-    () =>
-      workspaceHost.value?.connected === true &&
-      workspaceHost.value.disabled !== true &&
-      options.nodeManifest.value?.manifestVersion === 1 &&
-      options.nodeManifest.value.conversation.available
-  );
+  const { workspaceHost, nodeReady } = createWorkspaceEnvironment(options);
   const selectedSessionActivity = computed(() =>
     options.selectedSession.value === undefined
       ? undefined
@@ -350,8 +351,6 @@ export function createWorkbenchPresentationStateService(
     | 'workspaceTarget'
     | 'sessions'
     | 'nodes'
-    | 'nodeManifest'
-    | 'workspaces'
     | 'visibleLimits'
     | 'nextCursors'
     | 'pageSize'
@@ -359,15 +358,11 @@ export function createWorkbenchPresentationStateService(
     | 'workspaceLabel'
   > & {
     readonly pane: ReturnType<typeof createWorkspaceSessionPresentationStateService>;
+    readonly context: ReturnType<typeof createWorkbenchWorkspaceContext>;
   }
 ) {
-  const { nodeReady } = options.pane;
   const sessionActivityClockNow = createSessionActivityClock();
-  const selectedWorkspace = computed(() =>
-    options.workspaces.value.find(
-      (workspace) => workspace.id === options.workspaceTarget.value?.workspaceId
-    )
-  );
+  const { selectedWorkspace } = options.context;
   const documentTitle = computed(() =>
     selectedWorkspace.value === undefined
       ? translate('common.productName')
@@ -397,26 +392,15 @@ export function createWorkbenchPresentationStateService(
   const onlineNodeCount = computed(
     () => options.nodes.value.filter((node) => node.connected && !node.disabled).length
   );
-  const terminalReady = computed(
-    () =>
-      nodeReady.value &&
-      options.nodeManifest.value?.terminal?.available === true &&
-      options.nodeManifest.value.terminal.supportsReplay === true
-  );
-  const filesReady = computed(
-    () => nodeReady.value && options.nodeManifest.value?.files?.available === true
-  );
-
   return {
     ...options.pane,
+    ...options.context,
     sessionActivityClockNow,
     selectedWorkspace,
     documentTitle,
     workspaceSessions,
     visibleWorkspaceSessions,
     canLoadMoreWorkspaceSessions,
-    onlineNodeCount,
-    terminalReady,
-    filesReady
+    onlineNodeCount
   };
 }

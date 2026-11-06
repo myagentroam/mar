@@ -1,13 +1,26 @@
+/**
+ * Owns Workspace target identity and its selection revision before application ports connect.
+ * Connected selection coordinates cache/profile/catalog restoration and ignores stale async work.
+ * Cache contents, Watch leases and Pane state remain with their domain owners; no file protocol here.
+ */
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, ref, type Ref } from 'vue';
 
 export function createWorkbenchWorkspaceSelectionState() {
   const target = ref<WorkspaceTarget>();
   return {
+    ...createSelectionRevision(),
     target: computed(() => target.value),
     setTarget: (next: WorkspaceTarget | undefined) => {
       target.value = next;
     }
+  };
+}
+function createSelectionRevision() {
+  let revision = 0;
+  return {
+    currentSelectionRevision: () => revision,
+    nextSelectionRevision: () => ++revision
   };
 }
 import type { Session, Workspace, WorkspaceTarget } from '../model/workbench.js';
@@ -74,13 +87,13 @@ interface WorkbenchWorkspaceSelectionOptions {
 
 /** Owns the only Workspace activation path; requests never gate the foreground selection. */
 export function createWorkbenchWorkspaceSelectionService(
-  options: WorkbenchWorkspaceSelectionOptions
+  options: WorkbenchWorkspaceSelectionOptions,
+  revision = createSelectionRevision()
 ) {
-  let selectionRevision = 0;
   const loading = ref(false);
 
   function clear(): void {
-    selectionRevision += 1;
+    revision.nextSelectionRevision();
     loading.value = false;
     options.stopWatch();
     options.deactivateCache();
@@ -99,7 +112,7 @@ export function createWorkbenchWorkspaceSelectionService(
       options.invalidateWorkspace(target);
       return false;
     }
-    const revision = ++selectionRevision;
+    const selectionRevision = revision.nextSelectionRevision();
     loading.value = false;
     const previous = options.workspaceTarget.value;
     const switching =
@@ -116,7 +129,8 @@ export function createWorkbenchWorkspaceSelectionService(
     }
     const selected = options.workspaceTarget.value!;
     const current = () =>
-      selectionRevision === revision && options.workspaceTarget.value === selected;
+      revision.currentSelectionRevision() === selectionRevision &&
+      options.workspaceTarget.value === selected;
 
     options.closeSidebar();
     options.showWorkbench();
@@ -225,7 +239,7 @@ export function createWorkbenchWorkspaceSelectionService(
     }
   }
 
-  return { select, clear, loading, currentSelectionRevision: () => selectionRevision };
+  return { select, clear, loading, currentSelectionRevision: revision.currentSelectionRevision };
 }
 
 /** A workspace selection owns its target before its cross-domain ports are connected. */
@@ -233,14 +247,18 @@ export function createWorkbenchWorkspaceSelection() {
   const state = createWorkbenchWorkspaceSelectionState();
   return {
     target: state.target,
+    currentSelectionRevision: state.currentSelectionRevision,
     connect(
       options: Omit<WorkbenchWorkspaceSelectionOptions, 'workspaceTarget' | 'setWorkspaceTarget'>
     ) {
-      return createWorkbenchWorkspaceSelectionService({
-        ...options,
-        workspaceTarget: state.target,
-        setWorkspaceTarget: state.setTarget
-      });
+      return createWorkbenchWorkspaceSelectionService(
+        {
+          ...options,
+          workspaceTarget: state.target,
+          setWorkspaceTarget: state.setTarget
+        },
+        state
+      );
     }
   };
 }

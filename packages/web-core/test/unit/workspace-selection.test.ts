@@ -6,7 +6,10 @@ import type {
   Workspace,
   WorkspaceTarget
 } from '../../src/model/workbench.js';
-import { createWorkbenchWorkspaceSelectionService } from '../../src/service/workbench-workspace-selection-service.js';
+import {
+  createWorkbenchWorkspaceSelection,
+  createWorkbenchWorkspaceSelectionService
+} from '../../src/service/workbench-workspace-selection-service.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 
@@ -15,7 +18,7 @@ const target = (nodeId = 'node-1', workspaceId = 'workspace-1'): WorkspaceTarget
   workspaceId
 });
 const workspace = (id: string): Workspace => ({ id, path: `/tmp/${id}`, kind: 'DIRECTORY' });
-function fixture() {
+function fixture(create = createWorkbenchWorkspaceSelectionService) {
   const workspaceTarget = ref<WorkspaceTarget>();
   const selectedSessionId = ref<string>();
   const selectedRunId = ref<string>();
@@ -82,7 +85,7 @@ function fixture() {
     cache.remove(value.nodeId, value.workspaceId);
     service.clear();
   });
-  const service = createWorkbenchWorkspaceSelectionService({
+  const service = create({
     workspaceTarget,
     setWorkspaceTarget: (target) => {
       workspaceTarget.value = target;
@@ -192,6 +195,21 @@ function deferred<T>() {
 }
 
 describe('Workspace-only foreground selection', () => {
+  it('exposes the same selection revision before and after connecting application ports', async () => {
+    const owner = createWorkbenchWorkspaceSelection();
+    expect(owner.currentSelectionRevision()).toBe(0);
+    const f = fixture((options) => owner.connect(options));
+    expect(owner.currentSelectionRevision()).toBe(f.service.currentSelectionRevision());
+    await f.service.select(target());
+    expect(owner.target.value).toEqual(target());
+    expect(owner.currentSelectionRevision()).toBe(1);
+    expect(owner.currentSelectionRevision()).toBe(f.service.currentSelectionRevision());
+    f.service.clear();
+    expect(owner.target.value).toBeUndefined();
+    expect(owner.currentSelectionRevision()).toBe(2);
+    expect(owner.currentSelectionRevision()).toBe(f.service.currentSelectionRevision());
+  });
+
   it.each([target(), target('node-2', 'workspace-3')])(
     'activates $nodeId/$workspaceId without waiting for any request',
     async (value) => {
