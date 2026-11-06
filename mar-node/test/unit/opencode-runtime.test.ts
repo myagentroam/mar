@@ -10,6 +10,30 @@ import {
 } from '../../src/opencode-runtime.js';
 
 describe('OpenCode runtime', () => {
+  it('preserves boundary-length model routes and excludes oversized IDs from both catalogs', () => {
+    const provider = 'company';
+    const boundary = 'm'.repeat(128 - provider.length - 1);
+    const ids = [boundary, `${boundary}A`, `${boundary}B`];
+    const catalog = {
+      connected: [provider],
+      all: [
+        {
+          id: provider,
+          source: 'config' as const,
+          models: Object.fromEntries(
+            ids.map((id) => [id, { id, name: 'Model', limit: { context: 200_000 } }])
+          )
+        }
+      ]
+    };
+    const supportedId = `${provider}/${boundary}`;
+    expect(supportedId).toHaveLength(128);
+    expect(openCodeProfileModels(catalog)).toEqual([
+      { id: supportedId, label: 'Model', supportedEfforts: [] }
+    ]);
+    expect([...openCodeContextLimits(catalog)]).toEqual([[supportedId, 200_000]]);
+  });
+
   it('aborts an in-flight discovery HTTP request through the official SDK', async () => {
     const entered = Promise.withResolvers<void>();
     const closed = Promise.withResolvers<void>();

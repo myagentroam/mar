@@ -340,9 +340,9 @@ export class RunnerInteractionService {
       this.options.runtime.getRun(runId) === undefined
     )
       throw new Error('USER_INPUT_NOT_FOUND');
-    const answers: Record<string, { answers: string[] }> = {};
+    const answers: Record<string, { answers: string[] }> = Object.create(null);
     for (const question of pending.questions)
-      answers[question.id] = {
+      answers[question.nativeId] = {
         answers: this.answers(rawAnswers[question.id], question.allowOther, (value) =>
           question.options.includes(value)
         )

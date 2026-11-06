@@ -83,6 +83,8 @@ export function openCodeProfileModels(catalog: OpenCodeProviderCatalog): OpenCod
       return Object.entries(provider.models ?? {}).flatMap(([key, model]) => {
         const modelId = boundedString(model.id) ?? boundedString(key);
         if (modelId === undefined) return [];
+        const qualifiedModelId = `${providerId}/${modelId}`;
+        if (qualifiedModelId.length > 128) return [];
         const variants = Object.entries(model.variants ?? {})
           .filter(([, value]) => value.disabled !== true)
           .map(([id]) => id)
@@ -90,7 +92,7 @@ export function openCodeProfileModels(catalog: OpenCodeProviderCatalog): OpenCod
           .slice(0, 32);
         return [
           {
-            id: `${providerId}/${modelId}`.slice(0, 128),
+            id: qualifiedModelId,
             label: (boundedString(model.name) ?? modelId).slice(0, 128),
             supportedEfforts: variants
           }
@@ -114,9 +116,13 @@ export function openCodeContextLimits(
       .flatMap((provider) =>
         Object.entries(provider.models ?? {}).flatMap(([key, model]) => {
           const modelId = boundedString(model.id) ?? boundedString(key);
+          if (modelId === undefined) return [];
+          const qualifiedModelId = `${provider.id}/${modelId}`;
           const context = model.limit?.context;
-          return modelId !== undefined && Number.isSafeInteger(context) && (context ?? 0) > 0
-            ? [[`${provider.id}/${modelId}`, context!] as const]
+          return qualifiedModelId.length <= 128 &&
+            Number.isSafeInteger(context) &&
+            (context ?? 0) > 0
+            ? [[qualifiedModelId, context!] as const]
             : [];
         })
       )
