@@ -1476,6 +1476,66 @@ test('Session search clear and busy guards preserve their behavior', async ({ pa
   await expect(page.getByTestId('searched')).toHaveText('');
 });
 
+for (const theme of ['dark', 'light']) {
+  for (const width of [390, 767, 768, 1280]) {
+    test(`Resource tree density preserves navigation in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}icon-system.html?theme=${theme}`);
+      const tree = page.getByTestId('resource-tree');
+      const group = tree.locator('.workspace-group-toggle');
+      const plain = tree.getByRole('button', { name: 'MyAgentRoam', exact: true });
+      const grouped = tree.getByRole('button', { name: 'Service', exact: true });
+      await group.click();
+      await expect(grouped).toBeVisible();
+      const rowHeight = width >= 768 ? 28 : 30;
+      const rowMargin = width >= 768 ? '1px' : '2px';
+      for (const row of [
+        tree.locator('.tree-node-row'),
+        tree.locator('.node-expand-button'),
+        group,
+        plain.locator('..'),
+        grouped.locator('..')
+      ]) {
+        expect((await row.boundingBox())!.height).toBeCloseTo(rowHeight, 0);
+      }
+      await expect(plain.locator('..')).toHaveCSS('margin-top', rowMargin);
+      await expect(plain.locator('..')).toHaveCSS('margin-bottom', rowMargin);
+      if (width >= 768) await expect(plain).toHaveCSS('font-size', '13px');
+      await expect(tree.locator('.tree-node-icon')).toHaveCSS('height', '16px');
+      expect((await grouped.boundingBox())!.x - (await plain.boundingBox())!.x).toBeCloseTo(16, 0);
+      const selected = plain.locator('..');
+      const selection = await selected.evaluate(
+        (element) => getComputedStyle(element).backgroundColor
+      );
+      await expect(selected).toHaveClass(/selected/u);
+      expect(selection).not.toBe('rgba(0, 0, 0, 0)');
+      await plain.hover();
+      await expect(selected).toHaveCSS('background-color', selection);
+      await page.keyboard.press('Tab');
+      await plain.focus();
+      await expect(plain).toBeFocused();
+      await expect(plain).toHaveCSS('outline-style', 'solid');
+      expect((await selected.boundingBox())!.height).toBeCloseTo(rowHeight, 0);
+      await tree.screenshot({ path: testInfo.outputPath('workspace-tree-density.png') });
+      await group.focus();
+      await group.press('Enter');
+      await expect(grouped).toBeHidden();
+      await group.press('Enter');
+      await expect(grouped).toBeVisible();
+      const filter = tree.getByRole('textbox');
+      await filter.fill('MyAgentRoam');
+      await expect(group).toHaveCount(0);
+      expect((await tree.locator('.tree-node-row').boundingBox())!.height).toBeCloseTo(
+        rowHeight,
+        0
+      );
+      await expect(plain).toBeVisible();
+    });
+  }
+}
+
 for (const theme of ['dark', 'light'])
   for (const mobile of [false, true]) {
     test(`Shared SVGs preserve component behavior in ${theme}, ${mobile ? 'mobile' : 'desktop'}`, async ({

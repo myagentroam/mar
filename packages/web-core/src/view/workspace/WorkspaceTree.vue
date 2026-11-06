@@ -910,6 +910,9 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 <style scoped>
 .node-tree {
+  --workspace-tree-row-height: 30px;
+  --workspace-tree-row-margin: 2px;
+  --workspace-tree-row-padding: 4px;
   --workspace-tree-indent: 16px;
   --workspace-tree-leading: 4px;
   --workspace-tree-control: 12px;
@@ -941,9 +944,9 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .workspace-group-toggle {
   display: grid;
   width: calc(100% - 12px);
-  margin: 2px 6px;
+  margin: var(--workspace-tree-row-margin) 6px;
   min-width: 0;
-  min-height: 30px;
+  min-height: var(--workspace-tree-row-height);
   grid-template-columns:
     var(--workspace-tree-control) var(--workspace-tree-icon)
     minmax(0, 1fr);
@@ -953,7 +956,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border-radius: var(--mar-radius-selection);
   background: transparent;
   color: var(--mar-text-secondary);
-  padding: 4px 6px 4px calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
+  padding: var(--workspace-tree-row-padding) 6px var(--workspace-tree-row-padding)
+    calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
   text-align: left;
   font-weight: 400;
   cursor: pointer;
@@ -1068,8 +1072,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border-radius: 0;
   background: transparent;
   color: var(--mar-text-primary);
-  padding: 4px 7px 4px 0;
-  min-height: 30px;
+  padding: var(--workspace-tree-row-padding) 7px var(--workspace-tree-row-padding) 0;
+  min-height: var(--workspace-tree-row-height);
   font-weight: 400;
   text-align: left;
   cursor: pointer;
@@ -1142,8 +1146,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   display: flex;
   min-width: 0;
   align-items: center;
-  min-height: 30px;
-  margin: 2px 6px;
+  min-height: var(--workspace-tree-row-height);
+  margin: var(--workspace-tree-row-margin) 6px;
   padding-left: calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
   border-radius: var(--mar-radius-selection);
   -webkit-touch-callout: none;
@@ -1188,8 +1192,9 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border-radius: 0;
   background: transparent;
   color: var(--mar-text-secondary);
-  padding: 4px 6px 4px var(--workspace-tree-label-leading);
-  min-height: 30px;
+  padding: var(--workspace-tree-row-padding) 6px var(--workspace-tree-row-padding)
+    var(--workspace-tree-label-leading);
+  min-height: var(--workspace-tree-row-height);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1201,6 +1206,12 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 @media (min-width: 768px) {
+  .node-tree {
+    --workspace-tree-row-height: 28px;
+    --workspace-tree-row-margin: 1px;
+    --workspace-tree-row-padding: 2px;
+  }
+
   .workspace-branches .workspace-branch-button {
     font-size: calc(var(--mar-font-size-body) - 1px);
   }
@@ -1236,7 +1247,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   grid-template-columns: var(--workspace-tree-control) minmax(0, 1fr);
   align-items: center;
   column-gap: var(--workspace-tree-arrow-content-gap);
-  margin: 2px 6px;
+  margin: var(--workspace-tree-row-margin) 6px;
   padding-left: var(--workspace-tree-leading);
   border-radius: var(--mar-radius-selection);
   -webkit-touch-callout: none;
@@ -1285,7 +1296,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .node-expand-button {
   display: inline-grid;
   width: var(--workspace-tree-control);
-  height: 30px;
+  height: var(--workspace-tree-row-height);
   flex: 0 0 auto;
   place-items: center;
   border: 0;
@@ -1301,7 +1312,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .node-expand-spacer {
   width: var(--workspace-tree-control);
-  height: 30px;
+  height: var(--workspace-tree-row-height);
   flex: 0 0 auto;
 }
 
