@@ -23,6 +23,10 @@ interface NativeSessionProjectionServiceOptions {
   ) => NodeAgentSession & { readonly control: RunnerSessionControl };
 }
 
+/** Owns native identity/metadata projection, not Runner execution.
+ * Discovery borrows its caller's lifetime; cancellation revokes database projection before
+ * releasing the wait on a third-party read that may not itself support interruption.
+ */
 export class NativeSessionProjectionService {
   private readonly directNative = new Map<string, NodeAgentSession>();
 
@@ -34,8 +38,10 @@ export class NativeSessionProjectionService {
   async discover(
     runnerName: NodeAgentSession['runner'],
     workspaceId?: string,
-    cleanup = false
+    cleanup = false,
+    signal?: AbortSignal
   ): Promise<readonly NodeAgentSession[]> {
+    signal?.throwIfAborted();
     const database = this.requireDatabase();
     const workspace = workspaceId === undefined ? undefined : database.getWorkspace(workspaceId);
     if (workspaceId !== undefined && workspace === undefined)
@@ -43,14 +49,22 @@ export class NativeSessionProjectionService {
     const runner = this.options.runners.product(runnerName);
     if (runner === undefined || !runner.available(this.options.capabilities()))
       throw new Error('RUNNER_UNAVAILABLE');
-    const sessions = await runner.discoverSessions(
-      {
-        ...(cleanup ? { cleanup: true } : {}),
-        workspaces: database.listWorkspaces(),
-        createProjection: (input) => this.project(input)
-      },
-      workspace
+    const sessions = await awaitDiscovery(
+      runner.discoverSessions(
+        {
+          ...(signal === undefined ? {} : { signal }),
+          ...(cleanup ? { cleanup: true } : {}),
+          workspaces: database.listWorkspaces(),
+          createProjection: (input) => {
+            signal?.throwIfAborted();
+            return this.project(input);
+          }
+        },
+        workspace
+      ),
+      signal
     );
+    signal?.throwIfAborted();
     const ordered = deduplicateDirectSessions(sessions);
     if (!cleanup) {
       this.remember(ordered);
@@ -102,19 +116,23 @@ export class NativeSessionProjectionService {
       runner: NodeAgentSession['runner'],
       sessions: readonly NodeAgentSession[]
     ) => void,
-    cleanup = false
+    cleanup = false,
+    signal?: AbortSignal
   ): Promise<readonly NodeAgentSession[]> {
+    signal?.throwIfAborted();
     const discovered = await Promise.allSettled(
       this.options.runners
         .advertised()
         .filter((runner) => runner.available(this.options.capabilities()))
         .map(async (runner) => {
           const name = runner.name as NodeAgentSession['runner'];
-          const sessions = await this.discover(name, workspaceId, cleanup);
+          const sessions = await this.discover(name, workspaceId, cleanup, signal);
+          signal?.throwIfAborted();
           onRunnerDiscovered?.(name, sessions);
           return sessions;
         })
     );
+    signal?.throwIfAborted();
     const failed = discovered.find((result) => result.status === 'rejected');
     if (failed?.status === 'rejected') throw failed.reason;
     const sessions = deduplicateDirectSessions(
@@ -542,6 +560,32 @@ export class NativeSessionProjectionService {
     if (database === undefined) throw new Error('NODE_DATABASE_UNAVAILABLE');
     return database;
   }
+}
+
+/** The callback capability is revoked by discover(); late SDK outcomes are still consumed. */
+function awaitDiscovery(
+  read: Promise<readonly NodeAgentSession[]>,
+  signal?: AbortSignal
+): Promise<readonly NodeAgentSession[]> {
+  if (signal === undefined) return read;
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener('abort', abort);
+      reject(signal.reason);
+    };
+    read.then(
+      (sessions) => {
+        signal.removeEventListener('abort', abort);
+        resolve(sessions);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      }
+    );
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+  });
 }
 
 function sessionIdDistance(left: string, right: string, maximum: number): number {

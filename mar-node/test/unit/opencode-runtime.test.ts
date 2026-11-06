@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { createServer, type ServerResponse } from 'node:http';
+import type { ChildProcess, spawn } from 'node:child_process';
 import { OpenCodeServerClient } from '../../src/runner/opencode/opencode-server.js';
 import {
   openCodeContextLimits,
@@ -9,6 +10,89 @@ import {
 } from '../../src/opencode-runtime.js';
 
 describe('OpenCode runtime', () => {
+  it('aborts an in-flight discovery HTTP request through the official SDK', async () => {
+    const entered = Promise.withResolvers<void>();
+    const closed = Promise.withResolvers<void>();
+    const server = createServer((_request, reply) => {
+      reply.on('close', () => closed.resolve());
+      entered.resolve();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('Missing test server address');
+    const client = new OpenCodeServerClient();
+    Object.assign(client, {
+      client: createOpencodeClient({
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        throwOnError: true
+      })
+    });
+    const controller = new AbortController();
+    const failure = new Error('NODE_STOPPED');
+    const listing = client.sessions('/workspace', 100, controller.signal);
+    const result = listing.catch((error: unknown) => error);
+    try {
+      await entered.promise;
+      controller.abort(failure);
+      expect(await result).toEqual(failure);
+      await closed.promise;
+    } finally {
+      controller.abort(failure);
+      server.closeAllConnections();
+      await result;
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve()))
+      );
+    }
+  });
+
+  it('does not spawn a discovery backend after stop interrupts startup preparation', async () => {
+    const spawnProcess = vi.fn(() => {
+      throw new Error('UNEXPECTED_SPAWN');
+    });
+    const client = new OpenCodeServerClient({ spawnProcess });
+    const starting = client.start().catch((error: unknown) => error);
+    await client.stop();
+    expect(await starting).toEqual(new Error('OPENCODE_SERVER_STOPPED'));
+    expect(spawnProcess).not.toHaveBeenCalled();
+  });
+
+  it('cancels startup health I/O and joins startup before a fresh backend can start', async () => {
+    const entered = Promise.withResolvers<void>();
+    const kill = vi.fn(() => true);
+    const child = { exitCode: null, pid: undefined, kill } as unknown as ChildProcess;
+    const spawnProcess = vi.fn(() => child);
+    const fetchRequest = vi.fn(async (_url: unknown, input?: RequestInit) => {
+      entered.resolve();
+      return new Promise<Response>((_resolve, reject) => {
+        input?.signal?.addEventListener('abort', () => reject(input.signal?.reason), {
+          once: true
+        });
+      });
+    });
+    vi.stubGlobal('fetch', fetchRequest);
+    const client = new OpenCodeServerClient({
+      spawnProcess: spawnProcess as unknown as typeof spawn
+    });
+    const starting = client.start().catch((error: unknown) => error);
+    try {
+      await entered.promise;
+      await client.stop();
+      expect(await starting).toEqual(new Error('OPENCODE_SERVER_STOPPED'));
+      expect(kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+      fetchRequest.mockResolvedValue(new Response('{}', { status: 200 }));
+      await client.start();
+      await client.stop();
+      expect(spawnProcess).toHaveBeenCalledTimes(2);
+      expect(kill).toHaveBeenCalledTimes(2);
+    } finally {
+      await client.stop();
+      await starting;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('waits for actual SSE response headers before announcing readiness and exposes clean EOF', async () => {
     const response = Promise.withResolvers<ServerResponse>();
     const server = createServer((_request, reply) => response.resolve(reply));

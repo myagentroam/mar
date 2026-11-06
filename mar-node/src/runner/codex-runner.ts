@@ -558,16 +558,20 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     }
   }
 
-  private async cleanupThreads(): Promise<ReturnType<typeof extractCodexThreads>> {
+  private async cleanupThreads(
+    signal?: AbortSignal
+  ): Promise<ReturnType<typeof extractCodexThreads>> {
     await this.start();
     const threads: ReturnType<typeof extractCodexThreads>[number][] = [];
     const cursors = new Set<string>();
     let cursor: string | undefined;
     for (;;) {
+      signal?.throwIfAborted();
       const result = await this.client.listThreads({
         limit: 200,
         ...(cursor === undefined ? {} : { cursor })
       });
+      signal?.throwIfAborted();
       if (
         !isPlainRecord(result) ||
         !Array.isArray(result.data) ||
@@ -595,20 +599,24 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     context: RunnerDiscoveryContext,
     workspace?: NodeWorkspace
   ): Promise<readonly NodeAgentSession[]> {
+    context.signal?.throwIfAborted();
     const [threads, nativeSessions] = context.cleanup
-      ? ([await this.cleanupThreads(), []] as const)
+      ? ([await this.cleanupThreads(context.signal), []] as const)
       : await Promise.all([
           (async () => {
             try {
               await this.start();
-              return extractCodexThreads(await this.listThreads());
+              context.signal?.throwIfAborted();
+              return extractCodexThreads(await this.listThreads(context.signal));
             } catch {
+              context.signal?.throwIfAborted();
               // Native transcripts remain a valid read-only discovery source.
               return [];
             }
           })(),
           discoverAllNativeSessions(this.name)
         ]);
+    context.signal?.throwIfAborted();
     const sessions: NodeAgentSession[] = [];
     for (const thread of threads) {
       if (thread.derived || (thread.source !== 'cli' && thread.source !== 'vscode')) continue;
@@ -838,8 +846,9 @@ export class CodexRunner extends AbstractRunner<'codex'> {
     this.clientFor(runId).respond(requestId, result);
   }
 
-  async listThreads(): Promise<unknown> {
+  async listThreads(signal?: AbortSignal): Promise<unknown> {
     const result = await this.client.listThreads();
+    signal?.throwIfAborted();
     this.observeThreadHistoryModes(result);
     return result;
   }

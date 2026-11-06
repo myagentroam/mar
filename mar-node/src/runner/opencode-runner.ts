@@ -79,7 +79,9 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     {
       readonly updatedAt: number;
       readonly expiresAt: number;
+      readonly signal: AbortSignal | undefined;
       readonly result: Promise<string | undefined>;
+      fulfilled: boolean;
     }
   >();
   private readonly environmentClients = new Map<
@@ -304,13 +306,16 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
   ): Promise<readonly NodeAgentSession[]> {
     const result: NodeAgentSession[] = [];
     for (const target of workspace === undefined ? context.workspaces : [workspace]) {
+      context.signal?.throwIfAborted();
       let sessions: readonly unknown[];
       try {
-        sessions = await this.client.sessions(target.path);
+        sessions = await this.client.sessions(target.path, 100, context.signal);
       } catch (error) {
+        context.signal?.throwIfAborted();
         if (context.cleanup) throw error;
         continue;
       }
+      context.signal?.throwIfAborted();
       for (const value of sessions) {
         const session = openCodeSession(value);
         if (
@@ -321,7 +326,8 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
           continue;
         const title = context.cleanup
           ? { title: session.title, titleOrigin: 'OFFICIAL' as const }
-          : await this.sessionTitle(session);
+          : await this.sessionTitle(session, context.signal);
+        context.signal?.throwIfAborted();
         result.push(
           context.createProjection({
             workspace: target,
@@ -352,19 +358,24 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     return (await this.sessionTitle(native)).title;
   }
 
-  private async sessionTitle(session: NonNullable<ReturnType<typeof openCodeSession>>): Promise<{
+  private async sessionTitle(
+    session: NonNullable<ReturnType<typeof openCodeSession>>,
+    signal?: AbortSignal
+  ): Promise<{
     readonly title: string;
     readonly titleOrigin: 'OFFICIAL' | 'PREVIEW';
   }> {
+    signal?.throwIfAborted();
     const nativeTitle = session.title.trim();
     if (
       nativeTitle.length === 0 ||
       /^(?:new|untitled) session(?:\s*[-–—:]\s*\d{4}-\d{2}-\d{2}.*)?$/iu.test(nativeTitle)
     ) {
       try {
-        const preview = await this.firstUserMessagePreview(session);
+        const preview = await this.firstUserMessagePreview(session, signal);
         if (preview) return { title: preview, titleOrigin: 'PREVIEW' };
       } catch (error) {
+        signal?.throwIfAborted();
         nodeLog('runner.opencode.title.failed', {
           sessionId: session.id,
           stage: 'preview',
@@ -376,12 +387,15 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
   }
 
   private async firstUserMessagePreview(
-    session: NonNullable<ReturnType<typeof openCodeSession>>
+    session: NonNullable<ReturnType<typeof openCodeSession>>,
+    signal?: AbortSignal
   ): Promise<string | undefined> {
     const key = `${session.directory}\0${session.id}`;
     const cached = this.titlePreviews.get(key);
+    // Only in-flight reads share a cancellation owner; completed values retain their cache lifetime.
     if (
       cached !== undefined &&
+      (cached.fulfilled || cached.signal === signal) &&
       cached.updatedAt === session.updatedAt &&
       cached.expiresAt > Date.now()
     )
@@ -390,6 +404,8 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     if (this.titlePreviews.size >= MAX_TITLE_PREVIEWS)
       this.titlePreviews.delete(this.titlePreviews.keys().next().value!);
     const entry = {
+      signal,
+      fulfilled: false,
       updatedAt: session.updatedAt,
       expiresAt: Date.now() + TITLE_PREVIEW_TTL_MS,
       result: (async () => {
@@ -397,10 +413,17 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
         let preview: string | undefined;
         const cursors = new Set<string>();
         for (;;) {
-          const page = await this.client.messagePage(session.directory, session.id, {
-            limit: 100,
-            ...(before === undefined ? {} : { before })
-          });
+          signal?.throwIfAborted();
+          const page = await this.client.messagePage(
+            session.directory,
+            session.id,
+            {
+              limit: 100,
+              ...(before === undefined ? {} : { before })
+            },
+            signal
+          );
+          signal?.throwIfAborted();
           preview = openCodeUserMessagePreview(page.messages) ?? preview;
           if (page.nextCursor === null) return preview;
           if (cursors.has(page.nextCursor)) throw new Error('OPENCODE_MESSAGE_CURSOR_INVALID');
@@ -411,7 +434,9 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     };
     this.titlePreviews.set(key, entry);
     try {
-      return await entry.result;
+      const preview = await entry.result;
+      entry.fulfilled = true;
+      return preview;
     } catch (error) {
       if (this.titlePreviews.get(key) === entry) this.titlePreviews.delete(key);
       throw error;

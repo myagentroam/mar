@@ -187,14 +187,18 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
   ): Promise<readonly NodeAgentSession[]> {
     const sessions: NodeAgentSession[] = [];
     for (const target of workspace === undefined ? context.workspaces : [workspace]) {
+      context.signal?.throwIfAborted();
       let official: Awaited<ReturnType<ClaudeAgentSdkAdapter['listSessions']>> = [];
       try {
         official = await this.listSessions(target.path);
       } catch (error) {
+        context.signal?.throwIfAborted();
         if (context.cleanup) throw error;
         // Native transcripts remain authoritative when SDK listing is unavailable.
       }
+      context.signal?.throwIfAborted();
       const native = await discoverNativeSessions(this.name, target.path);
+      context.signal?.throwIfAborted();
       sessions.push(
         ...this.projectDiscoveredSessions(context, target, [
           ...official.flatMap((value) => {

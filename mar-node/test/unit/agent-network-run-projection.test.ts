@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { AgentNetworkObservations } from '../../src/service/agent-network-observations.js';
 import { AgentNetworkRunProjection } from '../../src/service/agent-network-run-projection.js';
@@ -39,6 +39,9 @@ describe('Agent Network Run projection', () => {
       payload: { toolName: 'command' },
       expiresAt: Date.now() + 60_000
     });
+    const history = vi.spyOn(f.runtime, 'conversationTail').mockImplementation(() => {
+      throw new Error('APPROVAL_MUST_NOT_READ_CONVERSATION');
+    });
     f.projection.accept({
       run: f.run,
       executionId: 'execution',
@@ -50,6 +53,7 @@ describe('Agent Network Run projection', () => {
       executionId: 'execution',
       updates: [{ kind: 'message', value: expect.stringContaining('pendingApprovals') }]
     });
+    expect(history).not.toHaveBeenCalled();
     f.projection.accept({
       run: f.run,
       executionId: 'execution',

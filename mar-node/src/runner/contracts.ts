@@ -87,6 +87,7 @@ export interface RunnerApprovalDecision {
 }
 
 export interface RunnerDiscoveryContext {
+  readonly signal?: AbortSignal;
   readonly cleanup?: boolean;
   readonly workspaces: readonly NodeWorkspace[];
   createProjection(input: {

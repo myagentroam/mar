@@ -5,8 +5,59 @@ import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { openCodeUserMessagePreview } from '../../src/runner/opencode/conversation-parser.js';
 
 describe('OpenCode Session title recovery', () => {
+  it('does not cancel or evict a managed title read when Workspace discovery is aborted', async () => {
+    const controller = new AbortController();
+    const failure = new Error('NODE_STOPPED');
+    const pending =
+      Promise.withResolvers<Awaited<ReturnType<OpenCodeServerClient['messagePage']>>>();
+    const entered = Promise.withResolvers<void>();
+    const native = {
+      id: 'native',
+      directory: '/workspace',
+      title: 'Untitled session',
+      time: { updated: 2 }
+    };
+    const messagePage = vi.fn(
+      async (_directory: string, _id: string, _input: unknown, signal?: AbortSignal) => {
+        if (signal) {
+          signal.addEventListener('abort', () => pending.reject(signal.reason), { once: true });
+          entered.resolve();
+          return pending.promise;
+        }
+        return {
+          messages: [
+            { info: { id: 'user', role: 'user' }, parts: [{ type: 'text', text: 'Managed title' }] }
+          ],
+          nextCursor: null
+        };
+      }
+    );
+    const runner = new OpenCodeRunner({
+      sessions: vi.fn(async () => [native]),
+      session: vi.fn(async () => native),
+      messagePage
+    } as unknown as OpenCodeServerClient);
+    const createProjection = vi.fn();
+    const discovery = runner
+      .discoverSessions({
+        workspaces: [{ id: 'workspace', path: '/workspace', kind: 'DIRECTORY', gitSummary: null }],
+        signal: controller.signal,
+        createProjection
+      })
+      .catch((error: unknown) => error);
+    await entered.promise;
+    const session = { externalSessionId: 'native', cwd: '/workspace' } as NodeAgentSession;
+    const title = runner.readManagedRunnerTitle(session);
+    controller.abort(failure);
+    expect(await discovery).toBe(failure);
+    expect(await title).toBe('Managed title');
+    expect(await runner.readManagedRunnerTitle(session)).toBe('Managed title');
+    expect(messagePage).toHaveBeenCalledTimes(2);
+    expect(createProjection).not.toHaveBeenCalled();
+  });
+
   it.each(['New session', 'Untitled session', 'New session - 2026-10-06T02:00:00.000Z'])(
-    'restores %s from the first real user input across official message pages',
+    'restores %s from official message pages and reuses completed previews across discovery lifetimes',
     async (title) => {
       const native = { id: 'native', directory: '/workspace', title, time: { updated: 2 } };
       const messagePage = vi.fn(
@@ -74,6 +125,21 @@ describe('OpenCode Session title recovery', () => {
         { limit: 100, before: 'older' }
       ]);
       await runner.discoverSessions(context, workspace);
+      expect(messagePage).toHaveBeenCalledTimes(2);
+      for (const controller of [new AbortController(), new AbortController()]) {
+        const refreshed = await runner.discoverSessions(
+          { ...context, signal: controller.signal },
+          workspace
+        );
+        expect(refreshed[0]?.runnerTitle).toBe('去看升国旗吧 需要五星红旗元素');
+        controller.abort();
+      }
+      expect(
+        await runner.readManagedRunnerTitle({
+          externalSessionId: 'native',
+          cwd: '/workspace'
+        } as NodeAgentSession)
+      ).toBe('去看升国旗吧 需要五星红旗元素');
       expect(messagePage).toHaveBeenCalledTimes(2);
       native.title = 'Generated official title';
       expect(

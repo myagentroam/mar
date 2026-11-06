@@ -15,10 +15,14 @@ export interface OpenCodeServerOptions {
   readonly spawnProcess?: typeof spawn;
 }
 
+/** Owns one supervised backend and its startup I/O. Request cancellation is caller-scoped;
+ * Stopping cancels startup and joins it along with child termination.
+ */
 export class OpenCodeServerClient {
   private child: ChildProcess | undefined;
   private client: OpencodeClient | undefined;
   private starting: Promise<void> | undefined;
+  private startingController: AbortController | undefined;
   private environment: Readonly<Record<string, string>> = {};
 
   constructor(private readonly options: OpenCodeServerOptions = {}) {}
@@ -31,18 +35,25 @@ export class OpenCodeServerClient {
   async start(): Promise<void> {
     if (this.client !== undefined) return;
     if (this.starting !== undefined) return this.starting;
-    const starting = this.startServer();
+    const controller = new AbortController();
+    const starting = this.startServer(controller.signal);
+    this.startingController = controller;
     this.starting = starting;
     try {
       await starting;
     } finally {
-      if (this.starting === starting) this.starting = undefined;
+      if (this.starting === starting) {
+        this.starting = undefined;
+        this.startingController = undefined;
+      }
     }
   }
 
-  private async startServer(): Promise<void> {
+  private async startServer(signal: AbortSignal): Promise<void> {
     const { createOpencodeClient } = await import('@opencode-ai/sdk/v2/client');
+    signal.throwIfAborted();
     const port = await availablePort();
+    signal.throwIfAborted();
     const password = randomBytes(24).toString('base64url');
     const invocation = platformCliInvocation(this.options.command ?? 'opencode', [
       'serve',
@@ -76,11 +87,13 @@ export class OpenCodeServerClient {
         `http://127.0.0.1:${port}/global/health`,
         authorization,
         child,
-        this.options.startTimeoutMs ?? START_TIMEOUT_MS
+        this.options.startTimeoutMs ?? START_TIMEOUT_MS,
+        signal
       );
+      signal.throwIfAborted();
       this.client = client;
     } catch (error) {
-      await this.stop();
+      await this.stopChild(child);
       throw error;
     }
   }
@@ -102,9 +115,17 @@ export class OpenCodeServerClient {
     }
   }
 
-  async sessions(directory: string, limit = 100): Promise<readonly unknown[]> {
+  async sessions(
+    directory: string,
+    limit = 100,
+    signal?: AbortSignal
+  ): Promise<readonly unknown[]> {
+    signal?.throwIfAborted();
     const client = await this.requireClient();
-    return unwrap<readonly unknown[]>(await client.session.list({ directory, limit }));
+    signal?.throwIfAborted();
+    return unwrap<readonly unknown[]>(
+      await client.session.list({ directory, limit }, { signal: signal ?? null })
+    );
   }
 
   async session(directory: string, sessionID: string): Promise<unknown> {
@@ -331,10 +352,16 @@ export class OpenCodeServerClient {
   }
 
   async stop(): Promise<void> {
+    this.startingController?.abort(new Error('OPENCODE_SERVER_STOPPED'));
+    const starting = this.starting;
     this.client = undefined;
-    const child = this.child;
+    await this.stopChild(this.child);
+    if (starting !== undefined) await Promise.allSettled([starting]);
+  }
+
+  private async stopChild(child: ChildProcess | undefined): Promise<void> {
+    if (child === undefined || this.child !== child) return;
     this.child = undefined;
-    if (child === undefined) return;
     if (child.pid === undefined) {
       child.kill('SIGTERM');
       return;
@@ -375,22 +402,29 @@ async function waitUntilHealthy(
   url: string,
   authorization: string,
   child: ChildProcess,
-  timeoutMs: number
+  timeoutMs: number,
+  signal: AbortSignal
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    signal.throwIfAborted();
     if (child.exitCode !== null) throw new Error('OPENCODE_SERVER_EXITED');
     try {
       const response = await fetch(url, {
         headers: { authorization },
-        signal: AbortSignal.timeout(Math.min(1_000, Math.max(1, deadline - Date.now())))
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(Math.min(1_000, Math.max(1, deadline - Date.now())))
+        ])
       });
       if (response.ok) return;
     } catch {
+      signal.throwIfAborted();
       // The child may still be binding its loopback socket.
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+  signal.throwIfAborted();
   throw new Error('OPENCODE_SERVER_START_TIMEOUT');
 }
 
