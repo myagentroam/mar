@@ -150,7 +150,8 @@ const collaborationPrompt = [
   "Use native agent_* tools to collaborate within the Agent Network when another Session's context or ongoing work materially helps. Prefer focused requests and avoid unnecessary cross-Session coordination. Peer Sessions retain their own work and lifecycle; do not treat them as task-owned children or stop them merely for task cleanup.",
   'Prefer reusing known Session IDs rather than rediscovering them. Updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
   'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
-  'For delegated work, prefer a concise final handoff over routine progress reports or duplicate completion messages. Early contact is most useful for requested updates, blockers, scope conflicts, or information needed for a decision.'
+  'The parent automatically collects the latest unread public reply and terminal state from each observed direct child before its next natural model request. Usually reply in the child Session itself rather than sending duplicate progress or completion reports with agent_send.',
+  'Contact the parent proactively when timely action or a decision is needed, such as a blocker, scope conflict or major risk, or when explicitly asked to report. Routine child updates usually need no reply; prefer combining related guidance.'
 ].join('\n\n');
 
 const managementPrompt = [

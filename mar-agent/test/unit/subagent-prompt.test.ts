@@ -48,6 +48,16 @@ it.each([false, true])(
       expect(instructions).toContain(
         'Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.'
       );
+      expect(instructions).toContain(
+        'The parent automatically collects the latest unread public reply and terminal state from each observed direct child before its next natural model request.'
+      );
+      expect(instructions).toContain(
+        'Usually reply in the child Session itself rather than sending duplicate progress or completion reports with agent_send.'
+      );
+      expect(instructions).toContain('when timely action or a decision is needed');
+      expect(instructions).toContain('a blocker, scope conflict or major risk');
+      expect(instructions).toContain('or when explicitly asked to report');
+      expect(instructions).toContain('Routine child updates usually need no reply');
       expect(instructions).toContain('retain responsibility for the final result');
       expect(instructions).not.toContain('agent_message');
       expect(instructions).not.toContain('agent_cancel');
@@ -88,6 +98,11 @@ it('conditions delegation guidance on the selected tools and mode without starti
     const composed = await context.prompts.composeDefault({ mode, tools });
     const instructions = composed.sections.map((section) => section.text ?? '').join('\n\n');
     expect(instructions.includes('# Delegation and coordination')).toBe(expected);
+    expect(
+      instructions.includes(
+        'rather than sending duplicate progress or completion reports with agent_send'
+      )
+    ).toBe(expected);
   }
   expect(setup.adapter.requests).toHaveLength(1);
 });
