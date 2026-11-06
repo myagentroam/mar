@@ -826,8 +826,6 @@ export function createWorkbenchPageController<
 
   const runnerInteractionService = mainPaneController.runner;
 
-  const { clearCommand: clearRunnerCommand } = runnerInteractionService;
-
   const composerReferenceService = mainPaneController.references;
 
   const mainPanePresentation = mainPaneController.presentation;
