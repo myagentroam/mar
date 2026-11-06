@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { boundToolOutput, type ToolOutput } from '@myagentroam/protocol';
 
 export function compactRunnerText(value: string, limit: number): string {
@@ -84,7 +85,7 @@ export function nativePageEnd(
 export function boundedConversationItemId(prefix: string, value: string): string {
   const candidate = `${prefix}:${value}`;
   if (candidate.length <= 88) return candidate;
-  return `${prefix}:${Buffer.from(value)
-    .toString('base64url')
-    .slice(0, 88 - prefix.length - 1)}`;
+  // Retain the complete identity: suffixes can distinguish summary parts or native items.
+  const digest = createHash('sha256').update(candidate).digest('base64url');
+  return `${prefix.slice(0, 88 - digest.length - 1)}:${digest}`;
 }
