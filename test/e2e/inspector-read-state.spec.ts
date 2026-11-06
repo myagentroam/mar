@@ -135,6 +135,28 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             expect(bounds.below, `${bounds.name}: glyph space below`).toBeGreaterThanOrEqual(1);
             expect(bounds.rowHeight).toBe(bounds.expectedRowHeight);
           }
+          const rootRow = files.locator('[data-file-path="."]');
+          await rootRow.click();
+          await expect(rootRow).toHaveAttribute('aria-expanded', 'false');
+          await rootRow.click();
+          await expect(rootRow).toHaveAttribute('aria-expanded', 'true');
+          await expect(rootRow).toHaveAttribute('aria-selected', 'true');
+          const treeBounds = await files.locator('.workspace-file-tree').boundingBox();
+          const selectionBounds = await files
+            .locator('.file-tree-row-shell.selected')
+            .boundingBox();
+          expect(selectionBounds!.x - treeBounds!.x).toBeGreaterThanOrEqual(6);
+          expect(
+            treeBounds!.x + treeBounds!.width - selectionBounds!.x - selectionBounds!.width
+          ).toBeGreaterThanOrEqual(6);
+          expect(selectionBounds!.y - treeBounds!.y).toBeGreaterThanOrEqual(4);
+          if (width >= 768) {
+            const child = files.locator('[data-file-path="src/existing.ts"]');
+            await child.hover();
+            const hoverBounds = await child.locator('..').boundingBox();
+            expect(hoverBounds!.x).toBe(selectionBounds!.x);
+            expect(hoverBounds!.width).toBe(selectionBounds!.width);
+          }
           await files.screenshot({ path: testInfo.outputPath(`files-toolbar-${locale}.png`) });
           await searchPanel.screenshot({
             path: testInfo.outputPath(`search-toolbar-${locale}.png`)

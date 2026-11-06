@@ -614,7 +614,7 @@ defineExpose({ reveal });
   flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 2px 0 8px;
+  padding: 4px 0.375rem 8px;
   outline: none;
 }
 
