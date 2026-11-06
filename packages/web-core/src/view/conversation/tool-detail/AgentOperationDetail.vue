@@ -24,9 +24,12 @@ const agentWaitText = computed(() => {
           :key="index"
           class="conversation-list-row"
         >
-          <span v-if="target.status" class="conversation-list-marker">{{
-            agentTargetStatus(target.status)
-          }}</span>
+          <span
+            v-if="target.status"
+            class="conversation-list-marker"
+            :class="{ 'agent-list-status--running': target.status === 'RUNNING' }"
+            >{{ agentTargetStatus(target.status) }}</span
+          >
           <span class="conversation-list-content">{{ target.title }}</span>
         </li>
       </ul>
@@ -94,6 +97,11 @@ const agentWaitText = computed(() => {
 }
 .agent-detail-entry + .agent-detail-entry {
   margin-top: 0.5rem;
+}
+.agent-list-status--running {
+  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
+  color: var(--el-color-success);
 }
 .agent-detail-row {
   display: flex;

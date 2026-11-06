@@ -138,6 +138,18 @@ for (const [width, theme, locale] of [
     await expect(tasks.locator('.task-list-status')).toHaveText(
       locale === 'en-US' ? ['To-do', 'In progress', 'Done'] : ['待办', '进行中', '已完成']
     );
+    const runningStatus = agents.locator('li').first().locator('.conversation-list-marker');
+    const idleStatus = agents.locator('li').nth(1).locator('.conversation-list-marker');
+    const completedStatus = agents.locator('li').nth(2).locator('.conversation-list-marker');
+    const green = await tasks
+      .locator('.task-list-status--done')
+      .evaluate((element) => getComputedStyle(element).color);
+    await expect(runningStatus).toHaveCSS('color', green);
+    await expect(idleStatus).not.toHaveCSS('color', green);
+    await expect(completedStatus).toHaveCSS(
+      'color',
+      await idleStatus.evaluate((element) => getComputedStyle(element).color)
+    );
     await expect(files.locator('.conversation-file-change-status')).toHaveText(
       locale === 'en-US'
         ? ['Added', 'Modified', 'Deleted', 'Renamed', 'Copied', 'Type changed']
