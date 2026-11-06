@@ -1258,13 +1258,33 @@ describe('Node session records and external discovery merge', () => {
         });
         const liveActivityAt = internals.runtime.getAgentSession(discovered[0]!.id)!.lastActivityAt;
         expect(liveActivityAt).toBeGreaterThan(lastActivityAt);
+        // Later discovery must reach Session reads as well as list and graph projections.
+        const nativeActivityAt = liveActivityAt + 150_000;
+        internals.nativeSessionProjectionService.remember([
+          { ...discovered[0]!, lastActivityAt: nativeActivityAt }
+        ]);
+        await expect(
+          internals.executeNodeOperation('session.get', { sessionId: discovered[0]!.id })
+        ).resolves.toMatchObject({
+          session: { id: discovered[0]!.id, lastActivityAt: nativeActivityAt }
+        });
+        await expect(
+          internals.executeNodeOperation('session.list', {
+            workspaceId: workspace.id,
+            registeredOnly: true
+          })
+        ).resolves.toMatchObject({
+          sessions: expect.arrayContaining([
+            expect.objectContaining({ id: discovered[0]!.id, lastActivityAt: nativeActivityAt })
+          ])
+        });
         await expect(
           internals.executeNodeOperation('session.graph', {
             workspaceId: workspace.id,
             sessionId: discovered[0]!.id
           })
         ).resolves.toMatchObject({
-          nodes: [expect.objectContaining({ lastActivityAt: liveActivityAt })]
+          nodes: [expect.objectContaining({ lastActivityAt: nativeActivityAt })]
         });
         expect(discovery).not.toHaveBeenCalled();
       } finally {

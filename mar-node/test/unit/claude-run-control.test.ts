@@ -13,6 +13,7 @@ import { NodeConnector } from '../../src/connector.js';
 import { NodeDatabase } from '../../src/database.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import { ClaudeCodeRunner } from '../../src/runner/claude-code-runner.js';
+import type { NodeAgentSession } from '../../src/session/contracts.js';
 import { ClaudeChannelGate } from '../../src/runner/claude/claude-channel.js';
 import {
   preparedDatabase,
@@ -40,6 +41,37 @@ afterEach(() => {
 });
 
 describe('Claude Run queue, Channel, and lifecycle', () => {
+  it('looks up owned native aliases without scanning the full registry and maintains reassignment', () => {
+    const runner = new ClaudeCodeRunner();
+    const first = { id: 'managed-first' } as NodeAgentSession;
+    const second = { id: 'managed-second' } as NodeAgentSession;
+    runner.rememberManagedNative(first, 'native-a');
+    runner.rememberManagedNative(first, 'native-b');
+    runner.rememberManagedNative(first, 'native-b');
+    runner.rememberManagedNative(second, 'native-c');
+    const scan = vi
+      .spyOn(runner.execution.managedSessionByNativeId, Symbol.iterator)
+      .mockImplementation(() => {
+        throw new Error('The full alias registry must not be scanned for a single Session');
+      });
+    try {
+      expect(runner.nativeAliasesFor(first.id)).toEqual(['native-a', 'native-b']);
+      expect(runner.nativeAliasesFor(second.id)).toEqual(['native-c']);
+      runner.rememberManagedNative(second, 'native-b');
+      expect(runner.nativeAliasesFor(first.id)).toEqual(['native-a']);
+      expect(runner.nativeAliasesFor(second.id)).toEqual(['native-c', 'native-b']);
+      expect(runner.managedAliasId('native-b')).toBe(second.id);
+      runner.forgetNativeAlias('native-a');
+      expect(runner.nativeAliasesFor(first.id)).toEqual([]);
+      expect(runner.managedAliasId('native-a')).toBeUndefined();
+      expect(runner.execution.managedNativeIds.has('native-a')).toBe(false);
+      expect(runner.nativeAliasesFor('missing')).toEqual([]);
+    } finally {
+      scan.mockRestore();
+      runner.stop();
+    }
+  });
+
   it('releases SDK requests, timers and active handles through an idempotent Runner stop', async () => {
     vi.useFakeTimers();
     const runner = new ClaudeCodeRunner();
