@@ -1,5 +1,6 @@
 import type { NodeAgentSession } from '../session/contracts.js';
 import { nodeLog } from '../operational.js';
+import type { SessionGroup } from '@myagentroam/protocol';
 
 const WATCH_INTERVAL_MS = 30_000;
 const CACHE_TTL_MS = 15_000;
@@ -12,12 +13,16 @@ export interface WorkspaceSessionServiceOptions {
       sessions: readonly NodeAgentSession[]
     ) => void
   ) => Promise<readonly NodeAgentSession[]>;
-  listPage: (workspaceId: string) => Promise<unknown>;
+  listPage: (workspaceId: string, sessionGroup?: SessionGroup) => Promise<unknown>;
   active: (workspaceId: string) => boolean;
   invalidate: (workspaceId: string) => void;
 }
 
+/** Owns native discovery caches, periodic observation and the lifetime of internal page reads. */
 export class WorkspaceSessionService {
+  private accepting = true;
+  private readonly pageReads = new Set<Promise<unknown>>();
+  private readonly discoveryReads = new Set<Promise<readonly NodeAgentSession[]>>();
   private readonly cacheGenerations = new Map<string, symbol>();
   private readonly initialReads = new Map<string, Promise<readonly NodeAgentSession[]>>();
   private readonly incompleteDiscoveries = new Set<string>();
@@ -34,11 +39,36 @@ export class WorkspaceSessionService {
 
   constructor(private readonly options: WorkspaceSessionServiceOptions) {}
 
+  async listPage(workspaceId: string, sessionGroup?: SessionGroup): Promise<unknown> {
+    if (!this.accepting) throw new Error('NODE_STOPPED');
+    const read = this.options.listPage(workspaceId, sessionGroup);
+    this.pageReads.add(read);
+    try {
+      return await read;
+    } finally {
+      this.pageReads.delete(read);
+    }
+  }
+
+  resume(): void {
+    this.accepting = true;
+  }
+
+  async stop(): Promise<void> {
+    this.accepting = false;
+    for (const id of this.sessionWatchTimers.keys()) this.stopWatch(id);
+    await Promise.allSettled([...this.pageReads, ...this.sessionWatchReads.values()]);
+    // A first page can return a partial batch while native discovery still owns I/O.
+    // Retired cache generations also remain owned until their reads actually settle.
+    await Promise.allSettled([...this.discoveryReads]);
+  }
+
   cachedSnapshot(workspaceId: string): readonly NodeAgentSession[] {
     return this.sessionCache.get(workspaceId)?.sessions ?? [];
   }
 
   ensureWatch(workspaceId: string): void {
+    if (!this.accepting) return;
     if (this.sessionWatchTimers.has(workspaceId) || this.sessionWatchReads.has(workspaceId)) return;
     void this.runWatchCycle(workspaceId);
   }
@@ -86,6 +116,7 @@ export class WorkspaceSessionService {
           expiresAt: this.staleDiscoveries.has(workspaceId) ? 0 : Date.now() + CACHE_TTL_MS
         });
         if (
+          this.accepting &&
           notify &&
           previous !== undefined &&
           sessionSignature(previous) !== sessionSignature(sessions)
@@ -128,6 +159,7 @@ export class WorkspaceSessionService {
           throw error;
         })
         .finally(() => {
+          this.discoveryReads.delete(read);
           acceptingBatches = false;
           if (this.sessionCacheReads.get(workspaceId) === read) {
             this.sessionCacheReads.delete(workspaceId);
@@ -135,7 +167,11 @@ export class WorkspaceSessionService {
             if (this.staleDiscoveries.delete(workspaceId)) notifyCompletion = true;
           }
           if (this.initialReads.get(workspaceId) === initial) this.initialReads.delete(workspaceId);
-          if (notifyCompletion && this.cacheGenerations.get(workspaceId) === generation)
+          if (
+            this.accepting &&
+            notifyCompletion &&
+            this.cacheGenerations.get(workspaceId) === generation
+          )
             this.options.invalidate(workspaceId);
           if (
             !this.sessionCacheReads.has(workspaceId) &&
@@ -145,6 +181,7 @@ export class WorkspaceSessionService {
             this.cacheGenerations.delete(workspaceId);
         });
       discovery = read;
+      this.discoveryReads.add(read);
       this.sessionCacheReads.set(workspaceId, discovery);
       // Later Runner failures cannot become unhandled after the first batch was returned.
       void discovery.catch(() => undefined);
@@ -198,7 +235,12 @@ export class WorkspaceSessionService {
 
   private async runWatchCycle(workspaceId: string): Promise<void> {
     await this.refreshWatch(workspaceId);
-    if (!this.options.active(workspaceId) || this.sessionWatchTimers.has(workspaceId)) return;
+    if (
+      !this.accepting ||
+      !this.options.active(workspaceId) ||
+      this.sessionWatchTimers.has(workspaceId)
+    )
+      return;
     const timer = setTimeout(() => {
       this.sessionWatchTimers.delete(workspaceId);
       void this.runWatchCycle(workspaceId);
@@ -208,10 +250,10 @@ export class WorkspaceSessionService {
   }
 
   private async performRefresh(workspaceId: string): Promise<void> {
-    if (!this.options.active(workspaceId)) return this.stopWatch(workspaceId);
+    if (!this.accepting || !this.options.active(workspaceId)) return this.stopWatch(workspaceId);
     try {
-      const signature = JSON.stringify(await this.options.listPage(workspaceId));
-      if (!this.options.active(workspaceId)) return this.stopWatch(workspaceId);
+      const signature = JSON.stringify(await this.listPage(workspaceId));
+      if (!this.accepting || !this.options.active(workspaceId)) return this.stopWatch(workspaceId);
       const previous = this.sessionWatchSignatures.get(workspaceId);
       this.sessionWatchSignatures.set(workspaceId, signature);
       if (previous === undefined || previous === signature) return;

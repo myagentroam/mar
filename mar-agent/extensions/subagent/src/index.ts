@@ -18,6 +18,8 @@ const delegationPrompt = [
   'Prefer following up through the direct delegate; deeper Session inspection is usually useful only when a concrete issue needs independent verification.',
   'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
   'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
+  'The parent automatically collects the latest unread public reply and terminal state from each observed direct child before its next natural model request. Usually reply in the child Session itself rather than sending duplicate progress or completion reports with agent_send.',
+  'Contact the parent proactively when timely action or a decision is needed, such as a blocker, scope conflict or major risk, or when explicitly asked to report. Routine child updates usually need no reply; prefer combining related guidance.',
   'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
 ].join('\n\n');
 

@@ -1,3 +1,4 @@
+// @test-covers mar-node/src/application/scheduled-execution-service.ts
 import { serializeComposerTag } from '@myagentroam/protocol';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

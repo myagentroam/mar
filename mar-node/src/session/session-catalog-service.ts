@@ -2,7 +2,8 @@ import { resolveSessionRollbackTarget } from '../service/session-rollback-target
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
 import type {
   WorkspaceSessionCleanupResult,
-  WorkspaceSessionNavigationQuery
+  WorkspaceSessionNavigationQuery,
+  SessionGroup
 } from '@myagentroam/protocol';
 import { sessionGroup } from './session-presentation-service.js';
 import type { NodeAgentSession } from './contracts.js';
@@ -67,10 +68,22 @@ interface SessionTreeCleanup {
 type SessionNavigationQuery = WorkspaceSessionNavigationQuery & { readonly workspaceId: string };
 type RegisteredSession = ReturnType<NodeDatabase['listSessionRecords']>[number];
 
+/** Owns catalog queries and Session catalog mutations; borrows the Workspace native cache.
+ * Public operations and internal observation share query rules, not transport/admission routing.
+ */
 export class SessionCatalogService {
   private rewindQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: SessionCatalogServiceOptions) {}
+
+  /** Internal observation uses the same catalog query without public operation dispatch. */
+  listWorkspacePage(workspaceId: string, sessionGroup?: SessionGroup): Promise<unknown> {
+    return this.list({
+      workspaceId,
+      limit: 30,
+      ...(sessionGroup === undefined ? {} : { sessionGroup })
+    });
+  }
 
   operations(): Readonly<Record<string, NodeOperationHandler>> {
     return {

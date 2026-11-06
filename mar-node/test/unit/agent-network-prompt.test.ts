@@ -225,11 +225,15 @@ it.each([false, true])(
         'Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.'
       );
       expect(instructions).toContain(
-        'blockers, scope conflicts, or information needed for a decision'
+        'The parent automatically collects the latest unread public reply and terminal state from each observed direct child before its next natural model request.'
       );
       expect(instructions).toContain(
-        'prefer a concise final handoff over routine progress reports or duplicate completion messages'
+        'Usually reply in the child Session itself rather than sending duplicate progress or completion reports with agent_send.'
       );
+      expect(instructions).toContain('when timely action or a decision is needed');
+      expect(instructions).toContain('a blocker, scope conflict or major risk');
+      expect(instructions).toContain('or when explicitly asked to report');
+      expect(instructions).toContain('Routine child updates usually need no reply');
       expect(instructions).toContain(
         'Updates are most useful when requested or when the recipient needs to decide or change course'
       );
@@ -273,7 +277,10 @@ it('selects delegation and lateral guidance independently and omits both during 
       'An accepted message normally needs no separate acknowledgment.',
       'Requests for receipt-only replies',
       'immediate agent_view calls solely to confirm receipt are usually unnecessary',
-      'prefer a concise final handoff over routine progress reports or duplicate completion messages'
+      'The parent automatically collects the latest unread public reply and terminal state from each observed direct child',
+      'rather than sending duplicate progress or completion reports with agent_send',
+      'Contact the parent proactively when timely action or a decision is needed',
+      'Routine child updates usually need no reply'
     ]) {
       expect(instructions.split(guidance)).toHaveLength(expected[1] ? 2 : 1);
     }
