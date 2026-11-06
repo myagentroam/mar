@@ -8,7 +8,7 @@ import {
   agentNetworkSessionView,
   marctlSessionDetail,
   marctlSessionProgress,
-  marctlSessionSummary,
+  sessionActivitySummary,
   sessionActivityStatus
 } from '../../src/service/session-recent-activity.js';
 import { projectWorkbenchPayload } from '../../src/service/workbench-event-projection.js';
@@ -55,7 +55,7 @@ function fixture(start = true) {
     run,
     emit,
     detail: () => marctlSessionDetail(runtime, session, 0),
-    summary: () => marctlSessionSummary(runtime, session)
+    summary: () => sessionActivitySummary(runtime, session)
   };
 }
 
@@ -381,7 +381,7 @@ describe('bounded marctl Session views', () => {
       latestMessage: null,
       recentTools: []
     });
-    expect(marctlSessionSummary(runtime, session).latestActivity).toBeNull();
+    expect(sessionActivitySummary(runtime, session).latestActivity).toBeNull();
   });
 
   it('does not expose command output, file diffs or code cell source', () => {

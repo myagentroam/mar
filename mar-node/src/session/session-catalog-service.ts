@@ -17,7 +17,10 @@ import { sessionPage } from './pagination.js';
 import type { NativeSessionProjectionService } from './native-session-projection-service.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
 import { latestSessionActivityAt } from './session-presentation-service.js';
-import { marctlSessionSummary, sessionActivityStatus } from '../service/session-recent-activity.js';
+import {
+  sessionActivitySummary,
+  sessionActivityStatus
+} from '../service/session-recent-activity.js';
 import {
   WorkspaceSessionCleanupBudget,
   WorkspaceSessionCleanupDeadline
@@ -68,8 +71,20 @@ interface SessionTreeCleanup {
 type SessionNavigationQuery = WorkspaceSessionNavigationQuery & { readonly workspaceId: string };
 type RegisteredSession = ReturnType<NodeDatabase['listSessionRecords']>[number];
 
+interface SessionCatalogPage {
+  readonly sessions: readonly NodeAgentSession[];
+  readonly nextCursor: string | null;
+  readonly runningCounts: Readonly<Record<SessionGroup, number>>;
+}
+
+interface SessionActivityPage {
+  readonly sessions: readonly ReturnType<typeof sessionActivitySummary>[];
+  readonly nextCursor: string | null;
+}
+
 /** Owns catalog queries and Session catalog mutations; borrows the Workspace native cache.
- * Public operations and internal observation share query rules, not transport/admission routing.
+ * Public operations adapt transport views; internal readers use typed queries and neutral
+ * activity summaries. Both share query rules, never transport/admission routing.
  */
 export class SessionCatalogService {
   private rewindQueue: Promise<void> = Promise.resolve();
@@ -77,12 +92,21 @@ export class SessionCatalogService {
   constructor(private readonly options: SessionCatalogServiceOptions) {}
 
   /** Internal observation uses the same catalog query without public operation dispatch. */
-  listWorkspacePage(workspaceId: string, sessionGroup?: SessionGroup): Promise<unknown> {
-    return this.list({
+  listWorkspacePage(workspaceId: string, sessionGroup?: SessionGroup): Promise<SessionCatalogPage> {
+    return this.queryPage({
       workspaceId,
       limit: 30,
       ...(sessionGroup === undefined ? {} : { sessionGroup })
     });
+  }
+
+  async listRegisteredChildren(
+    workspaceId: string,
+    parentSessionId: string
+  ): Promise<SessionActivityPage> {
+    return this.summarizePage(
+      await this.queryPage({ workspaceId, parentSessionId, registeredOnly: true, limit: 100 })
+    );
   }
 
   operations(): Readonly<Record<string, NodeOperationHandler>> {
@@ -97,6 +121,20 @@ export class SessionCatalogService {
   }
 
   private async list(input: Record<string, unknown>): Promise<unknown> {
+    const page = await this.queryPage(input);
+    return input.view === 'marctl' ? { view: 'marctl', ...this.summarizePage(page) } : page;
+  }
+
+  private summarizePage(page: SessionCatalogPage): SessionActivityPage {
+    return {
+      sessions: page.sessions.map((session) =>
+        sessionActivitySummary(this.options.runtime, session)
+      ),
+      nextCursor: page.nextCursor
+    };
+  }
+
+  private async queryPage(input: Record<string, unknown>): Promise<SessionCatalogPage> {
     if (
       input.sessionGroup !== undefined &&
       input.sessionGroup !== 'MAIN' &&
@@ -126,15 +164,7 @@ export class SessionCatalogService {
       ),
       input
     );
-    return input.view === 'marctl'
-      ? {
-          view: 'marctl',
-          sessions: page.sessions.map((session) =>
-            marctlSessionSummary(this.options.runtime, session)
-          ),
-          nextCursor: page.nextCursor
-        }
-      : { ...page, runningCounts };
+    return { ...page, runningCounts };
   }
 
   private async graph(input: Record<string, unknown>): Promise<unknown> {

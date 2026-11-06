@@ -42,6 +42,9 @@ export function createConversationProjectionState(options: {
   };
 }
 
+/** Owns the projected window, sequence guards and frame-batched deltas. Snapshot reconciliation
+ * publishes only its final window; subscription and rendering lifecycles remain with callers.
+ */
 export function createConversationProjectionService(options: {
   readonly turns: Ref<ConversationTurn[]>;
   readonly nextCursor: Ref<string | null>;
@@ -87,8 +90,10 @@ export function createConversationProjectionService(options: {
   const itemKey = (turn: Pick<ConversationTurn, 'sessionId' | 'id'>, itemId: string) =>
     `${turnKey(turn)}:${itemId}`;
 
-  function installTurns(next: readonly ConversationTurn[]): void {
-    const previous = options.turns.value;
+  function discardRemovedTurnSequences(
+    previous: readonly ConversationTurn[],
+    next: readonly ConversationTurn[]
+  ): void {
     if (next.length < previous.length) {
       const retained = new Set(next.map((turn) => turnKey(turn)));
       const retainedRuns = new Set(next.map((turn) => turn.runId));
@@ -102,6 +107,10 @@ export function createConversationProjectionService(options: {
           snapshotSequences.delete(turn.runId);
       }
     }
+  }
+
+  function installTurns(next: readonly ConversationTurn[]): void {
+    discardRemovedTurnSequences(options.turns.value, next);
     options.turns.value = [...next];
   }
 
@@ -557,10 +566,9 @@ export function createConversationProjectionService(options: {
       (turn) => !priorTurns.some((candidate) => candidate.id === turn.id)
     );
     const incoming = pageTurns;
-    const previous = new Map(options.turns.value.map((turn) => [turn.id, turn]));
+    const previous = new Map(priorTurns.map((turn) => [turn.id, turn]));
     const mergedIncoming = incoming.map((turn) => {
-      const previousTurn =
-        previous.get(turn.id) ?? options.turns.value.find((candidate) => candidate.id === turn.id);
+      const previousTurn = previous.get(turn.id);
       if (previousTurn === undefined) {
         markLive(turn, page.snapshotSequence);
         return turn;
@@ -578,17 +586,24 @@ export function createConversationProjectionService(options: {
         ? turn
         : { ...turn, items: restoreLocalSteers(turn.items, previousTurn.items, localSteers) };
     });
-    options.turns.value = reconcileOptimisticConversationTurns(
-      mergeConversationProjectionUnits(options.turns.value, mergedIncoming)
+    const mergedTurns = reconcileOptimisticConversationTurns(
+      mergeConversationProjectionUnits(priorTurns, mergedIncoming)
     );
-    const overflowed = insertsNewTurn && collapseRecentWindow();
-    limitTurns();
-    const changed = JSON.stringify(priorTurns) !== JSON.stringify(options.turns.value);
-    // Watch snapshots and complete terminal Turns can match the realtime projection. Preserve the
-    // array reference so Vue does not render an unchanged authoritative confirmation as a refresh.
-    if (!changed) options.turns.value = priorTurns;
+    const overflowed =
+      insertsNewTurn && mergedTurns.length > CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT;
+    const nextTurns = options.limitHistory(
+      overflowed
+        ? limitRecentConversationSegments(mergedTurns, CONVERSATION_RECENT_SEGMENT_LIMIT)
+        : mergedTurns
+    );
+    const changed = JSON.stringify(priorTurns) !== JSON.stringify(nextTurns);
+    discardRemovedTurnSequences(mergedTurns, nextTurns);
+    if (overflowed) options.nextCursor.value = null;
     if (!overflowed && options.nextCursor.value === null && page.nextCursor !== null)
       options.nextCursor.value = page.nextCursor;
+    // Compute the bounded projection before publishing. Unchanged confirmations must not
+    // invalidate consumers, and observers must never receive an intermediate unbounded window.
+    if (changed) options.turns.value = nextTurns;
     if (overflowed) options.onRecentWindowOverflow();
     return changed;
   }

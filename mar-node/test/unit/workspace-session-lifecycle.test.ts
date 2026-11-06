@@ -77,19 +77,24 @@ describe('Workspace Session query lifecycle', () => {
       };
       const failure = new Error('RECOVERY_FAILED');
       if (failedRecovery) vi.spyOn(owners.restartHandoff, 'wait').mockRejectedValue(failure);
-      const pending = Promise.withResolvers<unknown>();
+      const result: Awaited<ReturnType<SessionCatalogService['listWorkspacePage']>> = {
+        sessions: [],
+        nextCursor: null,
+        runningCounts: { MAIN: 0, CHILD: 0 }
+      };
+      const pending = Promise.withResolvers<typeof result>();
       vi.spyOn(owners.sessionCatalogService, 'listWorkspacePage').mockReturnValue(pending.promise);
       const page = owners.workspaceSessionService.listPage('workspace');
       const stopping = connector.stop().catch((error: unknown) => error);
       try {
         await new Promise<void>((resolve) => setImmediate(resolve));
         expect(() => database.listWorkspaces()).not.toThrow();
-        pending.resolve({ sessions: [] });
-        await expect(page).resolves.toEqual({ sessions: [] });
+        pending.resolve(result);
+        await expect(page).resolves.toEqual(result);
         expect(await stopping).toBe(failedRecovery ? failure : undefined);
         expect(() => database.listWorkspaces()).toThrow();
       } finally {
-        pending.resolve({ sessions: [] });
+        pending.resolve(result);
         await stopping;
       }
     }

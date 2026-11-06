@@ -71,6 +71,106 @@ function fixture() {
 }
 
 describe('Session Catalog collection', () => {
+  it('shares direct-child query rules without operation dispatch, discovery, or history reads', async () => {
+    const f = fixture();
+    const parent = f.create('workspace-a', 'parent');
+    const child = f.runtime.createAgentSession({
+      workspaceId: 'workspace-a',
+      cwd: '/workspace-a',
+      runner: 'claude-code',
+      externalSessionId: 'child',
+      parentSessionId: parent.id,
+      customTitle: 'Child title'
+    });
+    f.runtime.createAgentSession({
+      workspaceId: 'workspace-a',
+      cwd: '/workspace-a',
+      runner: 'claude-code',
+      externalSessionId: 'grandchild',
+      parentSessionId: child.id
+    });
+    f.runtime.createAgentSession({
+      workspaceId: 'workspace-b',
+      cwd: '/workspace-b',
+      runner: 'claude-code',
+      externalSessionId: 'foreign-child',
+      parentSessionId: parent.id
+    });
+    f.database.saveNativeSessionMetadata({
+      workspaceId: 'workspace-a',
+      runner: 'claude-code',
+      externalSessionId: 'persisted-child',
+      parentSessionId: parent.id,
+      runnerTitle: 'Persisted child'
+    });
+    try {
+      const publicPage = await f.catalog.operations()['session.list']!({
+        workspaceId: 'workspace-a',
+        registeredOnly: true,
+        parentSessionId: parent.id,
+        limit: 100,
+        view: 'marctl'
+      });
+      const dispatch = vi.spyOn(f.catalog, 'operations').mockImplementation(() => {
+        throw new Error('INTERNAL_QUERY_MUST_NOT_DISPATCH');
+      });
+      const result = await f.catalog.listRegisteredChildren('workspace-a', parent.id);
+      expect({ view: 'marctl', ...result }).toEqual(publicPage);
+      expect(result.sessions.map(({ id }) => id)).toEqual([child.id, 'persisted-child']);
+      expect(result.sessions[0]).toMatchObject({
+        id: child.id,
+        title: 'Child title',
+        status: 'IDLE'
+      });
+      expect(result.sessions[0]).not.toHaveProperty('channelToken');
+      expect(result.sessions[0]).not.toHaveProperty('cwd');
+      expect(result.nextCursor).toBeNull();
+      expect(await f.catalog.listRegisteredChildren('workspace-a', 'missing-parent')).toEqual({
+        sessions: [],
+        nextCursor: null
+      });
+      await expect(
+        f.catalog.listRegisteredChildren('missing-workspace', parent.id)
+      ).rejects.toThrow('WORKSPACE_NOT_FOUND');
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(f.discover).not.toHaveBeenCalled();
+      expect(f.cachedWorkspace).not.toHaveBeenCalled();
+      expect(f.history).not.toHaveBeenCalled();
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('bounds internal child summaries to the same ordered page and truncation as the public view', async () => {
+    const f = fixture();
+    try {
+      for (let index = 0; index < 101; index++)
+        f.runtime.createAgentSession({
+          workspaceId: 'workspace-a',
+          cwd: '/workspace-a',
+          runner: 'claude-code',
+          externalSessionId: `child-${String(index).padStart(3, '0')}`,
+          parentSessionId: 'parent'
+        });
+      const page = await f.catalog.listRegisteredChildren('workspace-a', 'parent');
+      expect(page.sessions.map(({ id }) => id)).toEqual(
+        Array.from({ length: 100 }, (_, index) => `child-${String(index).padStart(3, '0')}`)
+      );
+      expect(page.nextCursor).not.toBeNull();
+      expect(
+        await f.catalog.operations()['session.list']!({
+          workspaceId: 'workspace-a',
+          registeredOnly: true,
+          parentSessionId: 'parent',
+          limit: 100,
+          view: 'marctl'
+        })
+      ).toEqual({ view: 'marctl', ...page });
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('reads a bounded registered workspace page without native discovery or history', async () => {
     const f = fixture();
     try {
@@ -275,6 +375,13 @@ describe('Session Catalog collection', () => {
         limit: 1
       })) as { sessions: NodeAgentSession[] };
       expect(childPage.sessions.map(({ id }) => id)).toEqual(['grandchild-visible']);
+
+      const workspacePage = await f.catalog.listWorkspacePage('workspace-a', 'CHILD');
+      expect(workspacePage.sessions.map(({ id }) => id)).toEqual([
+        'child-active',
+        'grandchild-visible'
+      ]);
+      expect(workspacePage.runningCounts).toEqual({ MAIN: 1, CHILD: 1 });
 
       const marctl = (await list({
         workspaceId: 'workspace-a',
