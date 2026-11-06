@@ -32,6 +32,7 @@ async function expectUnclippedDetail(content: Locator) {
 test('replaces only the current process task snapshot and keeps other processes after reopening', async ({
   page
 }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&task-snapshots`);
   const first = page.locator('[data-process-id="process"]');
   const second = page.locator('[data-process-id="other-process"]');
@@ -42,7 +43,17 @@ test('replaces only the current process task snapshot and keeps other processes 
   await expect(first.locator('.task-list')).toHaveCount(1);
   await expect(first.locator('.task-list')).toContainText('Initial task snapshot');
   await expect(second.locator('.task-list')).toContainText('Separate process task');
+  const copy = first.locator('.task-list .tool-detail-copy');
+  await expect(copy).toHaveCount(1);
+  await copy.click();
+  await expect(copy).toHaveAttribute('aria-label', 'Copied');
+  expect(JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))).toMatchObject({
+    id: 'tasks-initial',
+    kind: 'todo_list',
+    payload: { items: [{ text: 'Initial task snapshot', status: 'COMPLETED' }] }
+  });
   await first.locator('.task-list > summary').click();
+  await expect(copy).toHaveCount(0);
   await expect(first.getByText('Initial task snapshot', { exact: true })).toBeHidden();
   await page.getByTestId('append-task-snapshot').click();
   await expect(first.locator('.task-list')).toHaveCount(1);
@@ -50,12 +61,20 @@ test('replaces only the current process task snapshot and keeps other processes 
   await expect(first.getByText('Latest task snapshot', { exact: true })).toBeVisible();
   await expect(first).not.toContainText('Initial task snapshot');
   await expect(second.locator('.task-list')).toContainText('Separate process task');
+  await expect(copy).toHaveAttribute('aria-label', 'Copy public record');
+  await copy.click();
+  expect(JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))).toMatchObject({
+    id: 'tasks-latest',
+    payload: { items: [{ text: 'Latest task snapshot', status: 'COMPLETED' }] }
+  });
   await first.locator('.process-heading').click();
   await expect(first.locator('.task-list')).toHaveCount(0);
   await first.locator('.process-heading').click();
   await expect(first.locator('.task-list')).toHaveCount(1);
   await expect(first.locator('.task-list')).toContainText('Latest task snapshot');
   await expect(first).not.toContainText('Initial task snapshot');
+  await expect(copy).toHaveCount(1);
+  await expect(copy).toHaveAttribute('aria-label', 'Copy public record');
 });
 
 for (const [width, theme, locale] of [
@@ -64,7 +83,7 @@ for (const [width, theme, locale] of [
   [1280, 'dark', 'zh-CN'],
   [390, 'daylight', 'zh-CN']
 ] as const) {
-  test(`task and file lists share compact borderless rows and equal tags at ${width}px in ${locale}`, async ({
+  test(`task, file and Agent lists share compact rows at ${width}px in ${locale}`, async ({
     page
   }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
@@ -74,9 +93,47 @@ for (const [width, theme, locale] of [
     const process = page.locator('[data-process-id="process"]');
     await process.locator('.process-heading').click();
     await process.locator('.conversation-file-change-details > summary').click();
+    const agentGroup = process.locator('.subagent-group');
+    await agentGroup.locator('.conversation-record-group > summary').click();
+    await agentGroup.locator('.conversation-tool-detail > summary').click();
     const tasks = process.locator('.task-list-items');
     const files = process.locator('.conversation-file-change-list');
+    const agents = process.locator('.agent-detail .conversation-detail-list');
+    await expect(agents.locator('li')).toHaveCount(3);
+    await expect(agents).toContainText('Review native tool details');
+    await expect(agents.locator('a, button')).toHaveCount(0);
     await expect(tasks.locator('li')).toHaveCount(3);
+    const taskDetail = process.locator('.task-list .conversation-content-detail');
+    const fileDetail = process.locator(
+      '.conversation-file-change-details .conversation-content-detail'
+    );
+    const [taskFrame, fileFrame] = await Promise.all([
+      taskDetail.boundingBox(),
+      fileDetail.boundingBox()
+    ]);
+    expect(taskFrame!.x).toBeCloseTo(fileFrame!.x, 0);
+    expect(taskFrame!.width).toBeCloseTo(fileFrame!.width, 0);
+    const copy = taskDetail.getByRole('button', {
+      name: locale === 'en-US' ? 'Copy public record' : '复制公开记录',
+      exact: true
+    });
+    await expect(copy).toHaveCount(1);
+    await expect(copy).toBeVisible();
+    const [detailBounds, copyBounds] = await Promise.all([
+      taskDetail.boundingBox(),
+      copy.boundingBox()
+    ]);
+    expect(copyBounds!.x + copyBounds!.width).toBeLessThanOrEqual(
+      detailBounds!.x + detailBounds!.width
+    );
+    const copyInset = await page.evaluate(
+      () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.5
+    );
+    expect(detailBounds!.x + detailBounds!.width - copyBounds!.x - copyBounds!.width).toBeCloseTo(
+      copyInset,
+      0
+    );
+    expect(copyBounds!.y - detailBounds!.y).toBeCloseTo(copyInset, 0);
     await expect(files.locator('li')).toHaveCount(6);
     await expect(tasks.locator('.task-list-status')).toHaveText(
       locale === 'en-US' ? ['To-do', 'In progress', 'Done'] : ['待办', '进行中', '已完成']
@@ -93,17 +150,21 @@ for (const [width, theme, locale] of [
     await expect(tasks).toHaveCSS('border-top-width', '0px');
     for (const row of await tasks.locator('li').all())
       await expect(row).toHaveCSS('border-bottom-width', '0px');
-    const markers = process.locator('.task-list-status, .conversation-file-change-status');
-    await expect(markers).toHaveCount(9);
-    const sizes = await markers.evaluateAll((elements) =>
-      elements.map((element) => ({
-        width: element.getBoundingClientRect().width,
-        clipped: element.scrollWidth > element.clientWidth + 1
-      }))
-    );
-    expect(sizes.every((size) => Math.abs(size.width - sizes[0]!.width) < 0.5)).toBe(true);
-    expect(sizes.some((size) => size.clipped)).toBe(false);
-    for (const list of [tasks, files]) {
+    for (const list of [tasks, files, agents]) {
+      await expect(list).toHaveCSS('font-size', '12px');
+      await expect(list).toHaveCSS('font-weight', '400');
+      const markers = list.locator('.conversation-list-marker');
+      const sizes = await markers.evaluateAll((elements) =>
+        elements.map((element) => ({
+          width: element.getBoundingClientRect().width,
+          clipped: element.scrollWidth > element.clientWidth + 1,
+          weight: getComputedStyle(element).fontWeight
+        }))
+      );
+      expect(sizes.every((size) => size.weight === '400')).toBe(true);
+      expect(sizes.some((size) => size.clipped)).toBe(false);
+      if (width >= 768)
+        expect(sizes.every((size) => Math.abs(size.width - sizes[0]!.width) < 0.5)).toBe(true);
       const bounds = await list.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
@@ -111,9 +172,48 @@ for (const [width, theme, locale] of [
         .poll(() => list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
         .toBe(true);
     }
+    await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
     await process.screenshot({
       path: testInfo.outputPath(`task-file-lists-${width}-${locale}.png`)
     });
+  });
+}
+
+test('copies loaded file-change records without flattening their public fields', async ({
+  page
+}) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&list-layout`);
+  const process = page.locator('[data-process-id="process"]');
+  await process.locator('.process-heading').click();
+  const files = process.locator('.conversation-file-change-details');
+  await files.locator('> summary').click();
+  await files.getByRole('button', { name: 'Copy public record', exact: true }).click();
+  expect(JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))).toMatchObject([
+    { id: 'list-files', kind: 'file_change', payload: { changes: expect.any(Array) } }
+  ]);
+  const records = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(records[0].payload.changes).toHaveLength(6);
+});
+
+for (const [width, theme] of [
+  [1280, 'dark'],
+  [390, 'daylight']
+] as const) {
+  test(`unified list design at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&list-layout&list-design&theme=${theme}`
+    );
+    const process = page.locator('[data-process-id="process"]');
+    await process.locator('.process-heading').click();
+    await process.locator('.conversation-file-change-details > summary').click();
+    const agents = process.locator('.subagent-group');
+    await agents.locator('.conversation-record-group > summary').click();
+    await agents.locator('.conversation-tool-detail > summary').click();
+    await expect(process.locator('.conversation-detail-list')).toHaveCount(3);
+    await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
+    await process.screenshot({ path: testInfo.outputPath(`unified-lists-${width}-${theme}.png`) });
   });
 }
 
@@ -164,8 +264,11 @@ for (const [width, theme] of [
     for (const root of await contents.all()) {
       const edges = await root.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
-        const first = element.firstElementChild!;
-        const last = element.lastElementChild!;
+        const content = Array.from(element.children).filter(
+          (child) => getComputedStyle(child).position !== 'absolute'
+        );
+        const first = content[0]!;
+        const last = content.at(-1)!;
         const style = getComputedStyle(element);
         return {
           name: element.textContent,

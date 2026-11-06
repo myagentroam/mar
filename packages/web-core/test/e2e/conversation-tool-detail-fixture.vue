@@ -10,6 +10,12 @@ import ConversationTimeline from '../../src/view/conversation/ConversationTimeli
 
 const integrated = new URL(location.href).searchParams.has('timeline');
 const listLayout = new URL(location.href).searchParams.has('list-layout');
+const listDesign = new URL(location.href).searchParams.has('list-design');
+const designTasks = [
+  'Review the list layout and status hierarchy',
+  'Verify clipboard and collapsed-state behavior',
+  'Check desktop and mobile presentation'
+];
 const listSamples: ConversationItem[] = [
   {
     id: 'list-tasks',
@@ -17,8 +23,10 @@ const listSamples: ConversationItem[] = [
     status: 'COMPLETED',
     processGroup: { id: 'process' },
     payload: {
-      items: ['PENDING', 'IN_PROGRESS', 'COMPLETED'].map((status) => ({
-        text: `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)}`,
+      items: ['PENDING', 'IN_PROGRESS', 'COMPLETED'].map((status, index) => ({
+        text: listDesign
+          ? designTasks[index]
+          : `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)}`,
         status
       }))
     }
@@ -31,12 +39,33 @@ const listSamples: ConversationItem[] = [
     payload: {
       changes: ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED'].map(
         (change) => ({
-          path: `src/nested/long-path-for-layout-check/${change.toLowerCase()}.ts`,
+          path: listDesign
+            ? `src/conversation/${change.toLowerCase()}.ts`
+            : `src/nested/long-path-for-layout-check/${change.toLowerCase()}.ts`,
           change,
           additions: 12,
           deletions: 3
         })
       )
+    }
+  },
+  {
+    id: 'list-agents',
+    kind: 'tool_call',
+    status: 'COMPLETED',
+    processGroup: { id: 'process' },
+    payload: {
+      toolName: 'agent_list',
+      agentOperation: {
+        action: 'LIST',
+        scope: 'tree',
+        detail: {},
+        targets: [
+          { agentId: 'review', title: 'Review native tool details', status: 'RUNNING' },
+          { agentId: 'tests', title: 'Check regression coverage', status: 'IDLE' },
+          { agentId: 'docs', title: 'Verify documentation links', status: 'SUCCEEDED' }
+        ]
+      }
     }
   }
 ];

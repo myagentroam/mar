@@ -18,12 +18,18 @@ const agentWaitText = computed(() => {
 <template>
   <div class="agent-detail">
     <template v-if="agentDetail.action === 'LIST'">
-      <div v-for="(target, index) in agentDetail.targets" :key="index" class="agent-detail-row">
-        <span>{{ target.title }}</span
-        ><span v-if="target.status" class="agent-detail-meta">{{
-          agentTargetStatus(target.status)
-        }}</span>
-      </div>
+      <ul v-if="agentDetail.targets.length" class="conversation-detail-list">
+        <li
+          v-for="(target, index) in agentDetail.targets"
+          :key="index"
+          class="conversation-list-row"
+        >
+          <span v-if="target.status" class="conversation-list-marker">{{
+            agentTargetStatus(target.status)
+          }}</span>
+          <span class="conversation-list-content">{{ target.title }}</span>
+        </li>
+      </ul>
       <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">
         {{ translate('presentation.noAgentSessions') }}
       </p>

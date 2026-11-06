@@ -1251,6 +1251,23 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     for (const key of keys) expect(i18n.global.te(key, locale), key).toBe(true);
   });
 
+  it('provides one shared public-record copy button inside task-list details', async () => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [
+        conversationTurn([
+          conversationItem('copy-tasks', 'todo_list', {
+            items: [{ text: 'Keep **task Markdown**', status: 'IN_PROGRESS' }]
+          })
+        ])
+      ]
+    });
+    expect(html.match(/class="tool-detail-copy\b/gu)).toHaveLength(1);
+    expect(html).toContain(locale === 'en-US' ? 'Copy public record' : '复制公开记录');
+    expect(html).toContain('Keep **task Markdown**');
+    expect(html).not.toContain('detail-preview');
+  });
+
   it('keeps one task-list icon when there are no tasks to expand', async () => {
     const html = await render(ConversationTimeline, {
       ...timelineProps,
@@ -1259,6 +1276,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html.match(/data-mar-icon="task-list"/gu)).toHaveLength(1);
     expect(html).not.toContain('data-mar-icon="chevron-right"');
     expect(html).not.toContain('task-list-items');
+    expect(html).not.toContain('tool-detail-copy');
   });
 
   it('keeps task, plan, generated-image text and fallback content in the shared detail surface', async () => {

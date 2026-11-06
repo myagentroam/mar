@@ -31,7 +31,9 @@ Details present facts supplied by the source: start and send focus on the task n
 
 When an Agent request or model call finally fails, the error card shows the HTTP status when available and the returned error message. In an ordinary session, a terminal failure returns the session to Idle and pauses any remaining queued messages until you resume the queue or send a new ordinary message after reviewing the error. MAR Agent may retry eligible transient model failures before its first semantic output; an active Goal may also retry failed executions through bounded automatic continuation before blocking.
 
-Task lists start expanded; click the heading to collapse or reopen them. Each update remains a separate list with its original item statuses and content. File changes, plans, and image-generation text keep their existing actions; image thumbnails retain their separate preview.
+Task lists start expanded; click the heading to collapse or reopen them. Each work process shows its latest task snapshot with the original item statuses and content. File changes, plans, and image-generation text keep their existing actions; image thumbnails retain their separate preview.
+
+Task lists and Agent queries provide a top-right button to copy the current public record. File-change lists copy the loaded original public records in that group without fetching more history.
 
 ## Inspect this file change
 
