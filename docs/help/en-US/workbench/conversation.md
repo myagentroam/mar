@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-06
 ---
 
 # Conversations, Tools, and Notifications
@@ -34,6 +34,8 @@ When an Agent request or model call finally fails, the error card shows the HTTP
 Task lists start expanded; click the heading to collapse or reopen them. Each update remains a separate list with its original item statuses and content. File changes, plans, and image-generation text keep their existing actions; image thumbnails retain their separate preview.
 
 ## Inspect this file change
+
+When the latest round ends, an additional temporary card shows its loaded file changes after the final Agent reply, without opening the execution process. Original file-change cards in each segment stay unchanged. Starting the next round removes only the extra card; it does not move or restore historical cards. The list contains loaded change records, not a complete execution-wide or final net diff, and does not automatically load the entire history.
 
 Supporting MAR Agent Nodes save a read-only Diff for each `apply_patch` operation, in both Direct and Code Mode. Expand a file-change card to see trusted green `+N` and red `-N` counts at the end of each entry. Click a file to open **This change**, with single-column added and removed lines for additions, deletions, edits, and both paths of a move. Overwriting an existing file is shown as a modification. Added or deleted empty files still show their path change with `+0/-0`, without inventing an added line.
 

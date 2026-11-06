@@ -9,6 +9,7 @@ import { isTerminalRunStatus } from './run-state.js';
 import { selectReasoningPreview, type ReasoningPreview } from './conversation-reasoning.js';
 import {
   aggregateConversationDisplayItems,
+  conversationFileChangeEntries,
   conversationDisplayItems,
   conversationProcessItemFacts,
   type ConversationDisplayItem
@@ -54,6 +55,55 @@ export function conversationWorkProcessVisibleBlocks(
     const complete = block.groupId === undefined ? undefined : metadata.get(block.id);
     return complete === undefined ? block : { ...complete, entries: block.entries };
   });
+}
+
+/** Add a temporary result after the latest ended reply without moving process records. */
+export function conversationFileChangeResultBlocks(
+  turns: readonly ConversationTurn[],
+  blocks: ConversationProcessBlock[],
+  runs: readonly Pick<AgentRun, 'id' | 'status'>[] = []
+): ConversationProcessBlock[] {
+  const latest = turns.at(-1);
+  if (
+    !latest ||
+    !isTerminalRunStatus(latest.status) ||
+    runs.some((run) => !isTerminalRunStatus(run.status))
+  )
+    return blocks;
+  const reply = latest.items.findLast(
+    (item) => item.kind === 'assistant_message' && item.status === 'COMPLETED'
+  );
+  if (!reply) return blocks;
+  const target = blocks.find(
+    (block) =>
+      block.groupId === undefined &&
+      block.entries.some(
+        ({ turn, displayItem }) =>
+          turn.sessionId === latest.sessionId &&
+          displayItem.type === 'item' &&
+          displayItem.item === reply
+      )
+  );
+  if (!target) return blocks;
+  const items = turns
+    .filter(
+      (turn) =>
+        turn.sessionId === latest.sessionId &&
+        (turn.turnId ?? turn.id) === (latest.turnId ?? latest.id)
+    )
+    .flatMap((turn) => turn.items.filter((item) => item.kind === 'file_change'));
+  if (!conversationFileChangeEntries(items).length) return blocks;
+  const result: ConversationProcessBlock['entries'][number] = {
+    turn: latest,
+    displayItem: {
+      type: 'file_change_group',
+      id: JSON.stringify(['file-change-result', latest.sessionId, latest.turnId ?? latest.id]),
+      items
+    }
+  };
+  return blocks.map((block) =>
+    block === target ? { ...block, entries: [...block.entries, result] } : block
+  );
 }
 
 /** Only an installed snapshot with a received, preceding anchor ends prefix reasoning. */

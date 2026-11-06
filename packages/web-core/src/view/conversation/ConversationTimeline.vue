@@ -31,6 +31,7 @@ import ConversationDetailPreview from './ConversationDetailPreview.vue';
 import {
   conversationWorkProcessProjection,
   conversationWorkProcessVisibleBlocks,
+  conversationFileChangeResultBlocks,
   nextConversationRenderItemCount
 } from '../../util/conversation-work-process.js';
 import RunnerApprovalCard from './RunnerApprovalCard.vue';
@@ -394,26 +395,6 @@ const latestPlanItemId = computed(
 const reasoningDisclosure = reactive<Record<string, boolean>>({});
 const groupedItemDisclosure = reactive<Record<string, boolean>>({});
 
-watch(
-  () =>
-    renderedTurns.value.flatMap((turn) =>
-      turn.items.flatMap((item) => [
-        item.id,
-        `group:${item.id}`,
-        `tool:${item.id}`,
-        ...(item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ'
-          ? conversationToolEntries([item]).map(({ id }) => id)
-          : [])
-      ])
-    ),
-  (itemIds) => {
-    const currentIds = new Set(itemIds);
-    for (const id of Object.keys(groupedItemDisclosure)) {
-      if (!currentIds.has(id)) delete groupedItemDisclosure[id];
-    }
-  }
-);
-
 function updateReasoningDisclosure(id: string, event: Event): void {
   reasoningDisclosure[id] = (event.currentTarget as HTMLDetailsElement).open;
 }
@@ -548,11 +529,39 @@ function messageTimeTitle(timestamp: number): string {
 }
 
 const processBlocks = computed(() =>
-  conversationWorkProcessVisibleBlocks(
-    renderedTurns.value,
-    processMetadata.value,
-    new Set(runDurations.value.keys())
+  conversationFileChangeResultBlocks(
+    props.turns,
+    conversationWorkProcessVisibleBlocks(
+      renderedTurns.value,
+      processMetadata.value,
+      new Set(runDurations.value.keys())
+    ),
+    props.runs
   )
+);
+watch(
+  () => [
+    ...renderedTurns.value.flatMap((turn) =>
+      turn.items.flatMap((item) => [
+        item.id,
+        `group:${item.id}`,
+        `tool:${item.id}`,
+        ...(item.kind === 'tool_call' && toolPresentation(item.payload)?.kind === 'READ'
+          ? conversationToolEntries([item]).map(({ id }) => id)
+          : [])
+      ])
+    ),
+    // Temporary result groups have a display identity rather than a raw Item ID.
+    ...processBlocks.value.flatMap((block) =>
+      block.entries.map(({ displayItem }) => displayItem.id)
+    )
+  ],
+  (itemIds) => {
+    const currentIds = new Set(itemIds);
+    for (const id of Object.keys(groupedItemDisclosure)) {
+      if (!currentIds.has(id)) delete groupedItemDisclosure[id];
+    }
+  }
 );
 const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
 const processNow = createWorkbenchSecondClock(
