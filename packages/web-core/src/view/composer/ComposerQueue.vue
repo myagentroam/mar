@@ -571,11 +571,11 @@ onMounted(() => {
 .composer-queue {
   display: flex;
   flex-direction: column;
-  max-height: 220px;
+  max-height: 148px;
   overflow: hidden;
   border-bottom: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
-  padding: 8px 10px 0;
+  padding: 4px 10px 0;
 }
 
 .composer-queue ~ :deep(.el-input .el-textarea__inner) {
@@ -585,16 +585,16 @@ onMounted(() => {
 .composer-queue-heading {
   display: flex;
   align-items: center;
-  min-height: 28px;
+  min-height: 24px;
   gap: 8px;
-  padding: 0 4px 6px;
+  padding: 0 4px 4px;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
 .composer-queue-heading strong {
   color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-meta);
   font-weight: 500;
 }
 
@@ -774,7 +774,7 @@ onMounted(() => {
 
 .work-item {
   box-sizing: border-box;
-  min-height: 32px;
+  min-height: 28px;
   min-width: 0;
   border-top: 1px solid var(--mar-border-subtle);
   background: transparent;
@@ -906,7 +906,7 @@ onMounted(() => {
 <style scoped>
 @media (max-width: 767px) {
   .composer-queue {
-    max-height: 180px;
+    max-height: 120px;
   }
 
   .composer-queue-input :deep(.el-textarea__inner) {

@@ -67,6 +67,73 @@ async function checkUtility(
 }
 
 for (const width of [1280, 390]) {
+  test(`Pending work stays compact and scrolls without shrinking rows at ${width}px`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 844 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      for (const theme of ['vscode-dark-2026', 'daylight']) {
+        for (const count of [3, 8]) {
+          await page.goto(
+            `${fixture.url}visual-alignment.html?utility-interaction&queue-count=${count}&theme=${theme}`
+          );
+          const queue = page.locator('.composer-queue');
+          const rows = queue.locator('.queue-item');
+          await expect(rows).toHaveCount(count);
+          await page.evaluate(() => document.fonts.ready);
+          const layout = await queue.evaluate((element) => {
+            const heading = element.querySelector('.composer-queue-heading')!;
+            const body = element.querySelector('.work-item-content')!;
+            const list = element.querySelector('.composer-work-list')!;
+            return {
+              height: element.getBoundingClientRect().height,
+              headingHeight: heading.getBoundingClientRect().height,
+              headingFont: getComputedStyle(heading.querySelector('strong')!).fontSize,
+              bodyFont: getComputedStyle(body).fontSize,
+              rowHeights: Array.from(
+                element.querySelectorAll('.queue-item'),
+                (row) => row.getBoundingClientRect().height
+              ),
+              scrolls: list.scrollHeight > list.clientHeight
+            };
+          });
+          expect(layout.headingHeight).toBe(24);
+          expect(layout.headingFont).toBe(layout.bodyFont);
+          expect(layout.bodyFont).toBe(width < 768 ? '11px' : '12px');
+          expect(layout.rowHeights).toEqual(Array(count).fill(28));
+          expect(layout.height).toBe(count === 3 ? 114 : width < 768 ? 120 : 148);
+          expect(layout.scrolls).toBe(count === 8);
+          await queue.screenshot({
+            path: testInfo.outputPath(`pending-work-${theme}-${width}-${count}.png`)
+          });
+          if (count === 8) {
+            const list = queue.locator('.composer-work-list');
+            await list.evaluate((element) => (element.scrollTop = element.scrollHeight));
+            await expect
+              .poll(() => list.evaluate((element) => element.scrollTop))
+              .toBeGreaterThan(0);
+            const last = rows.last();
+            await last.getByRole('button', { name: 'Edit', exact: true }).click();
+            await expect(last.locator('textarea')).toBeVisible();
+            await last.locator('textarea').fill('Updated last queued message');
+            await last.getByRole('button', { name: 'Save', exact: true }).click();
+            await expect(last.locator('.work-item-content')).toHaveText(
+              'Updated last queued message'
+            );
+            expect((await last.boundingBox())!.height).toBe(28);
+          }
+        }
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   test(`Queue text keeps glyphs clear of clipped edges without increasing row height at ${width}px`, async ({
     browser
   }, testInfo) => {

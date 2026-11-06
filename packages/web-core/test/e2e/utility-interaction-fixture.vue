@@ -22,18 +22,19 @@ const session: Session = {
   runner: 'mar-agent',
   externalSessionId: 'native-session'
 };
-const items = ref<WorkspaceQueueItem[]>([
-  {
-    queueItemId: 'queue-one',
+const queueItemCount = Number(new URLSearchParams(location.search).get('queue-count') ?? 1);
+const items = ref<WorkspaceQueueItem[]>(
+  Array.from({ length: queueItemCount }, (_, index) => ({
+    queueItemId: index === 0 ? 'queue-one' : `queue-${index + 1}`,
     sessionId: session.id,
     workspaceId: 'workspace',
     runner: 'mar-agent',
-    clientMessageId: 'message-one',
+    clientMessageId: `message-${index + 1}`,
     sessionTitle: 'Review',
     content: 'Review the pending change',
-    createdAt: 1
-  }
-]);
+    createdAt: index + 1
+  }))
+);
 const queueEditor = createComposerQueueService();
 const { editingQueueItemId, editingContent } = queueEditor;
 const goal = ref<RunnerCommandState | undefined>(
