@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -13,6 +13,40 @@ afterEach(async () => {
 });
 
 describe('Node Skill async operation', () => {
+  it('uses canonical Workspace inspection for effective lists without changing management inspection', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'mar-skill-operation-'));
+    roots.push(workspace);
+    for (const [root, name] of [
+      ['.agents', 'review'],
+      ['.claude', 'claude-only']
+    ]) {
+      const directory = path.join(workspace, root!, 'skills', name!);
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        path.join(directory, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: ${name}\n---\n`
+      );
+    }
+    const service = new SkillNodeOperationService(
+      () =>
+        ({
+          getWorkspace: () => ({ path: workspace }),
+          getWorkspaceByPath: () => ({ includeParentRepository: false })
+        }) as unknown as NodeDatabase,
+      () => ({ serverUrl: 'https://server.test', allowedRoots: [] })
+    );
+    const inspect = service.operations()['workspace.skills.inspect'];
+    const effective = await inspect({
+      workspaceId: 'workspace-1',
+      includeClaudeCompatibility: false
+    });
+    expect(effective.skills).toEqual([
+      expect.objectContaining({ name: 'review', localStatus: 'UNKNOWN_VERSION' })
+    ]);
+    const managed = await inspect({ workspaceId: 'workspace-1' });
+    expect(managed.skills.map((skill) => skill.name)).toEqual(['claude-only', 'review']);
+  });
+
   it('returns a job before download completes and exposes the final directory result through job status', async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), 'mar-skill-operation-'));
     roots.push(workspace);

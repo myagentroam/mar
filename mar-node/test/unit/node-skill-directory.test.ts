@@ -58,37 +58,49 @@ describe('Node Skill directory scan', () => {
     });
   });
 
-  it('includes Claude Code-only skills in the read-only Node HOME compatibility view without changing the default management view', async () => {
-    const home = await temporaryRoot();
-    await writeSkill(path.join(home, '.agents', 'skills', 'review'));
-    await writeSkill(path.join(home, '.claude', 'skills', 'claude-only'), 'Claude only');
-    const service = new SkillDirectoryService();
-
-    const managed = await service.inspectNodeHome(home);
-    const effective = await service.inspectNodeHome(home, { includeClaudeCompatibility: true });
-
-    expect(managed.skills.map((skill) => skill.name)).toEqual(['review']);
-    expect(effective.skills).toEqual([
-      expect.objectContaining({ name: 'claude-only', localStatus: 'UNKNOWN_VERSION' }),
-      expect.objectContaining({ name: 'review', localStatus: 'UNKNOWN_VERSION' })
-    ]);
-  });
-
-  it('preserves the canonical root description and marks conflicting same-name skills as PARTIAL in the Node HOME compatibility view', async () => {
+  it('reads only the canonical Node HOME root despite Claude-only and conflicting skills', async () => {
     const home = await temporaryRoot();
     await writeSkill(path.join(home, '.agents', 'skills', 'review'), 'Agents version');
+    await writeSkill(path.join(home, '.claude', 'skills', 'claude-only'), 'Claude only');
     await writeSkill(path.join(home, '.claude', 'skills', 'review'), 'Claude version');
 
-    const result = await new SkillDirectoryService().inspectNodeHome(home, {
-      includeClaudeCompatibility: true
-    });
+    const result = await new SkillDirectoryService().inspectNodeHome(home);
 
     expect(result.skills).toEqual([
       expect.objectContaining({
         name: 'review',
         description: 'Agents version',
-        localStatus: 'PARTIAL'
+        localStatus: 'UNKNOWN_VERSION',
+        skillFilePath: path.join(home, '.agents', 'skills', 'review', 'SKILL.md')
       })
+    ]);
+  });
+
+  it('excludes Claude-only Workspace skills and compatibility state from the effective view', async () => {
+    const workspace = await temporaryRoot();
+    await writeSkill(path.join(workspace, '.agents', 'skills', 'review'), 'Agents version');
+    await writeSkill(path.join(workspace, '.agents', 'skills', 'agents-only'));
+    await writeSkill(path.join(workspace, '.claude', 'skills', 'review'), 'Claude version');
+    await writeSkill(path.join(workspace, '.claude', 'skills', 'claude-only'));
+    const service = new SkillDirectoryService();
+
+    const result = await service.inspectWorkspace(workspace, true, {
+      includeClaudeCompatibility: false
+    });
+    expect(result.skills).toEqual([
+      expect.objectContaining({ name: 'agents-only', localStatus: 'UNKNOWN_VERSION' }),
+      expect.objectContaining({
+        name: 'review',
+        description: 'Agents version',
+        localStatus: 'UNKNOWN_VERSION',
+        skillFilePath: path.join(workspace, '.agents', 'skills', 'review', 'SKILL.md')
+      })
+    ]);
+    const managed = await service.inspectWorkspace(workspace);
+    expect(managed.skills.map((skill) => skill.name)).toEqual([
+      'agents-only',
+      'claude-only',
+      'review'
     ]);
   });
 

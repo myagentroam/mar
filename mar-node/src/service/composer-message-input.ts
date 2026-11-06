@@ -98,7 +98,7 @@ export async function validateComposerSkills(
   const directories = new SkillDirectoryService();
   const [node, workspace] = await Promise.all([
     directories.inspectNodeHome(home),
-    directories.inspectWorkspace(workspacePath)
+    directories.inspectWorkspace(workspacePath, true, { includeClaudeCompatibility: false })
   ]);
   const effective = new Map(
     node.skills.map((skill) => [skill.name, { ...skill, source: 'NODE_HOME' }])

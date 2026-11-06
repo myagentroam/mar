@@ -28,34 +28,32 @@ interface RootEntry extends LocalSkillInspection {
   readonly source: 'AGENTS' | 'CLAUDE';
 }
 
+/** Owns filesystem Skill inspection; effective lists exclude installation compatibility copies. */
 export class SkillDirectoryService {
-  async inspectNodeHome(
-    home: string,
-    options: { readonly includeClaudeCompatibility?: boolean } = {}
-  ): Promise<LocalSkillTargetInspection> {
+  async inspectNodeHome(home: string): Promise<LocalSkillTargetInspection> {
     const agentsRoot = path.join(home, '.agents', 'skills');
     const claudeRoot = path.join(home, '.claude', 'skills');
     const compatibilityMode = await nodeCompatibilityMode(agentsRoot, claudeRoot);
     const agents = await scanRoot(agentsRoot, 'AGENTS');
-    const claude =
-      options.includeClaudeCompatibility === true && compatibilityMode !== 'UNAVAILABLE'
-        ? await scanRoot(claudeRoot, 'CLAUDE')
-        : [];
     return {
       targetKind: 'NODE',
       compatibilityMode,
-      skills:
-        options.includeClaudeCompatibility === true
-          ? mergeNodeCompatibilityRoots(agents, claude)
-          : agents.map(withoutSource)
+      skills: agents.map(withoutSource)
     };
   }
 
   async inspectWorkspace(
     workspace: string,
-    includeParentRepository = true
+    includeParentRepository = true,
+    options: { readonly includeClaudeCompatibility?: boolean } = {}
   ): Promise<LocalSkillTargetInspection> {
     const agents = await scanRoot(path.join(workspace, '.agents', 'skills'), 'AGENTS');
+    if (options.includeClaudeCompatibility === false)
+      return {
+        targetKind: 'WORKSPACE',
+        compatibilityMode: 'MANAGED_COPY',
+        skills: agents.map(withoutSource)
+      };
     const claude = await scanRoot(path.join(workspace, '.claude', 'skills'), 'CLAUDE');
     const skills = mergeWorkspaceCopies(agents, claude);
     const gitExcludeBroken = await hasBrokenWorkspaceSkillGitExclude(
@@ -211,33 +209,6 @@ function mergeWorkspaceCopies(
           localStatus: 'PARTIAL'
         };
       if (
-        copies.agents.localStatus !== copies.claude.localStatus ||
-        JSON.stringify(copies.agents.install) !== JSON.stringify(copies.claude.install)
-      )
-        return {
-          name,
-          description: copies.agents.description,
-          localStatus: 'PARTIAL',
-          skillFilePath: copies.agents.skillFilePath
-        };
-      return withoutSource(copies.agents);
-    });
-}
-
-function mergeNodeCompatibilityRoots(
-  agents: readonly RootEntry[],
-  claude: readonly RootEntry[]
-): LocalSkillInspection[] {
-  const byName = new Map<string, { agents?: RootEntry; claude?: RootEntry }>();
-  for (const item of agents) byName.set(item.name, { agents: item });
-  for (const item of claude) byName.set(item.name, { ...byName.get(item.name), claude: item });
-  return [...byName.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, copies]) => {
-      if (copies.agents === undefined || copies.claude === undefined)
-        return withoutSource((copies.agents ?? copies.claude)!);
-      if (
-        copies.agents.description !== copies.claude.description ||
         copies.agents.localStatus !== copies.claude.localStatus ||
         JSON.stringify(copies.agents.install) !== JSON.stringify(copies.claude.install)
       )

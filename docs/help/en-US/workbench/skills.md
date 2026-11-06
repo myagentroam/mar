@@ -1,6 +1,6 @@
 ---
 title: Favorite and Install Skills
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-06
 ---
 
 # Favorite and Install Skills
@@ -21,7 +21,7 @@ Repository sources require a recognizable Git revision. Public GitHub and compat
 
 Choose an online Node and optionally its Workspace in **Skill Configuration**. Check the environment, then install, update, or reinstall. Node installations use the service account's `~/.agents/skills`; Workspace installations maintain `.agents/skills` and `.claude/skills`, with managed local Git exclusions rather than changes to the tracked `.gitignore`. A Node or browser interruption does not automatically retry an installation. If confirmation times out, refresh the target's actual status before deciding whether to retry. Unknown installed versions can be reinstalled; inspect permission, target path, and environment errors before trying again.
 
-To see what a Workspace session will load, open the Workspace and choose **Loaded Skills** from the menu next to **New Session**. Installation and removal remain in **Skill Configuration**; removing a Workspace override can expose a same-named Node entry again.
+To see a Workspace's shared skills, open the Workspace and choose **Loaded Skills** from the menu next to **New Session**. This list and the Composer's `/` skill list read only the Node account's `~/.agents/skills` and the Workspace's `.agents/skills`, not the `.claude/skills` compatibility directories. Entries show their source, and a same-named Workspace skill takes precedence. Installation and removal remain in **Skill Configuration**; removing a Workspace override can expose a same-named Node entry again.
 
 ## MCP servers
 

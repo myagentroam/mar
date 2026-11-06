@@ -50,15 +50,13 @@ export function registerSkillTargetRoutes(input: {
             request.params.workspaceId
           );
         const [nodeResult, workspaceResult] = await Promise.all([
-          requestUserNode(nodeControl, actor, request.query.nodeId, 'node.skills.inspect', {
-            includeClaudeCompatibility: true
-          }),
+          requestUserNode(nodeControl, actor, request.query.nodeId, 'node.skills.inspect', {}),
           requestUserNode(
             nodeControl,
             actor,
             request.query.nodeId,
             'workspace.skills.inspect',
-            { workspaceId: request.params.workspaceId },
+            { workspaceId: request.params.workspaceId, includeClaudeCompatibility: false },
             request.params.workspaceId
           )
         ]);
