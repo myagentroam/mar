@@ -2,7 +2,7 @@ import { AgentError } from '../error.js';
 
 import type { ExtensionHooks } from './hooks.js';
 import type { ExtensionOperationContext } from './operation.js';
-import type { ExtensionResourceScope } from './resources.js';
+import type { ExtensionResourceScope, ExtensionResourceRegistration } from './resources.js';
 
 export interface ExtensionHttpRequest {
   readonly url: string;
@@ -35,6 +35,37 @@ export interface ExtensionHttpCompletion {
   readonly redirected: boolean;
 }
 
+/** Closed response facades keep metadata and cleanup outcome, not the transport's callback graph. */
+function responseFacade(lease: ExtensionHttpResponse, resource: ExtensionResourceRegistration) {
+  let current: ExtensionHttpResponse | undefined = lease;
+  let closed = false;
+  let closing: Promise<void> | undefined;
+  const close = () => {
+    closed = true;
+    return (closing ??= current?.close() ?? resource.dispose());
+  };
+  const body: AsyncIterableIterator<Uint8Array> = {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: () =>
+      closed || !current
+        ? Promise.resolve({ done: true, value: undefined })
+        : current.body[Symbol.asyncIterator]().next(),
+    async return() {
+      await close();
+      return { done: true, value: undefined };
+    }
+  };
+  return {
+    response: { ...lease, body, close },
+    release() {
+      closed = true;
+      current = undefined;
+    }
+  };
+}
+
 export function bindCoreNetwork(
   backend: ExtensionNetworkBackend,
   run: <Value>(
@@ -57,14 +88,21 @@ export function bindCoreNetwork(
               );
             const response = await backend.fetch(input, effective);
             let iterator: AsyncIterator<Uint8Array> | undefined;
+            let done = false;
+            let release = () => {};
             const close = async () => {
+              done = true;
               // Close the transport first so an in-flight pull is released before iterator cleanup.
-              const results = await Promise.allSettled([
-                Promise.resolve().then(() => response.close()),
-                Promise.resolve().then(() => iterator?.return?.())
-              ]);
-              const failure = results.find((result) => result.status === 'rejected');
-              if (failure?.status === 'rejected') throw failure.reason;
+              try {
+                const results = await Promise.allSettled([
+                  Promise.resolve().then(() => response.close()),
+                  Promise.resolve().then(() => iterator?.return?.())
+                ]);
+                const failure = results.find((result) => result.status === 'rejected');
+                if (failure?.status === 'rejected') throw failure.reason;
+              } finally {
+                release();
+              }
             };
             let registration;
             try {
@@ -85,7 +123,6 @@ export function bindCoreNetwork(
               throw error;
             }
             const resource = registration;
-            let done = false;
             let nextTail: Promise<unknown> = Promise.resolve();
             const body: AsyncIterableIterator<Uint8Array> = {
               [Symbol.asyncIterator]() {
@@ -132,20 +169,26 @@ export function bindCoreNetwork(
                 throw error;
               }
             }
-            return {
-              url: response.url,
-              status: response.status,
-              statusText: response.statusText,
-              redirected: response.redirected,
-              headers: Object.freeze(
-                response.headers.map((pair) => Object.freeze([...pair] as [string, string]))
-              ),
-              body,
-              close: async () => {
-                done = true;
-                await resource.dispose();
-              }
-            };
+            const facade = responseFacade(
+              {
+                url: response.url,
+                status: response.status,
+                statusText: response.statusText,
+                redirected: response.redirected,
+                headers: Object.freeze(
+                  response.headers.map((pair) => Object.freeze([...pair] as [string, string]))
+                ),
+                body,
+                close: async () => {
+                  done = true;
+                  await resource.dispose();
+                }
+              },
+              resource
+            );
+            release = facade.release;
+            if (done) release();
+            return facade.response;
           }),
         input.signal
       )

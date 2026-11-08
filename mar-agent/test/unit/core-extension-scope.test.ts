@@ -10,6 +10,41 @@ function deferred<T>() {
 }
 
 describe('Extension resource scope', () => {
+  it.each(['revoked proxy', 'throwing stack getter'] as const)(
+    'preserves an uninspectable cleanup failure and counts it (%s)',
+    async (kind) => {
+      const scope = new ExtensionResourceScope();
+      const revoked = Proxy.revocable({}, {});
+      revoked.revoke();
+      const error = new Error('release failed');
+      Object.defineProperty(error, 'stack', {
+        get() {
+          throw new Error('stack unavailable');
+        }
+      });
+      const failure = kind === 'revoked proxy' ? revoked.proxy : error;
+      const resource = scope.effect(() => () => {
+        throw failure;
+      });
+      try {
+        await resource.ready;
+        for (let index = 0; index < 2; index++) {
+          const sameFailure = await resource.dispose().then(
+            () => false,
+            (reason) => reason === failure
+          );
+          expect(sameFailure).toBe(true);
+        }
+        await expect(scope.dispose()).rejects.toMatchObject({
+          code: 'MAR_AGENT_EXTENSION_CLEANUP_FAILED',
+          details: { failures: 1 }
+        });
+      } finally {
+        await scope.dispose().catch(() => undefined);
+      }
+    }
+  );
+
   it('completes explicit sleep during initialization and clears its timer', async () => {
     const scope = new ExtensionResourceScope();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
@@ -214,5 +249,66 @@ describe('Extension resource scope', () => {
     await expect(scope.run(async () => 1, external.signal)).rejects.toThrow('cancelled');
     expect(await scope.run(async () => 2)).toBe(2);
     await scope.dispose();
+  });
+
+  it('joins pending acquisitions after another registration has been disposed during readiness', async () => {
+    const scope = new ExtensionResourceScope();
+    const first = deferred<() => void>();
+    const second = deferred<() => void>();
+    const a = scope.effect(() => first.promise);
+    const b = scope.effect(() => second.promise);
+    let ready = false;
+    const waiting = scope.ready().then(() => {
+      ready = true;
+    });
+    try {
+      first.resolve(() => {});
+      await a.ready;
+      await a.dispose();
+      expect(ready).toBe(false);
+      second.resolve(() => {});
+      await waiting;
+      await b.ready;
+      expect(ready).toBe(true);
+    } finally {
+      first.resolve(() => {});
+      second.resolve(() => {});
+      await waiting;
+      await scope.dispose();
+    }
+  });
+
+  it('keeps acquisition failures observable after the failed registration is disposed', async () => {
+    const scope = new ExtensionResourceScope();
+    const failure = new Error('acquire failed');
+    const resource = scope.effect(() => {
+      throw failure;
+    });
+    await expect(resource.ready).rejects.toBe(failure);
+    await resource.dispose();
+    await expect(scope.ready()).rejects.toBe(failure);
+    await scope.dispose();
+  });
+
+  it('counts manually observed disposal failures once and still releases remaining resources', async () => {
+    const scope = new ExtensionResourceScope();
+    const cleanup = vi.fn();
+    const first = scope.effect(() => () => {
+      throw new Error('first failure');
+    });
+    scope.effect(() => cleanup);
+    scope.effect(() => () => {
+      throw new Error('second failure');
+    });
+    await scope.ready();
+    const failure = first.dispose();
+    expect(first.dispose()).toBe(failure);
+    await expect(failure).rejects.toThrow('first failure');
+    await expect(first.dispose()).rejects.toThrow('first failure');
+    await expect(scope.dispose()).rejects.toMatchObject({
+      code: 'MAR_AGENT_EXTENSION_CLEANUP_FAILED',
+      details: { failures: 2 }
+    });
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 });

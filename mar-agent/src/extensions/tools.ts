@@ -55,7 +55,13 @@ export interface ExtensionToolFailure extends ExtensionToolAttempt {
   readonly status: 'failed' | 'cancelled';
   readonly errorCode: string;
 }
+/** Internal reference storage, released only by the source owner after its work has drained. */
+export interface ExtensionToolReferenceIndex {
+  bindings: WeakMap<ExtensionToolRef, ExtensionToolBinding> | undefined;
+}
+
 export interface ExtensionToolBinding extends ExtensionToolRef {
+  readonly referenceIndex?: ExtensionToolReferenceIndex;
   readonly mcp?: McpCatalogTool;
   registered?(): boolean;
   available?(context: ExtensionOperationContext): boolean;
@@ -222,115 +228,9 @@ export class ExtensionTools {
           'Tool wrapper has no lower implementation.'
         );
       }
-      const definition = copyDefinition(entry.spec);
-      definition.allowedCallers ??= lower
-        ? (lower.definition.allowedCallers ??
-          (lower.source.kind === 'mcp' ? ['direct', 'programmatic'] : ['direct']))
-        : ['direct', 'programmatic'];
-      if (entry.spec.override === 'wrap' && lower?.definition.agentScope !== undefined)
-        definition.agentScope ??= lower.definition.agentScope;
-      if (entry.spec.override === 'wrap' && lower?.definition.codeModeExposure !== undefined)
-        definition.codeModeExposure ??= lower.definition.codeModeExposure;
-      const binding: ExtensionToolBinding = Object.freeze({
-        definition: deepFreeze(definition),
-        ...(entry.spec.override === 'wrap' && lower?.mcp ? { mcp: lower.mcp } : {}),
-        source: Object.freeze({
-          kind: 'extension' as const,
-          id: entry.id,
-          revision: entry.revision,
-          instanceId: entry.owner.instanceId
-        }),
-        available: () =>
-          entry.owner.state === 'ACTIVE' ||
-          (entry.owner.state === 'STAGED' && ExtensionResourceScope.initializing),
-        invoke: async (call: ToolCall, context: ExtensionOperationContext) =>
-          entry.owner.run(
-            (signal) =>
-              this.callback(
-                Object.freeze({
-                  ...context,
-                  signal,
-                  extensionId: entry.id,
-                  ownerInstanceId: entry.owner.instanceId
-                }),
-                async (context) => {
-                  const signal = context.signal;
-                  const approvedArguments =
-                    context.permission === undefined ? undefined : structuredClone(call.arguments);
-                  const input = await entry.parse(call.arguments);
-                  const { permission: _permission, ...unapproved } = context;
-                  const parsedContext: ExtensionOperationContext =
-                    context.permission !== undefined && !isDeepStrictEqual(input, approvedArguments)
-                      ? unapproved
-                      : context;
-                  signal.throwIfAborted();
-                  const controller = new AbortController();
-                  const effective = AbortSignal.any([signal, controller.signal]);
-                  const pending = new Set<Promise<void>>();
-                  let open = true;
-                  let output: ToolExecutionResult;
-                  try {
-                    output = await entry.spec.execute(
-                      input,
-                      Object.freeze({
-                        ...parsedContext,
-                        signal: effective,
-                        ownerInstanceId: entry.owner.instanceId
-                      }),
-                      (input) => {
-                        const result = Promise.resolve().then(() => {
-                          effective.throwIfAborted();
-                          if (!open)
-                            throw new AgentError(
-                              'MAR_AGENT_TOOL_NOT_AVAILABLE',
-                              'Tool continuation has finished.'
-                            );
-                          if (!lower || entry.spec.override !== 'wrap')
-                            throw new AgentError(
-                              'MAR_AGENT_EXTENSION_DEPENDENCY_MISSING',
-                              'Tool has no wrapper continuation.'
-                            );
-                          return lower.invoke(
-                            { ...call, arguments: input },
-                            Object.freeze({
-                              ...(parsedContext.permission !== undefined &&
-                              isDeepStrictEqual(input, approvedArguments)
-                                ? parsedContext
-                                : unapproved),
-                              signal: effective
-                            })
-                          );
-                        });
-                        const settled = result.then(
-                          () => undefined,
-                          () => undefined
-                        );
-                        pending.add(settled);
-                        void settled.then(() => pending.delete(settled));
-                        return result;
-                      }
-                    );
-                  } catch (error) {
-                    controller.abort();
-                    throw error;
-                  } finally {
-                    while (pending.size) await Promise.all([...pending]);
-                    open = false;
-                  }
-                  if (!output || typeof output.content !== 'string')
-                    throw new AgentError(
-                      'MAR_AGENT_TOOL_OUTPUT_INVALID',
-                      'Tool result must contain string content.'
-                    );
-                  await entry.validateOutput?.(output.data);
-                  return output;
-                }
-              ),
-            context.signal
-          )
-      });
+      const binding = this.#bindContribution(entry, lower);
       bindings.set(
-        definition.name,
+        binding.definition.name,
         this.trace(binding, entry.spec.override === 'wrap' ? 'wrapper' : 'leaf')
       );
     }
@@ -356,6 +256,123 @@ export class ExtensionTools {
       }
     });
     return view;
+  }
+
+  /** Do not let a retained replacement close over the capture's unrelated source map. */
+  #bindContribution(
+    entry: Contribution,
+    lower: ExtensionToolBinding | undefined
+  ): ExtensionToolBinding {
+    const definition = copyDefinition(entry.spec);
+    const continuation = entry.spec.override === 'wrap' ? lower : undefined;
+    definition.allowedCallers ??= lower
+      ? (lower.definition.allowedCallers ??
+        (lower.source.kind === 'mcp' ? ['direct', 'programmatic'] : ['direct']))
+      : ['direct', 'programmatic'];
+    if (entry.spec.override === 'wrap' && lower?.definition.agentScope !== undefined)
+      definition.agentScope ??= lower.definition.agentScope;
+    if (entry.spec.override === 'wrap' && lower?.definition.codeModeExposure !== undefined)
+      definition.codeModeExposure ??= lower.definition.codeModeExposure;
+    const binding: ExtensionToolBinding = Object.freeze({
+      definition: deepFreeze(definition),
+      ...(continuation?.referenceIndex ? { referenceIndex: continuation.referenceIndex } : {}),
+      ...(entry.spec.override === 'wrap' && lower?.mcp ? { mcp: lower.mcp } : {}),
+      source: Object.freeze({
+        kind: 'extension' as const,
+        id: entry.id,
+        revision: entry.revision,
+        instanceId: entry.owner.instanceId
+      }),
+      available: () =>
+        entry.owner.state === 'ACTIVE' ||
+        (entry.owner.state === 'STAGED' && ExtensionResourceScope.initializing),
+      invoke: async (call: ToolCall, context: ExtensionOperationContext) =>
+        entry.owner.run(
+          (signal) =>
+            this.callback(
+              Object.freeze({
+                ...context,
+                signal,
+                extensionId: entry.id,
+                ownerInstanceId: entry.owner.instanceId
+              }),
+              async (context) => {
+                const signal = context.signal;
+                const approvedArguments =
+                  context.permission === undefined ? undefined : structuredClone(call.arguments);
+                const input = await entry.parse(call.arguments);
+                const { permission: _permission, ...unapproved } = context;
+                const parsedContext: ExtensionOperationContext =
+                  context.permission !== undefined && !isDeepStrictEqual(input, approvedArguments)
+                    ? unapproved
+                    : context;
+                signal.throwIfAborted();
+                const controller = new AbortController();
+                const effective = AbortSignal.any([signal, controller.signal]);
+                const pending = new Set<Promise<void>>();
+                let open = true;
+                let output: ToolExecutionResult;
+                try {
+                  output = await entry.spec.execute(
+                    input,
+                    Object.freeze({
+                      ...parsedContext,
+                      signal: effective,
+                      ownerInstanceId: entry.owner.instanceId
+                    }),
+                    (input) => {
+                      const result = Promise.resolve().then(() => {
+                        effective.throwIfAborted();
+                        if (!open)
+                          throw new AgentError(
+                            'MAR_AGENT_TOOL_NOT_AVAILABLE',
+                            'Tool continuation has finished.'
+                          );
+                        if (!continuation)
+                          throw new AgentError(
+                            'MAR_AGENT_EXTENSION_DEPENDENCY_MISSING',
+                            'Tool has no wrapper continuation.'
+                          );
+                        return continuation.invoke(
+                          { ...call, arguments: input },
+                          Object.freeze({
+                            ...(parsedContext.permission !== undefined &&
+                            isDeepStrictEqual(input, approvedArguments)
+                              ? parsedContext
+                              : unapproved),
+                            signal: effective
+                          })
+                        );
+                      });
+                      const settled = result.then(
+                        () => undefined,
+                        () => undefined
+                      );
+                      pending.add(settled);
+                      void settled.then(() => pending.delete(settled));
+                      return result;
+                    }
+                  );
+                } catch (error) {
+                  controller.abort();
+                  throw error;
+                } finally {
+                  while (pending.size) await Promise.all([...pending]);
+                  open = false;
+                }
+                if (!output || typeof output.content !== 'string')
+                  throw new AgentError(
+                    'MAR_AGENT_TOOL_OUTPUT_INVALID',
+                    'Tool result must contain string content.'
+                  );
+                await entry.validateOutput?.(output.data);
+                return output;
+              }
+            ),
+          context.signal
+        )
+    });
+    return binding;
   }
 }
 

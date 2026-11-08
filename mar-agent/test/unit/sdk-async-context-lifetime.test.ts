@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { SessionExtensionContext } from '../../src/extensions/contracts.js';
 import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
 import type { ExtensionOperationContext } from '../../src/extensions/operation.js';
+import { ExtensionOperations } from '../../src/extensions/operation.js';
+import { ExtensionHooks } from '../../src/extensions/hooks.js';
+import { ExtensionSessionTools } from '../../src/extensions/session-tools.js';
+import type { DomainToolOperations, DomainToolFacts } from '../../src/extensions/tools.js';
+import { extensionToolRuntime } from '../../src/sdk/extension-tool-runtime.js';
 import { ExecutionToolSources } from '../../src/sdk/extension-tools.js';
 import { CompactCoordinator } from '../../src/runtime/compaction/coordinator.js';
 import { createSessionToolScheduler } from '../../src/tools/scheduler.js';
@@ -204,7 +209,7 @@ describe('SDK async context ownership', () => {
     }
   });
 
-  it('preserves parallel retained physical frames after close until the last callback settles', async () => {
+  it('preserves parallel and later retained physical frames without reviving ended refs', async () => {
     const contexts = trackAsyncContexts();
     const definition = { name: 'probe', description: 'Probe', inputSchema: { type: 'object' } };
     const sources = new ExecutionToolSources('execution', 'session', [definition], [definition], {
@@ -217,7 +222,24 @@ describe('SDK async context ownership', () => {
       sessionId: 'session',
       signal: new AbortController().signal
     } as ToolRuntimeContext;
-    const call = { executionId: 'execution', sessionId: 'session' } as ExtensionOperationContext;
+    const call = {
+      executionId: 'execution',
+      sessionId: 'session',
+      entry: 'native-api'
+    } as ExtensionOperationContext;
+    const operations = new ExtensionOperations();
+    const hooks = new ExtensionHooks<DomainToolOperations, DomainToolFacts>();
+    const tools = new ExtensionSessionTools(
+      extensionToolRuntime,
+      operations,
+      hooks,
+      () => sources.bindings,
+      () => true,
+      async (_definition, run) => run(),
+      () => {},
+      () => false
+    );
+    const ref = tools.toolRef(tools.capture(call).get('probe')!);
     const first = Promise.withResolvers<void>();
     const second = Promise.withResolvers<void>();
     let running: Promise<unknown>[] = [];
@@ -226,6 +248,7 @@ describe('SDK async context ownership', () => {
         sources.withFrame(context, async () => {
           await gate.promise;
           expect(sources.bindings[0]!.available!(call)).toBe(true);
+          expect(tools.check({ name: 'probe', ref, arguments: {} }, call).available).toBe(true);
         })
       );
       sources.close();
@@ -236,11 +259,34 @@ describe('SDK async context ownership', () => {
       await running[1];
       expect(contexts.active.size).toBe(0);
       expect(sources.bindings[0]!.available!(call)).toBe(false);
+      expect(tools.check({ name: 'probe', ref, arguments: {} }, call).available).toBe(false);
+      let previous = ref;
+      for (let index = 0; index < 2; index++) {
+        let fresh = ref;
+        await sources.withFrame(context, async () => {
+          expect(sources.bindings[0]!.available!(call)).toBe(true);
+          expect(tools.check({ name: 'probe', ref: previous, arguments: {} }, call).available).toBe(
+            false
+          );
+          fresh = tools.toolRef(tools.capture(call).get('probe')!);
+          expect(tools.check({ name: 'probe', ref: fresh, arguments: {} }, call).available).toBe(
+            true
+          );
+        });
+        expect(contexts.active.size).toBe(0);
+        expect(tools.check({ name: 'probe', ref: fresh, arguments: {} }, call).available).toBe(
+          false
+        );
+        previous = fresh;
+      }
     } finally {
       first.resolve();
       second.resolve();
       await Promise.allSettled(running);
       sources.close();
+      tools.dispose();
+      hooks.dispose();
+      operations.dispose();
       contexts.restore();
     }
   });

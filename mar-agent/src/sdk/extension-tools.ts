@@ -2,16 +2,20 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { AgentError } from '../error.js';
 import type { ExtensionOperationContext } from '../extensions/operation.js';
-import type { ExtensionToolBinding } from '../extensions/tools.js';
+import type { ExtensionToolBinding, ExtensionToolReferenceIndex } from '../extensions/tools.js';
 import { toolCallers } from '../tools/callers.js';
 import type { ClientToolDefinition, McpToolCatalog, ToolCall } from '../tools/contracts.js';
 import { createRoundToolRuntimeContext, type RoundToolScope } from '../tools/execution.js';
 import type { ToolRuntimeContext } from '../tools/runtime-context.js';
 import { executeCapturedTool } from '../tools/runtime.js';
 
-/** One real Execution's sources; a retained physical frame is distinct from its active main round. */
+/**
+ * Own one real Execution's sources and native-reference index.
+ * Retained physical frames outlive the main round; release references only after the last one drains.
+ */
 export class ExecutionToolSources {
   readonly bindings: readonly ExtensionToolBinding[];
+  readonly #referenceIndex: ExtensionToolReferenceIndex = { bindings: new WeakMap() };
   readonly #frame = new AsyncLocalStorage<{
     readonly context: ToolRuntimeContext;
     active: boolean;
@@ -39,6 +43,7 @@ export class ExecutionToolSources {
         });
         return Object.freeze({
           definition,
+          referenceIndex: this.#referenceIndex,
           source: Object.freeze({
             kind,
             id: mcp?.sourceIdentity ?? `${kind}:${executionId}:${definition.name}`,
@@ -106,11 +111,16 @@ export class ExecutionToolSources {
   withFrame<Value>(context: ToolRuntimeContext, run: () => Value): Value {
     if (context.executionId !== this.executionId || context.sessionId !== this.sessionId)
       throw unavailable();
+    // A later retained call gets a fresh index, never the refs released by an earlier frame.
+    this.#referenceIndex.bindings ??= new WeakMap();
     const frame = { context, active: true };
     this.#frames++;
     const finish = () => {
       frame.active = false;
-      if (--this.#frames === 0 && this.#closed) this.#frame.disable();
+      if (--this.#frames === 0 && this.#closed) {
+        this.#referenceIndex.bindings = undefined;
+        this.#frame.disable();
+      }
     };
     return this.#frame.run(frame, () => {
       try {
@@ -132,7 +142,10 @@ export class ExecutionToolSources {
     this.#closed = true;
     this.#scope = undefined;
     // Retained physical callbacks may outlive the main round and must keep their own frame.
-    if (this.#frames === 0) this.#frame.disable();
+    if (this.#frames === 0) {
+      this.#referenceIndex.bindings = undefined;
+      this.#frame.disable();
+    }
   }
 
   #context(call: ExtensionOperationContext): ToolRuntimeContext | undefined {

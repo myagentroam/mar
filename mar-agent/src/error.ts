@@ -22,6 +22,15 @@ export class AgentError extends Error {
   }
 }
 
+/** Cache stack text before retaining a failure, rather than its lazy callback/receiver frames. */
+export function materializeErrorStack(error: unknown): void {
+  try {
+    if (error instanceof Error) void error.stack;
+  } catch {
+    // A caller's custom stack formatter must not replace the original failure.
+  }
+}
+
 const MAX_ERROR_MESSAGE_CHARACTERS = 1_000;
 
 export function describeAgentError(
