@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
@@ -7,6 +7,7 @@ import { ElMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
 import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
+import type { WorkspaceWatchTopicStatus } from '../../service/workspace-watch-service.js';
 import { changeKey } from '../../service/workspace-git-service.js';
 import type { WorkspaceFileOperationTarget } from '../../service/workspace-file-operation-service.js';
 import type {
@@ -29,10 +30,12 @@ import { usesRawFilePreview } from '../../util/file-preview.js';
 const props = defineProps<{
   readonly service: WorkspaceGitService;
   readonly target: WorkspaceFileOperationTarget | undefined;
+  readonly watchStatus?: WorkspaceWatchTopicStatus;
 }>();
 const emit = defineEmits<{
   open: [entry: ChangeEntry, external: boolean];
   notice: [value: string, type: MessageType, cause?: unknown];
+  retryWatch: [];
 }>();
 const {
   repositories: visibleChangeRepositories,
@@ -43,11 +46,36 @@ const {
   restoringPath,
   loadChanges
 } = props.service;
+// Read state belongs to the Git/Watch services; this view owns only the local render window
+// and its scroll observer. Appending already-read entries does not create a request busy state.
+const changesLoading = computed(() => changesRefreshing.value || props.watchStatus === 'loading');
+const changesReadFailed = computed(
+  () => props.service.changesError.value || props.watchStatus === 'failed'
+);
+// This owns the retry control's lifetime, not the authoritative request busy state.
+const keepRetryControl = ref(false);
+const showRetryControl = computed(
+  () => changesReadFailed.value || (keepRetryControl.value && changesLoading.value)
+);
+watch([changesLoading, changesReadFailed], ([loading, failed]) => {
+  if (!loading && !failed) keepRetryControl.value = false;
+});
+watch([() => props.target?.nodeId, () => props.target?.workspaceId], () => {
+  keepRetryControl.value = false;
+});
+const hasRefreshButton = computed(() =>
+  visibleChangeRepositories.value.some((repository) => repository.source === 'ROOT')
+);
+function retryRead(): void {
+  if (changesLoading.value) return;
+  keepRetryControl.value = true;
+  if (props.service.changesError.value) void props.service.retryChanges();
+  else emit('retryWatch');
+}
 const CHANGE_RENDER_BATCH = 200;
 const changeRenderLimit = ref(CHANGE_RENDER_BATCH);
-const loadingMore = ref(false);
-const loadMoreElement = ref<HTMLElement>();
-let loadMoreTimer: ReturnType<typeof setTimeout> | undefined;
+const changeListElement = ref<HTMLElement>();
+const loadMoreElements = ref<HTMLElement[]>([]);
 const renderedChangeRepositories = computed(() =>
   limitChangeRepositories(visibleChangeRepositories.value, changeRenderLimit.value)
 );
@@ -64,32 +92,40 @@ const totalChangeCount = computed(() =>
   )
 );
 const hasMoreChanges = computed(() => renderedChangeCount.value < totalChangeCount.value);
+const changeBatchBoundary = computed(() =>
+  hasMoreChanges.value
+    ? renderedChangeRepositories.value.filter((repository) => repository.changes.length > 0).at(-1)
+    : undefined
+);
 watch(visibleChangeRepositories, () => {
-  clearTimeout(loadMoreTimer);
-  loadingMore.value = false;
   changeRenderLimit.value = CHANGE_RENDER_BATCH;
 });
-function showMoreChanges(): void {
-  if (loadingMore.value || !hasMoreChanges.value) return;
-  loadingMore.value = true;
-  loadMoreTimer = setTimeout(() => {
-    changeRenderLimit.value += CHANGE_RENDER_BATCH;
-    loadingMore.value = false;
-  }, 100);
-}
 watchEffect(
   (onCleanup) => {
-    const element = loadMoreElement.value;
-    if (!element || loadingMore.value || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) showMoreChanges();
-    });
+    const element = loadMoreElements.value[0];
+    const root = changeListElement.value;
+    const limit = changeRenderLimit.value;
+    if (!element || !root || typeof IntersectionObserver === 'undefined') return;
+    let active = true;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          active &&
+          changeRenderLimit.value === limit &&
+          entries.some((entry) => entry.isIntersecting)
+        )
+          changeRenderLimit.value += CHANGE_RENDER_BATCH;
+      },
+      { root }
+    );
     observer.observe(element);
-    onCleanup(() => observer.disconnect());
+    onCleanup(() => {
+      active = false;
+      observer.disconnect();
+    });
   },
   { flush: 'post' }
 );
-onBeforeUnmount(() => clearTimeout(loadMoreTimer));
 function worktreeReference(worktree: GitWorktreeSummary): string {
   return (
     worktree.branch ??
@@ -181,6 +217,30 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 <template>
   <section class="current-changes">
+    <div v-if="showRetryControl" class="changes-read-state">
+      <el-button
+        v-tooltip="
+          !changesLoading && service.changesError.value
+            ? errorMessage(service.changesFailureCause.value)
+            : ''
+        "
+        link
+        :aria-description="
+          !changesLoading && service.changesError.value
+            ? errorMessage(service.changesFailureCause.value)
+            : undefined
+        "
+        :aria-disabled="changesLoading"
+        :aria-busy="changesLoading || undefined"
+        @click="retryRead"
+      >
+        <MarIcon v-if="changesLoading" name="loading-action" />
+        {{ translate('common.loadFailedRetry') }}
+      </el-button>
+    </div>
+    <div v-else-if="changesLoading && !hasRefreshButton" class="changes-read-state" role="status">
+      <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
+    </div>
     <p v-if="service.changesFetchFailed.value" class="git-fetch-notice" role="status">
       {{ translate('gitSync.fetchFailed') }}
     </p>
@@ -237,14 +297,16 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       {{ gitGroupErrorMessage(error) }}
     </p>
     <p
-      v-if="
-        visibleChangeRepositories.length === 0 && !changesRefreshing && !service.changesError.value
-      "
+      v-if="visibleChangeRepositories.length === 0 && !changesLoading && !changesReadFailed"
       class="empty"
     >
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </p>
-    <ul v-else-if="visibleChangeRepositories.length > 0" class="change-list">
+    <ul
+      v-else-if="visibleChangeRepositories.length > 0"
+      ref="changeListElement"
+      class="change-list"
+    >
       <template v-for="repository in renderedChangeRepositories" :key="repositoryKey(repository)">
         <li class="change-repository-heading" :data-repository-path="repository.repositoryPath">
           <div class="repository-heading-content">
@@ -266,13 +328,15 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
                 v-if="repository.source === 'ROOT'"
                 class="changes-refresh-button file-explorer-utility-button utility-control"
-                :disabled="changesRefreshing"
+                :disabled="changesLoading"
                 :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
-                :aria-busy="changesRefreshing || undefined"
+                :aria-busy="changesLoading || undefined"
                 type="button"
                 @click="loadChanges(true)"
               >
-                <MarIcon name="refresh" />
+                <MarIcon
+                  :name="changesLoading && !showRetryControl ? 'loading-action' : 'refresh'"
+                />
               </button>
             </div>
             <div class="repository-tags-row">
@@ -409,40 +473,14 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             @click="restoreChange(entry)"
           />
         </li>
+        <li
+          v-if="repository === changeBatchBoundary"
+          ref="loadMoreElements"
+          class="change-append-state"
+          aria-hidden="true"
+        />
       </template>
     </ul>
-    <div v-if="service.changesError.value" class="change-append-state">
-      <el-button
-        v-tooltip="!changesRefreshing ? errorMessage(service.changesFailureCause.value) : ''"
-        link
-        :aria-description="
-          !changesRefreshing ? errorMessage(service.changesFailureCause.value) : undefined
-        "
-        :aria-disabled="changesRefreshing"
-        :aria-busy="changesRefreshing || undefined"
-        @click="!changesRefreshing && service.retryChanges()"
-      >
-        <template v-if="changesRefreshing"
-          ><MarIcon name="loading-action" />
-          {{ translate('generated.workspaceInspector.loading') }}</template
-        >
-        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </el-button>
-    </div>
-    <div v-else-if="changesRefreshing" class="change-append-state" role="status">
-      <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
-    </div>
-    <div
-      v-if="hasMoreChanges"
-      ref="loadMoreElement"
-      class="change-append-state"
-      :aria-busy="loadingMore"
-    >
-      <span v-if="loadingMore" role="status"
-        ><MarIcon name="loading-action" />
-        {{ translate('generated.workspaceInspector.loading') }}</span
-      >
-    </div>
   </section>
 </template>
 
@@ -545,16 +583,24 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   list-style: none;
 }
 
-.change-append-state {
+.changes-read-state {
   --mar-action-icon-size: 1em;
-  min-height: 1px;
+  flex: 0 0 auto;
+  padding: 0.2rem 2px;
   font-size: var(--mar-font-size-meta);
   line-height: 20px;
   text-align: center;
 }
 
-.change-append-state button {
+.changes-read-state button {
   font: inherit;
+}
+
+.change-list > .change-append-state {
+  display: block;
+  height: 1px;
+  border: 0;
+  padding: 0;
 }
 
 .change-list li {

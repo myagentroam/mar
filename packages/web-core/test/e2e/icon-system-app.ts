@@ -106,6 +106,18 @@ const app = createApp({
         diffAvailable: true
       };
       const restoringPath = ref<string>();
+      const changesRefreshing = ref(false);
+      const watchRetryFixture = new URL(location.href).searchParams.has('watch-retry');
+      const watchStatus = ref<'failed' | 'loading' | 'ready'>(
+        watchRetryFixture ? 'failed' : 'ready'
+      );
+      const changesView = () =>
+        h(WorkspaceGitChanges, {
+          service: service as never,
+          target: undefined,
+          watchStatus: watchStatus.value,
+          onRetryWatch: () => (watchStatus.value = 'loading')
+        });
       const service = {
         repositories: ref([
           {
@@ -117,7 +129,7 @@ const app = createApp({
             locked: false,
             prunable: false,
             changes: manyChanges
-              ? Array.from({ length: 450 }, (_, index) => ({
+              ? Array.from({ length: 300 }, (_, index) => ({
                   ...entry,
                   path: `src/file-${index}.ts`
                 }))
@@ -127,32 +139,71 @@ const app = createApp({
                   { ...entry, path: 'src/new.ts', change: 'ADDED', state: 'UNTRACKED' as const },
                   { ...entry, path: 'src/deleted.ts', change: 'DELETED', state: 'STAGED' as const }
                 ]
-          }
+          },
+          ...(manyChanges
+            ? ['child', 'empty'].map((name) => ({
+                repositoryPath: name,
+                repositoryName: name,
+                source: 'SUBMODULE',
+                current: false,
+                branch: 'main',
+                locked: false,
+                prunable: false,
+                changes: Array.from({ length: name === 'child' ? 150 : 0 }, (_, index) => ({
+                  ...entry,
+                  source: 'SUBMODULE' as const,
+                  repositoryPath: name,
+                  repositoryName: name,
+                  path: `src/file-${index}.ts`
+                }))
+              }))
+            : [])
         ]),
         worktrees: ref([]),
         worktreesTruncated: ref(false),
         discoveryErrors: ref([]),
-        changesRefreshing: ref(false),
+        changesRefreshing,
         changesFetchFailed: ref(false),
         changesError: ref(false),
         changesFailureCause: ref(undefined),
         restoringPath,
-        loadChanges: async () => undefined,
+        loadChanges: async () => {
+          changesRefreshing.value = true;
+        },
         retryChanges: async () => undefined,
         restoreChange: async () => undefined
       };
       return () =>
         h('main', {}, [
           manyChanges
-            ? h('div', { style: 'height:400px;overflow:auto' }, [
-                h(WorkspaceGitChanges, { service: service as never, target: undefined })
+            ? h('div', { style: 'height:400px;display:flex;flex-direction:column' }, [
+                changesView()
               ])
-            : h(WorkspaceGitChanges, { service: service as never, target: undefined }),
+            : changesView(),
           h(
             ElButton,
             { onClick: () => (restoringPath.value = changeKey(entry)) },
             () => 'Show restore loading'
-          )
+          ),
+          watchRetryFixture
+            ? h(
+                ElButton,
+                { onClick: () => (watchStatus.value = 'ready') },
+                () => 'Finish Watch retry'
+              )
+            : undefined,
+          manyChanges
+            ? h(
+                ElButton,
+                {
+                  onClick: () => {
+                    changesRefreshing.value = false;
+                    service.repositories.value = [...service.repositories.value];
+                  }
+                },
+                () => 'Finish Changes refresh'
+              )
+            : undefined
         ]);
     }
     if (new URL(location.href).searchParams.has('attachment-icons')) {

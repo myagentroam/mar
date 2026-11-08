@@ -99,19 +99,81 @@ for (const dpr of [1, 2, 3]) {
   });
 }
 
-test('Git changes append on scroll within the inspector', async ({ page }) => {
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 844 });
-    await page.goto(`${fixture.url}icon-system.html?git-change-icons=1&many-changes=1`);
-    const entries = page.locator('.change-entry');
-    await expect(entries).toHaveCount(200);
-    const marker = page.locator('.change-append-state');
-    await marker.scrollIntoViewIfNeeded();
-    await expect(entries).toHaveCount(400);
-    await marker.scrollIntoViewIfNeeded();
-    await expect(entries).toHaveCount(450);
-    await expect(marker).toHaveCount(0);
+test('Git changes append at the repository boundary and refresh in place', async ({
+  page
+}, testInfo) => {
+  for (const theme of ['light', 'dark']) {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}icon-system.html?git-change-icons=1&many-changes=1&theme=${theme}`
+      );
+      const changes = page.locator('.current-changes');
+      const list = changes.locator('.change-list');
+      const entries = changes.locator('.change-entry');
+      const marker = list.locator(':scope > .change-append-state');
+      const refresh = changes.getByRole('button', { name: 'Refresh Git changes', exact: true });
+      await expect(entries).toHaveCount(200);
+      await expect(marker).not.toBeInViewport();
+      await expect(changes.locator('[data-repository-path="empty"]')).toHaveCount(1);
+      await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
+      expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+        true
+      );
+      await marker.scrollIntoViewIfNeeded();
+      await expect(entries).toHaveCount(400);
+      await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(1);
+      await refresh.click();
+      await page.getByRole('button', { name: 'Finish Changes refresh', exact: true }).click();
+      await expect(entries).toHaveCount(200);
+      await expect(marker).not.toBeInViewport();
+      await marker.scrollIntoViewIfNeeded();
+      await expect(entries).toHaveCount(400);
+      await marker.scrollIntoViewIfNeeded();
+      await expect(entries).toHaveCount(450);
+      await expect(marker).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0);
+
+      await refresh.click();
+      await expect(refresh).toBeDisabled();
+      await expect(refresh).toHaveAttribute('aria-busy', 'true');
+      await expect(refresh.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+      await expect(changes.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
+      await expect(changes.locator('.changes-read-state')).toHaveCount(0);
+      await expect(entries).toHaveCount(450);
+      await changes.screenshot({
+        path: testInfo.outputPath(`git-changes-refresh-${theme}-${width}.png`)
+      });
+      await page.getByRole('button', { name: 'Finish Changes refresh', exact: true }).click();
+      await expect(refresh).toBeEnabled();
+      await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+      await expect(entries).toHaveCount(200);
+      await expect(marker).not.toBeInViewport();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+      );
+    }
   }
+});
+
+test('Git Changes keeps the Watch retry control focused until recovery', async ({ page }) => {
+  await page.goto(`${fixture.url}icon-system.html?git-change-icons=1&watch-retry=1`);
+  const changes = page.locator('.current-changes');
+  const retry = changes.locator('.changes-read-state button');
+  await retry.focus();
+  await page.keyboard.press('Enter');
+  await expect(retry).toBeFocused();
+  await expect(retry).toHaveAttribute('aria-busy', 'true');
+  await expect(retry).toHaveAttribute('aria-disabled', 'true');
+  await expect(changes.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
+  await page.keyboard.press('Enter');
+  await expect(retry).toBeFocused();
+  await page.getByRole('button', { name: 'Finish Watch retry', exact: true }).click();
+  await expect(retry).toHaveCount(0);
+  await expect(changes.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+  await expect(
+    changes.getByRole('button', { name: 'Refresh Git changes', exact: true })
+  ).toBeEnabled();
 });
 
 for (const theme of ['dark', 'light']) {

@@ -736,43 +736,12 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                       }}
                     </p>
                     <template v-else>
-                      <el-button
-                        v-if="
-                          activeTool(tool) === 'changes' &&
-                          (page.application.workspaceWatchTopicStatus.changes === 'loading' ||
-                            page.application.workspaceWatchTopicStatus.changes === 'failed') &&
-                          !page.files.workspaceGit.changesRefreshing.value &&
-                          !page.files.workspaceGit.changesError.value
-                        "
-                        class="workspace-git-watch-status"
-                        link
-                        :class="{
-                          failed: page.application.workspaceWatchTopicStatus.changes === 'failed'
-                        }"
-                        :aria-disabled="
-                          page.application.workspaceWatchTopicStatus.changes === 'loading'
-                        "
-                        :aria-busy="
-                          page.application.workspaceWatchTopicStatus.changes === 'loading' ||
-                          undefined
-                        "
-                        @click="
-                          page.application.workspaceWatchTopicStatus.changes === 'failed' &&
-                          page.application.retryWorkspaceWatch()
-                        "
-                      >
-                        <template
-                          v-if="page.application.workspaceWatchTopicStatus.changes === 'loading'"
-                        >
-                          <MarIcon name="loading-action" />
-                          {{ translate('generated.workspaceInspector.loading') }}
-                        </template>
-                        <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-                      </el-button>
                       <WorkspaceGitChanges
                         v-if="activeTool(tool) === 'changes'"
                         :service="page.files.workspaceGit"
                         :target="page.selection.workspaceTarget"
+                        :watch-status="page.application.workspaceWatchTopicStatus.changes"
+                        @retry-watch="page.application.retryWorkspaceWatch()"
                         @open="page.files.openWorkspaceGitChange"
                         @notice="page.application.notice"
                       />
@@ -1234,12 +1203,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   flex: 1;
   flex-direction: column;
   padding: 0 0.7rem 0.7rem;
-}
-
-.workspace-git-watch-status {
-  align-self: flex-start;
-  margin: 0.2rem 0.55rem;
-  font-size: var(--mar-font-size-meta);
 }
 
 .workbench {

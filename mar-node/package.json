@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/node",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "MyAgentRoam Node runtime CLI.",
   "license": "Apache-2.0 AND GPL-2.0-or-later",
   "type": "module",
