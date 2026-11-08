@@ -98,13 +98,22 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const fontSize = await fileName.evaluate((element) => getComputedStyle(element).fontSize);
 
       holdChanges = true;
-      await inspector.getByRole('button', { name: 'Refresh Git changes', exact: true }).click();
-      await expectLoadingSize(inspector.locator('.change-append-state[role="status"]'), fontSize);
+      const changesRefresh = inspector.getByRole('button', {
+        name: 'Refresh Git changes',
+        exact: true
+      });
+      await changesRefresh.click();
+      await expect(changesRefresh).toBeDisabled();
+      await expect(changesRefresh.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
+        'width',
+        '14px'
+      );
+      await expect(inspector.locator('.changes-read-state')).toHaveCount(0);
       await inspector.screenshot({ path: testInfo.outputPath('git-changes-loading.png') });
       failChanges = true;
       await expect.poll(() => changesReads).toBe(2);
       releaseChanges?.();
-      const changesRetry = inspector.locator('.change-append-state button');
+      const changesRetry = inspector.locator('.changes-read-state button');
       await expect(changesRetry).toHaveText('Failed to load. Retry');
       await expect(changesRetry).toHaveClass(/is-link/);
       await expect(changesRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

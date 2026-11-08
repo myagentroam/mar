@@ -18,7 +18,18 @@ async function expectReadableState(button: Locator) {
     const metaSize = getComputedStyle(probe).fontSize;
     probe.remove();
     const range = document.createRange();
-    range.selectNodeContents(element.querySelector('span') ?? element);
+    // Measure text rather than the rotating SVG's transformed square bounds.
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        node.textContent?.trim() && !node.parentElement?.closest('svg')
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT
+    });
+    const first = walker.nextNode()!;
+    let last = first;
+    while (walker.nextNode()) last = walker.currentNode;
+    range.setStart(first, 0);
+    range.setEnd(last, last.textContent!.length);
     const text = range.getBoundingClientRect();
     const button = element.getBoundingClientRect();
     return {
@@ -177,7 +188,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             expect(Math.abs(textLeft - (await label.boundingBox())!.x)).toBeLessThanOrEqual(1);
           }
           const search = page.getByTestId('Search').locator('button.watch-status');
-          const changes = page.getByTestId('Git Changes').locator('.change-append-state button');
+          const changes = page.getByTestId('Git Changes').locator('.changes-read-state button');
           const history = page.getByTestId('Git History').locator('button.history-load-more');
           const commitFiles = page.getByTestId('Commit files');
           await commitFiles.locator('.history-commit-row').click();

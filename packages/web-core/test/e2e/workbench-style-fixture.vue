@@ -558,7 +558,7 @@ if (composerFixture) {
     :page="surfacePage as never"
   />
   <main v-else>
-    <section aria-label="Offline workspace" class="surface-fixture">
+    <section v-if="!inspectorFixture" aria-label="Offline workspace" class="surface-fixture">
       <Surface :page="surfacePage as never" />
     </section>
     <section aria-label="Workspace tab fixture">

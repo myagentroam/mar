@@ -282,18 +282,20 @@ test('Git Changes progressively renders large result sets without losing reposit
   await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
 
   const entries = page.locator('.change-entry');
-  const loadMore = page.getByRole('button', { name: 'Load more', exact: true });
+  const loadMore = page.locator('.change-list > .change-append-state');
   await expect(entries).toHaveCount(200);
-  await expect(page.locator('[data-repository-path="empty"]')).toBeVisible();
-  await loadMore.click();
+  await expect(page.locator('[data-repository-path="empty"]')).toHaveCount(1);
+  await expect(loadMore).not.toBeInViewport();
+  await loadMore.scrollIntoViewIfNeeded();
   await expect(entries).toHaveCount(400);
-  await loadMore.click();
+  await loadMore.scrollIntoViewIfNeeded();
   await expect(entries).toHaveCount(450);
   await expect(loadMore).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Refresh Git changes', exact: true }).click();
   await expect(entries).toHaveCount(200);
-  await expect(loadMore).toBeVisible();
+  await expect(loadMore).toHaveCount(1);
+  await expect(loadMore).not.toBeInViewport();
 });
 
 test('Files Watch snapshots cannot overwrite manually refreshed Git Changes', async ({ page }) => {

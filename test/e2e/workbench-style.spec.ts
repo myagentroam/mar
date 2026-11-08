@@ -634,7 +634,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       (element as HTMLElement).style.height = '360px';
     });
     await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
-    const retry = inspector.locator('.change-append-state button');
+    const retry = inspector.locator('.changes-read-state button');
     await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
     await expect(inspector.locator('.current-changes .empty')).toHaveCount(0);
     await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
@@ -650,7 +650,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(
       inspector.getByRole('button', { name: 'Refresh Git changes', exact: true })
     ).toBeEnabled();
-    await inspector.locator('.current-changes').evaluate((element) => {
+    await list.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });
     await expect(list.locator('.change-path')).toHaveCount(205);

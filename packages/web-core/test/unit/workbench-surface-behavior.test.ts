@@ -460,10 +460,7 @@ describe('Workbench surface composition behavior', () => {
       page.files.workspaceGit.reset();
     }
   });
-  it('releases a pending Changes batch timer when switching Workspace without replacing the Git owner', async () => {
-    vi.useFakeTimers();
-    const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
-    const setTimer = vi.spyOn(globalThis, 'setTimeout');
+  it('releases the Changes batch observer when switching Workspace without replacing the Git owner', async () => {
     let intersection: IntersectionObserverCallback | undefined;
     const disconnect = vi.fn();
     vi.stubGlobal(
@@ -523,29 +520,22 @@ describe('Workbench surface composition behavior', () => {
       await nextTick();
       expect(rows()).toHaveLength(200);
       expect(intersection).toBeDefined();
-      intersection!(
+      const oldIntersection = intersection!;
+      page.selection.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
+      await nextTick();
+      oldIntersection(
         [{ isIntersecting: true } as IntersectionObserverEntry],
         {} as IntersectionObserver
       );
-      const timerIndex = setTimer.mock.calls.findIndex((call) => call[1] === 100);
-      expect(timerIndex).toBeGreaterThanOrEqual(0);
-      const batchTimer = setTimer.mock.results[timerIndex]!.value;
       await nextTick();
-      page.selection.workspaceTarget = { nodeId: 'node', workspaceId: 'two' };
-      await nextTick();
-      await vi.advanceTimersByTimeAsync(500);
       expect(rows()).toHaveLength(0);
       expect(disconnect).toHaveBeenCalled();
-      expect(clearTimer).toHaveBeenCalledWith(batchTimer);
       expect(page.files.workspaceGit.changesRefreshing.value).toBe(true);
       expect(page.files.workspaceGit).toBe(git);
       expect(reset).toHaveBeenCalledTimes(1);
     } finally {
       view.unmount();
       page.files.workspaceGit.reset();
-      clearTimer.mockRestore();
-      setTimer.mockRestore();
-      vi.useRealTimers();
       vi.stubGlobal('IntersectionObserver', undefined);
     }
   });
