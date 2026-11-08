@@ -168,12 +168,23 @@ it.each(['http', 'watch'] as const)(
         )!;
       expect(refresh.props.disabled).toBe(true);
       expect(refresh.props['aria-busy']).toBe(true);
+      let ancestor = refresh.parent;
+      let insideScrollList = false;
+      while (ancestor) {
+        if (ancestor.props.class === 'change-list') insideScrollList = true;
+        ancestor = ancestor.parent;
+      }
+      expect(insideScrollList).toBe(false);
       expect(
         refresh.children.some((node) => node.props['data-mar-icon'] === 'loading-action')
       ).toBe(true);
+      expect(
+        view.findAll('svg').filter((node) => node.props['data-mar-icon'] === 'loading-action')
+      ).toHaveLength(1);
       service.changesRefreshing.value = false;
       props.watchStatus = 'ready';
       await nextTick();
+      expect(statuses()).toHaveLength(0);
       expect(refresh.props.disabled).toBe(false);
       expect(refresh.children.some((node) => node.props['data-mar-icon'] === 'refresh')).toBe(true);
     } finally {
