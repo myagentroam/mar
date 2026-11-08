@@ -281,6 +281,7 @@ export class MarAgentMcpClientPool {
     const items = Array.isArray(result.content) ? result.content : [];
     const images: Array<NonNullable<ToolExecutionResult['images']>[number]> = [];
     const remaining: unknown[] = [];
+    const diagnostics: string[] = [];
     const content = items
       .map((item: unknown) => {
         if (item === null || typeof item !== 'object') {
@@ -295,6 +296,7 @@ export class MarAgentMcpClientPool {
           data?: unknown;
         };
         if (value.type === 'text' && typeof value.text === 'string') {
+          diagnostics.push(value.text);
           const { text, ...metadata } = value;
           if (Object.keys(metadata).some((key) => key !== 'type')) remaining.push(metadata);
           return text;
@@ -315,6 +317,15 @@ export class MarAgentMcpClientPool {
         return `[${String(value.type ?? 'unknown')}]`;
       })
       .join('\n');
+    if (result.isError === true) {
+      const diagnostic = diagnostics.join('\n');
+      throw new AgentError(
+        'MAR_AGENT_MCP_TOOL_FAILED',
+        diagnostic.length > 0
+          ? `MCP tool reported an error: ${diagnostic}`
+          : 'MCP tool reported an error without text diagnostics.'
+      );
+    }
     const structured = result.structuredContent;
     const data =
       structured !== undefined && structured !== null
