@@ -93,6 +93,12 @@ export class ExtensionSessionTools {
     return frame?.active ? frame : undefined;
   }
 
+  /** Release propagation only after the Session owner has joined all scoped tool work. */
+  dispose(): void {
+    this.#attempt.disable();
+    this.#toolFrame.disable();
+  }
+
   withTools<T>(
     bindings: ReadonlyMap<string, ExtensionToolBinding>,
     schedule: <Value>(

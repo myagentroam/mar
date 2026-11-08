@@ -18,6 +18,7 @@ export class ExecutionToolSources {
   }>();
   #scope: RoundToolScope | undefined;
   #closed = false;
+  #frames = 0;
 
   constructor(
     readonly executionId: string,
@@ -106,17 +107,22 @@ export class ExecutionToolSources {
     if (context.executionId !== this.executionId || context.sessionId !== this.sessionId)
       throw unavailable();
     const frame = { context, active: true };
+    this.#frames++;
+    const finish = () => {
+      frame.active = false;
+      if (--this.#frames === 0 && this.#closed) this.#frame.disable();
+    };
     return this.#frame.run(frame, () => {
       try {
         const result = run();
         if (result instanceof Promise)
           return result.finally(() => {
-            frame.active = false;
+            finish();
           }) as Value;
-        frame.active = false;
+        finish();
         return result;
       } catch (error) {
-        frame.active = false;
+        finish();
         throw error;
       }
     });
@@ -125,6 +131,8 @@ export class ExecutionToolSources {
   close(): void {
     this.#closed = true;
     this.#scope = undefined;
+    // Retained physical callbacks may outlive the main round and must keep their own frame.
+    if (this.#frames === 0) this.#frame.disable();
   }
 
   #context(call: ExtensionOperationContext): ToolRuntimeContext | undefined {

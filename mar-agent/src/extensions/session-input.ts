@@ -586,6 +586,8 @@ export class SessionInputCoordinator {
     await Promise.all(
       owned.filter((entry) => entry.receipt.status === 'in-progress').map((entry) => entry.terminal)
     );
+    // Retiring one extension must not clear another extension's in-flight input context.
+    if (!instanceId) this.#current.disable();
   }
   startExecution(entry: SessionInputEntry, executionId: string): void {
     entry.receipt = { ...entry.receipt, executionId };

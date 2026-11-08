@@ -137,6 +137,11 @@ export class ExtensionMcp {
     readonly validateCatalog: (catalog: McpToolCatalog) => void
   ) {}
 
+  /** Connection work and leases are joined by the Session's resource scopes first. */
+  dispose(): void {
+    this.#calling.disable();
+  }
+
   bind(
     owner: ExtensionResourceScope,
     extensionId: string,

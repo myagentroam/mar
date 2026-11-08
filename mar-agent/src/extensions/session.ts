@@ -358,6 +358,9 @@ export class ExtensionSession {
         failures++;
       }
     }
+    this.mcp.dispose();
+    this.#toolDomain.dispose();
+    this.hooks.dispose();
     if (failures)
       throw new AgentError(
         'MAR_AGENT_EXTENSION_CLEANUP_FAILED',

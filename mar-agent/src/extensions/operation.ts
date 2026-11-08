@@ -51,6 +51,11 @@ export class ExtensionOperations {
     return frame?.active ? frame.context : undefined;
   }
 
+  /** The Agent owner must join Session and agent-scope work before releasing identity context. */
+  dispose(): void {
+    this.#current.disable();
+  }
+
   /** Bind the effective owner signal before author code can call another facade. */
   callback<Value>(
     call: ExtensionOperationContext,

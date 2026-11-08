@@ -68,17 +68,19 @@ export class ExtensionResourceScope {
       ready: acquired.then(() => undefined),
       dispose: () => {
         if (disposalFrame.getStore()) return Promise.resolve();
-        releasing ??= acquired.then(
-          async (release) => {
-            if (typeof release !== 'function')
-              throw new AgentError(
-                'MAR_AGENT_EXTENSION_RESOURCE_INVALID',
-                'Resource acquisition must return a disposer.'
-              );
-            await disposalFrame.run(true, release);
-          },
-          () => undefined
-        );
+        releasing ??= acquired
+          .then(
+            async (release) => {
+              if (typeof release !== 'function')
+                throw new AgentError(
+                  'MAR_AGENT_EXTENSION_RESOURCE_INVALID',
+                  'Resource acquisition must return a disposer.'
+                );
+              await disposalFrame.run(true, release);
+            },
+            () => undefined
+          )
+          .finally(() => disposalFrame.disable());
         return releasing;
       }
     };
@@ -209,7 +211,8 @@ export class ExtensionResourceScope {
                 if (!this.signal.aborted && !timerController.signal.aborted) onError(error);
               })
               .finally(() => {
-                if (repeat) schedule();
+                if (stopped || !repeat || this.#state !== 'ACTIVE') callbacks.disable();
+                else schedule();
               });
             void running.catch(() => undefined);
           },
@@ -224,7 +227,14 @@ export class ExtensionResourceScope {
       this.#activators.delete(schedule);
       if (timer !== undefined) clearTimeout(timer);
       timerController.abort();
-      if (!callbacks.getStore()) await running;
+      // A callback releasing itself must retain its context until running settles.
+      if (!callbacks.getStore()) {
+        try {
+          await running;
+        } finally {
+          callbacks.disable();
+        }
+      }
     });
     if (this.#state === 'ACTIVE') schedule();
     else this.#activators.add(schedule);

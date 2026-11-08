@@ -18,11 +18,13 @@ export function createSessionToolScheduler() {
     children: Set<Promise<void>>;
   };
   const leases = new AsyncLocalStorage<Lease>();
+  let activeJobs = 0;
   const definitions = [
     { name: 'safe', parallelSafety: 'safe' },
     { name: 'serial', parallelSafety: 'serial' }
   ] as ClientToolDefinition[];
   const execute = async (job: Job): Promise<unknown> => {
+    activeJobs++;
     const lease: Lease = {
       active: true,
       ingress: sessionToolIngress.getStore(),
@@ -36,6 +38,7 @@ export function createSessionToolScheduler() {
         // The parent keeps its barrier until every accepted descendant has settled.
         while (lease.children.size) await Promise.all([...lease.children]);
         lease.active = false;
+        if (--activeJobs === 0) leases.disable();
       }
     });
   };
