@@ -506,7 +506,13 @@ export class ExtensionMcp {
       const failure = results.find((result) => result.status === 'rejected');
       if (failure?.status === 'rejected') {
         materializeErrorStack(failure.reason);
-        if (failure.reason instanceof AgentError) throw failure.reason;
+        let isAgentError = false;
+        try {
+          isAgentError = failure.reason instanceof AgentError;
+        } catch {
+          // Opaque backend failures may reject prototype inspection.
+        }
+        if (isAgentError) throw failure.reason;
         throw new AgentError('MAR_AGENT_MCP_CLEANUP_FAILED', 'MCP Client lease did not close.', {
           cause: failure.reason
         });

@@ -839,32 +839,55 @@ describe('native MCP connections', () => {
     expect(backend.close).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a real cleanup failure observable and prevents half-closed reuse', async () => {
-    const backend = backendFixture();
-    const f = await nativeFixture(backend.port);
-    const connection = await f.context.mcp!.connect({
-      server: f.context.mcp!.register({ id: 'server', configuration: {} }).ref
-    });
-    const tool = (await f.context.mcp!.catalog({ connection })).tools[0]!;
-    backend.close.mockRejectedValueOnce(new Error('client-close-failed'));
-    try {
-      await expect(f.context.mcp!.disconnect({ connection })).rejects.toMatchObject({
-        code: 'MAR_AGENT_MCP_CLEANUP_FAILED'
+  it.each(['error', 'agent error', 'revoked proxy'] as const)(
+    'keeps cleanup failure and replay observable without half-closed reuse (%s)',
+    async (kind) => {
+      const backend = backendFixture();
+      const f = await nativeFixture(backend.port);
+      const connection = await f.context.mcp!.connect({
+        server: f.context.mcp!.register({ id: 'server', configuration: {} }).ref
       });
-      await expect(f.context.mcp!.call({ tool, arguments: {} })).rejects.toMatchObject({
-        code: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
-      });
-      await expect(f.agent.dispose()).rejects.toMatchObject({
-        code: 'MAR_AGENT_EXTENSION_CLEANUP_FAILED'
-      });
-      expect(backend.close).toHaveBeenCalledTimes(1);
-    } finally {
-      await f.agent.dispose().catch(() => undefined);
-      // The failed disposal has been asserted; do not mask it with a duplicate fixture cleanup.
-      const index = agents.indexOf(f.agent);
-      if (index !== -1) agents.splice(index, 1);
+      const tool = (await f.context.mcp!.catalog({ connection })).tools[0]!;
+      const revoked = Proxy.revocable({}, {});
+      revoked.revoke();
+      const failure =
+        kind === 'agent error'
+          ? new AgentError('MAR_AGENT_MCP_CLEANUP_FAILED', 'Client close failed.')
+          : kind === 'revoked proxy'
+            ? revoked.proxy
+            : new Error('client-close-failed');
+      backend.close.mockRejectedValueOnce(failure);
+      try {
+        const first = await f.context.mcp!.disconnect({ connection }).then(
+          () => undefined,
+          (error: unknown) => error
+        );
+        expect(first).toBeInstanceOf(AgentError);
+        expect(first).toMatchObject({
+          code: 'MAR_AGENT_MCP_CLEANUP_FAILED'
+        });
+        if (kind === 'agent error') expect(first === failure).toBe(true);
+        else expect((first as Error).cause === failure).toBe(true);
+        const replay = await f.context.mcp!.disconnect({ connection }).then(
+          () => undefined,
+          (error: unknown) => error
+        );
+        expect(replay === first).toBe(true);
+        await expect(f.context.mcp!.call({ tool, arguments: {} })).rejects.toMatchObject({
+          code: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
+        });
+        await expect(f.agent.dispose()).rejects.toMatchObject({
+          code: 'MAR_AGENT_EXTENSION_CLEANUP_FAILED'
+        });
+        expect(backend.close).toHaveBeenCalledTimes(1);
+      } finally {
+        await f.agent.dispose().catch(() => undefined);
+        // The failed disposal has been asserted; do not mask it with a duplicate fixture cleanup.
+        const index = agents.indexOf(f.agent);
+        if (index !== -1) agents.splice(index, 1);
+      }
     }
-  });
+  );
 
   it('rejects malformed inputs and already-cancelled admission without connecting', async () => {
     const backend = backendFixture();
