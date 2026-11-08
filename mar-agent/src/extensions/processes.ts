@@ -1,8 +1,8 @@
-import { AgentError } from '../error.js';
+import { AgentError, materializeErrorStack } from '../error.js';
 
 import type { ExtensionHooks } from './hooks.js';
 import type { ExtensionOperationContext } from './operation.js';
-import type { ExtensionResourceScope } from './resources.js';
+import type { ExtensionResourceScope, ExtensionResourceRegistration } from './resources.js';
 
 export interface ExtensionProcessInput {
   readonly executable: string;
@@ -93,6 +93,75 @@ function copyProcessInput<Value extends ExtensionProcessInput>(input: Value): Va
   };
 }
 
+/** Retain unread pipes while live; after cleanup retain only wait/cancel outcomes. */
+function processFacade(lease: ExtensionProcessHandle, resource: ExtensionResourceRegistration) {
+  let current: ExtensionProcessHandle | undefined = lease;
+  let completion: Promise<ExtensionProcessExit> | undefined;
+  let closed = false;
+  let waited = false;
+  let ended = 0;
+  const cancel = () => {
+    closed = true;
+    return resource.dispose();
+  };
+  const finish = () => {
+    if (waited && ended === 2 && !closed) void cancel().catch(() => undefined);
+  };
+  const wait = () => {
+    if (!completion) {
+      completion = current!.wait();
+      const settled = () => {
+        waited = true;
+        finish();
+      };
+      void completion.then(settled, (error) => {
+        materializeErrorStack(error);
+        settled();
+      });
+    }
+    return completion;
+  };
+  const stream = (kind: 'stdout' | 'stderr'): AsyncIterableIterator<Uint8Array> => {
+    let done = false;
+    return {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      async next() {
+        if (closed || done || !current) return { done: true, value: undefined };
+        const next = await current[kind][Symbol.asyncIterator]().next();
+        if (next.done && !done) {
+          done = true;
+          ended++;
+          finish();
+        }
+        return next;
+      },
+      async return() {
+        await cancel();
+        return { done: true, value: undefined };
+      }
+    };
+  };
+  return {
+    handle: {
+      processId: lease.processId,
+      stdout: stream('stdout'),
+      stderr: stream('stderr'),
+      wait,
+      cancel
+    },
+    release() {
+      closed = true;
+      // Join/replay the physical exit even if the first wait comes after cancellation.
+      const detach = () => {
+        current = undefined;
+      };
+      void wait().then(detach, detach);
+    }
+  };
+}
+
 export function bindCoreProcesses(
   backend: ExtensionProcessesBackend,
   run: <Value>(
@@ -117,33 +186,44 @@ export function bindCoreProcesses(
     let closed = false;
     const iterators: AsyncIterator<Uint8Array>[] = [];
     let pending!: Promise<ExtensionProcessHandle>;
+    let release = () => {};
     const resource = scope.effect(() => async () => {
       closed = true;
-      call.signal.removeEventListener('abort', abort);
-      const handle = await pending.catch(() => undefined);
-      let firstError: unknown;
-      let failed = false;
       try {
-        if (typeof handle?.cancel === 'function') await handle.cancel();
-      } catch (error) {
-        failed = true;
-        firstError = error;
-      }
-      const released = await Promise.allSettled(
-        iterators.map((iterator) => Promise.resolve().then(() => iterator.return?.()))
-      );
-      const failure = released.find((result) => result.status === 'rejected');
-      if (failed || failure?.status === 'rejected') {
-        const error = failed
-          ? firstError
-          : failure?.status === 'rejected'
-            ? failure.reason
-            : undefined;
-        throw new AgentError('MAR_AGENT_PROCESS_CLEANUP_FAILED', 'Native process cleanup failed.', {
-          details: {
-            reasonCode: error instanceof AgentError ? error.code : 'BACKEND_CLEANUP_FAILED'
-          }
-        });
+        call.signal.removeEventListener('abort', abort);
+        const handle = await pending.catch(() => undefined);
+        let firstError: unknown;
+        let failed = false;
+        try {
+          if (typeof handle?.cancel === 'function') await handle.cancel();
+        } catch (error) {
+          failed = true;
+          firstError = error;
+        }
+        const released = await Promise.allSettled(
+          iterators.map((iterator) => Promise.resolve().then(() => iterator.return?.()))
+        );
+        const failure = released.find((result) => result.status === 'rejected');
+        if (failed || failure?.status === 'rejected') {
+          const error = failed
+            ? firstError
+            : failure?.status === 'rejected'
+              ? failure.reason
+              : undefined;
+          const cleanupError = new AgentError(
+            'MAR_AGENT_PROCESS_CLEANUP_FAILED',
+            'Native process cleanup failed.',
+            {
+              details: {
+                reasonCode: error instanceof AgentError ? error.code : 'BACKEND_CLEANUP_FAILED'
+              }
+            }
+          );
+          materializeErrorStack(cleanupError);
+          throw cleanupError;
+        }
+      } finally {
+        release();
       }
     });
     const cancel = () => resource.dispose();
@@ -229,39 +309,49 @@ export function bindCoreProcesses(
       };
     };
     let completion: Promise<ExtensionProcessExit> | undefined;
-    return {
-      processId: handle.processId,
-      stdout: stream(handle.stdout),
-      stderr: stream(handle.stderr),
-      cancel,
-      wait: () =>
-        (completion ??= scope
-          .run(async (signal) => {
-            signal.throwIfAborted();
-            const exit = await handle.wait();
-            signal.throwIfAborted();
-            if (
-              !exit ||
-              (exit.code !== null && !Number.isInteger(exit.code)) ||
-              (exit.signal !== null && typeof exit.signal !== 'string')
-            )
-              throw new AgentError(
-                'MAR_AGENT_PROCESS_OUTPUT_INVALID',
-                'Native process exit result is invalid.'
-              );
-            if (emitExit)
-              await hooks.emit('process.completed', { processId: handle.processId, ...exit }, call);
-            return exit;
-          }, call.signal)
-          .catch(async (error) => {
-            try {
-              await cancel();
-            } catch {
-              diagnose();
-            }
-            throw error;
-          }))
-    };
+    const facade = processFacade(
+      {
+        processId: handle.processId,
+        stdout: stream(handle.stdout),
+        stderr: stream(handle.stderr),
+        cancel,
+        wait: () =>
+          (completion ??= scope
+            .run(async (signal) => {
+              signal.throwIfAborted();
+              const exit = await handle.wait();
+              signal.throwIfAborted();
+              if (
+                !exit ||
+                (exit.code !== null && !Number.isInteger(exit.code)) ||
+                (exit.signal !== null && typeof exit.signal !== 'string')
+              )
+                throw new AgentError(
+                  'MAR_AGENT_PROCESS_OUTPUT_INVALID',
+                  'Native process exit result is invalid.'
+                );
+              if (emitExit)
+                await hooks.emit(
+                  'process.completed',
+                  { processId: handle.processId, ...exit },
+                  call
+                );
+              return { code: exit.code, signal: exit.signal };
+            }, call.signal)
+            .catch(async (error) => {
+              try {
+                await cancel();
+              } catch {
+                diagnose();
+              }
+              throw error;
+            }))
+      },
+      resource
+    );
+    release = facade.release;
+    if (closed) release();
+    return facade.handle;
   };
   return {
     spawn: async (input) => {

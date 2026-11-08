@@ -180,10 +180,14 @@ export function recordSessionInputCommit(
   };
 }
 
-/** One Session FIFO shared by native writes and the existing parent mailbox. No model loop. */
+/**
+ * One Session FIFO shared by native writes and the parent mailbox. No model loop.
+ * Active entries own requests and callbacks; settled history owns only public receipts.
+ */
 export class SessionInputCoordinator {
   readonly #pending: SessionInputEntry[] = [];
-  readonly #records: SessionInputEntry[] = [];
+  readonly #records: Array<{ receipt: ExtensionSessionReceipt }> = [];
+  readonly #active = new Set<SessionInputEntry>();
   readonly #current = new AsyncLocalStorage<SessionInputEntry>();
   #sequence = 0;
   #closed = false;
@@ -373,10 +377,7 @@ export class SessionInputCoordinator {
     validateCoreSessionRequest(request);
     let complete!: () => void;
     let started!: () => void;
-    const entry: SessionInputEntry = {
-      request: structuredClone(request),
-      source,
-      action,
+    const record: { receipt: ExtensionSessionReceipt } = {
       receipt: {
         operationId: source.operationId || randomUUID(),
         sequence: ++this.#sequence,
@@ -385,6 +386,17 @@ export class SessionInputCoordinator {
         ...(source.ownerInstanceId ? { ownerInstanceId: source.ownerInstanceId } : {}),
         ...(source.extensionId ? { extensionId: source.extensionId } : {}),
         ...(source.parentOperationId ? { parentOperationId: source.parentOperationId } : {})
+      }
+    };
+    const entry: SessionInputEntry = {
+      request: structuredClone(request),
+      source,
+      action,
+      get receipt() {
+        return record.receipt;
+      },
+      set receipt(value) {
+        record.receipt = value;
       },
       started: new Promise<void>((resolve) => {
         started = resolve;
@@ -404,7 +416,8 @@ export class SessionInputCoordinator {
         this.#finish(entry, 'cancelled');
     };
     source.signal.addEventListener('abort', abort, { once: true });
-    this.#records.push(entry);
+    this.#active.add(entry);
+    this.#records.push(record);
     this.#trim();
     return entry;
   }
@@ -570,15 +583,15 @@ export class SessionInputCoordinator {
   async idle(): Promise<void> {
     await this.#draining;
     await Promise.all(
-      this.#records
+      [...this.#active]
         .filter((entry) => entry.receipt.status === 'in-progress')
         .map((entry) => entry.terminal)
     );
   }
   async retire(instanceId?: string): Promise<void> {
     if (!instanceId) this.#closed = true;
-    const owned = this.#records.filter(
-      (entry) => !instanceId || entry.source.ownerInstanceId === instanceId
+    const owned = [...this.#active].filter(
+      (entry) => !instanceId || entry.receipt.ownerInstanceId === instanceId
     );
     for (const entry of owned)
       if (entry.receipt.status === 'queued' || entry.receipt.status === 'accepted')
@@ -586,6 +599,8 @@ export class SessionInputCoordinator {
     await Promise.all(
       owned.filter((entry) => entry.receipt.status === 'in-progress').map((entry) => entry.terminal)
     );
+    // Retiring one extension must not clear another extension's in-flight input context.
+    if (!instanceId) this.#current.disable();
   }
   startExecution(entry: SessionInputEntry, executionId: string): void {
     entry.receipt = { ...entry.receipt, executionId };
@@ -596,7 +611,7 @@ export class SessionInputCoordinator {
     if (this.#settled.size > 200) this.#settled.delete(this.#settled.keys().next().value!);
     for (const entry of this.#records)
       if (
-        entry.request.kind === 'submit' &&
+        entry.receipt.kind === 'submit' &&
         entry.receipt.executionId === executionId &&
         entry.receipt.status === 'committed'
       )
@@ -626,6 +641,9 @@ export class SessionInputCoordinator {
       if (settled) entry.receipt = { ...entry.receipt, status: settled };
     }
     entry.complete();
+    this.#active.delete(entry);
+    const pending = this.#pending.indexOf(entry);
+    if (pending !== -1) this.#pending.splice(pending, 1);
     if (status === 'failed') this.diagnose(Object.freeze({ ...entry.receipt }));
     this.#trim();
   }
@@ -634,7 +652,7 @@ export class SessionInputCoordinator {
       const index = this.#records.findIndex(
         (entry) =>
           !['queued', 'accepted', 'in-progress'].includes(entry.receipt.status) &&
-          !(entry.receipt.status === 'committed' && entry.request.kind === 'submit')
+          !(entry.receipt.status === 'committed' && entry.receipt.kind === 'submit')
       );
       if (index === -1) break;
       this.#records.splice(index, 1);

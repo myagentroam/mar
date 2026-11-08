@@ -253,7 +253,13 @@ export class ExtensionManager {
     this.#disposal = (async () => {
       await Promise.all(endings);
       for (const id of this.#sessions.keys()) this.retireSession(id);
-      await this.#serial(() => this.#retire());
+      await this.#serial(async () => {
+        try {
+          await this.#retire();
+        } finally {
+          this.operations.dispose();
+        }
+      });
     })();
     return this.#disposal;
   }

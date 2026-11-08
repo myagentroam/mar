@@ -82,6 +82,7 @@ export class CompactCoordinator {
         flight.settled = true;
         ready();
         controller.signal.removeEventListener('abort', abort);
+        this.#owner.disable();
       }
     });
     // The result remains observable at the next checkpoint, including asynchronous failures.

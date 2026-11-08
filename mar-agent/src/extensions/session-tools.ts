@@ -15,6 +15,7 @@ import {
   ExtensionTools,
   type ExtensionToolsApi,
   type ExtensionToolBinding,
+  type ExtensionToolReferenceIndex,
   type ExtensionToolRef,
   type ExtensionToolInvocation,
   type ExtensionToolCheck,
@@ -23,7 +24,10 @@ import {
   type DomainToolFacts
 } from './tools.js';
 
-/** One Session's tool catalog, references, attempt lineage, and invocation frames. */
+/**
+ * Own one Session's tool catalog, attempt lineage, and invocation frames.
+ * References retain captured bindings only until their source owner has drained its scoped work.
+ */
 export class ExtensionSessionTools {
   constructor(
     private readonly toolRuntime: ExtensionToolRuntime,
@@ -46,7 +50,9 @@ export class ExtensionSessionTools {
     private readonly assertLive: () => void,
     private readonly isRetired: () => boolean
   ) {}
-  readonly #toolRefs = new WeakMap<ExtensionToolRef, ExtensionToolBinding>();
+  #toolRefs = new WeakMap<ExtensionToolRef, ExtensionToolReferenceIndex>();
+  readonly #ownerToolRefs = new Map<string, ExtensionToolReferenceIndex>();
+  readonly #sessionToolRefs: ExtensionToolReferenceIndex = { bindings: new WeakMap() };
   readonly tools = new ExtensionTools(
     (binding, stage) =>
       Object.freeze({
@@ -93,6 +99,16 @@ export class ExtensionSessionTools {
     return frame?.active ? frame : undefined;
   }
 
+  /** Release propagation only after the Session owner has joined all scoped tool work. */
+  dispose(): void {
+    this.#attempt.disable();
+    this.#toolFrame.disable();
+    // Host/Session refs outlive individual extensions, but never the Session owner.
+    this.#toolRefs = new WeakMap();
+    this.#ownerToolRefs.clear();
+    this.#sessionToolRefs.bindings = new WeakMap();
+  }
+
   withTools<T>(
     bindings: ReadonlyMap<string, ExtensionToolBinding>,
     schedule: <Value>(
@@ -123,7 +139,7 @@ export class ExtensionSessionTools {
     return this.#toolFrame.run(undefined, () => this.#attempt.run(undefined, run));
   }
   isMcp(ref: ExtensionToolRef): boolean {
-    return this.#toolRefs.get(ref)?.mcp !== undefined;
+    return this.#referenceBinding(ref)?.mcp !== undefined;
   }
   bind(
     scope: ExtensionResourceScope,
@@ -131,6 +147,12 @@ export class ExtensionSessionTools {
     run: ExtensionOperationRunner,
     current: () => ExtensionOperationContext | undefined
   ): ExtensionToolsApi {
+    const refs: ExtensionToolReferenceIndex = { bindings: new WeakMap() };
+    this.#ownerToolRefs.set(scope.instanceId, refs);
+    scope.effect(() => () => {
+      // Keep an empty index for this owner so late snapshots cannot acquire Session lifetime.
+      refs.bindings = undefined;
+    });
     return {
       register: (spec) => this.tools.register(scope, extensionId, spec),
       catalog: () =>
@@ -149,8 +171,17 @@ export class ExtensionSessionTools {
       source: binding.source,
       ...(binding.mcp === undefined ? {} : { mcp: binding.mcp })
     });
-    this.#toolRefs.set(ref, binding);
+    const refs =
+      binding.referenceIndex ??
+      this.#ownerToolRefs.get(binding.source.instanceId ?? '') ??
+      this.#sessionToolRefs;
+    refs.bindings?.set(ref, binding);
+    this.#toolRefs.set(ref, refs);
     return ref;
+  }
+
+  #referenceBinding(ref: ExtensionToolRef): ExtensionToolBinding | undefined {
+    return this.#toolRefs.get(ref)?.bindings?.get(ref);
   }
 
   capture(
@@ -338,7 +369,7 @@ export class ExtensionSessionTools {
   ): ReadonlyMap<string, ExtensionToolBinding> {
     const snapshot = this.capture(context);
     if (!call.ref) return snapshot;
-    const binding = this.#toolRefs.get(call.ref);
+    const binding = this.#referenceBinding(call.ref);
     if (!binding || binding.definition.name !== call.name)
       throw new AgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Tool reference is unavailable.');
     return new Map([...snapshot, [call.name, binding]]);

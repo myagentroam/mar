@@ -1,11 +1,22 @@
 import { executionActivity } from './support/execution-activity.js';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalAgentHost } from '../../../mar-agent/src/host.js';
 import type { LocalProcessSpawnRequest } from '../../../mar-agent/src/host.js';
 import { directLocalProcessExecutor } from '../../../mar-agent/src/host/local-process-executor.js';
+import {
+  SecretValue,
+  type AgentEvent,
+  type AgentModelConfiguration
+} from '../../../mar-agent/src/index.js';
+import { createAgentWithAdapter as createMarAgent } from '../../../mar-agent/src/sdk/agent.js';
+import type {
+  ModelAdapter,
+  ModelEvent,
+  ModelRequest
+} from '../../../mar-agent/src/model/contracts.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MarAgentMcpClientCache,
@@ -24,6 +35,36 @@ const server = (environment: Readonly<Record<string, string>> = {}) => ({
   args: [fileURLToPath(new URL('../support/mar-agent-mcp-server.mjs', import.meta.url))],
   environment
 });
+
+function mcpResultModel(codeMode: boolean): AgentModelConfiguration {
+  return {
+    id: `mcp-result-${codeMode ? 'code-mode' : 'direct'}`,
+    name: 'MCP result fixture',
+    protocol: 'ANTHROPIC_MESSAGES',
+    baseUrl: 'https://example.test',
+    apiKey: new SecretValue('fixture-only'),
+    modelId: 'mcp-result-fixture',
+    contextWindowTokens: 32_000,
+    maxOutputTokens: 1_024,
+    inputCapabilities: ['TEXT'],
+    outputCapabilities: ['TEXT'],
+    reasoningEfforts: [],
+    hostedWebSearch: false,
+    titleGeneration: false,
+    codeMode,
+    enabled: true
+  };
+}
+
+function mcpResultHost(home: string, pool: MarAgentMcpClientPool): LocalAgentHost {
+  return new LocalAgentHost({
+    homeDirectory: home,
+    workspace: home,
+    mcpCatalog: () => pool.catalog(),
+    callMcp: (call, signal, context) =>
+      pool.call(call.name, call.arguments, signal, context?.expectedTool)
+  });
+}
 
 describe('MCP cache acquisition', () => {
   const mockConnections = () => {
@@ -421,6 +462,11 @@ describe('MAR Agent MCP client pool', () => {
         data: [resource],
         images: [image]
       });
+      expect(await call('explicitSuccess')).toEqual({
+        content: 'independent text\n[image]\n[resource_link]',
+        data: { structuredContent: { answer: 42 }, content: [resource] },
+        images: [image]
+      });
       expect(await call('structured')).toEqual({
         content: 'independent text',
         data: { answer: 42 }
@@ -499,6 +545,272 @@ describe('MAR Agent MCP client pool', () => {
     } finally {
       await host.dispose();
       await pool?.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves transport failures instead of classifying them as tool-result errors', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-mcp-transport-error-'));
+    const pool = await MarAgentMcpClientPool.connect([server()], home);
+    try {
+      let rejection: unknown;
+      try {
+        await pool.call('mcp__test_server__echo', { value: 'disconnect' });
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).not.toMatchObject({ code: 'MAR_AGENT_MCP_TOOL_FAILED' });
+    } finally {
+      await pool.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves MCP protocol exceptions separately from tool-result errors', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-mcp-protocol-error-'));
+    const pool = await MarAgentMcpClientPool.connect(
+      [server({ MAR_TEST_MCP_RESULT_CASES: '1' })],
+      home
+    );
+    try {
+      let rejection: unknown;
+      try {
+        await pool.call('mcp__test_server__echo', { value: 'protocolError' });
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).not.toMatchObject({ code: 'MAR_AGENT_MCP_TOOL_FAILED' });
+      await expect(pool.call('mcp__test_server__echo', { value: 'text' })).resolves.toMatchObject({
+        content: 'independent text'
+      });
+    } finally {
+      await pool.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('propagates cancellation of an in-flight MCP call and releases the pool', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-mcp-cancel-'));
+    const startedFile = join(home, 'started');
+    const abortedFile = join(home, 'aborted');
+    const pool = await MarAgentMcpClientPool.connect(
+      [
+        server({
+          MAR_TEST_MCP_STARTED_FILE: startedFile,
+          MAR_TEST_MCP_ABORTED_FILE: abortedFile
+        })
+      ],
+      home
+    );
+    const controller = new AbortController();
+    const call = pool.call('mcp__test_server__echo', { value: 'wait' }, controller.signal).then(
+      () => ({ status: 'resolved' as const }),
+      (error: unknown) => ({ status: 'rejected' as const, error })
+    );
+    try {
+      await vi.waitFor(async () => expect(await readFile(startedFile, 'utf8')).toBe('started'), {
+        interval: 10,
+        timeout: 3_000
+      });
+      controller.abort();
+      const result = await call;
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected') {
+        expect(result.error).toBeInstanceOf(Error);
+        expect(result.error).not.toMatchObject({ code: 'MAR_AGENT_MCP_TOOL_FAILED' });
+      }
+      await vi.waitFor(async () => expect(await readFile(abortedFile, 'utf8')).toBe('aborted'), {
+        interval: 10,
+        timeout: 3_000
+      });
+    } finally {
+      controller.abort();
+      await pool.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('routes MCP isError results through direct tool failure with bounded model-visible diagnostics', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-mcp-is-error-direct-'));
+    const pool = await MarAgentMcpClientPool.connect(
+      [server({ MAR_TEST_MCP_RESULT_CASES: '1' })],
+      home
+    );
+    const model = mcpResultModel(false);
+    const requests: ModelRequest[] = [];
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start(request): AsyncIterable<ModelEvent> {
+        requests.push(request);
+        if (requests.length === 1) {
+          yield {
+            type: 'client_tool.call',
+            callId: 'mcp-direct-discover',
+            name: 'tool_search',
+            arguments: { query: 'mcp__test_server__echo' }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+          return;
+        }
+        if (requests.length === 2) {
+          yield {
+            type: 'client_tool.call',
+            callId: 'mcp-direct-error',
+            name: 'mcp__test_server__echo',
+            arguments: { value: 'longError' }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+          return;
+        }
+        yield {
+          type: 'text.completed',
+          itemId: 'answer',
+          text: 'Recovered after the MCP tool error.'
+        };
+        yield { type: 'completed', reason: 'completed' };
+      }
+    };
+    const host = mcpResultHost(home, pool);
+    const agent = await createMarAgent(
+      { mode: 'normal', host, models: [model], defaultModelId: model.id },
+      () => adapter
+    );
+    try {
+      const session = await agent.createSession({ workspace: home, title: 'MCP isError direct' });
+      const run = session.run({ prompt: 'Call the MCP tool.' });
+      const events: AgentEvent[] = [];
+      for await (const event of run) events.push(event);
+
+      await expect(run.result()).resolves.toMatchObject({ status: 'completed' });
+      const failed = events.find(
+        (event) => event.type === 'tool.failed' && event.callId === 'mcp-direct-error'
+      );
+      expect(failed).toMatchObject({
+        type: 'tool.failed',
+        toolName: 'mcp__test_server__echo',
+        code: 'MAR_AGENT_MCP_TOOL_FAILED',
+        message: expect.stringContaining('MCP fixture diagnostic')
+      });
+      expect(
+        events.some(
+          (event) => event.type === 'tool.completed' && event.callId === 'mcp-direct-error'
+        )
+      ).toBe(false);
+      const failedMessage = failed?.type === 'tool.failed' ? (failed.message ?? '') : '';
+      expect(failedMessage).toContain('MCP fixture diagnostic');
+      expect([...failedMessage].length).toBeLessThanOrEqual(1_000);
+      const modelToolResult = requests[2]?.messages.find(
+        (message) => message.role === 'tool' && message.callId === 'mcp-direct-error'
+      );
+      expect(modelToolResult?.content).toContain(failedMessage);
+    } finally {
+      await agent.dispose();
+      await pool.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects nested MCP isError promises in Code Mode so guest code can catch and continue', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-mcp-is-error-code-mode-'));
+    const pool = await MarAgentMcpClientPool.connect(
+      [server({ MAR_TEST_MCP_RESULT_CASES: '1' })],
+      home
+    );
+    const model = mcpResultModel(true);
+    const requests: ModelRequest[] = [];
+    const adapter: ModelAdapter = {
+      configuration: model,
+      async *start(request): AsyncIterable<ModelEvent> {
+        requests.push(request);
+        if (requests.length === 1) {
+          yield {
+            type: 'client_tool.call',
+            callId: 'mcp-code-mode-discover',
+            name: 'tool_search',
+            arguments: { query: 'mcp__test_server__echo' }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+          return;
+        }
+        if (requests.length === 2) {
+          yield {
+            type: 'client_tool.call',
+            callId: 'mcp-code-mode-cell',
+            name: 'code_exec',
+            arguments: {
+              code: `
+                let failure;
+                try {
+                  await tools.mcp__test_server__echo({ value: 'error' });
+                } catch (error) {
+                  failure = { code: error.code, message: error.message };
+                }
+                const continued = await tools.mcp__test_server__echo({ value: 'text' });
+                observe.text(JSON.stringify({ failure, continued: continued.content }));
+              `
+            }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+          return;
+        }
+        yield { type: 'text.completed', itemId: 'answer', text: 'Cell recovered.' };
+        yield { type: 'completed', reason: 'completed' };
+      }
+    };
+    const host = mcpResultHost(home, pool);
+    const agent = await createMarAgent(
+      { mode: 'normal', host, models: [model], defaultModelId: model.id },
+      () => adapter
+    );
+    try {
+      const session = await agent.createSession({
+        workspace: home,
+        title: 'MCP isError Code Mode'
+      });
+      const run = session.run({ prompt: 'Catch the MCP tool error and continue.' });
+      const events: AgentEvent[] = [];
+      for await (const event of run) events.push(event);
+
+      await expect(run.result()).resolves.toMatchObject({ status: 'completed' });
+      const failed = events.find(
+        (event) => event.type === 'tool.failed' && event.toolName === 'mcp__test_server__echo'
+      );
+      expect(failed).toMatchObject({
+        type: 'tool.failed',
+        parentCallId: 'mcp-code-mode-cell',
+        code: 'MAR_AGENT_MCP_TOOL_FAILED',
+        message: expect.stringContaining('MCP fixture diagnostic')
+      });
+      expect(
+        events.some(
+          (event) =>
+            event.type === 'tool.completed' &&
+            event.toolName === 'mcp__test_server__echo' &&
+            event.parentCallId === 'mcp-code-mode-cell'
+        )
+      ).toBe(true);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'tool.completed',
+          toolName: 'code_exec',
+          callId: 'mcp-code-mode-cell'
+        })
+      );
+      expect(events).not.toContainEqual(
+        expect.objectContaining({
+          type: 'tool.failed',
+          toolName: 'code_exec',
+          callId: 'mcp-code-mode-cell'
+        })
+      );
+      expect(JSON.stringify(requests[2]?.messages)).toContain('MAR_AGENT_MCP_TOOL_FAILED');
+      expect(JSON.stringify(requests[2]?.messages)).toContain('MCP fixture diagnostic');
+      expect(JSON.stringify(requests[2]?.messages)).toContain('independent text');
+    } finally {
+      await agent.dispose();
+      await pool.close();
       await rm(home, { recursive: true, force: true });
     }
   });

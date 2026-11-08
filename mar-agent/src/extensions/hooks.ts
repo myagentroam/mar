@@ -43,6 +43,11 @@ export class ExtensionHooks<
     readonly callback: ExtensionCallbackRunner = async (call, run) => run(call)
   ) {}
 
+  /** The Session owner calls this after all registered scopes have drained. */
+  dispose(): void {
+    this.#active.disable();
+  }
+
   /** Internal physical callback ingress; unrelated dispatch must not inherit reentry suppression. */
   independent<Value>(run: () => Value): Value {
     return this.#active.run([], run);

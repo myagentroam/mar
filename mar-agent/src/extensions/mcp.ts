@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { AgentError } from '../error.js';
+import { AgentError, materializeErrorStack } from '../error.js';
 import type { McpToolCatalog, ToolCall, ToolExecutionResult } from '../tools/contracts.js';
 import { cloneCoreJson, type ExtensionJsonValue } from './data.js';
 
@@ -98,7 +98,7 @@ interface Source {
 interface Connection {
   readonly owner: ExtensionResourceScope;
   readonly ref: ExtensionMcpConnectionRef;
-  readonly backend: ExtensionMcpConnectionBackend;
+  backend: ExtensionMcpConnectionBackend | undefined;
   readonly scope: ExtensionResourceScope;
   readonly signal: AbortSignal;
   readonly abort: () => void;
@@ -109,16 +109,24 @@ interface Connection {
   closing?: Promise<void>;
   tail?: Promise<unknown>;
 }
+/** Keep a live lease only until close settles; closed refs replay completion without pinning it. */
+interface ConnectionReference {
+  connection?: Connection;
+  closing?: Promise<void>;
+}
 type Run = <Value>(
   operation: (call: ExtensionOperationContext) => Promise<Value>,
   signal?: AbortSignal
 ) => Promise<Value>;
 
-/** One Session's declarations and owned Client leases feed its sole tool registry. */
+/**
+ * One Session's declarations and owned Client leases feed its sole tool registry.
+ * Closed connection refs replay cleanup without owning the released Client.
+ */
 export class ExtensionMcp {
   readonly #declarations: Declaration[] = [];
   readonly #serverRefs = new WeakMap<ExtensionMcpServerRef, Declaration>();
-  readonly #connectionRefs = new WeakMap<ExtensionMcpConnectionRef, Connection>();
+  readonly #connectionRefs = new WeakMap<ExtensionMcpConnectionRef, ConnectionReference>();
   readonly #connections = new Set<Connection>();
   readonly #calling = new AsyncLocalStorage<{ connection: Connection; active: boolean }>();
   constructor(
@@ -136,6 +144,11 @@ export class ExtensionMcp {
     readonly diagnose: () => void,
     readonly validateCatalog: (catalog: McpToolCatalog) => void
   ) {}
+
+  /** Connection work and leases are joined by the Session's resource scopes first. */
+  dispose(): void {
+    this.#calling.disable();
+  }
 
   bind(
     owner: ExtensionResourceScope,
@@ -232,22 +245,25 @@ export class ExtensionMcp {
         return run(
           (call) =>
             this.hooks.invoke('mcp.disconnect', request, call, async (input, effective) => {
-              const connection = this.#connectionRefs.get(input.connection);
-              if (!connection)
+              const reference = this.#connectionRefs.get(input.connection);
+              if (!reference)
                 throw new AgentError(
                   'MAR_AGENT_MCP_REFERENCE_INVALID',
                   'MCP connection reference is invalid.'
                 );
-              const active = this.#calling.getStore();
-              if (active?.active && active.connection === connection)
-                throw new AgentError(
-                  'MAR_AGENT_MCP_CONNECTION_BUSY',
-                  'MCP connection cannot close from its active call.'
-                );
-              await connection.registration.dispose();
+              const connection = reference.connection;
+              if (connection) {
+                const active = this.#calling.getStore();
+                if (active?.active && active.connection === connection)
+                  throw new AgentError(
+                    'MAR_AGENT_MCP_CONNECTION_BUSY',
+                    'MCP connection cannot close from its active call.'
+                  );
+                await connection.registration.dispose();
+              } else await reference.closing;
               await this.hooks.emit(
                 'mcp.completed',
-                { operation: 'disconnect', connectionId: connection.ref.id },
+                { operation: 'disconnect', connectionId: input.connection.id },
                 effective
               );
             }),
@@ -321,7 +337,7 @@ export class ExtensionMcp {
       call.signal.throwIfAborted();
       await this.#refresh(connection, call);
       call.signal.throwIfAborted();
-      this.#connectionRefs.set(ref, connection);
+      this.#connectionRefs.set(ref, { connection });
       this.#connections.add(connection);
       await this.hooks.emit(
         'mcp.completed',
@@ -348,7 +364,7 @@ export class ExtensionMcp {
       if (connection.closed)
         throw new AgentError('MAR_AGENT_MCP_REFERENCE_INVALID', 'MCP connection is unavailable.');
       await runMcpConnection(connection, call, async (signal) => {
-        const raw = await connection.backend.catalog(Object.freeze({ ...call, signal }));
+        const raw = await connection.backend!.catalog(Object.freeze({ ...call, signal }));
         let catalog: McpToolCatalog;
         try {
           catalog = structuredClone(raw);
@@ -404,7 +420,7 @@ export class ExtensionMcp {
                     );
                   return this.#calling.run(frame, async () => {
                     try {
-                      return await connection.backend.call(
+                      return await connection.backend!.call(
                         {
                           name: tool.definition.name,
                           serverId: tool.serverId,
@@ -478,18 +494,32 @@ export class ExtensionMcp {
     connection.closing = (async () => {
       // Close the Client concurrently so non-cooperative transport waits can settle.
       const results = await Promise.allSettled([
-        Promise.resolve().then(() => connection.backend.close()),
+        Promise.resolve().then(() => connection.backend!.close()),
         connection.scope.dispose(),
         ...connection.sources.map((source) => source.registration.dispose())
       ]);
+      // Captured tool refs may outlive this leaf; no closed ref needs its lease or sibling sources.
+      connection.backend = undefined;
+      connection.sources = [];
+      connection.catalog = { revision: '', servers: [], tools: [] };
+      delete connection.tail;
       const failure = results.find((result) => result.status === 'rejected');
       if (failure?.status === 'rejected') {
+        materializeErrorStack(failure.reason);
         if (failure.reason instanceof AgentError) throw failure.reason;
         throw new AgentError('MAR_AGENT_MCP_CLEANUP_FAILED', 'MCP Client lease did not close.', {
           cause: failure.reason
         });
       }
     })();
+    const reference = this.#connectionRefs.get(connection.ref);
+    if (reference) {
+      reference.closing = connection.closing;
+      const release = () => {
+        delete reference.connection;
+      };
+      void connection.closing.then(release, release);
+    }
     return connection.closing;
   }
 
@@ -535,6 +565,7 @@ export class ExtensionMcp {
       entry.live = false;
       const index = this.#declarations.indexOf(entry);
       if (index !== -1) this.#declarations.splice(index, 1);
+      this.#serverRefs.delete(ref);
     });
     this.#declarations.push(entry);
     this.#serverRefs.set(ref, entry);
@@ -560,7 +591,7 @@ export class ExtensionMcp {
     return entry;
   }
   #connection(ref: ExtensionMcpConnectionRef): Connection {
-    const connection = this.#connectionRefs.get(ref);
+    const connection = this.#connectionRefs.get(ref)?.connection;
     if (!connection || connection.closed)
       throw new AgentError('MAR_AGENT_MCP_REFERENCE_INVALID', 'MCP connection is unavailable.');
     return connection;

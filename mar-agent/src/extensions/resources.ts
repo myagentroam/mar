@@ -1,4 +1,4 @@
-import { AgentError } from '../error.js';
+import { AgentError, materializeErrorStack } from '../error.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 
@@ -7,7 +7,61 @@ export interface ExtensionResourceRegistration {
   readonly ready: Promise<void>;
   dispose(): Promise<void>;
 }
-/** An instance's managed resources, not an OS sandbox or a process-wide resource owner. */
+
+/** Own one acquisition and release without retaining its payload or former owner after disposal. */
+function createResourceRegistration(
+  acquire: () => ExtensionDisposer | Promise<ExtensionDisposer>,
+  settled: ((failed: boolean) => void) | undefined
+): ExtensionResourceRegistration {
+  let release: ExtensionDisposer | undefined;
+  const ready = Promise.resolve()
+    .then(acquire)
+    .then((disposer) => {
+      if (typeof disposer !== 'function')
+        throw new AgentError(
+          'MAR_AGENT_EXTENSION_RESOURCE_INVALID',
+          'Resource acquisition must return a disposer.'
+        );
+      release = disposer;
+    });
+  let releasing: Promise<void> | undefined;
+  const disposalFrame = new AsyncLocalStorage<boolean>();
+  const finish = (failed: boolean) => {
+    disposalFrame.disable();
+    const notify = settled;
+    settled = undefined;
+    notify?.(failed);
+  };
+  return {
+    ready,
+    dispose: () => {
+      if (disposalFrame.getStore()) return Promise.resolve();
+      releasing ??= ready
+        .then(
+          async () => {
+            const dispose = release;
+            release = undefined;
+            if (dispose) await disposalFrame.run(true, dispose);
+          },
+          () => undefined
+        )
+        .then(
+          () => finish(false),
+          (error) => {
+            materializeErrorStack(error);
+            finish(true);
+            throw error;
+          }
+        );
+      return releasing;
+    }
+  };
+}
+
+/**
+ * Own one instance's live resources and pending acquisitions, not an OS sandbox or global owner.
+ * Settled handles detach; readiness and cleanup failures remain observable without retaining payloads.
+ */
 export class ExtensionResourceScope {
   readonly instanceId = randomUUID();
   static readonly #initialization = new AsyncLocalStorage<{ active: boolean }>();
@@ -28,7 +82,10 @@ export class ExtensionResourceScope {
   }
   #state: 'STAGED' | 'ACTIVE' | 'RETIRING' | 'DISPOSED' = 'STAGED';
   readonly #controller = new AbortController();
-  readonly #resources: ExtensionResourceRegistration[] = [];
+  readonly #resources = new Set<ExtensionResourceRegistration>();
+  readonly #acquisitions = new Set<Promise<void>>();
+  #acquisitionFailure: { error: unknown } | undefined;
+  #cleanupFailures = 0;
   readonly #operations = new Set<Promise<unknown>>();
   readonly #activators = new Set<() => void>();
   #disposal: Promise<void> | undefined;
@@ -52,39 +109,29 @@ export class ExtensionResourceScope {
     acquire: () => ExtensionDisposer | Promise<ExtensionDisposer>
   ): ExtensionResourceRegistration {
     this.#assertOpen();
-    const acquired = Promise.resolve()
-      .then(acquire)
-      .then((release) => {
-        if (typeof release !== 'function')
-          throw new AgentError(
-            'MAR_AGENT_EXTENSION_RESOURCE_INVALID',
-            'Resource acquisition must return a disposer.'
-          );
-        return release;
-      });
-    let releasing: Promise<void> | undefined;
-    const disposalFrame = new AsyncLocalStorage<boolean>();
-    const registration: ExtensionResourceRegistration = {
-      ready: acquired.then(() => undefined),
-      dispose: () => {
-        if (disposalFrame.getStore()) return Promise.resolve();
-        releasing ??= acquired.then(
-          async (release) => {
-            if (typeof release !== 'function')
-              throw new AgentError(
-                'MAR_AGENT_EXTENSION_RESOURCE_INVALID',
-                'Resource acquisition must return a disposer.'
-              );
-            await disposalFrame.run(true, release);
-          },
-          () => undefined
-        );
-        return releasing;
+    const registration: ExtensionResourceRegistration = createResourceRegistration(
+      acquire,
+      (failed) => {
+        this.#resources.delete(registration);
+        if (failed) this.#cleanupFailures++;
       }
-    };
-    // Acquisition errors remain observable through ready, without unhandled rejection noise.
-    void registration.ready.catch(() => undefined);
-    this.#resources.push(registration);
+    );
+    const ready = registration.ready;
+    this.#acquisitions.add(ready);
+    // Readiness keeps the first acquisition failure, not a history of completed registrations.
+    void ready.then(
+      () => {
+        this.#acquisitions.delete(ready);
+      },
+      (error) => {
+        this.#acquisitions.delete(ready);
+        materializeErrorStack(error);
+        this.#acquisitionFailure ??= { error };
+        // A failed acquisition owns no resource, even when its caller never explicitly disposes it.
+        void registration.dispose();
+      }
+    );
+    this.#resources.add(registration);
     return registration;
   }
 
@@ -159,11 +206,8 @@ export class ExtensionResourceScope {
 
   /** Wait for acquisitions added by setup before publishing any callbacks. */
   async ready(): Promise<void> {
-    let count = -1;
-    while (count !== this.#resources.length) {
-      count = this.#resources.length;
-      await Promise.all(this.#resources.map((resource) => resource.ready));
-    }
+    while (this.#acquisitions.size) await Promise.all([...this.#acquisitions]);
+    if (this.#acquisitionFailure) throw this.#acquisitionFailure.error;
   }
 
   retire(): void {
@@ -209,7 +253,16 @@ export class ExtensionResourceScope {
                 if (!this.signal.aborted && !timerController.signal.aborted) onError(error);
               })
               .finally(() => {
-                if (repeat) schedule();
+                if (stopped || !repeat || this.#state !== 'ACTIVE') callbacks.disable();
+                else schedule();
+                if (!repeat)
+                  // Join running before releasing the one-shot registration; never await ourselves.
+                  void running!
+                    .then(
+                      () => registration.dispose(),
+                      () => registration.dispose()
+                    )
+                    .catch(() => undefined);
               });
             void running.catch(() => undefined);
           },
@@ -224,7 +277,14 @@ export class ExtensionResourceScope {
       this.#activators.delete(schedule);
       if (timer !== undefined) clearTimeout(timer);
       timerController.abort();
-      if (!callbacks.getStore()) await running;
+      // A callback releasing itself must retain its context until running settles.
+      if (!callbacks.getStore()) {
+        try {
+          await running;
+        } finally {
+          callbacks.disable();
+        }
+      }
     });
     if (this.#state === 'ACTIVE') schedule();
     else this.#activators.add(schedule);
@@ -236,14 +296,14 @@ export class ExtensionResourceScope {
     this.retire();
     this.#disposal = Promise.resolve().then(async () => {
       await Promise.allSettled([...this.#operations]);
-      let failures = 0;
       for (const resource of [...this.#resources].reverse()) {
         try {
           await resource.dispose();
         } catch {
-          failures++;
+          // Each registration records its failure once, including earlier manual disposal.
         }
       }
+      const failures = this.#cleanupFailures;
       if (failures)
         throw new AgentError(
           'MAR_AGENT_EXTENSION_CLEANUP_FAILED',
