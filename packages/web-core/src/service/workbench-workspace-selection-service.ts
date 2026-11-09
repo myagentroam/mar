@@ -217,6 +217,7 @@ export function createWorkbenchWorkspaceSelectionService(
       if (startWatch) void options.startWatch(target.workspaceId);
     } catch (error) {
       if (!current()) return;
+      if (errorCode(error) === 'NODE_OFFLINE' && !options.isHostAvailable(target.nodeId)) return;
       if (
         [
           'FORBIDDEN',

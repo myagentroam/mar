@@ -172,15 +172,33 @@ for (const language of [
 
 test('Git Changes shortcut refreshes an already visible list from the session composer', async ({
   page
-}) => {
+}, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-  let path = 'shortcut-initial.txt';
+  let path = 'shortcut-initial';
   let reads = 0;
   let fetches = 0;
+  let holdNextRead = false;
+  let failNextRead = false;
+  let releaseHeldRead: (() => void) | undefined;
   await page.unroute(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/);
-  await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, (route) => {
+  await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, async (route) => {
     reads += 1;
-    const changes = [{ path, state: 'UNTRACKED', change: 'ADDED', diffAvailable: false }];
+    const responsePath = path;
+    const shouldFail = failNextRead;
+    failNextRead = false;
+    if (holdNextRead) {
+      holdNextRead = false;
+      await new Promise<void>((resolve) => {
+        releaseHeldRead = resolve;
+      });
+    }
+    if (shouldFail) return json(route, { error: { code: 'CHANGES_REFRESH_FAILED' } }, 503);
+    const changes = Array.from({ length: 120 }, (_, index) => ({
+      path: `${responsePath}-${index}.txt`,
+      state: 'UNTRACKED',
+      change: 'ADDED',
+      diffAvailable: false
+    }));
     return json(route, {
       branch: 'main',
       changes,
@@ -212,22 +230,158 @@ test('Git Changes shortcut refreshes an already visible list from the session co
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list button').first().click();
   await page.getByRole('tab', { name: 'Git 变更', exact: true }).click();
-  await expect(page.getByText(path, { exact: true })).toBeVisible();
+  await expect(page.getByText(`${path}-0.txt`, { exact: true })).toBeVisible();
   await expect.poll(() => fetches).toBe(1);
   await expect(page.getByRole('button', { name: '刷新 Git 变更', exact: true })).toBeEnabled();
   const composer = page.locator('.composer-input').first();
   await composer.fill('Keep this draft');
+  const changes = page.locator('.current-changes');
+  const list = changes.locator('.change-list');
+  await expect
+    .poll(() => list.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  await list.evaluate((element) => {
+    element.scrollTop = 600;
+  });
+  const headingIntersectsListViewport = () =>
+    list.evaluate((element) => {
+      const viewport = element.getBoundingClientRect();
+      const heading = element.querySelector('.change-repository-heading')!.getBoundingClientRect();
+      return (
+        heading.left < viewport.right &&
+        heading.right > viewport.left &&
+        heading.top < viewport.bottom &&
+        heading.bottom > viewport.top
+      );
+    });
+  await expect.poll(headingIntersectsListViewport).toBe(false);
+  const scrollTop = await list.evaluate((element) => element.scrollTop);
+  expect(scrollTop).toBeGreaterThan(0);
+  const readListViewport = () =>
+    list.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, height: rect.height };
+    });
 
-  for (const key of ['Control+Shift+K', 'Meta+Shift+K']) {
+  for (const [key, outcome] of [
+    ['Control+Shift+K', 'success'],
+    ['Meta+Shift+K', 'failure']
+  ] as const) {
     const previousReads = reads;
-    path = `shortcut-refresh-${previousReads}.txt`;
+    path = `shortcut-refresh-${previousReads}`;
+    holdNextRead = true;
+    failNextRead = outcome === 'failure';
+    const listViewportBeforeRefresh = await readListViewport();
     await composer.press(key);
-    await expect(page.getByText(path, { exact: true })).toBeVisible();
-    expect(reads).toBe(previousReads + 1);
+    await expect.poll(() => releaseHeldRead !== undefined).toBe(true);
+    await expect.poll(() => reads).toBe(previousReads + 1);
+    const retainedRow = await list.evaluate((element) => {
+      const viewport = element.getBoundingClientRect();
+      const center = (viewport.top + viewport.bottom) / 2;
+      return (
+        Array.from(element.querySelectorAll('.change-entry'))
+          .map((row) => {
+            const bounds = row.getBoundingClientRect();
+            const text = row.querySelector('.change-file-name')?.textContent?.trim() ?? '';
+            const visibleHeight = Math.max(
+              0,
+              Math.min(bounds.bottom, viewport.bottom) - Math.max(bounds.top, viewport.top)
+            );
+            return {
+              text,
+              visibleHeight,
+              distance: Math.abs((bounds.top + bounds.bottom) / 2 - center)
+            };
+          })
+          .filter((row) => row.text && row.visibleHeight > 0)
+          .sort((left, right) => left.distance - right.distance)[0]?.text ?? null
+      );
+    });
+    expect(retainedRow).toBeTruthy();
     expect(fetches).toBe(1);
     await expect(composer).toHaveValue('Keep this draft');
     await expect(composer).toBeFocused();
+    expect(await headingIntersectsListViewport()).toBe(false);
+    await expect(page.getByText(retainedRow!, { exact: true })).toBeVisible();
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+
+    const refresh = changes.getByRole('button', { name: '刷新 Git 变更', exact: true });
+    await expect(refresh).toBeDisabled();
+    await expect(refresh).toHaveAttribute('aria-busy', 'true');
+    expect(await readListViewport()).toEqual(listViewportBeforeRefresh);
+    const busyIndicator = changes.locator('[data-mar-icon="loading-action"]');
+    await expect(busyIndicator).toHaveCount(1);
+    const feedbackGeometry = await busyIndicator.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      let left = Math.max(0, rect.left);
+      let right = Math.min(window.innerWidth, rect.right);
+      let top = Math.max(0, rect.top);
+      let bottom = Math.min(window.innerHeight, rect.bottom);
+      const workSurface = element.closest('.current-changes')!.getBoundingClientRect();
+      left = Math.max(left, workSurface.left);
+      right = Math.min(right, workSurface.right);
+      top = Math.max(top, workSurface.top);
+      bottom = Math.min(bottom, workSurface.bottom);
+      const clippedBy: string[] = [];
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor);
+        const bounds = ancestor.getBoundingClientRect();
+        if (style.overflowX !== 'visible') {
+          left = Math.max(left, bounds.left);
+          right = Math.min(right, bounds.right);
+          clippedBy.push(`${ancestor.tagName.toLowerCase()}.${String(ancestor.className)}`);
+        }
+        if (style.overflowY !== 'visible') {
+          top = Math.max(top, bounds.top);
+          bottom = Math.min(bottom, bounds.bottom);
+          clippedBy.push(`${ancestor.tagName.toLowerCase()}.${String(ancestor.className)}`);
+        }
+      }
+      const width = Math.max(0, right - left);
+      const height = Math.max(0, bottom - top);
+      return {
+        area: width * height,
+        rawRect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+        intersection: { left, top, right, bottom, width, height },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        clippedBy
+      };
+    });
+    expect(
+      feedbackGeometry.area,
+      `The primary refresh indicator must intersect the visible Changes work surface: ${JSON.stringify(feedbackGeometry)}`
+    ).toBeGreaterThan(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`workbench-changes-refresh-pending-${outcome}.png`)
+    });
+
+    releaseHeldRead?.();
+    releaseHeldRead = undefined;
+    if (outcome === 'success') {
+      await expect(page.getByText(`${path}-0.txt`, { exact: true })).toHaveCount(1);
+      await expect(changes.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+      await expect(refresh).toBeEnabled();
+      expect(await list.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+      await expect(composer).toBeFocused();
+    } else {
+      const retryButton = changes.getByRole('button').filter({ hasText: /重试|Retry/u });
+      await expect(retryButton).toBeVisible();
+      await expect(changes.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+      await expect(page.getByText(retainedRow!, { exact: true })).toBeVisible();
+      expect(await list.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+      await expect(composer).toBeFocused();
+    }
   }
+
+  path = 'shortcut-recovered';
+  await changes
+    .getByRole('button')
+    .filter({ hasText: /重试|Retry/u })
+    .click();
+  await expect(page.getByText(`${path}-0.txt`, { exact: true })).toHaveCount(1);
+  await expect(changes.getByRole('button').filter({ hasText: /重试|Retry/u })).toHaveCount(0);
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+  await expect(composer).toHaveValue('Keep this draft');
 });
 
 test('Git Changes progressively renders large result sets without losing repository groups', async ({

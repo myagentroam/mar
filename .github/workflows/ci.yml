@@ -70,19 +70,35 @@ jobs:
       - name: Check Node health and process probes
         run: pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts test/unit/node-smoke.test.ts
 
-      - name: Validate macOS filesystem, Git, SQLite, locks, PTY, and native integrations
+      - name: Validate isolated PTY lifecycle on macOS
+        if: ${{ inputs.macos_validation }}
+        timeout-minutes: 3
+        run: >-
+          pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts
+          --reporter=verbose
+          test/unit/node-terminal-native.test.ts
+          test/unit/terminal-pty.test.ts
+          test/unit/terminal-resource-lifecycle.test.ts
+          test/unit/terminal-posix-lifecycle.test.ts
+
+      - name: Validate macOS filesystem, Git, SQLite, and locks
+        if: ${{ inputs.macos_validation }}
+        run: >-
+          pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts
+          --reporter=verbose
+          test/unit/node-workspace.test.ts
+          test/unit/node-files-git-history.test.ts
+          test/unit/node-runtime-database.test.ts
+          test/unit/node-process-lock.test.ts
+          test/unit/git-execution-integration.test.ts
+
+      - name: Validate macOS native integrations
         if: ${{ inputs.macos_validation }}
         env:
           MAR_MACOS_NATIVE_TESTS: '1'
         run: >-
           pnpm --filter @myagentroam/node exec vitest run --config vitest.config.mts
-          test/unit/node-workspace.test.ts
-          test/unit/node-files-git-history.test.ts
-          test/unit/node-runtime-database.test.ts
-          test/unit/node-process-lock.test.ts
-          test/unit/node-terminal-native.test.ts
-          test/unit/terminal-posix-lifecycle.test.ts
-          test/unit/git-execution-integration.test.ts
+          --reporter=verbose
           test/unit/macos-native-integration.test.ts
 
       - name: Validate Agent shell execution on macOS

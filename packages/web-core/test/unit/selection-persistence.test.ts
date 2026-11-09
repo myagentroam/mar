@@ -35,6 +35,7 @@ function setup(sessionId: string | undefined = 'saved') {
   const openDraft = vi.fn();
   const synchronizeSessions = vi.fn(async () => sessions.value);
   const notice = vi.fn();
+  const nodes = ref([{ id: 'n', connected: true }]);
   let revision = 0;
   const activateWorkspace = vi.fn(async () => {
     selectedNodeId.value = 'n';
@@ -42,7 +43,7 @@ function setup(sessionId: string | undefined = 'saved') {
     return true;
   });
   const service = createWorkbenchSelectionPersistenceService({
-    nodes: { value: [{ id: 'n' }] } as never,
+    nodes: nodes as never,
     sessions: sessions as never,
     workspaceTarget: workspaceTargetRef(selectedNodeId, selectedWorkspaceId),
     selectedSessionId: selectedSessionId as never,
@@ -71,6 +72,7 @@ function setup(sessionId: string | undefined = 'saved') {
     synchronizeSessions,
     notice,
     activateWorkspace,
+    nodes,
     nextRevision: () => {
       revision += 1;
     }
@@ -201,6 +203,67 @@ describe('Workbench Selection Restoration', () => {
       sessionId: 'saved'
     });
     expect(f.notice).toHaveBeenCalledOnce();
+  });
+
+  it.each(['saved', ''])(
+    'defers offline restoration without duplicate feedback and restores %s after reconnection',
+    async (sessionId) => {
+      const f = setup(sessionId);
+      f.nodes.value = [{ id: 'n', connected: false }];
+      await f.service.restore();
+      expect(f.activateWorkspace).toHaveBeenCalledOnce();
+      expect(f.lookupSession).not.toHaveBeenCalled();
+      expect(f.synchronizeSessions).not.toHaveBeenCalled();
+      expect(f.openSession).not.toHaveBeenCalled();
+      expect(f.openDraft).not.toHaveBeenCalled();
+      expect(f.notice).not.toHaveBeenCalled();
+      expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual(f.stored);
+
+      f.nodes.value = [{ id: 'n', connected: true }];
+      await f.service.restoreSession('w', sessionId || undefined);
+      expect(f.openSession).toHaveBeenCalledWith(sessionId || 'first');
+      expect(f.notice).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps an in-flight restoration target when the Node disconnects without duplicating its offline feedback', async () => {
+    const f = setup();
+    f.lookupSession.mockImplementation(async () => {
+      f.nodes.value = [{ id: 'n', connected: false }];
+      throw new ApiError('NODE_OFFLINE', 'The Node is offline.');
+    });
+    await f.service.restore();
+    expect(f.selectedSessionId.value).toBe('saved');
+    expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual(f.stored);
+    expect(f.openDraft).not.toHaveBeenCalled();
+    expect(f.notice).not.toHaveBeenCalled();
+  });
+
+  it('still reports an offline response when the Node has no visible offline state', async () => {
+    const f = setup();
+    const error = new ApiError('NODE_OFFLINE', 'The Node is offline.');
+    f.lookupSession.mockRejectedValue(error);
+    await f.service.restore();
+    expect(f.notice).toHaveBeenCalledWith(error);
+    expect(f.selectedSessionId.value).toBe('saved');
+  });
+
+  it('does not apply an offline restoration for a different Workspace to the current selection', async () => {
+    const f = setup();
+    await f.activateWorkspace();
+    f.selectedSessionId.value = 'user-choice';
+    f.nodes.value = [{ id: 'n', connected: false }];
+    await f.service.restoreSession('other-workspace', 'stale-session');
+    expect(f.selectedSessionId.value).toBe('user-choice');
+    expect(JSON.parse(f.values.get('mar.workbench.selection.v1')!)).toEqual({
+      workspace: { nodeId: 'n', workspaceId: 'w' },
+      sessionId: 'user-choice'
+    });
+    expect(f.lookupSession).not.toHaveBeenCalled();
+    expect(f.synchronizeSessions).not.toHaveBeenCalled();
+    expect(f.openSession).not.toHaveBeenCalled();
+    expect(f.openDraft).not.toHaveBeenCalled();
+    expect(f.notice).not.toHaveBeenCalled();
   });
 
   it('Syncing menu state before restoration does not clear the saved selection', async () => {

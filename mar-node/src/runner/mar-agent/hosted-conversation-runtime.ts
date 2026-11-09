@@ -208,30 +208,35 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
         input.cursor === undefined
           ? undefined
           : decodeHostedHistoryCursor(input.cursor, input.sessionId);
-      let entries: AgentSessionHistoryEntry[] = [];
-      let turns = projectMarAgentHistory(historySession(input), entries);
+      const pages: AgentSessionHistoryEntry[][] = [];
+      const turnIds = new Set<string>();
       do {
         const page = await catalog.history(input.sessionId, {
           limit: Math.min(1000, Math.max(100, limit * 20)),
           ...(cursor === undefined ? {} : { cursor })
         });
-        entries = [...page.entries, ...entries];
+        pages.push(page.entries);
+        for (const entry of page.entries) {
+          const turnId = historyEntryTurnId(entry);
+          if (turnId !== undefined) turnIds.add(turnId);
+        }
         cursor = page.nextCursor;
-        turns = projectMarAgentHistory(historySession(input), entries);
-      } while (cursor !== undefined && turns.length <= limit);
+      } while (cursor !== undefined && turnIds.size <= limit);
+      // Pages arrive newest-first. Materialize and normalize their history only once.
+      const entries = pages.reverse().flat();
+      const turns = projectMarAgentHistory(historySession(input), entries, {
+        registerInputImages: (entry) => this.#registerInputImages(input, entry),
+        registerGeneratedImages: (sessionId, images) =>
+          this.#registerGeneratedImages(input, sessionId, images)
+      });
       const selected = turns.slice(-limit);
       const earliestTurnId = selected[0]?.id;
       const earliestSequence =
         earliestTurnId === undefined
           ? undefined
           : entries.find((entry) => historyEntryTurnId(entry) === earliestTurnId)?.sequence;
-      const projected = projectMarAgentHistory(historySession(input), entries, {
-        registerInputImages: (entry) => this.#registerInputImages(input, entry),
-        registerGeneratedImages: (sessionId, images) =>
-          this.#registerGeneratedImages(input, sessionId, images)
-      }).slice(-limit);
       return {
-        turns: projected,
+        turns: selected,
         nextCursor:
           turns.length > selected.length && earliestSequence !== undefined
             ? encodeHostedHistoryCursor(input.sessionId, earliestSequence)

@@ -123,6 +123,10 @@ test('Git changes append at the repository boundary and refresh in place', async
       await marker.scrollIntoViewIfNeeded();
       await expect(entries).toHaveCount(400);
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(1);
+      await list.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
       await refresh.click();
       await page.getByRole('button', { name: 'Finish Changes refresh', exact: true }).click();
       await expect(entries).toHaveCount(200);
@@ -134,12 +138,38 @@ test('Git changes append at the repository boundary and refresh in place', async
       await expect(marker).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0);
 
+      await list.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
       await refresh.click();
       await expect(refresh).toBeDisabled();
       await expect(refresh).toHaveAttribute('aria-busy', 'true');
-      await expect(refresh.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+      const busyIndicator = refresh.locator('[data-mar-icon="loading-action"]');
+      await expect(busyIndicator).toBeVisible();
       await expect(changes.locator('[data-mar-icon="loading-action"]')).toHaveCount(1);
       await expect(changes.locator('.changes-read-state')).toHaveCount(0);
+      const indicatorGeometry = await busyIndicator.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        let left = Math.max(0, rect.left);
+        let right = Math.min(window.innerWidth, rect.right);
+        let top = Math.max(0, rect.top);
+        let bottom = Math.min(window.innerHeight, rect.bottom);
+        for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          const style = getComputedStyle(ancestor);
+          const bounds = ancestor.getBoundingClientRect();
+          if (style.overflowX !== 'visible') {
+            left = Math.max(left, bounds.left);
+            right = Math.min(right, bounds.right);
+          }
+          if (style.overflowY !== 'visible') {
+            top = Math.max(top, bounds.top);
+            bottom = Math.min(bottom, bounds.bottom);
+          }
+        }
+        return Math.max(0, right - left) * Math.max(0, bottom - top);
+      });
+      expect(indicatorGeometry).toBeGreaterThan(0);
       await expect(entries).toHaveCount(450);
       await changes.screenshot({
         path: testInfo.outputPath(`git-changes-refresh-${theme}-${width}.png`)

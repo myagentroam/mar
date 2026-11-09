@@ -168,12 +168,23 @@ it.each(['http', 'watch'] as const)(
         )!;
       expect(refresh.props.disabled).toBe(true);
       expect(refresh.props['aria-busy']).toBe(true);
+      let ancestor = refresh.parent;
+      let insideScrollList = false;
+      while (ancestor) {
+        if (ancestor.props.class === 'change-list') insideScrollList = true;
+        ancestor = ancestor.parent;
+      }
+      expect(insideScrollList).toBe(false);
       expect(
         refresh.children.some((node) => node.props['data-mar-icon'] === 'loading-action')
       ).toBe(true);
+      expect(
+        view.findAll('svg').filter((node) => node.props['data-mar-icon'] === 'loading-action')
+      ).toHaveLength(1);
       service.changesRefreshing.value = false;
       props.watchStatus = 'ready';
       await nextTick();
+      expect(statuses()).toHaveLength(0);
       expect(refresh.props.disabled).toBe(false);
       expect(refresh.children.some((node) => node.props['data-mar-icon'] === 'refresh')).toBe(true);
     } finally {
@@ -229,6 +240,55 @@ it.each(['http', 'watch'] as const)(
       expect(
         view.findAll('ElButton').filter((node) => node.parent?.props.class === 'changes-read-state')
       ).toHaveLength(0);
+    } finally {
+      view.unmount();
+    }
+  }
+);
+
+it.each(['ready', 'failed'] as const)(
+  'prioritizes Watch recovery for simultaneous failures when the retry becomes %s',
+  async (status) => {
+    const service = gitServiceFixture();
+    service.changesError.value = true;
+    const retryWatch = vi.fn();
+    const props = shallowReactive({
+      service,
+      target: { nodeId: 'node', workspaceId: 'workspace' },
+      watchStatus: 'failed' as WorkspaceWatchTopicStatus,
+      onRetryWatch: retryWatch
+    });
+    retryWatch.mockImplementation(() => {
+      props.watchStatus = 'loading';
+    });
+    const view = renderComponent(WorkspaceGitChanges, props);
+    try {
+      await nextTick();
+      const retry = view
+        .findAll('ElButton')
+        .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))!;
+      await trigger(retry, 'onClick');
+      expect(props.onRetryWatch).toHaveBeenCalledOnce();
+      expect(service.retryChanges).not.toHaveBeenCalled();
+      expect(retry.props['aria-busy']).toBe(true);
+      await trigger(retry, 'onClick');
+      expect(props.onRetryWatch).toHaveBeenCalledOnce();
+
+      props.watchStatus = status;
+      if (status === 'ready') service.changesError.value = false;
+      await nextTick();
+      if (status === 'ready') {
+        expect(view.findAll('ElButton').includes(retry)).toBe(false);
+      } else {
+        expect(view.findAll('ElButton').includes(retry)).toBe(true);
+        expect(retry.props['aria-busy']).toBeUndefined();
+        expect(props.onRetryWatch).toHaveBeenCalledOnce();
+        await trigger(retry, 'onClick');
+        expect(props.onRetryWatch).toHaveBeenCalledTimes(2);
+        expect(retry.props['aria-busy']).toBe(true);
+      }
+      expect(service.retryChanges).not.toHaveBeenCalled();
+      expect(service.loadChanges).not.toHaveBeenCalled();
     } finally {
       view.unmount();
     }

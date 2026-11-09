@@ -67,6 +67,8 @@ export function createWorkbenchSelectionPersistenceService(
     const targetWorkspace = options.workspaceTarget.value;
     if (targetWorkspace === undefined) return;
     const nodeId = targetWorkspace.nodeId;
+    const offline = () =>
+      options.nodes.value.some((node) => node.id === nodeId && node.connected === false);
     const selectedId = options.selectedSessionId.value;
     const revision = options.currentSelectionRevision?.();
     const current = () =>
@@ -76,6 +78,10 @@ export function createWorkbenchSelectionPersistenceService(
       options.currentSelectionRevision?.() === revision;
     pendingRestores.add(current);
     try {
+      if (offline()) {
+        if (current() && preferredId !== undefined) options.setSelectedSessionId(preferredId);
+        return;
+      }
       let target: Session | undefined;
       if (preferredId !== undefined) {
         try {
@@ -107,7 +113,7 @@ export function createWorkbenchSelectionPersistenceService(
       if (current()) {
         // Retain the target through transient failures, including subsequent route syncs.
         if (preferredId !== undefined) options.setSelectedSessionId(preferredId);
-        options.notice(error);
+        if (errorCode(error) !== 'NODE_OFFLINE' || !offline()) options.notice(error);
       }
     } finally {
       pendingRestores.delete(current);
