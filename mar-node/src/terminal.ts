@@ -6,9 +6,11 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
 import { nodeExecutionEnvironment } from './node-execution-environment.js';
+import { nodeLog } from './operational.js';
 import { terminateProcessTree, type ManagedProcess } from './process-tree.js';
 import { TerminalPtyProcess } from './terminal-pty.js';
 import { TerminalPtyPool } from './terminal-pty-pool.js';
+import { safeErrorCode } from './util/safe-error.js';
 
 const MAX_FRAME_CHARACTERS = 65_536;
 const TERMINAL_COMMAND_MAX_BYTES = 64 * 1024;
@@ -219,7 +221,18 @@ export class TerminalManager {
     this.terminate =
       options.terminate ?? ((child, platform) => terminateProcessTree(child, platform));
     this.idleTimer = setInterval(
-      () => void this.closeExpired(),
+      () => {
+        void this.closeExpired().catch((error: unknown) => {
+          try {
+            nodeLog('terminal.cleanup.failed', {
+              source: 'idle',
+              errorCode: safeErrorCode(error, 'TERMINAL_CLEANUP_FAILED')
+            });
+          } catch {
+            // Logging must not turn a handled background failure into another rejection.
+          }
+        });
+      },
       Math.min(this.idleTimeoutMs, 60_000)
     );
     this.idleTimer.unref();
@@ -859,7 +872,17 @@ export class TerminalManager {
         (left, right) => left.lastUsedAt - right.lastUsedAt || left.createdAt - right.createdAt
       )[0];
     if (candidate === undefined) throw new Error('TERMINAL_LIMIT_REACHED');
-    void this.close(candidate.id);
+    void this.close(candidate.id).catch((error: unknown) => {
+      try {
+        nodeLog('terminal.cleanup.failed', {
+          source: 'capacity',
+          terminalId: candidate.id,
+          errorCode: safeErrorCode(error, 'TERMINAL_CLEANUP_FAILED')
+        });
+      } catch {
+        // Logging must not turn a handled background failure into another rejection.
+      }
+    });
   }
 
   private runningCountForWorkspace(workspaceId: string): number {
