@@ -53,14 +53,14 @@ describe('isolated terminal PTY', () => {
     'keeps ownership when a closing standby refuses handoff',
     async () => {
       const pool = new TerminalPtyPool();
-      let refused: TerminalPtyProcess | undefined;
+      const refused: TerminalPtyProcess[] = [];
       const failure = new Error('standby is closing');
       try {
         await pool.warmup();
         const start = vi
           .spyOn(TerminalPtyProcess.prototype, 'start')
           .mockImplementationOnce(function (this: TerminalPtyProcess) {
-            refused = this;
+            refused.push(this);
             process.kill(this.pid!, 'SIGSTOP');
             this.kill();
             throw failure;
@@ -71,10 +71,10 @@ describe('isolated terminal PTY', () => {
           start.mockRestore();
         }
         await pool.close();
-        expect(exists(refused!.pid!)).toBe(false);
+        expect(exists(refused[0]!.pid!)).toBe(false);
       } finally {
-        refused?.kill();
-        await refused?.closed;
+        for (const host of refused) host.kill();
+        await Promise.all(refused.map((host) => host.closed));
         await pool.close();
       }
     }
