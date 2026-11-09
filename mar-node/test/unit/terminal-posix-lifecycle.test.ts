@@ -33,6 +33,7 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
       async (shell, operation) => {
         const directory = await mkdtemp(join(tmpdir(), 'mar-pty-process-tree-'));
         let shellPid = 0;
+        let hostPid = 0;
         let jobPid = 0;
         let descendantPid = 0;
         let output = '';
@@ -43,7 +44,7 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
           profiles: [{ id: 'default', label: shell, shell, args: [], isDefault: true }],
           ptyFactory: (file, args, options) => {
             const pty = nodePtyFactory(file, args, options);
-            shellPid = pty.pid!;
+            hostPid = pty.pid!;
             pty.onExit(() => {
               nativeExit = true;
             });
@@ -74,12 +75,13 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
           await expect.poll(() => output).toMatch(/JOB_PIDS \d+ \d+ \d+/u);
           const match = output.match(/JOB_PIDS (\d+) (\d+) (\d+)/u)!;
           jobPid = Number(match[1]);
+          shellPid = Number(match[2]);
           descendantPid = Number(match[3]);
-          expect(Number(match[2])).toBe(shellPid);
-          expect(new Set([shellPid, jobPid, descendantPid]).size).toBe(3);
+          expect(new Set([hostPid, shellPid, jobPid, descendantPid]).size).toBe(4);
           expect([shellPid, jobPid, descendantPid].every(exists)).toBe(true);
           if (operation === 'shutdown') await manager.shutdown();
           else await manager.close(terminal.id);
+          expect(exists(hostPid)).toBe(false);
           await expect
             .poll(
               () => ({
@@ -96,7 +98,7 @@ describe.runIf(process.platform === 'linux' || process.platform === 'darwin')(
           await manager.shutdown();
         } finally {
           // Baseline failures must not leave this test's own processes behind.
-          for (const pid of [descendantPid, jobPid, shellPid]) {
+          for (const pid of [descendantPid, jobPid, shellPid, hostPid]) {
             if (pid && exists(pid)) process.kill(pid, 'SIGKILL');
             await new Promise((resolve) => setTimeout(resolve, 50));
           }

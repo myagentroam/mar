@@ -4,10 +4,11 @@ import { chmodSync, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { spawn, type IPty } from 'node-pty';
 import { terminalDataFrameSchema, type TerminalDataFrame } from '@myagentroam/protocol';
 import { nodeExecutionEnvironment } from './node-execution-environment.js';
 import { terminateProcessTree, type ManagedProcess } from './process-tree.js';
+import { TerminalPtyProcess } from './terminal-pty.js';
+import { TerminalPtyPool } from './terminal-pty-pool.js';
 
 const MAX_FRAME_CHARACTERS = 65_536;
 const TERMINAL_COMMAND_MAX_BYTES = 64 * 1024;
@@ -21,10 +22,13 @@ export type TerminalState = 'RUNNING' | 'EXITED' | 'CLOSED';
 
 /** The subset of node-pty used by the terminal lifecycle, kept injectable for tests. */
 export interface TerminalPty extends ManagedProcess {
+  /** Joins physical PTY host shutdown, including its final output. */
+  readonly closed?: Promise<void>;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   onData(listener: (data: string) => void): { dispose(): void };
   onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void };
+  onError?(listener: (code: string) => void): { dispose(): void };
 }
 
 export interface TerminalProfile {
@@ -146,7 +150,10 @@ interface ManagedAttachment {
 }
 
 /**
- * Owns Node-local PTY/ConPTY processes and their bounded output replay.
+ * Owns terminal state, attachments and bounded output replay. PTY proxies own their
+ * isolated hosts; binary pipes keep their separate lifecycle. Native PTY details
+ * belong only to the host, never to this service or its browser relay callers.
+ * The owned standby pool activates at warmup and transfers each host to its proxy.
  * Browser relay transport intentionally lives outside this class: callers pass
  * only schema-validated TerminalDataFrame values after Server authorization.
  */
@@ -160,6 +167,8 @@ export class TerminalManager {
   private readonly idleTimeoutMs: number;
   private readonly now: () => number;
   private readonly ptyFactory: TerminalPtyFactory;
+  private ptyPool: TerminalPtyPool | undefined;
+  private readonly pooledPty: boolean;
   private readonly pipeFactory: TerminalPipeFactory;
   private readonly terminate: (
     process: ManagedProcess,
@@ -202,7 +211,10 @@ export class TerminalManager {
       throw new Error('TERMINAL_CONFIG_INVALID');
     }
     this.now = options.now ?? Date.now;
-    this.ptyFactory = options.ptyFactory ?? nodePtyFactory;
+    this.pooledPty = options.ptyFactory === undefined;
+    this.ptyFactory =
+      options.ptyFactory ??
+      ((shell, args, spawnOptions) => this.requirePtyPool().open(shell, args, spawnOptions));
     this.pipeFactory = options.pipeFactory ?? nodePipeFactory;
     this.terminate =
       options.terminate ?? ((child, platform) => terminateProcessTree(child, platform));
@@ -507,8 +519,13 @@ export class TerminalManager {
           try {
             terminal.pty.kill();
           } catch {
-            await this.terminate(terminal.pty, this.platform);
+            try {
+              await this.terminate(terminal.pty, this.platform);
+            } catch (error) {
+              failures.push(error);
+            }
           }
+          await terminal.pty.closed;
         }
         if (terminal.pipe !== undefined) await this.terminate(terminal.pipe, this.platform);
       } catch (error) {
@@ -538,17 +555,35 @@ export class TerminalManager {
 
   /** Ends current terminals without disposing the manager's idle collection. */
   async closeAll(): Promise<void> {
-    await Promise.all(
+    const results = await Promise.allSettled(
       [...this.terminals.values()]
         .filter((terminal) => terminal.state === 'RUNNING' || this.closing.has(terminal.id))
         .map((terminal) => this.close(terminal.id))
     );
+    this.throwCleanupFailures(
+      results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []))
+    );
+  }
+
+  /** Activates the standby only at Node startup, never during connector composition. */
+  warmup(): Promise<void> {
+    return this.pooledPty ? this.requirePtyPool().warmup() : Promise.resolve();
+  }
+
+  private requirePtyPool(): TerminalPtyPool {
+    repairPtySpawnHelper();
+    return (this.ptyPool ??= new TerminalPtyPool());
   }
 
   async shutdown(): Promise<void> {
     if (this.idleTimer !== undefined) clearInterval(this.idleTimer);
     this.idleTimer = undefined;
-    await this.closeAll();
+    const pool = this.ptyPool;
+    this.ptyPool = undefined;
+    const results = await Promise.allSettled([this.closeAll(), pool?.close()]);
+    this.throwCleanupFailures(
+      results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []))
+    );
   }
 
   onFrame(listener: (frame: TerminalDataFrame) => void): () => void {
@@ -710,6 +745,8 @@ export class TerminalManager {
       else this.disposeSubscription(terminal, subscription);
     };
     track(pty.onData((data) => this.recordOutput(terminal, data)));
+    if (pty.onError !== undefined)
+      track(pty.onError((code) => this.emit({ type: 'error', terminalId: terminal.id, code })));
     if (terminal.state !== 'RUNNING') return;
     let subscribing = true;
     let failure: { error: unknown } | undefined;
@@ -856,14 +893,7 @@ export function nodePtyFactory(
   options: TerminalSpawnOptions
 ): TerminalPty {
   repairPtySpawnHelper();
-  const pty: IPty = spawn(shell, [...args], {
-    name: options.name,
-    cols: options.cols,
-    rows: options.rows,
-    cwd: options.cwd,
-    env: options.env
-  });
-  return pty as unknown as TerminalPty;
+  return new TerminalPtyProcess().start(shell, args, options);
 }
 
 export function repairPtySpawnHelper(

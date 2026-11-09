@@ -2018,6 +2018,7 @@ export class NodeConnector {
     this.capabilities = await this.conversationHosting.project(this.capabilities);
     this.computerUseEnablement.initialize();
     this.directTransferService ??= await this.createDirectTransferService();
+    await this.terminalManager.warmup();
     this.connectionLifecycle.start();
     this.controlChannel.connect();
   }

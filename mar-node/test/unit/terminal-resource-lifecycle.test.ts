@@ -52,6 +52,76 @@ function fixture(platform: TerminalPlatform = 'win32', exitOnSubscribe = false) 
 }
 
 describe('terminal resource lifecycle', () => {
+  it('still joins the physical host when both kill and fallback fail', async () => {
+    let release!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pty = Object.assign(new RetainedPty(), { closed });
+    const failure = new Error('fallback failed');
+    pty.kill.mockImplementation(() => {
+      throw new Error('kill failed');
+    });
+    const manager = new TerminalManager({
+      ptyFactory: () => pty,
+      terminate: async () => {
+        throw failure;
+      }
+    });
+    const terminal = manager.open();
+    let settled = false;
+    const closing = manager.close(terminal.id).catch((error: unknown) => {
+      settled = true;
+      return error;
+    });
+    try {
+      await setImmediate();
+      expect(settled).toBe(false);
+      release();
+      expect(await closing).toBe(failure);
+    } finally {
+      release();
+      await closing;
+      await manager.shutdown();
+    }
+  });
+
+  it('joins every active close before shutdown reports a sibling failure', async () => {
+    let release!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow = Object.assign(new RetainedPty(), { closed });
+    const broken = new RetainedPty();
+    const failure = new Error('termination failed');
+    broken.kill.mockImplementation(() => {
+      throw new Error('kill failed');
+    });
+    let index = 0;
+    const manager = new TerminalManager({
+      ptyFactory: () => (index++ === 0 ? broken : slow),
+      terminate: async () => {
+        throw failure;
+      }
+    });
+    manager.open();
+    manager.open();
+    let settled = false;
+    const shuttingDown = manager.shutdown().catch((error: unknown) => {
+      settled = true;
+      return error;
+    });
+    try {
+      await setImmediate();
+      expect(settled).toBe(false);
+      release();
+      expect(await shuttingDown).toBe(failure);
+    } finally {
+      release();
+      await shuttingDown;
+    }
+  });
+
   it.each(['single', 'aggregate', 'cause'] as const)(
     'does not retain native payloads through replayable close errors (%s)',
     async (kind) => {

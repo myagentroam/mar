@@ -81,6 +81,8 @@ jobs:
           test/unit/node-runtime-database.test.ts
           test/unit/node-process-lock.test.ts
           test/unit/node-terminal-native.test.ts
+          test/unit/terminal-pty.test.ts
+          test/unit/terminal-resource-lifecycle.test.ts
           test/unit/terminal-posix-lifecycle.test.ts
           test/unit/git-execution-integration.test.ts
           test/unit/macos-native-integration.test.ts
