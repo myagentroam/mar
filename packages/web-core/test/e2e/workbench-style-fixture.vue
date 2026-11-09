@@ -375,6 +375,18 @@ const surfacePage = shallowReactive({
   mobileWorkspaceSurface: 'conversation'
 });
 if (workspaceRecoveryFixture) surfacePage.workspaceHost = { connected: true };
+const offlineSurfacePage = {
+  application: surfacePage,
+  aside: surfacePage,
+  files: { mountSurface() {}, unmountSurface() {} },
+  hosted: surfacePage,
+  identity: {},
+  layout: surfacePage,
+  notifications: surfacePage.workbenchNotificationService,
+  registration: {},
+  resources: surfacePage,
+  selection: surfacePage
+};
 if (composerFixture) {
   const originalFetch = window.fetch;
   window.fetch = (input, init) => {
@@ -555,7 +567,7 @@ if (composerFixture) {
   </section>
   <Surface
     v-else-if="composerFixture || offlineFixture || workspaceRecoveryFixture"
-    :page="surfacePage as never"
+    :page="(offlineFixture ? offlineSurfacePage : surfacePage) as never"
   />
   <main v-else>
     <section v-if="!inspectorFixture" aria-label="Offline workspace" class="surface-fixture">

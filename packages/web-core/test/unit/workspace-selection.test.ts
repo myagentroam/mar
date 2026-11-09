@@ -301,6 +301,24 @@ describe('Workspace-only foreground selection', () => {
     expect(f.service.loading.value).toBe(false);
   });
 
+  it.each([true, false])(
+    'only suppresses an offline catalog failure when the host state already covers it (available=%s)',
+    async (available) => {
+      const f = fixture();
+      const pending = deferred<{ workspaces: Workspace[] }>();
+      f.request.mockReturnValue(pending.promise);
+      await f.service.select(target());
+      f.isHostAvailable.mockReturnValue(available);
+      const error = new ApiError('NODE_OFFLINE', 'The Node is offline.');
+      pending.reject(error);
+      await vi.waitFor(() => expect(f.service.loading.value).toBe(false));
+      expect(f.workspaceTarget.value).toEqual(target());
+      expect(f.invalidateWorkspace).not.toHaveBeenCalled();
+      if (available) expect(f.notice).toHaveBeenCalledWith(expect.any(String), 'error', error);
+      else expect(f.notice).not.toHaveBeenCalled();
+    }
+  );
+
   it.each(['FORBIDDEN', 'WORKSPACE_NOT_FOUND', 'REQUEST_FAILED_403', 'REQUEST_FAILED_404'])(
     'invalidates inaccessible content on %s',
     async (code) => {
