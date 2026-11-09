@@ -530,6 +530,56 @@ describe('MAR Agent hosted conversation runtime', () => {
     ).rejects.toThrow('HOSTED_CONVERSATION_HISTORY_CURSOR_INVALID');
   });
 
+  it('visits multi-page history linearly while keeping Turn order and the older-page boundary', async () => {
+    let eventVisits = 0;
+    const entries = Array.from({ length: 20 }, (_, index) => {
+      const entry = historyEntries(index + 1)[1]!;
+      return {
+        ...entry,
+        get event() {
+          eventVisits++;
+          return entry.event!;
+        }
+      };
+    });
+    const close = vi.fn(async () => undefined);
+    const history = vi.fn(async (_sessionId: string, input: { cursor?: string }) => {
+      const before = input.cursor === undefined ? Infinity : Number(input.cursor);
+      const entry = entries.findLast((candidate) => candidate.sequence < before);
+      return {
+        entries: entry === undefined ? [] : [entry],
+        ...(entry === undefined || entry === entries[0]
+          ? {}
+          : { nextCursor: String(entry.sequence) })
+      };
+    });
+    const runtime = new MarAgentHostedConversationRuntime({
+      openCatalog: vi.fn(async () => ({ history, close })) as never
+    });
+    const input = {
+      conversationId: 'conversation-1',
+      sessionId: 'session-1',
+      homeDirectory: '/private/home',
+      limit: 10
+    };
+    const recent = await runtime.history(input);
+    const recentTurns = recent.turns.map((turn) => conversationTurnSchema.parse(turn));
+    expect(recentTurns.map((turn) => turn.id)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `turn-${index + 11}`)
+    );
+    expect(recentTurns.every((turn) => turn.status === 'SUCCEEDED')).toBe(true);
+    // Bound traversal work, not elapsed time or a particular projection call shape.
+    expect(eventVisits).toBeLessThanOrEqual(history.mock.calls.length * 4);
+    expect(close).toHaveBeenCalledOnce();
+
+    const older = await runtime.history({ ...input, limit: 2, cursor: recent.nextCursor! });
+    expect(older.turns.map((turn) => conversationTurnSchema.parse(turn).id)).toEqual([
+      'turn-9',
+      'turn-10'
+    ]);
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
   it('rolls back only the assigned Session in its isolated HOME and closes the catalog', async () => {
     const rollback = vi.fn(async () => ({
       id: 'session-1',
