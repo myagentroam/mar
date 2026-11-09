@@ -642,6 +642,24 @@ describe('Workspace Git service', () => {
     expect(service.changesRefreshing.value).toBe(false);
   });
 
+  it('clears a failed HTTP read through a recovered Watch snapshot without another GET', async () => {
+    const error = new Error('Changes read failed');
+    const { service, request } = createGitHarness(async () => {
+      throw error;
+    });
+    await service.loadChanges();
+    expect(service.changesError.value).toBe(true);
+    expect(service.changesFailureCause.value).toBe(error);
+    expect(request).toHaveBeenCalledOnce();
+
+    const snapshot = localChanges('recovered.txt');
+    expect(service.applyWatch(snapshot, 1)).toBe(true);
+    expect(service.changesError.value).toBe(false);
+    expect(service.changesFailureCause.value).toBeUndefined();
+    expect(service.visibleChanges.value[0]?.path).toBe('recovered.txt');
+    expect(request).toHaveBeenCalledOnce();
+  });
+
   it('retains healthy repository tracking beside partial failures without duplicating grouped worktrees', async () => {
     const repositoryError = {
       code: 'GIT_REPOSITORY_UNAVAILABLE',

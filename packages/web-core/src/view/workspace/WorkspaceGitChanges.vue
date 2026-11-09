@@ -69,8 +69,8 @@ const hasRefreshButton = computed(() =>
 function retryRead(): void {
   if (changesLoading.value) return;
   keepRetryControl.value = true;
-  if (props.service.changesError.value) void props.service.retryChanges();
-  else emit('retryWatch');
+  if (props.watchStatus === 'failed') emit('retryWatch');
+  else if (props.service.changesError.value) void props.service.retryChanges();
 }
 const CHANGE_RENDER_BATCH = 200;
 const changeRenderLimit = ref(CHANGE_RENDER_BATCH);

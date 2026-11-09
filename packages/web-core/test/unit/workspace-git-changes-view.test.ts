@@ -246,6 +246,55 @@ it.each(['http', 'watch'] as const)(
   }
 );
 
+it.each(['ready', 'failed'] as const)(
+  'prioritizes Watch recovery for simultaneous failures when the retry becomes %s',
+  async (status) => {
+    const service = gitServiceFixture();
+    service.changesError.value = true;
+    const retryWatch = vi.fn();
+    const props = shallowReactive({
+      service,
+      target: { nodeId: 'node', workspaceId: 'workspace' },
+      watchStatus: 'failed' as WorkspaceWatchTopicStatus,
+      onRetryWatch: retryWatch
+    });
+    retryWatch.mockImplementation(() => {
+      props.watchStatus = 'loading';
+    });
+    const view = renderComponent(WorkspaceGitChanges, props);
+    try {
+      await nextTick();
+      const retry = view
+        .findAll('ElButton')
+        .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))!;
+      await trigger(retry, 'onClick');
+      expect(props.onRetryWatch).toHaveBeenCalledOnce();
+      expect(service.retryChanges).not.toHaveBeenCalled();
+      expect(retry.props['aria-busy']).toBe(true);
+      await trigger(retry, 'onClick');
+      expect(props.onRetryWatch).toHaveBeenCalledOnce();
+
+      props.watchStatus = status;
+      if (status === 'ready') service.changesError.value = false;
+      await nextTick();
+      if (status === 'ready') {
+        expect(view.findAll('ElButton').includes(retry)).toBe(false);
+      } else {
+        expect(view.findAll('ElButton').includes(retry)).toBe(true);
+        expect(retry.props['aria-busy']).toBeUndefined();
+        expect(props.onRetryWatch).toHaveBeenCalledOnce();
+        await trigger(retry, 'onClick');
+        expect(props.onRetryWatch).toHaveBeenCalledTimes(2);
+        expect(retry.props['aria-busy']).toBe(true);
+      }
+      expect(service.retryChanges).not.toHaveBeenCalled();
+      expect(service.loadChanges).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  }
+);
+
 describe.each(['zh-CN', 'en-US'] as const)('Git changes in %s', (locale) => {
   it('renders Git worktree status in the selected locale', async () => {
     localePreferenceService().setLocale(locale);
