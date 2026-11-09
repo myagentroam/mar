@@ -6,6 +6,15 @@ const dist = resolve(root, 'mar-node/dist');
 const navigation = resolve(dist, 'code-navigation');
 const cli = resolve(dist, 'marctl');
 
+await cp(
+  resolve(root, 'mar-node/src/terminal-pty-host.mjs'),
+  resolve(dist, 'terminal-pty-host.mjs')
+);
+await cp(
+  resolve(root, 'mar-node/src/terminal-pty-tree.mjs'),
+  resolve(dist, 'terminal-pty-tree.mjs')
+);
+
 await mkdir(navigation, { recursive: true });
 await cp(resolve(root, 'packages/code-navigation/dist'), navigation, {
   recursive: true,

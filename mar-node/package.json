@@ -6,6 +6,8 @@
   "type": "module",
   "files": [
     "dist/**/*.js",
+    "dist/terminal-pty-host.mjs",
+    "dist/terminal-pty-tree.mjs",
     "dist/marctl/**/*.mjs",
     "dist/marctl/**/*.cjs",
     "dist/marctl/package.json",

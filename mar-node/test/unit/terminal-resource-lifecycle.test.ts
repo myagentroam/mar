@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { setImmediate } from 'node:timers/promises';
 import { queryObjects } from 'node:v8';
 import { TerminalManager, type TerminalPty, type TerminalPlatform } from '../../src/terminal.js';
+import { TerminalPtyPool } from '../../src/terminal-pty-pool.js';
 
 class RetainedPty implements TerminalPty {
   readonly data = new Set<(data: string) => void>();
@@ -52,6 +53,122 @@ function fixture(platform: TerminalPlatform = 'win32', exitOnSubscribe = false) 
 }
 
 describe('terminal resource lifecycle', () => {
+  it.each([false, true])(
+    'joins the standby in every concurrent shutdown caller (failed=%s)',
+    async (failed) => {
+      let release!: () => void;
+      const failure = new Error('standby close failed');
+      const closed = new Promise<void>((resolve, reject) => {
+        release = () => (failed ? reject(failure) : resolve());
+      });
+      const warmup = vi.spyOn(TerminalPtyPool.prototype, 'warmup').mockResolvedValue();
+      const close = vi.spyOn(TerminalPtyPool.prototype, 'close').mockReturnValue(closed);
+      const manager = new TerminalManager();
+      let settled = 0;
+      const observe = (promise: Promise<void>) =>
+        promise.then(
+          () => {
+            settled++;
+          },
+          (error: unknown) => {
+            settled++;
+            throw error;
+          }
+        );
+      let results: Promise<PromiseSettledResult<void>[]> | undefined;
+      try {
+        await manager.warmup();
+        results = Promise.allSettled([observe(manager.shutdown()), observe(manager.shutdown())]);
+        await setImmediate();
+        expect(settled).toBe(0);
+        release();
+        expect(await results).toEqual(
+          Array.from({ length: 2 }, () =>
+            failed
+              ? { status: 'rejected', reason: failure }
+              : { status: 'fulfilled', value: undefined }
+          )
+        );
+      } finally {
+        release();
+        await results;
+        await manager.shutdown().catch(() => undefined);
+        warmup.mockRestore();
+        close.mockRestore();
+      }
+    }
+  );
+
+  it('still joins the physical host when both kill and fallback fail', async () => {
+    let release!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pty = Object.assign(new RetainedPty(), { closed });
+    const failure = new Error('fallback failed');
+    pty.kill.mockImplementation(() => {
+      throw new Error('kill failed');
+    });
+    const manager = new TerminalManager({
+      ptyFactory: () => pty,
+      terminate: async () => {
+        throw failure;
+      }
+    });
+    const terminal = manager.open();
+    let settled = false;
+    const closing = manager.close(terminal.id).catch((error: unknown) => {
+      settled = true;
+      return error;
+    });
+    try {
+      await setImmediate();
+      expect(settled).toBe(false);
+      release();
+      expect(await closing).toBe(failure);
+    } finally {
+      release();
+      await closing;
+      await manager.shutdown();
+    }
+  });
+
+  it('joins every active close before shutdown reports a sibling failure', async () => {
+    let release!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow = Object.assign(new RetainedPty(), { closed });
+    const broken = new RetainedPty();
+    const failure = new Error('termination failed');
+    broken.kill.mockImplementation(() => {
+      throw new Error('kill failed');
+    });
+    let index = 0;
+    const manager = new TerminalManager({
+      ptyFactory: () => (index++ === 0 ? broken : slow),
+      terminate: async () => {
+        throw failure;
+      }
+    });
+    manager.open();
+    manager.open();
+    let settled = false;
+    const shuttingDown = manager.shutdown().catch((error: unknown) => {
+      settled = true;
+      return error;
+    });
+    try {
+      await setImmediate();
+      expect(settled).toBe(false);
+      release();
+      expect(await shuttingDown).toBe(failure);
+    } finally {
+      release();
+      await shuttingDown;
+    }
+  });
+
   it.each(['single', 'aggregate', 'cause'] as const)(
     'does not retain native payloads through replayable close errors (%s)',
     async (kind) => {
