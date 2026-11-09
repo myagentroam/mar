@@ -3,6 +3,7 @@ import { setImmediate } from 'node:timers/promises';
 import { queryObjects } from 'node:v8';
 import { TerminalManager, type TerminalPty, type TerminalPlatform } from '../../src/terminal.js';
 import { TerminalPtyPool } from '../../src/terminal-pty-pool.js';
+import * as operational from '../../src/operational.js';
 
 class RetainedPty implements TerminalPty {
   readonly data = new Set<(data: string) => void>();
@@ -53,6 +54,101 @@ function fixture(platform: TerminalPlatform = 'win32', exitOnSubscribe = false) 
 }
 
 describe('terminal resource lifecycle', () => {
+  it.each([
+    ['idle', false],
+    ['idle', true],
+    ['capacity', false],
+    ['capacity', true]
+  ] as const)(
+    'handles %s background cleanup failure (logging throws: %s)',
+    async (source, loggingThrows) => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const log = vi.spyOn(operational, 'nodeLog').mockImplementation(() => {
+        if (loggingThrows) throw new Error('LOG_STORAGE_FAILED');
+      });
+      const failure = new Error('native cleanup failed (private fixture context)');
+      let failClose!: () => void;
+      const closed = new Promise<void>((_resolve, reject) => {
+        failClose = () => reject(failure);
+      });
+      void closed.catch(() => undefined);
+      const pty = Object.assign(new RetainedPty(), { closed });
+      let created = 0;
+      let timestamp = 0;
+      const manager = new TerminalManager({
+        now: () => timestamp,
+        idleTimeoutMs: 1_000,
+        maxTerminals: 1,
+        maxTerminalsPerWorkspace: 1,
+        profiles: [
+          { id: 'default', label: 'Fixture', shell: 'fixture', args: [], isDefault: true }
+        ],
+        ptyFactory: () => (created++ === 0 ? pty : new RetainedPty())
+      });
+      try {
+        const terminal = manager.open();
+        if (source === 'idle') {
+          timestamp = 1_000;
+          await vi.advanceTimersByTimeAsync(1_000);
+        } else {
+          const replacement = manager.open();
+          expect(manager.get(replacement.id).state).toBe('RUNNING');
+        }
+        failClose();
+        // Let Node process the rejection too, not only the cleanup's microtasks.
+        await setImmediate();
+        expect(log).toHaveBeenCalledExactlyOnceWith('terminal.cleanup.failed', {
+          source,
+          errorCode: 'TERMINAL_CLEANUP_FAILED',
+          ...(source === 'capacity' ? { terminalId: terminal.id } : {})
+        });
+        expect(manager.get(terminal.id).state).toBe('CLOSED');
+        expect(pty.data.size + pty.exits.size).toBe(0);
+        const replacement = manager.open();
+        expect(manager.get(replacement.id).state).toBe('RUNNING');
+        await setImmediate();
+        expect(log).toHaveBeenCalledTimes(1);
+      } finally {
+        failClose();
+        await manager.shutdown().catch(() => undefined);
+        log.mockRestore();
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it.each(['close', 'shutdown'] as const)(
+    'preserves explicit %s cleanup rejection without background logging',
+    async (operation) => {
+      const log = vi.spyOn(operational, 'nodeLog').mockImplementation(() => undefined);
+      const failure = new Error('native cleanup failed');
+      let failClose!: () => void;
+      const closed = new Promise<void>((_resolve, reject) => {
+        failClose = () => reject(failure);
+      });
+      void closed.catch(() => undefined);
+      const pty = Object.assign(new RetainedPty(), { closed });
+      const manager = new TerminalManager({
+        profiles: [
+          { id: 'default', label: 'Fixture', shell: 'fixture', args: [], isDefault: true }
+        ],
+        ptyFactory: () => pty
+      });
+      try {
+        const terminal = manager.open();
+        const result = operation === 'close' ? manager.close(terminal.id) : manager.shutdown();
+        const rejection = expect(result).rejects.toBe(failure);
+        failClose();
+        await rejection;
+        expect(log).not.toHaveBeenCalled();
+      } finally {
+        failClose();
+        await manager.shutdown().catch(() => undefined);
+        log.mockRestore();
+      }
+    }
+  );
+
   it.each([false, true])(
     'joins the standby in every concurrent shutdown caller (failed=%s)',
     async (failed) => {
