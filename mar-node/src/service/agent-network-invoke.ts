@@ -84,7 +84,10 @@ export function executionAgentActor(input: {
       marAgentModel: captured.model,
       marAgentModels: captured.models,
       marAgentCompact: captured.compact,
-      marAgentRuntimeScopeId: captured.runtimeScopeId
+      marAgentRuntimeScopeId: captured.runtimeScopeId,
+      ...(typeof captured.searchBackendAvailable === 'boolean'
+        ? { searchBackendAvailable: captured.searchBackendAvailable }
+        : {})
     }
   };
 }
@@ -204,7 +207,10 @@ export function agentNetworkExecutionCommand(input: {
             marAgentModel: data.marAgentModel,
             marAgentModels: data.marAgentModels,
             marAgentCompact: data.marAgentCompact,
-            marAgentRuntimeScopeId: data.marAgentRuntimeScopeId
+            marAgentRuntimeScopeId: data.marAgentRuntimeScopeId,
+            ...(typeof data.searchBackendAvailable === 'boolean'
+              ? { searchBackendAvailable: data.searchBackendAvailable }
+              : {})
           },
           ...(usageGrant.success ? { usageGrant: usageGrant.data } : {}),
           ...(typeof data.personalInstructions === 'string'
@@ -255,7 +261,10 @@ export function agentNetworkExecutionCommand(input: {
               marAgentModel: resources.marAgentModel,
               marAgentModels: resources.marAgentModels,
               marAgentCompact: resources.marAgentCompact,
-              marAgentRuntimeScopeId: resources.marAgentRuntimeScopeId
+              marAgentRuntimeScopeId: resources.marAgentRuntimeScopeId,
+              ...(typeof resources.searchBackendAvailable === 'boolean'
+                ? { searchBackendAvailable: resources.searchBackendAvailable }
+                : {})
             }
           };
     return invokeAgentNetwork(

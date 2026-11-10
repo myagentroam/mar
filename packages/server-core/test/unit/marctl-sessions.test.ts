@@ -30,6 +30,7 @@ async function fixture(
     marAgentRuntimeModels?: Pick<MarAgentRuntimeModelService, 'prepare'>;
     marAgentModels?: MarAgentModelService;
     audits?: ConversationAuditObserver;
+    searchBackendAvailable?: () => boolean;
   } = {}
 ) {
   const credentials = new MarctlUserCredentials(
@@ -106,6 +107,9 @@ async function fixture(
       : { marAgentRuntimeModels: options.marAgentRuntimeModels }),
     ...(options.marAgentModels === undefined ? {} : { marAgentModels: options.marAgentModels }),
     ...(options.audits === undefined ? {} : { audits: options.audits }),
+    ...(options.searchBackendAvailable === undefined
+      ? {}
+      : { searchBackendAvailable: options.searchBackendAvailable }),
     ownsWorkbenchConnection
   });
   const headers = { authorization: `Bearer ${token}` };
@@ -416,6 +420,44 @@ describe('Workspace-bound marctl agents', () => {
       });
       expect(network[2]).not.toHaveProperty('marAgentModel');
       expect(response.body).not.toContain('marAgentModel');
+    }
+  );
+
+  it.each([undefined, false, true])(
+    'projects search availability %s to trusted execution resources without changing the default',
+    async (available) => {
+      const prepare = vi.fn(async () => ({
+        runtimeScopeId: 'scope',
+        model: { id: 'eligible' },
+        models: [{ id: 'eligible' }]
+      }));
+      const f = await fixture(true, false, {
+        executionSource: 'parent',
+        session: { runner: 'codex', modelId: 'codex-model' },
+        marAgentRuntimeModels: { prepare } as unknown as Pick<
+          MarAgentRuntimeModelService,
+          'prepare'
+        >,
+        ...(available === undefined ? {} : { searchBackendAvailable: () => available })
+      });
+      const response = await f.app.inject({
+        method: 'POST',
+        url: '/api/marctl/sessions',
+        headers: f.headers,
+        payload: {
+          action: 'network',
+          command: {
+            operation: 'start',
+            input: { content: 'work', runner: 'mar-agent', modelId: 'eligible' }
+          }
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      const network = f.requestNode.mock.calls.find((call) => call[1] === 'agent.network')!;
+      const resources = network[3]?.marctlExecutionResources;
+      if (available === undefined) expect(resources).not.toHaveProperty('searchBackendAvailable');
+      else expect(resources).toHaveProperty('searchBackendAvailable', available);
+      expect(network[2]).not.toHaveProperty('searchBackendAvailable');
     }
   );
 
@@ -1425,6 +1467,36 @@ describe('Workspace-bound marctl agents', () => {
         expect.objectContaining({ __suppressNotifications: true }),
         expect.any(Object)
       );
+    }
+  );
+
+  it.each(['start', 'send'] as const)(
+    'forwards search capability to terminal caller %s',
+    async (action) => {
+      for (const available of [undefined, false]) {
+        const { app, headers, requestNode } = await fixture(true, true, {
+          ...(available === undefined ? {} : { searchBackendAvailable: () => available })
+        });
+        const result = await app.inject({
+          method: 'POST',
+          url: '/api/marctl/sessions',
+          headers,
+          payload: {
+            action,
+            content: 'fixture',
+            clientMessageId: `input-${action}`,
+            ...(action === 'start'
+              ? { runner: 'codex' }
+              : { sessionId: 'session-1', deliveryIntent: 'QUEUE' })
+          }
+        });
+        expect(result.statusCode).toBe(200);
+        const operation = action === 'start' ? 'session.start' : 'session.message';
+        const payload = requestNode.mock.calls.find((call) => call[1] === operation)?.[2];
+        expect(payload).toBeDefined();
+        if (available === undefined) expect(payload).not.toHaveProperty('searchBackendAvailable');
+        else expect(payload).toHaveProperty('searchBackendAvailable', false);
+      }
     }
   );
 

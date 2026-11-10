@@ -78,6 +78,55 @@ describe('Supervisor upgrade recovery', () => {
       .mockResolvedValueOnce({ code: 0, signalled: false });
   });
 
+  it.each([
+    ['disconnect', false, 1],
+    ['message', false, 0],
+    ['message', true, 1]
+  ] as const)('retains %s shutdown status when forced=%s', async (event, forced, expected) => {
+    vi.stubEnv('MAR_QUICK_START_OWNER', '1');
+    const oldExitCode = process.exitCode;
+    try {
+      mocks.child.mockReset();
+      mocks.child.mockImplementation(async () => {
+        if (event === 'disconnect') process.emit('disconnect');
+        else process.emit('message', { type: 'node-quick-start-stop' }, undefined);
+        return { code: 0, signalled: true, forced };
+      });
+      await superviseNode('/test/config.json', '/server/main.js');
+      expect(process.exitCode).toBe(expected);
+    } finally {
+      process.exitCode = oldExitCode;
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('keeps the bundled entrypoint and never installs an upgrade for Quick Start', async () => {
+    vi.stubEnv('MAR_QUICK_START_OWNER', '1');
+    const oldExitCode = process.exitCode;
+    try {
+      mocks.child.mockReset();
+      mocks.child.mockImplementationOnce(async (entry, _config, accept) => {
+        expect(entry).toBe('/server/node/main.js');
+        expect(
+          await accept({
+            attemptId: '11111111-1111-4111-8111-111111111111',
+            targetVersion: '1.2.3',
+            credential: 'x'.repeat(43)
+          })
+        ).toBe(false);
+        return { code: 75, signalled: false };
+      });
+      await superviseNode('/test/config.json', '/server/node/main.js');
+      expect(process.exitCode).toBe(1);
+      expect(mocks.readFile).not.toHaveBeenCalled();
+      expect(mocks.spawn).not.toHaveBeenCalled();
+      expect(mocks.writeFile).not.toHaveBeenCalled();
+    } finally {
+      process.exitCode = oldExitCode;
+      vi.unstubAllEnvs();
+    }
+  });
+
   it.each(['resolve', 'reject', 'timeout'] as const)(
     'does not replace an installer before its process tree is reclaimed (%s)',
     async (outcome) => {
@@ -108,6 +157,8 @@ describe('Supervisor upgrade recovery', () => {
       for (let i = 0; i < 20 && mocks.spawn.mock.calls.length === 0; i++) await Promise.resolve();
       expect(mocks.spawn).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(15 * 60_000);
+      expect(mocks.terminate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
       child.emit('exit', null);
       await Promise.resolve();
       expect(settled).toBe(false);

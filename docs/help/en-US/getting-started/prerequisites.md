@@ -1,6 +1,6 @@
 ---
 title: Before You Deploy
-lastUpdated: 2026-10-11
+lastUpdated: 2026-11-10
 ---
 
 # Before You Deploy
@@ -29,4 +29,4 @@ If an Agent works in an interactive shell but not as a service, the service acco
 
 Next: [Deploy Server and Web](server-installation.md).
 
-All deployments require a valid real host UUID. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. Community and Enterprise share this requirement.
+Formal deployments require a valid real host UUID in both Community and Enterprise states. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native formal deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. The local-only [npm Quick Start](npm-quick-start.md) does not require a UUID and cannot be activated.

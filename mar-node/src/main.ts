@@ -25,6 +25,25 @@ const browserPath = readOption(args, '--browser-cache');
 if (browserPath !== undefined) process.env['PLAYWRIGHT_BROWSERS_PATH'] = browserPath;
 
 if (command === 'run') {
+  let earlyQuickStop = false;
+  let quickStop: (() => void) | undefined;
+  process.on('message', (message: unknown) => {
+    if (
+      typeof message !== 'object' ||
+      message === null ||
+      !('type' in message) ||
+      message.type !== 'node-quick-start-stop'
+    )
+      return;
+    earlyQuickStop = true;
+    quickStop?.();
+  });
+  if (process.env['MAR_QUICK_START_OWNER'] === '1') {
+    process.once('disconnect', () => {
+      earlyQuickStop = true;
+      quickStop?.();
+    });
+  }
   const nodeConfig = await loadNodeConfig(config);
   let releaseOwner: () => void;
   try {
@@ -65,7 +84,8 @@ if (command === 'run') {
     );
   };
   const supervisorHandoff = new SupervisorUpgradeHandoff();
-  const supportsProgress = await supervisorHandoff.handshake();
+  const supportsProgress =
+    process.env['MAR_QUICK_START_OWNER'] !== '1' && (await supervisorHandoff.handshake());
   if (!supportsProgress) supervisorHandoff.close();
   connector = new NodeConnector({
     configPath: config,
@@ -76,8 +96,10 @@ if (command === 'run') {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => shutdown());
   }
+  quickStop = () => shutdown();
   try {
-    await connector.start();
+    if (earlyQuickStop) shutdown();
+    else await connector.start();
   } catch (error) {
     nodeLog('node.start.failed', { code: safeErrorCode(error, 'NODE_START_FAILED') });
     shutdown(false, 1);

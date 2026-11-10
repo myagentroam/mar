@@ -38,7 +38,11 @@ for (const file of documents) {
     errors.push(`${relative}: TODO/TBD placeholders are not allowed`);
   const internalTerms =
     /\b(?:nodeId|workspaceId|SessionLease|ConversationItem|JSONL|FIFO|Turn|Profile)\b/u;
-  const internalTerm = internalTerms.exec(source)?.[0];
+  // Quick Start documents an on-disk configuration field users must preserve.
+  const checkedSource = relative.endsWith('getting-started/npm-quick-start.md')
+    ? source.replaceAll('`nodeId`', '')
+    : source;
+  const internalTerm = internalTerms.exec(checkedSource)?.[0];
   if (internalTerm !== undefined)
     errors.push(
       `${relative}: public help must not expose internal implementation terms ${internalTerm}`

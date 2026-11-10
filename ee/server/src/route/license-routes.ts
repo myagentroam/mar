@@ -14,12 +14,17 @@ export function registerLicenseRoutes(input: {
   readonly database: MysqlServerDatabase;
   readonly licenses: LicenseService;
   readonly publicOrigin: string | undefined;
+  readonly activationAvailable?: boolean;
 }): void {
   const { app, database, licenses, publicOrigin } = input;
   app.get('/api/license', async (request, reply) => {
     if (protectedManagementAdmin(database, request, reply) === undefined) return;
-    return reply.header('cache-control', 'private, no-store').send(await licenses.status());
+    return reply.header('cache-control', 'private, no-store').send({
+      ...(await licenses.status()),
+      activationAvailable: input.activationAvailable !== false
+    });
   });
+  if (input.activationAvailable === false) return;
   app.get('/api/license/request-code', async (request, reply) => {
     if (protectedManagementAdmin(database, request, reply) === undefined) return;
     try {

@@ -49,6 +49,7 @@ export const webFetchToolDefinition: ClientToolDefinition = {
 
 export function createWebToolsExtensions(input: {
   enabled: boolean;
+  searchBackendAvailable?: boolean;
   hostedWebSearch?: boolean;
   hostedSearchModelIds?: readonly string[];
   webSearch?: (
@@ -59,7 +60,9 @@ export function createWebToolsExtensions(input: {
 }): LocalAgentExecutionExtensions {
   const tools = input.enabled
     ? [
-        ...((input.hostedSearchModelIds !== undefined || !input.hostedWebSearch) && input.webSearch
+        ...(input.searchBackendAvailable !== false &&
+        (input.hostedSearchModelIds !== undefined || !input.hostedWebSearch) &&
+        input.webSearch
           ? [webSearchToolDefinition]
           : []),
         ...(input.webFetch ? [webFetchToolDefinition] : [])

@@ -1,6 +1,11 @@
 {
   "name": "@myagentroam/protocol",
-  "version": "0.13.3",
+  "version": "0.13.4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "packages/protocol"
+  },
   "description": "Shared runtime protocol schemas for MyAgentRoam.",
   "license": "Apache-2.0",
   "type": "module",

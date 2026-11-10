@@ -1,0 +1,20 @@
+const SEARCH_SETUP_CODES = new Set([
+  'QUICK_START_SEARCH_PLATFORM_UNSUPPORTED',
+  'QUICK_START_SEARCH_TOOLS_MISSING',
+  'QUICK_START_SEARCH_COMPONENT_NOT_OWNED',
+  'QUICK_START_SEARCH_COMPONENT_INVALID',
+  'QUICK_START_SEARCH_INSTALL_FAILED',
+  'QUICK_START_SEARCH_NOT_PREPARED',
+  'QUICK_START_SEARCH_NOT_READY',
+  'QUICK_START_SEARCH_STOP_FAILED',
+  'QUICK_START_SEARCH_FORCED_STOP',
+  'QUICK_START_DOWNLOAD_FAILED',
+  'QUICK_START_DOWNLOAD_INVALID'
+]);
+
+/** Exposes only stable local classifications, never arbitrary child output or URLs. */
+export function searchSetupFailureCode(error: unknown): string {
+  return error instanceof Error && SEARCH_SETUP_CODES.has(error.message)
+    ? error.message
+    : 'QUICK_START_SEARCH_INSTALL_FAILED';
+}

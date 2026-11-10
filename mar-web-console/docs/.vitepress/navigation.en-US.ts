@@ -3,6 +3,7 @@ export const enSidebar = [
     text: 'Getting Started',
     items: [
       { text: 'What Is MyAgentRoam?', link: '/en-US/getting-started/overview' },
+      { text: 'Local npm Quick Start', link: '/en-US/getting-started/npm-quick-start' },
       { text: 'Before You Deploy', link: '/en-US/getting-started/prerequisites' },
       { text: 'Deploy Server and Web', link: '/en-US/getting-started/server-installation' },
       { text: 'First Sign-in and Password Change', link: '/en-US/getting-started/first-login' },

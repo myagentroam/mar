@@ -1,6 +1,6 @@
 ---
 title: 部署前准备
-lastUpdated: 2026-10-11
+lastUpdated: 2026-11-10
 ---
 
 # 部署前准备
@@ -32,4 +32,4 @@ lastUpdated: 2026-10-11
 
 下一步：[部署 Server 与 Web](server-installation.md)。
 
-所有部署都要求有效的真实主机 UUID。容器必须将宿主 `/sys/class/dmi/id/product_uuid` 只读挂载到 `/license-host/product_uuid`，源文件必须存在；原生运行可用 `MAR_LICENSE_HOST_PATH` 指定真实 UUID 文件。社区与企业使用相同要求。
+正式部署的社区与企业状态都要求有效的真实主机 UUID。容器必须将宿主 `/sys/class/dmi/id/product_uuid` 只读挂载到 `/license-host/product_uuid`，源文件必须存在；原生正式部署可用 `MAR_LICENSE_HOST_PATH` 指定真实 UUID 文件。仅供本机体验的 [npm 快速开始](npm-quick-start.md)无需 UUID，也不支持激活。

@@ -145,6 +145,7 @@ export class HostedConversationRuns {
       readonly userId: number;
       readonly models?: unknown;
       readonly compact?: unknown;
+      readonly searchBackendAvailable?: boolean;
       readonly runtimeScopeId?: string;
       readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
     },
@@ -237,6 +238,9 @@ export class HostedConversationRuns {
         access: 'full-access',
         modelId: selected.id,
         models: networkModels(allowedModels(version, models), version.draft.networkMode),
+        ...(payload.searchBackendAvailable === undefined
+          ? {}
+          : { searchBackendAvailable: payload.searchBackendAvailable }),
         ...(payload.compact === undefined ? {} : { compact: payload.compact }),
         ...(payload.runtimeScopeId === undefined ? {} : { runtimeScopeId: payload.runtimeScopeId }),
         systemInstruction: systemInstruction(version, generatedImagesLogicalPath),

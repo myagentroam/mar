@@ -4,6 +4,55 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { runSupervisedNodeChild } from '../../src/service/supervised-node-child.js';
 
+it('requests a graceful IPC stop and waits for the real child to exit', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mar-supervisor-ipc-stop-'));
+  try {
+    const script = join(directory, 'child.cjs');
+    const ready = join(directory, 'ready');
+    const stopped = join(directory, 'stopped');
+    await writeFile(
+      script,
+      `
+      const fs = require('node:fs');
+      process.on('message', message => {
+        if (message.type === 'node-quick-start-stop') {
+          fs.writeFileSync(${JSON.stringify(stopped)}, 'graceful');
+          process.exit(0);
+        }
+      });
+      setTimeout(() => process.exit(2), 4000);
+      fs.writeFileSync(${JSON.stringify(ready)}, 'ready');
+    `
+    );
+    const controller = new AbortController();
+    const result = runSupervisedNodeChild(
+      script,
+      join(directory, 'config'),
+      async () => false,
+      () => undefined,
+      undefined,
+      controller.signal
+    );
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (
+        await readFile(ready, 'utf8').then(
+          () => true,
+          () => false
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(await readFile(ready, 'utf8')).toBe('ready');
+    controller.abort();
+    expect(await result).toMatchObject({ code: 0, signalled: true });
+    expect(await readFile(stopped, 'utf8')).toBe('graceful');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 10_000);
+
 it('performs the handshake and observes exit with an isolated Node child', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mar-upgrade-child-'));
   try {

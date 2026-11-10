@@ -1,0 +1,35 @@
+/** Locked Linux x64 wheels for the pinned SearXNG and its Granian entrypoint. */
+export const SEARCH_REQUIREMENTS = `annotated-doc==0.0.5
+babel==2.18.0
+blinker==1.9.0
+certifi==2026.10.23
+cffi==2.1.1
+click==8.5.1
+curl-cffi==0.17.0
+flask==3.1.3
+flask-babel==4.0.0
+granian==2.8.7
+isodate==0.7.2
+itsdangerous==2.2.0
+jinja2==3.1.6
+lxml==6.1.3
+markdown-it-py==4.2.0
+markupsafe==3.0.4
+mdurl==0.1.2
+msgspec==0.22.0
+pycparser==3.12
+pygments==2.21.0
+python-dateutil==3.0.0
+pytz==2026.6
+pyyaml==6.0.3
+rich==15.0.0
+setproctitle==1.3.8
+shellingham==1.5.4
+six==1.17.0
+typer==0.27.3
+typing-extensions==4.16.0
+tzdata==2026.6
+valkey==6.1.1
+werkzeug==3.1.9
+whitenoise==6.12.0
+`;

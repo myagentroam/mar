@@ -265,6 +265,7 @@ export function registerMarctlSessionRoutes(
     readonly app: FastifyInstance;
     readonly credentials: MarctlUserCredentials;
     readonly publicOrigin: string | undefined;
+    readonly searchBackendAvailable?: () => boolean;
     readonly authorizedNode: (user: UserNodeAuthorization, nodeId: string) => Promise<boolean>;
     readonly requestNode: (
       nodeId: string,
@@ -459,6 +460,9 @@ export function registerMarctlSessionRoutes(
                   nodeId: scope.nodeId,
                   workspaceId: scope.workspaceId,
                   serverUrl: input.publicOrigin,
+                  ...(input.searchBackendAvailable === undefined
+                    ? {}
+                    : { searchBackendAvailable: input.searchBackendAvailable() }),
                   credentials: input.credentials,
                   instructions: input.personalInstructions,
                   secrets: input.secrets
@@ -529,19 +533,24 @@ export function registerMarctlSessionRoutes(
               return sendError(reply, 400, 'MODEL_ID_REQUIRED');
             if (runner === 'mar-agent' && typeof model === 'string') {
               if (operation === 'start') networkInput.modelId = model;
-              executionResources = await runtimeModelPayload({
-                userId: user.userId,
-                nodeId: scope.nodeId,
-                workspaceId: scope.workspaceId,
-                ...(operation === 'send' ? { sessionId: arguments_.agentId } : {}),
-                selectedModelId: model,
-                ...(input.marAgentModels === undefined
+              executionResources = {
+                ...(await runtimeModelPayload({
+                  userId: user.userId,
+                  nodeId: scope.nodeId,
+                  workspaceId: scope.workspaceId,
+                  ...(operation === 'send' ? { sessionId: arguments_.agentId } : {}),
+                  selectedModelId: model,
+                  ...(input.marAgentModels === undefined
+                    ? {}
+                    : { marAgentModels: input.marAgentModels }),
+                  ...(input.marAgentRuntimeModels === undefined
+                    ? {}
+                    : { marAgentRuntimeModels: input.marAgentRuntimeModels })
+                })),
+                ...(input.searchBackendAvailable === undefined
                   ? {}
-                  : { marAgentModels: input.marAgentModels }),
-                ...(input.marAgentRuntimeModels === undefined
-                  ? {}
-                  : { marAgentRuntimeModels: input.marAgentRuntimeModels })
-              });
+                  : { searchBackendAvailable: input.searchBackendAvailable() })
+              };
             }
           }
           const receipt =

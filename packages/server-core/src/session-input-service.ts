@@ -82,6 +82,7 @@ interface Options {
   readonly personalInstructions?: PersonalInstructionReader;
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
+  readonly searchBackendAvailable?: () => boolean;
   readonly audits?: ConversationAuditObserver;
   /** Legacy Browser commands use Workspace only for preparation and authorization. */
   readonly commandWorkspaceInPayload?: boolean;
@@ -249,6 +250,9 @@ export class SessionInputService {
       credentials: this.options.userCredentials,
       instructions: this.options.personalInstructions,
       serverUrl: this.options.publicOrigin,
+      ...(this.options.searchBackendAvailable === undefined
+        ? {}
+        : { searchBackendAvailable: this.options.searchBackendAvailable() }),
       ...(modelId === undefined
         ? {}
         : {

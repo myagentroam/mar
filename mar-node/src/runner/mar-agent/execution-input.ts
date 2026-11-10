@@ -9,6 +9,7 @@ export interface MarAgentExecutionInput {
   readonly models?: unknown;
   readonly compact?: unknown;
   readonly runtimeScopeId?: unknown;
+  readonly searchBackendAvailable?: unknown;
 }
 
 export function captureMarAgentExecutionInput(
@@ -18,7 +19,8 @@ export function captureMarAgentExecutionInput(
     model: input.marAgentModel,
     models: input.marAgentModels,
     compact: input.marAgentCompact,
-    runtimeScopeId: input.marAgentRuntimeScopeId
+    runtimeScopeId: input.marAgentRuntimeScopeId,
+    searchBackendAvailable: input.searchBackendAvailable
   });
 }
 
@@ -42,6 +44,7 @@ export function resolveMarAgentExecutionInput(
     model: parsed.data,
     models: resolveRunModels(parsed.data, input?.models),
     compact: input?.compact,
+    searchBackendAvailable: input?.searchBackendAvailable !== false,
     ...(typeof input?.runtimeScopeId === 'string' ? { runtimeScopeId: input.runtimeScopeId } : {})
   };
 }

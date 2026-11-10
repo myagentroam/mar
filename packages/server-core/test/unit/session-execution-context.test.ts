@@ -48,11 +48,16 @@ describe('shared execution preparation', () => {
     };
     const first = await prepareSessionExecutionContext(options);
     revision++;
-    const second = await prepareSessionExecutionContext(options);
+    const second = await prepareSessionExecutionContext({
+      ...options,
+      searchBackendAvailable: false
+    });
+    expect(first).not.toHaveProperty('searchBackendAvailable');
     expect(first.secretEnvironment).toMatchObject({ RESOURCE_SECRET: 'resource-1' });
     expect(second).toMatchObject({
       secretEnvironment: { RESOURCE_SECRET: 'resource-2', MAR_CTL_USER_TOKEN: 'delegation-2' },
       personalInstructions: 'instructions-2',
+      searchBackendAvailable: false,
       marAgentModel: { id: 'selected', credential: 'model-2' },
       gitConfiguration: { credentials: [{ id: 'git-2', secret: 'secret-2' }] }
     });

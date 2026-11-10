@@ -1,6 +1,11 @@
 {
   "name": "@myagentroam/computer-runtime-win32-x64",
   "version": "0.10.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "packages/computer-runtime-win32-x64"
+  },
   "description": "Managed Computer Use runtime for Windows x64.",
   "license": "Apache-2.0",
   "os": [

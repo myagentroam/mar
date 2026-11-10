@@ -4,7 +4,7 @@ import type {
   AuthorizationProvider,
   ProductCapabilityProvider
 } from '../product/product-policy.js';
-import { LicenseService } from '../license/license-service.js';
+import { LicenseService, type LicenseStatus } from '../license/license-service.js';
 import { LICENSE_PUBLIC_KEY } from '../license/public-key.js';
 import { registerManagementLicenseGate } from '../license/management-gate.js';
 import { registerLicenseRoutes } from '../route/license-routes.js';
@@ -28,8 +28,48 @@ export function createEnterpriseServerProduct(input: {
     now: input.now,
     ...(input.productUuid === undefined ? {} : { productUuid: input.productUuid })
   });
+  return assembleProduct(input.database, licenses, true);
+}
+
+/** Quick Start has a fixed community policy and cannot activate a license. */
+class QuickStartLicenseService extends LicenseService {
+  override async status(): Promise<LicenseStatus> {
+    return {
+      edition: 'COMMUNITY',
+      state: 'COMMUNITY',
+      reason: null,
+      licenseId: null,
+      enterpriseName: null,
+      expiresAt: null,
+      managementWritable: true
+    };
+  }
+  override requestCode(): never {
+    throw new Error('LICENSE_ACTIVATION_UNAVAILABLE');
+  }
+  override async import(): Promise<never> {
+    throw new Error('LICENSE_ACTIVATION_UNAVAILABLE');
+  }
+}
+
+export function createQuickStartServerProduct(input: {
+  readonly database: MysqlServerDatabase;
+  readonly now: () => number;
+}): EnterpriseServerProduct {
+  const licenses = new QuickStartLicenseService(input.database, LICENSE_PUBLIC_KEY, {
+    now: input.now,
+    productUuid: null
+  });
+  return assembleProduct(input.database, licenses, false);
+}
+
+function assembleProduct(
+  database: MysqlServerDatabase,
+  licenses: LicenseService,
+  activationAvailable: boolean
+): EnterpriseServerProduct {
   const authorization = new AuthorizationService(
-    input.database,
+    database,
     loadPermissionMatrix(),
     async (userId) => (await licenses.capability(userId)).edition === 'COMMUNITY'
   );
@@ -38,8 +78,8 @@ export function createEnterpriseServerProduct(input: {
     authorization,
     capabilities: licenses,
     registerLicenseManagement(app, publicOrigin) {
-      registerManagementLicenseGate(app, licenses, input.database, publicOrigin);
-      registerLicenseRoutes({ app, database: input.database, licenses, publicOrigin });
+      registerManagementLicenseGate(app, licenses, database, publicOrigin);
+      registerLicenseRoutes({ app, database, licenses, publicOrigin, activationAvailable });
     }
   };
 }

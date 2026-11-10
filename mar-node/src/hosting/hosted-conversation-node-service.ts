@@ -1245,6 +1245,7 @@ export class HostedConversationNodeService {
 }
 
 interface HostedRequestPayload {
+  readonly searchBackendAvailable?: boolean;
   readonly usageGrant?: import('@myagentroam/protocol').ModelUsageGrant;
   readonly compact?: unknown;
   readonly data: unknown;
@@ -1268,6 +1269,7 @@ function hostedRequest(raw: unknown): HostedRequestPayload {
     __marAgentModels,
     __marAgentCompact,
     __marAgentRuntimeScopeId,
+    __searchBackendAvailable,
     __workspaceWatchSessionHash,
     __templateDeleted,
     __sourceTemplateId,
@@ -1281,6 +1283,8 @@ function hostedRequest(raw: unknown): HostedRequestPayload {
     throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
   if (__templateDeleted !== undefined && __templateDeleted !== true)
     throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
+  if (__searchBackendAvailable !== undefined && typeof __searchBackendAvailable !== 'boolean')
+    throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
   if (
     __sourceTemplateId !== undefined &&
     (typeof __sourceTemplateId !== 'string' || __sourceTemplateId.length === 0)
@@ -1293,6 +1297,9 @@ function hostedRequest(raw: unknown): HostedRequestPayload {
     throw new Error('HOSTED_CONVERSATION_NOT_AUTHORIZED');
   return {
     data,
+    ...(__searchBackendAvailable === undefined
+      ? {}
+      : { searchBackendAvailable: __searchBackendAvailable }),
     ...(__sourceTemplateId === undefined ? {} : { sourceTemplateId: __sourceTemplateId }),
     ...(__usageGrant === undefined
       ? {}

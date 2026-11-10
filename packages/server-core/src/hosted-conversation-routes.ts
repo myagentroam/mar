@@ -95,6 +95,7 @@ const FILE_CONTENT_QUERY_SCHEMA = z
   .strict();
 const FILE_CONTENT_CHUNK_BYTES = 512 * 1024;
 interface HostedRouteDependencies {
+  readonly searchBackendAvailable?: () => boolean;
   readonly app: FastifyInstance;
   readonly database: SessionLookup;
   readonly templates: ConversationTemplateService;
@@ -176,6 +177,9 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
     )
       throw new Error('CONVERSATION_TEMPLATE_NOT_AUTHORIZED');
     const runtime = await hostedRuntimeModels({
+      ...(input.searchBackendAvailable === undefined
+        ? {}
+        : { searchBackendAvailable: input.searchBackendAvailable() }),
       userId: actor.userId,
       nodeId,
       ...(templateRuntime === undefined ? {} : { workspaceId: templateRuntime.workspaceId }),
@@ -362,6 +366,9 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
         throw new Error('HOSTED_CONVERSATION_INPUT_INVALID');
       const authorized = await authorizeExistingConversation(input, actor, request.params);
       const runtime = await hostedRuntimeModels({
+        ...(input.searchBackendAvailable === undefined
+          ? {}
+          : { searchBackendAvailable: input.searchBackendAvailable() }),
         userId: actor.userId,
         nodeId: request.params.nodeId,
         ...(authorized.workspaceId === undefined ? {} : { workspaceId: authorized.workspaceId }),
@@ -465,6 +472,9 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
       const authorized = await authorizeExistingConversation(input, actor, request.params);
       const requestedModelId = data.modelId ?? authorized.snapshot.conversation.modelId;
       const runtime = await hostedRuntimeModels({
+        ...(input.searchBackendAvailable === undefined
+          ? {}
+          : { searchBackendAvailable: input.searchBackendAvailable() }),
         userId: actor.userId,
         nodeId: request.params.nodeId,
         ...(authorized.workspaceId === undefined ? {} : { workspaceId: authorized.workspaceId }),
@@ -567,6 +577,9 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
       });
       const authorized = await authorizeExistingConversation(input, actor, request.params);
       const runtime = await hostedRuntimeModels({
+        ...(input.searchBackendAvailable === undefined
+          ? {}
+          : { searchBackendAvailable: input.searchBackendAvailable() }),
         userId: actor.userId,
         nodeId: request.params.nodeId,
         ...(authorized.workspaceId === undefined ? {} : { workspaceId: authorized.workspaceId }),

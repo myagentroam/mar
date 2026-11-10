@@ -39,6 +39,7 @@ export function registerSessionRunRoutes(input: {
   readonly personalInstructions?: PersonalInstructionReader;
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
+  readonly searchBackendAvailable?: () => boolean;
   readonly audits?: ConversationAuditObserver;
   readonly publicOrigin: string | undefined;
 }): void {

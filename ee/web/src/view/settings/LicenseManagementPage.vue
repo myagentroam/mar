@@ -17,6 +17,7 @@ interface LicenseStatus {
   enterpriseName: string | null;
   expiresAt: number | null;
   managementWritable: boolean;
+  activationAvailable?: boolean;
 }
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -44,21 +45,23 @@ async function load(): Promise<void> {
   loading.value = true;
   requestCodeLoading.value = true;
   try {
-    const [licenseStatus, generatedRequest] = await Promise.allSettled([
-      props.request<LicenseStatus>('/api/license'),
-      props.request<{ requestCode: string }>('/api/license/request-code')
-    ]);
-    if (licenseStatus.status === 'rejected') throw licenseStatus.reason;
-    status.value = licenseStatus.value;
+    const licenseStatus = await props.request<LicenseStatus>('/api/license');
+    status.value = licenseStatus;
     ready.value = true;
-    if (generatedRequest.status === 'fulfilled') {
-      requestCode.value = generatedRequest.value.requestCode;
-    } else {
+    if (licenseStatus.activationAvailable === false) {
       requestCode.value = '';
-      showMessage(
-        translate('generated.licenseManagementPage.unableToGenerateLicenseRequestCode'),
-        'error'
-      );
+    } else {
+      try {
+        requestCode.value = (
+          await props.request<{ requestCode: string }>('/api/license/request-code')
+        ).requestCode;
+      } catch {
+        requestCode.value = '';
+        showMessage(
+          translate('generated.licenseManagementPage.unableToGenerateLicenseRequestCode'),
+          'error'
+        );
+      }
     }
   } catch (error) {
     showMessage(
@@ -152,7 +155,7 @@ void load();
         <span v-else class="empty-value">-</span>
       </div>
     </div>
-    <div class="license-request">
+    <div v-if="status && status.activationAvailable !== false" class="license-request">
       <div class="section-label">
         {{ translate('generated.licenseManagementPage.licenseRequestCode') }}
       </div>
@@ -181,7 +184,7 @@ void load();
         {{ translate('generated.licenseManagementPage.sendThisCodeToTheLicenseIssuer') }}
       </p>
     </div>
-    <div class="license-import">
+    <div v-if="status && status.activationAvailable !== false" class="license-import">
       <label class="section-label" for="license-document">{{
         translate('generated.licenseManagementPage.licenseDocument')
       }}</label>

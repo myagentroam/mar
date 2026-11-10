@@ -14,6 +14,7 @@ import type { MarAgentRuntimeModelService } from './mar-agent-runtime-model-serv
 import { requestHostedConversationNode } from './hosted-http-support.js';
 
 interface HostedConversationContextDependencies {
+  readonly searchBackendAvailable?: () => boolean;
   readonly templates: Pick<ConversationTemplateService, 'assertCanUse' | 'runtimeContext'>;
   readonly models: Pick<MarAgentModelService, 'runtimeConfigurationsForUser' | 'runtimeForUser'>;
   readonly marAgentRuntimeModels?: Pick<MarAgentRuntimeModelService, 'prepare'>;
@@ -38,6 +39,10 @@ export async function authorizeExistingConversation(
   let template: ConversationTemplateSummary;
   let workspaceId: string | undefined;
   let runtime: Awaited<ReturnType<typeof hostedRuntimeModels>>;
+  const searchProjection =
+    input.searchBackendAvailable === undefined
+      ? {}
+      : { searchBackendAvailable: input.searchBackendAvailable() };
   const probe = hostedConversationSnapshotSchema.parse(
     await requestHostedConversationNode(
       input.nodeControl,
@@ -55,6 +60,7 @@ export async function authorizeExistingConversation(
   if (input.marAgentRuntimeModels === undefined) {
     template = await input.templates.assertCanUse(actor.userId, probe.conversation.templateId);
     runtime = await hostedRuntimeModels({
+      ...searchProjection,
       userId: actor.userId,
       nodeId: identifiers.nodeId,
       models: input.models
@@ -72,6 +78,7 @@ export async function authorizeExistingConversation(
     template = context.template;
     workspaceId = context.workspaceId;
     runtime = await hostedRuntimeModels({
+      ...searchProjection,
       userId: actor.userId,
       nodeId: identifiers.nodeId,
       workspaceId,
@@ -146,6 +153,7 @@ export function assertHostedSnapshotIdentity(
 }
 
 export async function hostedRuntimeModels(input: {
+  readonly searchBackendAvailable?: boolean;
   readonly userId: number;
   readonly nodeId: string;
   readonly workspaceId?: string;
@@ -154,6 +162,7 @@ export async function hostedRuntimeModels(input: {
   readonly models: Pick<MarAgentModelService, 'runtimeConfigurationsForUser' | 'runtimeForUser'>;
   readonly marAgentRuntimeModels?: Pick<MarAgentRuntimeModelService, 'prepare'>;
 }): Promise<{
+  readonly searchBackendAvailable?: boolean;
   readonly compact?: import('@myagentroam/protocol').MarAgentRuntimeCompactConfiguration;
   readonly runtimeScopeId?: string;
   readonly model?: MarAgentRuntimeModelConfiguration;
@@ -169,6 +178,9 @@ export async function hostedRuntimeModels(input: {
       ...(input.selectedModelId === undefined ? {} : { selectedModelId: input.selectedModelId })
     });
     return {
+      ...(input.searchBackendAvailable === undefined
+        ? {}
+        : { searchBackendAvailable: input.searchBackendAvailable }),
       runtimeScopeId: prepared.runtimeScopeId,
       ...(prepared.compact === undefined ? {} : { compact: prepared.compact }),
       ...(prepared.model === undefined ? {} : { model: prepared.model }),
@@ -182,6 +194,9 @@ export async function hostedRuntimeModels(input: {
       : await input.models.runtimeForUser(input.userId, input.selectedModelId);
   assertLegacyGcCompatible([...modelCatalog, model]);
   return {
+    ...(input.searchBackendAvailable === undefined
+      ? {}
+      : { searchBackendAvailable: input.searchBackendAvailable }),
     ...(model === undefined ? {} : { model }),
     modelCatalog
   };
@@ -189,6 +204,7 @@ export async function hostedRuntimeModels(input: {
 
 export function hostedRuntimePayload(
   runtime: {
+    readonly searchBackendAvailable?: boolean;
     readonly compact?: import('@myagentroam/protocol').MarAgentRuntimeCompactConfiguration;
     readonly runtimeScopeId?: string;
     readonly model?: MarAgentRuntimeModelConfiguration;
@@ -197,6 +213,9 @@ export function hostedRuntimePayload(
   sourceTemplateId?: string
 ): object {
   return {
+    ...(runtime.searchBackendAvailable === undefined
+      ? {}
+      : { __searchBackendAvailable: runtime.searchBackendAvailable }),
     ...(sourceTemplateId === undefined ? {} : { __sourceTemplateId: sourceTemplateId }),
     ...(runtime.runtimeScopeId === undefined
       ? {}
