@@ -60,25 +60,29 @@ describe('Workbench management composition', () => {
     }
   });
 
-  it('uses one ordered page catalogue for Community-state navigation and rendering', () => {
-    const composition = createEnterpriseManagementComposition();
-    expect(composition.items(personal).map((item) => item.id)).toEqual([
-      'resource-nodes',
-      'resource-workspaces',
-      'skill-config',
-      'skill-sources',
-      'mcp-sources',
-      'secrets',
-      'mar-agent-models',
-      'conversation-templates',
-      'configuration',
-      'system'
-    ]);
-    for (const item of composition.items(personal)) {
-      expect(composition.resolve(item.id, personal).id).toBe(item.id);
-      expect(item.labelKey).toMatch(/^navigation\./u);
+  it.each([null, 'ADMIN'] as const)(
+    'uses one ordered page catalogue for Community navigation with role %s',
+    (role) => {
+      const composition = createEnterpriseManagementComposition();
+      const admin = { ...personal, role };
+      expect(composition.items(admin).map((item) => item.id)).toEqual([
+        'resource-nodes',
+        'resource-workspaces',
+        'skill-config',
+        'skill-sources',
+        'mcp-sources',
+        'secrets',
+        'mar-agent-models',
+        'conversation-templates',
+        'configuration',
+        'system'
+      ]);
+      for (const item of composition.items(admin)) {
+        expect(composition.resolve(item.id, admin).id).toBe(item.id);
+        expect(item.labelKey).toMatch(/^navigation\./u);
+      }
     }
-  });
+  );
 
   it.each([
     [

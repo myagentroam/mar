@@ -23,6 +23,7 @@ describe('Server License management gate', () => {
       'ENTERPRISE_WRITABLE'
     );
     expect(managementRequirement('POST', '/api/node-registration-tokens')).toBe('WRITABLE');
+    expect(managementRequirement('PATCH', '/api/system-settings/:settingKey')).toBe('WRITABLE');
     expect(managementRequirement('PATCH', '/api/workspaces/:workspaceId')).toBe('WRITABLE');
     expect(managementRequirement('DELETE', '/api/nodes/:nodeId')).toBe('WRITABLE');
     expect(managementRequirement('POST', '/api/management/nodes/:nodeId/upgrade')).toBe('WRITABLE');
@@ -37,6 +38,31 @@ describe('Server License management gate', () => {
     expect(managementRequirement('POST', '/api/agent-sessions/:sessionId/messages')).toBe('NONE');
     expect(managementRequirement('GET', '/api/management/users')).toBe('NONE');
   });
+
+  it.each([
+    ['COMMUNITY', 200],
+    ['ENTERPRISE_VALID', 200],
+    ['ENTERPRISE_FROZEN', 403]
+  ] as const)(
+    'gates deployment setting writes under %s without enabling enterprise operations',
+    async (state, status) => {
+      const app = Fastify();
+      apps.push(app);
+      registerManagementLicenseGate(app, licenseStub(state), sessionDatabaseStub(), publicOrigin);
+      const write = vi.fn(async () => ({ saved: true }));
+      app.patch('/api/system-settings/:settingKey', write);
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/system-settings/skill-tls',
+        headers: managementHeaders(),
+        payload: { verificationDisabled: false }
+      });
+      expect(response.statusCode).toBe(status);
+      expect(write).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+      if (state === 'ENTERPRISE_FROZEN')
+        expect(response.json()).toMatchObject({ error: { code: 'LICENSE_MANAGEMENT_FROZEN' } });
+    }
+  );
 });
 
 describe('Server License management gate for the MAR Agent compact configuration', () => {

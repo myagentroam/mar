@@ -14,8 +14,7 @@ export function managementRequirement(method: string, route: string): Management
     route.startsWith('/api/enterprise/users') ||
     route.startsWith('/api/organizations') ||
     route.startsWith('/api/resource-grants') ||
-    route.startsWith('/api/oauth-providers') ||
-    route.startsWith('/api/system-settings')
+    route.startsWith('/api/oauth-providers')
   ) {
     return 'ENTERPRISE_WRITABLE';
   }
@@ -28,6 +27,7 @@ export function managementRequirement(method: string, route: string): Management
     route.startsWith('/api/workspaces/:workspaceId/mcps') ||
     route.startsWith('/api/nodes/:nodeId') ||
     route.startsWith('/api/environment-secrets') ||
+    route.startsWith('/api/system-settings') ||
     route.startsWith('/api/mcp-sources') ||
     route.startsWith('/api/mcp-catalog')
   ) {
