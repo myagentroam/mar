@@ -334,6 +334,13 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         csrfToken: 'csrf-1'
       })
     );
+    const workspaces = ['a', 'b'].map((id) => ({
+      nodeId: 'node-1',
+      nodeDisplayName: 'Node A',
+      workspaceId: `workspace-${id}`,
+      displayName: `Project ${id.toUpperCase()}`,
+      ownership: { ownerType: 'PERSONAL', ownerUserId: 1 }
+    }));
     await page.route('**/api/resources*', (route) =>
       json(route, {
         nodes: [
@@ -345,13 +352,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             ownership: { ownerType: 'PERSONAL', ownerUserId: 1 }
           }
         ],
-        workspaces: ['a', 'b'].map((id) => ({
-          nodeId: 'node-1',
-          nodeDisplayName: 'Node A',
-          workspaceId: `workspace-${id}`,
-          displayName: `Project ${id.toUpperCase()}`,
-          ownership: { ownerType: 'PERSONAL', ownerUserId: 1 }
-        }))
+        workspaces,
+        ...(new URL(route.request().url()).searchParams.has('page')
+          ? { page: 1, pageSize: 20, total: workspaces.length, hasMore: false }
+          : {})
       })
     );
     const queries: string[] = [];

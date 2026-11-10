@@ -434,6 +434,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
   );
   await smtpDialog.getByRole('textbox', { name: 'SMTP 主机' }).fill('smtp.example.test');
   await smtpDialog.getByRole('textbox', { name: '发件地址' }).fill('agent@example.test');
+  await smtpDialog.getByRole('textbox', { name: '发件人名称' }).fill('MAR Test');
   await smtpDialog.getByRole('textbox', { name: '认证账号（可选）' }).fill('agent@example.test');
   await smtpDialog.getByRole('button', { name: '保存' }).click();
   await expect(smtpDialog).toContainText('填写认证账号时请输入密码');
@@ -447,6 +448,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
       port: 587,
       tls: 'STARTTLS',
       from: 'agent@example.test',
+      fromName: 'MAR Test',
       username: 'agent@example.test',
       password: 'app-password'
     }
@@ -1407,7 +1409,7 @@ test('Enterprise management exposes role-based sections and disables writes when
       ]
     })
   );
-  await page.route('**/api/enterprise/users', (route) =>
+  await page.route(/\/api\/enterprise\/users(?:\?.*)?$/, (route) =>
     json(route, {
       users: [
         {
@@ -1420,7 +1422,11 @@ test('Enterprise management exposes role-based sections and disables writes when
           fixedAdmin: false,
           enabled: true
         }
-      ]
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      hasMore: false
     })
   );
   await page.route('**/api/oauth-providers', (route) => json(route, { providers: [] }));
@@ -1568,7 +1574,15 @@ test('Enterprise management exposes role-based sections and disables writes when
     }
   );
   await page.route('**/api/audit-events/audit-7', (route) => json(route, auditFixture.events[6]));
-  await page.route('**/api/audit-events?*', (route) => json(route, auditFixture));
+  await page.route('**/api/audit-events?*', (route) =>
+    json(route, {
+      ...auditFixture,
+      page: 1,
+      pageSize: 20,
+      total: auditFixture.events.length,
+      hasMore: false
+    })
+  );
   await page.route('**/api/audit-events/audit-1', (route) => json(route, auditFixture.events[0]));
   await page.route('**/api/audit-events/audit-6', (route) => json(route, auditFixture.events[5]));
   await page.route('**/api/system-settings', (route) =>
@@ -1728,10 +1742,20 @@ test('Enterprise management exposes role-based sections and disables writes when
   );
 
   await page.getByRole('button', { name: '系统配置' }).click();
-  await expect(page.getByText('审计保留天数')).toBeVisible();
-  await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(4);
-  for (const button of await page.getByRole('button', { name: '编辑' }).all()) {
-    await expect(button).toBeDisabled();
+  const frozenSettingNames = [
+    '审计保留天数',
+    '使用资源 URL',
+    '邮件SMTP配置',
+    'Web Push 离线推送',
+    'HTML 预览域名',
+    '关闭 Skill 回源 TLS 证书校验'
+  ];
+  await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(frozenSettingNames.length);
+  for (const name of frozenSettingNames) {
+    const row = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('cell', { name, exact: true }) });
+    await expect(row.getByRole('button', { name: '编辑', exact: true })).toBeDisabled();
   }
   await expect(page.getByRole('button', { name: '保存' })).toHaveCount(0);
 });
@@ -1858,7 +1882,8 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
 
   const auditRow = page.locator('.el-table__row').filter({ hasText: '审计保留天数' });
   const tlsRow = page.locator('.el-table__row').filter({ hasText: '关闭 Skill 回源 TLS 证书校验' });
-  await expect(page.locator('.management-pagination .el-pagination')).toBeVisible();
+  // Deployment settings are a complete configuration catalog, not a paged query.
+  await expect(page.locator('.management-pagination .el-pagination')).toHaveCount(0);
   await expect(auditRow.getByRole('spinbutton')).toHaveCount(0);
   await expect(tlsRow.getByRole('switch')).toBeDisabled();
 

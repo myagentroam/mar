@@ -48,7 +48,12 @@ export abstract class SkillSourceService {
         const authorization = await this.authorization.authorize(
           actorUserId,
           'SKILL_SOURCE_MANAGE',
-          scopeContext(summary.scope, summary.ownerUserId ?? actorUserId, summary.organizationId)
+          scopeContext(
+            summary.scope,
+            summary.ownerUserId ?? actorUserId,
+            summary.organizationId,
+            summary.builtIn
+          )
         );
         return { ...summary, manageable: authorization.allowed };
       })
@@ -238,17 +243,24 @@ export abstract class SkillSourceService {
     const result = await this.authorization.authorize(
       actorUserId,
       'SKILL_SOURCE_MANAGE',
-      scopeContext(scope, Number(row['owner_user_id']), Number(row['owner_organization_id']))
+      scopeContext(
+        scope,
+        Number(row['owner_user_id']),
+        Number(row['owner_organization_id']),
+        Boolean(row['built_in'])
+      )
     );
     if (!result.allowed) throw new Error('SKILL_SOURCE_FORBIDDEN');
   }
 }
 
 function scopeContext(
-  scope: SkillSourceInput['scope'],
+  scope: 'ENTERPRISE' | SkillSourceInput['scope'],
   actorUserId: number,
-  organizationId?: number
+  organizationId?: number,
+  builtIn = false
 ): AuthorizationContext {
+  if (scope === 'ENTERPRISE' && builtIn) return { ownerType: 'SYSTEM' };
   if (scope === 'PERSONAL') return { ownerType: 'PERSONAL', ownerUserId: actorUserId };
   if (scope === 'ORGANIZATION') {
     if (!Number.isSafeInteger(organizationId)) throw new Error('SKILL_SOURCE_INVALID');

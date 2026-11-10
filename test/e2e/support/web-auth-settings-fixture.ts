@@ -19,7 +19,10 @@ export async function mockPersonalResources(page: Page): Promise<void> {
           workspaceId: 'workspace-1',
           ownership: { ownerType: 'PERSONAL', ownerUserId: 1 }
         }
-      ]
+      ],
+      ...(new URL(route.request().url()).searchParams.has('page')
+        ? { page: 1, pageSize: 20, total: 1, hasMore: false }
+        : {})
     })
   );
 }
