@@ -8,6 +8,8 @@ import {
 } from '../../ee/server/src/license/management-gate.js';
 import type { LicenseService } from '../../ee/server/src/license/license-service.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
+import { registerSkillSourceRoutes } from '../../packages/server-core/src/skill-source-routes.js';
+import { registerMcpRoutes } from '../../packages/server-core/src/mcp-routes.js';
 
 const publicOrigin = 'http://localhost';
 const apps: FastifyInstance[] = [];
@@ -65,6 +67,69 @@ describe('Server License management gate', () => {
   );
 });
 
+describe.each(['skill', 'mcp'] as const)(
+  'Server License management gate for %s sources',
+  (kind) => {
+    const root = `/api/${kind}-sources`;
+
+    it('classifies source writes as writable management and leaves reads ungated', () => {
+      expect(managementRequirement('POST', root)).toBe('WRITABLE');
+      expect(managementRequirement('PATCH', `${root}/:sourceId`)).toBe('WRITABLE');
+      expect(managementRequirement('DELETE', `${root}/:sourceId`)).toBe('WRITABLE');
+      expect(managementRequirement('GET', root)).toBe('NONE');
+      expect(
+        managementRequirement('GET', `${root}/:sourceId/${kind === 'skill' ? 'skills' : 'servers'}`)
+      ).toBe('NONE');
+    });
+
+    it.each(['COMMUNITY', 'ENTERPRISE_VALID', 'ENTERPRISE_FROZEN'] as const)(
+      'gates source writes under %s while retaining read access',
+      async (state) => {
+        const { app, writes, read } = await sourceGateApp(kind, state);
+        const frozen = state === 'ENTERPRISE_FROZEN';
+        const input = { scope: 'PERSONAL', name: 'Personal source' };
+        const create = await app.inject({
+          method: 'POST',
+          url: root,
+          headers: managementHeaders(),
+          payload: input
+        });
+        expect(create.statusCode).toBe(frozen ? 403 : 201);
+        const toggle = await app.inject({
+          method: 'PATCH',
+          url: `${root}/built-in`,
+          headers: managementHeaders(),
+          payload: { enabled: false }
+        });
+        expect(toggle.statusCode).toBe(frozen ? 403 : 204);
+        const remove = await app.inject({
+          method: 'DELETE',
+          url: `${root}/personal-source`,
+          headers: managementHeaders()
+        });
+        expect(remove.statusCode).toBe(frozen ? 403 : 204);
+        if (frozen) {
+          for (const response of [create, toggle, remove])
+            expect(response.json()).toMatchObject({ error: { code: 'LICENSE_MANAGEMENT_FROZEN' } });
+          for (const write of Object.values(writes)) expect(write).not.toHaveBeenCalled();
+        } else {
+          expect(writes.create).toHaveBeenCalledExactlyOnceWith(1, input);
+          expect(writes.setEnabled).toHaveBeenCalledExactlyOnceWith(1, 'built-in', false);
+          expect(writes.remove).toHaveBeenCalledExactlyOnceWith(1, 'personal-source');
+        }
+        const response = await app.inject({
+          method: 'GET',
+          url: root,
+          headers: managementHeaders()
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ sources: [] });
+        expect(read).toHaveBeenCalledExactlyOnceWith(1);
+      }
+    );
+  }
+);
+
 describe('Server License management gate for the MAR Agent compact configuration', () => {
   it('rejects frozen compact writes for both enabled states without running the handler', async () => {
     const { app, handlerCalls } = await compactGateApp('ENTERPRISE_FROZEN');
@@ -114,6 +179,49 @@ describe('Server License management gate for the MAR Agent compact configuration
     }
   });
 });
+
+async function sourceGateApp(kind: 'skill' | 'mcp', state: Parameters<typeof licenseStub>[0]) {
+  const app = Fastify();
+  apps.push(app);
+  const database = sessionDatabaseStub();
+  registerManagementLicenseGate(app, licenseStub(state), database, publicOrigin);
+  const read = vi.fn(async () => []);
+  const writes = {
+    create: vi.fn(async () => ({ id: 'personal-source' })),
+    setEnabled: vi.fn(async () => {}),
+    remove: vi.fn(async () => {})
+  };
+  if (kind === 'skill') {
+    registerSkillSourceRoutes({
+      app,
+      database,
+      sources: {
+        list: read,
+        create: writes.create,
+        setEnabled: writes.setEnabled,
+        remove: writes.remove
+      } as unknown as Parameters<typeof registerSkillSourceRoutes>[0]['sources'],
+      discovery: {} as Parameters<typeof registerSkillSourceRoutes>[0]['discovery'],
+      publicOrigin
+    });
+  } else {
+    registerMcpRoutes({
+      app,
+      database,
+      service: {
+        listSources: read,
+        createSource: writes.create,
+        setSourceEnabled: writes.setEnabled,
+        removeSource: writes.remove
+      } as unknown as Parameters<typeof registerMcpRoutes>[0]['service'],
+      nodeControl: { requestNode: vi.fn() },
+      secrets: {} as Parameters<typeof registerMcpRoutes>[0]['secrets'],
+      publicOrigin
+    });
+  }
+  await app.ready();
+  return { app, writes, read };
+}
 
 function managementHeaders() {
   return {
