@@ -28,6 +28,7 @@ export function managementRequirement(method: string, route: string): Management
     route.startsWith('/api/nodes/:nodeId') ||
     route.startsWith('/api/environment-secrets') ||
     route.startsWith('/api/system-settings') ||
+    route.startsWith('/api/skill-sources') ||
     route.startsWith('/api/mcp-sources') ||
     route.startsWith('/api/mcp-catalog')
   ) {
