@@ -1,6 +1,11 @@
 {
   "name": "@myagentroam/binaries",
   "version": "0.10.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "packages/binaries"
+  },
   "description": "Cross-platform ripgrep and Universal Ctags resources for MyAgentRoam.",
   "license": "(MIT OR Unlicense) AND GPL-2.0-or-later",
   "type": "module",

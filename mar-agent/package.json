@@ -1,6 +1,11 @@
 {
   "name": "@myagentroam/agent",
   "version": "0.13.4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "mar-agent"
+  },
   "description": "Embeddable MAR coding agent SDK and CLI.",
   "license": "Apache-2.0",
   "type": "module",
