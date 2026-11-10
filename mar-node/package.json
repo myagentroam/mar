@@ -47,7 +47,7 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.233",
     "@modelcontextprotocol/sdk": "1.32.0",
     "@myagentroam/agent": "workspace:*",
-    "@myagentroam/binaries": "workspace:0.10.1",
+    "@myagentroam/binaries": "workspace:0.10.2",
     "@myagentroam/protocol": "workspace:*",
     "@opencode-ai/sdk": "1.18.20",
     "minimatch": "^10.2.6",

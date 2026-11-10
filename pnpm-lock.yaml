@@ -168,7 +168,7 @@ importers:
         specifier: workspace:*
         version: link:../mar-agent
       '@myagentroam/binaries':
-        specifier: workspace:0.10.1
+        specifier: workspace:0.10.2
         version: link:../packages/binaries
       '@myagentroam/protocol':
         specifier: workspace:*
