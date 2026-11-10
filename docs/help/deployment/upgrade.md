@@ -1,9 +1,11 @@
 ---
 title: 升级 MyAgentRoam
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-10
 ---
 
 # 升级 MyAgentRoam
+
+使用 npm Quick Start 时，按[更新 Server 与受管 Node](../getting-started/npm-quick-start.md#更新-server-与受管-node)操作：受管 Node 随 Server 依赖更新，不走单独推送升级。以下流程用于自行管理的 Server 和独立 Node。
 
 升级前先完成可恢复备份。Server/Web、EE、公共 Core、Node、Agent、Protocol 统一使用同一主版本，当前基线为 `0.10.1`。公共二进制包与 Computer Use Runtime 从 `0.10.1` 起步并保留独立修订；Code Navigation 不独立发布，marctl 随 Node 交付。
 

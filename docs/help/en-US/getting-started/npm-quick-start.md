@@ -1,11 +1,11 @@
 ---
-title: Local npm Quick Start
+title: npm Quick Start
 lastUpdated: 2026-11-10
 ---
 
-# Local npm Quick Start
+# npm Quick Start
 
-Quick Start runs a fixed Community Server on your own computer for local evaluation. It uses loopback HTTP, a private MySQL instance and, by default, a local Node and SearXNG where managed search is supported. It does not install an operating-system service, require a host UUID or support license activation. For a shared or internet-facing installation, use the [Docker Compose deployment](server-installation.md) with HTTPS instead.
+Quick Start prepares a fixed Community Server, a private MySQL instance, a local Node and SearXNG where managed search is supported. Access uses loopback HTTP by default; you manage any remote entry point and its security configuration. It does not install an operating-system service, require a host UUID or support license activation. [Docker Compose](server-installation.md) is another installation option.
 
 The verified installer targets are Linux x64 with glibc 2.28 or later, `tar` and `dpkg-deb` (such as a supported Debian or Ubuntu system), and Windows x64 with `tar` available. Use Node.js 24.12 or later and npm. Installing native dependencies may require an existing build toolchain; installation and setup never install system packages or request elevated privileges. Browser preparation and the selected components require network access. Other native platforms have not been verified for this Quick Start.
 
@@ -25,9 +25,25 @@ Server depends normally on the matching Node. npm installs its native dependenci
 
 `--no-node` persists the disabled choice but does not remove Node dependencies from the Server package. To enable the local Node later, stop run, set `node.enabled` to `true` in `server.json`, preserve its identity, and rerun setup.
 
-Run stays in the foreground and prints the local browser address. Stop it with Ctrl+C and wait for its children to exit. Run never downloads missing components. Setup and run for the same data directory cannot run concurrently. Do not expose the local HTTP endpoint to other machines; it is not a substitute for HTTPS or a production service.
+Run stays in the foreground and prints the local browser address. Stop it with Ctrl+C and wait for its children to exit. Run never downloads missing components. Setup and run for the same data directory cannot run concurrently.
 
 The managed Node in Windows Quick Start uses IPv4 for direct connections. When only IPv6 connectivity is available, file and terminal traffic falls back to the Server relay.
+
+## Remote access
+
+Local access is the default, not a restriction on usage. You can configure a secure tunnel or an external entry point yourself; setup does not configure domains, TLS, firewalls, or access controls. Public entry points should use HTTPS and support WebSocket; do not expose an unprotected HTTP port.
+
+Currently, run listens on `127.0.0.1` and fixes the application Origin to the printed `http://127.0.0.1:<port>`; it does not use a `MAR_PUBLIC_ORIGIN` override. Tunnel access should preserve the same browser-side loopback address and port. With a custom domain, forwarding a port alone does not ensure working sign-in, Origin checks, and WebSocket: application and gateway configuration must also match. Do not disable Origin checks to bypass failures. See [Network, TLS, and WebSocket](../deployment/network.md).
+
+## Update Server and its managed Node
+
+1. Stop run normally and wait for all its managed processes to exit.
+2. In the original npm installation directory, install the target Server version, for example `npm install --save-exact @myagentroam/server@X.Y.Z`. Replace `X.Y.Z` with a published target version whose dependencies are available.
+3. Run `npx --no-install mar-server run` with the original configuration; keep the same `--config` path if you used one. Refresh the browser and verify the original Node, Workspaces, and terminal.
+
+Node updates with Server's exact dependency, not through a separate push upgrade in Node management. Do not delete the deployment directory, recreate Node identity, or change `allowedRoots` to update. Repeating setup does not update the npm program. For separately managed Nodes, see [Upgrade MyAgentRoam](../deployment/upgrade.md).
+
+These steps update the Server/Node npm programs, not existing managed MySQL or search components. Check the target release notes before updating; follow any required component migration instructions rather than deleting installation records to force a reinstall.
 
 ## Sign in and start work
 

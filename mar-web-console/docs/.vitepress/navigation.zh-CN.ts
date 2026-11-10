@@ -3,7 +3,7 @@ export const zhSidebar = [
     text: '开始使用',
     items: [
       { text: 'MyAgentRoam 是什么', link: '/getting-started/overview' },
-      { text: '本机 npm 快速开始', link: '/getting-started/npm-quick-start' },
+      { text: 'npm 快速开始', link: '/getting-started/npm-quick-start' },
       { text: '部署前准备', link: '/getting-started/prerequisites' },
       { text: '部署 Server 与 Web', link: '/getting-started/server-installation' },
       { text: '首次登录与修改密码', link: '/getting-started/first-login' },

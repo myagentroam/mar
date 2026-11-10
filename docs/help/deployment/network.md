@@ -1,9 +1,11 @@
 ---
 title: 网络、TLS 与 WebSocket
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-10
 ---
 
 # 网络、TLS 与 WebSocket
+
+下表和 `MAR_PUBLIC_ORIGIN` 配置适用于自行部署的 HTTPS 入口。[npm Quick Start](../getting-started/npm-quick-start.md#远程访问)默认使用回环 HTTP，并固定应用 Origin；它不读取该环境变量覆盖值。通过安全隧道访问时保留同一浏览器回环地址和端口，不要将下述环境变量配置直接套用到 Quick Start。
 
 | 链路            | 方向           | 要求                                     |
 | --------------- | -------------- | ---------------------------------------- |

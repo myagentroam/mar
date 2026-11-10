@@ -5,7 +5,9 @@ lastUpdated: 2026-11-10
 
 # Before You Deploy
 
-Use this checklist to confirm host, network, and Agent requirements.
+Choose your installation first. With the [npm Quick Start](npm-quick-start.md), you do not need to deploy Docker or MySQL yourself, or manually register the local Node. Access is local by default; configure your own remote entry point and HTTPS when needed. It does not configure models or external Agents for you.
+
+The checklist below covers Docker Compose or a separately managed Server/MySQL installation. Quick Start has different component preparation and UUID requirements; follow its dedicated guide. Remote access still requires a secure network entry point.
 
 ## Requirements
 
@@ -29,4 +31,4 @@ If an Agent works in an interactive shell but not as a service, the service acco
 
 Next: [Deploy Server and Web](server-installation.md).
 
-Formal deployments require a valid real host UUID in both Community and Enterprise states. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native formal deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. The local-only [npm Quick Start](npm-quick-start.md) does not require a UUID and cannot be activated.
+Formal deployments require a valid real host UUID in both Community and Enterprise states. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native formal deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. The [npm Quick Start](npm-quick-start.md) does not require a UUID and cannot be activated.

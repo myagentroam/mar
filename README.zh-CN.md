@@ -150,9 +150,9 @@ SDK、CLI 与工作台使用同一个 MAR Agent 内核。Smart Compaction 是**�
 
 ## 开始使用
 
-### 本机 npm 快速开始
+### npm 快速开始
 
-仅供本机体验的固定社区版 Quick Start 通过回环 HTTP 运行 Server、专用 MySQL，并可运行本机 Node 和搜索。Server 普通依赖匹配版本的 Node，其 npm 安装也会准备 Chromium；当 npm Registry 中已有 Server 和所需依赖后，在已验证的 Linux x64 或 Windows x64 系统使用 Node.js `>=24.12`：
+固定社区版 Quick Start 默认通过回环 HTTP 运行 Server、专用 MySQL，并可运行本机 Node 和搜索。Server 普通依赖匹配版本的 Node，其 npm 安装也会准备 Chromium；当 npm Registry 中已有 Server 和所需依赖后，在已验证的 Linux x64 或 Windows x64 系统使用 Node.js `>=24.12`：
 
 ```bash
 npm install @myagentroam/server
@@ -160,9 +160,9 @@ npx --no-install mar-server setup
 npx --no-install mar-server run
 ```
 
-setup 可使用 `--no-node` 禁用本机 Node 启动，或使用 `--no-searxng` 跳过本地搜索准备。Windows 需要 `tar`，可使用外部 SearXNG，但不支持受管 SearXNG。前置条件、数据、首次登录与限制见 [npm 快速开始](docs/help/getting-started/npm-quick-start.md)。它不是生产部署或远程访问入口。
+默认在启动 run 时自动注册本机 Node，无需另外安装或手工注册。setup 可使用 `--no-node` 禁用本机 Node，但不会跳过其 npm 依赖和 Chromium 准备；使用 `--no-searxng` 跳过本地搜索准备。Windows 需要 `tar`，可使用外部 SearXNG，但不支持受管 SearXNG。首次登录、工作区访问、远程入口与升级见 [npm 快速开始](docs/help/getting-started/npm-quick-start.md)。远程访问需自行配置安全的网络入口，setup 不会自动配置外网。
 
-### Docker 正式部署
+### Docker Compose 部署
 
 标准部署使用具备真实主机 UUID 的 Linux 主机、Docker Compose 与 HTTPS 入口。工作 Node 支持 Windows、Linux、macOS，要求 Node.js `>=22.13`；原生 Server 要求 Node.js `>=24.12` 和 MySQL 8.4。
 
@@ -211,7 +211,7 @@ Server 负责身份、授权与受控中继，Node 负责执行和工作区存�
 | 组织、多用户管理、角色与共享资源授权  | 需要激活 | 在 License 范围内可用 |
 | 企业 SSO 与操作审计                   | 需要激活 | 在 License 范围内可用 |
 
-正式部署的两种状态都要求有效的真实主机 UUID；仅供本机体验的 [npm 快速开始](docs/help/getting-started/npm-quick-start.md)固定为社区能力，无需 UUID，也不支持激活。企业 License 到期后沿用管理冻结行为，不删除用户数据，也不重置为全新的社区状态。[激活与 License 管理](docs/help/administration/license.md)。
+正式部署的两种状态都要求有效的真实主机 UUID；[npm 快速开始](docs/help/getting-started/npm-quick-start.md)固定为社区能力，无需 UUID，也不支持激活。企业 License 到期后沿用管理冻结行为，不删除用户数据，也不重置为全新的社区状态。[激活与 License 管理](docs/help/administration/license.md)。
 
 ## 开发与贡献
 

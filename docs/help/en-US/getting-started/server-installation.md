@@ -9,7 +9,7 @@ The public product repository's single root `compose.yaml` runs MySQL, SearXNG, 
 
 ## Formal deployment
 
-The formal deployment uses the single product source and build, with `mar-server/`, `mar-web-console/`, and the root `compose.yaml`. Without activation it is Community, with Workspace sessions, files, Git, terminals, model and credential management, Skill/MCP configuration, personal templates, and hosted conversations. A valid Enterprise license enables organizations, users, sharing, SSO, and auditing in the same installation without replacing images. For local-only evaluation, see the separate [npm Quick Start](npm-quick-start.md).
+The formal deployment uses the single product source and build, with `mar-server/`, `mar-web-console/`, and the root `compose.yaml`. Without activation it is Community, with Workspace sessions, files, Git, terminals, model and credential management, Skill/MCP configuration, personal templates, and hosted conversations. A valid Enterprise license enables organizations, users, sharing, SSO, and auditing in the same installation without replacing images. For another installation option, see [npm Quick Start](npm-quick-start.md).
 
 Both license states use `/console` for the workbench and `/docs/` for documentation. Existing links to `/` keep working: the browser opens the same product at `/console`, preserving query parameters and fragments. Verify sign-in and a Workspace operation rather than treating `/health` alone as proof that the full workbench is usable.
 
@@ -54,7 +54,7 @@ Keep `.env` out of Git, chats, and the Web root because it contains database cre
 
 Next: [First Sign-in](first-login.md). See also [Network, TLS, and WebSocket](../deployment/network.md).
 
-Formal deployments require a valid real host UUID in both Community and Enterprise states. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native formal deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. The local-only [npm Quick Start](npm-quick-start.md) does not require a UUID and cannot be activated.
+Formal deployments require a valid real host UUID in both Community and Enterprise states. Containers must mount `/sys/class/dmi/id/product_uuid` read-only at `/license-host/product_uuid`; the source must exist. Native formal deployments may use `MAR_LICENSE_HOST_PATH` to select the real UUID file. The [npm Quick Start](npm-quick-start.md) does not require a UUID and cannot be activated.
 
 ## Connect an independent Node
 

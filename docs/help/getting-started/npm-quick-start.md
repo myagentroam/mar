@@ -1,11 +1,11 @@
 ---
-title: 本机 npm 快速开始
+title: npm 快速开始
 lastUpdated: 2026-11-10
 ---
 
-# 本机 npm 快速开始
+# npm 快速开始
 
-Quick Start 在自己的电脑上启动固定社区版 Server，供本机体验。它使用回环 HTTP、专用 MySQL，默认准备本机 Node，并在支持受管搜索的平台准备 SearXNG；不安装系统常驻服务，不要求主机 UUID，也不支持激活 License。共享或面向互联网的安装应改用带 HTTPS 的 [Docker Compose 正式部署](server-installation.md)。
+Quick Start 一次准备固定社区版 Server、专用 MySQL 和本机 Node，并在支持受管搜索的平台准备 SearXNG。默认通过本机回环 HTTP 访问；远程访问的网络入口和安全配置由你自行管理。它不安装系统常驻服务，不要求主机 UUID，也不支持激活 License。另一种安装方式见 [Docker Compose 部署](server-installation.md)。
 
 目前实际验证的安装目标是带 glibc 2.28 或更高版本、`tar` 和 `dpkg-deb` 的 Linux x64（例如受支持的 Debian 或 Ubuntu 系统），以及可使用 `tar` 的 Windows x64。需要 Node.js 24.12 或更高版本以及 npm。安装包时原生依赖可能要求系统已有可用的构建工具；安装和 setup 均不安装系统包，也不请求提权。浏览器和所选组件的准备需要网络。其他原生平台尚未完成此 Quick Start 的验证。
 
@@ -25,9 +25,25 @@ Server 以普通依赖使用同版本 Node；npm 安装会按 Node 原有生命�
 
 `--no-node` 会持久保存禁用选择，但不会从 Server 包移除 Node 依赖。之后如需启用本机 Node，先停止 run，在 `server.json` 中将 `node.enabled` 设为 `true`，保留身份，再运行 setup。
 
-run 在前台运行并打印本机浏览器地址。使用 Ctrl+C 停止并等待子进程退出；run 不会下载缺失组件。同一数据目录不能并发执行 setup 和 run。不要将本机 HTTP 入口暴露给其他设备；它不能替代 HTTPS 或生产服务。
+run 在前台运行并打印本机浏览器地址。使用 Ctrl+C 停止并等待子进程退出；run 不会下载缺失组件。同一数据目录不能并发执行 setup 和 run。
 
 Windows 本机 Quick Start 的受管 Node 使用 IPv4 直连；如果只能通过 IPv6 连接，文件和终端流量会回退到 Server 中继。
+
+## 远程访问
+
+默认本机访问不是使用场景限制。你可以自行配置安全隧道或对外入口；setup 不会配置域名、TLS、防火墙或访问控制。公网入口应使用 HTTPS，并支持 WebSocket；不要直接裸露 HTTP 端口。
+
+当前 run 监听 `127.0.0.1`，应用 Origin 固定为打印出的 `http://127.0.0.1:<端口>`，不会采用 `MAR_PUBLIC_ORIGIN` 覆盖值。隧道访问应保留浏览器侧相同的回环地址和端口；使用自定义域名时，仅转发端口不足以保证登录、Origin 校验和 WebSocket 正常，还需匹配应用与网关的配置。不要关闭 Origin 校验来绕过问题。网络要求见[网络、TLS 与 WebSocket](../deployment/network.md)。
+
+## 更新 Server 与受管 Node
+
+1. 正常停止 run，等待其管理的进程全部退出。
+2. 在原 npm 安装目录安装目标 Server 版本，例如 `npm install --save-exact @myagentroam/server@X.Y.Z`，将 `X.Y.Z` 替换为已发布且依赖齐全的目标版本。
+3. 用原配置重新执行 `npx --no-install mar-server run`；此前使用 `--config` 时继续传入同一路径。刷新浏览器并确认原 Node、工作区和终端可用。
+
+Node 随 Server 的精确依赖一起更新，不单独使用节点管理中的推送升级。不要删除部署目录、重建 Node 身份或修改 `allowedRoots` 来完成更新；重复 setup 不是更新 npm 程序的方式。独立 Node 的升级流程见[升级 MyAgentRoam](../deployment/upgrade.md)。
+
+以上步骤更新 Server/Node 的 npm 程序，不会自动升级已有的受管 MySQL 或搜索组件。更新前核对目标版本的发行说明；若要求组件迁移，按该版本说明操作，不要手工删除安装记录来强制重装。
 
 ## 登录并开始工作
 
