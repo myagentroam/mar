@@ -27,7 +27,12 @@ describe('session analyzer', () => {
       record(1, 'context.compacting', { compactionId: 'compact' }, 'compact-exec'),
       record(2, 'compact.progress', progress, 'compact-exec'),
       record(3, 'execution.header', { modelId: 'main', mode: 'compact' }, 'compact-exec'),
-      record(4, 'usage.updated', { inputTokens: 100, contextInputTokens: 100 }, 'compact-exec'),
+      record(
+        4,
+        'usage.updated',
+        { purpose: 'compact', inputTokens: 100, contextInputTokens: 100 },
+        'compact-exec'
+      ),
       record(
         5,
         'usage.updated',
@@ -37,7 +42,13 @@ describe('session analyzer', () => {
       record(
         6,
         'usage.updated',
-        { inputTokens: 100, contextInputTokens: 100, cacheReadTokens: 0, outputTokens: 3 },
+        {
+          purpose: 'compact',
+          inputTokens: 100,
+          contextInputTokens: 100,
+          cacheReadTokens: 0,
+          outputTokens: 3
+        },
         'compact-exec'
       ),
       record(7, 'compact.progress', { ...progress, state: 'FINISHED' }, 'compact-exec'),
@@ -74,6 +85,210 @@ describe('session analyzer', () => {
     expect(filtered.usage.executionUsage.requestCount).toBe(2);
     expect(formatSessionAnalysis(report)).toContain('External Compact:');
   });
+
+  it.each([
+    ['execution final arrives first', false],
+    ['Compact final arrives first', true]
+  ])(
+    'keeps interleaved execution and Compact snapshots separate when %s',
+    async (_order, compactFinalFirst) => {
+      const directory = await createSessionDirectory();
+      const compactInitial = record(
+        5,
+        'usage.updated',
+        {
+          purpose: 'compact',
+          inputTokens: 140_871,
+          contextInputTokens: 140_871,
+          cacheReadTokens: 0
+        },
+        'exec-1'
+      );
+      const executionInitial = record(
+        7,
+        'usage.updated',
+        {
+          inputTokens: 167_086,
+          contextInputTokens: 167_086,
+          cacheReadTokens: 164_864
+        },
+        'exec-1'
+      );
+      const executionFinal = record(
+        compactFinalFirst ? 9 : 8,
+        'usage.updated',
+        {
+          inputTokens: 166_800,
+          contextInputTokens: 167_086,
+          cacheReadTokens: 164_000,
+          outputTokens: 698
+        },
+        'exec-1'
+      );
+      const compactFinal = record(
+        compactFinalFirst ? 8 : 10,
+        'usage.updated',
+        {
+          purpose: 'compact',
+          inputTokens: 140_871,
+          contextInputTokens: 140_871,
+          cacheReadTokens: 10_752,
+          cacheWriteTokens: 256,
+          outputTokens: 2_570
+        },
+        'exec-1'
+      );
+      const records = [
+        record(1, 'context.gc.completed', {}, undefined),
+        record(2, 'execution.started', {}, 'exec-1'),
+        record(3, 'context.compacting', { compactionId: 'compact-1' }, 'exec-1'),
+        record(
+          4,
+          'compact.progress',
+          { compactionId: 'compact-1', extensionOutcome: 'HANDLED' },
+          'exec-1'
+        ),
+        compactInitial,
+        record(
+          6,
+          'model.attempt',
+          { purpose: 'EXECUTION', state: 'STARTED', attempt: 1 },
+          'exec-1'
+        ),
+        executionInitial,
+        ...(compactFinalFirst ? [compactFinal, executionFinal] : [executionFinal]),
+        record(
+          compactFinalFirst ? 10 : 9,
+          'tool.started',
+          { toolName: 'read', callId: 'tool-1' },
+          'exec-1'
+        ),
+        ...(!compactFinalFirst ? [compactFinal] : []),
+        record(11, 'compact.completed', { automatic: true }, 'exec-1')
+      ];
+      await writeRecords(directory, 'events-000001.jsonl', records.slice(0, 5));
+      await writeRecords(directory, 'events-000002.jsonl', records.slice(5));
+
+      const report = await analyzeSessionDirectory(directory);
+
+      expect(report.usage).toMatchObject({
+        requestCount: 2,
+        inputTokens: 307_671,
+        contextInputTokens: 307_957,
+        outputTokens: 3_268,
+        cacheReadTokens: 174_752,
+        cacheWriteTokens: 256,
+        executionUsage: {
+          requestCount: 1,
+          inputTokens: 166_800,
+          contextInputTokens: 167_086,
+          outputTokens: 698,
+          cacheReadTokens: 164_000
+        },
+        externalCompactUsage: {
+          requestCount: 1,
+          inputTokens: 140_871,
+          contextInputTokens: 140_871,
+          outputTokens: 2_570,
+          cacheReadTokens: 10_752,
+          cacheWriteTokens: 256
+        }
+      });
+      expect(report.executions[0].usage).toMatchObject({
+        requestCount: 2,
+        contextInputTokens: 307_957
+      });
+      expect(report.executions[0].firstUsage).toMatchObject({
+        requestCount: 1,
+        inputTokens: 166_800,
+        contextInputTokens: 167_086,
+        outputTokens: 698,
+        cacheReadTokens: 164_000
+      });
+      expect(report.gc[0]).toMatchObject({
+        followingUsageCount: 2,
+        firstFollowingUsage: {
+          sequence: 5,
+          contextInputTokens: 140_871,
+          cacheReadTokens: 10_752
+        },
+        secondFollowingUsage: {
+          sequence: 7,
+          contextInputTokens: 167_086,
+          cacheReadTokens: 164_000
+        }
+      });
+      expect(report.compacts[0].followingUsageCount).toBe(0);
+      expect((await analyzeSessionDirectory(directory, { sinceSequence: 7 })).usage).toEqual(
+        report.usage
+      );
+    }
+  );
+
+  it('requires both compact purpose and explicit HANDLED evidence for external Compact usage', async () => {
+    const directory = await createSessionDirectory();
+    await writeRecords(directory, 'events-000001.jsonl', [
+      record(1, 'context.compacting', { compactionId: 'handled' }, 'handled'),
+      record(
+        2,
+        'compact.progress',
+        { compactionId: 'handled', extensionOutcome: 'HANDLED' },
+        'handled'
+      ),
+      record(
+        3,
+        'usage.updated',
+        { purpose: 'compact', contextInputTokens: 100, outputTokens: 10 },
+        'handled'
+      ),
+      record(4, 'context.compacting', { compactionId: 'builtin' }, 'builtin'),
+      record(5, 'compact.progress', { compactionId: 'builtin' }, 'builtin'),
+      record(
+        6,
+        'usage.updated',
+        { purpose: 'compact', contextInputTokens: 200, outputTokens: 20 },
+        'builtin'
+      ),
+      record(7, 'context.compacting', { compactionId: 'unknown' }, 'unknown'),
+      record(
+        8,
+        'compact.progress',
+        { compactionId: 'unknown', extensionOutcome: 'DECLINED' },
+        'unknown'
+      ),
+      record(
+        9,
+        'usage.updated',
+        { purpose: 'compact', contextInputTokens: 300, outputTokens: 30 },
+        'unknown'
+      ),
+      record(
+        10,
+        'usage.updated',
+        { purpose: 'compact', contextInputTokens: 400, outputTokens: 40 },
+        'purpose-only'
+      )
+    ]);
+
+    const report = await analyzeSessionDirectory(directory);
+
+    expect(report.usage).toMatchObject({
+      requestCount: 4,
+      contextInputTokens: 1_000,
+      outputTokens: 100,
+      executionUsage: {
+        requestCount: 3,
+        contextInputTokens: 900,
+        outputTokens: 90
+      },
+      externalCompactUsage: {
+        requestCount: 1,
+        contextInputTokens: 100,
+        outputTokens: 10
+      }
+    });
+  });
+
   it('retains prior observation evidence when a filtered wait returns only new values', async () => {
     const directory = await createSessionDirectory();
     const observation = {
