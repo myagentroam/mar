@@ -7,11 +7,13 @@ lastUpdated: 2026-11-10
 
 Community Edition provides the default single-user experience without a limit on registered Nodes. An Enterprise license enables organizations, additional users, resource sharing, SSO, and audit management.
 
+The fixed Community administrator can also manage deployment settings under **Admin → System Configuration** without an Enterprise license. Configuring audit retention does not grant access to audit queries or exports. A frozen Enterprise license still blocks system configuration changes.
+
 A System Administrator opens **Admin → System Information**, copies the request code, and sends it privately to the issuer. Paste the complete returned License document into **License Authorization**, import it, and verify enterprise name and expiry before creating enterprise resources.
 
 An expired or frozen license restricts enterprise management writes while preserving configured resources and normal work according to the displayed state. Import a valid replacement to restore management. Treat request codes and License documents as administrative data and do not publish them.
 
-Formal deployments use the same program and image set; activation does not replace the installation. Both formal license states require the real host UUID; containers must mount it read-only, and startup fails if it is unavailable or invalid. The local-only [npm Quick Start](../getting-started/npm-quick-start.md) uses fixed Community capabilities without a UUID and cannot be activated. License capabilities do not replace user and resource authorization.
+Formal deployments use the same program and image set; activation does not replace the installation. Both formal license states require the real host UUID; containers must mount it read-only, and startup fails if it is unavailable or invalid. The local-only [npm Quick Start](../getting-started/npm-quick-start.md) uses fixed Community capabilities without a UUID and cannot be activated; System Information does not generate request codes or show License import controls. License capabilities do not replace user and resource authorization.
 
 ## Why does formal Community deployment require a host UUID?
 

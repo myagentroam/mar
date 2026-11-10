@@ -452,7 +452,11 @@ describe('Server hosted conversation routes', () => {
     });
 
     expect(options.statusCode).toBe(200);
-    expect(options.json()).toEqual({ models: [optionModel], defaultModelId: 'model-1' });
+    // Legacy Node options are normalized to the documented disabled Compact default.
+    expect(options.json()).toEqual({
+      models: [{ ...optionModel, unifiedCompact: false }],
+      defaultModelId: 'model-1'
+    });
     expect(created.statusCode).toBe(201);
     expect(fixture.models.runtimeForUser).toHaveBeenCalledWith(7, 'model-1');
     expect(fixture.nodeControl.requestHostedConversationNode).toHaveBeenNthCalledWith(

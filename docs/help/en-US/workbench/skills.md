@@ -1,6 +1,6 @@
 ---
 title: Favorite and Install Skills
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-10
 ---
 
 # Favorite and Install Skills
@@ -14,6 +14,8 @@ Choose the Node and, when required, the Workspace before installing. Review vers
 Skill Configuration shows installed state and environment checks. Removing an installation does not remove the catalog favorite or its source. Authorized users administer external sources under **Admin > Skill Sources** and configure referenced secrets under **Admin > Environment Secrets**.
 
 ## Skill sources and installation
+
+When management writes are enabled, only administrators can enable or disable the preinstalled `skills.sh` source and Official MCP Registry; neither can be deleted. This includes the fixed `admin` account in Community mode and does not grant management access to organization sources, other users' personal sources, or enterprise catalogs.
 
 Skills provide reusable instructions; MCP servers connect Agents to tools and services. Node-level configuration applies to its Workspaces, while a same-named Workspace configuration takes precedence. In **Skill Sources**, choose an enabled source and add a Skill to the available personal, organization, or enterprise catalog. Check its source and version before adding it. Catalog updates do not automatically update installed copies: check for updates, confirm the new version, and install it on each intended target.
 

@@ -593,6 +593,7 @@ describe('MAR Agent model service', () => {
       });
       expect(modelSettingsDocument(db.raw.execute, 'grok-id')).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch,
         serviceTier: 'default',
@@ -691,6 +692,7 @@ describe('MAR Agent model service', () => {
       )!;
       expect(modelSettingsDocument(db.raw.execute, 'http-model')).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch: false,
         responsesTransport: { transport: 'HTTP', httpVersion },
@@ -1131,6 +1133,7 @@ describe('MAR Agent model service', () => {
       )!;
       expect(modelSettingsDocument(createDatabase.raw.execute, 'responses-id')).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch: false,
         serviceTier: 'auto',
@@ -1168,6 +1171,7 @@ describe('MAR Agent model service', () => {
       )!;
       expect(modelSettingsDocument(updateDatabase.raw.execute, 'responses-id')).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch: false,
         serviceTier: 'auto',
@@ -1236,6 +1240,7 @@ describe('MAR Agent model service', () => {
 
     expect(modelSettingsDocument(db.raw.execute, 'codex-id')).toEqual({
       version: 1,
+      unifiedCompact: false,
       gcEnabled: true,
       hostedWebSearch: true,
       serviceTier: 'default',
@@ -1441,6 +1446,7 @@ describe('MAR Agent model service', () => {
     });
     expect(modelSettingsDocument(db.raw.execute, 'codex-id')).toEqual({
       version: 1,
+      unifiedCompact: false,
       gcEnabled: true,
       hostedWebSearch: true,
       serviceTier: 'priority',
@@ -2386,6 +2392,7 @@ describe('MAR Agent model service', () => {
       expect(firstParams[13]).toBe(true);
       expect(modelSettingsDocument(execute, String(firstParams[0]))).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch: true,
         serviceTier: 'default',
@@ -2400,6 +2407,7 @@ describe('MAR Agent model service', () => {
       expect(miniParams[13]).toBe(false);
       expect(modelSettingsDocument(execute, String(miniParams[0]))).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch: false,
         serviceTier: 'default',
@@ -2631,6 +2639,7 @@ describe('MAR Agent model service', () => {
       const expectedPreviousResponseId = baseUrl !== 'https://cli-chat-proxy.grok.com/v1';
       expect(modelSettingsDocument(execute, String(insert[1]?.[0]))).toEqual({
         version: 1,
+        unifiedCompact: false,
         gcEnabled: true,
         hostedWebSearch: true,
         serviceTier: 'default',

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({
+  nodeStartError: undefined as Error | undefined,
   release: vi.fn(async () => {}),
   shutdown: vi.fn(async () => {}),
   mysqlStop: vi.fn(async () => {}),
@@ -34,16 +35,39 @@ vi.mock('../../mar-server/src/quick-start/application.js', () => ({
   })
 }));
 vi.mock('../../mar-server/src/quick-start/node-runtime.js', () => ({
-  startLocalNode: async () => ({
-    online: async () => true,
-    exited: new Promise(() => {}),
-    stop: fixture.nodeStop
-  })
+  startLocalNode: async () => {
+    if (fixture.nodeStartError) throw fixture.nodeStartError;
+    return {
+      online: async () => true,
+      exited: new Promise(() => {}),
+      stop: fixture.nodeStop
+    };
+  }
 }));
 
 import { runQuickStart } from '../../mar-server/src/quick-start/run.js';
 
 describe('Quick Start run cleanup', () => {
+  it('reports unsafe bootstrap recovery explicitly while keeping Server available', async () => {
+    fixture.nodeStartError = Object.assign(new Error('Recovery requires operator attention'), {
+      code: 'QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED'
+    });
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(runQuickStart({ command: 'run' })).rejects.toThrow('fixture');
+      expect(output.mock.calls.flat().join(' ')).toContain(
+        'QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED'
+      );
+      expect(fixture.nodeStop).not.toHaveBeenCalled();
+    } finally {
+      fixture.nodeStartError = undefined;
+      output.mockRestore();
+      fixture.release.mockClear();
+      fixture.shutdown.mockClear();
+      fixture.mysqlStop.mockClear();
+    }
+  });
+
   it('retains the deployment lock if the owned Node cannot be reclaimed', async () => {
     await expect(runQuickStart({ command: 'run' })).rejects.toThrow(
       'QUICK_START_NODE_RECLAIM_FAILED'

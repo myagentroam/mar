@@ -39,9 +39,13 @@ export class AuthorizationService implements AuthorizationProvider {
         this.matrix.grants.get('MEMBER')?.get(permissionId)?.has('PERSONAL') === true;
       const system =
         context.ownerType === 'SYSTEM' &&
-        ['NODE_MANAGE', 'SKILL_SOURCE_MANAGE', 'LICENSE_READ', 'LICENSE_IMPORT'].includes(
-          permissionId
-        );
+        [
+          'NODE_MANAGE',
+          'SKILL_SOURCE_MANAGE',
+          'SYSTEM_SETTINGS_MANAGE',
+          'LICENSE_READ',
+          'LICENSE_IMPORT'
+        ].includes(permissionId);
       return personal || system
         ? { allowed: true }
         : { allowed: false, reason: 'ENTERPRISE_LICENSE_REQUIRED' };

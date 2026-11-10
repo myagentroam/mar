@@ -24,6 +24,7 @@ describe('unified Server entry and EE implementation boundary', () => {
     expect(readdirSync(resolve(root, 'mar-server/src')).sort()).toEqual([
       'license.ts',
       'main.ts',
+      'quick-start',
       'reset-password.ts'
     ]);
     expect(read('mar-server/src/main.ts')).toContain(

@@ -1,10 +1,74 @@
 import Fastify from '../../ee/server/node_modules/fastify/fastify.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createQuickStartServerProduct } from '../../ee/server/src/composition/enterprise-product.js';
+import { AuditService } from '../../ee/server/src/audit/audit-service.js';
 import { hashOpaque } from '../../ee/server/src/database.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
+import { registerSystemSettingsRoutes } from '../../ee/server/src/route/system-settings-routes.js';
 
 describe('Quick Start community product', () => {
+  it('reads and updates deployment settings without activating enterprise capabilities', async () => {
+    const execute = vi.fn(async (sql: string) => [
+      sql.includes('SELECT setting_value')
+        ? [{ setting_value: '180' }]
+        : [{ role: 'ADMIN', organization_id: 1, is_fixed_admin: 1 }],
+      []
+    ]);
+    const database = {
+      raw: { execute },
+      findCurrentUserSession: () => ({
+        userId: 1,
+        username: 'admin',
+        isAdmin: true,
+        sessionHash: hashOpaque('session'),
+        mustChangePassword: false,
+        csrfTokenHash: hashOpaque('csrf')
+      })
+    } as unknown as MysqlServerDatabase;
+    const product = createQuickStartServerProduct({ database, now: Date.now });
+    const app = Fastify();
+    product.registerLicenseManagement(app, 'http://localhost');
+    let previewOrigin = '';
+    registerSystemSettingsRoutes({
+      app,
+      database,
+      audits: new AuditService(database, product.authorization),
+      network: { disabled: async () => false, setDisabled: vi.fn() },
+      htmlPreviewOrigin: {
+        read: async () => previewOrigin,
+        write: async (origin) => {
+          previewOrigin = origin;
+        }
+      },
+      publicOrigin: 'http://localhost'
+    });
+    try {
+      const headers = {
+        cookie: 'mar_user_session=session',
+        origin: 'http://localhost',
+        'x-csrf-token': 'csrf'
+      };
+      const read = await app.inject({ url: '/api/system-settings', headers });
+      const write = await app.inject({
+        method: 'PATCH',
+        url: '/api/system-settings/html-preview-origin',
+        headers,
+        payload: { origin: 'https://preview.example.test' }
+      });
+      expect({ read: read.statusCode, write: write.statusCode }).toEqual({
+        read: 200,
+        write: 200
+      });
+      expect(read.json()).toMatchObject({ auditRetentionDays: 180, htmlPreviewOrigin: '' });
+      expect(write.json()).toMatchObject({ htmlPreviewOrigin: 'https://preview.example.test' });
+      expect(
+        await product.authorization.authorize(1, 'AUDIT_READ', { ownerType: 'SYSTEM' })
+      ).toMatchObject({ allowed: false, reason: 'ENTERPRISE_LICENSE_REQUIRED' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('retains fixed, enabled root administrator checks for personal authorization', async () => {
     let actor: Record<string, unknown> | undefined = {
       is_fixed_admin: 1,
@@ -52,7 +116,7 @@ describe('Quick Start community product', () => {
     const app = Fastify();
     product.registerLicenseManagement(app, 'http://localhost');
     let called = false;
-    app.post('/api/system-settings', async () => {
+    app.post('/api/organizations', async () => {
       called = true;
       return {};
     });
@@ -62,7 +126,7 @@ describe('Quick Start community product', () => {
         origin: 'http://localhost',
         'x-csrf-token': 'csrf'
       };
-      const blocked = await app.inject({ method: 'POST', url: '/api/system-settings', headers });
+      const blocked = await app.inject({ method: 'POST', url: '/api/organizations', headers });
       expect(blocked.statusCode).toBe(403);
       expect(blocked.json()).toMatchObject({ error: { code: 'ENTERPRISE_LICENSE_REQUIRED' } });
       expect(called).toBe(false);

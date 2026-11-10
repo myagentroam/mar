@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import { McpService } from '../../ee/server/src/mcp/mcp-service.js';
 
 describe('Server MCP Registry discovery', () => {
@@ -18,6 +19,64 @@ describe('Server MCP Registry discovery', () => {
 
     expect(execute).toHaveBeenCalledOnce();
     expect(execute.mock.calls[0]?.[0]).toContain('INSERT INTO mcp_sources');
+  });
+
+  it('Community fixed admin can toggle the built-in Registry but cannot delete it', async () => {
+    const fixture = communityMcpFixture({ built_in: true, scope: 'ENTERPRISE' });
+    const service = new McpService(fixture.database, fixture.authorization, undefined, () => 2_000);
+
+    await expect(service.listSources(1)).resolves.toMatchObject([
+      { id: 'official', builtIn: true, manageable: true }
+    ]);
+    await service.setSourceEnabled(1, 'official', false);
+    await service.setSourceEnabled(1, 'official', true);
+    expect(
+      fixture.execute.mock.calls
+        .filter(([sql]) => sql.startsWith('UPDATE mcp_sources'))
+        .map(([, values]) => values)
+    ).toEqual([
+      [false, 'DISABLED', 2_000, 'official'],
+      [true, 'READY', 2_000, 'official']
+    ]);
+    await expect(service.removeSource(1, 'official')).rejects.toThrow('MCP_SOURCE_BUILT_IN');
+    expect(
+      fixture.execute.mock.calls.some(([sql]) => sql.startsWith('DELETE FROM mcp_sources'))
+    ).toBe(false);
+  });
+
+  it('Community fixed admin cannot manage ordinary enterprise sources or MCP catalog entries', async () => {
+    const fixture = communityMcpFixture({ built_in: false, scope: 'ENTERPRISE' });
+    const service = new McpService(fixture.database, fixture.authorization);
+
+    await expect(service.listSources(1)).resolves.toMatchObject([{ manageable: false }]);
+    await expect(service.setSourceEnabled(1, 'official', false)).rejects.toThrow(
+      'MCP_SOURCE_FORBIDDEN'
+    );
+    await expect(service.listCatalog(1)).resolves.toMatchObject([{ manageable: false }]);
+    await expect(service.removeCatalog(1, 'catalog-entry')).rejects.toThrow('MCP_SOURCE_FORBIDDEN');
+    expect(fixture.execute.mock.calls.some(([sql]) => sql.startsWith('UPDATE mcp_sources'))).toBe(
+      false
+    );
+    expect(
+      fixture.execute.mock.calls.some(([sql]) => sql.startsWith('DELETE FROM mcp_catalog_entries'))
+    ).toBe(false);
+  });
+
+  it('Non-fixed Community admins, other users, and organization admins cannot manage the built-in Registry', async () => {
+    const fixture = communityMcpFixture({ built_in: true, scope: 'ENTERPRISE' });
+    const service = new McpService(fixture.database, fixture.authorization);
+
+    for (const actorUserId of [2, 3, 4]) {
+      await expect(service.listSources(actorUserId)).resolves.toMatchObject([
+        { manageable: false }
+      ]);
+      await expect(service.setSourceEnabled(actorUserId, 'official', false)).rejects.toThrow(
+        'MCP_SOURCE_FORBIDDEN'
+      );
+    }
+    expect(fixture.execute.mock.calls.some(([sql]) => sql.startsWith('UPDATE mcp_sources'))).toBe(
+      false
+    );
   });
 
   it('Accepts JSON catalog fields already parsed by the MySQL driver', async () => {
@@ -261,3 +320,59 @@ describe('Server MCP Registry discovery', () => {
     expect(updates[1]?.values).toEqual([true, JSON.stringify(['浏览器']), 9, 'catalog-1']);
   });
 });
+
+function communityMcpFixture(sourceOverrides: Record<string, unknown>) {
+  const actors = new Map([
+    [1, { role: 'ADMIN', organization_id: 1, is_fixed_admin: true }],
+    [2, { role: 'MEMBER', organization_id: 1, is_fixed_admin: false }],
+    [3, { role: 'ORG_ADMIN', organization_id: 2, is_fixed_admin: false }],
+    [4, { role: 'ADMIN', organization_id: 1, is_fixed_admin: false }]
+  ]);
+  const source = {
+    id: 'official',
+    scope: 'ENTERPRISE',
+    owner_organization_id: null,
+    owner_user_id: null,
+    name: 'Official MCP Registry',
+    locator: 'https://registry.example.com',
+    enabled: true,
+    built_in: true,
+    status: 'READY',
+    last_error_code: null,
+    created_at: 1,
+    updated_at: 1,
+    ...sourceOverrides
+  };
+  const catalogEntry = {
+    id: 'catalog-entry',
+    source_id: 'official',
+    scope: 'ENTERPRISE',
+    owner_organization_id: null,
+    owner_user_id: null,
+    server_name: 'example/server',
+    display_name: 'Example',
+    description: '',
+    version: '1.0.0',
+    featured: false,
+    tags: [],
+    runtime: { transport: 'HTTP', url: 'https://example.com/mcp' },
+    created_at: 1,
+    updated_at: 1
+  };
+  const execute = vi.fn(async (sql: string, values: readonly unknown[] = []) => {
+    if (sql.includes('FROM mcp_catalog_entries')) return [[catalogEntry], []];
+    if (sql.includes('FROM mcp_sources')) return [[source], []];
+    if (sql.includes('is_fixed_admin')) {
+      const actor = actors.get(Number(values[0]));
+      return [actor === undefined ? [] : [actor], []];
+    }
+    if (sql.includes('FROM users')) {
+      const actor = actors.get(Number(values[0]));
+      return [actor === undefined ? [] : [actor], []];
+    }
+    return [[], []];
+  });
+  const database = { raw: { execute, query: execute } } as never;
+  const authorization = new AuthorizationService(database, undefined, async () => true);
+  return { database, authorization, execute };
+}

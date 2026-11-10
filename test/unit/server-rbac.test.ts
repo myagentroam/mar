@@ -4,6 +4,28 @@ import { AuthorizationService } from '../../ee/server/src/rbac/authorization-ser
 import { loadPermissionMatrix } from '../../ee/server/src/rbac/permission-matrix.js';
 
 describe('Server RBAC permission matrix', () => {
+  it('allows only the fixed community administrator to manage system settings without enterprise access', async () => {
+    const actor = { role: 'ADMIN', organization_id: 1, is_fixed_admin: true };
+    const database = {
+      raw: { execute: vi.fn(async () => [[actor], []]) }
+    } as unknown as MysqlServerDatabase;
+    const service = new AuthorizationService(database, loadPermissionMatrix(), async () => true);
+
+    await expect(
+      service.authorize(1, 'SYSTEM_SETTINGS_MANAGE', { ownerType: 'SYSTEM' })
+    ).resolves.toEqual({ allowed: true });
+    for (const permission of ['AUDIT_READ', 'AUDIT_EXPORT', 'SSO_MANAGE', 'ORG_MANAGE']) {
+      await expect(service.authorize(1, permission, { ownerType: 'SYSTEM' })).resolves.toEqual({
+        allowed: false,
+        reason: 'ENTERPRISE_LICENSE_REQUIRED'
+      });
+    }
+    actor.is_fixed_admin = false;
+    await expect(
+      service.authorize(1, 'SYSTEM_SETTINGS_MANAGE', { ownerType: 'SYSTEM' })
+    ).resolves.toEqual({ allowed: false, reason: 'RBAC_ACTOR_INVALID' });
+  });
+
   it('admits only declared self-owned personal operations before activation', async () => {
     let personal = true;
     const execute = vi.fn(async () => [

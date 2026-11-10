@@ -77,7 +77,12 @@ export abstract class McpService {
         const result = await this.authorization.authorize(
           actorUserId,
           'SKILL_SOURCE_MANAGE',
-          scopeContext(source.scope, source.ownerUserId ?? actorUserId, source.organizationId)
+          scopeContext(
+            source.scope,
+            source.ownerUserId ?? actorUserId,
+            source.organizationId,
+            source.builtIn
+          )
         );
         return { ...source, manageable: result.allowed };
       })
@@ -503,7 +508,12 @@ export abstract class McpService {
     const result = await this.authorization.authorize(
       actorUserId,
       'SKILL_SOURCE_MANAGE',
-      scopeContext(scope, Number(row['owner_user_id']), Number(row['owner_organization_id']))
+      scopeContext(
+        scope,
+        Number(row['owner_user_id']),
+        Number(row['owner_organization_id']),
+        Boolean(row['built_in'])
+      )
     );
     if (!result.allowed) throw new Error('MCP_SOURCE_FORBIDDEN');
   }
@@ -625,8 +635,10 @@ function sourceSummary(row: RowDataPacket): McpSourceSummary {
 function scopeContext(
   scope: 'ENTERPRISE' | McpSourceInput['scope'],
   userId: number,
-  organizationId?: number
+  organizationId?: number,
+  builtIn = false
 ): AuthorizationContext {
+  if (scope === 'ENTERPRISE' && builtIn) return { ownerType: 'SYSTEM' };
   if (scope === 'PERSONAL') return { ownerType: 'PERSONAL', ownerUserId: userId };
   if (scope === 'ORGANIZATION')
     return { ownerType: 'ORGANIZATION', organizationId: organizationId! };

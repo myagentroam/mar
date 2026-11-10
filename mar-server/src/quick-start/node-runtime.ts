@@ -7,7 +7,7 @@ import type { QuickStartConfig } from './config.js';
 import { serverNodeEntrypoint } from './node-dependency.js';
 
 interface Bootstrap {
-  issue(): Promise<{ token: string }>;
+  issue(previousToken?: string): Promise<{ token: string }>;
   online(nodeId: string): boolean;
 }
 
@@ -26,6 +26,7 @@ export async function startLocalNode(
   const path = join(data, 'node.json');
   await mkdir(data, { recursive: true, mode: 0o700 });
   await mkdir(workspace, { recursive: true, mode: 0o700 });
+  let created = false;
   try {
     await readFile(path, 'utf8');
   } catch (error) {
@@ -49,6 +50,7 @@ export async function startLocalNode(
         { mode: 0o600, flag: 'wx' }
       );
       await link(temporary, path);
+      created = true;
     } finally {
       await unlink(temporary).catch(() => {});
     }
@@ -60,16 +62,40 @@ export async function startLocalNode(
     Array.isArray(nodeConfig) ||
     typeof (nodeConfig as Record<string, unknown>)['serverUrl'] !== 'string'
   )
-    throw new Error('QUICK_START_NODE_CONFIG_INVALID');
+    throw Object.assign(new Error('QUICK_START_NODE_CONFIG_INVALID'), {
+      code: 'QUICK_START_NODE_CONFIG_INVALID'
+    });
   const record = nodeConfig as Record<string, unknown>;
+  const nonempty = (value: unknown): value is string =>
+    typeof value === 'string' && value.trim().length > 0;
+  const hasIdentity = nonempty(record['nodeId']) && nonempty(record['credential']);
+  if (!hasIdentity && (record['nodeId'] !== undefined || record['credential'] !== undefined))
+    throw Object.assign(new Error('QUICK_START_NODE_CONFIG_INVALID'), {
+      code: 'QUICK_START_NODE_CONFIG_INVALID'
+    });
+  if (!hasIdentity && !nonempty(record['registrationToken']))
+    throw Object.assign(new Error('QUICK_START_NODE_CONFIG_INVALID'), {
+      code: 'QUICK_START_NODE_CONFIG_INVALID'
+    });
+  const token =
+    !created && !hasIdentity
+      ? (await bootstrap.issue(record['registrationToken'] as string)).token
+      : undefined;
   const serverUrl = `http://127.0.0.1:${config.serverPort}`;
-  if (record['serverUrl'] !== serverUrl) {
+  if (
+    record['serverUrl'] !== serverUrl ||
+    (token !== undefined && token !== record['registrationToken'])
+  ) {
     const temporary = `${path}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporary, `${JSON.stringify({ ...record, serverUrl }, null, 2)}\n`, {
-        mode: 0o600,
-        flag: 'wx'
-      });
+      await writeFile(
+        temporary,
+        `${JSON.stringify({ ...record, serverUrl, ...(token === undefined ? {} : { registrationToken: token }) }, null, 2)}\n`,
+        {
+          mode: 0o600,
+          flag: 'wx'
+        }
+      );
       await rename(temporary, path);
     } finally {
       await unlink(temporary).catch(() => {});

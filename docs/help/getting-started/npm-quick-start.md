@@ -9,7 +9,7 @@ Quick Start 在自己的电脑上启动固定社区版 Server，供本机体验�
 
 目前实际验证的安装目标是带 glibc 2.28 或更高版本、`tar` 和 `dpkg-deb` 的 Linux x64（例如受支持的 Debian 或 Ubuntu 系统），以及可使用 `tar` 的 Windows x64。需要 Node.js 24.12 或更高版本以及 npm。安装包时原生依赖可能要求系统已有可用的构建工具；安装和 setup 均不安装系统包，也不请求提权。浏览器和所选组件的准备需要网络。其他原生平台尚未完成此 Quick Start 的验证。
 
-在 Linux 上，原生依赖构建使用的 Node.js 头文件缓存路径包含空格时，`node-gyp` 可能构建失败；安装程序目录和部署数据目录可以包含空格。可选的解决方法是在安装前将 `XDG_CACHE_HOME` 设为当前用户可写、无空格的绝对目录，再执行 npm 安装；这会改变该命令使用的缓存位置。
+终端依赖固定为 `node-pty@1.2.0-beta.18`，随包提供 Linux x64/arm64、macOS x64/arm64 和 Windows x64/arm64 预编译文件；已验证的 Linux x64 默认安装无需为 node-pty 安装 GCC、make 或 Python，程序目录和 HOME 含空格也可使用。不要设置 `npm_config_build_from_source=true` 或全局跳过安装脚本；前者会强制源码编译，后者可能使其他依赖未正确准备。其他原生依赖或无匹配预编译文件的平台仍可能需要构建工具；包内有预编译文件不代表该平台的完整 Quick Start 已验证。
 
 ## 安装与启动
 
@@ -34,6 +34,8 @@ Windows 本机 Quick Start 的受管 Node 使用 IPv4 直连；如果只能通�
 按[首次登录与修改密码](first-login.md)立即修改初始管理员密码。等待本机 Node 显示在线，再在部署目录的 `workspace` 下[登记 Workspace](register-workspace.md)。本机 Node 默认只能访问该目录，不会自动启用托管对话。[开始会话](first-agent-session.md)前还需配置模型和凭据；Node 在线或 `/health` 成功并不代表 Agent 已能执行。
 
 本机 Node 的默认允许目录仅为本部署的 `workspace/`。如需使用其他项目，先停止 run，只编辑部署数据目录内 `node-data/node.json` 的 `allowedRoots` 数组，填写一个或多个绝对路径，然后重新 run。例如 Unix 可用 `"allowedRoots": ["/home/alice/project", "/srv/work"]`，Windows 可用 `"allowedRoots": ["C:\\Projects", "D:\\Work"]`。不要覆盖整个文件或删除 `nodeId`、凭据及 `serverUrl` 等身份字段。允许目录不会提升操作系统账号权限；账号仍需有相应文件权限。npm 程序安装目录与部署数据目录不同，后者默认为 `~/.myagentroam/quick-start/`，也可由 `--config` 指定。
+
+首次注册失败后，可停止并重新 `run`：若 `node.json` 只有注册令牌、尚无身份，系统会复用未使用的有效令牌，或替换已过期但未使用的令牌，保留允许目录和数据配置。若报告 `QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED`，说明令牌已使用或状态无法确认，系统不会自动重复登记。请保留 `node-data/node.json`，从备份恢复已有身份，或先核对并处理管理页面中的上次登记；不要直接删除配置或数据目录。身份字段残缺会报告配置无效，不会自动重置身份。
 
 ## 数据与可选搜索
 

@@ -13,6 +13,8 @@ export const cliMessagesEnUS = {
   quickNodeInstallFailed:
     'The local Node operation failed ({code}). Check the Node logs and configuration.',
   quickNodeOnline: 'Local Node is online.',
+  quickNodeBootstrapRecoveryRequired:
+    'Local Node registration cannot be safely recovered (QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED). The token was consumed or its state is unknown. No new Node was registered. Keep node-data/node.json and restore its existing identity from a backup or resolve the previous registration before registering again.',
   quickNodeUnavailable:
     'Local Node is not online. Check the Node logs and configuration; registration is not retried automatically.',
   quickNodeSupervisorExited:

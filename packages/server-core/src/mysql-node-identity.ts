@@ -101,6 +101,50 @@ export class MysqlNodeIdentityStorage {
     return { token, expiresAt };
   }
 
+  /** Recover only an unused personal token; never infer a lost registration result. */
+  async recoverPersonalNodeRegistrationToken(
+    token: string,
+    userId: number,
+    ttlMs: number
+  ): Promise<{ token: string; expiresAt: number } | undefined> {
+    const connection = await this.raw.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        `SELECT expires_at,display_name FROM node_registration_tokens
+         WHERE token_hash=? AND used_at IS NULL AND created_by_user_id=?
+         AND owner_type='PERSONAL' AND owner_user_id=? AND owner_organization_id IS NULL FOR UPDATE`,
+        [sha256(token), userId, userId]
+      );
+      const row = rows[0];
+      if (!row) {
+        await connection.rollback();
+        return undefined;
+      }
+      const expiresAt = Number(row['expires_at']);
+      const result =
+        expiresAt > this.now()
+          ? { token, expiresAt }
+          : await this.createNodeRegistrationToken(
+              userId,
+              ttlMs,
+              { ownerType: 'PERSONAL', ownerUserId: userId },
+              row['display_name'] == null ? null : String(row['display_name']),
+              connection
+            );
+      // Keep the expired, unusable row so a failed local file write can retry safely.
+      await connection.commit();
+      commitMysqlAudits(connection);
+      return result;
+    } catch (error) {
+      discardMysqlAudits(connection);
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async registerNode(
     token: string,
     input: { readonly metadata: string },

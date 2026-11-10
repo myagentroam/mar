@@ -843,6 +843,8 @@ export async function composeServerApplication(
                 resources.assertOwnershipSelection(userId, ownership),
               createNodeRegistrationToken: (userId, ttlMs, ownership, name) =>
                 database.createNodeRegistrationToken(userId, ttlMs, ownership, name),
+              recoverPersonalNodeRegistrationToken: (token, userId, ttlMs) =>
+                database.recoverPersonalNodeRegistrationToken(token, userId, ttlMs),
               isNodeConnected: (nodeId) =>
                 nodeControl.isNodeConnected(nodeId) && !nodeControl.isNodeUpgradeOnly(nodeId)
             })
