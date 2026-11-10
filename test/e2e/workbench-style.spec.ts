@@ -487,7 +487,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect((await row.boundingBox())!.height).toBeCloseTo(compactSize, 1);
       }
       const refresh = root.getByRole('button', { name: 'Refresh Git changes', exact: true });
+      await expect(root.locator('.repository-title-row .changes-refresh-button')).toHaveCount(1);
       const refreshBounds = (await refresh.boundingBox())!;
+      const titleBounds = (await root.locator('.repository-title-row').boundingBox())!;
+      expect(refreshBounds.y + refreshBounds.height / 2).toBeCloseTo(
+        titleBounds.y + titleBounds.height / 2,
+        1
+      );
+      expect(refreshBounds.x + refreshBounds.width).toBeCloseTo(
+        titleBounds.x + titleBounds.width,
+        1
+      );
       expect(refreshBounds.height).toBeCloseTo(compactSize, 1);
       expect(refreshBounds.width).toBeCloseTo(compactSize, 1);
       await expect(root.locator('.repository-title-row strong')).toHaveCSS('font-weight', '500');

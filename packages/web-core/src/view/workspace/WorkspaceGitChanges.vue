@@ -296,19 +296,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     >
       {{ gitGroupErrorMessage(error) }}
     </p>
-    <div v-if="hasRefreshButton" class="changes-refresh-row">
-      <button
-        v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
-        class="changes-refresh-button file-explorer-utility-button utility-control"
-        :disabled="changesLoading"
-        :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
-        :aria-busy="changesLoading || undefined"
-        type="button"
-        @click="loadChanges(true)"
-      >
-        <MarIcon :name="changesLoading && !showRetryControl ? 'loading-action' : 'refresh'" />
-      </button>
-    </div>
     <p
       v-if="visibleChangeRepositories.length === 0 && !changesLoading && !changesReadFailed"
       class="empty"
@@ -337,6 +324,20 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               >
                 {{ repositoryReference(repository) }}
               </code>
+              <button
+                v-if="repository.source === 'ROOT'"
+                v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
+                class="changes-refresh-button file-explorer-utility-button utility-control"
+                :disabled="changesLoading"
+                :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
+                :aria-busy="changesLoading || undefined"
+                type="button"
+                @click="loadChanges(true)"
+              >
+                <MarIcon
+                  :name="changesLoading && !showRetryControl ? 'loading-action' : 'refresh'"
+                />
+              </button>
             </div>
             <div class="repository-tags-row">
               <el-tag class="repository-kind" type="info" effect="plain" size="small">
@@ -593,12 +594,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .changes-read-state button {
   font: inherit;
-}
-
-.changes-refresh-row {
-  display: flex;
-  flex: 0 0 auto;
-  justify-content: flex-end;
 }
 
 .change-list > .change-append-state {
