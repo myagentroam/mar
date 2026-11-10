@@ -230,6 +230,9 @@ export function createHostedConversationWorkspaceService(
   ): void {
     if (value.conversation.nodeId !== nodeId || value.conversation.id !== conversationId)
       throw responseInvalid();
+    // History epochs survive missed Watch frames and change when the Node owner restarts.
+    const historyReset = value.historyVersion !== snapshot.value?.historyVersion;
+    replaceHistory ||= historyReset;
     const page = {
       turns: projectHostedTurns(value.turns),
       nextCursor: value.historyNextCursor,
@@ -242,6 +245,7 @@ export function createHostedConversationWorkspaceService(
       loadingOlderHistory.value = false;
       olderHistoryError.value = undefined;
       historyExpanded = false;
+      if (historyReset) conversationProjection.resetHistory();
       conversationProjection.replaceAuthoritative(page);
     } else
       conversationProjection.mergeLatest({

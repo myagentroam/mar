@@ -1585,71 +1585,98 @@ describe('Web Hosted Conversation Workspace Service', () => {
     });
   });
 
-  it('does not replace text flushed while a rollback response is pending', async () => {
-    const rollbackResponse = deferred<unknown>();
-    let watchId = '';
-    const workspace = service(async (path, init) => {
-      if (path.endsWith('/watch')) {
-        watchId = (JSON.parse(String(init?.body)) as { watchId: string }).watchId;
-        return {
-          accepted: true,
-          watchId,
-          nodeGeneration: 'generation-current',
-          expiresAt: Date.now() + 45_000
-        } as never;
-      }
-      if (path.endsWith('/rollback')) return rollbackResponse.promise as never;
-      throw new Error('UNEXPECTED_REQUEST');
-    });
-    workspace.selectConversation('node-1', 'conversation-1');
-    const initial = workspace.beginSelectedConversationWatch();
-    await Promise.resolve();
-    const identity = {
-      workbenchConnectionId: 'connection-current',
-      watchId,
-      nodeGeneration: 'generation-current',
-      nodeId: 'node-1',
-      conversationId: 'conversation-1',
-      expiresAt: Date.now() + 45_000
-    };
-    workspace.handleWatchEvent({
-      type: 'watch.hosted-conversation.snapshot',
-      ...identity,
-      revision: 1,
-      snapshotSequence: 1,
-      payload: snapshot
-    });
-    await initial;
-    const emitRuntime = (sequence: number, kind: string, payload: unknown) =>
+  it.each(['initial', 'reset'] as const)(
+    'does not replace newer text flushed after %s while a rollback response is pending',
+    async (mode) => {
+      const rollbackResponse = deferred<unknown>();
+      let watchId = '';
+      const workspace = service(async (path, init) => {
+        if (path.endsWith('/watch')) {
+          watchId = (JSON.parse(String(init?.body)) as { watchId: string }).watchId;
+          return {
+            accepted: true,
+            watchId,
+            nodeGeneration: 'generation-current',
+            expiresAt: Date.now() + 45_000
+          } as never;
+        }
+        if (path.endsWith('/rollback')) return rollbackResponse.promise as never;
+        throw new Error('UNEXPECTED_REQUEST');
+      });
+      workspace.selectConversation('node-1', 'conversation-1');
+      const initial = workspace.beginSelectedConversationWatch();
+      await Promise.resolve();
+      const identity = {
+        workbenchConnectionId: 'connection-current',
+        watchId,
+        nodeGeneration: 'generation-current',
+        nodeId: 'node-1',
+        conversationId: 'conversation-1',
+        expiresAt: Date.now() + 45_000
+      };
       workspace.handleWatchEvent({
-        type: 'watch.hosted-conversation.event',
+        type: 'watch.hosted-conversation.snapshot',
         ...identity,
-        event: {
-          sequence,
-          category: 'hosted-conversation',
-          payload: {
-            conversationId: 'conversation-1',
-            kind: 'runtime',
-            runtimeEvent: {
-              kind,
-              executionId: 'run-1',
-              turnId: 'turn-1',
-              sequence,
-              createdAt: sequence,
-              payload
+        revision: 1,
+        snapshotSequence: 1,
+        payload: { ...snapshot, historyVersion: 'epoch:0' }
+      });
+      await initial;
+      const emitRuntime = (sequence: number, kind: string, payload: unknown) =>
+        workspace.handleWatchEvent({
+          type: 'watch.hosted-conversation.event',
+          ...identity,
+          event: {
+            sequence,
+            category: 'hosted-conversation',
+            payload: {
+              conversationId: 'conversation-1',
+              kind: 'runtime',
+              runtimeEvent: {
+                kind,
+                executionId: 'run-1',
+                turnId: 'turn-1',
+                sequence,
+                createdAt: sequence,
+                payload
+              }
             }
           }
-        }
+        });
+      emitRuntime(2, 'RUN', { status: 'RUNNING' });
+      emitRuntime(3, 'DELTA', {
+        itemId: 'assistant-1',
+        text: mode === 'reset' ? 'discarded text' : 'new text'
       });
-    emitRuntime(2, 'RUN', { status: 'RUNNING' });
-    emitRuntime(3, 'DELTA', { itemId: 'assistant-1', text: 'new text' });
-    const rollback = workspace.rollback('turn-1', null);
-    await Promise.resolve();
-    expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'new text' });
-    rollbackResponse.resolve({ ...snapshot, snapshotSequence: 2 });
-    await rollback;
-    expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'new text' });
-  });
+      if (mode === 'reset') {
+        await vi.waitFor(() =>
+          expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({
+            text: 'discarded text'
+          })
+        );
+        workspace.handleWatchEvent({
+          type: 'watch.hosted-conversation.snapshot',
+          ...identity,
+          revision: 1,
+          snapshotSequence: 2,
+          payload: { ...snapshot, historyVersion: 'epoch:1', snapshotSequence: 3 }
+        });
+        expect(workspace.turns.value).toEqual([]);
+        emitRuntime(4, 'RUN', { status: 'RUNNING' });
+        emitRuntime(5, 'DELTA', { itemId: 'assistant-1', text: 'new text' });
+      }
+      const rollback = workspace.rollback('turn-1', null);
+      await Promise.resolve();
+      expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'new text' });
+      rollbackResponse.resolve({
+        ...snapshot,
+        historyVersion: mode === 'reset' ? 'epoch:1' : 'epoch:0',
+        snapshotSequence: mode === 'reset' ? 4 : 2
+      });
+      await rollback;
+      expect(workspace.turns.value[0]?.items[0]?.payload).toMatchObject({ text: 'new text' });
+    }
+  );
 
   it('Merge by Stable Turn, Item, File ID and do not infer files from message text', async () => {
     let watchId = '';

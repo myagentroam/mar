@@ -297,6 +297,79 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(forged.snapshot.value).toBe(normalizedForgedOriginal);
   });
 
+  it('replaces observer history on a new history version without discarding ordinary refresh prefixes', () => {
+    const workspace = service(async () => undefined as never);
+    const turn = {
+      id: 'turn-removed',
+      sessionId: 'session-1',
+      runId: 'run-removed',
+      userItemId: null,
+      status: 'SUCCEEDED',
+      model: null,
+      effort: null,
+      access: null,
+      items: [],
+      startedAt: 1,
+      completedAt: 2
+    } as const;
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      historyVersion: 'epoch:0',
+      turns: [turn]
+    } as never);
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      historyVersion: 'epoch:0',
+      snapshotSequence: 2
+    } as never);
+    expect(workspace.turns.value.map((value) => value.id)).toEqual([turn.id]);
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      historyVersion: 'epoch:1',
+      snapshotSequence: 3
+    } as never);
+    expect(workspace.turns.value).toEqual([]);
+    expect(workspace.historyNextCursor.value).toBeNull();
+  });
+
+  it('applies a rollback Watch before its HTTP response and isolates pre-rollback pagination', async () => {
+    const rollbackResponse = deferred<unknown>();
+    const olderResponse = deferred<unknown>();
+    const workspace = service(
+      async (path) =>
+        (path.endsWith('/rollback') ? rollbackResponse.promise : olderResponse.promise) as never
+    );
+    const turn = {
+      id: 'turn-removed',
+      sessionId: 'session-1',
+      runId: 'run-removed',
+      userItemId: null,
+      status: 'SUCCEEDED',
+      model: null,
+      effort: null,
+      access: null,
+      items: [],
+      startedAt: 1,
+      completedAt: 2
+    } as const;
+    workspace.selectConversation('node-1', 'conversation-1', {
+      ...snapshot,
+      historyVersion: 'epoch:0',
+      turns: [turn],
+      historyNextCursor: 'older'
+    } as never);
+    const older = workspace.loadOlderHistory();
+    const rollback = workspace.rollback(turn.id, null);
+    const committed = { ...snapshot, historyVersion: 'epoch:1', snapshotSequence: 2 };
+    workspace.selectConversation('node-1', 'conversation-1', committed as never);
+    expect(workspace.turns.value).toEqual([]);
+    olderResponse.resolve({ turns: [turn], nextCursor: 'older' });
+    rollbackResponse.resolve(committed);
+    await Promise.all([older, rollback]);
+    expect(workspace.turns.value).toEqual([]);
+    expect(workspace.historyNextCursor.value).toBeNull();
+  });
+
   it('does not let a late rollback HTTP snapshot overwrite newer Watch state', async () => {
     const response = deferred<unknown>();
     const workspace = service(async () => response.promise as never);

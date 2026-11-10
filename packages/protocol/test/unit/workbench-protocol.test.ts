@@ -736,6 +736,27 @@ describe('Workbench protocol contracts', () => {
       }).success
     ).toBe(false);
   });
+  it('accepts explicit Session history reset snapshots without accepting arbitrary reset flags', () => {
+    const frame = {
+      type: 'watch.session.snapshot',
+      workbenchConnectionId: 'connection-1',
+      watchId: 'watch-id-1',
+      nodeGeneration: 'generation-1',
+      nodeId: 'node-1',
+      workspaceId: 'workspace-1',
+      sessionId: 'session-1',
+      revision: 1,
+      snapshotSequence: 1,
+      expiresAt: Date.now() + 1,
+      payload: { turns: [] }
+    };
+    expect(watchEventSchema.parse({ ...frame, historyReset: true })).toMatchObject({
+      historyReset: true
+    });
+    expect(watchEventSchema.safeParse({ ...frame, historyReset: false }).success).toBe(false);
+    expect(watchEventSchema.safeParse(frame).success).toBe(true);
+  });
+
   it('accepts an optional authoritative Run event timestamp', () => {
     expect(
       runEventSchema.parse({
