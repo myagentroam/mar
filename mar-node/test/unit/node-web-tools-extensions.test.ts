@@ -133,6 +133,21 @@ describe('Node execution web tools', () => {
     expect(createWebToolsExtensions({ enabled: true }).tools).toEqual([]);
   });
 
+  it('does not project client search when the execution has no backend, while preserving fetch', () => {
+    const webSearch = vi.fn();
+    const webFetch = vi.fn();
+    const extension = createWebToolsExtensions({
+      enabled: true,
+      searchBackendAvailable: false,
+      hostedSearchModelIds: ['hosted'],
+      webSearch,
+      webFetch
+    });
+    expect(extension.tools?.map((tool) => tool.name)).toEqual(['web_fetch']);
+    expect(webSearch).not.toHaveBeenCalled();
+    expect(webFetch).not.toHaveBeenCalled();
+  });
+
   it('rejects cancelled calls before invoking a backend and preserves provider errors', async () => {
     const webFetch = vi.fn(async () => {
       throw new Error('private upstream details');

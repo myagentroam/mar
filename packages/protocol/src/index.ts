@@ -745,7 +745,8 @@ export const executionPrepareResponseSchema = z.union([
           marAgentModel: z.unknown().optional(),
           marAgentModels: z.unknown().optional(),
           marAgentCompact: z.unknown().optional(),
-          marAgentRuntimeScopeId: z.unknown().optional()
+          marAgentRuntimeScopeId: z.unknown().optional(),
+          searchBackendAvailable: z.boolean().optional()
         })
         .strict()
     })

@@ -105,7 +105,14 @@ export class DirectTransferService {
   static async create(options: DirectTransferServiceOptions): Promise<DirectTransferService> {
     const range = options.udpPortRange?.() ?? { begin: 49_152, end: 49_215 };
     const createIceUdpMuxListener =
-      options.createIceUdpMuxListener ?? ((port) => new NativeIceUdpMuxListener(port));
+      options.createIceUdpMuxListener ??
+      ((port) =>
+        new NativeIceUdpMuxListener(
+          port,
+          process.platform === 'win32' && process.env['MAR_QUICK_START_OWNER'] === '1'
+            ? '0.0.0.0'
+            : undefined
+        ));
     // Windows can accept an IPv6 mux bind while another IPv4 endpoint owns the port.
     const probe =
       options.probeUdp4Port ?? (process.platform === 'win32' ? probeUdp4Port : undefined);

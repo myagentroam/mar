@@ -150,6 +150,20 @@ The file window supports code and text, images, PDFs, modern Office documents, a
 
 ## Get started
 
+### Local npm Quick Start
+
+For local evaluation, the fixed Community Quick Start runs Server, its own MySQL, and optionally a local Node and search on loopback HTTP. Server has a normal dependency on the matching Node, whose npm installation also prepares Chromium. Once Server and its required dependencies are available in your npm registry, use Node.js `>=24.12` on a verified Linux x64 or Windows x64 system:
+
+```bash
+npm install @myagentroam/server
+npx --no-install mar-server setup
+npx --no-install mar-server run
+```
+
+Use `--no-node` to disable the local Node or `--no-searxng` to skip local search preparation. Windows requires `tar` and supports external SearXNG, not managed SearXNG. Read the [npm Quick Start](docs/help/en-US/getting-started/npm-quick-start.md) for prerequisites, data, first sign-in, and limitations. It is not a production or remote-access deployment.
+
+### Formal Docker deployment
+
 The standard deployment uses Docker Compose on a Linux host with a real host UUID and an HTTPS entry point. Work Nodes support Windows, Linux, and macOS with Node.js `>=22.13`; native Server requires Node.js `>=24.12` and MySQL 8.4.
 
 Start with the blank-secret [Compose environment template](.env.example); configure it using the deployment guide before starting services. Server deployment alone does not install a Node executor.
@@ -197,7 +211,7 @@ There is one source tree, build, and deployment baseline. Activation changes the
 | Organizations, multi-user administration, roles, and shared-resource grants | Requires activation | Available within the license scope |
 | Enterprise SSO and operation auditing                                       | Requires activation | Available within the license scope |
 
-Both states require a valid real host UUID. Enterprise license expiry retains management-freeze behavior; it does not delete user data or reset the installation to a new Community state. [Activation and license management](docs/help/en-US/administration/license.md).
+In formal deployments, both states require a valid real host UUID. The local-only [npm Quick Start](docs/help/en-US/getting-started/npm-quick-start.md) instead uses fixed Community capabilities without a UUID or activation. Enterprise license expiry retains management-freeze behavior; it does not delete user data or reset the installation to a new Community state. [Activation and license management](docs/help/en-US/administration/license.md).
 
 ## Develop and contribute
 

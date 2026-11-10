@@ -68,6 +68,7 @@ export interface HostedConversationRuntimeRollbackInput extends HostedConversati
 }
 
 export interface HostedConversationRuntimeRunInput {
+  readonly searchBackendAvailable?: boolean;
   readonly onModelUsage?: import('@myagentroam/agent').ModelUsageObserver;
   readonly compact?: unknown;
   readonly conversationId: string;

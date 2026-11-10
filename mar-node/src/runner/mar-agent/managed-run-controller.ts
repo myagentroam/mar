@@ -417,6 +417,7 @@ export class MarAgentManagedRunController {
     models: MarAgentRuntimeModelConfiguration[];
     compact?: unknown;
     runtimeScopeId?: string;
+    searchBackendAvailable?: boolean;
     effort: string;
     access?: unknown;
     mode: 'run' | 'plan' | 'compact';
@@ -531,6 +532,9 @@ export class MarAgentManagedRunController {
         imageExtensions,
         createWebToolsExtensions({
           enabled: true,
+          ...(input.searchBackendAvailable === undefined
+            ? {}
+            : { searchBackendAvailable: input.searchBackendAvailable }),
           hostedSearchModelIds: executionModels
             .filter((model) => model.hostedWebSearch)
             .map((model) => model.id),

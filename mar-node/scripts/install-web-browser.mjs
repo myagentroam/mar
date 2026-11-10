@@ -25,15 +25,12 @@ export async function installWebBrowser(options = {}) {
   }
   const require = createRequire(import.meta.url);
   const cli = resolve(dirname(require.resolve('playwright/package.json')), 'cli.js');
-  const run =
-    options.run ??
-    ((command, args) =>
-      spawnSync(command, args, {
-        stdio: 'inherit',
-        env: environment,
-        timeout: 300_000
-      }));
-  const result = run(process.execPath, [cli, 'install', 'chromium', '--no-shell']);
+  const run = options.run ?? spawnSync;
+  const result = run(process.execPath, [cli, 'install', 'chromium', '--no-shell'], {
+    stdio: 'inherit',
+    env: environment,
+    timeout: 12 * 60_000
+  });
   if (result.error || result.signal || result.status !== 0)
     throw new Error(
       'NODE_WEB_BROWSER_INSTALL_FAILED: Chromium download failed. Check network access or preinstall the matching Playwright Chromium runtime.'

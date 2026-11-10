@@ -66,7 +66,8 @@ describe('Runner execution input boundary', () => {
       marAgentModel: structuredClone(model),
       marAgentModels: [{ ...model, modelId: 'catalog-first' }, null, { id: 'invalid' }],
       marAgentCompact: { model: { ...model, id: 'compact', modelId: 'coding' }, enabled: true },
-      marAgentRuntimeScopeId: 'scope-before'
+      marAgentRuntimeScopeId: 'scope-before',
+      searchBackendAvailable: false
     };
     const context = new MarAgentRunner().prepareExecutionContext(wire);
     wire.marAgentModel.modelId = 'mutated';
@@ -78,6 +79,7 @@ describe('Runner execution input boundary', () => {
       model: { modelId: 'coding' },
       models: [{ modelId: 'catalog-first' }],
       compact: { model: { id: 'compact', modelId: 'coding' }, enabled: true },
+      searchBackendAvailable: false,
       runtimeScopeId: 'scope-before'
     });
     expect(resolved?.models).toHaveLength(1);

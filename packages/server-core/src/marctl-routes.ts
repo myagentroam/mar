@@ -27,6 +27,7 @@ export function registerMarctlRoutes(
     readonly app: FastifyInstance;
     readonly userCredentials: MarctlUserCredentials;
     readonly publicOrigin: string | undefined;
+    readonly searchBackendAvailable?: () => boolean;
     readonly listNodes: () => Promise<readonly OperationalNode[]>;
     readonly canUseNode: (userId: number, nodeId: string) => Promise<boolean>;
     readonly secrets: {

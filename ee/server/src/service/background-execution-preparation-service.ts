@@ -21,6 +21,7 @@ export class BackgroundExecutionPreparationService {
     private readonly options: {
       readonly authorize: NodeRequestAuthorization;
       readonly serverUrl: string | undefined;
+      readonly searchBackendAvailable?: () => boolean;
       readonly secrets: Preparation['secrets'];
       readonly credentials: Preparation['credentials'];
       readonly instructions: Preparation['instructions'];
@@ -72,6 +73,9 @@ export class BackgroundExecutionPreparationService {
       nodeId,
       workspaceId,
       serverUrl: this.options.serverUrl,
+      ...(this.options.searchBackendAvailable === undefined
+        ? {}
+        : { searchBackendAvailable: this.options.searchBackendAvailable() }),
       secrets: this.options.secrets,
       credentials: this.options.credentials,
       instructions: this.options.instructions,

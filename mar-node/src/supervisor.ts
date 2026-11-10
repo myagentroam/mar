@@ -17,19 +17,56 @@ export async function superviseNode(
   configPath: string,
   bootstrapEntrypoint: string
 ): Promise<void> {
+  const stop = new AbortController();
+  let ownerDisconnected = false;
+  const onMessage = (message: unknown): void => {
+    if (
+      typeof message === 'object' &&
+      message !== null &&
+      'type' in message &&
+      message.type === 'node-quick-start-stop'
+    )
+      stop.abort();
+  };
+  process.on('message', onMessage);
+  const onOwnerDisconnect = () => {
+    ownerDisconnected = true;
+    process.exitCode = 1;
+    stop.abort();
+  };
+  if (process.env['MAR_QUICK_START_OWNER'] === '1') process.once('disconnect', onOwnerDisconnect);
+  try {
+    await superviseNodeUntilStopped(configPath, bootstrapEntrypoint, stop.signal);
+  } finally {
+    if (ownerDisconnected) process.exitCode = 1;
+    process.off('message', onMessage);
+    process.off('disconnect', onOwnerDisconnect);
+  }
+}
+
+async function superviseNodeUntilStopped(
+  configPath: string,
+  bootstrapEntrypoint: string,
+  stopSignal: AbortSignal
+): Promise<void> {
   const config = await loadNodeConfig(configPath);
   const dataDirectory = dirname(nodeDatabasePath(config, configPath));
   const activePath = resolve(dataDirectory, 'node-active-entrypoint');
-  let entrypoint = await readActiveEntrypoint(activePath, bootstrapEntrypoint);
+  let entrypoint =
+    process.env['MAR_QUICK_START_OWNER'] === '1'
+      ? bootstrapEntrypoint
+      : await readActiveEntrypoint(activePath, bootstrapEntrypoint);
   let reporter: NodeUpgradeReporter | undefined;
   let awaitingOnline: string | undefined;
   for (;;) {
+    if (stopSignal.aborted) return;
     const requestPath = nodeUpgradeRequestPath(nodeDatabasePath(config, configPath));
     let reportingIdentity: { serverUrl: string; nodeId: string } | undefined;
     const childResult = await runSupervisedNodeChild(
       entrypoint,
       configPath,
       async (handoff) => {
+        if (process.env['MAR_QUICK_START_OWNER'] === '1') return false;
         const currentConfig = await loadNodeConfig(configPath);
         if (
           currentConfig.nodeId === undefined ||
@@ -58,13 +95,16 @@ export async function superviseNode(
         reporter = next;
         next.update({ attemptId: handoff.attemptId, step: 'CLOSING_NODE' });
       },
-      awaitingOnline
+      awaitingOnline,
+      stopSignal
     );
     if (childResult.signalled) {
       reporter?.stop();
-      process.exitCode = childResult.code ?? 1;
+      process.exitCode =
+        childResult.forced || childResult.reclaimFailed ? 1 : (childResult.code ?? 1);
       return;
     }
+    if (stopSignal.aborted) return;
     if (childResult.reclaimFailed) {
       if (childResult.handoff !== undefined)
         await reporter?.finish({
@@ -109,6 +149,13 @@ export async function superviseNode(
       process.exitCode = code;
       return;
     }
+    if (
+      process.env['MAR_QUICK_START_OWNER'] === '1' &&
+      (code === UPGRADE_EXIT_CODE || childResult.handoff !== undefined)
+    ) {
+      process.exitCode = 1;
+      return;
+    }
     if (code !== UPGRADE_EXIT_CODE && childResult.handoff === undefined) {
       if (code === 0) return;
       nodeLog('node.supervisor.child-exited', { code });
@@ -130,7 +177,7 @@ export async function superviseNode(
       )
         throw new Error('NODE_UPGRADE_REQUEST_INVALID');
       const prefix = resolve(dataDirectory, 'node-versions', targetVersion);
-      const installDeadline = Date.now() + 15 * 60_000;
+      const installDeadline = Date.now() + 20 * 60_000;
       if (childResult.handoff !== undefined)
         reporter?.update({ attemptId: childResult.handoff.attemptId, step: 'INSTALLING' });
       failureStage = 'PREPARE_INSTALL_DIRECTORY';
@@ -150,7 +197,8 @@ export async function superviseNode(
         invocation.command,
         invocation.args,
         false,
-        installDeadline
+        installDeadline,
+        stopSignal
       );
       failureExitCode = installResult.code;
       if (installResult.reclaimFailed) {
@@ -167,7 +215,13 @@ export async function superviseNode(
       const rebuild = platformCliInvocation('npm', ['rebuild', '--prefix', prefix, 'node-pty']);
       failureStage = 'NATIVE_REBUILD';
       failureExitCode = undefined;
-      const rebuildResult = await runProcess(rebuild.command, rebuild.args, false, installDeadline);
+      const rebuildResult = await runProcess(
+        rebuild.command,
+        rebuild.args,
+        false,
+        installDeadline,
+        stopSignal
+      );
       failureExitCode = rebuildResult.code;
       if (rebuildResult.reclaimFailed) {
         installReclaimFailed = true;
@@ -195,7 +249,8 @@ export async function superviseNode(
           )
         ],
         true,
-        installDeadline
+        installDeadline,
+        stopSignal
       );
       failureExitCode = browserInstall.code;
       if (browserInstall.reclaimFailed) {
@@ -277,7 +332,10 @@ export async function superviseNode(
         code: 'NODE_UPGRADE_REQUEST_CLEANUP_FAILED'
       });
     }
-    if (stopping) return;
+    if (stopping) {
+      if (stopSignal.aborted) process.exitCode = 1;
+      return;
+    }
   }
 }
 
@@ -285,13 +343,16 @@ async function runProcess(
   command: string,
   args: readonly string[],
   inherit: boolean,
-  deadlineAt: number
+  deadlineAt: number,
+  stopSignal: AbortSignal
 ): Promise<{
   readonly code: number | null;
   readonly signalled: boolean;
   readonly timedOut: boolean;
   readonly reclaimFailed: boolean;
 }> {
+  if (stopSignal.aborted)
+    return { code: null, signalled: true, timedOut: false, reclaimFailed: false };
   return new Promise((resolveProcess) => {
     const child = spawn(command, args, {
       windowsHide: true,
@@ -336,6 +397,25 @@ async function runProcess(
     };
     const onSigint = (): void => forward('SIGINT');
     const onSigterm = (): void => forward('SIGTERM');
+    const onQuickStop = (): void => {
+      if (signalled || settled) return;
+      signalled = true;
+      timedOut = true;
+      reapDeadline = setTimeout(() => finish(null, true), 10_000);
+      void terminateProcessTree(child)
+        .then(() => {
+          reclaimed = true;
+          if (exited !== undefined) finish(exited.code);
+        })
+        .catch(() => finish(null, true));
+      if (process.platform !== 'win32' && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          child.kill('SIGKILL');
+        }
+      }
+    };
     const finish = (code: number | null, reclaimFailed = false): void => {
       if (settled) return;
       settled = true;
@@ -343,11 +423,14 @@ async function runProcess(
       if (reapDeadline !== undefined) clearTimeout(reapDeadline);
       process.off('SIGINT', onSigint);
       process.off('SIGTERM', onSigterm);
+      stopSignal.removeEventListener('abort', onQuickStop);
       if (reclaimFailed) child.unref();
       resolveProcess({ code, signalled, timedOut, reclaimFailed });
     };
     process.on('SIGINT', onSigint);
     process.on('SIGTERM', onSigterm);
+    stopSignal.addEventListener('abort', onQuickStop, { once: true });
+    if (stopSignal.aborted) onQuickStop();
     child.on('error', () => {
       if (child.pid === undefined) finish(null);
     });

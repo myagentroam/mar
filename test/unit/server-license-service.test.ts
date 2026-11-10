@@ -106,6 +106,7 @@ describe('Server License activation service', () => {
       second.json<{ requestCode: string }>().requestCode
     );
     expect(current.headers['cache-control']).toBe('private, no-store');
+    expect(current.json()).toMatchObject({ activationAvailable: true });
     expect(current.json()).not.toHaveProperty('hostFingerprint');
     expect(status).toHaveBeenCalledOnce();
     await app.close();

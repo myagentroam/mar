@@ -21,7 +21,8 @@ export function runSupervisedNodeChild(
   configPath: string,
   accept: (handoff: SupervisorHandoff) => Promise<boolean>,
   accepted: (handoff: SupervisorHandoff) => void,
-  upgradeAttemptId?: string
+  upgradeAttemptId?: string,
+  stopSignal?: AbortSignal
 ): Promise<SupervisedChildResult> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [entrypoint, 'run', '--config', configPath], {
@@ -29,11 +30,17 @@ export function runSupervisedNodeChild(
       stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
       env: {
         ...process.env,
-        MAR_NODE_SUPERVISED: '1',
+        MAR_NODE_SUPERVISED: process.env['MAR_QUICK_START_OWNER'] === '1' ? '0' : '1',
         ...(upgradeAttemptId === undefined ? {} : { MAR_NODE_UPGRADE_ATTEMPT_ID: upgradeAttemptId })
       },
       detached: process.platform !== 'win32'
     });
+    if (
+      process.env['MAR_QUICK_START_OWNER'] === '1' &&
+      child.pid !== undefined &&
+      process.connected
+    )
+      process.send?.({ type: 'node-quick-start-child', pid: child.pid }, () => {});
     let done = false;
     let signalled = false;
     let channelId: string | undefined;
@@ -52,6 +59,7 @@ export function runSupervisedNodeChild(
       if (reapDeadline !== undefined) clearTimeout(reapDeadline);
       process.off('SIGINT', onSigint);
       process.off('SIGTERM', onSigterm);
+      stopSignal?.removeEventListener('abort', onQuickStop);
       if (child.connected) child.disconnect();
       if (reclaimFailed) child.unref();
       resolve({
@@ -69,18 +77,55 @@ export function runSupervisedNodeChild(
     };
     const onSigint = (): void => forward('SIGINT');
     const onSigterm = (): void => forward('SIGTERM');
+    const onQuickStop = (): void => {
+      if (done || signalled) return;
+      signalled = true;
+      if (deadline !== undefined) clearTimeout(deadline);
+      send(child, { type: 'node-quick-start-stop' });
+      deadline = setTimeout(() => {
+        forced = true;
+        reclaiming = true;
+        reapDeadline = setTimeout(() => finish(null, true), 10_000);
+        void terminateProcessTree(child)
+          .then(() => {
+            reclaimed = true;
+            if (exited !== undefined) finish(exited.code);
+          })
+          .catch(() => finish(null, true));
+        if (process.platform !== 'win32' && child.pid !== undefined) {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+        }
+      }, 30_000);
+    };
     process.on('SIGINT', onSigint);
     process.on('SIGTERM', onSigterm);
+    stopSignal?.addEventListener('abort', onQuickStop, { once: true });
+    if (stopSignal?.aborted) onQuickStop();
     child.on('error', () => {
       if (child.pid === undefined) finish(null);
     });
     child.once('exit', (code) => {
+      if (
+        process.env['MAR_QUICK_START_OWNER'] === '1' &&
+        child.pid !== undefined &&
+        process.connected
+      )
+        process.send?.({ type: 'node-quick-start-child-exited', pid: child.pid }, () => {});
       exited = { code };
       if (!reclaiming || reclaimed) finish(code);
     });
     child.on('message', (message: unknown) => {
-      if (done || signalled || typeof message !== 'object' || message === null) return;
+      if (done || typeof message !== 'object' || message === null) return;
       const value = message as Record<string, unknown>;
+      if (signalled) {
+        if (stopSignal?.aborted && value['type'] === 'node-upgrade-hello')
+          send(child, { type: 'node-quick-start-stop' });
+        return;
+      }
       if (
         value['type'] === 'node-upgrade-hello' &&
         channelId === undefined &&

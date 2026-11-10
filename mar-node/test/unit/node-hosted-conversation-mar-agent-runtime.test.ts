@@ -274,6 +274,7 @@ describe('MAR Agent hosted conversation runtime', () => {
 
   it('injects the hosted web fetch provider only for web-enabled Runs', async () => {
     const webFetch = vi.fn(async () => ({ content: 'ok' }));
+    const webSearch = vi.fn();
     const createHost = vi.fn((input: HostedLocalAgentHostInput) => host(input));
     const runtime = new MarAgentHostedConversationRuntime({
       createAgent: vi.fn(async () =>
@@ -281,6 +282,7 @@ describe('MAR Agent hosted conversation runtime', () => {
       ) as never,
       createHost,
       webFetch,
+      webSearch,
       openCatalog: vi.fn(async () => ({
         list: vi.fn(async () => ({
           sessions: [
@@ -314,7 +316,8 @@ describe('MAR Agent hosted conversation runtime', () => {
       pathMounts: [],
       processExecutor: { spawn: vi.fn() } as never,
       mcpServers: [],
-      webAccess: true
+      webAccess: true,
+      searchBackendAvailable: false
     });
     await run.completion;
 
@@ -326,6 +329,7 @@ describe('MAR Agent hosted conversation runtime', () => {
       })
     );
     expect(webFetch).not.toHaveBeenCalled();
+    expect(webSearch).not.toHaveBeenCalled();
   });
 
   it('projects history only from the assigned HOME and keeps hosted model and access metadata', async () => {

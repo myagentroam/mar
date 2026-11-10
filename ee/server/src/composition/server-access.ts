@@ -1,4 +1,7 @@
-import { createEnterpriseServerProduct } from './enterprise-product.js';
+import {
+  createEnterpriseServerProduct,
+  createQuickStartServerProduct
+} from './enterprise-product.js';
 import { ResourceAccessService } from '../rbac/resource-access-service.js';
 import { ResourceMutationService } from '../rbac/resource-mutation-service.js';
 import { ResourceManagementDirectory } from '../rbac/resource-management-directory.js';
@@ -16,14 +19,17 @@ export function composeServerAccess(input: {
   readonly chatgptNodeRequest: NonNullable<CodexCredentialServiceOptions['chatgptNodeRequest']>;
   readonly publicKey?: string;
   readonly productUuid?: string | null;
+  readonly quickStart?: true;
 }) {
   const { database, now } = input;
-  const product = createEnterpriseServerProduct({
-    database,
-    now,
-    ...(input.publicKey === undefined ? {} : { publicKey: input.publicKey }),
-    ...(input.productUuid === undefined ? {} : { productUuid: input.productUuid })
-  });
+  const product = input.quickStart
+    ? createQuickStartServerProduct({ database, now })
+    : createEnterpriseServerProduct({
+        database,
+        now,
+        ...(input.publicKey === undefined ? {} : { publicKey: input.publicKey }),
+        ...(input.productUuid === undefined ? {} : { productUuid: input.productUuid })
+      });
   const { licenses, authorization } = product;
   const personalHostingAdmission = async (userId: number): Promise<boolean> =>
     userId === 1 &&

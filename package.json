@@ -30,6 +30,7 @@
     "test:product": "vitest run --config vitest.config.ts",
     "test:build": "node --test test/unit/*.test.mjs",
     "artifacts:sbom": "node scripts/create-sbom.mjs",
+    "artifacts:server-npm": "node scripts/pack-server.mjs",
     "artifacts:notices": "node scripts/create-third-party-notices.mjs"
   },
   "devDependencies": {

@@ -44,6 +44,11 @@
       "development": "./src/license/license-service.ts",
       "types": "./dist/license/license-service.d.ts",
       "import": "./dist/license/license-service.js"
+    },
+    "./cli-locale": {
+      "development": "./src/cli-locale.ts",
+      "types": "./dist/cli-locale.d.ts",
+      "import": "./dist/cli-locale.js"
     }
   },
   "license": "LicenseRef-MAR-ESAL-1.0"

@@ -4,7 +4,7 @@ import { sendError } from './http-errors.js';
 export function registerWebSearchRoutes(input: {
   app: FastifyInstance;
   database: { authenticateNode(nodeId: string, credential: string): unknown | Promise<unknown> };
-  endpoint: string;
+  endpoint: string | null;
   request?: typeof fetch;
 }): void {
   input.app.post<{ Body: { query?: unknown; maxResults?: unknown } }>(
@@ -25,6 +25,10 @@ export function registerWebSearchRoutes(input: {
         typeof request.body.maxResults === 'number'
           ? Math.min(10, Math.max(1, Math.trunc(request.body.maxResults)))
           : 8;
+      if (input.endpoint === null)
+        return sendError(reply, 503, 'WEB_SEARCH_UPSTREAM_FAILED', {
+          message: 'Web search is not configured.'
+        });
       try {
         const url = new URL('/search', input.endpoint);
         url.searchParams.set('q', query.trim());

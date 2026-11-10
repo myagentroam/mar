@@ -1,15 +1,15 @@
 ---
 title: 部署 MyAgentRoam Server 与 Web
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-10
 ---
 
 # 部署 MyAgentRoam Server 与 Web
 
 本页以公开产品根目录的唯一 `compose.yaml` 部署 MySQL、SearXNG 和自带 Web 的 Server；生产入口由你的反向代理提供 HTTPS。
 
-## 统一部署入口
+## 正式部署
 
-产品只有一套源码、构建和部署，入口为 `mar-server/`、`mar-web-console/` 和根 `compose.yaml`。未激活时显示社区版，提供工作区会话、文件、Git、终端、模型与凭据管理、Skill/MCP，以及个人模板和托管对话；有效企业 License 在同一安装中启用组织、用户、共享授权、SSO 和审计，无需更换镜像。
+正式部署使用同一套产品源码和构建，入口为 `mar-server/`、`mar-web-console/` 和根 `compose.yaml`。未激活时显示社区版，提供工作区会话、文件、Git、终端、模型与凭据管理、Skill/MCP，以及个人模板和托管对话；有效企业 License 在同一安装中启用组织、用户、共享授权、SSO 和审计，无需更换镜像。仅供本机体验的另一入口见 [npm 快速开始](npm-quick-start.md)。
 
 两种授权状态都使用 `/console` 工作台和 `/docs/` 文档中心。原有指向 `/` 的链接继续可用，浏览器在产品内进入 `/console`，保留查询参数与片段。部署后应验证实际登录和一次工作区操作，不能仅凭 `/health` 成功判断完整工作台已可用。
 
@@ -68,8 +68,8 @@ lastUpdated: 2026-11-06
 
 下一步：[首次登录与修改初始密码](first-login.md)；生产网络细节见[网络、TLS 与 WebSocket](../deployment/network.md)。
 
-所有部署都要求有效的真实主机 UUID。容器必须将宿主 `/sys/class/dmi/id/product_uuid` 只读挂载到 `/license-host/product_uuid`，源文件必须存在；原生运行可用 `MAR_LICENSE_HOST_PATH` 指定真实 UUID 文件。社区与企业使用相同要求。
+正式部署的社区与企业状态都要求有效的真实主机 UUID。容器必须将宿主 `/sys/class/dmi/id/product_uuid` 只读挂载到 `/license-host/product_uuid`，源文件必须存在；原生正式部署可用 `MAR_LICENSE_HOST_PATH` 指定真实 UUID 文件。仅供本机体验的 [npm 快速开始](npm-quick-start.md)无需 UUID，也不支持激活。
 
 ## 连接独立 Node
 
-Server 只托管 Web 与 API，不包含 Node 执行器。使用工作区、Agent、文件、终端或托管对话前，请独立[安装并注册 Node](../deployment/node-installation.md)。托管与浏览器执行依赖配置在 Node 主机上，不在 Server 镜像中。
+正式部署中，Server 只托管 Web 与 API，不包含 Node 执行器。使用工作区、Agent、文件、终端或托管对话前，请独立[安装并注册 Node](../deployment/node-installation.md)。托管与浏览器执行依赖配置在 Node 主机上，不在 Server 镜像中。

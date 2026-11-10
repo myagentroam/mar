@@ -41,6 +41,7 @@ export class NodeUpgradeCoordinator {
     targetVersion: string;
     activeRunCount: number;
   } {
+    if (process.env['MAR_QUICK_START_OWNER'] === '1') throw new Error('NODE_UPGRADE_UNAVAILABLE');
     const input = record(data);
     const targetVersion = input.targetVersion;
     if (typeof targetVersion !== 'string' || !STABLE_VERSION.test(targetVersion))

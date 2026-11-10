@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BackgroundExecutionPreparationService } from '../../src/service/background-execution-preparation-service.js';
 
-function fixture() {
+function fixture(searchBackendAvailable?: () => boolean) {
   const authorize = vi.fn(async () => true);
   const resolve = vi.fn(async () => ({ FRESH: 'current', MAR_USERNAME: 'member' }));
   const getInstructions = vi.fn(async () => ({ text: 'personal' }));
@@ -27,6 +27,7 @@ function fixture() {
     ]
   };
   const service = new BackgroundExecutionPreparationService({
+    ...(searchBackendAvailable === undefined ? {} : { searchBackendAvailable }),
     authorize,
     secrets: { resolve },
     credentials: undefined,
@@ -95,6 +96,16 @@ describe('background execution preparation', () => {
       selectedModelId: 'selected'
     });
     expect(f.issue).toHaveBeenCalledWith('node', 7, 'work');
+  });
+
+  it('projects search availability to both background preparation paths', async () => {
+    const f = fixture(() => false);
+    expect(await f.service.prepare('node', f.request)).toMatchObject({
+      searchBackendAvailable: false
+    });
+    expect(await f.service.prepareSchedule('node', f.schedule)).toMatchObject({
+      searchBackendAvailable: false
+    });
   });
 
   it('denies access before reading execution resources or issuing a grant', async () => {

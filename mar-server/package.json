@@ -19,7 +19,8 @@
     "license": "tsx --conditions=development src/license.ts"
   },
   "dependencies": {
-    "@myagentroam-enterprise/server-implementation": "workspace:*"
+    "@myagentroam-enterprise/server-implementation": "workspace:*",
+    "mysql2": "^3.23.4"
   },
   "devDependencies": {
     "@myagentroam/web-console": "workspace:*"

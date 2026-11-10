@@ -1,6 +1,6 @@
 ---
 title: Community and Enterprise Licenses
-lastUpdated: 2026-10-21
+lastUpdated: 2026-11-10
 ---
 
 # Community and Enterprise Licenses
@@ -11,11 +11,11 @@ A System Administrator opens **Admin → System Information**, copies the reques
 
 An expired or frozen license restricts enterprise management writes while preserving configured resources and normal work according to the displayed state. Import a valid replacement to restore management. Treat request codes and License documents as administrative data and do not publish them.
 
-There is one program, image set and deployment baseline. Activation does not replace the installation. Every state requires the real host UUID; containers must mount it read-only, and startup fails if it is unavailable or invalid. License capabilities do not replace user and resource authorization.
+Formal deployments use the same program and image set; activation does not replace the installation. Both formal license states require the real host UUID; containers must mount it read-only, and startup fails if it is unavailable or invalid. The local-only [npm Quick Start](../getting-started/npm-quick-start.md) uses fixed Community capabilities without a UUID and cannot be activated. License capabilities do not replace user and resource authorization.
 
-## Why does Community require a host UUID?
+## Why does formal Community deployment require a host UUID?
 
-Community and Enterprise use the same Server startup and host-identity mechanism.
+In formal deployments, Community and Enterprise use the same Server startup and host-identity mechanism.
 Server derives a host fingerprint locally from the real UUID; Enterprise License
 validation uses it to bind a License to that Server host. Community does not require
 an Enterprise activation request or an online license-validation service.

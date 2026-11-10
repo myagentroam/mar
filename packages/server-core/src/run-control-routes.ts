@@ -37,6 +37,7 @@ export function registerRunControlRoutes(input: {
   readonly userCredentials?: MarctlUserCredentials;
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
+  readonly searchBackendAvailable?: () => boolean;
   readonly audits?: ConversationAuditObserver;
   readonly publicOrigin: string | undefined;
 }): void {

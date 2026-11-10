@@ -3,6 +3,29 @@ import { describe, expect, it } from 'vitest';
 import { registerWebSearchRoutes } from '../../src/web-search-routes.js';
 
 describe('Server web search proxy', () => {
+  it('authenticates but does not contact an upstream when search is disabled', async () => {
+    const app = Fastify();
+    let requested = false;
+    registerWebSearchRoutes({
+      app,
+      database: { authenticateNode: async () => ({ id: 'node-1' }) },
+      endpoint: null,
+      request: async () => {
+        requested = true;
+        return new Response('{}');
+      }
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/node-tools/web-search',
+      headers: { 'x-mar-node-id': 'node-1', authorization: 'Bearer secret' },
+      payload: { query: 'example' }
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ error: { code: 'WEB_SEARCH_UPSTREAM_FAILED' } });
+    expect(requested).toBe(false);
+    await app.close();
+  });
   it('authenticates Nodes and normalizes SearXNG results', async () => {
     const app = Fastify();
     registerWebSearchRoutes({

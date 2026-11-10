@@ -507,6 +507,9 @@ export class MarAgentHostedConversationRuntime implements HostedConversationRunt
         imageExtensions,
         createWebToolsExtensions({
           enabled: webAccess,
+          ...('searchBackendAvailable' in input && input.searchBackendAvailable !== undefined
+            ? { searchBackendAvailable: input.searchBackendAvailable }
+            : {}),
           hostedSearchModelIds: models
             .filter((model) => model.hostedWebSearch)
             .map((model) => model.id),

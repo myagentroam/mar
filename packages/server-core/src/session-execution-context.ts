@@ -17,6 +17,7 @@ export async function prepareSessionExecutionContext(input: {
   readonly nodeId: string;
   readonly workspaceId: string | undefined;
   readonly serverUrl: string | undefined;
+  readonly searchBackendAvailable?: boolean;
   readonly credentials: MarctlUserCredentials | undefined;
   readonly instructions: PersonalInstructionReader | undefined;
   readonly secrets: ProcessSecretResolver;
@@ -27,6 +28,9 @@ export async function prepareSessionExecutionContext(input: {
   >;
 }) {
   return {
+    ...(input.searchBackendAvailable === undefined
+      ? {}
+      : { searchBackendAvailable: input.searchBackendAvailable }),
     secretEnvironment: {
       ...(await input.secrets.resolve(input.user.userId, input.nodeId, input.workspaceId)),
       MAR_USERNAME: input.user.username ?? '',

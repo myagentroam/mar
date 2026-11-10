@@ -1,6 +1,6 @@
 ---
 title: MyAgentRoam 是什么
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-10
 ---
 
 # MyAgentRoam 是什么
@@ -36,9 +36,11 @@ MyAgentRoam 是面向团队私有化部署、支持“工作 / 对话”两种�
 
 ## 最快成功路径
 
-1. 完成[部署前准备](prerequisites.md)并部署 Server/Web。
+仅在本机体验可选 [npm 快速开始](npm-quick-start.md)：默认准备本机 Node，也可禁用。正式部署请先完成[部署前准备](prerequisites.md)并[部署 Server/Web](server-installation.md)，再独立安装和注册 Node。
+
+1. 按所选路径准备并启动 Server。
 2. 用 `admin` 首次登录并修改初始密码。
-3. 在工作主机安装并注册 Node。
+3. 确认 Node 在线；正式部署需在工作主机独立安装并注册。
 4. 登记一个工作区，确认所选 Agent 已登录可用。
 5. 新建会话并发送第一条消息。
 

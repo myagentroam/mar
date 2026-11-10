@@ -76,6 +76,10 @@ import { RecentRunService } from '@myagentroam/server-core/recent-run-service';
 import { databaseError, type LoginRateRecord } from '../util/http-request.js';
 import { createServerHttp } from './server-http.js';
 import { registerWebSearchRoutes } from '../route/web-search-routes.js';
+import {
+  createQuickStartNodeBootstrap,
+  type QuickStartNodeBootstrap
+} from './quick-start-node-bootstrap.js';
 import { ConversationTemplateService } from '../service/conversation-template-service.js';
 import { registerConversationTemplateRoutes } from '../route/conversation-template-routes.js';
 import { registerHostedConversationRoutes } from '../route/hosted-conversation-routes.js';
@@ -98,6 +102,7 @@ export interface ServerAppOptions {
   readonly productUuid?: string | null;
   readonly nodeUpgrades?: Pick<NodeUpgradeService, 'availability'>;
   readonly webSearchEndpoint?: string;
+  readonly searchBackendAvailable?: () => boolean;
   readonly webSearchFetch?: typeof fetch;
   readonly webPushTransport?: WebPushTransport;
 }
@@ -108,17 +113,25 @@ export interface ServerApplicationStorage {
   readonly database: MysqlServerDatabase;
   readonly pool: Pool;
 }
+export interface ServerComposition {
+  readonly app: ServerApplication;
+  readonly quickStartNode?: QuickStartNodeBootstrap;
+}
 /** Compose the complete MySQL-backed Server product and own construction/shutdown order.
  * Domain services own authorization and execution-preparation workflows. NodeControl consumers
  * are runtime ports: constructors store them; HTTP/Node input starts only after composition.
  */
 export async function composeServerApplication(
   options: ServerAppOptions,
-  storage: ServerApplicationStorage
-): Promise<{ readonly app: ServerApplication }> {
+  storage: ServerApplicationStorage,
+  quickStart = false
+): Promise<ServerComposition> {
   const database = storage.database;
   const mysqlPool = storage.pool;
   const now = options.now ?? Date.now;
+  const searchProjection = quickStart
+    ? { searchBackendAvailable: options.searchBackendAvailable ?? (() => false) }
+    : {};
   const dataDirectory = resolve(options.dataDirectory ?? process.env['MAR_DATA_DIR'] ?? './data');
   const skillCacheDirectory = resolve(dataDirectory, 'skills');
   // Issue HTTPS-only cookies by default; callers must explicitly pass false for local plaintext development.
@@ -164,6 +177,7 @@ export async function composeServerApplication(
           45_000
         ),
       projectVersion: serverVersion,
+      ...(quickStart ? { quickStart: true as const } : {}),
       ...(process.env['MAR_LICENSE_PUBLIC_KEY'] === undefined
         ? {}
         : { publicKey: process.env['MAR_LICENSE_PUBLIC_KEY'] }),
@@ -311,6 +325,7 @@ export async function composeServerApplication(
     );
     constructedMaintenance = maintenance;
     const executionPreparation = new BackgroundExecutionPreparationService({
+      ...searchProjection,
       authorize: authorizeNodeRequest,
       serverUrl: publicOrigin,
       secrets: environmentSecrets,
@@ -397,6 +412,7 @@ export async function composeServerApplication(
       publicOrigin
     });
     const marctl = registerMarctlRoutes({
+      ...searchProjection,
       app,
       userCredentials,
       publicOrigin,
@@ -422,8 +438,9 @@ export async function composeServerApplication(
     registerWebSearchRoutes({
       app,
       database,
-      endpoint:
-        options.webSearchEndpoint ?? process.env['MAR_SEARXNG_URL'] ?? 'http://searxng:8080',
+      endpoint: quickStart
+        ? (options.webSearchEndpoint ?? null)
+        : (options.webSearchEndpoint ?? process.env['MAR_SEARXNG_URL'] ?? 'http://searxng:8080'),
       ...(options.webSearchFetch ? { request: options.webSearchFetch } : {})
     });
     registerNodeRegistrationRoute({
@@ -486,6 +503,7 @@ export async function composeServerApplication(
     });
     {
       const inputs = new SessionInputService({
+        ...searchProjection,
         nodeControl,
         secrets: environmentSecrets,
         publicOrigin,
@@ -528,6 +546,7 @@ export async function composeServerApplication(
       databaseError
     });
     registerSessionRunRoutes({
+      ...searchProjection,
       app,
       database,
       nodeControl,
@@ -540,6 +559,7 @@ export async function composeServerApplication(
       publicOrigin
     });
     registerRunControlRoutes({
+      ...searchProjection,
       app,
       database,
       authorizeNodeRequest,
@@ -596,6 +616,7 @@ export async function composeServerApplication(
     }
     {
       registerHostedConversationRoutes({
+        ...searchProjection,
         app,
         database,
         templates: conversationTemplates,
@@ -812,7 +833,22 @@ export async function composeServerApplication(
           cause: closeErrors[0]
         });
     });
-    return { app };
+    return {
+      app,
+      ...(quickStart
+        ? {
+            quickStartNode: createQuickStartNodeBootstrap({
+              isPersonalAdmin: (userId) => authorization.isPersonalAdmin(userId),
+              assertOwnershipSelection: (userId, ownership) =>
+                resources.assertOwnershipSelection(userId, ownership),
+              createNodeRegistrationToken: (userId, ttlMs, ownership, name) =>
+                database.createNodeRegistrationToken(userId, ttlMs, ownership, name),
+              isNodeConnected: (nodeId) =>
+                nodeControl.isNodeConnected(nodeId) && !nodeControl.isNodeUpgradeOnly(nodeId)
+            })
+          }
+        : {})
+    };
   } catch (error) {
     const errors: unknown[] = [error];
     for (const cleanup of [

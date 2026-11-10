@@ -33,11 +33,13 @@ test('cold installation uses the pinned dependency CLI without installing OS pac
       exists: async () => {
         if (!called) throw new Error('absent');
       },
-      run: (command, args) => {
+      run: (command, args, options) => {
         called = true;
         assert.equal(command, process.execPath);
         assert.match(args[0], /playwright[/\\]cli\.js$/u);
         assert.deepEqual(args.slice(1), ['install', 'chromium', '--no-shell']);
+        assert.equal(options.timeout, 12 * 60_000);
+        assert.deepEqual(options.env, {});
         return { status: 0 };
       }
     }),
@@ -50,6 +52,7 @@ test('failed or interrupted downloads fail installation with a safe actionable d
   for (const result of [
     { status: 1 },
     { status: null, signal: 'SIGTERM' },
+    { error: Object.assign(new Error('deadline exceeded'), { code: 'ETIMEDOUT' }) },
     { error: new Error('private proxy URL') }
   ]) {
     await assert.rejects(
