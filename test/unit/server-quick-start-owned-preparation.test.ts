@@ -1,3 +1,4 @@
+import type { ChildProcess, spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,19 @@ import {
   runChildWithOutput
 } from '../../mar-server/src/quick-start/owned-preparation.js';
 import { ownedGroupHasLiveProcesses } from '../../mar-server/src/quick-start/owned-process-group.js';
+
+const tracked = vi.hoisted(() => ({ child: undefined as ChildProcess | undefined }));
+vi.mock('node:child_process', async (original) => {
+  const actual = await original<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawn: (...args: Parameters<typeof spawn>) => {
+      const child = actual.spawn(...args);
+      tracked.child = child;
+      return child;
+    }
+  };
+});
 
 describe.skipIf(process.platform !== 'linux')('owned preparation process groups', () => {
   let root = '';
@@ -23,6 +37,30 @@ describe.skipIf(process.platform !== 'linux')('owned preparation process groups'
     if (root) await rm(root, { recursive: true, force: true });
     leader = 0;
     root = '';
+  });
+
+  it('keeps handling errors from a live child after reporting reclamation failure', async () => {
+    const outcome = runChild(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      process.env
+    ).catch((error: unknown) => error);
+    const child = tracked.child!;
+    leader = child.pid!;
+    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    try {
+      expect(leader).toBeGreaterThan(1);
+      child.emit('error', new Error('fixture: first live process error'));
+      expect(await outcome).toMatchObject({ message: 'QUICK_START_NODE_RECLAIM_FAILED' });
+      expect(process.kill(leader, 0)).toBe(true);
+      expect(() =>
+        child.emit('error', new Error('fixture: repeated live process error'))
+      ).not.toThrow();
+    } finally {
+      process.kill(-leader, 'SIGKILL');
+      await exited;
+      leader = 0;
+    }
   });
 
   it('bounds archive listing output and confirms the child has exited', async () => {

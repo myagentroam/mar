@@ -89,7 +89,7 @@ async function runOwnedChild(
   try {
     const result = await Promise.race([
       new Promise<number | null>((resolveResult, reject) => {
-        child.once('error', () => {
+        child.on('error', () => {
           if (child.pid === undefined) reject(new Error(failureCode));
           else failReclaim();
         });
