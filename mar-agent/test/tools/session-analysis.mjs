@@ -490,7 +490,7 @@ export function createExternalCompactUsageClassifier() {
       scopes.delete(key);
     } else if (record.type === 'usage.updated') {
       const scope = scopes.get(key);
-      if (scope?.external && !scope.consumed) {
+      if (payload.purpose === 'compact' && scope?.external && !scope.consumed) {
         if (Number.isFinite(payload.outputTokens)) scope.consumed = true;
         return scope.external;
       }
@@ -553,23 +553,35 @@ function createUsageCollector() {
     'cacheWriteTokens',
     'outputTokens'
   ];
-  const flush = (key) => {
-    const sample = pending.get(key);
+  const flush = (key, purpose) => {
+    const scopes = pending.get(key);
+    if (!scopes) return;
+    if (purpose === undefined) {
+      for (const scope of scopes.keys()) flush(key, scope);
+      return;
+    }
+    const sample = scopes.get(purpose);
     if (sample?.sequence !== undefined) samples.push(sample);
-    pending.delete(key);
+    scopes.delete(purpose);
+    if (scopes.size === 0) pending.delete(key);
+  };
+  const flushAll = () => {
+    for (const key of pending.keys()) flush(key);
   };
   return {
     observe(record, payload, selected) {
       const externalCompact = classify(record);
       const key = record.executionId;
       if (record.type === 'usage.updated') {
-        const previous = pending.get(key);
+        const purpose = payload.purpose === 'compact' ? 'compact' : 'execution';
+        const previous = pending.get(key)?.get(purpose);
         const complete = numberValue(payload.outputTokens) !== undefined;
         // Input-only message_start and its final usage are snapshots, not two requests.
         // Final usage can correct the initial input totals. Request boundaries, not equal
-        // token counts, distinguish requests; a new input-only snapshot ends a partial.
-        const continuation = previous && complete;
-        if (!continuation) flush(key);
+        // token counts, distinguish requests; purpose keeps concurrent Compact snapshots
+        // independent from ordinary execution snapshots.
+        const continuation = Boolean(previous && complete);
+        if (!continuation) flush(key, purpose);
         const sample = continuation ? previous : { executionId: key };
         if (externalCompact) sample.externalCompact = externalCompact;
         if (selected) sample.sequence ??= record.sequence;
@@ -577,18 +589,24 @@ function createUsageCollector() {
           const value = numberValue(payload[field]);
           if (value !== undefined) sample[field] = value;
         }
-        pending.set(key, sample);
-        if (complete) flush(key);
+        let scopes = pending.get(key);
+        if (!scopes) {
+          scopes = new Map();
+          pending.set(key, scopes);
+        }
+        scopes.set(purpose, sample);
+        if (complete) flush(key, purpose);
       } else if (record.type === 'context.gc.completed' || record.type === 'compact.completed') {
-        for (const key of pending.keys()) flush(key);
+        flushAll();
+      } else if (record.type === 'execution.started' || EXECUTION_TERMINALS.has(record.type)) {
+        flush(key);
+      } else if (record.type === 'model.attempt') {
+        flush(key, payload.purpose === 'COMPACTION' ? 'compact' : 'execution');
       } else if (
-        record.type === 'execution.started' ||
-        EXECUTION_TERMINALS.has(record.type) ||
-        record.type === 'model.attempt' ||
         (record.type === 'tool.started' && stringValue(payload.parentCallId) === undefined) ||
         record.type === 'responses.continuation'
       ) {
-        flush(key);
+        flush(key, 'execution');
       }
     },
     finish() {

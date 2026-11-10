@@ -84,6 +84,36 @@ function buttonTag(html: string, label: string): string {
   return button!;
 }
 
+it.each(['text', 'video'] as const)(
+  'replaces the %s download icon in both toolbars while busy',
+  async (kind) => {
+    stubBrowserEnvironment();
+    for (const downloading of [false, true]) {
+      const html = await render(kind === 'text' ? WorkspaceFilePage : WorkspaceFormatFilePage, {
+        file: {
+          path: kind === 'text' ? 'app.ts' : 'video.mp4',
+          encoding: kind === 'text' ? 'utf-8' : 'base64',
+          content: '',
+          truncated: false
+        },
+        kind,
+        downloading,
+        targetLine: undefined,
+        contentUrl: undefined
+      });
+      const buttons = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/gu) ?? []).filter((button) =>
+        button.includes(`aria-label="${translate('generated.filePreviewDialog.downloadFile')}"`)
+      );
+      expect(buttons).toHaveLength(2);
+      for (const button of buttons) {
+        expect(button.match(/data-mar-icon=/gu)).toHaveLength(1);
+        expect(button).toContain(`data-mar-icon="${downloading ? 'loading-action' : 'download'}"`);
+        expect(/<button\b[^>]*\sdisabled(?:\s|=|>)/u.test(button)).toBe(downloading);
+      }
+    }
+  }
+);
+
 function expectUnifiedButtonHints(html: string): void {
   const buttons = html.match(/<button\b[^>]*aria-label="[^"]+"[^>]*>/gu) ?? [];
   expect(buttons.length).toBeGreaterThan(0);

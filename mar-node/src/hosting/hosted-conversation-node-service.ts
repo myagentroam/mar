@@ -132,6 +132,7 @@ export class HostedConversationNodeService {
   private readonly cleanupLocks = new Set<string>();
   private readonly historyMutations = new Map<string, Promise<unknown>>();
   private readonly historyVersions = new Map<string, number>();
+  private readonly historyEpoch = randomUUID();
   private disablePrepared = false;
   private workbenchSequence = 0;
   private readonly hostedWatch: HostedConversationWatch;
@@ -579,6 +580,7 @@ export class HostedConversationNodeService {
       run: this.runs.current(conversation.id)?.run ?? null,
       turns: history.turns,
       historyNextCursor: history.nextCursor,
+      historyVersion: `${this.historyEpoch}:${this.historyVersions.get(conversationId) ?? 0}`,
       files: this.options.store.listFiles(userId, conversation.id),
       models: models.map(modelSummary),
       error: null,

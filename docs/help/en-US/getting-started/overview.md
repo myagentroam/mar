@@ -36,11 +36,11 @@ A notification appears when a new version is prepared, without immediately inter
 
 ## Fastest path to success
 
-Choose [npm Quick Start](npm-quick-start.md) for local-only evaluation: it prepares a local Node by default, unless disabled. For formal deployment, follow [Before You Deploy](prerequisites.md) and [Deploy Server and Web](server-installation.md); install and register Nodes separately.
+Choose [npm Quick Start](npm-quick-start.md) for a quick installation: it prepares a local Node by default, unless disabled. For Docker Compose, follow [Before You Deploy](prerequisites.md) and [Deploy Server and Web](server-installation.md); install and register Nodes separately.
 
 1. Prepare and start Server using the selected path.
 2. Sign in as `admin` and change the initial password.
-3. Confirm that a Node is online; for formal deployment, install and register it on a work host.
+3. Confirm that a Node is online; for Docker Compose, install and register it on a work host.
 4. Register a Workspace and confirm that an Agent is available.
 5. Create a session and send the first message.
 

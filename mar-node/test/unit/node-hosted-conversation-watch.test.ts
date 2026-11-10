@@ -1140,6 +1140,7 @@ describe('Node hosted conversation watch', () => {
           frame.watchId === 'watch-rollback-during-initial'
       )?.payload
     ).toMatchObject({
+      historyVersion: expect.stringMatching(/:1$/u),
       turns: [{ id: retained.id }]
     });
     expect(fixture.runtime.history).toHaveBeenCalledTimes(5);

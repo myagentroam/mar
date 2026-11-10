@@ -16,15 +16,22 @@ import type {
   WorkspaceFileWorkbenchSnapshot
 } from '../../src/model/workspace-file-workbench.js';
 import TextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
+import FormatFilePage from '../../src/view/workspace/WorkspaceFormatFilePage.vue';
 import WorkspaceHtmlBrowser from '../../src/view/workspace/WorkspaceHtmlBrowser.vue';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(window.location.search);
+if (query.has('toolbar-loading')) {
+  themePreferenceService().setTheme(
+    query.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+  );
+}
 const presentation = query.get('presentation') === 'window' ? 'window' : 'overlay';
 const previewKind = query.get('kind') as WorkspaceFileTab['kind'] | null;
 document.documentElement.dataset.fileTabsBaseHistoryState = JSON.stringify(
@@ -140,8 +147,47 @@ const showInspector = ref(true);
 let savedInspectorSnapshot: WorkspaceFileWorkbenchSnapshot | undefined;
 const completedOpens = ref(0);
 const formatOpens = ref(0);
+const toolbarDownload = ref<string>();
+let finishToolbarSave: (() => void) | undefined;
 createTooltipApp({
   render: () => {
+    if (query.has('toolbar-loading'))
+      return h('div', [
+        h(
+          'button',
+          { id: 'finish-toolbar-download', onClick: () => (toolbarDownload.value = undefined) },
+          'Finish download'
+        ),
+        h(
+          'button',
+          { id: 'finish-toolbar-save', onClick: () => finishToolbarSave?.() },
+          'Finish save'
+        ),
+        ...(['text', 'video'] as const)
+          .filter((kind) => query.get('toolbar-loading') === kind)
+          .map((kind) =>
+            h('div', { id: `toolbar-${kind}` }, [
+              h(kind === 'text' ? TextFilePage : FormatFilePage, {
+                file: {
+                  path: kind === 'text' ? 'app.ts' : 'video.mp4',
+                  encoding: kind === 'text' ? 'utf-8' : 'base64',
+                  content: 'const ready = true;',
+                  truncated: false,
+                  revision: 'revision-1'
+                },
+                kind,
+                downloading: toolbarDownload.value === kind,
+                targetLine: undefined,
+                writeEnabled: true,
+                saveFile: () =>
+                  new Promise<string>((resolve) => {
+                    finishToolbarSave = () => resolve('revision-2');
+                  }),
+                onDownload: () => (toolbarDownload.value = kind)
+              })
+            ])
+          )
+      ]);
     if (query.has('html-handoff'))
       return h('div', [
         h(

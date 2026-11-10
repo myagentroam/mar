@@ -28,17 +28,14 @@ export function createWorkbenchConversationPagingService(options: {
   let refreshQueued = false;
   let windowRevision = 0;
   const olderHistoryError = ref('');
-  watch(
-    [options.workspaceTarget, options.selectedSessionId],
-    () => {
-      windowRevision += 1;
-      refreshingRecent = false;
-      refreshQueued = false;
-      options.loadingOlder.value = false;
-      olderHistoryError.value = '';
-    },
-    { flush: 'sync' }
-  );
+  function resetWindow(): void {
+    windowRevision += 1;
+    refreshingRecent = false;
+    refreshQueued = false;
+    options.loadingOlder.value = false;
+    olderHistoryError.value = '';
+  }
+  watch([options.workspaceTarget, options.selectedSessionId], resetWindow, { flush: 'sync' });
   async function loadOlderConversationTurns(): Promise<void> {
     await loadOlderPage(options.pageSize);
   }
@@ -214,6 +211,7 @@ export function createWorkbenchConversationPagingService(options: {
   }
 
   return {
+    resetWindow,
     olderHistoryError,
     loadOlderConversationTurns,
     refreshRecentConversationTurns

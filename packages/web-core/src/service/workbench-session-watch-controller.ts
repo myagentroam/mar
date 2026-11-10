@@ -29,7 +29,7 @@ export function createWorkbenchSessionWatchController(options: {
   readonly applySnapshot: (
     sessionId: string,
     page: ConversationTurnPage,
-    mode?: 'initial' | 'refresh'
+    mode?: 'initial' | 'refresh' | 'reset'
   ) => boolean;
   readonly applyEvent?: (event: WorkbenchLiveEvent, source?: WorkspaceQueueSnapshotSource) => void;
   readonly scrollAfterLayout: () => Promise<void>;
@@ -400,7 +400,7 @@ export function createWorkbenchSessionWatchController(options: {
       const pending = pendingInitial;
       pendingInitial = undefined;
       pending.removeAbortListener();
-      options.applySnapshot(sessionId, page);
+      options.applySnapshot(sessionId, page, event.historyReset === true ? 'reset' : 'initial');
       appliedInitialSnapshot.value = {
         watchId: pending.watchId,
         nodeId: event.nodeId as string,
@@ -423,7 +423,9 @@ export function createWorkbenchSessionWatchController(options: {
       pending.resolve();
       return true;
     }
-    void Promise.resolve(options.applySnapshot(sessionId, page, 'refresh')).then((changed) => {
+    void Promise.resolve(
+      options.applySnapshot(sessionId, page, event.historyReset === true ? 'reset' : 'refresh')
+    ).then((changed) => {
       if (changed && options.followConversation.value) return options.scrollAfterLayout();
     });
     return true;

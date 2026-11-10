@@ -42,6 +42,7 @@ interface NativeSessionLease {
   expiresAt: number;
   ready: boolean;
   snapshotSent: boolean;
+  historyReset?: true;
   readonly pendingEvents: WorkbenchEvent[];
   readonly slotToken: SessionWatchSlotToken;
   timer: NodeJS.Timeout;
@@ -65,6 +66,7 @@ export interface NativeSessionWatchOptions extends ConversationObservationOption
   readonly log?: (event: string, fields: Record<string, unknown>) => void;
 }
 
+/** Owns shared native observation and page leases; history invalidation restarts reads, not leases. */
 export class NativeSessionWatchService {
   private readonly watches = new Map<string, NativeSessionWatch>();
   private readonly leases = new Map<string, NativeSessionLease>();
@@ -247,9 +249,20 @@ export class NativeSessionWatchService {
   }
 
   invalidate(sessionId: string): void {
-    for (const [ownerKey, lease] of this.leases)
-      if (lease.sessionId === sessionId) this.removeLease(ownerKey);
     this.stop(sessionId);
+    for (const [ownerKey, lease] of this.leases) {
+      if (lease.sessionId !== sessionId) continue;
+      // Replace the lease object so pre-reset asynchronous reads cannot publish into it.
+      const replacement: NativeSessionLease = {
+        ...lease,
+        ready: false,
+        snapshotSent: false,
+        historyReset: true,
+        pendingEvents: []
+      };
+      this.leases.set(ownerKey, replacement);
+      void this.initializeLease(replacement, this.options.projectInitialPage);
+    }
   }
 
   clear(): void {
@@ -569,6 +582,7 @@ export class NativeSessionWatchService {
     lease.snapshotSent = true;
     this.options.emitWatchEvent?.({
       type: 'watch.session.snapshot',
+      ...(lease.historyReset ? { historyReset: true } : {}),
       workbenchConnectionId: lease.workbenchConnectionId,
       watchId: lease.watchId,
       nodeGeneration: lease.nodeGeneration,
@@ -580,6 +594,7 @@ export class NativeSessionWatchService {
       expiresAt: lease.expiresAt,
       payload
     });
+    delete lease.historyReset;
   }
 
   private releasePendingEvents(sessionId: string): void {

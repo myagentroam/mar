@@ -6,6 +6,7 @@ import { createWorkbenchConversationSnapshotService } from './workbench-conversa
 
 type PagingOptions = Parameters<typeof createWorkbenchConversationPagingService>[0];
 
+/** Connects the projection, cache and paging owners; a reset invalidates old reads before replacement. */
 export function createWorkbenchConversationComposition(
   options: Pick<
     PagingOptions,
@@ -35,6 +36,10 @@ export function createWorkbenchConversationComposition(
     selectedSessionId: options.selectedSessionId,
     replaceCurrent: projection.replaceAuthoritative,
     mergeCurrent: projection.mergeLatest,
+    resetCurrent: (mode) => {
+      paging.resetWindow();
+      if (mode === 'reset') projection.resetHistory();
+    },
     currentWindow: () => ({ turns: turns.value, nextCursor: options.nextCursor.value }),
     replaceCached: (sessionId, page) => replaceCached(sessionId, page.turns, page.nextCursor)
   });

@@ -1,9 +1,11 @@
 ---
 title: Upgrade MyAgentRoam
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-10
 ---
 
 # Upgrade MyAgentRoam
+
+For npm Quick Start, follow [Update Server and its managed Node](../getting-started/npm-quick-start.md#update-server-and-its-managed-node): the managed Node updates with Server dependencies, not a separate push upgrade. The procedures below cover separately managed Server and Node installations.
 
 Server, Web, EE, shared cores, Node, Agent, and Protocol share one version, starting at `0.10.1`. The shared binaries package and Computer Use Runtime start at `0.10.1` and retain independent patch releases. Code Navigation is internal, and marctl ships with Node.
 

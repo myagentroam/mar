@@ -51,6 +51,28 @@ function gitServiceFixture() {
   };
 }
 
+it('keeps the global refresh in the root repository title row', async () => {
+  const service = gitServiceFixture();
+  const root = service.repositories.value[0]!;
+  service.repositories.value.push({ ...root, repositoryPath: 'child', source: 'SUBMODULE' });
+  const view = renderComponent(WorkspaceGitChanges, {
+    service,
+    target: { nodeId: 'node', workspaceId: 'workspace' }
+  });
+  try {
+    const refresh = view
+      .findAll('button')
+      .filter((node) => String(node.props.class).includes('changes-refresh-button'));
+    expect(refresh).toHaveLength(1);
+    expect(refresh[0]?.parent?.props.class).toBe('repository-title-row');
+    expect(textContent(refresh[0]!.parent!)).toContain('root');
+    await trigger(refresh[0]!, 'onClick');
+    expect(service.loadChanges).toHaveBeenCalledWith(true);
+  } finally {
+    view.unmount();
+  }
+});
+
 it('appends only at the repository boundary inside the scroll root without a loading delay', async () => {
   const observers: {
     callback: IntersectionObserverCallback;
@@ -174,7 +196,7 @@ it.each(['http', 'watch'] as const)(
         if (ancestor.props.class === 'change-list') insideScrollList = true;
         ancestor = ancestor.parent;
       }
-      expect(insideScrollList).toBe(false);
+      expect(insideScrollList).toBe(true);
       expect(
         refresh.children.some((node) => node.props['data-mar-icon'] === 'loading-action')
       ).toBe(true);

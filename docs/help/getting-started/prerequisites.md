@@ -5,7 +5,9 @@ lastUpdated: 2026-11-10
 
 # 部署前准备
 
-这篇文档帮助你在部署前确认主机、网络和 Agent 条件。
+先选择安装方式：使用 [npm 快速开始](npm-quick-start.md)，无需自行部署 Docker 或 MySQL，也无需手工注册本机 Node；默认通过本机地址访问，远程入口与 HTTPS 由你自行配置。它不会自动配置模型或外部 Agent。
+
+以下清单用于 Docker Compose 或自行管理 Server/MySQL 的安装。Quick Start 的组件准备和 UUID 规则不同，请按其专页操作；远程访问同样需要安全的网络入口。
 
 ## 前置条件
 
@@ -32,4 +34,4 @@ lastUpdated: 2026-11-10
 
 下一步：[部署 Server 与 Web](server-installation.md)。
 
-正式部署的社区与企业状态都要求有效的真实主机 UUID。容器必须将宿主 `/sys/class/dmi/id/product_uuid` 只读挂载到 `/license-host/product_uuid`，源文件必须存在；原生正式部署可用 `MAR_LICENSE_HOST_PATH` 指定真实 UUID 文件。仅供本机体验的 [npm 快速开始](npm-quick-start.md)无需 UUID，也不支持激活。
+正式部署的社区与企业状态都要求有效的真实主机 UUID。容器必须将宿主 `/sys/class/dmi/id/product_uuid` 只读挂载到 `/license-host/product_uuid`，源文件必须存在；原生正式部署可用 `MAR_LICENSE_HOST_PATH` 指定真实 UUID 文件。[npm 快速开始](npm-quick-start.md)无需 UUID，也不支持激活。

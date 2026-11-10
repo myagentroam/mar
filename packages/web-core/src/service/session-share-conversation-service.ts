@@ -99,7 +99,13 @@ export function createSessionShareConversationService(options: {
   const mergeSessions = (values: readonly Session[]) => {
     sessions.value = values.filter((value) => value.id === target.sessionId);
   };
-  const applySnapshot = (_id: string, page: ConversationTurnPage, mode?: 'initial' | 'refresh') => {
+  const applySnapshot = (
+    _id: string,
+    page: ConversationTurnPage,
+    mode?: 'initial' | 'refresh' | 'reset'
+  ) => {
+    if (mode !== 'refresh') paging.resetWindow();
+    if (mode === 'reset') projection.resetHistory();
     const changed =
       mode === 'refresh' ? projection.mergeLatest(page) : projection.replaceRecent(page);
     state.loadingInitial.value = false;

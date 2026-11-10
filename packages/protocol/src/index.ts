@@ -1784,6 +1784,7 @@ export const watchEventSchema = z.union([
     type: z.literal('watch.session.snapshot'),
     workspaceId: z.string().min(1).max(160),
     sessionId: z.string().min(1).max(512),
+    historyReset: z.literal(true).optional(),
     revision: z.number().int().nonnegative(),
     snapshotSequence: z.number().int().positive(),
     expiresAt: z.number().int().positive(),
@@ -3102,6 +3103,7 @@ export const hostedConversationSnapshotSchema = z
       .nullable(),
     turns: z.array(conversationTurnSchema),
     historyNextCursor: z.string().min(1).max(2048).nullable(),
+    historyVersion: z.string().min(1).max(160).optional(),
     files: z.array(conversationFileProjectionSchema),
     models: z.array(marAgentNodeModelSummarySchema),
     error: z

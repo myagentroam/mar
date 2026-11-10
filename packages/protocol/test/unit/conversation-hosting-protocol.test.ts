@@ -765,9 +765,14 @@ describe('conversation hosting protocol', () => {
         files: [],
         models: [model],
         error: null,
+        historyVersion: 'owner-epoch:1',
         snapshotSequence: 3
       })
-    ).toMatchObject({ nodeAppVersion: '0.9.55', snapshotSequence: 3 });
+    ).toMatchObject({
+      nodeAppVersion: '0.9.55',
+      historyVersion: 'owner-epoch:1',
+      snapshotSequence: 3
+    });
     expect(
       hostedConversationSnapshotSchema.safeParse({
         conversation: conversationSummary,

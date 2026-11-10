@@ -128,14 +128,13 @@ defineExpose({
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
         :loading="downloading"
+        :icon="marIcon('download')"
         :aria-label="translate('generated.filePreviewDialog.downloadFile')"
         circle
         size="small"
         @click="emit('download')"
         :loading-icon="marIcon('loading-action')"
-      >
-        <MarIcon name="download" />
-      </el-button>
+      />
       <el-button
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview')"
@@ -153,14 +152,13 @@ defineExpose({
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
         :loading="downloading"
+        :icon="marIcon('download')"
         :aria-label="translate('generated.filePreviewDialog.downloadFile2')"
         circle
         size="small"
         @click="emit('download')"
         :loading-icon="marIcon('loading-action')"
-      >
-        <MarIcon name="download" />
-      </el-button>
+      />
       <el-button
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview2')"

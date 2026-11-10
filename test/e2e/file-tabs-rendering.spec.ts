@@ -11,6 +11,60 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: resolve(directory, name), fullPage: true, animations: 'disabled' });
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
+    test(`file toolbar icons replace rather than accompany loading in ${theme} at ${width}px`, async ({
+      page
+    }) => {
+      const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+      try {
+        await page.setViewportSize({ width, height: 900 });
+        const toolbar =
+          width >= 768 ? '.file-preview-desktop-actions' : '.workspace-file-mobile-actions-body';
+        for (const kind of ['text', 'video']) {
+          await page.goto(`${fixture.url}file-tabs.html?toolbar-loading=${kind}&theme=${theme}`);
+          await expect(page.locator(`#toolbar-${kind}`)).toBeVisible();
+          const actions = page.locator(`#toolbar-${kind} ${toolbar}`);
+          const download = actions.getByRole('button', { name: 'Download file', exact: true });
+          const before = (await download.boundingBox())!;
+          await expect(download.locator('[data-mar-icon="download"]')).toHaveCount(1);
+          await download.click();
+          await expect(download).toBeDisabled();
+          await expect(download.locator('[data-mar-icon]')).toHaveCount(1);
+          await expect(download.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+          const busy = (await download.boundingBox())!;
+          expect(busy.width).toBeCloseTo(before.width, 1);
+          expect(busy.height).toBeCloseTo(before.height, 1);
+          if (kind === 'video') {
+            await captureScreenshot(page, `download-loading-${theme}-${width}.png`);
+          }
+          await page.locator('#finish-toolbar-download').click();
+          await expect(download).toBeEnabled();
+          await expect(download.locator('[data-mar-icon="download"]')).toHaveCount(1);
+          await expect(download.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          if (kind === 'text') {
+            const editor = page.locator('#toolbar-text .cm-content');
+            if (!(await editor.isEditable())) {
+              await actions.getByRole('button', { name: 'Edit file', exact: true }).click();
+            }
+            await editor.fill('const ready = false;');
+            const save = actions.getByRole('button', { name: 'Save', exact: true });
+            await save.click();
+            await expect(save).toBeDisabled();
+            await expect(save.locator('[data-mar-icon]')).toHaveCount(1);
+            await expect(save.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+            await page.locator('#finish-toolbar-save').click();
+            await expect(save.locator('[data-mar-icon="document-save"]')).toHaveCount(1);
+            await expect(save.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          }
+        }
+      } finally {
+        await fixture.close();
+      }
+    });
+  }
+}
+
 test('HTML preview waits for a pending save without handing off the editor', async ({ page }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
   let finishSave: (() => void) | undefined;
