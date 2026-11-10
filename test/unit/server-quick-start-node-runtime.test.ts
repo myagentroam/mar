@@ -11,6 +11,18 @@ import { serverNodeEntrypoint } from '../../mar-server/src/quick-start/node-depe
 vi.mock('../../mar-server/src/quick-start/node-dependency.js', () => ({
   serverNodeEntrypoint: vi.fn()
 }));
+const writes = vi.hoisted(() => ({ failRename: false }));
+vi.mock('node:fs/promises', async (original) => {
+  const actual = await original<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    rename: async (...args: Parameters<typeof actual.rename>) => {
+      if (writes.failRename)
+        throw Object.assign(new Error('fixture write denied'), { code: 'EACCES' });
+      return actual.rename(...args);
+    }
+  };
+});
 
 function useFixture(root: string): void {
   vi.mocked(serverNodeEntrypoint).mockResolvedValue(
@@ -20,12 +32,152 @@ function useFixture(root: string): void {
 
 const directories: string[] = [];
 afterEach(async () => {
+  writes.failRename = false;
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))
   );
 });
 
 describe('Quick Start Node lifecycle', () => {
+  it('preserves the expired token when publishing its replacement fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-bootstrap-write-'));
+    directories.push(root);
+    const path = join(root, 'node-data/node.json');
+    await mkdir(join(root, 'node-data'));
+    const original = JSON.stringify({
+      serverUrl: 'http://127.0.0.1:41001',
+      registrationToken: 'expired',
+      allowedRoots: [root]
+    });
+    await writeFile(path, original);
+    writes.failRename = true;
+    const config = createQuickStartConfig({
+      serverPort: 41001,
+      mysqlPort: 41002,
+      node: true,
+      search: 'disabled'
+    });
+    await expect(
+      startLocalNode(
+        root,
+        config,
+        { issue: async () => ({ token: 'new' }), online: () => false },
+        1000,
+        1000,
+        async () => '/never-spawned'
+      )
+    ).rejects.toMatchObject({ code: 'EACCES' });
+    expect(await readFile(path, 'utf8')).toBe(original);
+  });
+
+  it.each([{ nodeId: 'partial' }, { credential: 'partial' }, { nodeId: '', credential: '' }, {}])(
+    'does not reset an incomplete identity (%j)',
+    async (identity) => {
+      const root = await mkdtemp(join(tmpdir(), 'mar-bootstrap-partial-'));
+      directories.push(root);
+      const path = join(root, 'node-data/node.json');
+      await mkdir(join(root, 'node-data'));
+      const original = JSON.stringify({ serverUrl: 'http://127.0.0.1:41001', ...identity });
+      await writeFile(path, original);
+      const issue = vi.fn();
+      const config = createQuickStartConfig({
+        serverPort: 41001,
+        mysqlPort: 41002,
+        node: true,
+        search: 'disabled'
+      });
+      await expect(
+        startLocalNode(
+          root,
+          config,
+          { issue, online: () => false },
+          1000,
+          1000,
+          async () => '/never-spawned'
+        )
+      ).rejects.toThrow('QUICK_START_NODE_CONFIG_INVALID');
+      expect(issue).not.toHaveBeenCalled();
+      expect(await readFile(path, 'utf8')).toBe(original);
+    }
+  );
+
+  it('recovers an unfinished registration before spawning and preserves local configuration', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-bootstrap-recovery-'));
+    directories.push(root);
+    const path = join(root, 'node-data/node.json');
+    await mkdir(join(root, 'node-data'));
+    const original = {
+      serverUrl: 'http://127.0.0.1:41001',
+      registrationToken: 'expired-unused-token',
+      allowedRoots: [join(root, 'custom workspace')],
+      dataDirectory: join(root, 'node-data'),
+      conversationHosting: { enabled: false }
+    };
+    await writeFile(path, JSON.stringify(original));
+    const entrypoint = join(root, 'supervisor.cjs');
+    await writeFile(
+      entrypoint,
+      "process.on('message', () => process.exit(0)); setInterval(() => {}, 1000);"
+    );
+    const issue = vi.fn(async () => ({ token: 'renewed-token' }));
+    const config = createQuickStartConfig({
+      serverPort: 41001,
+      mysqlPort: 41002,
+      node: true,
+      search: 'disabled'
+    });
+    const child = await startLocalNode(
+      root,
+      config,
+      { issue, online: () => false },
+      1000,
+      1000,
+      async () => entrypoint
+    );
+    try {
+      expect(issue).toHaveBeenCalledExactlyOnceWith('expired-unused-token');
+      expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({
+        ...original,
+        registrationToken: 'renewed-token'
+      });
+    } finally {
+      await child.stop();
+    }
+  });
+
+  it('preserves the file when registration recovery is refused', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-bootstrap-unknown-'));
+    directories.push(root);
+    const path = join(root, 'node-data/node.json');
+    await mkdir(join(root, 'node-data'));
+    const original = JSON.stringify({
+      serverUrl: 'http://127.0.0.1:41001',
+      registrationToken: 'consumed-token',
+      allowedRoots: [root]
+    });
+    await writeFile(path, original);
+    const issue = vi.fn(async () => {
+      throw new Error('QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED');
+    });
+    const config = createQuickStartConfig({
+      serverPort: 41001,
+      mysqlPort: 41002,
+      node: true,
+      search: 'disabled'
+    });
+    await expect(
+      startLocalNode(
+        root,
+        config,
+        { issue, online: () => false },
+        1000,
+        1000,
+        async () => '/never-spawned'
+      )
+    ).rejects.toThrow('QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED');
+    expect(await readFile(path, 'utf8')).toBe(original);
+  });
+
   it('does not treat an unsuccessful Supervisor exit as reclaiming its still-running Node', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-quick-node-failed-stop-'));
     directories.push(root);

@@ -538,6 +538,9 @@ export class MysqlServerDatabase {
       connection
     );
   }
+  recoverPersonalNodeRegistrationToken(token: string, userId: number, ttlMs: number) {
+    return this.nodeIdentities.recoverPersonalNodeRegistrationToken(token, userId, ttlMs);
+  }
   registerNode(token: string, input: { readonly metadata: string }, registeredAddress = 'unknown') {
     return this.nodeIdentities.registerNode(token, input, registeredAddress);
   }

@@ -10,6 +10,8 @@ export const cliMessagesZhCN = {
     'Server 的 Node 依赖不可用，请检查 npm 安装或使用 --no-node 禁用本机 Node。',
   quickNodeInstallFailed: '本机 Node 操作失败（{code}）。请检查 Node 日志与配置。',
   quickNodeOnline: '本机 Node 已上线。',
+  quickNodeBootstrapRecoveryRequired:
+    '无法安全恢复本机 Node 注册（QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED）：令牌已使用或状态不明，未重复登记。请保留 node-data/node.json，从备份恢复已有身份，或核对并处理上次登记后再注册。',
   quickNodeUnavailable: '本机 Node 尚未上线。请检查 Node 日志与配置；注册不会自动重试。',
   quickNodeSupervisorExited: '本机 Node Supervisor 意外退出。管理页面仍可访问，请检查 Node 日志。',
   quickSearchDisabled: '此平台无法使用本地搜索，已禁用；之后可配置外部搜索地址。',

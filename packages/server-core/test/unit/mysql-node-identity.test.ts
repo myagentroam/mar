@@ -23,6 +23,95 @@ function fixture() {
 }
 
 describe('shared Node identity persistence', () => {
+  it.each([500, 2000])(
+    'recovers only an unused personal token (expiresAt=%s)',
+    async (expiresAt) => {
+      const { store, connection, audit } = fixture();
+      connection.execute.mockResolvedValueOnce([
+        [{ expires_at: expiresAt, display_name: 'Local Node' }],
+        []
+      ] as never);
+      const result = await store.recoverPersonalNodeRegistrationToken('previous', 1, 600_000);
+      expect(result).toBeDefined();
+      if (expiresAt > 1000) {
+        expect(result).toEqual({ token: 'previous', expiresAt });
+        expect(connection.execute).toHaveBeenCalledTimes(1);
+      } else {
+        expect(result!.token).not.toBe('previous');
+        expect(result!.expiresAt).toBe(601_000);
+        expect(
+          connection.execute.mock.calls.some(([sql]) =>
+            sql.includes('INSERT INTO node_registration_tokens')
+          )
+        ).toBe(true);
+        expect(
+          connection.execute.mock.calls.some(([sql]) =>
+            /(?:INSERT INTO nodes|DELETE FROM node_registration_tokens)/u.test(sql)
+          )
+        ).toBe(false);
+      }
+      const [query, values] = connection.execute.mock.calls[0]!;
+      expect(query).toContain('used_at IS NULL');
+      expect(query).toContain("owner_type='PERSONAL'");
+      expect(query).toContain('FOR UPDATE');
+      expect(values.slice(1)).toEqual([1, 1]);
+      expect(connection.commit).toHaveBeenCalledOnce();
+      expect(connection.beginTransaction).toHaveBeenCalledOnce();
+      expect(connection.release).toHaveBeenCalledOnce();
+      if (expiresAt > 1000) expect(audit).not.toHaveBeenCalled();
+      else {
+        expect(audit).toHaveBeenCalledOnce();
+        expect(connection.commit.mock.invocationCallOrder[0]).toBeLessThan(
+          audit.mock.invocationCallOrder[0]!
+        );
+      }
+    }
+  );
+
+  it('refuses recovery of consumed, missing or foreign tokens without creating identities', async () => {
+    const { store, connection } = fixture();
+    connection.execute.mockResolvedValueOnce([[], []] as never);
+    await expect(
+      store.recoverPersonalNodeRegistrationToken('unknown', 1, 600_000)
+    ).resolves.toBeUndefined();
+    expect(connection.execute).toHaveBeenCalledTimes(1);
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.commit).not.toHaveBeenCalled();
+  });
+
+  it('discards replacement audit when recovery commit fails', async () => {
+    const { store, connection, audit } = fixture();
+    connection.execute.mockResolvedValueOnce([
+      [{ expires_at: 500, display_name: 'Local Node' }],
+      []
+    ] as never);
+    connection.commit.mockRejectedValueOnce(new Error('COMMIT_FAILED'));
+    await expect(
+      store.recoverPersonalNodeRegistrationToken('previous', 1, 600_000)
+    ).rejects.toThrow('COMMIT_FAILED');
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.release).toHaveBeenCalledOnce();
+    expect(audit).not.toHaveBeenCalled();
+    connection.execute.mockResolvedValueOnce([[{ expires_at: 2000 }], []] as never);
+    await store.recoverPersonalNodeRegistrationToken('previous', 1, 600_000);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it('rolls back recovery when creating the replacement token fails', async () => {
+    const { store, connection, lockOwnership } = fixture();
+    connection.execute.mockResolvedValueOnce([
+      [{ expires_at: 500, display_name: 'Local Node' }],
+      []
+    ] as never);
+    lockOwnership.mockRejectedValueOnce(new Error('ADMISSION_REJECTED'));
+    await expect(
+      store.recoverPersonalNodeRegistrationToken('previous', 1, 600_000)
+    ).rejects.toThrow('ADMISSION_REJECTED');
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
   it('locks upgrade snapshot updates and rejects disabled nodes before writing', async () => {
     const { store, connection } = fixture();
     connection.execute.mockImplementation(async (sql: string) => {

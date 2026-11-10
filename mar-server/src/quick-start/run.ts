@@ -120,8 +120,20 @@ export async function runQuickStart(
               if (online) console.log(cliText('quickNodeOnline'));
               else if (!interrupted) console.error(cliText('quickNodeUnavailable'));
             }
-          } catch {
-            console.error(cliText('quickNodeUnavailable'));
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              'code' in error &&
+              error.code === 'QUICK_START_NODE_BOOTSTRAP_RECOVERY_REQUIRED'
+            )
+              console.error(cliText('quickNodeBootstrapRecoveryRequired'));
+            else if (
+              error instanceof Error &&
+              'code' in error &&
+              error.code === 'QUICK_START_NODE_CONFIG_INVALID'
+            )
+              console.error(cliText('quickNodeInstallFailed', { code: error.code }));
+            else console.error(cliText('quickNodeUnavailable'));
           }
           if (mysqlExitedDuringNodeStartup) throw new Error('QUICK_START_MYSQL_EXITED');
         }
