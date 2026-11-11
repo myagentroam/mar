@@ -628,10 +628,149 @@ test('working Diff selection quotes model content without line gutters or minima
       source: 'diff',
       origin: 'WORKING_TREE',
       oldStartLine: 2,
-      text: ' first value\n-old value\n+new value\n same value'
+      text: 'first value\nold value\nnew value\nsame value'
     }
   ]);
 });
+
+for (const selectionCase of [
+  {
+    name: 'the middle of an added line',
+    start: [2, 7],
+    end: [2, 12],
+    text: 'value',
+    side: 'new',
+    lines: { startLine: 2, endLine: 2 }
+  },
+  {
+    name: 'the middle of a deleted line',
+    start: [1, 7],
+    end: [1, 12],
+    text: 'value',
+    side: 'old',
+    lines: { oldStartLine: 2, oldEndLine: 2 }
+  },
+  {
+    name: 'the middle of a context line',
+    start: [0, 3],
+    end: [0, 10],
+    text: 'context',
+    side: 'new',
+    lines: { startLine: 1, endLine: 1 }
+  },
+  {
+    name: 'source-leading plus and trailing spaces',
+    start: [2, 0],
+    end: [2, 14],
+    text: '+new + value  ',
+    side: 'new',
+    lines: { startLine: 2, endLine: 2 }
+  },
+  {
+    name: 'source-leading minus and trailing spaces',
+    start: [1, 0],
+    end: [1, 14],
+    text: '-old - value  ',
+    side: 'old',
+    lines: { oldStartLine: 2, oldEndLine: 2 }
+  },
+  {
+    name: 'source-leading spaces and plus in context',
+    start: [0, 0],
+    end: [0, 3],
+    text: '  +',
+    side: 'new',
+    lines: { startLine: 1, endLine: 1 }
+  },
+  {
+    name: 'a partial cross-line selection with source symbols and whitespace',
+    start: [0, 2],
+    end: [4, 8],
+    text: '+context - literal  \n-old - value  \n+new + value  \n-last - value  \n  tail +',
+    side: 'mixed',
+    lines: { startLine: 1, endLine: 4, oldStartLine: 2, oldEndLine: 2 }
+  }
+]) {
+  test(`working Diff copies and quotes only ${selectionCase.name}`, async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+      origin: fixture.url
+    });
+    await page.evaluate(() => {
+      const fixture = (
+        window as unknown as {
+          quoteFixture: {
+            replaceWorkingDiff(value: { text: string; afterText: string }): void;
+            setSurface(value: string): void;
+          };
+        }
+      ).quoteFixture;
+      fixture.replaceWorkingDiff({
+        text: [
+          '@@ -1,4 +1,4 @@',
+          '   +context - literal  ',
+          '--old - value  ',
+          '++new + value  ',
+          ' -last - value  ',
+          '   tail + -  '
+        ].join('\n'),
+        afterText: '  +context - literal  \n+new + value  \n-last - value  \n  tail + -  '
+      });
+      fixture.setSurface('working-diff');
+    });
+    const pane = page.locator('.unified-diff-code');
+    await expect(pane.locator('[data-diff-line-content]')).toHaveCount(5);
+    const selectBody = () =>
+      pane.evaluate((element, { start, end }) => {
+        const rows = element.querySelectorAll('[data-diff-line-content]');
+        function position(row: number, offset: number): [Node, number] {
+          const walker = document.createTreeWalker(rows[row]!, NodeFilter.SHOW_TEXT);
+          let node = walker.nextNode();
+          while (node) {
+            if (offset <= node.textContent!.length) return [node, offset];
+            offset -= node.textContent!.length;
+            node = walker.nextNode();
+          }
+          throw new Error('Selection offset exceeds the rendered source');
+        }
+        const range = document.createRange();
+        range.setStart(...position(start[0]!, start[1]!));
+        range.setEnd(...position(end[0]!, end[1]!));
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }, selectionCase);
+
+    await selectBody();
+    await rightClickSelection(page);
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(selectionCase.text);
+    await expect(pane).toBeVisible();
+    expect(await result(page, 'references')).toEqual([]);
+
+    await selectBody();
+    await rightClickSelection(page);
+    await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+    await expect(pane).toHaveCount(0);
+    const references = (await result(page, 'references')) as Record<string, unknown>[];
+    expect(references).toHaveLength(1);
+    expect(references[0]).toMatchObject({
+      source: 'diff',
+      origin: 'WORKING_TREE',
+      path: 'src/example.ts',
+      text: selectionCase.text,
+      side: selectionCase.side,
+      ...selectionCase.lines
+    });
+    for (const key of ['startLine', 'endLine', 'oldStartLine', 'oldEndLine']) {
+      if (!(key in selectionCase.lines)) expect(references[0]).not.toHaveProperty(key);
+    }
+    expect(references[0]!.text).toBe(await page.evaluate(() => navigator.clipboard.readText()));
+    await expect(page.locator('textarea.composer-input')).toHaveValue('Keep my opinion unchanged.');
+    await expect(page.locator('#failure')).toBeEmpty();
+  });
+}
 
 test('an oversized selection is rejected without rewriting the draft', async ({ page }) => {
   await page.evaluate(() =>
