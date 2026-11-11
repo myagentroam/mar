@@ -3,17 +3,32 @@
 </p>
 <h1 align="center">MyAgentRoam</h1>
 <p align="center"><strong>Agent First. Work Anywhere.</strong></p>
-<p align="center">A self-hosted Agent workbench. Execution on your machines. Direction from your desktop or phone.</p>
+<p align="center">A self-hosted workbench for your coding agents. Run tasks on your machines; follow progress and review changes from a desktop or phone.</p>
 <p align="center"><strong>MAR Agent · Codex · Claude Code · OpenCode</strong></p>
 <p align="center">
   <a href="#get-started">Get started</a> ·
-  <a href="#agent-first">Agent First</a> ·
+  <a href="#why-mar">Why MAR?</a> ·
   <a href="#work-anywhere">Work Anywhere</a> ·
   <a href="#agent-network">Agent Network</a> ·
+  <a href="https://myagentroam.dev">Website</a> ·
   <a href="docs/help/en-US/getting-started/overview.md">Documentation</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 <p align="center"><sub>Apache-2.0 core · source-available product/EE · <a href="LICENSING.md">Exact licensing scope</a></sub></p>
+
+<a id="why-mar"></a>
+
+## Why MAR if you already use Codex or Claude Code?
+
+**Keep your coding agent. Add a workbench for following its work across machines and devices.** You do not need to switch to MAR Agent: start sessions in MAR with Codex, Claude Code, or OpenCode, using the projects and tools on your own machines.
+
+- **Step away from the desk, not the task.** Start work from your desktop, then check progress or send guidance from your phone. Closing the browser does not automatically stop an active session on the execution machine.
+- **Review the work beside the conversation.** Inspect project files, Git changes, terminal output, and generated deliverables without relying only on the Agent's final summary.
+- **Use multiple agents in one place.** Manage sessions across supported agents and work machines in one interface. Use separate sessions for implementation and review; each agent's controls follow its Runner's capabilities.
+
+If a local CLI already covers your workflow, MAR is optional. It is for when you want cross-device access, multiple sessions, and a shared place to inspect results. Remote use requires a reachable self-hosted Server and an online execution machine.
+
+[Get started](#get-started) · [Explore Agent collaboration](#agent-network) · [Meet MAR Agent](#mar-agent)
 
 <p align="center">
   <img src="docs/assets/mio.png" width="160" alt="Mio, the MyAgentRoam mascot, welcoming you" />
@@ -46,37 +61,6 @@ Closing the browser or putting it in the background does not automatically stop 
 
 </details>
 
-## Built for more than a single prompt
-
-<table>
-<tr>
-<td width="50%"><strong>Configure once. Continue across devices.</strong><br />Prepare projects and tools on your own Windows, Linux, or macOS Node, then continue from a desktop or mobile browser.</td>
-<td width="50%"><strong>Multiple Agents. One workbench.</strong><br />Read history and live output from MAR Agent, Codex, Claude Code, and OpenCode in one interface. Controls follow each Runner's capabilities.</td>
-</tr>
-<tr>
-<td><strong>Follow the collaboration</strong><br />Persistent sessions keep their own context. Use the session tree and main/auxiliary surfaces to inspect delegation, progress, and independent review.</td>
-<td><strong>Review the actual results</strong><br />Open files and per-operation diffs from replies. Inspect Git changes, project files, or generated HTML alongside the conversation.</td>
-</tr>
-<tr>
-<td><strong>Keep long tasks moving</strong><br />MAR Agent uses Context GC, background Compact, Smart Compaction, and Code Mode to manage context and tool work across longer tasks.</td>
-<td><strong>Steer without starting over</strong><br />Add guidance, queue follow-up work, or continue with Goals and schedules. Review permission and execution rules before enabling unattended work.</td>
-</tr>
-</table>
-
-### Context GC and context management
-
-- **Context GC:** reclaim eligible historical context incrementally so long-running work does not carry every old detail into every model request.
-- **Smart Compaction:** let MAR Agent request background compaction at a suitable work-phase transition; fixed capacity protection remains independent.
-- **Visible context:** inspect reported context usage, GC counts and reclaimed-token statistics, compaction status, and plans, with a manual Compact entry when needed. Work can continue during background compaction; these mechanisms do not promise unlimited, lossless memory or fixed cost savings.
-
-### Keep momentum. Keep the work reviewable.
-
-- **Compose tool work:** with Code Mode enabled, MAR Agent can combine permitted tool calls in JavaScript and return selected results, reducing intermediate model round trips.
-- **Follow the process:** inspect context usage, plans, tool output, file changes, and terminal activity rather than relying only on an Agent's final summary.
-- **Continue deliberately:** queues, steer, Goal mode, and schedules offer different ways to move work forward. Goal mode changes queue and permission behavior; scheduled runs automatically approve tool permission requests. Use them only within a scope you trust.
-
-[Context and plans](docs/help/en-US/workbench/context-and-plan.md) · [Steer, queues, and Goal](docs/help/en-US/workbench/composer.md) · [Scheduled sessions](docs/help/en-US/workbench/sessions.md) · [Code Mode and tools](docs/help/en-US/runners/mar-agent.md)
-
 ## Agent Network
 
 **One question. Multiple independent sessions. A shared body of evidence.**
@@ -101,6 +85,8 @@ _User-defined session roles coordinate work; Agent Network is not a separate orc
 
 In the product, MAR Agent uses native **`agent_*` collaboration tools** to create, message, inspect, wait for, and stop authorized sessions. Relationships support up to three levels: root, child, and grandchild. Other Runners can coordinate through **marctl**, which also provides on-demand management of models, titles, persistent instructions, and schedules. Session relationships do not expand authorization or imply automatic task ownership or a workflow engine. [Agent collaboration](docs/help/en-US/runners/mar-agent.md#advanced-subagent-control) · [marctl session management](docs/help/en-US/operations/marctl.md#coordinate-workspace-sessions).
 
+<a id="mar-agent"></a>
+
 ## MAR Agent, inside the workbench or on its own
 
 **Context GC · Smart Compaction · Steer · Code Mode · Subagents · Auto · Skills / MCP**
@@ -112,6 +98,20 @@ The SDK, CLI, and workbench share the same MAR Agent core. Smart Compaction is a
 **Auto mode** uses the main model's self-classification of tool actions to reduce unintended actions with minimal execution overhead. It is not a sandbox or an independent security boundary; existing Host and operating-system restrictions still apply.
 
 > **A long-session case study:** approximately **50 hours · 6,364 requests · 75 compactions**. Context GC was estimated to reduce cumulative context input by **20.41%** in this anonymized ERP development session. This is a case-specific observational estimate, not a guarantee of capacity, cost savings, or quality. [Method and limitations](CONTEXT_GC_CASE_STUDY.md).
+
+### Context GC and context management
+
+- **Context GC:** reclaim eligible historical context incrementally so long-running work does not carry every old detail into every model request.
+- **Smart Compaction:** let MAR Agent request background compaction at a suitable work-phase transition; fixed capacity protection remains independent.
+- **Visible context:** inspect reported context usage, GC counts and reclaimed-token statistics, compaction status, and plans, with a manual Compact entry when needed. Work can continue during background compaction; these mechanisms do not promise unlimited, lossless memory or fixed cost savings.
+
+### Keep momentum. Keep the work reviewable.
+
+- **Compose tool work:** with Code Mode enabled, MAR Agent can combine permitted tool calls in JavaScript and return selected results, reducing intermediate model round trips.
+- **Follow the process:** inspect context usage, plans, tool output, file changes, and terminal activity rather than relying only on an Agent's final summary.
+- **Continue deliberately:** queues, steer, Goal mode, and schedules offer different ways to move work forward. Goal mode changes queue and permission behavior; scheduled runs automatically approve tool permission requests. Use them only within a scope you trust.
+
+[Context and plans](docs/help/en-US/workbench/context-and-plan.md) · [Steer, queues, and Goal](docs/help/en-US/workbench/composer.md) · [Scheduled sessions](docs/help/en-US/workbench/sessions.md) · [Code Mode and tools](docs/help/en-US/runners/mar-agent.md)
 
 ## From execution to reviewable results
 

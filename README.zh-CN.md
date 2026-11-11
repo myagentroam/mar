@@ -3,17 +3,32 @@
 </p>
 <h1 align="center">MyAgentRoam</h1>
 <p align="center"><strong>Agent First · Work Anywhere</strong></p>
-<p align="center">自托管的 Agent 工作台。执行留在工作主机，电脑与手机都能掌握方向。</p>
+<p align="center">为你的编程 Agent 提供自托管工作台。任务在自己的机器上执行，电脑与手机都能跟进进展、审阅变更。</p>
 <p align="center"><strong>MAR Agent · Codex · Claude Code · OpenCode</strong></p>
 <p align="center">
   <a href="#开始使用">开始使用</a> ·
-  <a href="#agent-first">Agent First</a> ·
+  <a href="#why-mar">为什么用 MAR？</a> ·
   <a href="#work-anywhere">Work Anywhere</a> ·
   <a href="#agent-network">Agent Network</a> ·
+  <a href="https://myagentroam.dev">官网</a> ·
   <a href="docs/help/getting-started/overview.md">使用文档</a> ·
   <a href="README.md">English</a>
 </p>
 <p align="center"><sub>Apache-2.0 公共核心 · 源码可见的产品组合与 EE · <a href="LICENSING.md">准确许可范围</a></sub></p>
+
+<a id="why-mar"></a>
+
+## 已有 Codex 或 Claude Code，为什么还需要 MAR？
+
+**继续用熟悉的编程 Agent，多一个跨机器、跨设备跟进工作的工作台。** 不必切换到 MAR Agent：可以在 MAR 中使用 Codex、Claude Code 或 OpenCode 创建会话，沿用自己机器上的项目与工具链。
+
+- **离开电脑，不离开任务。** 在电脑上发起工作，出门后用手机查看进展、补充指导；关闭浏览器不会自动停止执行主机上的活动会话。
+- **在对话旁审阅实际结果。** 查看项目文件、Git 变更、终端输出与生成的交付物，不只依赖 Agent 的最终总结。
+- **多个 Agent，统一入口。** 在同一界面管理不同 Agent、不同工作主机上的会话，用独立会话分别实施与复核；具体控制能力遵循各 Runner。
+
+如果本地 CLI 已能满足你的工作流，不必额外部署 MAR。它适合需要跨设备访问、多会话管理和集中审阅结果的场景。远程使用需要能访问自托管 Server，执行主机也须在线。
+
+[开始使用](#开始使用) · [了解 Agent 协作](#agent-network) · [认识 MAR Agent](#mar-agent)
 
 <p align="center">
   <img src="docs/assets/mio.png" width="160" alt="MyAgentRoam 吉祥物 Mio 向你介绍工作台" />
@@ -46,37 +61,6 @@ Agent 是主要执行者。浏览器是你**定义目标、调整执行方向、
 
 </details>
 
-## 不止于单轮问答
-
-<table>
-<tr>
-<td width="50%"><strong>一次配置，多端接续</strong><br />在自己的 Windows、Linux 或 macOS Node 上准备项目和工具链，从电脑或手机浏览器继续工作。</td>
-<td width="50%"><strong>多个 Agent，一个工作台</strong><br />统一查看 MAR Agent、Codex、Claude Code、OpenCode 的历史和实时输出，控制能力遵循各 Runner。</td>
-</tr>
-<tr>
-<td><strong>协作过程看得见</strong><br />独立持久化会话保留各自上下文；通过会话树和主／辅助工作面检查委派、进展与复核结果。</td>
-<td><strong>结果可以直接审阅</strong><br />从回复打开文件与本次修改 Diff，在对话旁查看 Git 变更、项目文件或生成的 HTML 页面。</td>
-</tr>
-<tr>
-<td><strong>长任务持续推进</strong><br />MAR Agent 通过 Context GC、后台 Compact、Smart Compaction 与 Code Mode 管理长任务的上下文和工具操作。</td>
-<td><strong>调整方向，不必从头开始</strong><br />执行中补充指导，排队后续任务，或用 Goal 和定时任务继续推进；无人值守前先确认权限与执行规则。</td>
-</tr>
-</table>
-
-### Context GC 与上下文管理
-
-- **Context GC：** 增量回收符合条件的历史上下文，减少长任务每次请求重复携带旧细节。
-- **Smart Compaction：** 让 MAR Agent 在合适的工作阶段切换时请求后台整理；固定容量保护仍独立生效。
-- **上下文可见：** 查看已报告的上下文用量、GC 次数与回收统计、整理状态及计划，需要时手动 Compact。后台整理期间任务可继续；这些机制不承诺无限、无损的记忆或固定成本节省。
-
-### 持续推进，也让过程可审阅
-
-- **组合工具操作：** 开启 Code Mode 后，MAR Agent 可用 JavaScript 组合获准的工具调用，只返回所需结果，减少中间模型往返。
-- **看到执行过程：** 检查上下文用量、计划、工具输出、文件变更与终端活动，而不只依赖 Agent 的最终总结。
-- **有意识地继续：** 队列、steer、Goal 和定时任务提供不同推进方式。Goal 会改变队列与权限行为；定时运行会自动批准工具权限请求。只在可信范围内启用。
-
-[上下文与计划](docs/help/workbench/context-and-plan.md) · [Steer、队列与 Goal](docs/help/workbench/composer.md) · [定时会话](docs/help/workbench/sessions.md) · [Code Mode 与工具](docs/help/runners/mar-agent.md)
-
 ## Agent Network
 
 **一个问题，多个独立会话，一份共同积累的证据。**
@@ -101,6 +85,8 @@ _角色由用户组织，围绕工作区协作；Agent Network 不是另一套�
 
 产品中的 MAR Agent 使用原生 **`agent_*` 协作工具**创建、通信、查看、等待和停止获授权的会话；协作关系最多三层（根、子、孙）。其他 Runner 可通过 **marctl** 协同，模型、标题、持久指令和定时任务等管理也按需使用 marctl。会话关系不扩大权限，也不意味着自动任务归属或工作流引擎。[Agent 协作](docs/help/runners/mar-agent.md#子-agent-高级控制) · [marctl 会话管理](docs/help/operations/marctl.md#协同工作区会话)。
 
+<a id="mar-agent"></a>
+
 ## MAR Agent：既能用于工作台，也能独立使用
 
 **Context GC · Smart Compaction · Steer · Code Mode · 子 Agent · Auto · Skill / MCP**
@@ -112,6 +98,20 @@ SDK、CLI 与工作台使用同一个 MAR Agent 内核。Smart Compaction 是**�
 **Auto 模式**由主模型自行判断工具操作，以尽量低的执行开销减少非预期操作。它不是沙箱，也不是独立安全边界；既有 Host 和操作系统限制仍然适用。
 
 > **一个长会话案例：约 50 小时 · 6,364 次请求 · 75 次整理。** 在这次脱敏 ERP 开发会话中，Context GC 预计使累计上下文输入减少 **20.41%**。这是单案例的观测估算，不是容量、成本节省或质量保证。[核算方法与限制](CONTEXT_GC_CASE_STUDY.md)。
+
+### Context GC 与上下文管理
+
+- **Context GC：** 增量回收符合条件的历史上下文，减少长任务每次请求重复携带旧细节。
+- **Smart Compaction：** 让 MAR Agent 在合适的工作阶段切换时请求后台整理；固定容量保护仍独立生效。
+- **上下文可见：** 查看已报告的上下文用量、GC 次数与回收统计、整理状态及计划，需要时手动 Compact。后台整理期间任务可继续；这些机制不承诺无限、无损的记忆或固定成本节省。
+
+### 持续推进，也让过程可审阅
+
+- **组合工具操作：** 开启 Code Mode 后，MAR Agent 可用 JavaScript 组合获准的工具调用，只返回所需结果，减少中间模型往返。
+- **看到执行过程：** 检查上下文用量、计划、工具输出、文件变更与终端活动，而不只依赖 Agent 的最终总结。
+- **有意识地继续：** 队列、steer、Goal 和定时任务提供不同推进方式。Goal 会改变队列与权限行为；定时运行会自动批准工具权限请求。只在可信范围内启用。
+
+[上下文与计划](docs/help/workbench/context-and-plan.md) · [Steer、队列与 Goal](docs/help/workbench/composer.md) · [定时会话](docs/help/workbench/sessions.md) · [Code Mode 与工具](docs/help/runners/mar-agent.md)
 
 ## 从执行过程到可审阅的结果
 
