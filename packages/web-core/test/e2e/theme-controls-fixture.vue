@@ -4,6 +4,7 @@ import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageBu
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
 import MarIcon from '../../src/view/common/MarIcon.vue';
+import { marIcon } from '../../src/util/mar-icons.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
@@ -94,6 +95,12 @@ function saveFeedbackDialog(): void {
     <el-button link>Sample neutral action</el-button>
     <el-button link disabled>Sample disabled neutral action</el-button>
     <el-button link type="danger">Sample dangerous action</el-button>
+    <div v-for="type in ['success', 'warning', 'danger', 'info'] as const" :key="type">
+      <el-button :type="type" link :icon="marIcon('delete')">Sample {{ type }} action</el-button>
+      <el-button :type="type" link disabled :icon="marIcon('delete')"
+        >Sample disabled {{ type }} action</el-button
+      >
+    </div>
     <ChatGPTManageUsageButton />
     <el-link type="primary">Sample anchor</el-link>
     <el-table :data="[{ name: 'First' }, { name: 'Second' }]">

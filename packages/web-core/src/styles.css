@@ -532,13 +532,18 @@ html.console-ui .el-tag--primary:not(.el-tag--dark) {
   --el-tag-text-color: var(--mar-control-link-text);
 }
 
-/* Semantic link hover must strengthen the foreground, not reuse the disabled shade. */
+/* Follow the applied color scheme; custom body text may be dimmer than a semantic action. */
 html.console-ui
-  .el-button:is(.el-button--success, .el-button--warning, .el-button--danger, .el-button--info).is-link {
+  .el-button:is(
+    .el-button--success,
+    .el-button--warning,
+    .el-button--danger,
+    .el-button--info
+  ).is-link {
   --el-button-hover-link-text-color: color-mix(
     in srgb,
     var(--el-button-text-color) 80%,
-    var(--mar-text-primary)
+    light-dark(black, white)
   );
   --el-button-active-color: var(--el-button-hover-link-text-color);
 }

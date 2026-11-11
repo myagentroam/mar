@@ -116,6 +116,106 @@ test('lazy loading directive displays and removes its styled mask', async ({ pag
   await expect(mask).toBeHidden();
 });
 
+for (const scheme of ['Dark', 'Light']) {
+  for (const custom of [false, true]) {
+    test(`semantic link actions distinguish hover from disabled in ${scheme} ${custom ? 'custom' : 'built-in'} palette`, async ({
+      page
+    }, testInfo) => {
+      if (scheme === 'Light')
+        await page
+          .locator('.theme-option')
+          .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+          .getByRole('button', { name: 'Apply theme', exact: true })
+          .click();
+      const controls = page.getByRole('region', { name: 'Real theme controls' });
+      await expect(controls).toBeVisible();
+      if (custom)
+        await page.evaluate((dark) => {
+          const colors = dark
+            ? ['#afffda', '#ffeda8', '#ffd2dd', '#dbe8ff']
+            : ['#001f18', '#2b1900', '#300511', '#0b1320'];
+          document.documentElement.style.setProperty(
+            '--mar-text-primary',
+            dark ? '#a4b4cc' : '#35435a'
+          );
+          for (const [index, type] of ['success', 'warning', 'danger', 'info'].entries())
+            document.documentElement.style.setProperty(
+              type === 'info' ? '--mar-text-secondary' : `--mar-control-color-${type}`,
+              colors[index]!
+            );
+        }, scheme === 'Dark');
+      const contrast = (color: string, background: string): number => {
+        const luminance = (value: string): number => {
+          const hex = resolvedColorToHex(value);
+          const channels = [1, 3, 5].map((offset) => {
+            const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+        };
+        const values = [luminance(color), luminance(background)].sort((a, b) => a - b);
+        return (values[1]! + 0.05) / (values[0]! + 0.05);
+      };
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const type of ['success', 'warning', 'danger', 'info']) {
+          const action = controls.getByRole('button', {
+            name: `Sample ${type} action`,
+            exact: true
+          });
+          const disabled = controls.getByRole('button', {
+            name: `Sample disabled ${type} action`,
+            exact: true
+          });
+          const appearance = async (button: Locator) =>
+            button.evaluate(async (element) => {
+              await Promise.all(element.getAnimations().map((animation) => animation.finished));
+              const probe = document.createElement('span');
+              probe.style.color = 'var(--mar-bg-page)';
+              element.append(probe);
+              const background = getComputedStyle(probe).color;
+              probe.remove();
+              return { color: getComputedStyle(element).color, background };
+            });
+          await page.mouse.move(0, 0);
+          const normal = await appearance(action);
+          const inactive = await appearance(disabled);
+          await action.hover();
+          const hover = await appearance(action);
+          expect(contrast(hover.color, hover.background)).toBeGreaterThan(
+            contrast(normal.color, normal.background)
+          );
+          expect(resolvedColorToHex(hover.color)).not.toBe(resolvedColorToHex(inactive.color));
+          await expect(action.locator('svg')).toHaveCSS('color', hover.color);
+          await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          await page.mouse.down();
+          try {
+            const active = await appearance(action);
+            expect(contrast(active.color, active.background)).toBeGreaterThanOrEqual(
+              contrast(normal.color, normal.background)
+            );
+            await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          } finally {
+            await page.mouse.up();
+          }
+          await disabled.hover({ force: true });
+          await expect(disabled).toBeDisabled();
+          await expect(disabled).toHaveCSS('color', inactive.color);
+          await expect(disabled).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          await action.focus();
+          await page.keyboard.press('Shift+Tab');
+          await page.keyboard.press('Tab');
+          await expect(action).toBeFocused();
+          await expect(action).toHaveCSS('outline-style', 'solid');
+          await expect(action).toHaveCSS('outline-width', '2px');
+        }
+        await controls.getByRole('button', { name: 'Sample danger action', exact: true }).hover();
+        await controls.screenshot({ path: testInfo.outputPath(`semantic-actions-${width}.png`) });
+      }
+    });
+  }
+}
+
 for (const scheme of ['Light', 'Dark']) {
   test(`lazy dropdown retains ${scheme} and custom hover tokens and commands`, async ({ page }) => {
     if (scheme === 'Light')
