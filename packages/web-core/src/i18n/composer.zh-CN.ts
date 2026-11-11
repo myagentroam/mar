@@ -97,6 +97,9 @@ export const composerZhCN = {
   },
   composer: {
     quote: '引用',
+    previewQuote: '预览引用：{name}',
+    expandQuote: '展开引用',
+    collapseQuote: '收起引用',
     selectAll: '全选',
     removeQuote: '移除引用 {name}',
     quoteAssistant: '回复片段',

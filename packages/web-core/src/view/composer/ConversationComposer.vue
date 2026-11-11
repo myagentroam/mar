@@ -11,6 +11,7 @@ import {
   composerReferenceDescription
 } from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
+import ComposerQuoteTag from './ComposerQuoteTag.vue';
 import PromptCompletionEditor from './PromptCompletionEditor.vue';
 import type { PromptCompletionBinding } from '../../service/prompt-completion-client-service.js';
 import type {
@@ -232,35 +233,39 @@ const emit = defineEmits<{
             <span>{{ token.name }}</span
             ><MarIcon name="close" />
           </button>
-          <button
-            v-tooltip="composerReferenceDescription(reference)"
-            v-for="reference in fileReferences"
-            :key="composerReferenceKey(reference)"
-            class="composer-command-state composer-file-reference-state"
-            type="button"
-            :disabled="readonly || loading"
-            :aria-label="
-              translate(
-                reference.type === 'quote'
-                  ? 'composer.removeQuote'
-                  : reference.type === 'session'
+          <template v-for="reference in fileReferences" :key="composerReferenceKey(reference)">
+            <ComposerQuoteTag
+              v-if="reference.type === 'quote'"
+              :reference="reference"
+              :disabled="readonly || loading"
+              @remove="emit('removeReference', composerReferenceKey(reference))"
+            />
+            <button
+              v-else
+              v-tooltip="composerReferenceDescription(reference)"
+              class="composer-command-state composer-file-reference-state"
+              type="button"
+              :disabled="readonly || loading"
+              :aria-label="
+                translate(
+                  reference.type === 'session'
                     ? 'composer.removeSessionReference'
                     : 'composer.removeFileReference',
-                { name: reference.label }
-              )
-            "
-            @click="emit('removeReference', composerReferenceKey(reference))"
-          >
-            <MarIcon v-if="reference.type === 'session'" name="recent-sessions" />
-            <MarIcon v-else-if="reference.type === 'quote'" name="quote" />
-            <FileTypeIcon
-              v-else
-              :name="reference.path"
-              :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
-            />
-            <span>{{ reference.label }}</span
-            ><MarIcon name="close" />
-          </button>
+                  { name: reference.label }
+                )
+              "
+              @click="emit('removeReference', composerReferenceKey(reference))"
+            >
+              <MarIcon v-if="reference.type === 'session'" name="recent-sessions" />
+              <FileTypeIcon
+                v-else
+                :name="reference.path"
+                :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
+              />
+              <span>{{ reference.label }}</span
+              ><MarIcon name="close" />
+            </button>
+          </template>
         </div>
         <slot name="queue" />
         <slot name="attachments" />

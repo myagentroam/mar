@@ -1,5 +1,6 @@
 import type { ComposerReference } from '@myagentroam/protocol';
 import { translate } from '../service/locale-preference-service.js';
+import { formatDateTime } from './time-presentation.js';
 
 export function composerReferenceKey(reference: ComposerReference): string {
   return reference.type === 'quote'
@@ -12,14 +13,23 @@ export function composerReferenceKey(reference: ComposerReference): string {
 export function composerReferenceDescription(reference: ComposerReference): string {
   if (reference.type !== 'quote')
     return reference.type === 'session' ? reference.label : reference.path;
-  if (reference.source === 'assistant')
+  if (reference.source === 'assistant') {
+    const timestamp =
+      reference.timestamp && /^\d{4}-\d{2}-\d{2}T/.test(reference.timestamp)
+        ? Date.parse(reference.timestamp)
+        : NaN;
+    const sourceDay = reference.timestamp?.slice(0, 10) ?? '';
+    // Date.parse normalizes nonexistent calendar days, so verify the source day before formatting.
+    const isDate =
+      Number.isFinite(timestamp) && new Date(sourceDay).toISOString().slice(0, 10) === sourceDay;
     return [
       translate('composer.quoteAssistant'),
-      reference.timestamp,
+      isDate ? formatDateTime(timestamp) : reference.timestamp,
       reference.streaming ? translate('composer.quoteStreaming') : undefined
     ]
       .filter(Boolean)
       .join(' · ');
+  }
   return [
     reference.path,
     reference.origin === 'HISTORY'

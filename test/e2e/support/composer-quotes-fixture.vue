@@ -197,10 +197,12 @@ Object.assign(window, {
     :command-states="[]"
     :readonly="locked"
     :loading="false"
+    :working="false"
+    working-label=""
     :drop-target="false"
     placeholder="Opinion"
     :mobile-viewport="false"
-    @remove-file-reference="
+    @remove-reference="
       draft.references.value = references.filter(
         (reference) => composerReferenceKey(reference) !== $event
       )

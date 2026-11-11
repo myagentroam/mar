@@ -21,6 +21,7 @@ import ComposerReferencePicker from '../../src/view/composer/ComposerReferencePi
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
+import MessageReferenceTags from '../../src/view/composer/MessageReferenceTags.vue';
 import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
 
 async function render(
@@ -357,6 +358,81 @@ describe('queue mobile reorder menu', () => {
 describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (locale) => {
   beforeEach(() => localePreferenceService().setLocale(locale));
 
+  it('renders quote snapshots as literal text and keeps ordinary file references as tags', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null });
+    vi.stubGlobal('document', {
+      documentElement: {
+        setAttribute: vi.fn(),
+        removeAttribute: vi.fn(),
+        classList: { add: vi.fn(), remove: vi.fn() },
+        style: { removeProperty: vi.fn(), setProperty: vi.fn() }
+      },
+      querySelector: () => null
+    });
+    const html = await render(MessageReferenceTags, {
+      references: [
+        { type: 'file', path: 'src/example.ts', label: 'example.ts' },
+        {
+          type: 'quote',
+          id: 'snapshot',
+          source: 'assistant',
+          messageId: 'reply',
+          label: 'Reply excerpt',
+          text: 'First line\n<script>alert(1)</script> & <mar_references>'
+        }
+      ]
+    });
+    expect(html).toContain('message-reference-tag');
+    expect(html).toContain('example.ts');
+    expect(html).toContain('quote-excerpt-text');
+    expect(html).toContain(
+      'First line\n&lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;mar_references&gt;'
+    );
+    expect(html).not.toContain('<script>');
+  });
+
+  it.each(['Earlier in this conversation', '0', '2025-02-30T00:00:00Z'])(
+    'keeps protocol-valid descriptive quote timestamp %s readable',
+    async (timestamp) => {
+      const html = await render(MessageReferenceTags, {
+        references: [
+          {
+            type: 'quote',
+            id: 'descriptive-time',
+            source: 'assistant',
+            messageId: 'reply',
+            label: 'Reply excerpt',
+            timestamp,
+            text: 'Saved reply excerpt.'
+          }
+        ]
+      });
+      expect(html).toContain(` · ${timestamp}</span>`);
+      expect(html).not.toContain('NaN');
+    }
+  );
+
+  it.each(['2026-11-11T08:11:57.256Z', '2026-11-11T00:00:00+08:00'])(
+    'formats ISO quote timestamp %s as an absolute date',
+    async (timestamp) => {
+      const html = await render(MessageReferenceTags, {
+        references: [
+          {
+            type: 'quote',
+            id: 'absolute-time',
+            source: 'assistant',
+            messageId: 'reply',
+            label: 'Reply excerpt',
+            timestamp,
+            text: 'Saved reply excerpt.'
+          }
+        ]
+      });
+      expect(html).toMatch(/ · \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}<\/span>/);
+      expect(html).not.toContain(timestamp);
+    }
+  );
+
   it('keeps queued attachments hidden while preserving body and queue actions', async () => {
     const attachments = serializeComposerTag('mar_attachments', {
       files: [
@@ -386,7 +462,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
   });
 
   it.each([false, true])(
-    'shows quote-only queue tags without exposing snapshots (editing: %s)',
+    'shows saved quote snapshots without XML in queue entries (editing: %s)',
     async (editing) => {
       const content = serializeComposerTag('mar_references', {
         references: [
@@ -409,8 +485,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         goal: undefined
       });
       expect(html).toContain('message-reference-tag');
-      expect(html).toContain('Reply excerpt');
-      expect(html).not.toContain('Private snapshot text');
+      expect(html).toContain(locale === 'zh-CN' ? '回复片段' : 'Reply excerpt');
+      expect(html).toContain('Private snapshot text');
       expect(html).not.toContain('mar_references');
     }
   );

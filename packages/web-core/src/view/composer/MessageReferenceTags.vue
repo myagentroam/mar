@@ -6,26 +6,33 @@ import {
 } from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import MarIcon from '../common/MarIcon.vue';
+import QuoteExcerpt from './QuoteExcerpt.vue';
 defineProps<{ readonly references: readonly ComposerReference[] }>();
 </script>
 
 <template>
   <div v-if="references.length" class="message-reference-tags">
-    <span
-      v-for="reference in references"
-      :key="composerReferenceKey(reference)"
-      v-tooltip="composerReferenceDescription(reference)"
-      class="message-reference-tag"
-    >
-      <MarIcon v-if="reference.type === 'quote'" name="quote" />
-      <MarIcon v-else-if="reference.type === 'session'" name="recent-sessions" />
-      <FileTypeIcon
-        v-else
-        :name="reference.path"
-        :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
+    <template v-for="reference in references" :key="composerReferenceKey(reference)">
+      <QuoteExcerpt
+        v-if="reference.type === 'quote'"
+        :reference="reference"
+        collapsible
+        class="message-reference-quote"
       />
-      <span>{{ reference.label }}</span>
-    </span>
+      <span
+        v-else
+        v-tooltip="composerReferenceDescription(reference)"
+        class="message-reference-tag"
+      >
+        <MarIcon v-if="reference.type === 'session'" name="recent-sessions" />
+        <FileTypeIcon
+          v-else
+          :name="reference.path"
+          :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
+        />
+        <span>{{ reference.label }}</span>
+      </span>
+    </template>
   </div>
 </template>
 
@@ -35,6 +42,9 @@ defineProps<{ readonly references: readonly ComposerReference[] }>();
   flex-wrap: wrap;
   gap: 0.35rem;
   min-width: 0;
+}
+.message-reference-quote {
+  flex-basis: 100%;
 }
 .message-reference-tag {
   display: inline-flex;

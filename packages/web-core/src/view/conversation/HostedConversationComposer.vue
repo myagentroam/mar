@@ -696,7 +696,7 @@ onBeforeUnmount(() => {
     :loading="submitting || configurationUpdating || workspace.templateChanging.value"
     :skill-tokens="[]"
     :file-references="references"
-    @remove-file-reference="
+    @remove-reference="
       references = references.filter((reference) => composerReferenceKey(reference) !== $event)
     "
     @submit="send"

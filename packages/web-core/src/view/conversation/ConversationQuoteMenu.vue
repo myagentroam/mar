@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Owns only this timeline's native selection and transient menus. Draft admission belongs to the supplied owner.
-import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
+import type { DropdownInstance } from 'element-plus';
 import type { ComposerQuoteDraft } from '@myagentroam/protocol';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -12,10 +13,9 @@ const props = defineProps<{
   readonly contextKey?: string | undefined;
 }>();
 const emit = defineEmits<{ copy: [text: string] }>();
-const touch = ref(false);
-const selectedMessageId = ref<string>();
 const mode = ref<'bubble' | 'menu'>();
 const actions = ref<HTMLElement>();
+const menu = ref<DropdownInstance>();
 const anchor = ref(new DOMRect());
 const virtualReference = computed(() => ({ getBoundingClientRect: () => anchor.value }));
 let selected:
@@ -27,23 +27,37 @@ let selected:
     }
   | undefined;
 let dragging = false;
-let media: MediaQueryList | undefined;
+let dismissedRange: Range | undefined;
 
 function close(): void {
+  dismissedRange = selected?.range.cloneRange() ?? dismissedRange;
   mode.value = undefined;
 }
 function clear(): void {
   close();
   selected = undefined;
-  selectedMessageId.value = undefined;
 }
-watch(() => props.contextKey, clear);
+watch([() => props.contextKey, () => props.root], () => {
+  clear();
+  dismissedRange = undefined;
+});
 watchEffect(() => {
   if (!props.target?.capture()) clear();
 });
-function updateTouch(): void {
-  touch.value = media?.matches ?? false;
-  close();
+watch(mode, async (value) => {
+  if (value === 'menu') {
+    await nextTick();
+    if (mode.value === 'menu') menu.value?.handleOpen();
+  }
+});
+function sameRange(range: Range, previous: Range | undefined): boolean {
+  return (
+    previous !== undefined &&
+    range.startContainer === previous.startContainer &&
+    range.startOffset === previous.startOffset &&
+    range.endContainer === previous.endContainer &&
+    range.endOffset === previous.endOffset
+  );
 }
 function inspectSelection(): void {
   if (dragging || actions.value?.contains(document.activeElement)) return;
@@ -51,6 +65,11 @@ function inspectSelection(): void {
   if (!selection || selection.rangeCount !== 1 || selection.isCollapsed || !props.root)
     return clear();
   const range = selection.getRangeAt(0);
+  if (
+    sameRange(range, dismissedRange) ||
+    (mode.value === 'menu' && sameRange(range, selected?.range))
+  )
+    return;
   const start =
     range.startContainer.nodeType === Node.ELEMENT_NODE
       ? (range.startContainer as Element)
@@ -82,9 +101,8 @@ function inspectSelection(): void {
       ...(body.dataset.quoteStreaming === 'true' ? { streaming: true } : {})
     }
   };
-  selectedMessageId.value = body.dataset.quoteMessageId;
   anchor.value = range.getClientRects()[0] ?? range.getBoundingClientRect();
-  mode.value = touch.value ? undefined : 'bubble';
+  mode.value = 'bubble';
 }
 function quote(): void {
   const value = selected;
@@ -97,15 +115,16 @@ function copy(): void {
 }
 function contextMenu(event: MouseEvent): void {
   if (
-    touch.value ||
-    !selected ||
+    !event.cancelable ||
     !(event.target instanceof Element) ||
+    !props.root?.contains(event.target) ||
     event.target.closest('a,img,button')
   )
     return;
-  if (!selected.body.contains(event.target)) return;
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return;
   if (
-    ![...selected.range.getClientRects()].some(
+    ![...selection.getRangeAt(0).getClientRects()].some(
       (rect) =>
         event.clientX >= rect.left &&
         event.clientX <= rect.right &&
@@ -114,6 +133,10 @@ function contextMenu(event: MouseEvent): void {
     )
   )
     return;
+  dragging = false;
+  dismissedRange = undefined;
+  inspectSelection();
+  if (!selected?.body.contains(event.target)) return;
   event.preventDefault();
   anchor.value = new DOMRect(event.clientX, event.clientY, 0, 0);
   mode.value = 'menu';
@@ -122,26 +145,25 @@ function pointerDown(event: PointerEvent): void {
   if (actions.value?.contains(event.target as Node)) return;
   if (event.button === 0) {
     close();
-    dragging = true;
+    dragging = event.target instanceof Node && props.root?.contains(event.target) === true;
+    if (dragging) dismissedRange = undefined;
   }
 }
 function pointerUp(event: PointerEvent): void {
   if (event.button !== 0) return;
+  const selecting = dragging;
   dragging = false;
-  if (!actions.value?.contains(event.target as Node)) inspectSelection();
+  if (selecting) inspectSelection();
 }
 function pointerCancel(): void {
+  const selecting = dragging;
   dragging = false;
-  inspectSelection();
+  if (selecting) inspectSelection();
 }
 function keydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') clear();
 }
-watch(() => props.root, clear);
 onMounted(() => {
-  media = matchMedia('(max-width: 767px), (pointer: coarse)');
-  updateTouch();
-  media.addEventListener('change', updateTouch);
   document.addEventListener('selectionchange', inspectSelection);
   document.addEventListener('pointerdown', pointerDown);
   document.addEventListener('pointerup', pointerUp);
@@ -151,7 +173,6 @@ onMounted(() => {
   document.addEventListener('scroll', close, true);
 });
 onBeforeUnmount(() => {
-  media?.removeEventListener('change', updateTouch);
   document.removeEventListener('selectionchange', inspectSelection);
   document.removeEventListener('pointerdown', pointerDown);
   document.removeEventListener('pointerup', pointerUp);
@@ -160,35 +181,61 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', keydown);
   document.removeEventListener('scroll', close, true);
 });
-defineExpose({ quote, selectedMessageId, touch });
 </script>
 
 <template>
   <el-popover
-    :visible="mode !== undefined"
+    v-if="mode === 'bubble'"
+    :visible="true"
     :virtual-ref="virtualReference"
     virtual-triggering
     placement="top-start"
     width="auto"
     :show-arrow="false"
     :persistent="false"
-    :popper-style="{ padding: '0.2rem' }"
+    :popper-style="{ padding: '0', minWidth: 'unset', overflow: 'hidden' }"
   >
     <div
       ref="actions"
       class="quote-actions"
-      :role="mode === 'menu' ? 'menu' : 'group'"
+      role="group"
       :aria-label="translate('composer.quote')"
       @pointerdown.prevent
     >
-      <el-button v-if="mode === 'menu'" text role="menuitem" @click="copy">
-        <MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}
-      </el-button>
-      <el-button text size="small" :role="mode === 'menu' ? 'menuitem' : undefined" @click="quote">
+      <el-button text size="small" @click="quote">
         <MarIcon name="quote" />{{ translate('composer.quote') }}
       </el-button>
     </div>
   </el-popover>
+  <el-dropdown
+    v-if="mode === 'menu'"
+    ref="menu"
+    virtual-triggering
+    :virtual-ref="virtualReference"
+    trigger="contextmenu"
+    placement="bottom-start"
+    :show-timeout="0"
+    :hide-timeout="0"
+    @command="(command: string) => (command === 'copy' ? copy() : quote())"
+    @visible-change="
+      (visible: boolean) => {
+        if (!visible) close();
+      }
+    "
+  >
+    <template #dropdown>
+      <div ref="actions" @pointerdown.prevent>
+        <el-dropdown-menu :aria-label="translate('composer.quote')">
+          <el-dropdown-item command="copy"
+            ><MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}</el-dropdown-item
+          >
+          <el-dropdown-item command="quote"
+            ><MarIcon name="quote" />{{ translate('composer.quote') }}</el-dropdown-item
+          >
+        </el-dropdown-menu>
+      </div>
+    </template>
+  </el-dropdown>
 </template>
 
 <style scoped>
@@ -196,12 +243,10 @@ defineExpose({ quote, selectedMessageId, touch });
   display: flex;
   gap: 0.25rem;
 }
-.quote-actions[role='menu'] {
-  flex-direction: column;
-}
 .quote-actions .el-button {
   margin: 0;
   gap: 0.3rem;
   justify-content: flex-start;
+  border-radius: var(--mar-radius-surface);
 }
 </style>
