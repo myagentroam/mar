@@ -222,6 +222,8 @@ function attachment(id: string, status: 'PENDING' | 'UPLOADING' | 'COMPLETED' = 
 }
 
 interface HostedBindings {
+  readonly references: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
+  readonly quoteTarget: import('../../src/model/composer-quote.js').ComposerQuoteTarget;
   readonly input: Ref<string>;
   readonly attachments: Ref<
     Array<Omit<ReturnType<typeof attachment>, 'fileId'> & { fileId?: string | undefined }>
@@ -292,6 +294,59 @@ function hostedFixture(mobileViewport = false) {
 }
 
 describe('hosted message draft preservation', () => {
+  const quote = {
+    type: 'quote',
+    source: 'assistant',
+    label: 'Reply excerpt',
+    messageId: 'reply-1',
+    text: 'Keep the failure visible.'
+  } as const;
+
+  it('sends a quote-only input through the existing message owner and clears an unchanged draft', async () => {
+    const { composer, responses, sendMessage } = hostedFixture();
+    composer.quoteTarget.capture()!(quote);
+    expect(composer.input.value).toBe('');
+    await nextTick();
+    const pending = composer.send();
+    expect(sendMessage.mock.calls[0]![0].prompt).toContain('<reference type="quote"');
+    expect(sendMessage.mock.calls[0]![0].prompt).toContain(quote.text);
+    responses[0]!.resolve();
+    await pending;
+    expect(composer.references.value).toEqual([]);
+  });
+
+  it('does not clear newly added quotes when the old send succeeds after timeout', async () => {
+    const { composer, responses } = hostedFixture();
+    composer.input.value = 'My opinion';
+    composer.quoteTarget.capture()!(quote);
+    await nextTick();
+    const pending = composer.send();
+    await vi.advanceTimersByTimeAsync(5001);
+    composer.quoteTarget.capture()!({ ...quote, messageId: 'reply-2', text: 'A second snapshot' });
+    responses[0]!.resolve();
+    await pending;
+    expect(composer.references.value).toHaveLength(2);
+    expect(composer.input.value).toBe('My opinion');
+  });
+
+  it('rejects a selection captured for a replaced hosted watch', () => {
+    const { composer, workspace } = hostedFixture();
+    const receive = composer.quoteTarget.capture()!;
+    workspace.selectedWatchId.mockReturnValue('watch-2');
+    receive(quote);
+    expect(composer.references.value).toEqual([]);
+  });
+
+  it('rejects a later oversized body before sending and keeps its quote draft', async () => {
+    const { composer, sendMessage } = hostedFixture();
+    composer.quoteTarget.capture()!(quote);
+    composer.input.value = 'x'.repeat(100_000);
+    await composer.send();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(composer.references.value).toMatchObject([quote]);
+    expect(composer.input.value).toHaveLength(100_000);
+  });
+
   it('allows a mobile follow-up to use the existing replacement intent without queueing', async () => {
     const { composer, workspace, sendMessage, responses } = hostedFixture(true);
     workspace.snapshot.value = {

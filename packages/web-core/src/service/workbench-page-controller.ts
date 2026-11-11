@@ -724,7 +724,8 @@ export function createWorkbenchPageController<
     files: {
       attachments: (target) => fileAccess.forWorkspace(target).attachments,
       openChange: (intent) => fileWorkbench.openTab(intent),
-      openFile: (...args) => openAgentWorkspaceFile(...args)
+      openFile: (path, line, column, external, quotePane) =>
+        openAgentWorkspaceFile(path, line, column, external, undefined, quotePane)
     },
     identity: { replace: replaceSessionForTarget, transfer: transferSessionSubmission },
     events: {
@@ -2097,6 +2098,14 @@ export function createWorkbenchPageController<
     }),
     files: proxyRefs({
       fileWorkbench,
+      quoteTargetFor: (tab: import('../util/workspace-file-tab.js').WorkspaceFileTab) => {
+        if (standaloneFileMode.value) return undefined;
+        const pane = tab.quotePane === 'aside' ? asidePaneController : mainPaneController;
+        const target = pane.state.workspaceTarget.value;
+        return target?.nodeId === tab.nodeId && target.workspaceId === tab.workspaceId
+          ? pane.quoteTarget
+          : undefined;
+      },
       workspaceFileWorkbench,
       mountSurface: fileTools.mountSurface,
       unmountSurface: fileTools.unmountSurface,

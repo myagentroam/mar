@@ -212,6 +212,18 @@ function close(id: string | number): void {
   border-bottom: 1px solid var(--mar-border-strong);
   background: var(--mar-bg-subtle);
 }
+html:not([data-theme]) .workbench-aside {
+  border-inline-start-color: var(--mar-border-subtle);
+}
+html:not([data-theme]) .workbench-aside-header {
+  border-bottom-color: var(--mar-border-subtle);
+}
+html:not([data-theme]) .workbench-aside-header :deep(.tab-strip-item) {
+  border-color: var(--mar-border-default);
+}
+html:not([data-theme]) .workbench-aside-header :deep(.tab-strip-separator) {
+  background: var(--mar-border-subtle);
+}
 .workbench-aside-back {
   display: grid;
   width: 30px;

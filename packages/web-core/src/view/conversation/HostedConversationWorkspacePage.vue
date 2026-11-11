@@ -199,7 +199,10 @@ const uploadingDroppedFiles = ref(false);
 const relatedFilesInput = ref<HTMLInputElement>();
 const deletingFileId = ref<string>();
 const rollbackPending = ref(false);
-const composer = ref<{ restoreMessage(text: string): void }>();
+const composer = ref<{
+  restoreMessage(text: string): void;
+  readonly quoteTarget: import('../../model/composer-quote.js').ComposerQuoteTarget;
+}>();
 const conversationScrollElement = ref<HTMLElement>();
 const expandedFileDirectories = ref<ReadonlySet<string>>(new Set());
 let directorySequence = 0;
@@ -1243,6 +1246,7 @@ onBeforeUnmount(() => {
           @latest="conversationScrollService.scrollToLatest"
         >
           <ConversationTimeline
+            :quote-target="composer?.quoteTarget"
             v-if="workspace.snapshot.value !== undefined"
             :runs="workspace.snapshot.value?.run ? [workspace.snapshot.value.run] : []"
             :turns="timelineTurns"
@@ -1401,6 +1405,7 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <ToolChangeReviewWindow
+        :quote-target="composer?.quoteTarget"
         :review="toolReview"
         @open-source="openChangeSourceFile"
         @error="showMessage(hostedErrorMessage($event), 'error', $event)"
@@ -1425,6 +1430,7 @@ onBeforeUnmount(() => {
         @close="filePreview.close"
       >
         <WorkspaceTextFilePage
+          :quote-target="composer?.quoteTarget"
           ref="filePage"
           v-if="
             filePreview.visible.value &&

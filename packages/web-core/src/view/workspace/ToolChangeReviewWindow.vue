@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import type { createToolChangeReviewService } from '../../service/tool-change-review-service.js';
 import WorkspaceFileTabs from './WorkspaceFileTabs.vue';
 import WorkspaceGitDiffPage from './WorkspaceGitDiffPage.vue';
 
-const props = defineProps<{ review: ReturnType<typeof createToolChangeReviewService> }>();
+const props = defineProps<{
+  review: ReturnType<typeof createToolChangeReviewService>;
+  quoteTarget?: ComposerQuoteTarget | undefined;
+}>();
 const emit = defineEmits<{ openSource: [path: string]; error: [error: unknown] }>();
 
 function download(diff: unknown, path: string): void {
@@ -30,6 +34,7 @@ function download(diff: unknown, path: string): void {
   >
     <template #default="{ tab, active, registerPageHandle, requestClose }">
       <WorkspaceGitDiffPage
+        :quote-target="props.quoteTarget"
         :ref="registerPageHandle"
         v-show="active"
         :tab="tab"

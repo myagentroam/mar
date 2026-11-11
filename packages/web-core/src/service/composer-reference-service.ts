@@ -1,5 +1,5 @@
 import { computed, ref, watch, type Ref } from 'vue';
-import type { ComposerReference } from '@myagentroam/protocol';
+import { serializeComposerTag, type ComposerReference } from '@myagentroam/protocol';
 import type { Session } from '../model/workbench.js';
 import { sessionTitle } from '../util/session-presentation.js';
 import { composerReferenceAtCursor } from '../util/composer-reference-query.js';
@@ -29,6 +29,7 @@ export function createComposerReferenceService(
   selected: Ref<readonly ComposerReference[]> = ref([])
 ) {
   const open = ref(false);
+  const capacityExceeded = ref(false);
   const cursor = ref(input.value.length);
   const entries = ref<readonly FileReferenceEntry[]>([]);
   const sessions = ref<readonly Session[]>([]);
@@ -82,6 +83,7 @@ export function createComposerReferenceService(
   }
 
   function update(nextCursor = input.value.length): void {
+    capacityExceeded.value = false;
     cursor.value = nextCursor;
     if (
       match.value?.query !== pickerQuery ||
@@ -99,6 +101,7 @@ export function createComposerReferenceService(
   }
 
   function close(): void {
+    capacityExceeded.value = false;
     cancelSearch();
     open.value = false;
     clearResults();
@@ -278,10 +281,16 @@ export function createComposerReferenceService(
           };
     const key = composerReferenceKey(token);
     const exists = selected.value.some((value) => composerReferenceKey(value) === key);
-    if (!exists && selected.value.length >= 128) return false;
-    if (normalizeComposerReferences([token]).length === 0 || !edit(current.start, current.end, ''))
+    if (normalizeComposerReferences([token]).length === 0) return false;
+    const next = exists ? selected.value : [...selected.value, token];
+    try {
+      serializeComposerTag('mar_references', { references: [...next] });
+    } catch {
+      capacityExceeded.value = true;
       return false;
-    if (!exists) selected.value = [...selected.value, token];
+    }
+    if (!edit(current.start, current.end, '')) return false;
+    if (!exists) selected.value = next;
     close();
     return true;
   }
@@ -298,6 +307,7 @@ export function createComposerReferenceService(
 
   return {
     open,
+    capacityExceeded,
     cursor,
     entries,
     sessions,

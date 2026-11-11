@@ -156,7 +156,10 @@ export function countSuccessfulNormalRollouts(
   let activeContextWindowTokens = initial.contextWindowTokens;
   let count = 0;
   for (const record of records) {
-    if (record.type === 'execution.header' && isRecord(record.payload)) {
+    if (
+      (record.type === 'execution.header' || record.type === 'compact.completed') &&
+      isRecord(record.payload)
+    ) {
       activeModelId =
         typeof record.payload.modelId === 'string' ? record.payload.modelId : activeModelId;
       activeContextWindowTokens =
@@ -190,7 +193,11 @@ function modelConfigurationAt(
   let contextWindowTokens = fallbackContextWindowTokens;
   for (const record of records) {
     if (record.sequence > boundarySequence) break;
-    if (record.type !== 'execution.header' || !isRecord(record.payload)) continue;
+    if (
+      (record.type !== 'execution.header' && record.type !== 'compact.completed') ||
+      !isRecord(record.payload)
+    )
+      continue;
     if (typeof record.payload.modelId === 'string') modelId = record.payload.modelId;
     if (
       typeof record.payload.contextWindowTokens === 'number' &&

@@ -98,6 +98,7 @@ export const filePreviewZhCN = {
     noDefinition: '未找到定义或引用。'
   },
   filePreviewContext: {
+    actions: '文件操作',
     copy: '复制',
     paste: '粘贴',
     reload: '重新加载',

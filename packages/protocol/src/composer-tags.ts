@@ -9,6 +9,74 @@ import {
 const path = z.string().min(1).max(4096);
 const name = z.string().min(1).max(512);
 const MAX_COMPOSER_TAG_BYTES = 128 * 1024;
+export const MAX_COMPOSER_QUOTE_CHARACTERS = 8000;
+export const MAX_COMPOSER_MESSAGE_CHARACTERS = 100_000;
+const quoteFields = {
+  type: z.literal('quote'),
+  id: z.string().min(1).max(128),
+  label: name,
+  text: z
+    .string()
+    .min(1)
+    .max(MAX_COMPOSER_QUOTE_CHARACTERS)
+    .refine((value) => value.trim().length > 0)
+};
+const quoteLine = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+/** Explicit snapshots describe a source; they never grant access to a live resource. */
+export const composerQuoteSchema = z
+  .discriminatedUnion('source', [
+    z
+      .object({
+        ...quoteFields,
+        source: z.literal('file'),
+        path,
+        origin: z.enum(['WORKING_TREE', 'HISTORY']),
+        startLine: quoteLine,
+        endLine: quoteLine,
+        revision: name.optional(),
+        unsaved: z.boolean().optional()
+      })
+      .strict(),
+    z
+      .object({
+        ...quoteFields,
+        source: z.literal('diff'),
+        path,
+        origin: z.enum(['WORKING_TREE', 'HISTORY', 'TOOL_CHANGE']),
+        revision: name.optional(),
+        side: z.enum(['old', 'new', 'mixed']).optional(),
+        startLine: quoteLine.optional(),
+        endLine: quoteLine.optional(),
+        oldStartLine: quoteLine.optional(),
+        oldEndLine: quoteLine.optional()
+      })
+      .strict(),
+    z
+      .object({
+        ...quoteFields,
+        source: z.literal('assistant'),
+        messageId: z.string().min(1).max(512),
+        timestamp: name.optional(),
+        streaming: z.boolean().optional()
+      })
+      .strict()
+  ])
+  .refine((quote) => {
+    if (quote.source === 'assistant') return true;
+    if ((quote.startLine === undefined) !== (quote.endLine === undefined)) return false;
+    if (quote.startLine !== undefined && quote.endLine! < quote.startLine) return false;
+    return (
+      quote.source !== 'diff' ||
+      ((quote.oldStartLine === undefined) === (quote.oldEndLine === undefined) &&
+        (quote.oldStartLine === undefined || quote.oldEndLine! >= quote.oldStartLine))
+    );
+  });
+export type ComposerQuote = z.infer<typeof composerQuoteSchema>;
+export type ComposerQuoteDraft = ComposerQuote extends infer Q
+  ? Q extends ComposerQuote
+    ? Omit<Q, 'id'>
+    : never
+  : never;
 export const channelDisplayNameSchema = z
   .string()
   .trim()
@@ -115,7 +183,8 @@ export const composerTagSchemas = {
                 sessionId: z.string().min(1).max(512),
                 label: name
               })
-              .strict()
+              .strict(),
+            composerQuoteSchema
           ])
         )
         .min(1)
@@ -130,7 +199,7 @@ export type ComposerTagPayloads = {
 };
 export type ComposerAttachmentFile = ComposerTagPayloads['mar_attachments']['files'][number];
 export type ComposerReference = ComposerTagPayloads['mar_references']['references'][number];
-export type ComposerFileReference = Exclude<ComposerReference, { type: 'session' }>;
+export type ComposerFileReference = Extract<ComposerReference, { type: 'file' | 'directory' }>;
 export type ComposerTagPart =
   | { readonly kind: 'text'; readonly text: string }
   | {
@@ -173,7 +242,14 @@ export function serializeComposerTag<K extends ComposerTagName>(
       attributes[key] = item;
     else if (Array.isArray(item)) {
       const leaf = key === 'files' ? 'file' : key === 'skills' ? 'skill' : 'reference';
-      for (const entry of item) children.push(`  <${leaf}${markupAttributes(entry)} />`);
+      for (const entry of item) {
+        if (kind === 'mar_references' && entry.type === 'quote') {
+          const { text, ...attributes } = entry;
+          children.push(
+            `  <${leaf}${markupAttributes(attributes)}>${escapeMarkup(text)}</${leaf}>`
+          );
+        } else children.push(`  <${leaf}${markupAttributes(entry)} />`);
+      }
     } else
       children.push(
         item === '' ? `  <${key} />` : `  <${key}>${escapeMarkup(String(item))}</${key}>`
@@ -222,10 +298,22 @@ function parseComposerPayload(raw: string): ComposerTagPart | undefined {
               : [];
     for (const field of root.fields) {
       if (list && field.name === list[0]) {
-        if (field.text !== '') return undefined;
+        const quote = kind === 'mar_references' && field.attributes.type === 'quote';
+        if (!quote && field.text !== '') return undefined;
         const values = (payload[list[1]!] ??= []);
         if (!Array.isArray(values)) return undefined;
-        values.push({ ...field.attributes });
+        const entry: Record<string, unknown> = { ...field.attributes };
+        if (quote) {
+          entry.text = field.text;
+          for (const key of ['startLine', 'endLine', 'oldStartLine', 'oldEndLine']) {
+            if (typeof entry[key] === 'string' && /^[1-9]\d*$/u.test(entry[key]))
+              entry[key] = Number(entry[key]);
+          }
+          for (const key of ['unsaved', 'streaming']) {
+            if (entry[key] === 'true' || entry[key] === 'false') entry[key] = entry[key] === 'true';
+          }
+        }
+        values.push(entry);
       } else {
         if (
           !scalar.includes(field.name) ||

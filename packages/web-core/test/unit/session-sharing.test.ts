@@ -192,8 +192,21 @@ describe('Web session sharing', () => {
         await vi.waitFor(() => expect(initial()).toHaveLength(1));
         snapshot();
         await vi.waitFor(() => expect(chat.ready.value).toBe(true));
+        const quote = {
+          type: 'quote',
+          source: 'assistant',
+          label: 'Reply',
+          messageId: 'reply-1',
+          text: 'A selected snapshot'
+        } as const;
+        chat.quoteTarget.capture()!(quote);
+        expect(chat.references.value).toMatchObject([quote]);
+        const beforeDisconnect = chat.quoteTarget.capture()!;
         Socket.current.emit({ type: 'node', nodeId: share.nodeId, connected: false });
         expect(chat.ready.value).toBe(false);
+        expect(chat.quoteTarget.capture()).toBeUndefined();
+        beforeDisconnect(quote);
+        expect(chat.references.value).toHaveLength(1);
         Socket.current.emit({ type: 'node', nodeId: share.nodeId, connected: true });
         await vi.waitFor(() => expect(initial()).toHaveLength(2));
         // Replace a recovering watch before its snapshot arrives.
@@ -221,6 +234,7 @@ describe('Web session sharing', () => {
         snapshot();
         await vi.waitFor(() => expect(chat.ready.value).toBe(true));
         expect(chat.input.value).toBe('Preserved during Node recovery');
+        expect(chat.references.value).toMatchObject([quote]);
         expect(chat.state.initialLoadFailed.value).toBe(false);
         expect(notice).not.toHaveBeenCalled();
       } finally {

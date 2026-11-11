@@ -1,4 +1,7 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
+import type { ComposerQuoteTarget } from '../model/composer-quote.js';
+import { appendComposerQuote } from '../util/composer-quote.js';
+import { translate } from './locale-preference-service.js';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
   sessionShareVisitorSchema,
@@ -40,7 +43,10 @@ import { createComposerSkillTokenService } from './composer-skill-token-service.
 import type { EffectiveWorkspaceSkill } from './effective-workspace-skill-service.js';
 import { createWorkbenchApprovalService } from './workbench-approval-service.js';
 
-/** A fixed Session composition root: no account, workspace tree, navigation, or prediction services. */
+/**
+ * A fixed Session composition root owning its local draft and admitted quote callbacks.
+ * It reuses the submission/Watch owners; no account, workspace-tree navigation or cross-target quote routing.
+ */
 export function createSessionShareConversationService(options: {
   access: ReturnType<typeof createSessionShareAccessService>;
   beforeSend: () => Promise<boolean>;
@@ -89,6 +95,20 @@ export function createSessionShareConversationService(options: {
       selectedSession.value !== undefined &&
       access.session.value !== undefined
   );
+  const quoteTarget: ComposerQuoteTarget = {
+    capture() {
+      if (!ready.value || submission.pending.value) return undefined;
+      const identity = access.session.value;
+      return (quote) => {
+        if (!ready.value || submission.pending.value || access.session.value !== identity) return;
+        try {
+          references.value = appendComposerQuote(references.value, quote, input.value);
+        } catch {
+          notice(translate('composer.quoteTooLarge'), 'error');
+        }
+      };
+    }
+  };
   const activeRun = computed(() =>
     runState.runs.value.find((run) => ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status))
   );
@@ -455,6 +475,7 @@ export function createSessionShareConversationService(options: {
   }
   return {
     access,
+    quoteTarget,
     target,
     client,
     input,

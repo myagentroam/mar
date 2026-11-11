@@ -1707,11 +1707,11 @@ describe('context GC planner', () => {
           outputTokens: 500
         }
       });
-      fixture.add('execution.header', {
-        modelId: 'coding',
-        contextWindowTokens: 10_000,
-        mode: 'run'
-      });
+      fixture.add(
+        'execution.header',
+        { modelId: 'coding', contextWindowTokens: 10_000, mode: 'run' },
+        { executionId: 'execution' }
+      );
       addSuccessfulPatchScenario(fixture);
       for (let i = 0; i < 8; i++) successfulRolloutWithoutUsage(fixture.add);
       if (baseline === 'matching') {
@@ -1729,11 +1729,11 @@ describe('context GC planner', () => {
         });
       } else {
         if (baseline === 'different-model') {
-          fixture.add('execution.header', {
-            modelId: 'other',
-            contextWindowTokens: 10_000,
-            mode: 'run'
-          });
+          fixture.add(
+            'execution.header',
+            { modelId: 'other', contextWindowTokens: 10_000, mode: 'run' },
+            { executionId: 'execution' }
+          );
           fixture.add('usage.updated', {
             type: 'usage.updated',
             inputTokens: 1_000,
@@ -1741,11 +1741,11 @@ describe('context GC planner', () => {
             cacheReadTokens: 0,
             cacheWriteTokens: 0
           });
-          fixture.add('execution.header', {
-            modelId: 'coding',
-            contextWindowTokens: 10_000,
-            mode: 'run'
-          });
+          fixture.add(
+            'execution.header',
+            { modelId: 'coding', contextWindowTokens: 10_000, mode: 'run' },
+            { executionId: 'execution' }
+          );
         }
         successfulRolloutWithoutUsage(fixture.add);
         successfulRolloutWithoutUsage(fixture.add);

@@ -70,7 +70,7 @@ export function prepareComposerResourceInput(
       if (part.kind !== 'mar_references') return part.raw;
       return serializeComposerTag('mar_references', {
         references: part.payload.references.map((reference) =>
-          reference.type === 'session'
+          reference.type !== 'file' && reference.type !== 'directory'
             ? reference
             : {
                 ...reference,

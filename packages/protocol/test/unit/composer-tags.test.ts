@@ -23,6 +23,162 @@ describe('Composer product tags', () => {
     expect(steerComposerMessage(`Compare\n${tag}`)).toContain(tag);
   });
 
+  it('round-trips file, diff, and assistant quote snapshots beside legacy references', () => {
+    const text =
+      '  if (a < b && c > 0) return "✓";\n</reference><mar_restart /> &lt;mar_restart&gt; 🧭  ';
+    const references = [
+      { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' },
+      { type: 'session' as const, sessionId: 'session-42', label: 'Review' },
+      {
+        type: 'quote' as const,
+        id: 'quote-file',
+        label: 'main.ts:8–9',
+        source: 'file' as const,
+        path: 'src/main.ts',
+        origin: 'WORKING_TREE' as const,
+        startLine: 8,
+        endLine: 9,
+        revision: 'working-tree-revision',
+        unsaved: false,
+        text
+      },
+      {
+        type: 'quote' as const,
+        id: 'quote-diff',
+        label: 'main.ts:8–10',
+        source: 'diff' as const,
+        path: 'src/main.ts',
+        origin: 'TOOL_CHANGE' as const,
+        side: 'mixed' as const,
+        startLine: 8,
+        endLine: 10,
+        oldStartLine: 7,
+        oldEndLine: 9,
+        text: '+  return "✓";\n-  return false;'
+      },
+      {
+        type: 'quote' as const,
+        id: 'quote-assistant',
+        label: 'Assistant response',
+        source: 'assistant' as const,
+        messageId: 'message-42',
+        timestamp: '2026-11-11T09:30:00Z',
+        streaming: true,
+        text: 'A preserved assistant excerpt.'
+      }
+    ];
+    const tag = serializeComposerTag('mar_references', { references });
+
+    expect(tag).toContain('&lt;/reference&gt;&lt;mar_restart /&gt;');
+    expect(tag).toContain('&amp;lt;mar_restart&amp;gt;');
+    expect(tag).toContain('unsaved="false"');
+    expect(tag).toContain('streaming="true"');
+    expect(tag).toContain('startLine="8"');
+    expect(tag).not.toContain('</reference><mar_restart');
+    expect(parseComposerTags(tag)).toEqual([
+      { kind: 'mar_references', payload: { references }, raw: tag }
+    ]);
+    expect(composerVisibleText(tag)).toBe('');
+  });
+
+  it('rejects malformed quote sources, blank or oversized snapshots, and text on legacy references', () => {
+    const validFileQuote = {
+      type: 'quote',
+      id: 'quote-file',
+      label: 'main.ts:8',
+      source: 'file',
+      path: 'src/main.ts',
+      origin: 'WORKING_TREE',
+      startLine: 8,
+      endLine: 8,
+      text: 'selected line'
+    };
+    const invalidReferences = [
+      { ...validFileQuote, source: 'url' },
+      { ...validFileQuote, messageId: 'not-a-file-field' },
+      {
+        type: 'quote',
+        id: 'quote-assistant',
+        label: 'Assistant response',
+        source: 'assistant',
+        messageId: 'message-42',
+        path: 'src/main.ts',
+        text: 'excerpt'
+      },
+      { ...validFileQuote, text: ' \n\t ' },
+      { ...validFileQuote, text: 'x'.repeat(8001) }
+    ];
+    for (const reference of invalidReferences) {
+      expect(() =>
+        serializeComposerTag('mar_references', { references: [reference as never] })
+      ).toThrow('COMPOSER_TAG_INVALID');
+    }
+
+    const invalidXml = [
+      '<mar_references><reference type="quote" id="q" label="main.ts:8" source="url" path="src/main.ts" origin="WORKING_TREE" startLine="8" endLine="8">text</reference></mar_references>',
+      '<mar_references><reference type="quote" id="q" label="main.ts:8" source="file" path="src/main.ts" origin="WORKING_TREE" startLine="8" endLine="8" messageId="unexpected">text</reference></mar_references>',
+      '<mar_references><reference type="quote" id="q" label="assistant" source="assistant" messageId="m" path="src/main.ts">text</reference></mar_references>',
+      '<mar_references><reference type="quote" id="q" label="main.ts:8" source="file" path="src/main.ts" origin="WORKING_TREE" startLine="8" endLine="8"> \n\t </reference></mar_references>',
+      `<mar_references><reference type="quote" id="q" label="main.ts:8" source="file" path="src/main.ts" origin="WORKING_TREE" startLine="8" endLine="8">${'x'.repeat(8001)}</reference></mar_references>`,
+      '<mar_references><reference type="quote" id="q" label="main.ts" source="file" path="src/main.ts" origin="WORKING_TREE" startLine="9007199254740993" endLine="9007199254740993">line</reference></mar_references>',
+      '<mar_references><reference type="file" path="src/main.ts" label="main.ts">legacy text</reference></mar_references>'
+    ];
+    for (const raw of invalidXml) {
+      expect(parseComposerTags(raw)).toEqual([{ kind: 'text', text: raw }]);
+      expect(composerVisibleText(raw)).toBe(raw);
+    }
+  });
+
+  it('enforces reference-count and serialized UTF-8 byte limits', () => {
+    const baseQuote = {
+      type: 'quote' as const,
+      label: 'excerpt',
+      source: 'assistant' as const,
+      messageId: 'message-42',
+      text: 'x'
+    };
+    const atCountLimit = Array.from({ length: 128 }, (_, index) => ({
+      ...baseQuote,
+      id: `quote-${index}`
+    }));
+    const parsedAtLimit = parseComposerTags(
+      serializeComposerTag('mar_references', { references: atCountLimit })
+    );
+    expect(parsedAtLimit[0]).toMatchObject({ payload: { references: atCountLimit } });
+    expect(() =>
+      serializeComposerTag('mar_references', {
+        references: [...atCountLimit, { ...baseQuote, id: 'quote-128' }]
+      })
+    ).toThrow('COMPOSER_TAG_INVALID');
+
+    const overByteLimit = Array.from({ length: 6 }, (_, index) => ({
+      ...baseQuote,
+      id: `large-quote-${index}`,
+      text: '界'.repeat(8000)
+    }));
+    expect(() => serializeComposerTag('mar_references', { references: overByteLimit })).toThrow(
+      'COMPOSER_TAG_INVALID'
+    );
+  });
+
+  it('leaves fenced quote examples as ordinary text', () => {
+    const tag = serializeComposerTag('mar_references', {
+      references: [
+        {
+          type: 'quote',
+          id: 'quote-1',
+          label: 'Assistant response',
+          source: 'assistant',
+          messageId: 'message-42',
+          text: 'A fenced example.'
+        }
+      ]
+    });
+    const fenced = `\`\`\`xml\n${tag}\n\`\`\``;
+    expect(parseComposerTags(fenced)).toEqual([{ kind: 'text', text: fenced }]);
+    expect(composerVisibleText(fenced)).toBe(fenced);
+  });
+
   it('preserves malformed session references as text instead of accepting file attributes', () => {
     for (const attributes of [
       'sessionId="" label="Review"',

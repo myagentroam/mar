@@ -21,6 +21,7 @@ const props = withDefaults(
     readonly sessionOnly?: boolean;
     readonly sessionLoading?: boolean;
     readonly fileError?: boolean;
+    readonly capacityExceeded?: boolean;
     readonly sessionError?: boolean;
     readonly fileMore?: boolean;
     readonly sessionMore?: boolean;
@@ -66,6 +67,7 @@ watch(
     class="command-picker file-reference-picker"
     :aria-label="pickerLabel"
   >
+    <p v-if="capacityExceeded" role="status">{{ translate('errors.COMPOSER_TAG_INVALID') }}</p>
     <div role="listbox" :aria-label="pickerLabel">
       <template v-for="kind in ['session', 'file'] as const" :key="kind">
         <template
@@ -168,9 +170,8 @@ watch(
 <style scoped>
 .command-picker {
   position: absolute;
-  right: 0;
+  inset-inline: var(--composer-padding-inline, 0.8rem);
   bottom: calc(100% + 0.5rem);
-  left: 0;
   display: grid;
   max-height: 200px;
   overflow: auto;

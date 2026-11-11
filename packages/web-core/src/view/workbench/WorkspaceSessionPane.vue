@@ -150,6 +150,7 @@ onBeforeUnmount(() => {
         @reload="emit('reload')"
       >
         <ConversationTimeline
+          :quote-target="controller.quoteTarget"
           :runs="controller.conversationRuns.value"
           :turns="presentation.displayedConversationTurns"
           :performance="performance"
@@ -357,6 +358,7 @@ onBeforeUnmount(() => {
             :session-only="references.match?.sessionOnly ?? false"
             :session-loading="references.sessionLoading"
             :file-error="references.fileError"
+            :capacity-exceeded="references.capacityExceeded"
             :session-error="references.sessionError"
             :file-more="references.fileMore"
             :session-more="references.sessionMore"

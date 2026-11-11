@@ -105,8 +105,8 @@ export class ContextGcRuntime {
 
 /**
  * Runs the deterministic planner and commits its checkpoint. Planning and
- * commit failures are opportunistic no-ops unless the checkpoint is confirmed
- * durable after an ambiguous append result.
+ * commit failures are opportunistic no-ops except under image byte pressure.
+ * Ambiguous appends are resolved against the durable checkpoint before adoption.
  */
 export async function tryCommitContextGc(
   input: ContextGcRuntimeInput
@@ -156,7 +156,8 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
     const plan = inspection.plan;
     if (!plan) return deferred;
     draft = plan.draft;
-  } catch {
+  } catch (error) {
+    if (mediaRequired) throw error;
     return deferred;
   }
   try {
@@ -173,14 +174,17 @@ async function attemptContextGc(input: ContextGcRuntimeInput): Promise<ContextGc
     };
   } catch (commitError) {
     try {
-      return {
-        ...deferred,
-        result: await matchingCheckpointWasPersisted(input.store, input.sessionId, draft, records)
-      };
+      const result = await matchingCheckpointWasPersisted(
+        input.store,
+        input.sessionId,
+        draft,
+        records
+      );
+      if (result) return { ...deferred, result };
     } catch {
-      // Keep the deferred result when the post-failure checkpoint cannot be read.
+      // Preserve the original failure when the append outcome cannot be confirmed.
     }
-    void commitError;
+    if (mediaRequired) throw commitError;
     return deferred;
   }
 }

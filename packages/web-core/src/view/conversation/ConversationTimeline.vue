@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
+import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
@@ -23,6 +25,7 @@ import {
   createConversationMarkdownCache
 } from '../../util/conversation-markdown-cache.js';
 import MessageAttachmentFiles from '../composer/MessageAttachmentFiles.vue';
+import MessageReferenceTags from '../composer/MessageReferenceTags.vue';
 import ConversationImageThumbnail from './ConversationImageThumbnail.vue';
 import ConversationWorkProcess from './ConversationWorkProcess.vue';
 import ConversationRecordIcon from './ConversationRecordIcon.vue';
@@ -58,6 +61,7 @@ import {
   conversationItemLabel,
   composerMessageSource,
   conversationItemText,
+  conversationItemCopyText,
   conversationErrorCodeVisible,
   conversationErrorPresentation,
   planSteps,
@@ -108,6 +112,7 @@ function messageHeading(payload: unknown) {
 }
 
 const props = defineProps<{
+  readonly quoteTarget?: ComposerQuoteTarget | undefined;
   readonly turns: readonly ConversationTurn[];
   readonly performance?: RunPerformance | undefined;
   readonly runs?: readonly Pick<AgentRun, 'id' | 'status' | 'startedAt' | 'completedAt'>[];
@@ -164,6 +169,7 @@ const emit = defineEmits<{
 }>();
 
 const timelineElement = ref<HTMLElement>();
+const quoteMenu = ref<InstanceType<typeof ConversationQuoteMenu>>();
 let focusedRecord: HTMLElement | undefined;
 let previousEntrySignature = '';
 let previousMotionVersion = props.initialRenderVersion;
@@ -266,7 +272,7 @@ const copyResetTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function copyItem(turn: ConversationTurn, item: ConversationItem): void {
   const key = `${turn.id}:${item.id}`;
-  emit('copy', conversationItemText(item.kind, item.payload), () => {
+  emit('copy', conversationItemCopyText(item.kind, item.payload), () => {
     const previous = copyResetTimers.get(key);
     if (previous !== undefined) clearTimeout(previous);
     copiedMessage.value = key;
@@ -591,6 +597,14 @@ function stepDuration(item: ConversationItem): string | undefined {
     :inert="initializing"
     @click="animateDisclosure"
   >
+    <ConversationQuoteMenu
+      v-if="props.quoteTarget"
+      ref="quoteMenu"
+      :root="timelineElement"
+      :target="props.quoteTarget"
+      :context-key="props.turns[0]?.sessionId"
+      @copy="emit('copy', $event, () => {})"
+    />
     <ConversationWorkProcess
       v-for="block in processBlocks"
       :key="block.id"
@@ -1030,6 +1044,9 @@ function stepDuration(item: ConversationItem): string | undefined {
           >
             {{ conversationItemText(displayItem.item.kind, displayItem.item.payload) }}
           </p>
+          <MessageReferenceTags
+            :references="composerMessagePresentation(displayItem.item.payload).references"
+          />
           <MessageAttachmentFiles
             :files="composerMessagePresentation(displayItem.item.payload).files"
             :image-resource-url="props.imageResourceUrl"
@@ -1068,7 +1085,7 @@ function stepDuration(item: ConversationItem): string | undefined {
           <div
             v-if="
               messageTimestamp(turn, displayItem.item) !== undefined ||
-              conversationItemText(displayItem.item.kind, displayItem.item.payload) ||
+              conversationItemCopyText(displayItem.item.kind, displayItem.item.payload) ||
               (props.rewindEnabled && turn.rewind) ||
               (props.rollbackEnabled && rollbackTarget(turn, displayItem.item))
             "
@@ -1089,7 +1106,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                     : 'generated.conversationTimeline.copyMessage2'
                 )
               "
-              v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+              v-if="conversationItemCopyText(displayItem.item.kind, displayItem.item.payload)"
               class="conversation-message-action icon-button utility-control"
               type="button"
               :aria-label="
@@ -1134,16 +1151,28 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
         </template>
         <template v-else-if="displayItem.item.kind === 'assistant_message'">
-          <AgentMarkdown
-            :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-            :cache-identity="markdownCacheIdentity(turn, displayItem.item)"
-            v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
-            :image-resource-url="imageResourceUrl"
-            @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
-            @open-file="
-              (path, line, column, external) => emit('openFile', path, line, column, external)
+          <div
+            :data-quote-message-id="displayItem.item.id"
+            :data-quote-timestamp="
+              messageTimestamp(turn, displayItem.item) !== undefined
+                ? new Date(messageTimestamp(turn, displayItem.item)!).toISOString()
+                : undefined
             "
-          />
+            :data-quote-streaming="
+              displayItem.item.status === 'IN_PROGRESS' || displayItem.item.status === 'PENDING'
+            "
+          >
+            <AgentMarkdown
+              :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
+              :cache-identity="markdownCacheIdentity(turn, displayItem.item)"
+              v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
+              :image-resource-url="imageResourceUrl"
+              @open-image="(source, name) => emit('openImage', { name, previewUrl: source })"
+              @open-file="
+                (path, line, column, external) => emit('openFile', path, line, column, external)
+              "
+            />
+          </div>
           <div
             v-if="
               messageTimestamp(turn, displayItem.item) !== undefined ||
@@ -1159,6 +1188,18 @@ function stepDuration(item: ConversationItem): string | undefined {
               :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
               >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
             >
+            <button
+              v-if="quoteMenu?.touch"
+              class="conversation-message-action icon-button utility-control"
+              type="button"
+              :aria-label="translate('composer.quote')"
+              v-tooltip="translate('composer.quote')"
+              :disabled="quoteMenu.selectedMessageId !== displayItem.item.id"
+              @pointerdown.prevent
+              @click="quoteMenu.quote()"
+            >
+              <MarIcon name="quote" />
+            </button>
             <button
               v-tooltip="
                 translate(

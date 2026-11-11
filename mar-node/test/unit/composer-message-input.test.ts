@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseComposerTags, serializeComposerTag } from '@myagentroam/protocol';
 import {
+  composerResourceInputTags,
   prepareComposerResourceInput,
   withSessionMessageOrigin,
   validateComposerSkills
@@ -30,6 +31,87 @@ describe('Product resource input preparation', () => {
       session,
       { type: 'file', path: 'src/main.ts', label: 'main.ts', runnerPath: '../src/main.ts' },
       { type: 'directory', path: 'test', label: 'test', runnerPath: '../test' }
+    ]);
+  });
+
+  it('derives Runner paths only for files and directories while preserving quote snapshots', () => {
+    const references = [
+      { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' },
+      { type: 'directory' as const, path: 'test', label: 'test' },
+      { type: 'session' as const, sessionId: 'session-42', label: 'Review' },
+      {
+        type: 'quote' as const,
+        id: 'quote-file',
+        label: 'history.ts:12–13',
+        source: 'file' as const,
+        path: 'src/history.ts',
+        origin: 'HISTORY' as const,
+        revision: 'commit-42',
+        startLine: 12,
+        endLine: 13,
+        unsaved: false,
+        text: '  return &lt;cached snapshot&gt;;  '
+      },
+      {
+        type: 'quote' as const,
+        id: 'quote-diff',
+        label: 'restore.ts:20–21',
+        source: 'diff' as const,
+        path: 'src/restore.ts',
+        origin: 'TOOL_CHANGE' as const,
+        side: 'mixed' as const,
+        startLine: 20,
+        endLine: 21,
+        oldStartLine: 19,
+        oldEndLine: 20,
+        text: '+ return result;\n- return undefined;'
+      },
+      {
+        type: 'quote' as const,
+        id: 'quote-assistant',
+        label: 'Assistant response',
+        source: 'assistant' as const,
+        messageId: 'message-42',
+        streaming: true,
+        text: 'The selected assistant excerpt.'
+      }
+    ];
+    const input = serializeComposerTag('mar_references', { references });
+    const parts = parseComposerTags(prepareComposerResourceInput(input, '/repo/subdir', '/repo'));
+    const preparedReferences = parts.find((part) => part.kind === 'mar_references')?.payload
+      .references;
+
+    expect(preparedReferences).toEqual([
+      { ...references[0], runnerPath: '../src/main.ts' },
+      { ...references[1], runnerPath: '../test' },
+      references[2],
+      references[3],
+      references[4],
+      references[5]
+    ]);
+    expect(preparedReferences?.slice(3)).toEqual(references.slice(3));
+    expect(preparedReferences?.[5]).not.toHaveProperty('path');
+    expect(preparedReferences?.[5]).not.toHaveProperty('runnerPath');
+  });
+
+  it('rejects Runner-path-expanded references over the byte cap without changing the input', () => {
+    const directory = Array.from({ length: 15 }, () => 'a'.repeat(250)).join('/');
+    const references = Array.from({ length: 20 }, (_, index) => ({
+      type: 'file' as const,
+      path: `${directory}/file-${String(index).padStart(2, '0')}-${'b'.repeat(180)}`,
+      label: `file-${index}`
+    }));
+    const input = serializeComposerTag('mar_references', { references });
+    const originalInput = input;
+
+    expect(input.length).toBeLessThan(100_000);
+    expect(new TextEncoder().encode(input).byteLength).toBeLessThan(128 * 1024);
+    expect(() => prepareComposerResourceInput(input, '/repo', '/repo')).toThrow(
+      'COMPOSER_TAG_INVALID'
+    );
+    expect(input).toBe(originalInput);
+    expect(parseComposerTags(input)).toMatchObject([
+      { kind: 'mar_references', payload: { references } }
     ]);
   });
 
@@ -182,5 +264,44 @@ describe('Product resource input preparation', () => {
     expect(goals.prompt('session', 'continue')).toContain(reference);
     expect(sessionTitleFromFirstMessage(reference)).toBe('');
     expect(sessionTitleFromFirstMessage(`Title\n${reference}`)).toBe('Title');
+  });
+
+  it('retains quote and other resource tags through continuous Goal execution', () => {
+    const skill = serializeComposerTag('mar_skills', {
+      action: 'use',
+      instruction: 'Use the selected Skill.',
+      skills: [{ name: 'review', source: 'WORKSPACE', path: '.agents/skills/review/SKILL.md' }]
+    });
+    const quote = serializeComposerTag('mar_references', {
+      references: [
+        {
+          type: 'quote',
+          id: 'quote-1',
+          label: 'main.ts:8',
+          source: 'file',
+          path: 'src/main.ts',
+          origin: 'WORKING_TREE',
+          startLine: 8,
+          endLine: 8,
+          text: '  return <selected>;  '
+        }
+      ]
+    });
+    const attachment = serializeComposerTag('mar_attachments', {
+      files: [
+        {
+          name: 'context.txt',
+          mime: 'text/plain',
+          path: '.mar/temp-files/input/context.txt'
+        }
+      ]
+    });
+    const resources = [skill, quote, attachment].join('\n');
+    const goals = new GoalRuntime(() => undefined);
+
+    expect(composerResourceInputTags(`Review the context.\n${resources}`)).toBe(resources);
+    goals.start('session', 'Review the selected source', resources);
+    expect(goals.prompt('session', 'start')).toContain(resources);
+    expect(goals.prompt('session', 'continue')).toContain(resources);
   });
 });

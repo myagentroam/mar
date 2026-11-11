@@ -279,6 +279,17 @@ function selectedText(): string {
   return view.state.doc.sliceString(selection.from, selection.to);
 }
 
+function selectionSnapshot(): { text: string; startLine: number; endLine: number } | undefined {
+  if (!view || view.state.selection.ranges.length !== 1) return undefined;
+  const { from, to } = view.state.selection.main;
+  if (from === to) return undefined;
+  return {
+    text: view.state.doc.sliceString(from, to),
+    startLine: view.state.doc.lineAt(from).number,
+    endLine: view.state.doc.lineAt(Math.max(from, to - 1)).number
+  };
+}
+
 function insertText(text: string): void {
   if (view === undefined || props.readOnly) return;
   const selection = view.state.selection.main;
@@ -481,6 +492,7 @@ defineExpose({
   cursorPosition,
   positionAt,
   selectedText,
+  selectionSnapshot,
   insertText,
   openFind,
   isFindOpen: () => view !== undefined && searchPanelOpen(view.state),

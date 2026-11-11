@@ -385,6 +385,36 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).toContain(`>${actionLabel}</span>`);
   });
 
+  it.each([false, true])(
+    'shows quote-only queue tags without exposing snapshots (editing: %s)',
+    async (editing) => {
+      const content = serializeComposerTag('mar_references', {
+        references: [
+          {
+            type: 'quote',
+            id: 'quote-queue',
+            source: 'assistant',
+            messageId: 'reply-1',
+            label: 'Reply excerpt',
+            text: 'Private snapshot text'
+          }
+        ]
+      });
+      const html = await render(ComposerQueue, {
+        items: [{ queueItemId: 'quote-only', content }],
+        paused: false,
+        loading: false,
+        editingQueueItemId: editing ? 'quote-only' : undefined,
+        editingContent: '',
+        goal: undefined
+      });
+      expect(html).toContain('message-reference-tag');
+      expect(html).toContain('Reply excerpt');
+      expect(html).not.toContain('Private snapshot text');
+      expect(html).not.toContain('mar_references');
+    }
+  );
+
   it('shows Session and marctl source labels for queued normal and steering messages', async () => {
     const origin = serializeComposerTag('mar_session_origin', {
       sessionId: 'session-42',

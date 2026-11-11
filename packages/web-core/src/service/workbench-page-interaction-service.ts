@@ -47,8 +47,18 @@ export interface WorkbenchPageInteractionOptions {
   readonly openWorkspaceFileExternal: (path: string, line?: number, column?: number) => void;
   readonly fileWorkbench: {
     openTab(intent: WorkspaceFileOpenIntent): Promise<void>;
-    openFile(path: string, line?: number, column?: number): Promise<void>;
-    openComparison(path: string, line?: number, column?: number): Promise<void>;
+    openFile(
+      path: string,
+      line?: number,
+      column?: number,
+      quotePane?: 'main' | 'aside'
+    ): Promise<void>;
+    openComparison(
+      path: string,
+      line?: number,
+      column?: number,
+      quotePane?: 'main' | 'aside'
+    ): Promise<void>;
   };
   readonly showAsideTool: (tool: 'search' | 'changes') => void;
   readonly openAttachmentImage?: (attachment: ComposerAttachmentFile) => Promise<void>;
@@ -93,7 +103,8 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     line?: number,
     column?: number,
     external = false,
-    attachment?: ComposerAttachmentFile
+    attachment?: ComposerAttachmentFile,
+    quotePane: 'main' | 'aside' = 'main'
   ): void {
     if (
       !external &&
@@ -103,7 +114,7 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       void options.openAttachmentImage(attachment);
       return;
     }
-    openWorkspaceFile(path, line, column, external, true);
+    openWorkspaceFile(path, line, column, external, true, quotePane);
   }
 
   function openQuickWorkspaceFile(
@@ -120,7 +131,8 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
     line: number | undefined,
     column: number | undefined,
     external: boolean,
-    preferGitChanges = false
+    preferGitChanges = false,
+    quotePane: 'main' | 'aside' = 'main'
   ): void {
     const workspaceRoot = options.selectedWorkspace.value?.path
       .replaceAll('\\', '/')
@@ -158,8 +170,8 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
       return;
     }
     void (preferGitChanges
-      ? options.fileWorkbench.openComparison(workspacePath, line, column)
-      : options.fileWorkbench.openFile(workspacePath, line, column));
+      ? options.fileWorkbench.openComparison(workspacePath, line, column, quotePane)
+      : options.fileWorkbench.openFile(workspacePath, line, column, quotePane));
   }
 
   function openQuickOpenFile(): void {

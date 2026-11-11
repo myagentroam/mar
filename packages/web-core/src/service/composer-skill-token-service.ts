@@ -4,6 +4,7 @@ import type { EffectiveWorkspaceSkill } from './effective-workspace-skill-servic
 import {
   serializeComposerTag,
   COMPOSER_SKILL_INSTRUCTION,
+  MAX_COMPOSER_MESSAGE_CHARACTERS,
   type ComposerReference
 } from '@myagentroam/protocol';
 
@@ -64,7 +65,7 @@ export function serializeComposerMessage(
   body: string,
   references: readonly ComposerReference[] = []
 ): string {
-  return [
+  const content = [
     body,
     tokens.length > 0
       ? serializeComposerTag('mar_skills', {
@@ -84,6 +85,9 @@ export function serializeComposerMessage(
     .filter((part) => part.length > 0)
     .join('\n')
     .trim();
+  if (content.length > MAX_COMPOSER_MESSAGE_CHARACTERS)
+    throw new Error('COMPOSER_MESSAGE_TOO_LARGE');
+  return content;
 }
 
 export function hasUnavailableSkillToken(tokens: readonly ComposerSkillToken[]): boolean {

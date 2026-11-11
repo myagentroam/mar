@@ -94,7 +94,7 @@ async function expectMessageFirstLineAlignment(message: Locator): Promise<void> 
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
-  fixture = await startCustomThemeFixture();
+  fixture = await startCustomThemeFixture('test/e2e/support/custom-theme.html');
 });
 test.afterAll(async () => {
   await fixture?.close();
@@ -350,6 +350,52 @@ test('PWA update reloads an unsaved theme without a leave confirmation', async (
   await expect(page.getByRole('textbox', { name: 'Theme JSON', exact: true })).not.toHaveValue(
     'unsaved draft'
   );
+});
+
+test('custom theme status and hover contrast warnings preserve editable colors and allow saving', async ({
+  page
+}, testInfo) => {
+  const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
+  const theme = {
+    version: 1,
+    name: 'Status contrast review',
+    colors: {
+      '--mar-color-danger-text': '#777777',
+      '--mar-color-danger-bg': '#777777',
+      '--mar-color-on-accent': '#777777',
+      '--mar-color-brand-hover': '#777777'
+    }
+  };
+  const source = JSON.stringify(theme, null, 2);
+  await page.locator('.file-input').setInputFiles({
+    name: 'status-contrast.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(source)
+  });
+  await expect(editor).toBeEditable();
+  const validation = page.locator('.validation');
+  await expect(validation).toContainText('--mar-color-danger-text / --mar-color-danger-bg');
+  await expect(validation).toContainText('--mar-color-on-accent / --mar-color-brand-hover');
+  await expect(validation).toContainText('saving is allowed');
+  await expect(page.locator('.theme-preview .danger')).toHaveCSS('color', 'rgb(119, 119, 119)');
+  await expect(page.locator('.theme-preview .danger')).toHaveCSS(
+    'background-color',
+    'rgb(119, 119, 119)'
+  );
+  await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Inspect Status contrast review', exact: true })
+  ).toBeVisible();
+  await expect(editor).toHaveValue(source);
+  await page
+    .locator('.editor-layout')
+    .screenshot({ path: testInfo.outputPath('status-contrast-warning.png') });
+  theme.colors['--mar-color-danger-text'] = '#ffffff';
+  theme.colors['--mar-color-danger-bg'] = '#000000';
+  theme.colors['--mar-color-on-accent'] = '#ffffff';
+  theme.colors['--mar-color-brand-hover'] = '#000000';
+  await editor.fill(JSON.stringify(theme));
+  await expect(validation).toContainText('No detected warnings.');
 });
 
 test('built-ins are read-only, copies include every color, and reset restores saved or copied drafts', async ({

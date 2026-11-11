@@ -162,6 +162,26 @@ describe('Workspace file tab service', () => {
     expect(diff.identity).not.toBe(first.identity);
   });
 
+  it('updates quote pane on the matching reopened tab without leaking across tabs', () => {
+    const service = createWorkspaceFileTabService();
+    const main = service.open({ ...worktree('src/main.ts'), quotePane: 'main' });
+    const aside = service.open({ ...worktree('src/aside.ts'), quotePane: 'aside' });
+    const reopenedMain = service.open({
+      ...worktree('src/main.ts'),
+      quotePane: 'aside',
+      targetLine: 12
+    });
+
+    expect(reopenedMain.id).toBe(main.id);
+    expect(reopenedMain).toMatchObject({ quotePane: 'aside', targetLine: 12 });
+    expect(service.tabs.value.find((tab) => tab.id === aside.id)?.quotePane).toBe('aside');
+    service.setQuotePane(main.id, 'main');
+    service.activate(aside.id);
+    expect(service.activeTab.value?.quotePane).toBe('aside');
+    service.activate(main.id);
+    expect(service.activeTab.value?.quotePane).toBe('main');
+  });
+
   it('keeps metadata-only snapshots and restores the active identity', () => {
     const service = createWorkspaceFileTabService();
     const first = service.open(worktree('src/a.ts'));

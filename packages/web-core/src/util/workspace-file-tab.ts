@@ -8,6 +8,7 @@ export type WorkspaceFileTabKind =
 
 export interface WorkspaceFileTab {
   readonly id: number;
+  readonly quotePane?: 'main' | 'aside';
   readonly identity: string;
   readonly kind: WorkspaceFileTabKind;
   readonly nodeId: string;

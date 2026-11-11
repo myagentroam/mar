@@ -1,5 +1,7 @@
 export const errorPresentationZhCN = {
   errors: {
+    COMPOSER_TAG_INVALID: '所选引用无效或超过容量限制，请移除部分引用后重试。',
+    COMPOSER_MESSAGE_TOO_LARGE: '消息及其上下文超过容量限制，请缩短正文或移除部分引用、技能。',
     COMPOSER_IMAGE_CONVERSION_FAILED: '无法将此 BMP 图片转换为 PNG，请另存为 PNG 后重试。',
     COMPOSER_IMAGE_LIMIT_EXCEEDED:
       'BMP 转换超过附件大小限制或 1600 万像素，请另存为较小的 PNG 后重试。',

@@ -7,6 +7,7 @@
  * Do not add page-wide selection state, file HTTP protocols or a second Watch lifecycle here.
  */
 import { computed, getCurrentScope, onScopeDispose, ref, watch as watchRef, type Ref } from 'vue';
+import type { ComposerQuoteTarget } from '../model/composer-quote.js';
 import { ElMessageBox } from 'element-plus';
 import { sessionSubmissionContext } from './workbench-submission-service.js';
 import { errorCode } from '../util/api-error.js';
@@ -184,7 +185,13 @@ export function createWorkspaceSessionPaneController(
     };
     readonly files: {
       readonly openChange: (intent: NonNullable<ReturnType<typeof toolChangeOpenIntent>>) => void;
-      readonly openFile: (path: string, line?: number, column?: number, external?: boolean) => void;
+      readonly openFile: (
+        path: string,
+        line?: number,
+        column?: number,
+        external?: boolean,
+        quotePane?: 'main' | 'aside'
+      ) => void;
       readonly attachments: (
         target: import('../model/workbench.js').WorkspaceTarget
       ) => import('./workspace-file-access-service.js').WorkspaceFileAttachmentAccess;
@@ -1050,6 +1057,13 @@ export function createWorkspaceSessionPaneController(
       state.submission.context.value === sessionSubmissionContext(selectedSessionId.value)
   );
   const canInterrupt = computed(() => presentation.canInterruptTurn.value && !submitting.value);
+  const quoteTarget: ComposerQuoteTarget = {
+    capture: () =>
+      state.captureQuote(
+        () => !presentation.composerInputDisabled.value && !submitting.value,
+        () => common.notice(translate('composer.quoteTooLarge'), 'warning')
+      )
+  };
   const stageSkill = (skill: Parameters<typeof state.skillTokens.select>[0], cursor: number) => {
     state.skillTokens.select(skill);
     state.focusInput(cursor);
@@ -1129,6 +1143,7 @@ export function createWorkspaceSessionPaneController(
     presentation,
     references,
     interactions,
+    quoteTarget,
     attachmentInput,
     images,
     completion,
@@ -1244,6 +1259,7 @@ export function createWorkspaceSessionPaneController(
     presentation: controller.presentation,
     queueActions: controller.queueActions,
     references: controller.references,
+    quoteTarget: controller.quoteTarget,
     rewindConversation: controller.rewindConversation,
     rollbackConversation: controller.rollbackConversation,
     runControl: controller.runControl,
@@ -1544,6 +1560,13 @@ export function createWorkspaceSessionPane(
     };
     const common = {
       ...services,
+      files: {
+        ...services.files,
+        openFile: (path: string, line?: number, column?: number, external?: boolean) =>
+          services.files.openFile(path, line, column, external, location.kind),
+        openChange: (intent: NonNullable<ReturnType<typeof toolChangeOpenIntent>>) =>
+          services.files.openChange({ ...intent, quotePane: location.kind })
+      },
       watchConnection: { ...services.watchConnection, coordinator: () => coordinator },
       completion,
       state,

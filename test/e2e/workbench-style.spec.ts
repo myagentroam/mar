@@ -959,7 +959,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(bounds.height).toBeGreaterThanOrEqual(28);
         await expect(button.locator('svg')).toHaveCount(1);
       }
-      const strip = page.locator('.workbench-aside-tabs');
+      const strip = page.locator('.workbench-aside-tabs .tab-strip');
       await expect(strip.getByRole('tab')).toHaveCount(4);
       expect(await strip.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(
         true

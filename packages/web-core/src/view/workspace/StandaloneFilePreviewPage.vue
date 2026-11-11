@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { marIcon } from '../../util/mar-icons.js';
 
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
@@ -61,6 +62,7 @@ interface FileRead {
 }
 
 const props = defineProps<{
+  readonly quoteTarget?: ComposerQuoteTarget | undefined;
   share?: {
     access: ReturnType<typeof createSessionShareAccessService>;
     intent: URLSearchParams;
@@ -817,6 +819,7 @@ function rawContentUrl(
   >
     <p v-if="active && error" class="standalone-error">{{ error }}</p>
     <WorkspaceTextFilePage
+      :quote-target="props.quoteTarget"
       v-else-if="active && file && kind === 'text'"
       :ref="registerPageHandle"
       :active="active"

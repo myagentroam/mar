@@ -3,9 +3,12 @@
  * Drafts, attachments and submission identities remain owned by the supplied target-bound owners;
  * conversation, Run, queue and scroll projections live for this Pane's Vue scope.
  * Application capabilities and Main/Aside coordination belong to the Pane controller, not here.
+ * Quote callbacks bind the existing draft slot and recheck the supplied editing admission; they own no separate quote store.
  * Do not duplicate global selection, transport protocols or shared Watch subscriptions.
  */
 import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue';
+import type { ComposerQuoteTarget } from '../model/composer-quote.js';
+import { appendComposerQuote } from '../util/composer-quote.js';
 import { createComposerQueueService } from './composer-queue-service.js';
 import { createConversationScrollService } from './conversation-scroll-service.js';
 import { createConversationStateService } from './conversation-state-service.js';
@@ -358,6 +361,27 @@ export function createWorkspaceSessionPaneState(options: {
     queueProjection,
     conversation,
     draft,
+    captureQuote: (
+      enabled: () => boolean,
+      rejected: () => void
+    ): ReturnType<ComposerQuoteTarget['capture']> => {
+      const target = options.draftTarget.value;
+      if (!target || !enabled()) return undefined;
+      const slot = options.drafts.forTarget(target, options.pane);
+      return (quote) => {
+        if (options.draftTarget.value !== target || !enabled()) return;
+        try {
+          slot.references.value = appendComposerQuote(
+            slot.references.value,
+            quote,
+            slot.input.value
+          );
+          slot.persist();
+        } catch {
+          rejected();
+        }
+      };
+    },
     attachments,
     skillTokens,
     createReferences: (search: {

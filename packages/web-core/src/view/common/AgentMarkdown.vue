@@ -456,6 +456,8 @@ function onLinkClick(event: MouseEvent): void {
   padding: 0.45rem 0.7rem;
   text-align: left;
   vertical-align: top;
+  /* Tables own horizontal overflow; do not split identifiers to fit the prose width. */
+  overflow-wrap: normal;
 }
 
 .agent-markdown :deep(th) {

@@ -11,7 +11,7 @@ import type { Approval, ConversationItem } from '../model/workbench.js';
 import { translate } from '../service/locale-preference-service.js';
 import { conversationUiEnUS } from '../i18n/conversation-ui.en-US.js';
 import { agentOperation, agentOperationTargets } from './agent-operation-presentation.js';
-import { composerMessagePresentation } from './composer-message.js';
+import { composerMessageInputText, composerMessagePresentation } from './composer-message.js';
 import {
   toolPresentation,
   toolPresentationReadPaths,
@@ -491,6 +491,17 @@ export function conversationItemLabel(kind: string, payload?: unknown): string {
       error: translate('generated.conversationPresentation.error')
     }[kind] ?? ''
   );
+}
+
+/** Public user input keeps resource XML when copied, without exposing internal payload fields. */
+export function conversationItemCopyText(
+  kind: string,
+  payload: unknown,
+  status?: ConversationItem['status']
+): string {
+  return kind === 'user_message'
+    ? composerMessageInputText(payload)
+    : conversationItemText(kind, payload, status);
 }
 
 export function conversationItemText(

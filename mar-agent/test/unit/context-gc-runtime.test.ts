@@ -410,14 +410,16 @@ describe('context GC runtime integration', () => {
     }
   );
 
-  it('loads eligible history lazily and contains read failures', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-lazy-'));
-    homes.push(home);
-    const store = await JsonlSessionStore.open(home);
-    const session = await store.createSession({ workspace: home });
-    const readState = vi.spyOn(store, 'readExecutionState').mockRejectedValue(new Error('read'));
-    await expect(
-      tryCommitContextGc({
+  it.each([undefined, 'TEXT_GC', 'SOFT_LIMIT', 'HARD_LIMIT'] as const)(
+    'contains only opportunistic history read failures (reason=%s)',
+    async (reason) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-lazy-'));
+      homes.push(home);
+      const store = await JsonlSessionStore.open(home);
+      const session = await store.createSession({ workspace: home });
+      const failure = new Error('read');
+      const readState = vi.spyOn(store, 'readExecutionState').mockRejectedValue(failure);
+      const attempt = tryCommitContextGc({
         store,
         sessionId: session.id,
         system: 'System.',
@@ -427,12 +429,26 @@ describe('context GC runtime integration', () => {
         usage: { contextInputTokens: 6_000 },
         workspace: home,
         platform: 'linux' as const,
-        activeProcessIds: new Set<string>()
-      })
-    ).resolves.toBe(false);
-    expect(readState).toHaveBeenCalledOnce();
-    await store.close();
-  });
+        activeProcessIds: new Set<string>(),
+        ...(reason === undefined
+          ? {}
+          : {
+              inlineMedia: {
+                reason,
+                state: { version: 1 as const },
+                beforeBytes: 8 * 1_048_576,
+                afterBytes: 0,
+                project: (messages: ModelRequest['messages']) => [...messages]
+              }
+            })
+      });
+      if (reason === 'SOFT_LIMIT' || reason === 'HARD_LIMIT')
+        await expect(attempt).rejects.toBe(failure);
+      else await expect(attempt).resolves.toBe(false);
+      expect(readState).toHaveBeenCalledOnce();
+      await store.close();
+    }
+  );
 
   it('backs off for 2, 4 and 8 rollouts without ordinary tools cancelling the interval', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-context-gc-backoff-'));

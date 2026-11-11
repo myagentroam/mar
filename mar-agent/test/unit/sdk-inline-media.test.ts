@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import { LocalAgentHost } from '../../src/host.js';
-import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import type {
   ModelAdapter,
   ModelEvent,
@@ -507,14 +507,16 @@ describe('SDK inline media lifecycle', () => {
     }
   );
 
-  it('does not adopt the image cursor when checkpoint persistence fails', async () => {
+  it('reports a soft-limit GC persistence failure without adopting the image cursor', async () => {
     const { home, create } = await fixture();
     const firstImage = await imagePng('failed-persist-first');
     const secondImage = await imagePng('failed-persist-second');
     const store = await JsonlSessionStore.open(home);
     const commit = vi
       .spyOn(store, 'commitContextGc')
-      .mockRejectedValue(new Error('synthetic inline media checkpoint persistence failure'));
+      .mockRejectedValue(
+        new AgentError('MAR_AGENT_HOST_IO_ERROR', 'Synthetic image checkpoint persistence failure.')
+      );
     const adapter = new ScriptedAdapter(modelBase, [
       { events: [readCall('read-1')], reason: 'tool_use' },
       { events: [readCall('read-2')], reason: 'tool_use' },
@@ -536,10 +538,11 @@ describe('SDK inline media lifecycle', () => {
             images: [imageInput('first.png', firstImage), imageInput('second.png', secondImage)]
           })
           .result()
-      ).toMatchObject({ status: 'completed' });
+      ).toMatchObject({ status: 'failed', errorCode: 'MAR_AGENT_HOST_IO_ERROR' });
 
       expect(commit).toHaveBeenCalled();
-      expect(adapter.requests[2]!.imageHashes).toEqual([
+      expect(adapter.requests).toHaveLength(2);
+      expect(adapter.requests[1]!.imageHashes).toEqual([
         imageHash(firstImage),
         imageHash(secondImage)
       ]);
@@ -589,7 +592,57 @@ describe('SDK inline media lifecycle', () => {
     ).toHaveLength(0);
   });
 
-  it.each(['usage', 'no-usage', 'model-switch', 'reopen-no-usage'])(
+  it.each([false, true])(
+    'resolves hard-limit GC append failures from the durable outcome (appended=%s)',
+    async (appended) => {
+      const { home, create } = await fixture();
+      const images = await Promise.all(['old-1', 'old-2', 'fresh'].map(imagePng));
+      const store = await JsonlSessionStore.open(home);
+      const adapter = new ScriptedAdapter(modelBase, [
+        { events: [{ type: 'text.completed', itemId: 'seed', text: 'history' }] },
+        { events: [{ type: 'text.completed', itemId: 'fresh', text: 'fresh image' }] }
+      ]);
+      const agent = await create(adapter, false, store);
+      try {
+        const session = await agent.createSession({ workspace: home });
+        expect(
+          await session
+            .run({
+              prompt: 'seed',
+              images: images.slice(0, 2).map((image, i) => imageInput(`old-${i}.png`, image))
+            })
+            .result()
+        ).toMatchObject({ status: 'completed' });
+        const failure = new AgentError(
+          'MAR_AGENT_HOST_IO_ERROR',
+          'Synthetic GC persistence failure.'
+        );
+        const originalCommit = store.commitContextGc.bind(store);
+        const commit = vi.spyOn(store, 'commitContextGc').mockImplementation(async (...args) => {
+          if (appended) await originalCommit(...args);
+          throw failure;
+        });
+        const result = await session
+          .run({ prompt: 'fresh', images: [imageInput('fresh.png', images[2]!)] })
+          .result();
+        expect(result).toMatchObject(
+          appended ? { status: 'completed' } : { status: 'failed', errorCode: failure.code }
+        );
+        expect(commit).toHaveBeenCalledOnce();
+        expect(adapter.requests).toHaveLength(appended ? 2 : 1);
+        if (appended) expect(adapter.requests[1]!.imageHashes).toEqual([imageHash(images[2]!)]);
+        expect(adapter.resetContinuationCalls).toBe(appended ? 1 : 0);
+        expect(
+          (await store.read(session.id)).some((record) => record.type === 'context.gc.completed')
+        ).toBe(appended);
+      } finally {
+        await agent.dispose();
+        await store.close();
+      }
+    }
+  );
+
+  it.each(['usage', 'no-usage', 'model-switch', 'compact-model-switch', 'reopen-no-usage'])(
     'hard-GCs history before dispatch while preserving fresh media (%s)',
     async (mode) => {
       const emitUsage = mode !== 'no-usage';
@@ -640,8 +693,42 @@ describe('SDK inline media lifecycle', () => {
           session = await agent.openSession(sessionId);
         }
 
-        if (mode === 'model-switch') {
+        if (mode === 'model-switch' || mode === 'compact-model-switch') {
           await agent.dispose();
+          if (mode === 'compact-model-switch') {
+            const store = await JsonlSessionStore.open(home);
+            try {
+              const records = await store.read(sessionId);
+              const user = records.find((record) => record.type === 'turn.user')!;
+              const window = records.findLast((record) => record.type === 'resource.window')!;
+              await store.compact(sessionId, {
+                summary: 'Retain the pending image work.',
+                modelId: modelBase.id,
+                contextWindowTokens: modelBase.contextWindowTokens,
+                retainedModelContext: [
+                  {
+                    role: 'user',
+                    content: 'protected old history',
+                    metadata: { source: 'user', recordId: user.recordId },
+                    images: await store.readInputImages(
+                      sessionId,
+                      (user.payload as { images: unknown }).images
+                    )
+                  }
+                ],
+                inlineMediaState:
+                  window.payload as import('../../src/session/inline-media.js').InlineMediaState
+              });
+              // The old execution continues after Compact without another header.
+              await store.append(sessionId, {
+                type: 'model.attempt',
+                executionId: user.executionId!,
+                payload: { purpose: 'EXECUTION', state: 'SUCCEEDED' }
+              });
+            } finally {
+              await store.close();
+            }
+          }
           adapter = new ScriptedAdapter({ ...modelBase, id: 'new-model', modelId: 'new-model' }, [
             { events: [{ type: 'text.completed', itemId: 'new', text: 'new model' }] }
           ]);
@@ -649,17 +736,20 @@ describe('SDK inline media lifecycle', () => {
           session = await agent.openSession(sessionId);
         }
 
-        expect(
-          await session
-            .run({
-              prompt: 'new hard-limit image',
-              modelId: adapter.configuration.id,
-              images: [imageInput('fresh.png', freshImage)]
-            })
-            .result()
-        ).toMatchObject({ status: 'completed' });
+        const hardResult = await session
+          .run({
+            prompt: 'new hard-limit image',
+            modelId: adapter.configuration.id,
+            images: [imageInput('fresh.png', freshImage)]
+          })
+          .result();
+        expect(hardResult, JSON.stringify(hardResult)).toMatchObject({ status: 'completed' });
         const dispatched =
-          adapter.requests[mode === 'model-switch' || mode === 'reopen-no-usage' ? 0 : 1]!;
+          adapter.requests[
+            mode === 'model-switch' || mode === 'compact-model-switch' || mode === 'reopen-no-usage'
+              ? 0
+              : 1
+          ]!;
         expect(dispatched.imageHashes).toEqual([imageHash(freshImage)]);
         expect(
           dispatched.messages.some((message) => message.content.includes('protected old history'))

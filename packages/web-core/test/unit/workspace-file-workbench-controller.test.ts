@@ -621,6 +621,104 @@ it.each([
 });
 import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
+import type { WorkspaceFileOpenIntent } from '../../src/util/workspace-file-tab.js';
+
+function createQuotePaneWorkbench(
+  comparison: Parameters<
+    typeof createWorkspaceFileWorkbenchController
+  >[0]['comparison'] = async () => undefined
+) {
+  const target = { nodeId: 'node', workspaceId: 'workspace' };
+  const http = createScopedHttpService();
+  const bytes = new TextEncoder().encode('const value = 1;\n');
+  const read = async () => ({
+    bytes,
+    size: bytes.length,
+    offset: 0,
+    nextOffset: null,
+    revision: 'revision-1'
+  });
+  return createWorkspaceFileWorkbenchController({
+    externalTarget: () => target,
+    fileWriteEnabled: () => false,
+    onPopupBlocked: vi.fn(),
+    target: () => target,
+    page: () => undefined,
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: () => undefined,
+    reveal: async () => {},
+    onOpenFailure: vi.fn(),
+    onRevealFailure: vi.fn(),
+    comparison,
+    access: createFileAccessFixture({
+      http,
+      transfers: () => ({ directFileReadRange: read })
+    }),
+    preview: { onWritten: vi.fn() },
+    navigation: { http, onFileTarget: vi.fn(), onFailure: vi.fn() }
+  });
+}
+
+it('defaults ordinary opens to main and updates the same tab from Aside without pane leakage', async () => {
+  const owner = createQuotePaneWorkbench();
+  try {
+    await owner.openFile('src/main.ts');
+    const mainId = owner.activeTabId.value!;
+    expect(owner.activeTab.value?.quotePane).toBe('main');
+
+    await owner.openFile('src/aside.ts', undefined, undefined, 'aside');
+    const asideId = owner.activeTabId.value!;
+    expect(owner.activeTab.value?.quotePane).toBe('aside');
+    await owner.openFile('src/aside.ts', undefined, undefined, 'aside');
+    expect(owner.activeTab.value).toMatchObject({ id: asideId, quotePane: 'aside' });
+
+    await owner.openFile('src/main.ts', undefined, undefined, 'aside');
+    expect(owner.activeTab.value).toMatchObject({ id: mainId, quotePane: 'aside' });
+    await owner.openFile('src/main.ts');
+    expect(owner.activeTab.value).toMatchObject({ id: mainId, quotePane: 'main' });
+
+    owner.activateTab(asideId);
+    expect(owner.activeTab.value?.quotePane).toBe('aside');
+    owner.activateTab(mainId);
+    expect(owner.activeTab.value?.quotePane).toBe('main');
+  } finally {
+    owner.dispose();
+  }
+});
+
+it('retains Aside ownership on a tool-change diff returned by comparison', async () => {
+  const intent: WorkspaceFileOpenIntent = {
+    kind: 'TOOL_CHANGE_DIFF',
+    nodeId: 'node',
+    workspaceId: 'workspace',
+    path: 'src/main.ts',
+    repositoryPath: '',
+    worktreePath: '',
+    paths: ['src/main.ts'],
+    toolChange: {
+      scope: 'SESSION',
+      sessionId: 'session-1',
+      changeId: 'change-1',
+      diff: {
+        status: 'available',
+        source: 'TOOL_CHANGE',
+        resourceRef: '22222222-2222-4222-8222-222222222222',
+        format: 'unified-diff',
+        byteSize: 32,
+        sha256: 'a'.repeat(64)
+      }
+    }
+  };
+  const comparison = vi.fn(async () => intent);
+  const owner = createQuotePaneWorkbench(comparison);
+  try {
+    await owner.openComparison('src/main.ts', undefined, undefined, 'aside');
+    expect(comparison).toHaveBeenCalledWith('src/main.ts');
+    expect(owner.activeTab.value).toMatchObject({ kind: 'TOOL_CHANGE_DIFF', quotePane: 'aside' });
+  } finally {
+    owner.dispose();
+  }
+});
 
 it('uses one navigation entry for same-page positions and cross-file targets', async () => {
   const target = { nodeId: 'node', workspaceId: 'workspace' };
