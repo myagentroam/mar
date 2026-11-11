@@ -37,7 +37,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
               )
             );
           }
-          send(): void {}
+          send(_data: string | ArrayBufferLike | ArrayBufferView | Blob): void {}
           close(): void {
             this.readyState = MockWebSocket.CLOSED;
           }
