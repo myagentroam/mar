@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" class="console-ui">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Composer options fixture</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { h, ref } from 'vue';
+      import { createTooltipApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
+      import ElementPlus from 'element-plus';
+      import 'element-plus/dist/index.css';
+      import '/packages/web-core/src/styles.css';
+      import ComposerToolbar from '/packages/web-core/src/view/composer/ComposerToolbar.vue';
+      import { localePreferenceService } from '/packages/web-core/src/service/locale-preference-service.ts';
+
+      const query = new URLSearchParams(location.search);
+      document.documentElement.dataset.theme = query.get('theme') ?? 'daylight';
+      localePreferenceService().setLocale('en-US');
+      const selected = ref('model-0');
+      const effort = ref('medium');
+      const selection = ref('model:model-0');
+      const models = Array.from({ length: 32 }, (_, index) => ({
+        id: `model-${index}`,
+        label: `Engineering model ${index + 1} with a descriptive configuration name`
+      }));
+      createTooltipApp({
+        setup: () => () =>
+          h(
+            'main',
+            {
+              style: `position:fixed;left:0;right:0;${query.has('top') ? 'top' : 'bottom'}:16px;padding:0 12px`
+            },
+            [
+              h(ComposerToolbar, {
+                draftSessionOpen: true,
+                runner: 'mar-agent',
+                runnerOptions: [
+                  { value: 'mar-agent', label: 'MAR Agent' },
+                  { value: 'codex', label: 'Codex' }
+                ],
+                runnerLoading: false,
+                runnerLabel: 'MAR Agent',
+                modelEffortSelection: selection.value,
+                modelEffortLabel: models.find((model) => model.id === selected.value).label,
+                selectedModel: selected.value,
+                selectedEffort: effort.value,
+                models,
+                efforts: ['medium', 'high'],
+                access: 'auto',
+                accessLabel: 'Auto',
+                accessOptions: [
+                  { id: 'auto', label: 'Auto' },
+                  { id: 'full-access', label: 'Full access' }
+                ],
+                configurationDisabled: false,
+                accessDisabled: false,
+                fastEnabled: false,
+                contextUsage: { percentage: 42 },
+                contextUsageLabel: '42% used',
+                canCompactContext: false,
+                mobileViewport: query.has('mobile'),
+                activeRun: undefined,
+                canInterrupt: false,
+                interruptVisible: false,
+                inputHasContent: true,
+                hasSelectedCommand: false,
+                loading: false,
+                attachmentsPending: false,
+                effortLabel: String,
+                onUpdateModelEffort(value) {
+                  selection.value = value;
+                  if (value.startsWith('model:')) selected.value = value.slice(6);
+                  else effort.value = value.slice(7);
+                }
+              }),
+              h('output', { 'data-testid': 'selected-model' }, selected.value)
+            ]
+          )
+      })
+        .use(ElementPlus)
+        .mount('#app');
+    </script>
+  </body>
+</html>

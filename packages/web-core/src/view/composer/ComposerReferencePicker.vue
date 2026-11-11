@@ -168,9 +168,8 @@ watch(
 <style scoped>
 .command-picker {
   position: absolute;
-  right: 0;
+  inset-inline: var(--composer-padding-inline, 0.8rem);
   bottom: calc(100% + 0.5rem);
-  left: 0;
   display: grid;
   max-height: 200px;
   overflow: auto;

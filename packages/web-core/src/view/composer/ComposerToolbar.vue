@@ -62,6 +62,12 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement>();
+const menuPopperOptions = {
+  modifiers: [
+    { name: 'preventOverflow', options: { padding: 12 } },
+    { name: 'flip', options: { padding: 12 } }
+  ]
+};
 const canSteer = computed(
   () =>
     props.interruptVisible &&
@@ -164,6 +170,7 @@ function selectFiles(event: Event): void {
           :aria-label="translate('common.runner')"
           class="composer-runner-select"
           popper-class="composer-mini-popper composer-runner-popper"
+          :popper-options="menuPopperOptions"
           size="small"
           teleported
           :disabled="runnerLoading || runnerDisabled"
@@ -197,6 +204,7 @@ function selectFiles(event: Event): void {
             :aria-label="translate('generated.composerToolbar.modelAndReasoningEffort')"
             class="composer-model-effort-select"
             popper-class="composer-mini-popper composer-model-effort-popper"
+            :popper-options="menuPopperOptions"
             size="small"
             teleported
             @change="emit('updateModelEffort', String($event))"
@@ -236,6 +244,7 @@ function selectFiles(event: Event): void {
           :aria-label="translate('generated.composerToolbar.access')"
           class="composer-access-select"
           popper-class="composer-mini-popper composer-access-popper"
+          :popper-options="menuPopperOptions"
           size="small"
           teleported
           @change="emit('updateAccess', String($event))"
@@ -845,9 +854,14 @@ function selectFiles(event: Event): void {
   font-weight: 400;
 }
 
-:global(.composer-model-effort-popper .el-select-dropdown__wrap),
-:global(.composer-model-effort-popper .el-scrollbar__wrap) {
-  max-height: none;
+:global(.composer-mini-popper) {
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+}
+
+:global(.composer-mini-popper .el-select-dropdown__wrap) {
+  /* Leave room for the trigger, offset and viewport gutters on either side. */
+  max-height: min(274px, calc(50dvh - 32px));
 }
 
 :global(.composer-model-effort-popper .el-select-group__title) {

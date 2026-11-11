@@ -204,6 +204,57 @@ test('mixed reference tags serialize as XML and support click and Backspace remo
   await expect(sessionTag).toHaveCount(0);
 });
 
+for (const [width, theme] of [
+  [390, 'daylight'],
+  [320, 'vscode-dark-2026'],
+  [1280, 'daylight']
+] as const) {
+  test(`Composer candidate popups align with the input edges (${width}px, ${theme})`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
+    await page.goto(
+      `${fixture.url}composer-reference-browser.html?theme=${theme}${width < 768 ? '&mobile=1' : ''}`
+    );
+    await page.evaluate((value) => {
+      document.documentElement.classList.add('console-ui');
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    const editor = page.locator('textarea.composer-input');
+    for (const [name, text] of [
+      ['references', '@long'],
+      ['quick-prompts', '#review'],
+      ['commands', '/']
+    ] as const) {
+      await editor.fill(text);
+      await placeCursor(page, text.length);
+      const picker = page.locator('.command-picker');
+      await expect(picker).toBeVisible();
+      await expect(picker).toHaveCSS(
+        'background-color',
+        theme === 'daylight' ? 'rgb(255, 255, 255)' : 'rgb(26, 34, 48)'
+      );
+      if (name !== 'commands')
+        await expect(picker.getByRole('option')).toHaveCount(name === 'references' ? 2 : 1);
+      await expect
+        .poll(async () => {
+          const popup = (await picker.boundingBox())!;
+          const shell = (await page.locator('.composer-shell').boundingBox())!;
+          return (
+            Math.abs(popup.x - shell.x) <= 1 &&
+            Math.abs(popup.x + popup.width - shell.x - shell.width) <= 1
+          );
+        })
+        .toBe(true);
+      const bounds = (await picker.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(8);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 8);
+      await page.screenshot({ path: info.outputPath(`${name}.png`), animations: 'disabled' });
+    }
+  });
+}
+
 for (const [theme, width] of [
   ['daylight', 1280],
   ['vscode-dark-2026', 1280],

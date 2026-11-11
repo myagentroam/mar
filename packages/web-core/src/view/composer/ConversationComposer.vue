@@ -297,12 +297,13 @@ const emit = defineEmits<{
 }
 
 .composer {
+  --composer-padding-inline: 0.8rem;
   position: relative;
   z-index: 3;
   background: var(--mar-conversation-canvas);
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
-  padding: 0.4rem 0.8rem 0.75rem;
+  padding: 0.4rem var(--composer-padding-inline) 0.75rem;
 }
 
 .composer :deep(button),
@@ -472,12 +473,13 @@ const emit = defineEmits<{
   }
 
   .composer {
+    --composer-padding-inline: 0.6rem;
     position: fixed;
     z-index: 6;
     right: 0;
     bottom: 0;
     left: 0;
-    padding: 0.35rem 0.6rem calc(0.55rem + env(safe-area-inset-bottom));
+    padding: 0.35rem var(--composer-padding-inline) calc(0.55rem + env(safe-area-inset-bottom));
   }
 }
 
