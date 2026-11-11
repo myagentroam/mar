@@ -20,6 +20,12 @@ export const terminalEnUS = {
       unableToCreateATerminal: 'Unable to create a terminal: {value0}',
       unableToCloseTheTerminal: 'Unable to close the terminal: {value0}',
       unableToReleaseTerminals: 'Unable to release {value0} terminals: {value1}',
+      createResultUnknown:
+        'The terminal creation result is unknown. A terminal may have been created. {value0}',
+      closeResultUnknown:
+        'The terminal closure result is unknown. The terminal may have been closed. {value0}',
+      releaseResultsUnknown:
+        'Terminal release results could not all be confirmed ({value0} affected). Some terminals may still be running. {value1}',
       terminalProfile: 'Terminal Profile',
       terminalProfile2: 'Terminal Profile',
       collapseTerminal: 'Collapse terminal',

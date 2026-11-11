@@ -3,6 +3,113 @@ import { mockConsoleApi, mockEmptyWorkspaceFiles, json, write } from './support/
 
 // Terminal
 
+for (const locale of ['zh-CN', 'en-US'] as const) {
+  for (const method of ['POST', 'DELETE'] as const) {
+    test(`Terminal ${method} transport failure shows one uncertain-result warning in ${locale}`, async ({
+      page
+    }) => {
+      await page.addInitScript((locale) => {
+        localStorage.setItem('mar.locale.v2', locale);
+        const BrowserWebSocket = window.WebSocket;
+        class MockWebSocket extends EventTarget {
+          static readonly OPEN = 1;
+          static readonly CLOSED = 3;
+          static readonly instances: MockWebSocket[] = [];
+          readyState = MockWebSocket.OPEN;
+          constructor(
+            readonly url: string,
+            protocols?: string | string[]
+          ) {
+            super();
+            // Only fake product traffic; the dev server must retain its native reload channel.
+            if (!new URL(url, location.href).pathname.startsWith('/api/'))
+              return new BrowserWebSocket(url, protocols);
+            MockWebSocket.instances.push(this);
+            queueMicrotask(() =>
+              this.dispatchEvent(
+                new MessageEvent('message', {
+                  data: JSON.stringify({
+                    type: 'attach',
+                    terminalId: 'terminal-unknown',
+                    afterSequence: 0
+                  })
+                })
+              )
+            );
+          }
+          send(_data: string | ArrayBufferLike | ArrayBufferView | Blob): void {}
+          close(): void {
+            this.readyState = MockWebSocket.CLOSED;
+          }
+        }
+        Object.defineProperty(window, 'WebSocket', { configurable: true, value: MockWebSocket });
+      }, locale);
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+      await mockEmptyWorkspaceFiles(page, ['workspace-1']);
+      const terminal = {
+        id: 'terminal-unknown',
+        workspaceId: 'workspace-1',
+        profileId: 'default',
+        state: 'RUNNING',
+        latestSequence: 0
+      };
+      const writes: string[] = [];
+      await page.route('**/api/terminals**', (route) => {
+        const path = new URL(route.request().url()).pathname;
+        const requestMethod = route.request().method();
+        if (path.endsWith('/attach-ticket')) return json(route, { ticket: 'fixture-ticket' });
+        if (requestMethod === 'POST' || requestMethod === 'DELETE') {
+          writes.push(requestMethod);
+          if (requestMethod === method) return route.abort('failed');
+          return json(route, { terminal });
+        }
+        return json(route, { terminals: [terminal] });
+      });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.goto('/console');
+      await page
+        .getByRole('button', {
+          name: locale === 'zh-CN' ? '进入控制台' : 'Open console',
+          exact: true
+        })
+        .click();
+      await page
+        .getByRole('button', { name: locale === 'zh-CN' ? '工作' : 'Work', exact: true })
+        .click();
+      const tree = page.locator('.workspace-tree');
+      await tree.getByRole('button', { name: /node-1/ }).click();
+      await tree.getByRole('button', { name: 'project', exact: true }).click();
+      await expect(
+        page.getByRole('tab', { name: locale === 'zh-CN' ? '终端' : 'Terminal', exact: true })
+      ).toBeVisible();
+      await page.keyboard.press('Control+Shift+Backquote');
+      if (method === 'DELETE') {
+        await expect(page.locator('.terminal-tab-close')).toBeVisible();
+        await page.locator('.terminal-tab-close').click();
+      }
+      const warning = page.locator('.el-message--warning');
+      await expect(warning).toHaveCount(1);
+      await expect(warning).toContainText(
+        locale === 'zh-CN'
+          ? method === 'POST'
+            ? '终端创建结果未知，终端可能已经创建'
+            : '终端关闭结果未知，终端可能已经关闭'
+          : method === 'POST'
+            ? 'The terminal creation result is unknown. A terminal may have been created.'
+            : 'The terminal closure result is unknown. The terminal may have been closed.'
+      );
+      await expect(warning).toContainText('NETWORK_UNAVAILABLE');
+      await expect(page.locator('.el-message--error, .el-message--success')).toHaveCount(0);
+      await expect(page.locator('.workspace-offline-placeholder')).toBeVisible();
+      expect(writes.filter((write) => write === method)).toHaveLength(1);
+      // Dismissing feedback must not replay the uncertain write.
+      await warning.locator('.mar-message-close').click();
+      await expect(page.locator('.el-message')).toHaveCount(0);
+      expect(writes.filter((write) => write === method)).toHaveLength(1);
+    });
+  }
+}
+
 for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
   const evicted = scenario === 'evicted';
   test(`Terminal pending creation ${scenario === 'navigation' ? 'survives temporary settings and conversation navigation' : evicted ? 'closes after Workspace Tab eviction' : 'stays with its cached Workspace Tab without stealing focus'}`, async ({
@@ -102,7 +209,7 @@ for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
       const tree = page.locator('.workspace-tree');
       await tree.getByRole('button', { name: /node-1/ }).click();
       await tree.getByRole('button', { name: 'project-1', exact: true }).click();
-      await expect(page.getByRole('button', { name: '展开终端' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: '终端', exact: true })).toBeVisible();
       await page.keyboard.press('Control+Shift+Backquote');
       await expect.poll(() => opens).toBe(1);
       const first = page.locator('.workspace-tab[data-tab-id="node-1:workspace-1"]');
@@ -142,6 +249,7 @@ for (const scenario of ['cached', 'evicted', 'navigation'] as const) {
       const second = page.locator('.workspace-tab[data-tab-id="node-1:workspace-2"]');
       await expect(second.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
       if (evicted) {
+        await first.hover();
         await first.locator('.tab-close').click();
         await expect(first).toHaveCount(0);
       }

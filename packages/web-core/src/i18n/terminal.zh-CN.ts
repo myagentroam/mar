@@ -19,6 +19,10 @@ export const terminalZhCN = {
       unableToCreateATerminal: '无法创建终端：{value0}',
       unableToCloseTheTerminal: '无法关闭终端：{value0}',
       unableToReleaseTerminals: '无法释放 {value0} 个终端：{value1}',
+      createResultUnknown: '终端创建结果未知，终端可能已经创建。{value0}',
+      closeResultUnknown: '终端关闭结果未知，终端可能已经关闭。{value0}',
+      releaseResultsUnknown:
+        '{value0} 个终端的释放结果未能全部确认，部分终端可能仍在运行。{value1}',
       terminalProfile: '终端配置',
       terminalProfile2: '终端配置',
       collapseTerminal: '收起终端',
