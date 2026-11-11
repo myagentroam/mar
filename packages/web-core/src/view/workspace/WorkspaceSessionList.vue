@@ -1146,7 +1146,6 @@ function submitSessionSearch(): void {
   min-height: 0;
   flex: 1 1 auto;
   margin: 0.5rem -0.7rem 0;
-  border-top: 1px solid var(--mar-border-subtle);
   padding: 0;
   list-style: none;
   overflow-y: auto;
@@ -1159,13 +1158,11 @@ function submitSessionSearch(): void {
 
 .session-group-tabs {
   margin: 0.5rem -0.7rem 0;
-  border-top: 1px solid var(--mar-border-subtle);
   padding-inline: 6px;
 }
 
 .session-group-tabs ~ .session-list {
   margin-top: 0;
-  border-top: 0;
 }
 
 .session-list li:first-child {

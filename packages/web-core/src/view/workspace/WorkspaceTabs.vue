@@ -354,6 +354,7 @@ function activate(tab: WorkspaceTab): void {
         :data-tab-id="tab.id"
         :class="{
           active: activeTabId === tab.id,
+          'menu-open': contextMenu?.tabId === tab.id,
           pinned: tab.pinned === true,
           'sticky-pinned': pinnedOffsets[tab.id] !== undefined,
           dragging: draggingTabId === tab.id,
@@ -746,11 +747,12 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab:not(.active):hover {
-  background: var(--mar-fill-row-hover);
+  background:
+    linear-gradient(var(--mar-fill-row-hover), var(--mar-fill-row-hover)),
+    var(--workspace-tab-base-bg);
 }
 
 .workspace-tab:not(.active) > button:first-child:hover:not(:disabled) {
-  background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
@@ -832,6 +834,13 @@ function activate(tab: WorkspaceTab): void {
   align-self: center;
   margin: 2px 0;
   place-items: center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .workspace-tab:not(.active):not(.menu-open):not(:hover):not(:focus-within) .tab-close {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 @media (max-width: 767px) {

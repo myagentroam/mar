@@ -128,6 +128,47 @@ describe('Custom theme validation', () => {
     }
   });
 
+  it.each([
+    ['--mar-color-success-text', '--mar-color-success-bg'],
+    ['--mar-color-warning-text', '--mar-color-warning-bg'],
+    ['--mar-color-danger-text', '--mar-color-danger-bg'],
+    ['--mar-color-accent', '--mar-color-accent-bg'],
+    ['--mar-color-on-accent', '--mar-color-brand-hover'],
+    ['--mar-text-primary', '--mar-fill-row-hover'],
+    ['--mar-text-secondary', '--mar-fill-row-hover']
+  ])(
+    'warns about explicit low-contrast %s on %s without rewriting colors',
+    (foreground, background) => {
+      const input = source({ [foreground]: '#777', [background]: '#777f' });
+      const result = analyzeCustomTheme(input);
+      expect(result.validJson).toBe(true);
+      expect(result.warnings).toContainEqual({
+        code: 'contrast',
+        field: `${foreground} / ${background}`
+      });
+      const service = createThemePreferenceService();
+      const saved = service.saveCustomTheme(input);
+      service.setTheme(saved.id);
+      expect(saved.source).toBe(input);
+      expect(styles.get(foreground)).toBe('#777');
+      expect(styles.get(background)).toBe('#777f');
+
+      for (const colors of [
+        { [foreground]: '#fff', [background]: '#000' },
+        { [foreground]: '#777' },
+        { [background]: '#777' },
+        { [foreground]: '#7777', [background]: '#777' },
+        { [foreground]: '#777', [background]: '#77777780' }
+      ]) {
+        expect(
+          analyzeCustomTheme(source(colors)).warnings.filter(
+            (warning) => warning.code === 'contrast'
+          )
+        ).toEqual([]);
+      }
+    }
+  );
+
   it('blocks syntax errors but accepts every syntactically valid JSON value with advisory warnings', () => {
     expect(analyzeCustomTheme('{').validJson).toBe(false);
     for (const text of ['null', 'true', '42', '[]', '{}']) {

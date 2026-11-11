@@ -832,6 +832,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const pinned = list.locator('.sticky-pinned');
       await expect(pinned).toHaveCount(2);
       const lastPinned = pinned.last();
+      await page.evaluate(() => {
+        document.documentElement.style.setProperty('--mar-fill-selection', '#34567880');
+        document.documentElement.style.setProperty('--mar-fill-row-hover', '#98765440');
+      });
+      await page.mouse.move(1200, 800);
+      await expect(lastPinned.getByRole('tab')).toHaveAttribute('aria-selected', 'false');
+      await expect(lastPinned.locator('.tab-pin')).toHaveCSS('opacity', '1');
       const normal = list.locator('.workspace-tab:not(.pinned)');
       await normal.evaluateAll((elements) => {
         for (const element of elements)
@@ -841,7 +848,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         element.scrollLeft = 52;
       });
       await expect.poll(() => list.evaluate((element) => element.scrollLeft)).toBe(52);
-      await page.mouse.move(1200, 800);
+      await lastPinned.getByRole('tab').hover();
+      await expect(lastPinned.locator('.tab-pin')).toHaveCSS('opacity', '1');
+      await expect(lastPinned.getByRole('tab')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const bounds = (await list.boundingBox())!;
       const edge = (await lastPinned.boundingBox())!;
       const clip = {

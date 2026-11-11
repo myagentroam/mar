@@ -75,9 +75,16 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-text-secondary', '--mar-bg-chrome'],
     ['--mar-text-primary', '--mar-fill-selection'],
     ['--mar-text-secondary', '--mar-fill-selection'],
+    ['--mar-text-primary', '--mar-fill-row-hover'],
+    ['--mar-text-secondary', '--mar-fill-row-hover'],
     ['--mar-conversation-text', '--mar-conversation-surface'],
     ['--mar-conversation-muted', '--mar-conversation-surface'],
-    ['--mar-color-on-accent', '--mar-color-brand']
+    ['--mar-color-on-accent', '--mar-color-brand'],
+    ['--mar-color-on-accent', '--mar-color-brand-hover'],
+    ['--mar-color-success-text', '--mar-color-success-bg'],
+    ['--mar-color-warning-text', '--mar-color-warning-bg'],
+    ['--mar-color-danger-text', '--mar-color-danger-bg'],
+    ['--mar-color-accent', '--mar-color-accent-bg']
   ] as const) {
     const a = colors[foreground] ? luminance(colors[foreground]!) : undefined;
     const b = colors[background] ? luminance(colors[background]!) : undefined;

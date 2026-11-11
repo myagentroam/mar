@@ -67,7 +67,6 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   padding: 2px;
   border-radius: var(--mar-radius-control);
   background: var(--mar-bg-subtle);
-  box-shadow: inset 0 0 0 1px var(--mar-border-default);
 }
 .session-group-tabs button {
   flex: 1 1 0;
