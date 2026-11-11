@@ -73,6 +73,7 @@ export async function mockConsoleApi(
 ): Promise<void> {
   const routing = routeInContext ? page.context() : page;
   await routing.addInitScript(() => {
+    const BrowserWebSocket = window.WebSocket;
     if (localStorage.getItem('mar.locale.v2') === null)
       localStorage.setItem('mar.locale.v2', 'zh-CN');
     // Regular Console mocks have no real login cookie. Connecting to the test Server Workbench
@@ -379,10 +380,13 @@ export async function mockConsoleApi(
       readonly url: string;
       readyState = ConsoleMockWorkbenchWebSocket.CONNECTING;
 
-      constructor(url: string | URL) {
+      constructor(url: string | URL, protocols?: string | string[]) {
         const value = String(url);
         super();
         this.url = value;
+        // Keep tooling sockets native even when this init script runs before a domain mock.
+        if (!new URL(value, location.href).pathname.startsWith('/api/'))
+          return new BrowserWebSocket(url, protocols);
         ConsoleMockWorkbenchWebSocket.instances.push(this);
         queueMicrotask(() => {
           if (this.readyState !== ConsoleMockWorkbenchWebSocket.CONNECTING) return;

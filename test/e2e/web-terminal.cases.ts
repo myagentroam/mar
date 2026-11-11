@@ -10,13 +10,20 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     }) => {
       await page.addInitScript((locale) => {
         localStorage.setItem('mar.locale.v2', locale);
+        const BrowserWebSocket = window.WebSocket;
         class MockWebSocket extends EventTarget {
           static readonly OPEN = 1;
           static readonly CLOSED = 3;
           static readonly instances: MockWebSocket[] = [];
           readyState = MockWebSocket.OPEN;
-          constructor(readonly url: string) {
+          constructor(
+            readonly url: string,
+            protocols?: string | string[]
+          ) {
             super();
+            // Only fake product traffic; the dev server must retain its native reload channel.
+            if (!new URL(url, location.href).pathname.startsWith('/api/'))
+              return new BrowserWebSocket(url, protocols);
             MockWebSocket.instances.push(this);
             queueMicrotask(() =>
               this.dispatchEvent(
