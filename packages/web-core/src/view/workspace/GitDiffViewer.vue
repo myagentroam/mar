@@ -548,17 +548,16 @@ function openPreviewMenu(event: MouseEvent): void {
   const rows = full
     ? workingTreeRows.value.map((row) => ({
         text: row.text,
-        prefix: row.kind === 'deleted' ? '-' : row.kind === 'added' ? '+' : ' ',
         oldLine: row.oldLine,
         newLine: row.lineNumber ?? undefined
       }))
-    : unifiedDiffLines(diffText.value).map((row) => ({ ...row, prefix: '' }));
+    : unifiedDiffLines(diffText.value);
   const selected = pane
     ? selectedTextOffsets(pane, [
         ...pane.querySelectorAll<HTMLElement>(full ? '[data-diff-line-content]' : 'code > span')
       ]).map(({ index, from, to }) => ({
         ...rows[index]!,
-        text: rows[index]!.prefix + rows[index]!.text.slice(from, to)
+        text: rows[index]!.text.slice(from, to)
       }))
     : [];
   copiedSelection = selected.map((row) => row.text).join('\n');
