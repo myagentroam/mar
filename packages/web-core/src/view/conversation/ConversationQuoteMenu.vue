@@ -71,9 +71,9 @@ function readSelection(): SelectedQuote | undefined {
   if (!body || !props.root.contains(body) || !body.contains(range.endContainer)) return undefined;
   const text = selection.toString();
   if (!text.trim()) return undefined;
-  // Rendered controls, collapsed content and non-message records are not quotation text.
+  // Links, images, rendered controls and collapsed content are not quotation text.
   if (
-    [...body.querySelectorAll('button,input,textarea,[hidden],summary')].some((element) =>
+    [...body.querySelectorAll('a,img,button,input,textarea,[hidden],summary')].some((element) =>
       range.intersectsNode(element)
     )
   )

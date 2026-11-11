@@ -34,6 +34,18 @@ async function rightClickSelection(page: Page) {
   });
   await page.mouse.click(point.x, point.y, { button: 'right' });
 }
+async function addInlineQuoteImage(page: Page) {
+  await page
+    .locator('[data-quote-message-id] p')
+    .nth(1)
+    .evaluate((paragraph) => {
+      // Keep a bare image: Markdown image buttons would exercise the existing control guard instead.
+      const image = new Image(1, 1);
+      image.alt = 'Inline fixture image';
+      image.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      paragraph.append(' Before image. ', image, ' After image.');
+    });
+}
 async function result(page: Page, name: 'references' | 'payload' | 'copied') {
   return page.evaluate(
     (name) =>
@@ -105,7 +117,9 @@ test('Chat quotation preserves visible paragraph boundaries', async ({ page }) =
     const paragraphs = body.querySelectorAll('p');
     const range = document.createRange();
     range.setStart(paragraphs[0]!, 0);
-    range.setEnd(paragraphs[1]!, paragraphs[1]!.childNodes.length);
+    // Preserve the paragraph boundary without including the link later in the second paragraph.
+    const end = paragraphs[1]!.firstChild!;
+    range.setEnd(end, end.textContent!.length);
     const selection = window.getSelection()!;
     selection.removeAllRanges();
     selection.addRange(range);
@@ -174,6 +188,92 @@ test('context menu replaces the bubble, keeps native link menus, and rejects a s
   await action(page, 'lock');
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
+});
+
+for (const excluded of ['a', 'img']) {
+  for (const previous of ['none', 'bubble', 'menu']) {
+    test(`a selection crossing ${excluded} preserves native text context menus after ${previous}`, async ({
+      page
+    }) => {
+      await addInlineQuoteImage(page);
+      const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+      const menu = page.locator('.el-dropdown-menu');
+      if (previous !== 'none') {
+        await selectReply(page);
+        await expect(bubble).toBeVisible();
+        if (previous === 'menu') {
+          await rightClickSelection(page);
+          await menu.getByRole('menuitem', { name: 'Copy', exact: true }).focus();
+        }
+      }
+      const selectionText = await page.locator('[data-quote-message-id]').evaluate((body, tag) => {
+        const excluded = body.querySelector(tag)!;
+        const range = document.createRange();
+        if (tag === 'a') {
+          range.setStart(excluded.previousSibling!, 0);
+          range.setEnd(excluded.firstChild!, excluded.textContent!.length);
+        } else {
+          range.setStart(excluded.previousSibling!, 0);
+          range.setEnd(excluded.nextSibling!, excluded.nextSibling!.textContent!.length);
+        }
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+        return { text: selection.toString(), intersects: range.intersectsNode(excluded) };
+      }, excluded);
+      expect(selectionText.intersects).toBe(true);
+      expect(selectionText.text.trim()).not.toBe('');
+      if (previous !== 'menu') await expect(bubble).toHaveCount(0);
+
+      const native = await page
+        .locator('[data-quote-message-id] p')
+        .first()
+        .evaluate((text) => {
+          let propagated = false;
+          const observe = () => {
+            propagated = true;
+          };
+          window.addEventListener('contextmenu', observe);
+          const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+          const dispatched = text.dispatchEvent(event);
+          window.removeEventListener('contextmenu', observe);
+          return {
+            dispatched,
+            defaultPrevented: event.defaultPrevented,
+            propagated,
+            ordinaryTarget: !text.querySelector('a,img')
+          };
+        });
+      expect(native).toEqual({
+        dispatched: true,
+        defaultPrevented: false,
+        propagated: true,
+        ordinaryTarget: true
+      });
+      await expect(menu).toBeHidden();
+      await expect(bubble).toHaveCount(0);
+      expect(await page.evaluate(() => window.getSelection()!.toString())).toBe(selectionText.text);
+      expect(await result(page, 'references')).toEqual([]);
+      expect(await result(page, 'copied')).toBe('');
+      await expect(page.locator('textarea.composer-input')).toHaveValue(
+        'Keep my opinion unchanged.'
+      );
+    });
+  }
+}
+
+test('ordinary text remains quotable with nonintersecting links and images in the same body', async ({
+  page
+}) => {
+  await addInlineQuoteImage(page);
+  await selectReply(page);
+  await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
+  await rightClickSelection(page);
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  expect(await result(page, 'references')).toMatchObject([
+    { source: 'assistant', text: 'Select this reply excerpt.' }
+  ]);
 });
 
 for (const pointerType of ['touch', 'mouse']) {
