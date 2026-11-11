@@ -175,7 +175,7 @@ for (const [language, theme, width] of [
         header: getComputedStyle(element.closest('header')!).borderBottomWidth
       }));
       expect(borders).toEqual({ strip: '0px', header: '1px' });
-      const colors = await tabs.evaluate((element) => {
+      const colors = await tabs.evaluate((element, theme) => {
         const probe = document.createElement('span');
         element.append(probe);
         const resolve = (token: string) => {
@@ -186,12 +186,35 @@ for (const [language, theme, width] of [
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
           selected: resolve('--mar-fill-selection'),
+          divider: resolve(theme === 'light' ? '--mar-border-subtle' : '--mar-border-strong'),
+          tabBorder: resolve(theme === 'light' ? '--mar-border-default' : '--mar-border-strong'),
+          strongBorder: resolve('--mar-border-strong'),
           success: resolve('--el-color-success')
         };
         probe.remove();
         return result;
-      });
+      }, theme);
       await expect(session).toHaveCSS('color', colors.primary);
+      const aside = page.locator('.workbench-aside');
+      await expect(aside).toHaveCSS('border-inline-start-width', '1px');
+      await expect(aside).toHaveCSS('border-inline-start-color', colors.divider);
+      await expect(aside.locator('.workbench-aside-header')).toHaveCSS(
+        'border-bottom-color',
+        colors.divider
+      );
+      for (const item of await tabs.locator('.tab-strip-item').all()) {
+        await expect(item).toHaveCSS('border-top-width', '1px');
+        await expect(item).toHaveCSS('border-top-color', colors.tabBorder);
+        await expect(item).toHaveCSS('border-bottom-width', '0px');
+      }
+      await expect(tabs.locator('.tab-strip-separator')).toHaveCSS(
+        'background-color',
+        colors.divider
+      );
+      const genericItems = page.locator('#generic-tabs-tablist .tab-strip-item');
+      await expect(genericItems).toHaveCount(3);
+      for (const item of await genericItems.all())
+        await expect(item).toHaveCSS('border-top-color', colors.strongBorder);
       await expect(session.locator('..')).toHaveCSS('background-color', colors.selected);
       await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
       const activity = session.locator('.workbench-aside-activity');
@@ -219,6 +242,9 @@ for (const [language, theme, width] of [
         'aria-selected',
         'true'
       );
+      const nestedTab = aside.locator('#nested-files-tablist .tab-strip-item');
+      await expect(nestedTab).toHaveCount(1);
+      await expect(nestedTab).toHaveCSS('border-top-color', colors.strongBorder);
       await page.locator('.workbench-aside').screenshot({
         path: test.info().outputPath(`aside-tools-${language}-${theme}-${width}.png`)
       });

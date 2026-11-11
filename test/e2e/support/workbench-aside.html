@@ -59,7 +59,16 @@
             h(
               'div',
               { 'data-testid': `tool-${props.tool}`, 'data-mounts': inspectorMounts.value },
-              [`Tool ${props.tool}`, h('input', { 'aria-label': 'Inspector draft' })]
+              [
+                `Tool ${props.tool}`,
+                h('input', { 'aria-label': 'Inspector draft' }),
+                h(MarTab, {
+                  idPrefix: `nested-${props.tool}`,
+                  label: 'Nested tabs',
+                  items: [{ id: 'content', label: 'Content' }],
+                  activeId: 'content'
+                })
+              ]
             );
         }
       });
