@@ -47,6 +47,7 @@ const goalEditing = ref(false);
 const goalObjective = ref('');
 const goalDetailsOpen = ref(false);
 const goalEditor = ref<HTMLElement>();
+const workList = ref<HTMLElement>();
 let queueEditor: HTMLElement | undefined;
 let editingQueueItem: HTMLElement | undefined;
 let unregisterShortcuts: (() => void)[] = [];
@@ -210,9 +211,14 @@ function contextCommand(command: string | number | object): void {
 
 watch(
   () => props.items.map((item) => item.queueItemId),
-  (itemIds) => {
+  (itemIds, previousItemIds) => {
     if (contextMenu.value && !itemIds.includes(contextMenu.value.queueItemId)) closeContextMenu();
-  }
+    const previousIds = new Set(previousItemIds);
+    if (workList.value && itemIds.some((id) => !previousIds.has(id))) {
+      workList.value.scrollTop = workList.value.scrollHeight;
+    }
+  },
+  { flush: 'post' }
 );
 watch(
   () => [props.loading, props.editingQueueItemId],
@@ -340,7 +346,7 @@ onMounted(() => {
         translate('generated.composerQueue.paused')
       }}</span>
     </div>
-    <div class="composer-work-list">
+    <div ref="workList" class="composer-work-list">
       <div v-if="goal?.goal" class="work-item goal-card">
         <span class="work-item-kind goal-kind">{{
           translate('generated.composerQueue.goalType')

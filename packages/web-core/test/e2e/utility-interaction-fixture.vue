@@ -39,6 +39,14 @@ const items = ref<WorkspaceQueueItem[]>(
 );
 const queueEditor = createComposerQueueService();
 const { editingQueueItemId, editingContent } = queueEditor;
+Object.assign(window, {
+  utilityQueue: {
+    items: () => items.value,
+    replace: (snapshot: WorkspaceQueueItem[]) => {
+      items.value = snapshot;
+    }
+  }
+});
 const goal = ref<RunnerCommandState | undefined>(
   new URLSearchParams(location.search).has('work-item-editing')
     ? {

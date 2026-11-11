@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+import type { WorkspaceQueueItem } from '../../packages/web-core/src/model/workbench.js';
+
+type UtilityQueue = {
+  items: () => WorkspaceQueueItem[];
+  replace: (items: WorkspaceQueueItem[]) => void;
+};
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
@@ -70,6 +76,60 @@ async function checkUtility(
 }
 
 for (const width of [1280, 390]) {
+  test(`New queue items scroll only the pending work list to the end at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&queue-count=8`);
+    const list = page.locator('.composer-work-list');
+    const rows = list.locator('.queue-item');
+    await expect(rows).toHaveCount(8);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+      true
+    );
+    const focused = page.getByTestId('native');
+    await focused.focus();
+    const outerScroll = await page.evaluate(() => window.scrollY);
+    const initial = await page.evaluate(() =>
+      (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue.items()
+    );
+    const replace = (items: WorkspaceQueueItem[]) =>
+      page.evaluate(
+        (snapshot) =>
+          (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue.replace(snapshot),
+        items
+      );
+    const newest = {
+      ...initial[0]!,
+      queueItemId: 'new-queue-item',
+      clientMessageId: 'new-client-message',
+      content: 'New pending message'
+    };
+    await list.evaluate((element) => (element.scrollTop = 0));
+    await replace([...initial, newest]);
+    await expect(rows).toHaveCount(9);
+    await expect(rows.last()).toHaveAttribute('data-queue-item-id', newest.queueItemId);
+    await expect
+      .poll(() =>
+        list.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)
+      )
+      .toBeLessThanOrEqual(1);
+    await expect(focused).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(outerScroll);
+
+    await list.evaluate((element) => (element.scrollTop = 0));
+    await replace([...initial.slice(1), newest, { ...newest, queueItemId: 'next-queue-item' }]);
+    await expect(rows.last()).toHaveAttribute('data-queue-item-id', 'next-queue-item');
+    await expect
+      .poll(() =>
+        list.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)
+      )
+      .toBeLessThanOrEqual(1);
+    await expect(focused).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(outerScroll);
+  });
+
   test(`Pending work stays compact and scrolls without shrinking rows at ${width}px`, async ({
     browser
   }, testInfo) => {
