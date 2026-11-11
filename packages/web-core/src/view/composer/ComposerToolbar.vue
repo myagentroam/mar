@@ -9,7 +9,7 @@ import {
   shortcutKeyLabel
 } from '../../service/console-shortcut-keys.js';
 import type { SelectInstance } from 'element-plus';
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
 
 const props = defineProps<{
@@ -68,6 +68,39 @@ const menuPopperOptions = {
     { name: 'flip', options: { padding: 12 } }
   ]
 };
+const modelMenuPopperOptions: NonNullable<SelectInstance['$props']['popperOptions']> = {
+  modifiers: [
+    ...menuPopperOptions.modifiers,
+    {
+      name: 'composerModelMenuSize',
+      enabled: true,
+      phase: 'beforeRead',
+      effect({ instance }) {
+        const viewport = window.visualViewport;
+        viewport?.addEventListener('resize', instance.update);
+        return () => viewport?.removeEventListener('resize', instance.update);
+      },
+      fn({ state }) {
+        const reference = state.elements.reference.getBoundingClientRect();
+        const viewport = window.visualViewport;
+        const top = viewport?.offsetTop ?? 0;
+        const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
+        const title = state.elements.popper.querySelector<HTMLElement>('.el-select-group__title');
+        const available = Math.max(reference.top - top, bottom - reference.bottom);
+        // Keep the trigger gap, viewport gutter, border and fixed column titles outside the lists.
+        const height = Math.max(0, Math.floor(available - 24 - 3 - (title?.offsetHeight ?? 0)));
+        state.elements.popper.style.setProperty('--composer-model-list-height', `${height}px`);
+        // Read the resized menu before Popper chooses a side and calculates offsets.
+        state.rects.popper.height = state.elements.popper.offsetHeight;
+      }
+    }
+  ]
+};
+const hasModelAndEffort = computed(() => props.models.length > 0 && props.efforts.length > 0);
+const modelMenuValues = computed(() => [
+  ...props.models.map((model) => `model:${model.id}`),
+  ...props.efforts.map((effort) => `effort:${effort}`)
+]);
 const canSteer = computed(
   () =>
     props.interruptVisible &&
@@ -88,6 +121,28 @@ const contextHint = computed(() =>
 const contextPercentage = computed(() => props.contextUsage?.percentage ?? 0);
 const modelSelect = ref<SelectInstance>();
 
+function revealModelMenuOption(): void {
+  const select = modelSelect.value;
+  if (!select?.expanded) return;
+  const option = select.optionsArray[select.states.hoveringIndex]?.$el as HTMLElement | undefined;
+  const scroll = option?.closest<HTMLElement>('.el-scrollbar__wrap');
+  if (!option || !scroll) return;
+  // Layout offsets stay valid while Select's opening transition scales the menu from zero.
+  const top = option.offsetTop;
+  const bottom = top + option.offsetHeight;
+  if (top < scroll.scrollTop) scroll.scrollTop = top;
+  else if (bottom > scroll.scrollTop + scroll.clientHeight)
+    scroll.scrollTop = bottom - scroll.clientHeight;
+}
+
+watch(
+  () => [modelSelect.value?.expanded, modelSelect.value?.states.hoveringIndex],
+  () => {
+    void nextTick(revealModelMenuOption);
+  },
+  { flush: 'post' }
+);
+
 function openModelMenu(): boolean {
   if (props.configurationDisabled || modelSelect.value === undefined) return false;
   modelSelect.value.focus();
@@ -96,31 +151,65 @@ function openModelMenu(): boolean {
 }
 
 function onModelMenuKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey || event.isComposing)
-    return;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
   const select = modelSelect.value;
-  if (!select?.expanded || props.efforts.length === 0 || props.models.length === 0) return;
-  const hovered = select.states.hoveringIndex;
-  const effortIndex = Math.max(0, props.efforts.indexOf(props.selectedEffort));
-  const modelIndex =
-    props.efforts.length +
-    Math.max(
-      0,
-      props.models.findIndex((model) => model.id === props.selectedModel)
-    );
-  const target =
-    hovered < 0
-      ? event.shiftKey
-        ? effortIndex
-        : modelIndex
-      : hovered < props.efforts.length
-        ? modelIndex
-        : effortIndex;
-  const option = select.optionsArray[target];
-  if (option === undefined) return;
+  if (!select?.expanded) return;
+  // A profile refresh can reorder rendered options without reordering Select's registry.
+  const hoveredValue = String(select.optionsArray[select.states.hoveringIndex]?.value);
+  const hovered = modelMenuValues.value.findIndex((value) => value === hoveredValue);
+  const modelIndex = Math.max(
+    0,
+    props.models.findIndex((model) => model.id === props.selectedModel)
+  );
+  const effortIndex =
+    props.models.length + Math.max(0, props.efforts.indexOf(props.selectedEffort));
+  const inModels = props.models.length > 0 && (hovered < 0 || hovered < props.models.length);
+  const start = inModels ? 0 : props.models.length;
+  const count = inModels ? props.models.length : props.efforts.length;
+  if (count === 0) return;
+  const current = hovered < 0 ? (inModels ? modelIndex : effortIndex) : hovered;
+  let target: number;
+  switch (event.key) {
+    case 'Tab':
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      if (!hasModelAndEffort.value) return;
+      target =
+        event.key === 'ArrowLeft'
+          ? modelIndex
+          : event.key === 'ArrowRight'
+            ? effortIndex
+            : inModels
+              ? effortIndex
+              : modelIndex;
+      break;
+    case 'ArrowUp':
+    case 'ArrowDown':
+      target = start + ((current - start + (event.key === 'ArrowDown' ? 1 : -1) + count) % count);
+      break;
+    case 'Home':
+      target = start;
+      break;
+    case 'End':
+      target = start + count - 1;
+      break;
+    case 'PageUp':
+      target = Math.max(start, current - 10);
+      break;
+    case 'PageDown':
+      target = Math.min(start + count - 1, current + 10);
+      break;
+    default:
+      return;
+  }
+  const optionIndex = select.optionsArray.findIndex(
+    (option) => String(option.value) === modelMenuValues.value[target]
+  );
+  if (optionIndex < 0) return;
   event.preventDefault();
-  select.states.hoveringIndex = target;
-  void nextTick(() => select.scrollToOption(option));
+  event.stopPropagation();
+  select.states.hoveringIndex = optionIndex;
+  void nextTick(revealModelMenuOption);
 }
 
 defineExpose({ openModelMenu });
@@ -203,32 +292,40 @@ function selectFiles(event: Event): void {
             :placeholder="modelEffortLabel"
             :aria-label="translate('generated.composerToolbar.modelAndReasoningEffort')"
             class="composer-model-effort-select"
-            popper-class="composer-mini-popper composer-model-effort-popper"
-            :popper-options="menuPopperOptions"
+            :popper-class="
+              hasModelAndEffort
+                ? 'composer-mini-popper composer-model-effort-popper'
+                : 'composer-mini-popper composer-model-effort-popper composer-model-menu-single-column'
+            "
+            :popper-options="modelMenuPopperOptions"
             size="small"
             teleported
             @change="emit('updateModelEffort', String($event))"
-            @keydown="onModelMenuKeydown"
+            @keydown.capture="onModelMenuKeydown"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option-group :label="translate('common.reasoning')">
-              <el-option
-                v-for="effort in efforts"
-                :key="effort"
-                :class="{ 'composer-model-effort-option-selected': effort === selectedEffort }"
-                :label="props.effortLabel(effort)"
-                :value="`effort:${effort}`"
-              />
+            <el-option-group v-if="models.length" :label="translate('common.model')">
+              <el-scrollbar always max-height="var(--composer-model-list-height, 50dvh)">
+                <el-option
+                  v-for="model in models"
+                  :key="model.id"
+                  :class="{ 'composer-model-effort-option-selected': model.id === selectedModel }"
+                  :label="model.label"
+                  :value="`model:${model.id}`"
+                />
+              </el-scrollbar>
             </el-option-group>
-            <el-option-group :label="translate('common.model')">
-              <el-option
-                v-for="model in models"
-                :key="model.id"
-                :class="{ 'composer-model-effort-option-selected': model.id === selectedModel }"
-                :label="model.label"
-                :value="`model:${model.id}`"
-              />
+            <el-option-group v-if="efforts.length" :label="translate('common.reasoning')">
+              <el-scrollbar always max-height="var(--composer-model-list-height, 50dvh)">
+                <el-option
+                  v-for="effort in efforts"
+                  :key="effort"
+                  :class="{ 'composer-model-effort-option-selected': effort === selectedEffort }"
+                  :label="props.effortLabel(effort)"
+                  :value="`effort:${effort}`"
+                />
+              </el-scrollbar>
             </el-option-group>
           </el-select>
         </div>
@@ -864,18 +961,59 @@ function selectFiles(event: Event): void {
   max-height: min(274px, calc(50dvh - 32px));
 }
 
+:global(.composer-model-effort-popper) {
+  width: min(500px, calc(100vw - 24px));
+}
+
+:global(.composer-model-effort-popper .el-select-dropdown__wrap) {
+  max-height: none;
+  overflow: visible;
+}
+
+:global(.composer-model-effort-popper .el-select-dropdown__list) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.75rem;
+  padding: 0;
+}
+
+:global(.composer-model-effort-popper .el-select-group__wrap) {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+:global(.composer-model-effort-popper .el-select-group__wrap::after) {
+  display: none;
+}
+
+:global(.composer-model-effort-popper .el-select-group .el-scrollbar) {
+  --el-scrollbar-opacity: 1;
+  --el-scrollbar-hover-opacity: 1;
+  --el-scrollbar-bg-color: var(--mar-scrollbar-thumb);
+  --el-scrollbar-hover-bg-color: var(--mar-scrollbar-thumb-hover);
+}
+
 :global(.composer-model-effort-popper .el-select-group__title) {
+  box-sizing: border-box;
   display: block;
-  height: var(--mar-compact-control-size);
+  height: 2rem;
+  padding: 0.25rem 0.75rem;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);
   line-height: var(--mar-compact-control-size);
 }
 
 :global(.composer-model-effort-popper .el-select-group__wrap + .el-select-group__wrap) {
-  margin-top: 0.25rem;
-  border-top: 1px solid var(--mar-border-default);
-  padding-top: 0.25rem;
+  border-left: 1px solid var(--mar-border-default);
+}
+
+:global(.composer-model-menu-single-column) {
+  width: auto;
+}
+
+:global(.composer-model-menu-single-column .el-select-dropdown__list) {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 :global(.composer-send-button .mar-icon),
