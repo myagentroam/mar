@@ -15,6 +15,11 @@ interface SessionPage {
   readonly nextCursor: string | null;
 }
 
+export interface WorkspaceSessionListSnapshot {
+  readonly listedSessionIds: readonly string[];
+  readonly runningCounts: SessionRunningCounts;
+}
+
 interface SessionPaging {
   readonly nextCursors: Ref<Map<string, string | null>>;
   readonly loadMoreErrors: Ref<Map<string, unknown>>;
@@ -64,6 +69,7 @@ function createWorkspaceSessionProjection() {
   };
 }
 
+/** Owns discovery and list membership; the Workspace view cache stores its restorable snapshot. */
 export function createWorkspaceSessionService(options: {
   readonly runs: Readonly<Ref<readonly AgentRun[]>>;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
@@ -123,10 +129,9 @@ export function createWorkspaceSessionService(options: {
   let loadMoreOperation = 0;
 
   watch(
-    currentGroup,
-    () => {
-      const target = options.workspaceTarget.value;
-      if (target === undefined) return;
+    [options.workspaceTarget, currentGroup],
+    ([target, group], [previousTarget, previousGroup]) => {
+      if (target === undefined || target !== previousTarget || group === previousGroup) return;
       const id = options.tabId(target.nodeId, target.workspaceId);
       synchronizationGenerations.set(id, (synchronizationGenerations.get(id) ?? 0) + 1);
       latestSnapshot = undefined;
@@ -447,14 +452,31 @@ export function createWorkspaceSessionService(options: {
     loadMoreSearchResultsError.value = undefined;
   }
 
-  watch(options.workspaceTarget, () => {
-    clearSearch();
-    pendingSnapshot = undefined;
-    listedSessionIds.value = new Set();
-    runningCounts.value = { MAIN: 0, CHILD: 0 };
-    loadMoreOperation += 1;
-    options.paging.loadingMore.value = false;
-  });
+  watch(
+    options.workspaceTarget,
+    () => {
+      clearSearch();
+      latestSnapshot = undefined;
+      pendingSnapshot = undefined;
+      listedSessionIds.value = new Set();
+      runningCounts.value = { MAIN: 0, CHILD: 0 };
+      loadMoreOperation += 1;
+      options.paging.loadingMore.value = false;
+    },
+    { flush: 'sync' }
+  );
+
+  function snapshot(): WorkspaceSessionListSnapshot {
+    return {
+      listedSessionIds: [...listedSessionIds.value],
+      runningCounts: runningCounts.value
+    };
+  }
+
+  function restore(value: WorkspaceSessionListSnapshot | undefined): void {
+    listedSessionIds.value = new Set(value?.listedSessionIds);
+    runningCounts.value = value?.runningCounts ?? { MAIN: 0, CHILD: 0 };
+  }
 
   async function loadMoreSearchResults(): Promise<void> {
     const workspaceSelection = options.workspaceTarget.value;
@@ -608,6 +630,8 @@ export function createWorkspaceSessionService(options: {
 
   return {
     projection,
+    snapshot,
+    restore,
     currentGroup,
     createVisibleList,
     selectGroup,

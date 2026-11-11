@@ -814,6 +814,49 @@ describe('Workspace Git service', () => {
     }
   });
 
+  it('applies new history refs only after the replacement page succeeds', async () => {
+    let pending = deferred<unknown>();
+    let started = deferred<void>();
+    const { service } = createGitHarness(async (path) => {
+      const url = requestUrl(path);
+      const repository = url.searchParams.get('repositoryPath');
+      if (url.pathname.endsWith('/git/fetch')) return {};
+      if (url.pathname.endsWith('/git/refs'))
+        return { refs: [historyRef(repository === 'old' ? 'refs/heads/old' : 'refs/heads/new')] };
+      if (repository === 'old')
+        return { commits: [historyCommit('old')], nextCursor: 'old-cursor' };
+      started.resolve();
+      return pending.promise;
+    });
+    await service.selectHistory('old', ['refs/heads/old']);
+    const oldRefs = service.historyRefs.value;
+    const loading = service.selectHistory('new', ['refs/heads/missing']);
+    await started.promise;
+    expect(service.historyRefs.value).toBe(oldRefs);
+    expect(service.selectedHistoryRefs.value).toEqual(['refs/heads/missing']);
+    expect(service.historyCommits.value.map((commit) => commit.hash)).toEqual(['old']);
+    pending.reject(new Error('History unavailable'));
+    await loading;
+    expect(service.historyRefs.value).toBe(oldRefs);
+    expect(service.historySource.value).toEqual({
+      repositoryPath: 'old',
+      refs: ['refs/heads/old']
+    });
+    expect(service.historyNextCursor.value).toBe('old-cursor');
+
+    pending = deferred<unknown>();
+    started = deferred<void>();
+    const retry = service.loadHistory(true, true);
+    await started.promise;
+    expect(service.historyRefs.value).toBe(oldRefs);
+    pending.resolve({ commits: [historyCommit('new')], nextCursor: null });
+    await retry;
+    expect(service.historyRefs.value.map((entry) => entry.name)).toEqual(['refs/heads/new']);
+    expect(service.selectedHistoryRefs.value).toEqual([]);
+    expect(service.historySource.value).toEqual({ repositoryPath: 'new', refs: [] });
+    expect(service.historyCommits.value.map((commit) => commit.hash)).toEqual(['new']);
+  });
+
   it('uses the next history cursor and deduplicates commits across pages', async () => {
     let historyPage = 0;
     const { service, request } = createGitHarness(async (path) => {

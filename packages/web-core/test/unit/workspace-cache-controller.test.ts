@@ -1,5 +1,5 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   AgentRun,
@@ -13,6 +13,7 @@ import type { SessionContextUsage } from '../../src/service/conversation-state-s
 import { createWorkspaceSessionPagingService } from '../../src/service/workspace-session-paging-service.js';
 import { createConversationProjectionService } from '../../src/service/conversation-projection-service.js';
 import { createComposerConfigurationService } from '../../src/service/composer-configuration-service.js';
+import { createWorkspaceSessionService } from '../../src/service/workspace-session-service.js';
 
 function nativeSession(id = 'session-1'): Session {
   return {
@@ -32,7 +33,7 @@ function fileWorkbench(snapshot = emptyFileSnapshot()) {
 function fixture(
   domains: Pick<
     Parameters<ReturnType<typeof createWorkbenchWorkspaceCache>['connect']>[0],
-    'files' | 'git' | 'search'
+    'files' | 'git' | 'search' | 'sessionList'
   > = {}
 ) {
   const owner = createWorkbenchWorkspaceCache((nodeId, workspaceId) => `${nodeId}:${workspaceId}`);
@@ -128,6 +129,94 @@ function fixture(
 }
 
 describe('Public Workspace Cache Controller', () => {
+  it('restores grouped cached rows and their loaded range before a refresh settles', async () => {
+    let discovery!: ReturnType<typeof createWorkspaceSessionService>;
+    const f = fixture({
+      sessionList: {
+        snapshot: () => discovery.snapshot(),
+        restore: (snapshot) => discovery.restore(snapshot)
+      }
+    });
+    const request = vi.fn();
+    discovery = createWorkspaceSessionService({
+      runs: f.runs,
+      workspaceTarget: workspaceTargetRef(f.selectedNodeId, f.selectedWorkspaceId),
+      selectedSessionId: f.selectedSessionId,
+      setSelectedSessionId: (id) => (f.selectedSessionId.value = id),
+      paging: f.paging,
+      pageSize: 20,
+      groupingSupported: () => true,
+      tabId: (nodeId, workspaceId) => `${nodeId}:${workspaceId}`,
+      request,
+      notice: vi.fn(),
+      errorMessage: String
+    });
+    const list = discovery.createVisibleList({
+      unfiltered: discovery.projection.sessions,
+      canLoadMore: ref(true)
+    });
+    f.selectedNodeId.value = 'node-1';
+    f.selectedWorkspaceId.value = 'workspace-1';
+    f.cacheService.activate('node-1', 'workspace-1');
+    const first = Array.from({ length: 20 }, (_, index) => nativeSession(`first-${index}`));
+    const tail = [nativeSession('tail-1'), nativeSession('tail-2')];
+    discovery.applySnapshot('node-1', 'workspace-1', {
+      sessions: first,
+      nextCursor: 'first-cursor',
+      runningCounts: { MAIN: 2, CHILD: 1 }
+    });
+    request.mockResolvedValueOnce({ sessions: tail, nextCursor: 'tail-cursor' });
+    await discovery.loadMore();
+    discovery.projection.prepend(nativeSession('cached-only'));
+    f.sessions.value = [...discovery.projection.sessions.value];
+    f.controller.saveCurrentWorkspaceView();
+
+    f.selectedWorkspaceId.value = 'workspace-2';
+    f.cacheService.activate('node-1', 'workspace-2');
+    discovery.selectGroup('CHILD');
+    const child = {
+      ...nativeSession('child'),
+      workspaceId: 'workspace-2',
+      sessionGroup: 'CHILD' as const
+    };
+    discovery.replaceSessions([child]);
+    discovery.applySnapshot('node-1', 'workspace-2', { sessions: [child], nextCursor: null });
+    f.sessions.value = [...discovery.projection.sessions.value];
+    f.controller.saveCurrentWorkspaceView();
+
+    f.selectedWorkspaceId.value = 'workspace-1';
+    f.cacheService.activate('node-1', 'workspace-1');
+    f.controller.restoreWorkspaceView('node-1', 'workspace-1');
+    discovery.replaceSessions(f.cacheService.view('node-1', 'workspace-1').sessions);
+    await nextTick();
+    const expected = [...first, ...tail].map((session) => session.id);
+    expect(list.visible.value.map((session) => session.id)).toEqual(expected);
+    expect(discovery.currentGroup.value).toBe('MAIN');
+    expect(discovery.runningCounts.value).toEqual({ MAIN: 2, CHILD: 1 });
+    expect(f.paging.visibleLimits.value.get('node-1:workspace-1')).toBe(22);
+    expect(f.paging.nextCursors.value.get('node-1:workspace-1')).toBe('tail-cursor');
+
+    let fail!: (error: Error) => void;
+    request.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
+    const refresh = discovery.synchronize('workspace-1', true);
+    expect(list.visible.value.map((session) => session.id)).toEqual(expected);
+    fail(new Error('Refresh unavailable'));
+    await expect(refresh).rejects.toThrow('Refresh unavailable');
+    expect(list.visible.value.map((session) => session.id)).toEqual(expected);
+    expect(f.paging.nextCursors.value.get('node-1:workspace-1')).toBe('tail-cursor');
+
+    request.mockResolvedValueOnce({ sessions: [], nextCursor: null });
+    await discovery.synchronize('workspace-1', true);
+    expect(list.visible.value).toEqual([]);
+
+    f.selectedWorkspaceId.value = 'workspace-2';
+    f.controller.restoreWorkspaceView('node-1', 'workspace-2');
+    discovery.replaceSessions(f.cacheService.view('node-1', 'workspace-2').sessions);
+    await nextTick();
+    expect(discovery.currentGroup.value).toBe('CHILD');
+    expect(list.visible.value.map((session) => session.id)).toEqual(['child']);
+  });
+
   it('captures a pending streaming delta before switching and restoring the session', () => {
     const f = fixture();
     f.selectedNodeId.value = 'node-1';

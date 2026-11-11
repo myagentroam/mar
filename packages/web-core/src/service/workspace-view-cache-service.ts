@@ -6,6 +6,7 @@ import { shallowRef } from 'vue';
 import type { WorkspaceContentSearchSnapshot } from './workspace-content-search-service.js';
 import type { WorkspaceFileTreeSnapshot } from './workspace-file-tree-service.js';
 import type { WorkspaceGitSnapshot } from './workspace-git-service.js';
+import type { WorkspaceSessionListSnapshot } from './workspace-session-service.js';
 import type { WorkspaceFileWorkbenchSnapshot } from '../model/workspace-file-workbench.js';
 import type {
   AgentRun,
@@ -37,6 +38,7 @@ export interface WorkspaceCacheView {
   readonly nodeId: string;
   readonly workspaceId: string;
   readonly sessions: readonly Session[];
+  readonly sessionList?: WorkspaceSessionListSnapshot;
   readonly selectedSessionId?: string;
   readonly draft?: WorkspaceCacheDraft;
   readonly fileWorkbench?: WorkspaceFileWorkbenchSnapshot | undefined;
@@ -47,6 +49,7 @@ export interface WorkspaceCacheView {
 
 export interface WorkspaceCacheCapture {
   readonly sessions: readonly Session[];
+  readonly sessionList?: WorkspaceSessionListSnapshot;
   readonly fileWorkbench?: WorkspaceFileWorkbenchSnapshot | undefined;
   readonly search?: WorkspaceContentSearchSnapshot;
   readonly files?: WorkspaceFileTreeSnapshot;
@@ -63,6 +66,7 @@ interface WorkspaceViewCache {
   readonly nodeId: string;
   readonly workspaceId: string;
   sessions: readonly Session[];
+  sessionList?: WorkspaceSessionListSnapshot;
   selectedSessionId?: string;
   /** Workspace draft Runner configuration; editable content belongs to the draft owner. */
   draft?: WorkspaceCacheDraft;
@@ -158,6 +162,7 @@ export function createWorkspaceViewCacheService(
       nodeId: cache.nodeId,
       workspaceId: cache.workspaceId,
       sessions: cache.sessions,
+      ...(cache.sessionList === undefined ? {} : { sessionList: cache.sessionList }),
       ...(cache.selectedSessionId === undefined
         ? {}
         : { selectedSessionId: cache.selectedSessionId }),
@@ -261,6 +266,10 @@ export function createWorkspaceViewCacheService(
       (session) => session.workspaceId === cache.workspaceId && sessionHasNativeIdentity(session)
     );
     cache.fileWorkbench = input.fileWorkbench;
+    if ('sessionList' in input) {
+      if (input.sessionList === undefined) delete cache.sessionList;
+      else cache.sessionList = input.sessionList;
+    }
     if ('search' in input) {
       if (input.search === undefined) delete cache.search;
       else cache.search = input.search;

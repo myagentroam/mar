@@ -972,6 +972,7 @@ export function createWorkbenchPageController<
   } = workspaceCache.connect({
     paging: workspaceSessionPaging,
     sessions,
+    sessionList: workspaceSessionDiscovery,
     captureDetail: mainPane.captureDetail,
     queue: workspaceQueue,
     runner: newSessionRunner,
