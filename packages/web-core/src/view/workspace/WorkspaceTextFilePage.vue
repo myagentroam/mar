@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -77,6 +78,9 @@ interface EditorTabState {
 const props = withDefaults(
   defineProps<{
     readonly file: FileContent;
+    readonly quoteTarget?: ComposerQuoteTarget | undefined;
+    readonly quoteOrigin?: 'WORKING_TREE' | 'HISTORY';
+    readonly quoteRevision?: string | undefined;
     readonly kind: FilePreviewKind;
     readonly loading?: boolean;
     readonly loadError?: string | undefined;
@@ -124,6 +128,7 @@ const codeEditor = ref<{
   cursorPosition(): { readonly line: number; readonly column: number } | undefined;
   positionAt(offset: number): { readonly line: number; readonly column: number } | undefined;
   selectedText(): string;
+  selectionSnapshot(): { text: string; startLine: number; endLine: number } | undefined;
   insertText(text: string): void;
   openFind(): void;
   isFindOpen(): boolean;
@@ -135,6 +140,58 @@ const codeEditor = ref<{
 const previewRoot = ref<{ readonly root: HTMLElement | undefined }>();
 const fallbackTextArea = ref<HTMLTextAreaElement>();
 const contextMenu = ref<{ open(event: MouseEvent): Promise<void>; close(): void }>();
+const quoteAction = ref<() => void>();
+let copiedSelection = '';
+
+function openPreviewMenu(event: MouseEvent): void {
+  const textarea = fallbackTextArea.value;
+  const from = textarea?.selectionStart ?? 0;
+  const to = textarea?.selectionEnd ?? 0;
+  const selected = codeEditorEnabled.value
+    ? codeEditor.value?.selectionSnapshot()
+    : textarea && from !== to
+      ? {
+          text: textarea.value.slice(from, to),
+          startLine: textarea.value.slice(0, from).split('\n').length,
+          endLine: textarea.value.slice(0, Math.max(from, to - 1)).split('\n').length
+        }
+      : undefined;
+  copiedSelection = selected?.text ?? '';
+  const receive = props.quoteTarget?.capture();
+  const file = props.file;
+  const snapshot = selected
+    ? {
+        type: 'quote' as const,
+        source: 'file' as const,
+        label: `${file.path.split('/').at(-1)}:${selected.startLine}–${selected.endLine}`,
+        path: file.path,
+        origin: props.quoteOrigin ?? ('WORKING_TREE' as const),
+        ...((props.quoteRevision ?? revision.value)
+          ? { revision: props.quoteRevision ?? revision.value }
+          : {}),
+        unsaved: dirty.value,
+        ...selected
+      }
+    : undefined;
+  quoteAction.value =
+    receive && snapshot?.text.trim()
+      ? () => {
+          if (props.active !== false && props.file === file) receive(snapshot);
+          quoteAction.value = undefined;
+        }
+      : undefined;
+  void contextMenu.value?.open(event);
+}
+
+function selectAllFromMenu(): void {
+  if (codeEditorEnabled.value) {
+    codeEditor.value?.focus();
+    codeEditor.value?.selectAll();
+  } else if (fallbackTextArea.value) {
+    fallbackTextArea.value.focus();
+    fallbackTextArea.value.select();
+  }
+}
 watch(
   () => props.active,
   (active) => {
@@ -602,10 +659,7 @@ const windowInteraction = createFilePreviewWindowInteractionService({
 });
 
 async function copySelection(): Promise<void> {
-  const textarea = fallbackTextArea.value;
-  const text = codeEditorEnabled.value
-    ? (codeEditor.value?.selectedText() ?? '')
-    : (textarea?.value.slice(textarea.selectionStart, textarea.selectionEnd) ?? '');
+  const text = copiedSelection;
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
@@ -846,6 +900,17 @@ defineExpose({
       </el-button>
     </template>
     <template #mobile-actions>
+      <el-button
+        v-if="codeEditorEnabled || fallbackTextEnabled"
+        class="file-toolbar-control"
+        circle
+        size="small"
+        :aria-label="translate('filePreviewContext.actions')"
+        @pointerdown.prevent
+        @click="openPreviewMenu"
+      >
+        <MarIcon name="more" />
+      </el-button>
       <el-button
         class="file-toolbar-control"
         v-tooltip="translate('inlineFind.label')"
@@ -1131,7 +1196,7 @@ defineExpose({
           @viewed="!editing && emit('viewed', $event)"
           @navigate-symbol="emit('navigate-symbol', $event)"
           @navigate-file="emit('navigate-file', $event)"
-          @contextmenu="contextMenu?.open($event)"
+          @contextmenu="openPreviewMenu"
         />
         <textarea
           v-else
@@ -1141,7 +1206,7 @@ defineExpose({
           :aria-label="translate('generated.filePreviewDialog.codeEditorPreview')"
           readonly
           spellcheck="false"
-          @contextmenu="contextMenu?.open($event)"
+          @contextmenu="openPreviewMenu"
         />
         <p v-if="!codeEditorEnabled" class="empty">
           {{ translate('generated.filePreviewDialog.onlyTheFirst512KiBIsShown') }}
@@ -1151,6 +1216,10 @@ defineExpose({
     <WorkspacePreviewContextMenu
       ref="contextMenu"
       :paste-enabled="editing && codeEditorEnabled"
+      :select-all-enabled="codeEditorEnabled || fallbackTextEnabled"
+      :quote-enabled="quoteAction !== undefined"
+      @select-all="selectAllFromMenu"
+      @quote="quoteAction?.()"
       @copy="copySelection"
       @paste="pasteSelection"
       @reload="reloadContent"

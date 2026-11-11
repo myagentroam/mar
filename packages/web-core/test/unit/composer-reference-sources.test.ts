@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createComposerReferenceService } from '../../src/service/composer-reference-service.js';
-import type { ComposerReference } from '@myagentroam/protocol';
+import { serializeComposerTag, type ComposerReference } from '@myagentroam/protocol';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -15,6 +15,28 @@ function deferred<T>() {
 
 describe('Composer reference sources', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('rejects an aggregate reference byte overflow before editing the trigger or draft', () => {
+    const input = ref('@alpha');
+    const initial = Array.from({ length: 31 }, (_, index) => ({
+      type: 'file' as const,
+      path: `${index}/${'&'.repeat(800)}`,
+      label: 'File'
+    }));
+    expect(() => serializeComposerTag('mar_references', { references: initial })).not.toThrow();
+    const selected = ref<readonly ComposerReference[]>(initial);
+    const service = createComposerReferenceService(input, undefined, selected);
+    service.update();
+    service.entries.value = [{ path: '&'.repeat(2000), name: 'Alpha', kind: 'FILE' }];
+    const before = selected.value;
+    const edit = vi.fn(() => true);
+    expect(service.selectCandidate(service.candidates.value[0]!, edit)).toBe(false);
+    expect(edit).not.toHaveBeenCalled();
+    expect(selected.value).toBe(before);
+    expect(input.value).toBe('@alpha');
+    expect(service.capacityExceeded.value).toBe(true);
+    expect(service.open.value).toBe(true);
+  });
 
   it('selects session tags without inserting markup and deduplicates by typed identity', () => {
     const input = ref('before @alphaSuffix after');

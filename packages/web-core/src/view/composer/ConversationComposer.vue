@@ -6,7 +6,10 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RunnerCommandState } from '../../model/workbench.js';
 import type { ComposerSkillToken } from '../../model/workbench.js';
 import type { ComposerReference } from '@myagentroam/protocol';
-import { composerReferenceKey } from '../../util/composer-reference.js';
+import {
+  composerReferenceKey,
+  composerReferenceDescription
+} from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import PromptCompletionEditor from './PromptCompletionEditor.vue';
 import type { PromptCompletionBinding } from '../../service/prompt-completion-client-service.js';
@@ -230,7 +233,7 @@ const emit = defineEmits<{
             ><MarIcon name="close" />
           </button>
           <button
-            v-tooltip="reference.type === 'session' ? reference.label : reference.path"
+            v-tooltip="composerReferenceDescription(reference)"
             v-for="reference in fileReferences"
             :key="composerReferenceKey(reference)"
             class="composer-command-state composer-file-reference-state"
@@ -238,15 +241,18 @@ const emit = defineEmits<{
             :disabled="readonly || loading"
             :aria-label="
               translate(
-                reference.type === 'session'
-                  ? 'composer.removeSessionReference'
-                  : 'composer.removeFileReference',
+                reference.type === 'quote'
+                  ? 'composer.removeQuote'
+                  : reference.type === 'session'
+                    ? 'composer.removeSessionReference'
+                    : 'composer.removeFileReference',
                 { name: reference.label }
               )
             "
             @click="emit('removeReference', composerReferenceKey(reference))"
           >
             <MarIcon v-if="reference.type === 'session'" name="recent-sessions" />
+            <MarIcon v-else-if="reference.type === 'quote'" name="quote" />
             <FileTypeIcon
               v-else
               :name="reference.path"

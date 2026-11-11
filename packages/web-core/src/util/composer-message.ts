@@ -2,20 +2,25 @@ import {
   parseComposerTags,
   type ChannelOrigin,
   type ComposerAttachmentFile,
+  type ComposerReference,
   type SessionMessageOrigin
 } from '@myagentroam/protocol';
 import { conversationPayload } from './conversation-history.js';
 
+export function composerMessageInputText(payload: unknown): string {
+  const value = conversationPayload(payload);
+  return typeof value?.text === 'string'
+    ? value.text
+    : typeof value?.content === 'string'
+      ? value.content
+      : '';
+}
+
 export function composerMessagePresentation(payload: unknown) {
   const value = conversationPayload(payload);
-  const raw =
-    typeof value?.text === 'string'
-      ? value.text
-      : typeof value?.content === 'string'
-        ? value.content
-        : '';
-  const parts = parseComposerTags(raw);
+  const parts = parseComposerTags(composerMessageInputText(payload));
   const files: ComposerAttachmentFile[] = [];
+  const references: ComposerReference[] = [];
   let goal: 'start' | 'continue' | undefined;
   let scheduled = value?.source === 'SCHEDULED';
   let restarted = false;
@@ -24,6 +29,10 @@ export function composerMessagePresentation(payload: unknown) {
   const text = parts
     .map((part) => {
       if (part.kind === 'text') return part.text;
+      if (part.kind === 'mar_references') {
+        references.push(...part.payload.references);
+        return '';
+      }
       if (part.kind === 'mar_steer') return part.payload.message;
       if (part.kind === 'mar_channel') {
         channel ??= part.payload;
@@ -64,6 +73,7 @@ export function composerMessagePresentation(payload: unknown) {
   return {
     text,
     files,
+    references,
     goal,
     scheduled,
     ...(channel === undefined ? {} : { channel }),

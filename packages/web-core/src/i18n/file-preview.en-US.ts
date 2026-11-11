@@ -103,6 +103,7 @@ export const filePreviewEnUS = {
     noDefinition: 'No definitions or references found.'
   },
   filePreviewContext: {
+    actions: 'File actions',
     copy: 'Copy',
     paste: 'Paste',
     reload: 'Reload',

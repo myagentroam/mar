@@ -495,6 +495,9 @@ export function createWorkspaceFileToolsController(input: {
 }
 
 export interface WorkbenchFilesView {
+  quoteTargetFor: (
+    tab: import('../util/workspace-file-tab.js').WorkspaceFileTab
+  ) => import('../model/composer-quote.js').ComposerQuoteTarget | undefined;
   fileWorkbench: ReturnType<typeof createWorkspaceFileWorkbenchController>;
   workspaceFileWorkbench: WorkspaceFileWorkbenchHandle | null | undefined;
   mountSurface: () => void;

@@ -99,6 +99,16 @@ export const composerEnUS = {
     implementPrompt: 'Implement the plan above.'
   },
   composer: {
+    quote: 'Quote',
+    selectAll: 'Select all',
+    removeQuote: 'Remove quote {name}',
+    quoteAssistant: 'Reply excerpt',
+    quoteStreaming: 'In-progress excerpt',
+    quoteHistory: 'History',
+    quoteToolChange: 'This change',
+    quoteWorkingTree: 'Working tree',
+    quoteUnsaved: 'Unsaved edits',
+    quoteTooLarge: 'Cannot add this quote. Select less text or remove some references.',
     skillUnavailableToken: 'Skill {name} is unavailable; click to remove it',
     removeSkill: 'Remove skill {name}',
     removeFileReference: 'Remove file reference {name}',

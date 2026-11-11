@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
+import { selectedTextOffsets, unifiedDiffLines } from '../../util/quote-selection.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
@@ -21,19 +23,24 @@ import WorkspaceFilePageFrame from './WorkspaceFilePageFrame.vue';
 import FilePreviewState from './FilePreviewState.vue';
 import WorkspacePreviewContextMenu from './WorkspacePreviewContextMenu.vue';
 
-const props = defineProps<{
-  readonly path: string;
-  readonly diff: unknown;
-  readonly paths: readonly string[];
-  readonly loading: boolean;
-  readonly loadFailed?: boolean;
-  readonly loadErrorMessage?: string | undefined;
-  readonly source?: 'WORKING_TREE' | 'HISTORY' | 'TOOL_CHANGE';
-  readonly previewEnabled: boolean;
-  readonly active?: boolean;
-  readonly embedded?: boolean;
-  readonly codeNavigationEnabled?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    readonly path: string;
+    readonly quoteTarget?: ComposerQuoteTarget | undefined;
+    readonly revision?: string | undefined;
+    readonly diff: unknown;
+    readonly paths: readonly string[];
+    readonly loading: boolean;
+    readonly loadFailed?: boolean;
+    readonly loadErrorMessage?: string | undefined;
+    readonly source?: 'WORKING_TREE' | 'HISTORY' | 'TOOL_CHANGE';
+    readonly previewEnabled: boolean;
+    readonly active?: boolean;
+    readonly embedded?: boolean;
+    readonly codeNavigationEnabled?: boolean;
+  }>(),
+  { active: true }
+);
 
 const emit = defineEmits<{
   close: [];
@@ -48,12 +55,17 @@ const emit = defineEmits<{
 
 interface DiffHunk {
   readonly addedLines: readonly number[];
-  readonly deletedLines: readonly { readonly text: string; readonly insertBefore: number }[];
+  readonly deletedLines: readonly {
+    readonly text: string;
+    readonly insertBefore: number;
+    readonly oldLine: number;
+  }[];
 }
 
 interface DiffRow {
   readonly kind: 'context' | 'added' | 'deleted';
   readonly lineNumber: number | null;
+  readonly oldLine?: number;
   readonly text: string;
   readonly diffIndex: number | undefined;
 }
@@ -85,6 +97,8 @@ const minimap = ref<HTMLElement>();
 const diffRoot = ref<{ readonly root: HTMLElement | undefined }>();
 let unregisterFindShortcut: (() => void) | undefined;
 const contextMenu = ref<{ open(event: MouseEvent): Promise<void>; close(): void }>();
+const quoteAction = ref<() => void>();
+let copiedSelection = '';
 watch(
   () => props.active,
   (active) => {
@@ -125,7 +139,13 @@ const workingTreeRows = computed(() => {
   hunks.value.forEach((hunk, diffIndex) => {
     for (const deleted of hunk.deletedLines) {
       const rows = deletedBefore.get(deleted.insertBefore) ?? [];
-      rows.push({ kind: 'deleted', lineNumber: null, text: deleted.text, diffIndex });
+      rows.push({
+        kind: 'deleted',
+        lineNumber: null,
+        oldLine: deleted.oldLine,
+        text: deleted.text,
+        diffIndex
+      });
       deletedBefore.set(deleted.insertBefore, rows);
     }
   });
@@ -253,48 +273,27 @@ function parseDiffHunks(value: string): readonly DiffHunk[] {
   const hunks: DiffHunk[] = [];
   let current:
     | {
-        beforeLine: number;
-        afterLine: number;
         addedLines: number[];
-        deletedLines: { text: string; insertBefore: number }[];
+        deletedLines: { text: string; insertBefore: number; oldLine: number }[];
       }
     | undefined;
-  const finishCurrent = (): void => {
-    if (current === undefined) return;
-    hunks.push({
-      addedLines: current.addedLines,
-      deletedLines: current.deletedLines
-    });
-  };
-  for (const line of value.split('\n')) {
-    const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (match !== null) {
-      finishCurrent();
-      current = {
-        beforeLine: Number(match[1]),
-        afterLine: Number(match[3]),
-        addedLines: [],
-        deletedLines: []
-      };
-      continue;
-    }
-    if (current === undefined) continue;
-    if (line.startsWith('-') && !line.startsWith('---')) {
-      current.deletedLines.push({ text: line.slice(1), insertBefore: current.afterLine });
-      current.beforeLine += 1;
-      continue;
-    }
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      current.addedLines.push(current.afterLine);
-      current.afterLine += 1;
-      continue;
-    }
-    if (line.startsWith(' ')) {
-      current.beforeLine += 1;
-      current.afterLine += 1;
+  let afterLine = 1;
+  for (const line of unifiedDiffLines(value)) {
+    if (line.hunk) {
+      current = { addedLines: [], deletedLines: [] };
+      hunks.push(current);
+      afterLine = Number(/\+(\d+)/.exec(line.text)?.[1] ?? 1);
+    } else if (current && line.oldLine !== undefined && line.newLine === undefined) {
+      current.deletedLines.push({
+        text: line.text.slice(1),
+        insertBefore: afterLine,
+        oldLine: line.oldLine
+      });
+    } else if (line.newLine !== undefined) {
+      if (line.oldLine === undefined) current?.addedLines.push(line.newLine);
+      afterLine = line.newLine + 1;
     }
   }
-  finishCurrent();
   return hunks;
 }
 
@@ -517,9 +516,15 @@ function focus(): void {
   diffRoot.value?.root?.focus();
 }
 
-function selectAll(): boolean {
+function selectAll(fromMenu = false): boolean {
   const pane = hasWorkingTreeFullText.value ? workingTreePane.value : historyDiffPane.value;
   if (!findAvailable.value || pane === undefined || typeof window === 'undefined') return false;
+  if (
+    !fromMenu &&
+    document.activeElement !== diffRoot.value?.root &&
+    !pane.contains(document.activeElement)
+  )
+    return false;
   const selection = window.getSelection();
   if (selection === null) return false;
   selection.removeAllRanges();
@@ -528,20 +533,61 @@ function selectAll(): boolean {
 }
 
 async function copySelection(): Promise<void> {
-  const selection = window.getSelection();
-  const root = diffRoot.value?.root;
-  if (
-    !selection ||
-    selection.isCollapsed ||
-    !root?.contains(selection.anchorNode) ||
-    !root.contains(selection.focusNode)
-  )
-    return;
+  if (!copiedSelection) return;
   try {
-    await navigator.clipboard.writeText(selection.toString());
+    await navigator.clipboard.writeText(copiedSelection);
   } catch {
     showMessage(translate('filePreviewContext.clipboardFailed'), 'error');
   }
+}
+
+function openPreviewMenu(event: MouseEvent): void {
+  const full = hasWorkingTreeFullText.value;
+  const pane = full ? workingTreePane.value : historyDiffPane.value;
+  const rows = full
+    ? workingTreeRows.value.map((row) => ({
+        text: row.text,
+        prefix: row.kind === 'deleted' ? '-' : row.kind === 'added' ? '+' : ' ',
+        oldLine: row.oldLine,
+        newLine: row.lineNumber ?? undefined
+      }))
+    : unifiedDiffLines(diffText.value).map((row) => ({ ...row, prefix: '' }));
+  const selected = pane
+    ? selectedTextOffsets(pane, [
+        ...pane.querySelectorAll<HTMLElement>(full ? '[data-diff-line-content]' : 'code > span')
+      ]).map(({ index, from, to }) => ({
+        ...rows[index]!,
+        text: rows[index]!.prefix + rows[index]!.text.slice(from, to)
+      }))
+    : [];
+  copiedSelection = selected.map((row) => row.text).join('\n');
+  const oldLines = selected.flatMap((row) => (row.oldLine === undefined ? [] : [row.oldLine]));
+  const newLines = selected.flatMap((row) => (row.newLine === undefined ? [] : [row.newLine]));
+  const receive = props.quoteTarget?.capture();
+  const path = props.path;
+  const diff = props.diff;
+  const snapshot = {
+    type: 'quote' as const,
+    source: 'diff' as const,
+    path,
+    label: `${path.split('/').at(-1)} · Diff`,
+    origin: props.source ?? 'WORKING_TREE',
+    ...(props.revision ? { revision: props.revision } : {}),
+    side: (oldLines.length ? (newLines.length ? 'mixed' : 'old') : 'new') as
+      'mixed' | 'old' | 'new',
+    ...(newLines.length ? { startLine: newLines[0]!, endLine: newLines.at(-1)! } : {}),
+    ...(oldLines.length ? { oldStartLine: oldLines[0]!, oldEndLine: oldLines.at(-1)! } : {}),
+    text: copiedSelection
+  };
+  quoteAction.value =
+    receive && copiedSelection.trim() && (oldLines.length || newLines.length)
+      ? () => {
+          if (props.active !== false && props.path === path && props.diff === diff)
+            receive(snapshot);
+          quoteAction.value = undefined;
+        }
+      : undefined;
+  void contextMenu.value?.open(event);
 }
 
 function toggleEdit(): 'CHANGED' | 'UNAVAILABLE' {
@@ -670,6 +716,7 @@ defineExpose({
     mobile-actions-layout="stacked"
     :mobile-actions-label="translate('generated.gitDiffViewer.diffPreviewActions')"
     :aria-label="`${path} ${translate(props.source === 'TOOL_CHANGE' ? 'presentation.thisChange' : 'common.gitDiff')}`"
+    @contextmenu.self="openPreviewMenu"
   >
     <template #status>
       <div class="diff-mobile-summary" :aria-label="translate('gitDiffViewer.mobileSummary')">
@@ -737,6 +784,17 @@ defineExpose({
         /></el-button>
       </div>
       <div class="diff-mobile-action-row diff-mobile-utilities">
+        <el-button
+          class="file-toolbar-control"
+          circle
+          size="small"
+          :disabled="!findAvailable"
+          :aria-label="translate('filePreviewContext.actions')"
+          @pointerdown.prevent
+          @click="openPreviewMenu"
+        >
+          <MarIcon name="more" />
+        </el-button>
         <el-button
           class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
@@ -877,7 +935,7 @@ defineExpose({
     <main
       class="file-preview-content unified-diff-content"
       @click="focus"
-      @contextmenu="contextMenu?.open($event)"
+      @contextmenu="openPreviewMenu"
     >
       <template v-if="!props.loading">
         <FilePreviewState
@@ -982,6 +1040,10 @@ defineExpose({
     <WorkspacePreviewContextMenu
       ref="contextMenu"
       :paste-enabled="false"
+      :select-all-enabled="findAvailable"
+      :quote-enabled="quoteAction !== undefined"
+      @select-all="selectAll(true)"
+      @quote="quoteAction?.()"
       @copy="copySelection"
       @reload="emit('retry')"
     />

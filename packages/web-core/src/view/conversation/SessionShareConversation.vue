@@ -38,6 +38,7 @@ const chat = createSessionShareConversationService({
   beforeSend: props.access.ensureNamed,
   notice: showMessage
 });
+defineExpose({ quoteTarget: chat.quoteTarget });
 const {
   input,
   selectedSession,
@@ -210,6 +211,7 @@ onBeforeUnmount(() => {
         @reload="chat.restartWatch"
       >
         <ConversationTimeline
+          :quote-target="chat.quoteTarget"
           :turns="turns"
           :runs="chat.runs.value"
           :sharer-name="access.session.value!.sharerName"
@@ -308,6 +310,7 @@ onBeforeUnmount(() => {
             :loading="fileReferences.loading.value"
             :query="fileReferences.match.value?.query ?? ''"
             :file-error="fileReferences.fileError.value"
+            :capacity-exceeded="fileReferences.capacityExceeded.value"
             :file-more="fileReferences.fileMore.value"
             @activate="(index) => (fileReferences.activeIndex.value = index)"
             @select="interaction.selectReference"

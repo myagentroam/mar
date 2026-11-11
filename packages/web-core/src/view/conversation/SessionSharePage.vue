@@ -20,6 +20,7 @@ const StandaloneFilePreviewPage = defineAsyncComponent(
 );
 
 const props = defineProps<{ shareId: string }>();
+const conversation = ref<InstanceType<typeof SessionShareConversation>>();
 const access = createSessionShareAccessService(props.shareId);
 const { session, invalidCode } = access;
 const context = `share:${props.shareId}`;
@@ -89,9 +90,15 @@ onBeforeUnmount(() => {
 
 <template>
   <template v-if="session">
-    <SessionShareConversation v-if="!standalone" :access="access" @open-file="openFile" />
+    <SessionShareConversation
+      v-if="!standalone"
+      ref="conversation"
+      :access="access"
+      @open-file="openFile"
+    />
     <section v-if="previewIntent" class="share-preview" :class="{ 'is-embedded': !standalone }">
       <StandaloneFilePreviewPage
+        :quote-target="standalone ? undefined : conversation?.quoteTarget"
         :key="previewVersion"
         :share="{ access, intent: previewIntent, embedded: !standalone }"
         @close="previewIntent = undefined"

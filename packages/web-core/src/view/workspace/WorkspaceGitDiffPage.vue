@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { filePreviewErrorSummary } from '../../util/error-presentation.js';
 import type { WorkspaceFileTab } from '../../util/workspace-file-tab.js';
@@ -6,6 +7,7 @@ import type { FileNavigationRequest } from './CodeFileEditor.vue';
 import GitDiffViewer from './GitDiffViewer.vue';
 
 const props = defineProps<{
+  readonly quoteTarget?: ComposerQuoteTarget | undefined;
   readonly tab: WorkspaceFileTab;
   readonly active: boolean;
   readonly load: (tab: WorkspaceFileTab, signal?: AbortSignal) => Promise<unknown>;
@@ -92,6 +94,8 @@ defineExpose({
 
 <template>
   <GitDiffViewer
+    :quote-target="props.quoteTarget"
+    :revision="props.tab.commit"
     ref="viewer"
     :active="props.active"
     :code-navigation-enabled="

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import type { MessageType } from '../../model/message-feedback.js';
 import { isComposerAttachmentResourcePath } from '@myagentroam/protocol';
 import type {
@@ -30,6 +31,7 @@ import { confirmDiscardFileDraft } from '../../service/file-draft-confirm-servic
 import type { WorkspaceFileOpenIntent, WorkspaceFileTab } from '../../util/workspace-file-tab.js';
 
 const props = defineProps<{
+  readonly quoteTargetFor?: (tab: WorkspaceFileTab) => ComposerQuoteTarget | undefined;
   readonly predictionEnabled?: boolean;
   readonly nodeId: string | undefined;
   readonly workspaceId: string | undefined;
@@ -420,6 +422,9 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
     >
       <template v-for="preview in filePageFrames" :key="preview.id">
         <WorkspaceTextFilePage
+          :quote-target="props.quoteTargetFor?.(tab)"
+          :quote-origin="tab.kind === 'HISTORY_TEXT' ? 'HISTORY' : 'WORKING_TREE'"
+          :quote-revision="tab.commit"
           v-if="
             tab.id === preview.id &&
             preview.fileContent.value !== undefined &&
@@ -514,6 +519,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
         />
       </template>
       <WorkspaceGitDiffPage
+        :quote-target="props.quoteTargetFor?.(tab)"
         v-if="
           tab.kind === 'WORKTREE_DIFF' ||
           tab.kind === 'HISTORY_DIFF' ||

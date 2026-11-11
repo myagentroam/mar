@@ -1,5 +1,9 @@
 export const errorPresentationEnUS = {
   errors: {
+    COMPOSER_TAG_INVALID:
+      'The selected references are invalid or exceed the limit. Remove some references and try again.',
+    COMPOSER_MESSAGE_TOO_LARGE:
+      'The message and its context exceed the size limit. Shorten the message or remove some references or skills.',
     COMPOSER_IMAGE_CONVERSION_FAILED:
       'Could not convert this BMP image to PNG. Save it as PNG and try again.',
     COMPOSER_IMAGE_LIMIT_EXCEEDED:

@@ -96,6 +96,16 @@ export const composerZhCN = {
     implementPrompt: '请执行上述计划。'
   },
   composer: {
+    quote: '引用',
+    selectAll: '全选',
+    removeQuote: '移除引用 {name}',
+    quoteAssistant: '回复片段',
+    quoteStreaming: '生成中片段',
+    quoteHistory: '历史版本',
+    quoteToolChange: '当次修改',
+    quoteWorkingTree: '工作区版本',
+    quoteUnsaved: '未保存编辑',
+    quoteTooLarge: '无法加入引用，请缩小选区或移除部分引用。',
     skillUnavailableToken: '技能 {name} 已不可用，点击删除',
     removeSkill: '移除技能 {name}',
     removeFileReference: '移除文件引用 {name}',

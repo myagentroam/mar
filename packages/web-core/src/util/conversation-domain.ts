@@ -15,6 +15,7 @@ export function displayConversationItem(item: ConversationItem, runId?: string |
     const input = composerMessagePresentation(item.payload);
     if (
       input.files.length > 0 ||
+      input.references.length > 0 ||
       input.goal !== undefined ||
       input.scheduled ||
       input.restarted ||

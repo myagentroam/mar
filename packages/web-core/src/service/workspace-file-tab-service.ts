@@ -13,6 +13,7 @@ export interface WorkspaceFileTabService {
   readonly activeTab: ComputedRef<WorkspaceFileTab | undefined>;
   open(intent: WorkspaceFileOpenIntent): WorkspaceFileTab;
   activate(id: number): void;
+  setQuotePane(id: number, pane: 'main' | 'aside'): void;
   move(id: number, targetIndex: number): void;
   remove(id: number): void;
   clear(): void;
@@ -40,6 +41,7 @@ export function createWorkspaceFileTabService(): WorkspaceFileTabService {
     if (existing !== undefined) {
       const updated = {
         ...existing,
+        quotePane: intent.quotePane ?? 'main',
         ...(intent.targetLine === undefined ? {} : { targetLine: intent.targetLine }),
         ...(intent.targetColumn === undefined ? {} : { targetColumn: intent.targetColumn })
       };
@@ -122,6 +124,9 @@ export function createWorkspaceFileTabService(): WorkspaceFileTabService {
     activeTab,
     open,
     activate,
+    setQuotePane: (id, quotePane) => {
+      tabs.value = tabs.value.map((tab) => (tab.id === id ? { ...tab, quotePane } : tab));
+    },
     move,
     remove,
     clear,

@@ -46,6 +46,27 @@ afterEach(() => {
 });
 
 describe('Composer product tag presentation', () => {
+  it('checks the final message length after later edits and skill/reference serialization', () => {
+    const quote = {
+      type: 'quote',
+      id: 'quote-1',
+      source: 'assistant',
+      messageId: 'reply',
+      label: 'Reply',
+      text: 'Snapshot'
+    } as const;
+    expect(() => serializeComposerMessage([], 'x'.repeat(100_000))).not.toThrow();
+    expect(() => serializeComposerMessage([], 'x'.repeat(100_000), [quote])).toThrow(
+      'COMPOSER_MESSAGE_TOO_LARGE'
+    );
+    expect(() =>
+      serializeComposerMessage(
+        [{ name: 'review', source: 'WORKSPACE', skillFilePath: 'SKILL.md', available: true }],
+        'x'.repeat(100_000)
+      )
+    ).toThrow('COMPOSER_MESSAGE_TOO_LARGE');
+  });
+
   it('hides mixed session references and preserves their metadata when a queue body is edited', () => {
     const selected = [
       { type: 'file' as const, path: 'src/main.ts', label: 'main.ts' },
@@ -253,7 +274,7 @@ describe('Composer product tag presentation', () => {
     });
     expect(presentation.files).toEqual([{ name: 'image.png', mime: 'image/png', path: resource }]);
   });
-  it('hides selection inputs but keeps uploaded file metadata and user text', () => {
+  it('hides selection markup but retains reference-only messages, uploaded files and user text', () => {
     const payload = { text: ['检查这份代码', skills, references, attachments].join('\n') };
     expect(conversationItemText('user_message', payload)).toBe('检查这份代码');
     expect(composerMessagePresentation(payload).files).toEqual(files);
@@ -262,12 +283,16 @@ describe('Composer product tag presentation', () => {
     ).toBe(true);
     expect(
       displayConversationItem({
-        id: 'hidden',
+        id: 'reference-only',
         kind: 'user_message',
         status: 'COMPLETED',
         payload: { text: references }
       })
-    ).toBe(false);
+    ).toBe(true);
+    expect(composerMessagePresentation({ text: references })).toMatchObject({
+      text: '',
+      references: [{ type: 'file', path: 'src/main.ts' }]
+    });
     expect(
       displayConversationItem({
         id: 'file',

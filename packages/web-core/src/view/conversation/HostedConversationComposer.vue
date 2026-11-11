@@ -1,4 +1,10 @@
 <script setup lang="ts">
+// Owns the current hosted Composer draft; quote callbacks bind its watch and reuse the existing submission snapshot.
+import { parseComposerTags, type ComposerReference } from '@myagentroam/protocol';
+import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
+import { appendComposerQuote } from '../../util/composer-quote.js';
+import { composerReferenceKey } from '../../util/composer-reference.js';
+import { serializeComposerMessage } from '../../service/composer-skill-token-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -50,6 +56,7 @@ const emit = defineEmits<{
 }>();
 
 const input = props.draft && props.entry ? props.entry.prompt : ref('');
+const references = ref<readonly ComposerReference[]>([]);
 const composer = ref<{ readonly $el: HTMLElement; focusAt(cursor: number): void }>();
 const attachments =
   props.draft && props.entry ? props.entry.attachments : ref<HostedAttachment[]>([]);
@@ -68,12 +75,36 @@ let messageIntent:
   | undefined;
 
 function restoreMessage(text: string): void {
-  input.value = text;
+  const parts = parseComposerTags(text);
+  references.value = parts.flatMap((part) =>
+    part.kind === 'mar_references' ? part.payload.references : []
+  );
+  input.value = parts
+    .map((part) =>
+      part.kind === 'mar_references' ? '' : part.kind === 'text' ? part.text : part.raw
+    )
+    .join('')
+    .trim();
   messageIntent = undefined;
   composer.value?.focusAt(text.length);
 }
 
-defineExpose({ restoreMessage });
+const quoteTarget: ComposerQuoteTarget = {
+  capture() {
+    const target = props.workspace.selectedWatchId();
+    if (props.draft || composerReadonly.value || disposed || target === undefined) return undefined;
+    return (quote) => {
+      if (composerReadonly.value || disposed || target !== props.workspace.selectedWatchId())
+        return;
+      try {
+        references.value = appendComposerQuote(references.value, quote, input.value);
+      } catch {
+        showMessage(translate('composer.quoteTooLarge'), 'warning');
+      }
+    };
+  }
+};
+defineExpose({ restoreMessage, quoteTarget });
 
 const snapshot = computed(() => {
   if (!props.draft || !props.entry) return props.workspace.snapshot.value;
@@ -138,6 +169,7 @@ const completedAttachmentIds = computed(() =>
 const inputHasContent = computed(
   () =>
     input.value.trim().length > 0 ||
+    references.value.length > 0 ||
     completedAttachmentIds.value.length > 0 ||
     attachments.value.some((attachment) => attachment.status === 'PENDING')
 );
@@ -384,6 +416,7 @@ function removeAttachment(attachmentId: string): void {
 function messageFingerprint(): string {
   return JSON.stringify({
     input: input.value,
+    references: references.value,
     attachments: completedAttachmentIds.value,
     modelId: selectedModelId.value,
     templateId: snapshot.value?.conversation.templateId ?? draftTemplateId.value
@@ -508,7 +541,7 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
       messageIntent = { fingerprint, clientMessageId: crypto.randomUUID() };
     submittedIntent = messageIntent;
     await props.workspace.sendMessage({
-      prompt: input.value,
+      prompt: serializeComposerMessage([], input.value, references.value),
       attachmentIds: completedAttachmentIds.value,
       clientMessageId: submittedIntent.clientMessageId,
       modelId: selectedModelId.value,
@@ -521,6 +554,7 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
     )
       return;
     input.value = '';
+    references.value = [];
     for (const attachment of attachments.value)
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
     attachments.value = [];
@@ -661,6 +695,10 @@ onBeforeUnmount(() => {
     :command-states="[]"
     :loading="submitting || configurationUpdating || workspace.templateChanging.value"
     :skill-tokens="[]"
+    :file-references="references"
+    @remove-file-reference="
+      references = references.filter((reference) => composerReferenceKey(reference) !== $event)
+    "
     @submit="send"
     @paste="attachmentInput.onPaste"
     @dragenter="attachmentInput.onDragEnter"

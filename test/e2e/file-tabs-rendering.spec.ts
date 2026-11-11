@@ -451,6 +451,22 @@ for (const width of [1280, 390]) {
       const frame = page.locator('.workspace-file-page-frame:visible');
       await expect(frame.locator('.unified-history-diff')).toContainText('src/first.ts');
       await expect(frame).toBeFocused();
+      await frame.locator('.unified-history-diff').click();
+      await page.keyboard.press('Control+a');
+      expect(
+        await frame.locator('.unified-history-diff').evaluate((pane) => {
+          const selection = window.getSelection()!;
+          return {
+            inside: pane.contains(selection.anchorNode) && pane.contains(selection.focusNode),
+            text: selection.toString()
+          };
+        })
+      ).toMatchObject({ inside: true, text: expect.stringContaining('src/first.ts') });
+      await page.keyboard.press('Shift+F10');
+      await expect(page.getByRole('menuitem', { name: 'Select all', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await frame.focus();
+      await page.evaluate(() => window.getSelection()?.removeAllRanges());
       await captureScreenshot(page, `file-preview-diff-${width}.png`);
       const content = frame.locator('.unified-diff-content');
       for (const panel of ['#171e28', '#ffffff', '#263b32']) {
@@ -486,6 +502,13 @@ for (const width of [1280, 390]) {
       const findInput = frame.locator('.inline-find-bar input');
       await findInput.fill('before');
       await expect(frame.locator('.inline-find-count')).toContainText('1 / 1');
+      await page.keyboard.press('Control+a');
+      expect(
+        await findInput.evaluate((element: HTMLInputElement) => ({
+          from: element.selectionStart,
+          to: element.selectionEnd
+        }))
+      ).toEqual({ from: 0, to: 6 });
       await page.keyboard.press('Enter');
       await page.keyboard.press('Shift+Enter');
       await expect(frame.locator('.inline-find-count')).toContainText('1 / 1');

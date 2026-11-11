@@ -563,6 +563,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             @reload="page.sessionList.reloadSelectedSession"
           />
           <WorkspaceFileWorkbench
+            :quote-target-for="page.files.quoteTargetFor"
             :key="`${page.selection.workspaceTarget?.nodeId}:${page.selection.workspaceTarget?.workspaceId}`"
             :ref="(instance) => (page.files.workspaceFileWorkbench = instance as never)"
             :node-id="page.selection.workspaceTarget?.nodeId"

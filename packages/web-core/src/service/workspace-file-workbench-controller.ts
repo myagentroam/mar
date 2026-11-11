@@ -1,3 +1,8 @@
+/**
+ * Owns file-tab/preview navigation and page lifetimes for one Workspace surface.
+ * A tab retains only its originating Pane for quote routing; draft admission and Session identity
+ * remain with the supplied Workbench/Pane owners, never with file loading or navigation.
+ */
 import { computed, nextTick, ref, shallowReadonly, shallowRef, watch, type Ref } from 'vue';
 import type {
   DirtyTextDraft,
@@ -556,7 +561,12 @@ export function createWorkspaceFileWorkbenchController(options: {
     focusWhenReady(tabs.activeTab.value, generation);
     await nextTick();
   }
-  async function openFile(path: string, line?: number, column?: number): Promise<void> {
+  async function openFile(
+    path: string,
+    line?: number,
+    column?: number,
+    quotePane: 'main' | 'aside' = 'main'
+  ): Promise<void> {
     const generation = beginOpen();
     const target = options.target();
     if (target === undefined) return;
@@ -591,6 +601,7 @@ export function createWorkspaceFileWorkbenchController(options: {
       existing === undefined
         ? openWorkspaceFile(path, line, undefined, true, column, undefined, true, true)
         : Promise.resolve();
+    if (tabs.activeTabId.value !== undefined) tabs.setQuotePane(tabs.activeTabId.value, quotePane);
     const targetTab = tabs.activeTab.value;
     const targetId = targetTab?.id;
     const current = () =>
@@ -615,7 +626,12 @@ export function createWorkspaceFileWorkbenchController(options: {
     });
     await opening;
   }
-  async function openComparison(path: string, line?: number, column?: number): Promise<void> {
+  async function openComparison(
+    path: string,
+    line?: number,
+    column?: number,
+    quotePane: 'main' | 'aside' = 'main'
+  ): Promise<void> {
     const generation = beginOpen();
     const target = options.target();
     if (target === undefined) return;
@@ -627,8 +643,8 @@ export function createWorkspaceFileWorkbenchController(options: {
       current.workspaceId !== target.workspaceId
     )
       return;
-    if (intent !== undefined) await openTab(intent);
-    else await openFile(path, line, column);
+    if (intent !== undefined) await openTab({ ...intent, quotePane });
+    else await openFile(path, line, column, quotePane);
   }
   async function openStandalone(intent: StandaloneFileOpenIntent): Promise<void> {
     if (intent.tab !== undefined) return openTab(intent.tab);
