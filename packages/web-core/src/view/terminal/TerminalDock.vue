@@ -14,7 +14,10 @@ import {
 } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
-import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
+import {
+  AuthenticationContextChangedError,
+  WORKBENCH_HTTP_KEY
+} from '../../service/workbench-http-service.js';
 import { ApiError, errorCode } from '../../util/api-error.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
@@ -245,7 +248,8 @@ async function openTerminal(): Promise<void> {
     if (released || revision !== contextRevision || !props.active) return;
     notifyFailure(
       translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) }),
-      error
+      error,
+      translate('generated.terminalDock.createResultUnknown', { value0: message(error) })
     );
   } finally {
     creating.value = false;
@@ -274,6 +278,7 @@ function collapseDock(): void {
 }
 async function closeTerminal(terminalId: string): Promise<void> {
   if (props.nodeId === undefined) return;
+  const revision = contextRevision;
   closingId.value = terminalId;
   try {
     await http.request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
@@ -288,9 +293,11 @@ async function closeTerminal(terminalId: string): Promise<void> {
     }
     if (terminals.value.length === 0) collapseDock();
   } catch (error) {
+    if (released || revision !== contextRevision) return;
     notifyFailure(
       translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) }),
-      error
+      error,
+      translate('generated.terminalDock.closeResultUnknown', { value0: message(error) })
     );
   } finally {
     closingId.value = undefined;
@@ -306,8 +313,15 @@ function message(error: unknown): string {
   return props.errorMessage(error);
 }
 
-function notifyFailure(message: string, error: unknown): void {
-  if (errorCode(error) === 'NETWORK_UNAVAILABLE' && workbenchHttp?.networkUnavailable.value) return;
+function notifyFailure(message: string, error: unknown, unknownWriteMessage?: string): void {
+  if (errorCode(error) === 'NETWORK_UNAVAILABLE') {
+    // A later reachable response does not establish the outcome of an earlier write.
+    if (unknownWriteMessage !== undefined) {
+      emit('notice', unknownWriteMessage, 'warning', error);
+      return;
+    }
+    if (workbenchHttp?.networkUnavailable.value) return;
+  }
   emit('notice', message, 'error', error);
 }
 
@@ -380,14 +394,22 @@ async function releaseTerminals(
     )
   );
   const failed = results.filter((result) => result.status === 'rejected');
-  const firstFailure = failed[0];
+  // Keep obsolete identity causes suppressible before choosing an uncertain aggregate result.
+  const firstFailure =
+    failed.find((result) => result.reason instanceof AuthenticationContextChangedError) ??
+    failed.find((result) => errorCode(result.reason) === 'NETWORK_UNAVAILABLE') ??
+    failed[0];
   if (firstFailure !== undefined)
     notifyFailure(
       translate('generated.terminalDock.unableToReleaseTerminals', {
         value0: failed.length,
         value1: message(firstFailure.reason)
       }),
-      firstFailure.reason
+      firstFailure.reason,
+      translate('generated.terminalDock.releaseResultsUnknown', {
+        value0: failed.length,
+        value1: message(firstFailure.reason)
+      })
     );
 }
 
