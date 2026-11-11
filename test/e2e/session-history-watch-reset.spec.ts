@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { NodeAgentSession, NodeConversationTurn } from '../../mar-node/src/runtime-model.js';
+import type { NodeConversationTurn } from '../../mar-node/src/runtime-model.js';
+import type { NodeAgentSession } from '../../mar-node/src/session/contracts.js';
 import { createTestSessionWatch } from '../../mar-node/test/unit/support/conversation-watch.js';
 import { conversationSegments } from '../../mar-node/src/service/conversation-segment-service.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
@@ -122,7 +123,12 @@ test('Rollback resets a second browser page immediately without losing its unsen
       items: [
         {
           id: 'next-assistant',
+          sessionId: session.id,
+          turnId: 'next-turn',
           runId: 'next-run',
+          parentItemId: null,
+          sourceSequence: null,
+          revision: 0,
           kind: 'assistant_message',
           status: 'IN_PROGRESS',
           payload: { text: 'Fresh ' },
