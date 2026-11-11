@@ -242,7 +242,7 @@ watch(
           <button
             v-if="item.closeLabel"
             v-tooltip="item.closeLabel"
-            class="icon-button utility-control tab-strip-close"
+            class="icon-button utility-control mar-tab-close tab-strip-close"
             :class="closeClass"
             type="button"
             :disabled="item.closeDisabled"
@@ -370,22 +370,6 @@ watch(
 .tab-strip-item:not(.is-active):hover {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
-}
-.tab-strip-close {
-  --mar-action-icon-size: 14px;
-  display: grid;
-  flex: none;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 0;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.tab-strip-close:focus-visible {
-  outline-offset: 1px;
 }
 @media (min-width: 768px) {
   .tab-strip-item + .tab-strip-item {

@@ -532,6 +532,17 @@ html.console-ui .el-tag--primary:not(.el-tag--dark) {
   --el-tag-text-color: var(--mar-control-link-text);
 }
 
+/* Semantic link hover must strengthen the foreground, not reuse the disabled shade. */
+html.console-ui
+  .el-button:is(.el-button--success, .el-button--warning, .el-button--danger, .el-button--info).is-link {
+  --el-button-hover-link-text-color: color-mix(
+    in srgb,
+    var(--el-button-text-color) 80%,
+    var(--mar-text-primary)
+  );
+  --el-button-active-color: var(--el-button-hover-link-text-color);
+}
+
 /* Tags should appear and disappear without the Element Plus zoom transition. */
 html.console-ui .el-tag:is(.el-zoom-in-center-enter-active, .el-zoom-in-center-leave-active) {
   transition: none;
@@ -1162,6 +1173,24 @@ pre {
 .utility-control:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
+}
+
+.mar-tab-close {
+  --mar-action-icon-size: 14px;
+  display: grid;
+  flex: none;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mar-tab-close:focus-visible {
+  outline-offset: 1px;
 }
 
 .node-tree,

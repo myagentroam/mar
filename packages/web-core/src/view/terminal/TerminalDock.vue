@@ -445,7 +445,8 @@ defineExpose({ release, toggle: toggleTerminal });
             <span>Terminal {{ index + 1 }}</span>
           </button>
           <button
-            class="terminal-tab-close icon-button utility-control"
+            v-tooltip="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
+            class="terminal-tab-close icon-button utility-control mar-tab-close"
             type="button"
             :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
             :disabled="closingId === item.id"
@@ -649,13 +650,10 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab-close {
-  --mar-action-icon-size: 14px;
   position: absolute;
   right: 3px;
-  display: inline-grid;
   align-self: center;
   margin: 2px 0;
-  place-items: center;
 }
 
 .terminal-profile {
