@@ -1,6 +1,9 @@
 import { executionActivity } from './support/execution-activity.js';
 import { MarAgentRuntimeModelFactory } from '../../src/runner/mar-agent/runtime-model-factory.js';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   MarAgentManagedRunController,
@@ -17,6 +20,8 @@ import {
 } from '../../../packages/protocol/src/index.js';
 import type { ClientToolDefinition, AgentHost } from '../../../mar-agent/src/host.js';
 import type { AgentEvent } from '../../../mar-agent/src/index.js';
+import { AgentError } from '../../../mar-agent/src/error.js';
+import { acquireFileLock } from '../../../mar-agent/src/storage/file-lock.js';
 
 type CreateAgent = NonNullable<
   NonNullable<ConstructorParameters<typeof MarAgentManagedRunController>[2]>['createAgent']
@@ -149,6 +154,191 @@ describe('MAR Agent managed run projection', () => {
     const projectedItem = host.emitItem.mock.calls.at(-1)?.[1];
     expect(projectedItem).toMatchObject({ kind: 'tool_call', permissionStop });
     expect(projectedItem?.payload).not.toHaveProperty('permissionStop');
+  });
+
+  it('publishes a real SDK lock error before run.failed without exposing its cause', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-node-runner-domain-error-'));
+    const lockPath = join(directory, 'index.lock');
+    let releaseHeldLock: (() => Promise<void>) | undefined;
+    let lockFailure: unknown;
+    let unexpectedRelease: (() => Promise<void>) | undefined;
+
+    try {
+      releaseHeldLock = await acquireFileLock(lockPath);
+      try {
+        unexpectedRelease = await acquireFileLock(lockPath, 'Session index is busy.', 0);
+      } catch (error) {
+        lockFailure = error;
+      }
+      expect(unexpectedRelease).toBeUndefined();
+      expect(lockFailure).toBeInstanceOf(AgentError);
+      expect(lockFailure).toMatchObject({
+        code: 'MAR_AGENT_SESSION_LOCKED',
+        publicMessage: 'Session index is busy.'
+      });
+      const sdkError = lockFailure as AgentError;
+      const originalCause = sdkError.cause;
+      expect(originalCause).toMatchObject({ code: 'EEXIST' });
+
+      const publications: Array<{ readonly type: string; readonly value: unknown }> = [];
+      const dispose = vi.fn(async () => undefined);
+      const handle = () => ({
+        executionId: 'execution-lock-error',
+        async *[Symbol.asyncIterator]() {},
+        result: async () => {
+          throw lockFailure;
+        },
+        cancel: vi.fn()
+      });
+      const session = {
+        id: 'native-session',
+        subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+        joinExecution: () => undefined,
+        run: vi.fn(handle),
+        steer: vi.fn(async () => ({ status: 'notAccepted' as const })),
+        plan: vi.fn(handle),
+        compact: vi.fn(handle),
+        cancel: vi.fn()
+      };
+      const createAgent = vi.fn(async () => ({
+        createSession: vi.fn(async () => session),
+        openSession: vi.fn(async () => session),
+        listSessions: vi.fn(),
+        sessionHistory: vi.fn(async () => ({ entries: [] })),
+        sessionInputReceipt: vi.fn(async () => undefined),
+        sessionExecutionWasInterrupted: vi.fn(async () => false),
+        getSession: vi.fn(async () => ({
+          id: 'native-session',
+          title: 'New session',
+          workspace: directory,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActivityAt: '2026-01-01T00:00:00.000Z',
+          source: { type: 'user' as const },
+          automaticTitlePending: false
+        })),
+        setSessionTitle: vi.fn(async () => true),
+        deleteSession: vi.fn(),
+        deleteSessions: vi.fn(),
+        clearSession: vi.fn(),
+        setSystemInstruction: vi.fn(),
+        reconfigureModels: vi.fn(async () => undefined),
+        extensionDiagnostics: () => [],
+        observeSessionExecutions: () => ({ sessions: [], unsubscribe() {} }),
+        dispose
+      }));
+      const host = {
+        ...executionActivity(),
+        adopt: vi.fn(),
+        promote: vi.fn(),
+        syncTitle: vi.fn(async () => undefined),
+        emit: vi.fn((_runId: string, type: string, payload: unknown, status?: string) =>
+          publications.push({ type, value: { payload, status } })
+        ),
+        emitItem: vi.fn((_runId: string, item: unknown) =>
+          publications.push({ type: 'item', value: item })
+        ),
+        run: vi.fn(),
+        commandState: vi.fn(),
+        setCommandState: vi.fn(),
+        clearCommandState: vi.fn(),
+        commandStates: vi.fn(() => []),
+        webSearch: vi.fn()
+      };
+      const controller = new MarAgentManagedRunController(new MarAgentRunner(), host, {
+        createAgent
+      });
+      let controllerDisposed = false;
+
+      try {
+        const model: MarAgentRuntimeModelConfiguration = {
+          id: 'coding',
+          name: 'Coding',
+          protocol: 'ANTHROPIC_MESSAGES',
+          baseUrl: 'https://example.test',
+          credential: { type: 'INLINE_API_KEY', value: 'test-key' },
+          modelId: 'coding',
+          contextWindowTokens: 200_000,
+          maxOutputTokens: 4096,
+          inputCapabilities: ['TEXT'],
+          outputCapabilities: ['TEXT'],
+          reasoningEfforts: [],
+          hostedWebSearch: false,
+          responsesPreviousResponseId: false,
+          enabled: true
+        };
+        controller.start({
+          type: 'run.start',
+          id: 'message',
+          payload: {
+            runner: 'mar-agent',
+            runId: 'run-lock-projection',
+            sessionId: 'native-session',
+            input: 'continue',
+            cwd: directory,
+            model: 'coding',
+            access: 'full-access',
+            externalSessionId: 'native-session',
+            marAgentModel: model
+          }
+        } as never);
+
+        await vi.waitFor(() =>
+          expect(host.emit).toHaveBeenCalledWith(
+            'run-lock-projection',
+            'run.failed',
+            expect.anything(),
+            'FAILED'
+          )
+        );
+
+        const itemIndex = publications.findIndex(({ type }) => type === 'item');
+        const failureIndex = publications.findIndex(({ type }) => type === 'run.failed');
+        expect(itemIndex).toBeGreaterThanOrEqual(0);
+        expect(itemIndex).toBeLessThan(failureIndex);
+        expect(publications[itemIndex]?.value).toMatchObject({
+          kind: 'error',
+          status: 'FAILED',
+          payload: {
+            code: 'MAR_AGENT_SESSION_LOCKED',
+            message: 'Session index is busy.',
+            httpStatus: null,
+            recoverable: true,
+            retryAfterMs: null
+          }
+        });
+        expect(publications[failureIndex]?.value).toEqual({
+          payload: {
+            code: 'MAR_AGENT_SESSION_LOCKED',
+            message: 'Session index is busy.',
+            httpStatus: null
+          },
+          status: 'FAILED'
+        });
+        expect(
+          publications
+            .filter(({ type }) => ['run.failed', 'run.completed', 'run.cancelled'].includes(type))
+            .map(({ type }) => type)
+        ).toEqual(['run.failed']);
+        expect(JSON.stringify(publications)).not.toContain(lockPath);
+        expect(sdkError.cause).toBe(originalCause);
+
+        await controller.dispose();
+        controllerDisposed = true;
+        expect(dispose).toHaveBeenCalledOnce();
+      } finally {
+        if (!controllerDisposed) await controller.dispose();
+      }
+    } finally {
+      try {
+        await unexpectedRelease?.();
+      } finally {
+        try {
+          await releaseHeldLock?.();
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
+    }
   });
 
   it('renews a Session runtime lease at Execution admission before asynchronous setup', async () => {

@@ -32,6 +32,73 @@ describe('Runner error projection', () => {
     });
   });
 
+  it('continues nested provider extraction when the outer public error pair is invalid', () => {
+    expect(
+      runnerErrorProjection(
+        {
+          code: ' ',
+          publicMessage: '',
+          message: 'Wrapper failed.',
+          response: {
+            status: 403,
+            data: {
+              error: {
+                code: 'insufficient_user_quota',
+                message: 'subscription quota insufficient, need=431775'
+              }
+            }
+          }
+        },
+        'RUNNER_FAILED'
+      )
+    ).toEqual({
+      code: 'insufficient_user_quota',
+      message: 'subscription quota insufficient, need=431775',
+      httpStatus: 403
+    });
+  });
+
+  it('does not combine a code and public message from different error layers', () => {
+    expect(
+      runnerErrorProjection(
+        {
+          code: 'MAR_AGENT_WRAPPER',
+          message: 'Wrapper diagnostic.',
+          cause: { publicMessage: 'Nested public message.' }
+        },
+        'RUNNER_FAILED'
+      )
+    ).toEqual({
+      code: 'MAR_AGENT_WRAPPER',
+      message: 'Wrapper diagnostic.',
+      httpStatus: null
+    });
+  });
+
+  it('prefers an explicit public pair while preserving HTTP status and message limits', () => {
+    expect(
+      runnerErrorProjection(
+        {
+          code: 'MAR_AGENT_MODEL_UNAVAILABLE',
+          publicMessage: 'Model is unavailable.',
+          response: { status: 503 }
+        },
+        'RUNNER_FAILED'
+      )
+    ).toEqual({
+      code: 'MAR_AGENT_MODEL_UNAVAILABLE',
+      message: 'Model is unavailable.',
+      httpStatus: 503
+    });
+
+    expect(
+      runnerErrorProjection(
+        { code: 'MAR_AGENT_FAILURE', publicMessage: 'x'.repeat(1200) },
+        'RUNNER_FAILED'
+      ).message
+    ).toHaveLength(1000);
+  });
+
   it('preserves a structured HTTP status and provider message', () => {
     expect(
       runnerErrorProjection(

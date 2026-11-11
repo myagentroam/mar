@@ -9,13 +9,31 @@ export interface RunnerErrorProjection {
 
 export function runnerErrorProjection(error: unknown, fallbackCode: string): RunnerErrorProjection {
   const httpStatus = findHttpStatus(error);
-  const providerCode = findCode(error);
-  const message = findMessage(error) ?? fallbackCode;
+  const publicError = findPublicError(error);
+  const providerCode = publicError?.code ?? findCode(error);
+  const message = publicError?.message ?? findMessage(error) ?? fallbackCode;
   return {
     code: providerCode ?? (httpStatus === null ? fallbackCode : `HTTP_${httpStatus}`),
     message: message.slice(0, MAX_RUNNER_ERROR_MESSAGE),
     httpStatus
   };
+}
+
+function findPublicError(
+  value: unknown,
+  depth = 0
+): { readonly code: string; readonly message: string } | undefined {
+  if (depth > 3 || value === null || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const code = normalizeCode(record.code);
+  const message = record.publicMessage;
+  if (code !== undefined && typeof message === 'string' && message.trim())
+    return { code, message: message.trim() };
+  for (const key of ['error', 'data', 'response', 'cause']) {
+    const nested = findPublicError(record[key], depth + 1);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
 }
 
 function findCode(value: unknown, depth = 0): string | undefined {
@@ -26,11 +44,16 @@ function findCode(value: unknown, depth = 0): string | undefined {
     if (nested !== undefined) return nested;
   }
   for (const key of ['code', 'errorCode', 'error_code']) {
-    const candidate = record[key];
-    if (typeof candidate === 'string' && candidate.trim())
-      return [...candidate.trim()].slice(0, MAX_RUNNER_ERROR_CODE).join('');
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate);
+    const candidate = normalizeCode(record[key]);
+    if (candidate !== undefined) return candidate;
   }
+  return undefined;
+}
+
+function normalizeCode(candidate: unknown): string | undefined {
+  if (typeof candidate === 'string' && candidate.trim())
+    return [...candidate.trim()].slice(0, MAX_RUNNER_ERROR_CODE).join('');
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate);
   return undefined;
 }
 
