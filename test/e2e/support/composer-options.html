@@ -27,7 +27,9 @@
           { length: query.get('single') === 'effort' ? 0 : query.has('short') ? 3 : 32 },
           (_, index) => ({
             id: `model-${index}`,
-            label: `Engineering model ${index + 1} with a descriptive configuration name`
+            label: query.has('compact-names')
+              ? ['GPT-6-Luna', 'GPT-6.1 Terra', 'GPT-6.1-Sol Fast'][index % 3]
+              : `Engineering model ${index + 1} with a descriptive configuration name`
           })
         )
       );

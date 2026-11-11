@@ -962,7 +962,8 @@ function selectFiles(event: Event): void {
 }
 
 :global(.composer-model-effort-popper) {
-  width: min(500px, calc(100vw - 24px));
+  width: max-content;
+  max-width: min(500px, calc(100vw - 24px));
 }
 
 :global(.composer-model-effort-popper .el-select-dropdown__wrap) {
