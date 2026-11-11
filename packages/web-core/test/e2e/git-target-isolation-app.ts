@@ -84,6 +84,7 @@ const selection = createWorkbenchWorkspaceSelectionService({
   isCacheActive: cache.isActive,
   hasNode: () => true,
   isHostAvailable: () => true,
+  isNetworkUnavailable: () => false,
   cachedWorkspaces: (nodeId) =>
     workspaces.filter((_workspace, index) => targets[index]!.nodeId === nodeId),
   cacheWorkspaces: noop,

@@ -1,5 +1,5 @@
-import type { Ref } from 'vue';
-import { apiErrorFromResponse } from '../util/api-error.js';
+import { readonly, ref, type InjectionKey, type Ref } from 'vue';
+import { ApiError, apiErrorFromResponse } from '../util/api-error.js';
 
 /** An obsolete identity result, not a user cancellation or a request timeout. */
 export class AuthenticationContextChangedError extends DOMException {
@@ -9,10 +9,16 @@ export class AuthenticationContextChangedError extends DOMException {
 }
 
 export interface WorkbenchHttpService {
+  readonly networkUnavailable: Readonly<Ref<boolean>>;
   request<T>(path: string, init?: RequestInit): Promise<T>;
   renewCsrfToken(): Promise<string>;
   invalidateAuthentication(): void;
 }
+
+/** Local tools share the application's HTTP owner, not a second reachability state. */
+export const WORKBENCH_HTTP_KEY: InjectionKey<
+  Pick<WorkbenchHttpService, 'request' | 'networkUnavailable'>
+> = Symbol('workbench-http');
 
 interface WorkbenchHttpServiceOptions {
   readonly csrfToken: Ref<string>;
@@ -20,19 +26,52 @@ interface WorkbenchHttpServiceOptions {
   readonly onUnauthenticated: () => void;
 }
 
+/** Owns authenticated HTTP and observed Server reachability, never Node connection facts. */
 export function createWorkbenchHttpService(
   options: WorkbenchHttpServiceOptions
 ): WorkbenchHttpService {
   let csrfTokenRenewal: Promise<string> | undefined;
   let authenticationGeneration = 0;
+  const networkUnavailable = ref(false);
+  let networkRequest = 0;
+  let networkObservation = 0;
 
   function invalidateAuthentication(): void {
     authenticationGeneration += 1;
     csrfTokenRenewal = undefined;
+    networkUnavailable.value = false;
   }
 
   function assertCurrent(generation: number): void {
     if (generation !== authenticationGeneration) throw new AuthenticationContextChangedError();
+  }
+
+  function observeNetwork(requestId: number, unavailable: boolean): void {
+    if (requestId < networkObservation) return;
+    networkObservation = requestId;
+    networkUnavailable.value = unavailable;
+  }
+
+  // HTTP errors prove reachability; only a rejected fetch denotes a transport failure.
+  async function fetchResponse(
+    path: string,
+    init: RequestInit,
+    generation: number
+  ): Promise<Response> {
+    const requestId = ++networkRequest;
+    try {
+      const response = await fetch(path, init);
+      assertCurrent(generation);
+      observeNetwork(requestId, false);
+      return response;
+    } catch (error) {
+      assertCurrent(generation);
+      if (error instanceof TypeError && !init.signal?.aborted) {
+        observeNetwork(requestId, true);
+        throw new ApiError('NETWORK_UNAVAILABLE', 'The network connection is unavailable.');
+      }
+      throw error;
+    }
   }
 
   async function request<T>(
@@ -41,18 +80,21 @@ export function createWorkbenchHttpService(
     retriedAfterCsrfRenewal = false,
     generation = authenticationGeneration
   ): Promise<T> {
-    const response = await fetch(path, {
-      credentials: 'same-origin',
-      ...init,
-      headers: {
-        ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...(init.method === undefined || init.method === 'GET'
-          ? {}
-          : { 'x-csrf-token': options.csrfToken.value }),
-        ...init.headers
-      }
-    });
-    assertCurrent(generation);
+    const response = await fetchResponse(
+      path,
+      {
+        credentials: 'same-origin',
+        ...init,
+        headers: {
+          ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...(init.method === undefined || init.method === 'GET'
+            ? {}
+            : { 'x-csrf-token': options.csrfToken.value }),
+          ...init.headers
+        }
+      },
+      generation
+    );
     if (!response.ok) {
       const error = apiErrorFromResponse(await response.json().catch(() => ({})), response.status);
       assertCurrent(generation);
@@ -82,13 +124,16 @@ export function createWorkbenchHttpService(
   }
 
   async function renewCsrfTokenOnce(generation: number): Promise<string> {
-    const response = await fetch('/api/auth/csrf', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
-      body: '{}'
-    });
-    assertCurrent(generation);
+    const response = await fetchResponse(
+      '/api/auth/csrf',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: '{}'
+      },
+      generation
+    );
     if (!response.ok) {
       const error = apiErrorFromResponse(await response.json().catch(() => ({})), response.status);
       assertCurrent(generation);
@@ -104,5 +149,10 @@ export function createWorkbenchHttpService(
     return result.csrfToken;
   }
 
-  return { request, renewCsrfToken, invalidateAuthentication };
+  return {
+    request,
+    renewCsrfToken,
+    invalidateAuthentication,
+    networkUnavailable: readonly(networkUnavailable)
+  };
 }

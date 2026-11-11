@@ -89,7 +89,7 @@ export const workspaceZhCN = {
     },
     workbenchWorkspaceSelectionService: {
       thisWorkspaceIsNoLongerInThe: '该工作区已不在目标节点快照中，不能继续打开。',
-      unableToLoadNodeWorkspaces: '无法读取节点工作区：{value0}',
+      unableToLoadWorkspace: '工作区加载失败：{value0}',
       thisWorkspaceIsNoLongerInThe2: '该工作区已不在目标节点快照中，不能继续打开。',
       unableToRefreshNodeWorkspaces: '无法刷新节点工作区：{value0}',
       thisWorkspaceIsNoLongerInThe3: '该工作区已不在当前节点快照中，不能继续打开。',

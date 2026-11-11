@@ -5,6 +5,7 @@ import MarIcon from '../common/MarIcon.vue';
 import {
   computed,
   defineAsyncComponent,
+  inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -13,6 +14,9 @@ import {
 } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
+import { ApiError, errorCode } from '../../util/api-error.js';
+import { errorSummary } from '../../util/error-presentation.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
 import { translate } from '../../service/locale-preference-service.js';
 
@@ -75,10 +79,13 @@ let focusRequested = false;
 const terminals = ref<TerminalSummary[]>([]);
 const activeTerminalId = ref<string>();
 const terminalViews = new Map<string, { focus(): void }>();
-const http = createScopedHttpService({
-  csrfToken: () => props.csrfToken,
-  renewCsrfToken: props.renewCsrfToken
-});
+const workbenchHttp = inject(WORKBENCH_HTTP_KEY, undefined);
+const http =
+  workbenchHttp ??
+  createScopedHttpService({
+    csrfToken: () => props.csrfToken,
+    renewCsrfToken: props.renewCsrfToken
+  });
 
 const canUseTerminal = computed(
   () => props.enabled && props.nodeId !== undefined && props.capability?.available === true
@@ -113,9 +120,11 @@ const terminalActionTitle = computed(() => {
   if (canUseTerminal.value) return translate('generated.terminalDock.newTerminal');
   if (props.nodeId === undefined)
     return translate('generated.terminalDock.selectAnOnlineNodeFirst');
-  return (
-    props.capability?.reasonCode ?? translate('generated.terminalDock.theTargetNodeDoesNotProvideA')
-  );
+  if (props.capability?.available !== false) return translate('generated.terminalDock.newTerminal');
+  const fallback = translate('generated.terminalDock.theTargetNodeDoesNotProvideA');
+  return props.capability.reasonCode === null
+    ? fallback
+    : errorSummary(new ApiError(props.capability.reasonCode, fallback));
 });
 
 function selectTerminal(terminalId: string): void {
@@ -186,10 +195,8 @@ async function refreshContext(): Promise<void> {
       activeTerminalId.value = terminals.value[0]?.id;
   } catch (error) {
     if (revision !== refreshRevision) return;
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToLoadTerminals', { value0: message(error) }),
-      'error',
       error
     );
   } finally {
@@ -236,10 +243,8 @@ async function openTerminal(): Promise<void> {
     selectTerminal(result.terminal.id);
   } catch (error) {
     if (released || revision !== contextRevision || !props.active) return;
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) }),
-      'error',
       error
     );
   } finally {
@@ -283,10 +288,8 @@ async function closeTerminal(terminalId: string): Promise<void> {
     }
     if (terminals.value.length === 0) collapseDock();
   } catch (error) {
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) }),
-      'error',
       error
     );
   } finally {
@@ -301,6 +304,11 @@ function handleTerminalExited(terminalId: string): void {
 }
 function message(error: unknown): string {
   return props.errorMessage(error);
+}
+
+function notifyFailure(message: string, error: unknown): void {
+  if (errorCode(error) === 'NETWORK_UNAVAILABLE' && workbenchHttp?.networkUnavailable.value) return;
+  emit('notice', message, 'error', error);
 }
 
 watch(
@@ -374,13 +382,12 @@ async function releaseTerminals(
   const failed = results.filter((result) => result.status === 'rejected');
   const firstFailure = failed[0];
   if (firstFailure !== undefined)
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToReleaseTerminals', {
         value0: failed.length,
         value1: message(firstFailure.reason)
       }),
-      'error'
+      firstFailure.reason
     );
 }
 

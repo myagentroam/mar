@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { reactive } from 'vue';
+import { defineComponent, h, provide, reactive, ref } from 'vue';
+import {
+  createWorkbenchHttpService,
+  WORKBENCH_HTTP_KEY,
+  type WorkbenchHttpService
+} from '../../src/service/workbench-http-service.js';
 import Dock from '../../src/view/terminal/TerminalDock.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
@@ -35,7 +40,7 @@ const pending = () => deferred<Response>();
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 type Handle = { release(): Promise<void>; toggle(): Promise<void> };
-function fixture() {
+function fixture(http?: WorkbenchHttpService) {
   const opening = pending();
   const fetch = vi.fn(async (_path: string, init?: RequestInit) => {
     if (init?.method === 'POST') return (await opening.promise).clone();
@@ -68,7 +73,17 @@ function fixture() {
     }
   });
   let handle!: Handle;
-  const view = renderComponent(Dock, props);
+  const view = renderComponent(
+    http === undefined
+      ? Dock
+      : defineComponent({
+          setup() {
+            provide(WORKBENCH_HTTP_KEY, http);
+            return () => h(Dock, props);
+          }
+        }),
+    http === undefined ? props : {}
+  );
   const requests = (method: string) =>
     fetch.mock.calls.filter(([, init]) => init?.method === method);
   const expand = async () => {
@@ -90,6 +105,34 @@ afterEach(() => {
 });
 
 describe('Terminal Dock creation ownership', () => {
+  it.each(['NETWORK_UNAVAILABLE', 'PERMISSION_DENIED'])(
+    'uses the shared HTTP owner and presents %s only in its proper place',
+    async (code) => {
+      const http = createWorkbenchHttpService({
+        csrfToken: ref('fixture-csrf'),
+        csrfStorageKey: 'fixture-csrf',
+        onUnauthenticated: vi.fn()
+      });
+      const f = fixture(http);
+      try {
+        await flushComponent();
+        if (code === 'NETWORK_UNAVAILABLE')
+          f.fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+        else f.fetch.mockResolvedValueOnce(response({ error: code }, 403));
+        await f.handle().toggle();
+        await flushComponent();
+        expect(http.networkUnavailable.value).toBe(code === 'NETWORK_UNAVAILABLE');
+        expect(f.notice).toHaveBeenCalledTimes(code === 'NETWORK_UNAVAILABLE' ? 0 : 1);
+        if (code !== 'NETWORK_UNAVAILABLE')
+          expect(f.notice.mock.calls[0]?.[2]).toMatchObject({ code });
+        await http.request('/api/probe');
+        expect(http.networkUnavailable.value).toBe(false);
+      } finally {
+        f.view.unmount();
+        await flushComponent();
+      }
+    }
+  );
   it('creates lazily, selects a normal result, and closes the owned terminal', async () => {
     const f = fixture();
     try {

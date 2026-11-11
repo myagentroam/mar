@@ -72,6 +72,7 @@ function fixture(create = createWorkbenchWorkspaceSelectionService) {
   const restoreManifest = vi.fn<() => NodeWorkbenchManifest | undefined>(() => undefined);
   const refreshTransport = vi.fn();
   const isHostAvailable = vi.fn(() => true);
+  const isNetworkUnavailable = vi.fn(() => true);
   const hasNode = vi.fn(() => true);
   const clearContent = vi.fn();
   const cacheWorkspaces = vi.fn((nodeId: string, values: readonly Workspace[]) => {
@@ -110,6 +111,7 @@ function fixture(create = createWorkbenchWorkspaceSelectionService) {
     isCacheActive: cache.isActive,
     hasNode,
     isHostAvailable,
+    isNetworkUnavailable,
     cachedWorkspaces: (nodeId) => cached.get(nodeId) ?? [],
     cacheWorkspaces,
     rememberWorkspace,
@@ -173,6 +175,7 @@ function fixture(create = createWorkbenchWorkspaceSelectionService) {
     restoreManifest,
     refreshTransport,
     isHostAvailable,
+    isNetworkUnavailable,
     hasNode,
     clearContent,
     cacheWorkspaces,
@@ -284,7 +287,7 @@ describe('Workspace-only foreground selection', () => {
     expect(f.service.loading.value).toBe(false);
   });
 
-  it('retains the activated target and its cache on temporary network failure', async () => {
+  it('retains the activated target and reports an ordinary load failure once', async () => {
     const f = fixture();
     const error = new Error('network unavailable');
     f.request.mockRejectedValue(error);
@@ -299,7 +302,66 @@ describe('Workspace-only foreground selection', () => {
     expect(f.workspaceTarget.value).toEqual(target('node-2', 'workspace-3'));
     expect(f.invalidateWorkspace).not.toHaveBeenCalled();
     expect(f.service.loading.value).toBe(false);
+    expect(f.notice).toHaveBeenCalledTimes(1);
   });
+
+  it('leaves transport failures to the page offline state without a Message', async () => {
+    const f = fixture();
+    f.request.mockRejectedValue(new ApiError('NETWORK_UNAVAILABLE', 'The network is unavailable.'));
+    await f.service.select(target());
+    await vi.waitFor(() => expect(f.service.loading.value).toBe(false));
+    expect(f.notice).not.toHaveBeenCalled();
+    expect(f.workspaceTarget.value).toEqual(target());
+    expect(f.invalidateWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('leaves an uncached activation failure to its existing recovery panel', async () => {
+    const f = fixture();
+    f.request.mockRejectedValue(new Error('Catalog unavailable'));
+    await f.service.select(target('node-1', 'uncached'));
+    await vi.waitFor(() => expect(f.service.loading.value).toBe(false));
+    expect(f.notice).not.toHaveBeenCalled();
+    expect(f.workspaces.value.some((workspace) => workspace.id === 'uncached')).toBe(false);
+    expect(f.workspaceTarget.value).toEqual(target('node-1', 'uncached'));
+  });
+
+  it('reports a failed read when a newer response has already restored reachability', async () => {
+    const f = fixture();
+    f.isNetworkUnavailable.mockReturnValue(false);
+    f.request.mockRejectedValue(new ApiError('NETWORK_UNAVAILABLE', 'The earlier request failed.'));
+    await f.service.select(target());
+    await vi.waitFor(() => expect(f.service.loading.value).toBe(false));
+    expect(f.notice).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['REQUEST_FAILED_404', 'FORBIDDEN'])(
+    'does not invalidate a confirmed Workspace when its manifest fails with %s',
+    async (code) => {
+      const f = fixture();
+      f.refreshManifest.mockRejectedValue(new ApiError(code, 'Manifest read failed.'));
+      f.request.mockResolvedValue({ workspaces: [workspace('workspace-1')] });
+      await f.service.select(target());
+      await vi.waitFor(() => expect(f.service.loading.value).toBe(false));
+      expect(f.notice).toHaveBeenCalledTimes(1);
+      expect(f.invalidateWorkspace).not.toHaveBeenCalled();
+      expect(f.workspaceTarget.value).toEqual(target());
+    }
+  );
+
+  it.each([true, false])(
+    'reports one metadata failure when the manifest also fails (catalogFails=%s)',
+    async (catalogFails) => {
+      const f = fixture();
+      f.refreshManifest.mockRejectedValue(new Error('Manifest unavailable'));
+      if (catalogFails) f.request.mockRejectedValue(new Error('Workspace unavailable'));
+      else f.request.mockResolvedValue({ workspaces: [workspace('workspace-1')] });
+      await f.service.select(target());
+      await vi.waitFor(() => expect(f.service.loading.value).toBe(false));
+      expect(f.notice).toHaveBeenCalledTimes(1);
+      expect(f.workspaceTarget.value).toEqual(target());
+      expect(f.invalidateWorkspace).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([true, false])(
     'only suppresses an offline catalog failure when the host state already covers it (available=%s)',

@@ -77,6 +77,56 @@ for (const width of [1280, 390]) {
   });
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Terminal capability is not confused with temporary unavailability in ${theme}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.route('**/api/terminals**', (route) =>
+      route.fulfill({
+        json:
+          route.request().method() === 'POST'
+            ? {
+                terminal: {
+                  id: 'terminal-one',
+                  workspaceId: 'workspace',
+                  profileId: 'bash',
+                  state: 'RUNNING',
+                  latestSequence: 0
+                }
+              }
+            : { terminals: [] }
+      })
+    );
+    await page.goto(
+      `${fixture.url}workbench-style.html?embedded-terminal&terminal-capability&theme=${theme}`
+    );
+    const add = page.getByRole('button', { name: 'New terminal', exact: true });
+    await expect(add).toBeEnabled();
+    for (const mode of ['unknown', 'disabled', 'unsupported'] as const) {
+      await page.mouse.move(0, 0);
+      await page.evaluate(
+        (mode) =>
+          (
+            window as unknown as Window & {
+              setFixtureTerminalAvailability(mode: 'unknown' | 'unsupported' | 'disabled'): void;
+            }
+          ).setFixtureTerminalAvailability(mode),
+        mode
+      );
+      await expect(add).toBeDisabled();
+      await add.scrollIntoViewIfNeeded();
+      await add.hover();
+      await expect(page.getByRole('tooltip')).toHaveText(
+        mode === 'unsupported'
+          ? 'You do not have permission to access this resource.'
+          : 'New terminal'
+      );
+      await expect(page.getByRole('tooltip')).not.toContainText('PERMISSION_DENIED');
+    }
+  });
+}
+
 test('Pane model shortcut uses the focused Composer and preserves the draft', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${fixture.url}workbench-style.html?composer=1`);
@@ -777,6 +827,44 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Workspace connection feedback is singular and restrictions stay neutral in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(
+        `${fixture.url}workbench-style.html?theme=${theme}&offline=1&network-offline=1`
+      );
+      const offline = page.locator('.workspace-offline-placeholder');
+      await expect(offline).toBeVisible();
+      await expect(offline).toContainText('Offline. Waiting for reconnection.');
+      await expect(
+        page.locator('.readonly-banner, .workspace-recovery-panel, .el-message')
+      ).toHaveCount(0);
+      await offline.screenshot({ path: testInfo.outputPath('network-offline.png') });
+      await page.evaluate(() => {
+        (
+          window as unknown as Window & { restoreWorkspaceConnection: () => void }
+        ).restoreWorkspaceConnection();
+      });
+      await expect(offline).toHaveCount(0);
+      await expect(page.locator('.workspace-recovery-panel')).toBeVisible();
+      await expect(page.locator('.el-message')).toHaveCount(0);
+
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1&restriction=1`);
+      const notice = page.locator('.readonly-banner');
+      await expect(notice).toBeVisible();
+      await expect(notice).toHaveAttribute('role', 'status');
+      await expect(notice).toContainText('disabled');
+      await expect(notice.locator('[data-mar-icon="info"]')).toBeVisible();
+      await expect(notice).toHaveCSS('border-radius', '6px');
+      await expect(notice).not.toHaveClass(/el-alert/);
+      const surface = (await page.locator('.session-layout').boundingBox())!;
+      const box = (await notice.boundingBox())!;
+      expect(box.x - surface.x).toBeGreaterThanOrEqual(8);
+      expect(surface.x + surface.width - box.x - box.width).toBeGreaterThanOrEqual(8);
+      await notice.screenshot({ path: testInfo.outputPath('workspace-restriction.png') });
+    });
+
     test(`Workspace recovery stays compact and centered in ${theme} at ${width}px`, async ({
       page
     }, testInfo) => {

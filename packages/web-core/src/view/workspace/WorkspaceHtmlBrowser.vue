@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, watch } from 'vue';
+import { inject, onBeforeUnmount, watch } from 'vue';
 import { createHtmlPreviewService } from '../../service/html-preview-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { filePreviewErrorMessage } from '../../util/error-presentation.js';
 import HtmlPreviewFrame from './HtmlPreviewFrame.vue';
@@ -16,10 +17,11 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ source: [path: string]; external: [path: string] }>();
 const preview = createHtmlPreviewService(
-  createScopedHttpService({
-    csrfToken: () => props.csrfToken,
-    renewCsrfToken: () => props.renewCsrfToken()
-  })
+  inject(WORKBENCH_HTTP_KEY, undefined) ??
+    createScopedHttpService({
+      csrfToken: () => props.csrfToken,
+      renewCsrfToken: () => props.renewCsrfToken()
+    })
 );
 const state = preview.state;
 function reload(): void {

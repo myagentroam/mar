@@ -321,8 +321,8 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
       .copyFailedCheckTheBrowserClipboardPermission,
   'workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe':
     workspaceZhCN.generated.workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe,
-  'workbenchWorkspaceSelectionService.unableToLoadNodeWorkspaces':
-    workspaceZhCN.generated.workbenchWorkspaceSelectionService.unableToLoadNodeWorkspaces,
+  'workbenchWorkspaceSelectionService.unableToLoadWorkspace':
+    workspaceZhCN.generated.workbenchWorkspaceSelectionService.unableToLoadWorkspace,
   'workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe2':
     workspaceZhCN.generated.workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe2,
   'workbenchWorkspaceSelectionService.unableToRefreshNodeWorkspaces':
@@ -1421,8 +1421,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     workbenchPageZhCN.generated.workbenchSurface.noNodeConnectedYetCreateARegistration,
   'workbenchSurface.openNodeManagement':
     workbenchPageZhCN.generated.workbenchSurface.openNodeManagement,
-  'workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable':
-    workbenchPageZhCN.generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable,
   'workbenchSurface.openAWorkspace': workbenchPageZhCN.generated.workbenchSurface.openAWorkspace,
   'workbenchSurface.selectAWorkspaceOnTheCurrentNode':
     workbenchPageZhCN.generated.workbenchSurface.selectAWorkspaceOnTheCurrentNode,

@@ -12,6 +12,7 @@ import type { WorkbenchWorkspaceTreeControllerOptions } from '../../src/service/
 import { createWorkbenchWorkspaceTreeController } from '../../src/service/workbench-workspace-tree-controller.js';
 import { createWorkspaceTabService } from '../../src/service/workspace-tab-service.js';
 import { createWorkspaceTreeService } from '../../src/service/workspace-tree-service.js';
+import { ApiError } from '../../src/util/api-error.js';
 
 vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn(), prompt: vi.fn() } }));
 
@@ -94,6 +95,7 @@ function fixture() {
     activeTabId,
     showWorkbench,
     notice,
+    isNetworkUnavailable: () => true,
     workspacesByNode: tree.workspacesByNode,
     tabs,
     tree,
@@ -161,6 +163,21 @@ afterEach(() => {
 });
 
 describe('Public Workspace tree controller', () => {
+  it.each(['NETWORK_UNAVAILABLE', 'REQUEST_FAILED_500'])(
+    'routes a tree read failure by its transport classification (%s)',
+    async (code) => {
+      const f = fixture();
+      const error = new ApiError(code, 'Workspace read failed.');
+      f.request.mockRejectedValue(error);
+      await f.controller.refreshNodeWorkspaces('node-1');
+      if (code === 'NETWORK_UNAVAILABLE') expect(f.notice).not.toHaveBeenCalled();
+      else {
+        expect(f.notice).toHaveBeenCalledTimes(1);
+        expect(f.notice).toHaveBeenCalledWith(expect.any(String), 'error', error);
+      }
+      expect(f.workspaces.value).toEqual([workspace('workspace-1')]);
+    }
+  );
   it('reveals the active Tab on every click without reloading or replacing its session', async () => {
     const f = fixture();
     const tab: WorkspaceTab = {

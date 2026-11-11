@@ -5,7 +5,7 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
 import {
   createQuickOpenQueryService,
@@ -16,6 +16,7 @@ import {
   type QuickOpenSourceStatus
 } from '../../service/quick-open-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { fileKeys } from '../../service/console-shortcut-keys.js';
@@ -46,7 +47,7 @@ const tab = ref<QuickOpenTab>('ALL');
 const query = ref('');
 const activeKey = ref<string>();
 const selectionCommitted = ref(false);
-const http = createScopedHttpService();
+const http = inject(WORKBENCH_HTTP_KEY, undefined) ?? createScopedHttpService();
 const queryService = createQuickOpenQueryService({
   open: () => props.open,
   query: () => query.value,

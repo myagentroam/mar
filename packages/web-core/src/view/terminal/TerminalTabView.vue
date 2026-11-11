@@ -7,8 +7,9 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
 import { createTerminalService } from '../../service/terminal-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
@@ -41,10 +42,12 @@ let resizeObserver: ResizeObserver | undefined;
 let resizeAnimationFrame: number | undefined;
 let focusRequested = false;
 let resizeSyncPending = false;
-const http = createScopedHttpService({
-  csrfToken: () => props.csrfToken,
-  renewCsrfToken: props.renewCsrfToken
-});
+const http =
+  inject(WORKBENCH_HTTP_KEY, undefined) ??
+  createScopedHttpService({
+    csrfToken: () => props.csrfToken,
+    renewCsrfToken: props.renewCsrfToken
+  });
 let reconnectRelay: (() => void) | undefined;
 const terminalService = createTerminalService({
   terminalId: props.terminalId,

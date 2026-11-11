@@ -350,9 +350,8 @@ describe('Workbench surface composition behavior', () => {
           return renderToString(app);
         }
         const offline = await renderUnavailable();
-        expect(offline).toContain(
-          translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
-        );
+        expect(offline).toContain(translate('generated.workbenchSurface.offlineWorkspace'));
+        expect(offline).not.toContain('workspace-tool-unavailable');
         expect(offline).not.toContain('role="tree"');
         page.resources.workspaceHost = { connected: true };
         page.resources.nodeManifestLoading = true;
@@ -368,6 +367,25 @@ describe('Workbench surface composition behavior', () => {
             /<p[^>]*workspace-tool-loading[^>]*role="status"[^>]*>\s*<svg[^>]*data-mar-icon="loading-action"/u
           );
           expect(loading).not.toContain('role="tree"');
+          page.resources.nodeManifestLoading = false;
+          page.resources.nodeManifest = {};
+          const unknown = await renderUnavailable();
+          expect(unknown).not.toContain('workspace-tool-unavailable');
+          expect(unknown).not.toContain('role="tree"');
+          page.resources.nodeManifest = {
+            files: { available: false, reasonCode: 'FILES_UNSUPPORTED' }
+          };
+          const unsupported = await renderUnavailable();
+          expect(unsupported).toContain(translate('generated.workspaceInspector.filesUnsupported'));
+          page.resources.nodeManifest = {
+            files: { available: false, reasonCode: 'PERMISSION_DENIED' }
+          };
+          expect(await renderUnavailable()).toContain(translate('errors.PERMISSION_DENIED'));
+          Object.assign(page.resources.workspaceHost, { disabled: true });
+          expect(await renderUnavailable()).not.toContain('workspace-tool-unavailable');
+          page.resources.workspaceHost = { connected: true };
+          page.resources.nodeManifest = undefined;
+          page.resources.nodeManifestLoading = true;
         }
         page.aside.asideState = {
           tools: ['files'],
@@ -376,10 +394,7 @@ describe('Workbench surface composition behavior', () => {
         };
         page.resources.nodeManifestLoading = false;
         page.resources.nodeManifest = {};
-        const unsupported = await renderUnavailable();
-        expect(unsupported).toContain(
-          translate('generated.workspaceInspector.capabilityUnavailable')
-        );
+        expect(await renderUnavailable()).not.toContain('workspace-tool-unavailable');
         page.resources.workspaceHost = { connected: false };
         page.resources.nodeManifest = undefined;
         expect(list).not.toHaveBeenCalled();
@@ -389,17 +404,19 @@ describe('Workbench surface composition behavior', () => {
       const view = renderComponent(Surface, { page });
       try {
         expect(textContent(view.root)).toContain(
-          translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+          translate('generated.workbenchSurface.offlineWorkspace')
         );
         page.resources.workspaceHost = { connected: true };
         page.resources.nodeManifestLoading = true;
         await nextTick();
         expect(textContent(view.root)).toContain(translate('generated.workspaceInspector.loading'));
         page.resources.nodeManifestLoading = false;
-        page.resources.nodeManifest = {};
+        page.resources.nodeManifest = {
+          files: { available: false, reasonCode: 'FILES_UNSUPPORTED' }
+        };
         await nextTick();
         expect(textContent(view.root)).toContain(
-          translate('generated.workspaceInspector.capabilityUnavailable')
+          translate('generated.workspaceInspector.filesUnsupported')
         );
         expect(view.findAll('tree')).toHaveLength(0);
         expect(list).not.toHaveBeenCalled();
@@ -899,9 +916,7 @@ describe('Workbench surface composition behavior', () => {
         page.resources.nodeManifestLoading = false;
         await flushComponent();
         expect(composer()).toMatchObject({
-          placeholder: translate(
-            'generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable'
-          ),
+          placeholder: guidance,
           readonly: true
         });
       } finally {

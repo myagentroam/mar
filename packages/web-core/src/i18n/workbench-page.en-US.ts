@@ -54,13 +54,13 @@ export const workbenchPageEnUS = {
       retryWorkspace: 'Retry loading',
       registerWorkspace: 'Register Workspace',
       offlineWorkspace: 'Node offline. Waiting for reconnection.',
+      connectionOffline: 'Offline. Waiting for reconnection.',
       selectAWorkspace: 'Select a Workspace',
       selectANodeInTheResourceExplorer:
         'Open a registered workspace directly from the resource explorer.',
       noNodeConnectedYetCreateARegistration:
         'No node connected yet? Create a registration key in Node management, start the node on the target machine, then return here.',
       openNodeManagement: 'Open Node management',
-      nodeWorkbenchCapabilitiesAreUnavailable: 'Node Workbench capabilities are unavailable.',
       openAWorkspace: 'Open a Workspace',
       selectAWorkspaceOnTheCurrentNode:
         'Open a workspace from the resource explorer or switch to an open tab.',
@@ -78,8 +78,6 @@ export const workbenchPageEnUS = {
         'The node is disabled. Only the current workspace snapshot is available.',
       theNodeIsOfflineLoadedContentIs:
         'The node is offline. Loaded content is read-only and no control operations will be sent.',
-      nodeWorkbenchCapabilitiesAreUnknownTheWorkspace:
-        'Node Workbench capabilities are unknown. The workspace is safely restricted to read-only mode.',
       nodeWorkbenchCapabilitiesAreUnavailable:
         'Node Workbench capabilities are unavailable: {value0}.',
       unableToOpenTheSessionLinkedTo:

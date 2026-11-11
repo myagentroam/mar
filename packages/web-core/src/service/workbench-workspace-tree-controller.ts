@@ -13,6 +13,7 @@ import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import type { createWorkspaceTabService } from './workspace-tab-service.js';
 import type { createWorkspaceTreeService } from './workspace-tree-service.js';
 import { translate } from './locale-preference-service.js';
+import { errorCode } from '../util/api-error.js';
 
 export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly nodes: Readonly<Ref<readonly NodeSummary[]>>;
@@ -25,6 +26,7 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly activeTabId: Ref<string | undefined>;
   readonly showWorkbench: () => void;
   readonly notice: MessageFeedback;
+  readonly isNetworkUnavailable: () => boolean;
   readonly workspacesByNode: Ref<Record<string, readonly Workspace[]>>;
   readonly tabs: ReturnType<typeof createWorkspaceTabService>;
   readonly tree: ReturnType<typeof createWorkspaceTreeService>;
@@ -224,6 +226,7 @@ export function createWorkbenchWorkspaceTreeController(
         options.replaceWorkspaces(result.workspaces);
     } catch (error) {
       if (workspaceRequestIds.get(nodeId) !== requestId || !currentSelection()) return;
+      if (errorCode(error) === 'NETWORK_UNAVAILABLE' && options.isNetworkUnavailable()) return;
       options.notice(
         translate('generated.workbenchWorkspaceTreeController.unableToLoadNodeWorkspaces', {
           value0: options.errorMessage(error)

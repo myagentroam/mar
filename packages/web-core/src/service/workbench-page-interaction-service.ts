@@ -258,6 +258,7 @@ export interface WorkbenchApplicationView<ManagementSection extends string> {
   applyWebUpdate: () => Promise<void>;
   retryWorkspaceWatch: () => Promise<void>;
   liveConnected: boolean;
+  networkUnavailable: boolean;
   codeNavigationReady: boolean;
   managementItems: { id: ManagementSection; label: string }[];
   managementSection: ManagementSection;
