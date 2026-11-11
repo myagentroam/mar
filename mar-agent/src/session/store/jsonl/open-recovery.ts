@@ -40,7 +40,14 @@ export async function openJsonlIndex(root: string): Promise<SessionIndex> {
     if (disk) index = disk;
     else {
       const entries = await readdir(directory, { withFileTypes: true });
-      if (entries.some((entry) => entry.isDirectory()))
+      if (
+        entries.some(
+          (entry) =>
+            entry.isDirectory() &&
+            entry.name !== 'index.lock' &&
+            !entry.name.startsWith('index.lock.pending-')
+        )
+      )
         throw new AgentError('MAR_AGENT_SESSION_CORRUPT', 'Session index is missing.');
       index = { version: 2, revision: 0, sessions: [] };
       await persistFormatSelection(path, index);

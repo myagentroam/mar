@@ -11,6 +11,7 @@ const fault = vi.hoisted(() => ({
   releasePath: '',
   pendingPath: '',
   closeCalls: 0,
+  releaseCalls: 0,
   syncFails: true,
   syncError: new Error('first sync failure'),
   closeError: new Error('later close failure')
@@ -19,6 +20,13 @@ vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    rmdir: async (...args: Parameters<typeof fs.rmdir>) => {
+      await fs.rmdir(...args);
+      if (args[0] === fault.releasePath) {
+        fault.releaseCalls++;
+        throw fault.closeError;
+      }
+    },
     rm: async (...args: Parameters<typeof fs.rm>) => {
       if (args[0] === fault.pendingPath) {
         fault.pendingPath = '';
@@ -35,7 +43,7 @@ vi.mock('node:fs/promises', async (original) => {
     },
     open: async (...args: Parameters<typeof fs.open>) => {
       const handle = await fs.open(...args);
-      if (args[0] === fault.doublePath || args[0] === fault.releasePath) {
+      if (args[0] === fault.doublePath) {
         const syncFails = args[0] === fault.doublePath && fault.syncFails;
         return new Proxy(handle, {
           get(target, property) {
@@ -84,6 +92,7 @@ afterEach(async () => {
   fault.releasePath = '';
   fault.pendingPath = '';
   fault.closeCalls = 0;
+  fault.releaseCalls = 0;
   fault.syncFails = true;
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
 });
@@ -303,7 +312,7 @@ describe('JSONL v2 commit failure boundaries', () => {
     await expect(store.acquireSessionLease(id)).rejects.toMatchObject({
       code: 'MAR_AGENT_SESSION_CORRUPT'
     });
-    expect(fault.closeCalls).toBe(1);
+    expect(fault.releaseCalls).toBe(1);
     expect(await readFile(journal, 'utf8')).toBe('{');
     fault.releasePath = '';
     await store.close();
@@ -330,7 +339,7 @@ describe('JSONL v2 commit failure boundaries', () => {
       code: 'ENOSPC',
       message: 'index rename fault'
     });
-    expect(fault.closeCalls).toBe(1);
+    expect(fault.releaseCalls).toBe(1);
     fault.releasePath = '';
     await store.close();
   });

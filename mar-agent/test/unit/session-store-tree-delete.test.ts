@@ -30,6 +30,12 @@ vi.mock('node:fs/promises', async (original) => {
       return fs.readFile(...args);
     },
     rename: async (...args: Parameters<typeof fs.rename>) => {
+      if (args[1] === fault.publishLockPath && fault.publishGate) {
+        const gate = fault.publishGate;
+        fault.publishGate = undefined;
+        gate.entered();
+        await gate.resume;
+      }
       if (
         String(args[0]).includes('.delete-') &&
         String(args[0]).includes('.trash/') &&
@@ -55,12 +61,6 @@ vi.mock('node:fs/promises', async (original) => {
       return fs.rm(...args);
     },
     open: async (...args: Parameters<typeof fs.open>) => {
-      if (args[0] === fault.publishLockPath && args[1] === 'wx' && fault.publishGate) {
-        const gate = fault.publishGate;
-        fault.publishGate = undefined;
-        gate.entered();
-        await gate.resume;
-      }
       const handle = await fs.open(...args);
       if (args[0] === fault.syncRoot && fault.failSync && fault.indexRenamed)
         vi.spyOn(handle, 'sync').mockImplementation(async () => {

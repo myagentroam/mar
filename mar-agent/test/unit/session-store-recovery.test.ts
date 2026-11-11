@@ -36,18 +36,18 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       return fs.rename(...args);
     },
-    rm: async (...args: Parameters<typeof fs.rm>) => {
+    rmdir: async (...args: Parameters<typeof fs.rmdir>) => {
       if (args[0] === indexLockFailure.path && !indexLockFailure.injected) {
         const disk = JSON.parse(await fs.readFile(indexLockFailure.indexPath, 'utf8')) as {
           sessions: unknown[];
         };
         if (disk.sessions.length > 0) {
           indexLockFailure.injected = true;
-          await fs.rm(...args);
+          await fs.rmdir(...args);
           throw new Error('simulated post-commit index lock release error');
         }
       }
-      return fs.rm(...args);
+      return fs.rmdir(...args);
     }
   };
 });
@@ -611,15 +611,19 @@ describe('session storage recovery', () => {
     await reopened.close();
   });
 
-  it('serializes dead-lock reclamation between competing processes', async () => {
-    const { home, store, session } = await fixture();
-    await store.close();
-    const directory = join(home, '.mar', 'agent', 'sessions', session.id);
-    await writeFile(join(directory, 'lock'), JSON.stringify({ pid: 2147483647 }));
-    const barrier = join(home, 'start-writers');
-    const finish = join(home, 'release-writer');
-    const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
-    const script = `import { readFile, writeFile } from 'node:fs/promises';
+  it.each(['owner present', 'owner removed'])(
+    'serializes dead-lock reclamation: %s',
+    async (stage) => {
+      const { home, store, session } = await fixture();
+      await store.close();
+      const directory = join(home, '.mar', 'agent', 'sessions', session.id);
+      await mkdir(join(directory, 'lock'));
+      if (stage === 'owner present')
+        await writeFile(join(directory, 'lock', randomUUID()), JSON.stringify({ pid: 2147483647 }));
+      const barrier = join(home, 'start-writers');
+      const finish = join(home, 'release-writer');
+      const moduleUrl = new URL('../../src/session/store/index.ts', import.meta.url).href;
+      const script = `import { readFile, writeFile } from 'node:fs/promises';
       import { setTimeout as delay } from 'node:timers/promises';
       import { JsonlSessionStore } from ${JSON.stringify(moduleUrl)};
       const [home, sessionId, ready, barrier, result, finish] = process.argv.slice(1);
@@ -644,78 +648,79 @@ describe('session storage recovery', () => {
       } finally {
         await store.close();
       }`;
-    const files = [0, 1].map((index) => ({
-      ready: join(home, `ready-${index}`),
-      result: join(home, `result-${index}`)
-    }));
-    const children = files.map(({ ready, result }) => {
-      const child = spawn(process.execPath, [
-        '--import',
-        'tsx',
-        '--input-type=module',
-        '-e',
-        script,
-        home,
-        session.id,
-        ready,
-        barrier,
-        result,
-        finish
-      ]);
-      let stderr = '';
-      child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-        stderr += chunk;
+      const files = [0, 1].map((index) => ({
+        ready: join(home, `ready-${index}`),
+        result: join(home, `result-${index}`)
+      }));
+      const children = files.map(({ ready, result }) => {
+        const child = spawn(process.execPath, [
+          '--import',
+          'tsx',
+          '--input-type=module',
+          '-e',
+          script,
+          home,
+          session.id,
+          ready,
+          barrier,
+          result,
+          finish
+        ]);
+        let stderr = '';
+        child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+          stderr += chunk;
+        });
+        const closed = new Promise<void>((resolve, reject) => {
+          child.on('error', reject);
+          child.on('close', (code) =>
+            code === 0 ? resolve() : reject(new Error(`Writer exited ${code}: ${stderr}`))
+          );
+        });
+        void closed.catch(() => undefined);
+        return { child, closed };
       });
-      const closed = new Promise<void>((resolve, reject) => {
-        child.on('error', reject);
-        child.on('close', (code) =>
-          code === 0 ? resolve() : reject(new Error(`Writer exited ${code}: ${stderr}`))
-        );
-      });
-      void closed.catch(() => undefined);
-      return { child, closed };
-    });
-    const readWhenReady = async (path: string): Promise<string> => {
-      const deadline = Date.now() + 8_000;
-      for (;;) {
-        try {
-          const content = await readFile(path, 'utf8');
-          if (content.length > 0) return content;
-          if (Date.now() >= deadline) throw new Error('Writer signal was not published.');
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || Date.now() >= deadline)
-            throw error;
+      const readWhenReady = async (path: string): Promise<string> => {
+        const deadline = Date.now() + 8_000;
+        for (;;) {
+          try {
+            const content = await readFile(path, 'utf8');
+            if (content.length > 0) return content;
+            if (Date.now() >= deadline) throw new Error('Writer signal was not published.');
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || Date.now() >= deadline)
+              throw error;
+          }
+          await delay(10);
         }
-        await delay(10);
+      };
+      try {
+        await Promise.all(files.map(({ ready }) => readWhenReady(ready)));
+        await writeFile(barrier, 'start');
+        const outcomes = await Promise.all(files.map(({ result }) => readWhenReady(result)));
+        expect(outcomes.sort()).toEqual(['acquired', 'locked']);
+        await writeFile(finish, 'release');
+        await Promise.all(children.map(({ closed }) => closed));
+        expect(await readdir(directory)).not.toContain('lock.reclaim');
+      } finally {
+        for (const { child } of children)
+          if (child.exitCode === null && child.signalCode === null) child.kill();
+        await Promise.allSettled(children.map(({ closed }) => closed));
       }
-    };
-    try {
-      await Promise.all(files.map(({ ready }) => readWhenReady(ready)));
-      await writeFile(barrier, 'start');
-      const outcomes = await Promise.all(files.map(({ result }) => readWhenReady(result)));
-      expect(outcomes.sort()).toEqual(['acquired', 'locked']);
-      await writeFile(finish, 'release');
-      await Promise.all(children.map(({ closed }) => closed));
-      expect(await readdir(directory)).not.toContain('lock.reclaim');
-    } finally {
-      for (const { child } of children)
-        if (child.exitCode === null && child.signalCode === null) child.kill();
-      await Promise.allSettled(children.map(({ closed }) => closed));
     }
-  });
+  );
 
-  it('refuses to reclaim an abandoned lock when its reclamation guard remains', async () => {
+  it('reclaims an empty lock directory without consulting legacy reclamation markers', async () => {
     const { home, store, session } = await fixture();
     await store.close();
     const lock = join(home, '.mar', 'agent', 'sessions', session.id, 'lock');
-    await writeFile(lock, JSON.stringify({ pid: 2147483647 }));
+    await mkdir(lock);
     await writeFile(`${lock}.reclaim`, '');
     const reopened = await JsonlSessionStore.open(home);
-    await expect(reopened.acquireSessionLease(session.id)).rejects.toMatchObject({
-      code: 'MAR_AGENT_SESSION_LOCKED'
-    });
+    const release = await reopened.acquireSessionLease(session.id);
+    await release();
     await reopened.close();
-    expect(await readFile(lock, 'utf8')).toContain('2147483647');
+    await expect(readdir(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(`${lock}.reclaim`, 'utf8')).toBe('');
   });
 
   it('reclaims input images left between file persistence and turn publication', async () => {

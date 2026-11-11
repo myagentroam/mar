@@ -25,6 +25,18 @@ vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    rmdir: async (...args: Parameters<typeof fs.rmdir>) => {
+      await fs.rmdir(...args);
+      const path = String(args[0]);
+      if (
+        basename(path) === 'lock' &&
+        ((fault.mode === 'release' && dirname(path) !== fault.source) ||
+          (fault.mode === 'source-release' && dirname(path) === fault.source))
+      ) {
+        fault.secondaryTriggered = true;
+        throw fault.second;
+      }
+    },
     readFile: async (...args: Parameters<typeof fs.readFile>) => {
       if (fault.mode === 'marker-stale-index' && fault.triggered && args[0] === fault.index) {
         fault.secondaryTriggered = true;
@@ -74,25 +86,13 @@ vi.mock('node:fs/promises', async (original) => {
           fault.mode === 'readback-missing' ||
           fault.mode === 'release' ||
           fault.mode === 'source-release');
-      const targetLock =
-        fault.mode === 'release' && basename(path) === 'lock' && dirname(path) !== fault.source;
-      const sourceLock =
-        fault.mode === 'source-release' &&
-        basename(path) === 'lock' &&
-        dirname(path) === fault.source;
-      if (!segment && !targetLock && !sourceLock) return handle;
+      if (!segment) return handle;
       return new Proxy(handle, {
         get(target, property) {
           if (property === 'sync' && segment)
             return async () => {
               fault.triggered = true;
               throw fault.first;
-            };
-          if (property === 'close' && (targetLock || sourceLock))
-            return async () => {
-              await target.close();
-              fault.secondaryTriggered = true;
-              throw fault.second;
             };
           const value = Reflect.get(target, property, target);
           return typeof value === 'function' ? value.bind(target) : value;
