@@ -345,6 +345,7 @@ defineExpose({
             :active="tab.id === activeTab?.id"
             :register-page-handle="(handle: unknown) => registerPageHandle(tab.id, handle)"
             :request-close="() => requestClose(tab.id)"
+            :request-close-all="requestCloseAll"
           />
         </div>
       </div>

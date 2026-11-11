@@ -203,13 +203,14 @@ onBeforeUnmount(() => {
       @pointerdown.prevent
     >
       <el-button text size="small" @click="quote">
-        <MarIcon name="quote" />{{ translate('composer.quote') }}
+        <MarIcon name="quote" /><span>{{ translate('composer.quote') }}</span>
       </el-button>
     </div>
   </el-popover>
   <el-dropdown
     v-if="mode === 'menu'"
     ref="menu"
+    class="quote-context-menu"
     virtual-triggering
     :virtual-ref="virtualReference"
     trigger="contextmenu"
@@ -239,13 +240,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.quote-context-menu {
+  /* The virtual trigger must not shift the timeline and trigger scroll dismissal. */
+  display: contents;
+}
 .quote-actions {
   display: flex;
   gap: 0.25rem;
 }
 .quote-actions .el-button {
   margin: 0;
-  gap: 0.3rem;
   justify-content: flex-start;
   border-radius: var(--mar-radius-surface);
 }

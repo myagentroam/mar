@@ -416,8 +416,8 @@ describe('session Pane quote capture', () => {
     try {
       const mainCapture = main.state.captureQuote(() => true, vi.fn());
       const asideCapture = aside.state.captureQuote(() => true, vi.fn());
-      mainCapture?.(fileQuote('main selection'));
-      asideCapture?.(fileQuote('aside selection'));
+      expect(mainCapture?.(fileQuote('main selection'))).toBe(true);
+      expect(asideCapture?.(fileQuote('aside selection'))).toBe(true);
 
       const targetValue = target.value!;
       const mainReferences = owners.drafts.forTarget(targetValue, 'main').references.value;
@@ -452,16 +452,41 @@ describe('session Pane quote capture', () => {
     try {
       const staleCapture = pane.state.captureQuote(() => enabled, rejected);
       target.value = secondTarget;
-      staleCapture?.(fileQuote('stale selection'));
+      expect(staleCapture?.(fileQuote('stale selection'))).toBe(false);
 
       const lockedCapture = pane.state.captureQuote(() => enabled, rejected);
       enabled = false;
-      lockedCapture?.(fileQuote('locked selection'));
+      expect(lockedCapture?.(fileQuote('locked selection'))).toBe(false);
 
       expect(pane.state.captureQuote(() => false, rejected)).toBeUndefined();
       expect(owners.drafts.forTarget(firstTarget, 'aside').references.value).toEqual([]);
       expect(owners.drafts.forTarget(secondTarget, 'aside').references.value).toEqual([]);
       expect(rejected).not.toHaveBeenCalled();
+    } finally {
+      pane.scope.stop();
+    }
+  });
+
+  it('reports rejection without changing the draft when a quote exceeds capacity', () => {
+    const target = ref<DraftTarget | undefined>({
+      kind: 'session',
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      sessionId: 'session-a'
+    });
+    const owners = createQuoteOwners(target);
+    const pane = createQuotePaneState(target, 'main', owners);
+    const slot = owners.drafts.forTarget(target.value!, 'main');
+    const rejected = vi.fn();
+    slot.input.value = 'Keep this opinion';
+    const references = slot.references.value;
+    try {
+      expect(pane.state.captureQuote(() => true, rejected)?.(fileQuote('x'.repeat(8001)))).toBe(
+        false
+      );
+      expect(rejected).toHaveBeenCalledOnce();
+      expect(slot.input.value).toBe('Keep this opinion');
+      expect(slot.references.value).toBe(references);
     } finally {
       pane.scope.stop();
     }

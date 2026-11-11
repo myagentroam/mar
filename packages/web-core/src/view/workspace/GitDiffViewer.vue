@@ -44,6 +44,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   close: [];
+  quoted: [];
   download: [];
   moveFile: [direction: -1 | 1];
   preview: [];
@@ -582,9 +583,13 @@ function openPreviewMenu(event: MouseEvent): void {
   quoteAction.value =
     receive && copiedSelection.trim() && (oldLines.length || newLines.length)
       ? () => {
-          if (props.active !== false && props.path === path && props.diff === diff)
+          const added =
+            props.active !== false &&
+            props.path === path &&
+            props.diff === diff &&
             receive(snapshot);
           quoteAction.value = undefined;
+          if (added) emit('quoted');
         }
       : undefined;
   void contextMenu.value?.open(event);

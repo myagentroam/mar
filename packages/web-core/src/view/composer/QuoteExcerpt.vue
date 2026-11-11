@@ -1,8 +1,11 @@
 <script setup lang="ts">
-// Presents the saved snapshot only; it never resolves or reads its source.
+// Presents a bounded preview of the saved snapshot; it never changes it or reads its source.
 import { computed, ref } from 'vue';
 import type { ComposerReference } from '@myagentroam/protocol';
-import { composerReferenceDescription } from '../../util/composer-reference.js';
+import {
+  composerReferenceDescription,
+  composerReferencePreview
+} from '../../util/composer-reference.js';
 import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
 
@@ -11,9 +14,8 @@ const props = defineProps<{
   readonly collapsible?: boolean;
 }>();
 const expanded = ref(false);
-const long = computed(
-  () => props.reference.text.length > 400 || props.reference.text.split('\n').length > 8
-);
+const preview = computed(() => composerReferencePreview(props.reference.text));
+const long = computed(() => preview.value.length > 400 || preview.value.split('\n').length > 8);
 </script>
 
 <template>
@@ -22,7 +24,7 @@ const long = computed(
       <MarIcon name="quote" /><span>{{ composerReferenceDescription(reference) }}</span>
     </div>
     <div class="quote-excerpt-text" :class="{ collapsed: collapsible && long && !expanded }">
-      {{ reference.text }}
+      {{ preview }}
     </div>
     <el-button
       v-if="collapsible && long"

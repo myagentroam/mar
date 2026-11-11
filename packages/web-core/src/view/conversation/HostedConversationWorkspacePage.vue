@@ -1455,6 +1455,7 @@ onBeforeUnmount(() => {
           :target-column="filePreview.targetColumn.value"
           :write-enabled="false"
           @close="filePreview.close"
+          @quoted="filePreview.close"
           @download="filePreview.download"
           @open-markdown-file="
             (path, external) => openLinkedFile(path, undefined, undefined, external)

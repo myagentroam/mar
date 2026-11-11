@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   viewed: [];
   close: [];
+  quoted: [];
   download: [diff: unknown];
   moveFile: [direction: -1 | 1];
   preview: [diff: unknown];
@@ -120,6 +121,7 @@ defineExpose({
           : 'WORKING_TREE'
     "
     @close="emit('close')"
+    @quoted="emit('quoted')"
     @download="emit('download', diff)"
     @edit="emit('edit')"
     @move-file="emit('moveFile', $event)"

@@ -8,6 +8,7 @@ import type { ComposerSkillToken } from '../../model/workbench.js';
 import type { ComposerReference } from '@myagentroam/protocol';
 import {
   composerReferenceKey,
+  composerReferenceLabel,
   composerReferenceDescription
 } from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
@@ -262,7 +263,7 @@ const emit = defineEmits<{
                 :name="reference.path"
                 :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
               />
-              <span>{{ reference.label }}</span
+              <span class="composer-reference-label">{{ composerReferenceLabel(reference) }}</span
               ><MarIcon name="close" />
             </button>
           </template>
@@ -450,6 +451,22 @@ const emit = defineEmits<{
   color: var(--mar-color-brand-text);
   padding: 0.2rem 0.5rem;
   font-size: var(--mar-font-size-meta);
+}
+
+.composer-command-state.composer-file-reference-state {
+  min-width: 0;
+  max-width: min(18rem, 100%);
+}
+
+.composer-reference-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-command-state.composer-file-reference-state > :not(.composer-reference-label) {
+  flex-shrink: 0;
 }
 
 .composer-command-state:not(:disabled) {

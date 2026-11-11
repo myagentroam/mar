@@ -101,7 +101,7 @@ export const composerEnUS = {
   composer: {
     quote: 'Quote',
     previewQuote: 'Preview quote: {name}',
-    expandQuote: 'Show full quote',
+    expandQuote: 'Expand quote',
     collapseQuote: 'Collapse quote',
     selectAll: 'Select all',
     removeQuote: 'Remove quote {name}',

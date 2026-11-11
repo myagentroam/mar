@@ -815,7 +815,7 @@ function rawContentUrl(
     @activate="activateStandaloneTab"
     @close="closeStandaloneTab"
     @close-all="closeStandaloneTabs"
-    v-slot="{ tab, active, registerPageHandle, requestClose }"
+    v-slot="{ tab, active, registerPageHandle, requestClose, requestCloseAll }"
   >
     <p v-if="active && error" class="standalone-error">{{ error }}</p>
     <WorkspaceTextFilePage
@@ -839,6 +839,7 @@ function rawContentUrl(
         dirtyDrafts.find((draft) => draft.tabIdentity === tab.identity && draft.path === tab.path)
       "
       @close="requestClose"
+      @quoted="requestCloseAll"
       @download="download"
       @open-html-preview="openHtml(file.path)"
       @open-markdown-preview="openMarkdown(file.path)"

@@ -95,11 +95,13 @@ const quoteTarget: ComposerQuoteTarget = {
     if (props.draft || composerReadonly.value || disposed || target === undefined) return undefined;
     return (quote) => {
       if (composerReadonly.value || disposed || target !== props.workspace.selectedWatchId())
-        return;
+        return false;
       try {
         references.value = appendComposerQuote(references.value, quote, input.value);
+        return true;
       } catch {
         showMessage(translate('composer.quoteTooLarge'), 'warning');
+        return false;
       }
     };
   }

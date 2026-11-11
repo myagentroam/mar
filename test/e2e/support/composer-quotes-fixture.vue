@@ -4,8 +4,9 @@ import type { ConversationTurn } from '@myagentroam/protocol';
 import ConversationComposer from '../../../packages/web-core/src/view/composer/ConversationComposer.vue';
 import ConversationTimeline from '../../../packages/web-core/src/view/conversation/ConversationTimeline.vue';
 import WorkspaceTextFilePage from '../../../packages/web-core/src/view/workspace/WorkspaceTextFilePage.vue';
-import GitDiffViewer from '../../../packages/web-core/src/view/workspace/GitDiffViewer.vue';
-import FilePreviewSurface from '../../../packages/web-core/src/view/workspace/FilePreviewSurface.vue';
+import WorkspaceGitDiffPage from '../../../packages/web-core/src/view/workspace/WorkspaceGitDiffPage.vue';
+import WorkspaceFileTabs from '../../../packages/web-core/src/view/workspace/WorkspaceFileTabs.vue';
+import type { WorkspaceFileTab } from '../../../packages/web-core/src/util/workspace-file-tab.js';
 import {
   createSessionDraftService,
   type DraftTarget
@@ -29,6 +30,28 @@ input.value = 'Keep my opinion unchanged.';
 const references = computed(() => draft.value.references.value);
 const locked = ref(false);
 const surface = ref('chat');
+const activeTabId = ref(1);
+const previewTabs = computed<WorkspaceFileTab[]>(() => {
+  const tab: WorkspaceFileTab = {
+    id: 1,
+    identity: surface.value,
+    nodeId: 'n',
+    workspaceId: 'w',
+    path: 'src/example.ts',
+    fileName: 'example.ts',
+    repositoryPath: '',
+    worktreePath: '',
+    kind: surface.value.startsWith('file')
+      ? 'WORKTREE_TEXT'
+      : surface.value === 'working-diff'
+        ? 'WORKTREE_DIFF'
+        : 'HISTORY_DIFF',
+    commit: 'abc123'
+  };
+  return surface.value === 'file-multiple'
+    ? [tab, { ...tab, id: 2, identity: 'second', kind: 'HISTORY_DIFF' }]
+    : [tab];
+});
 const payload = ref('');
 const copied = ref('');
 const failure = ref('');
@@ -38,23 +61,28 @@ const quoteTarget: ComposerQuoteTarget = {
     const origin = target.value;
     const slot = draft.value;
     return (quote) => {
-      if (locked.value || origin !== target.value || slot !== draft.value) return;
+      if (locked.value || origin !== target.value || slot !== draft.value) return false;
       try {
         slot.references.value = appendComposerQuote(slot.references.value, quote, slot.input.value);
+        return true;
       } catch {
         failure.value = 'Quote rejected';
+        return false;
       }
     };
   }
 };
-const file = {
+const file = ref({
   path: 'src/example.ts',
   encoding: 'utf-8' as const,
   content: 'const first = 1;\nconst second = 2;\nreturn first + second;',
   truncated: false,
   revision: 'r1'
+});
+const diff = {
+  path: file.value.path,
+  text: '@@ -2,2 +2,2 @@\n-old value\n+new value\n same value'
 };
-const diff = { path: file.path, text: '@@ -2,2 +2,2 @@\n-old value\n+new value\n same value' };
 const workingDiff = { ...diff, afterText: 'first value\nnew value\nsame value' };
 const now = 1_700_000_000_000;
 function turn(
@@ -112,7 +140,11 @@ Object.assign(window, {
     copied: () => copied.value,
     references: () => references.value,
     setSurface(value: string) {
+      activeTabId.value = 1;
       surface.value = value;
+    },
+    replaceFile(text: string) {
+      file.value = { ...file.value, content: text };
     },
     replaceReply(text: string) {
       turns.value = [turn('reply', 'assistant_message', text)];
@@ -128,43 +160,42 @@ Object.assign(window, {
     <button @click="pane = pane === 'main' ? 'aside' : 'main'">Switch pane</button>
   </nav>
   <main>
-    <FilePreviewSurface
+    <WorkspaceFileTabs
       v-if="surface !== 'chat'"
-      :overlay="true"
-      label="Source file"
-      @close="surface = 'chat'"
+      :tabs="previewTabs"
+      :active-tab-id="activeTabId"
+      @activate="activeTabId = $event"
+      @close-all="surface = 'chat'"
+      v-slot="{ tab, active, registerPageHandle, requestClose, requestCloseAll }"
     >
       <WorkspaceTextFilePage
-        v-if="surface === 'file'"
+        v-if="tab.kind === 'WORKTREE_TEXT'"
+        :ref="registerPageHandle"
+        v-show="active"
+        :active="active"
         :file="file"
         kind="text"
         :downloading="false"
         :target-line="undefined"
         :loading="false"
         :quote-target="quoteTarget"
+        :write-enabled="true"
+        :save-file="async () => 'r2'"
+        @close="requestClose"
+        @quoted="requestCloseAll"
       />
-      <GitDiffViewer
-        v-else-if="surface === 'diff'"
-        :path="file.path"
-        :paths="[file.path]"
-        :diff="diff"
-        :loading="false"
-        source="HISTORY"
-        revision="abc123"
-        :preview-enabled="false"
+      <WorkspaceGitDiffPage
+        v-else
+        :ref="registerPageHandle"
+        v-show="active"
+        :active="active"
+        :tab="tab"
+        :load="async () => (tab.kind === 'WORKTREE_DIFF' ? workingDiff : diff)"
         :quote-target="quoteTarget"
+        @close="requestClose"
+        @quoted="requestCloseAll"
       />
-      <GitDiffViewer
-        v-else-if="surface === 'working-diff'"
-        :path="file.path"
-        :paths="[file.path]"
-        :diff="workingDiff"
-        :loading="false"
-        source="WORKING_TREE"
-        :preview-enabled="false"
-        :quote-target="quoteTarget"
-      />
-    </FilePreviewSurface>
+    </WorkspaceFileTabs>
     <ConversationTimeline
       v-else
       :turns="turns"

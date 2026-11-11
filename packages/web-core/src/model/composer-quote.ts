@@ -1,6 +1,6 @@
 import type { ComposerQuoteDraft } from '@myagentroam/protocol';
 
-/** A source captures an add action; the composition owner alone binds its draft and admission. */
+/** The composition owner binds draft admission; a captured action reports whether it added the quote. */
 export interface ComposerQuoteTarget {
-  capture(): ((quote: ComposerQuoteDraft) => void) | undefined;
+  capture(): ((quote: ComposerQuoteDraft) => boolean) | undefined;
 }

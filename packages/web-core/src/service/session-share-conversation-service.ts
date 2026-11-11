@@ -100,11 +100,14 @@ export function createSessionShareConversationService(options: {
       if (!ready.value || submission.pending.value) return undefined;
       const identity = access.session.value;
       return (quote) => {
-        if (!ready.value || submission.pending.value || access.session.value !== identity) return;
+        if (!ready.value || submission.pending.value || access.session.value !== identity)
+          return false;
         try {
           references.value = appendComposerQuote(references.value, quote, input.value);
+          return true;
         } catch {
           notice(translate('composer.quoteTooLarge'), 'error');
+          return false;
         }
       };
     }

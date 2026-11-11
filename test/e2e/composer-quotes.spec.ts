@@ -55,6 +55,10 @@ test('desktop selection adds only a tag and quote-only history preserves its pub
   await selectReply(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
   const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await expect(bubble.locator('svg')).toHaveCount(1);
+  const iconBounds = (await bubble.locator('svg').boundingBox())!;
+  const labelBounds = (await bubble.getByText('Quote', { exact: true }).boundingBox())!;
+  expect(labelBounds.x - iconBounds.x - iconBounds.width).toBeGreaterThanOrEqual(4);
   const bubbleWidth = await bubble.evaluate((element) => element.getBoundingClientRect().width);
   const buttonWidth = await bubble
     .getByRole('button')
@@ -172,7 +176,81 @@ test('context menu replaces the bubble, keeps native link menus, and rejects a s
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
 });
 
-test('file menu selects the model text and quotes without closing the source or changing the opinion', async ({
+test('a long draft quote stays compact while preserving its full snapshot', async ({
+  page
+}, testInfo) => {
+  const text = '引用内容😀需要保持完整，仅摘要应该限制长度。'.repeat(8);
+  await page.evaluate(
+    (text) =>
+      (
+        window as unknown as { quoteFixture: { replaceReply(text: string): void } }
+      ).quoteFixture.replaceReply(text),
+    text
+  );
+  await selectReply(page);
+  await page.getByRole('group', { name: 'Quote', exact: true }).getByRole('button').click();
+  const tag = page.locator('.composer-quote-tag');
+  const summary = await tag.locator('.quote-tag-preview span').textContent();
+  expect(Array.from(summary!)).toHaveLength(32);
+  expect(summary).toBe(`${Array.from(text).slice(0, 31).join('')}…`);
+  const rootFontSize = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).fontSize)
+  );
+  expect((await tag.boundingBox())!.width).toBeLessThanOrEqual(18 * rootFontSize);
+  const tagBounds = (await tag.boundingBox())!;
+  const removeBounds = (await tag.locator('.quote-tag-remove').boundingBox())!;
+  expect(removeBounds.x + removeBounds.width).toBeLessThanOrEqual(tagBounds.x + tagBounds.width);
+  await tag.locator('.quote-tag-preview').click();
+  const region = page.getByRole('region', { name: 'Quote', exact: true });
+  await expect(region).toBeVisible();
+  await expect(page.locator('.el-popover').filter({ has: region })).toHaveCSS('opacity', '1');
+  await region.hover();
+  await expect(region).toContainText(text);
+  expect(await result(page, 'references')).toMatchObject([{ text }]);
+  await page.screenshot({
+    path: testInfo.outputPath('compact-quote-tag.png'),
+    animations: 'disabled'
+  });
+});
+
+test('the Chat context menu stays available for a scrolled multiline selection', async ({
+  page
+}, testInfo) => {
+  const text = 'A selected reply line with enough content to wrap naturally. '.repeat(60);
+  await page.evaluate(
+    (text) =>
+      (
+        window as unknown as { quoteFixture: { replaceReply(text: string): void } }
+      ).quoteFixture.replaceReply(text),
+    text
+  );
+  await selectReply(page);
+  await page.locator('main').evaluate(
+    (element) =>
+      new Promise<void>((resolve) => {
+        element.addEventListener('scroll', () => resolve(), { once: true });
+        element.scrollTop = 300;
+      })
+  );
+  const point = await page.evaluate(() => {
+    const viewport = document.querySelector('main')!.getBoundingClientRect();
+    const rect = [...window.getSelection()!.getRangeAt(0).getClientRects()].find(
+      (rect) => rect.top > viewport.top + 20 && rect.bottom < viewport.bottom - 20
+    )!;
+    return { x: rect.left + 8, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.click(point.x, point.y, { button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Copy', exact: true })).toBeVisible();
+  expect(await page.locator('main').evaluate((element) => element.scrollTop)).toBe(300);
+  await page.screenshot({
+    path: testInfo.outputPath('scrolled-chat-menu.png'),
+    animations: 'disabled'
+  });
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  expect(await result(page, 'references')).toMatchObject([{ text: text.trimEnd() }]);
+});
+
+test('file menu quotes the model text and closes the source window without changing the opinion', async ({
   page
 }) => {
   await page.getByRole('button', { name: 'File', exact: true }).click();
@@ -185,7 +263,8 @@ test('file menu selects the model text and quotes without closing the source or 
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
   await editor.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
-  await expect(editor).toBeVisible();
+  await expect(editor).toHaveCount(0);
+  await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
   await expect(page.locator('textarea.composer-input')).toHaveValue('Keep my opinion unchanged.');
   expect(await result(page, 'references')).toMatchObject([
     {
@@ -208,6 +287,7 @@ test('Diff select all does not quote implicitly and preserves new and old line n
   await pane.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
   await expect(page.locator('#failure')).toBeEmpty();
+  await expect(pane).toHaveCount(0);
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(1);
   expect(await result(page, 'references')).toMatchObject([
     {
@@ -227,12 +307,88 @@ test('Diff select all does not quote implicitly and preserves new and old line n
   expect(references).not.toContain('Select all');
 });
 
+test('quoting closes the entire source window when multiple tabs are open', async ({ page }) => {
+  await page.evaluate(() =>
+    (
+      window as unknown as { quoteFixture: { setSurface(value: string): void } }
+    ).quoteFixture.setSurface('file-multiple')
+  );
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  const editor = page.locator('.cm-content');
+  await editor.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Select all', exact: true }).click();
+  await editor.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
+  expect(await result(page, 'references')).toMatchObject([{ source: 'file' }]);
+});
+
+for (const source of ['File', 'Diff'] as const) {
+  for (const invalidation of ['changeTarget', 'lock'] as const) {
+    test(`${source} quote keeps its window open after ${invalidation}`, async ({ page }) => {
+      await page.getByRole('button', { name: source, exact: true }).click();
+      const body = page.locator(source === 'File' ? '.cm-content' : '.unified-history-diff');
+      await body.click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Select all', exact: true }).click();
+      await body.click({ button: 'right' });
+      await action(page, invalidation);
+      await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+      await expect(body).toBeVisible();
+      expect(await result(page, 'references')).toEqual([]);
+    });
+  }
+}
+
+test('an oversized file quote leaves the source and opinion unchanged', async ({ page }) => {
+  await page.evaluate(() =>
+    (
+      window as unknown as { quoteFixture: { replaceFile(text: string): void } }
+    ).quoteFixture.replaceFile('x'.repeat(8001))
+  );
+  await page.getByRole('button', { name: 'File', exact: true }).click();
+  const editor = page.locator('.cm-content');
+  await editor.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Select all', exact: true }).click();
+  await editor.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  await expect(page.locator('#failure')).toHaveText('Quote rejected');
+  await expect(editor).toBeVisible();
+  expect(await result(page, 'references')).toEqual([]);
+  await expect(page.locator('textarea.composer-input')).toHaveValue('Keep my opinion unchanged.');
+});
+
+test('a successful quote respects the unsaved-file close guard', async ({ page }) => {
+  await page.getByRole('button', { name: 'File', exact: true }).click();
+  const editor = page.locator('.cm-content');
+  await expect(editor).toHaveAttribute('contenteditable', 'true');
+  await editor.click();
+  await editor.press('Control+a');
+  await editor.pressSequentially('Unsaved source text');
+  await editor.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Select all', exact: true }).click();
+  await editor.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Unsaved changes', exact: true });
+  await expect(confirmation).toBeVisible();
+  expect(await result(page, 'references')).toMatchObject([
+    { source: 'file', text: 'Unsaved source text', unsaved: true }
+  ]);
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(editor).toHaveText('Unsaved source text');
+  await expect(page.locator('.workspace-file-tabs')).toBeVisible();
+});
+
 test('mobile uses the selection bubble and standard context menu without message action buttons', async ({
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await selectReply(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
+  await expect(page.locator('.quote-actions .mar-icon + span')).toHaveCSS(
+    'margin-inline-start',
+    '4px'
+  );
   await expect(
     page
       .locator('.conversation-message-actions')
@@ -298,7 +454,9 @@ test('Diff quotation excludes the unselected line at an end boundary', async ({ 
   ]);
 });
 
-test('mobile file actions retain selection and never close the source', async ({ page }) => {
+test('mobile file actions preserve selection until quoting closes the source window', async ({
+  page
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'File', exact: true }).click();
   await expect(page.locator('.cm-content')).toBeVisible();
@@ -313,7 +471,7 @@ test('mobile file actions retain selection and never close the source', async ({
   await expect(page.getByRole('menuitem', { name: 'Quote', exact: true })).toBeEnabled();
   await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(1);
-  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('.cm-content')).toHaveCount(0);
   expect(await result(page, 'references')).toMatchObject([
     { source: 'file', text: 'const first = 1;\nconst second = 2;\nreturn first + second;' }
   ]);
@@ -413,10 +571,11 @@ for (const width of [320, 390]) {
     });
     await page.getByRole('group', { name: 'Quote', exact: true }).getByRole('button').click();
     const saved = ((await result(page, 'references')) as { text: string }[])[0]!.text;
+    const preview = `${Array.from(saved).slice(0, 499).join('')}…`;
     await page.locator('.quote-tag-preview').click();
     const region = page.getByRole('region', { name: 'Quote', exact: true });
     await expect(region).toBeVisible();
-    expect(await region.locator('.quote-excerpt-text').textContent()).toBe(saved);
+    expect(await region.locator('.quote-excerpt-text').textContent()).toBe(preview);
     const metrics = await region.evaluate((element) => ({
       left: element.getBoundingClientRect().left,
       right: element.getBoundingClientRect().right,
@@ -433,11 +592,12 @@ for (const width of [320, 390]) {
       animations: 'disabled'
     });
     await page.locator('#send').click();
+    expect(await result(page, 'payload')).toContain('Saved line 24:');
     const message = page.locator('.user_message');
     const excerpt = message.locator('.quote-excerpt-text');
-    expect(await excerpt.textContent()).toBe(saved);
+    expect(await excerpt.textContent()).toBe(preview);
     await expect(excerpt).toHaveClass(/collapsed/);
-    await message.getByRole('button', { name: 'Show full quote', exact: true }).click();
+    await message.getByRole('button', { name: 'Expand quote', exact: true }).click();
     await expect(excerpt).not.toHaveClass(/collapsed/);
     await message.getByRole('button', { name: 'Collapse quote', exact: true }).click();
     expect(

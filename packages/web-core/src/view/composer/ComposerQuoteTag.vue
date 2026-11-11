@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import { ClickOutside as vClickOutside, type PopoverInstance } from 'element-plus';
 import type { ComposerReference } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
+import { composerReferenceLabel } from '../../util/composer-reference.js';
 import MarIcon from '../common/MarIcon.vue';
 import QuoteExcerpt from './QuoteExcerpt.vue';
 
@@ -20,14 +21,7 @@ function close(): void {
   open.value = false;
   popover.value?.hide();
 }
-const summary = computed(
-  () =>
-    props.reference.text
-      .split('\n')
-      .find((line) => line.trim())
-      ?.trim()
-      .slice(0, 80) ?? props.reference.label
-);
+const summary = computed(() => composerReferenceLabel(props.reference));
 </script>
 
 <template>
@@ -85,7 +79,7 @@ const summary = computed(
   display: inline-flex;
   align-items: stretch;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(18rem, 100%);
   border: 1px solid var(--mar-color-brand);
   border-radius: 999px;
   background: var(--mar-color-brand-subtle);
