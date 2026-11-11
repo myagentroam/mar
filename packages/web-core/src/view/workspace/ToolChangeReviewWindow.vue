@@ -32,7 +32,7 @@ function download(diff: unknown, path: string): void {
     @close-all="review.clear"
     @move="review.tabs.move"
   >
-    <template #default="{ tab, active, registerPageHandle, requestClose }">
+    <template #default="{ tab, active, registerPageHandle, requestClose, requestCloseAll }">
       <WorkspaceGitDiffPage
         :quote-target="props.quoteTarget"
         :ref="registerPageHandle"
@@ -41,6 +41,7 @@ function download(diff: unknown, path: string): void {
         :active="active"
         :load="props.review.load"
         @close="requestClose"
+        @quoted="requestCloseAll"
         @edit="emit('openSource', tab.path)"
         @load-error="emit('error', $event)"
         @download="download($event, tab.path)"

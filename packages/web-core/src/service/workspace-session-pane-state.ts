@@ -3,7 +3,7 @@
  * Drafts, attachments and submission identities remain owned by the supplied target-bound owners;
  * conversation, Run, queue and scroll projections live for this Pane's Vue scope.
  * Application capabilities and Main/Aside coordination belong to the Pane controller, not here.
- * Quote callbacks bind the existing draft slot and recheck the supplied editing admission; they own no separate quote store.
+ * Quote callbacks bind the existing draft slot, recheck editing admission and report addition success; they own no separate quote store.
  * Do not duplicate global selection, transport protocols or shared Watch subscriptions.
  */
 import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue';
@@ -369,7 +369,7 @@ export function createWorkspaceSessionPaneState(options: {
       if (!target || !enabled()) return undefined;
       const slot = options.drafts.forTarget(target, options.pane);
       return (quote) => {
-        if (options.draftTarget.value !== target || !enabled()) return;
+        if (options.draftTarget.value !== target || !enabled()) return false;
         try {
           slot.references.value = appendComposerQuote(
             slot.references.value,
@@ -377,8 +377,10 @@ export function createWorkspaceSessionPaneState(options: {
             slot.input.value
           );
           slot.persist();
+          return true;
         } catch {
           rejected();
+          return false;
         }
       };
     },

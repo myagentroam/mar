@@ -203,7 +203,7 @@ onBeforeUnmount(() => {
       @pointerdown.prevent
     >
       <el-button text size="small" @click="quote">
-        <MarIcon name="quote" />{{ translate('composer.quote') }}
+        <MarIcon name="quote" /><span>{{ translate('composer.quote') }}</span>
       </el-button>
     </div>
   </el-popover>
@@ -250,7 +250,6 @@ onBeforeUnmount(() => {
 }
 .quote-actions .el-button {
   margin: 0;
-  gap: 0.3rem;
   justify-content: flex-start;
   border-radius: var(--mar-radius-surface);
 }

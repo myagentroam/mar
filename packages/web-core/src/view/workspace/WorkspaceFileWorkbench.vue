@@ -418,7 +418,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
       @close="removeWorkspaceFileTab"
       @close-all="closeWorkspaceFileTabs"
       @close-last="closeStandaloneFileWindow"
-      v-slot="{ tab, active, registerPageHandle, requestClose }"
+      v-slot="{ tab, active, registerPageHandle, requestClose, requestCloseAll }"
     >
       <template v-for="preview in filePageFrames" :key="preview.id">
         <WorkspaceTextFilePage
@@ -473,6 +473,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
           :tab-identity="tab.identity"
           :initial-dirty-draft="fileWorkbench.draftFor(tab.identity)"
           @close="requestClose"
+          @quoted="requestCloseAll"
           @download="downloadPreviewFile(preview)"
           @open-markdown-preview="
             openWorkspaceFileExternal(
@@ -533,6 +534,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
         @viewed="active && recordPredictionAttention(tab)"
         :tab="tab"
         @close="requestClose"
+        @quoted="requestCloseAll"
         @download="downloadDiffContent($event, tab.path)"
         @edit="openDiffEditor(tab)"
         @move-file="moveDiffFile(tab, $event)"

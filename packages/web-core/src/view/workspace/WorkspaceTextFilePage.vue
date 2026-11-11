@@ -111,6 +111,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   viewed: [range: { startLine: number; endLine: number }];
   close: [];
+  quoted: [];
   download: [];
   'open-markdown-preview': [];
   'open-html-preview': [];
@@ -176,8 +177,9 @@ function openPreviewMenu(event: MouseEvent): void {
   quoteAction.value =
     receive && snapshot?.text.trim()
       ? () => {
-          if (props.active !== false && props.file === file) receive(snapshot);
+          const added = props.active !== false && props.file === file && receive(snapshot);
           quoteAction.value = undefined;
+          if (added) emit('quoted');
         }
       : undefined;
   void contextMenu.value?.open(event);
