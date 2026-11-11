@@ -176,6 +176,105 @@ test('context menu replaces the bubble, keeps native link menus, and rejects a s
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
 });
 
+for (const pointerType of ['touch', 'mouse']) {
+  test(`selection context menus do not require character-hit coordinates for ${pointerType}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await selectReply(page);
+    const native = await page
+      .locator('[data-quote-message-id] p')
+      .first()
+      .evaluate(
+        (element, pointerType) =>
+          element.dispatchEvent(
+            new PointerEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              pointerType,
+              clientX: 0,
+              clientY: 0
+            })
+          ),
+        pointerType
+      );
+    expect(native).toBe(false);
+    await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
+    const bodyBounds = (await page.locator('[data-quote-message-id] p').first().boundingBox())!;
+    await expect
+      .poll(async () => (await page.locator('.el-dropdown-menu').boundingBox())?.y ?? -1)
+      .toBeGreaterThanOrEqual(bodyBounds.y + bodyBounds.height);
+    await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+    expect(await result(page, 'references')).toMatchObject([
+      { source: 'assistant', text: 'Select this reply excerpt.' }
+    ]);
+  });
+}
+
+for (const nativeAction of ['link', 'noncancelable', 'outside', 'empty']) {
+  test(`a native ${nativeAction} context menu dismisses the previous quote menu`, async ({
+    page
+  }) => {
+    await selectReply(page);
+    await rightClickSelection(page);
+    const menu = page.locator('.el-dropdown-menu');
+    await expect(menu.getByRole('menuitem', { name: 'Quote', exact: true })).toBeVisible();
+    const target = page.locator(
+      nativeAction === 'link'
+        ? '[data-quote-message-id] a'
+        : nativeAction === 'outside'
+          ? '#send'
+          : '[data-quote-message-id] p:first-child'
+    );
+    const native = await target.evaluate((element, nativeAction) => {
+      if (nativeAction === 'empty') window.getSelection()!.removeAllRanges();
+      return element.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: nativeAction !== 'noncancelable'
+        })
+      );
+    }, nativeAction);
+    expect(native).toBe(true);
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+      nativeAction === 'empty' ? '' : 'Select this reply excerpt.'
+    );
+  });
+}
+
+test('an explicit context menu refreshes the selection while the previous menu has focus', async ({
+  page
+}) => {
+  await selectReply(page);
+  await rightClickSelection(page);
+  await page.getByRole('menuitem', { name: 'Copy', exact: true }).focus();
+  const native = await page
+    .locator('[data-quote-message-id] p')
+    .first()
+    .evaluate((element) => {
+      const range = document.createRange();
+      range.setStart(element.firstChild!, 0);
+      range.setEnd(element.firstChild!, 6);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const rect = range.getBoundingClientRect();
+      return element.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + 1,
+          clientY: rect.top + 1
+        })
+      );
+    });
+  expect(native).toBe(false);
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  expect(await result(page, 'references')).toMatchObject([{ source: 'assistant', text: 'Select' }]);
+});
+
 test('a long draft quote stays compact while preserving its full snapshot', async ({
   page
 }, testInfo) => {
