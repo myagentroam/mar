@@ -311,7 +311,7 @@ function latestUsageRecord(
   let activeModelId = selectedModelId;
   let latest: SessionRecord | undefined;
   for (const record of records) {
-    if (record.type === 'execution.header') {
+    if (record.type === 'execution.header' || record.type === 'compact.completed') {
       const modelId = modelIdFromRecord(record);
       if (modelId) activeModelId = modelId;
     } else if (

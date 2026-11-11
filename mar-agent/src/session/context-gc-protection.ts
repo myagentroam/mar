@@ -10,7 +10,7 @@ export function contextGcProtectionMature(count: {
   return count.rollouts >= CONTEXT_GC_TEXT_PROTECTION_ROLLOUTS && count.thinking >= 3;
 }
 
-/** One immutable boundary index, shared by all candidate anchors in this evaluation. */
+/** One immutable boundary index; Compact seeds configuration when its execution header is sliced out. */
 export function buildContextGcProtection(
   records: readonly SessionRecord[],
   modelId: string,
@@ -20,7 +20,19 @@ export function buildContextGcProtection(
   const attempts = new Map<string, { start: number; matching: boolean; native: Set<string> }>();
   const successful: number[] = [];
   const thinking: number[] = [];
+  let baseline = { modelId, window: contextWindowTokens };
   for (const record of records) {
+    if (record.type === 'compact.completed' && isRecord(record.payload)) {
+      baseline = {
+        modelId:
+          typeof record.payload.modelId === 'string' ? record.payload.modelId : baseline.modelId,
+        window:
+          typeof record.payload.contextWindowTokens === 'number'
+            ? record.payload.contextWindowTokens
+            : baseline.window
+      };
+      continue;
+    }
     if (
       !record.executionId ||
       !['execution.header', 'model.attempt', 'model.context'].includes(record.type) ||
@@ -40,13 +52,13 @@ export function buildContextGcProtection(
     } else if (record.type === 'model.attempt') {
       if (payload.purpose !== 'EXECUTION') continue;
       if (payload.state === 'STARTED') {
-        const configuration = configurations.get(key);
+        const configuration = configurations.get(key) ?? baseline;
         attempts.set(key, {
           start: record.sequence,
           matching:
             payload.purpose === 'EXECUTION' &&
-            (configuration?.modelId ?? modelId) === modelId &&
-            (configuration?.window ?? contextWindowTokens) === contextWindowTokens,
+            configuration.modelId === modelId &&
+            configuration.window === contextWindowTokens,
           native: new Set()
         });
       } else if (payload.state === 'SUCCEEDED' || payload.state === 'FAILED') {
