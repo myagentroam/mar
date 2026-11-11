@@ -14,6 +14,10 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { serializeComposerTag } from '@myagentroam/protocol';
+import {
+  composerReferenceDescription,
+  composerReferenceLabel
+} from '../../src/util/composer-reference.js';
 import type { WorkspaceQueueItem } from '../../src/model/workbench.js';
 import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
@@ -390,6 +394,45 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     );
     expect(html).not.toContain('<script>');
   });
+
+  it('bounds file tags and tooltip descriptions without changing the reference', () => {
+    const reference = {
+      type: 'file' as const,
+      path: `${'long-directory/'.repeat(60)}example.ts`,
+      label: `${'😀'.repeat(40)}.ts`
+    };
+    expect(composerReferenceLabel(reference)).toBe(`${'😀'.repeat(31)}…`);
+    const description = composerReferenceDescription(reference);
+    expect(Array.from(description)).toHaveLength(500);
+    expect(description.endsWith('…')).toBe(true);
+    expect(reference.label).toBe(`${'😀'.repeat(40)}.ts`);
+    expect(reference.path.endsWith('example.ts')).toBe(true);
+  });
+
+  it.each(['assistant', 'file', 'diff'] as const)(
+    'limits the displayed %s snapshot without shortening its serialized content',
+    async (source) => {
+      const text = '😀'.repeat(600);
+      const fields = { type: 'quote' as const, id: 'bounded', label: 'Saved excerpt', text };
+      const reference =
+        source === 'assistant'
+          ? { ...fields, source, messageId: 'reply' }
+          : source === 'file'
+            ? {
+                ...fields,
+                source,
+                path: 'src/example.ts',
+                origin: 'WORKING_TREE' as const,
+                startLine: 1,
+                endLine: 30
+              }
+            : { ...fields, source, path: 'src/example.ts', origin: 'WORKING_TREE' as const };
+      const html = await render(MessageReferenceTags, { references: [reference] });
+      expect(html).toContain(`${'😀'.repeat(499)}…`);
+      expect(html).not.toContain(text);
+      expect(serializeComposerTag('mar_references', { references: [reference] })).toContain(text);
+    }
+  );
 
   it.each(['Earlier in this conversation', '0', '2025-02-30T00:00:00Z'])(
     'keeps protocol-valid descriptive quote timestamp %s readable',

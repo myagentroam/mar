@@ -2,6 +2,7 @@
 import type { ComposerReference } from '@myagentroam/protocol';
 import {
   composerReferenceDescription,
+  composerReferenceLabel,
   composerReferenceKey
 } from '../../util/composer-reference.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
@@ -30,7 +31,7 @@ defineProps<{ readonly references: readonly ComposerReference[] }>();
           :name="reference.path"
           :kind="reference.type === 'directory' ? 'DIRECTORY' : 'FILE'"
         />
-        <span>{{ reference.label }}</span>
+        <span>{{ composerReferenceLabel(reference) }}</span>
       </span>
     </template>
   </div>
@@ -50,7 +51,7 @@ defineProps<{ readonly references: readonly ComposerReference[] }>();
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  max-width: 100%;
+  max-width: min(18rem, 100%);
   min-width: 0;
   border: 1px solid var(--mar-color-brand);
   border-radius: 999px;

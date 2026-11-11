@@ -172,6 +172,80 @@ test('context menu replaces the bubble, keeps native link menus, and rejects a s
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
 });
 
+test('a long draft quote stays compact while preserving its full snapshot', async ({
+  page
+}, testInfo) => {
+  const text = '引用内容😀需要保持完整，仅摘要应该限制长度。'.repeat(8);
+  await page.evaluate(
+    (text) =>
+      (
+        window as unknown as { quoteFixture: { replaceReply(text: string): void } }
+      ).quoteFixture.replaceReply(text),
+    text
+  );
+  await selectReply(page);
+  await page.getByRole('group', { name: 'Quote', exact: true }).getByRole('button').click();
+  const tag = page.locator('.composer-quote-tag');
+  const summary = await tag.locator('.quote-tag-preview span').textContent();
+  expect(Array.from(summary!)).toHaveLength(32);
+  expect(summary).toBe(`${Array.from(text).slice(0, 31).join('')}…`);
+  const rootFontSize = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).fontSize)
+  );
+  expect((await tag.boundingBox())!.width).toBeLessThanOrEqual(18 * rootFontSize);
+  const tagBounds = (await tag.boundingBox())!;
+  const removeBounds = (await tag.locator('.quote-tag-remove').boundingBox())!;
+  expect(removeBounds.x + removeBounds.width).toBeLessThanOrEqual(tagBounds.x + tagBounds.width);
+  await tag.locator('.quote-tag-preview').click();
+  const region = page.getByRole('region', { name: 'Quote', exact: true });
+  await expect(region).toBeVisible();
+  await expect(page.locator('.el-popover').filter({ has: region })).toHaveCSS('opacity', '1');
+  await region.hover();
+  await expect(region).toContainText(text);
+  expect(await result(page, 'references')).toMatchObject([{ text }]);
+  await page.screenshot({
+    path: testInfo.outputPath('compact-quote-tag.png'),
+    animations: 'disabled'
+  });
+});
+
+test('the Chat context menu stays available for a scrolled multiline selection', async ({
+  page
+}, testInfo) => {
+  const text = 'A selected reply line with enough content to wrap naturally. '.repeat(60);
+  await page.evaluate(
+    (text) =>
+      (
+        window as unknown as { quoteFixture: { replaceReply(text: string): void } }
+      ).quoteFixture.replaceReply(text),
+    text
+  );
+  await selectReply(page);
+  await page.locator('main').evaluate(
+    (element) =>
+      new Promise<void>((resolve) => {
+        element.addEventListener('scroll', () => resolve(), { once: true });
+        element.scrollTop = 300;
+      })
+  );
+  const point = await page.evaluate(() => {
+    const viewport = document.querySelector('main')!.getBoundingClientRect();
+    const rect = [...window.getSelection()!.getRangeAt(0).getClientRects()].find(
+      (rect) => rect.top > viewport.top + 20 && rect.bottom < viewport.bottom - 20
+    )!;
+    return { x: rect.left + 8, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.click(point.x, point.y, { button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Copy', exact: true })).toBeVisible();
+  expect(await page.locator('main').evaluate((element) => element.scrollTop)).toBe(300);
+  await page.screenshot({
+    path: testInfo.outputPath('scrolled-chat-menu.png'),
+    animations: 'disabled'
+  });
+  await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
+  expect(await result(page, 'references')).toMatchObject([{ text: text.trimEnd() }]);
+});
+
 test('file menu selects the model text and quotes without closing the source or changing the opinion', async ({
   page
 }) => {
@@ -413,10 +487,11 @@ for (const width of [320, 390]) {
     });
     await page.getByRole('group', { name: 'Quote', exact: true }).getByRole('button').click();
     const saved = ((await result(page, 'references')) as { text: string }[])[0]!.text;
+    const preview = `${Array.from(saved).slice(0, 499).join('')}…`;
     await page.locator('.quote-tag-preview').click();
     const region = page.getByRole('region', { name: 'Quote', exact: true });
     await expect(region).toBeVisible();
-    expect(await region.locator('.quote-excerpt-text').textContent()).toBe(saved);
+    expect(await region.locator('.quote-excerpt-text').textContent()).toBe(preview);
     const metrics = await region.evaluate((element) => ({
       left: element.getBoundingClientRect().left,
       right: element.getBoundingClientRect().right,
@@ -433,11 +508,12 @@ for (const width of [320, 390]) {
       animations: 'disabled'
     });
     await page.locator('#send').click();
+    expect(await result(page, 'payload')).toContain('Saved line 24:');
     const message = page.locator('.user_message');
     const excerpt = message.locator('.quote-excerpt-text');
-    expect(await excerpt.textContent()).toBe(saved);
+    expect(await excerpt.textContent()).toBe(preview);
     await expect(excerpt).toHaveClass(/collapsed/);
-    await message.getByRole('button', { name: 'Show full quote', exact: true }).click();
+    await message.getByRole('button', { name: 'Expand quote', exact: true }).click();
     await expect(excerpt).not.toHaveClass(/collapsed/);
     await message.getByRole('button', { name: 'Collapse quote', exact: true }).click();
     expect(

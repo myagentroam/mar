@@ -210,6 +210,7 @@ onBeforeUnmount(() => {
   <el-dropdown
     v-if="mode === 'menu'"
     ref="menu"
+    class="quote-context-menu"
     virtual-triggering
     :virtual-ref="virtualReference"
     trigger="contextmenu"
@@ -239,6 +240,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.quote-context-menu {
+  /* The virtual trigger must not shift the timeline and trigger scroll dismissal. */
+  display: contents;
+}
 .quote-actions {
   display: flex;
   gap: 0.25rem;
