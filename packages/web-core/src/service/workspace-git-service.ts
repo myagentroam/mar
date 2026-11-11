@@ -309,11 +309,8 @@ export function createWorkspaceGitService(input: {
         if (!valid()) return;
         if (!Array.isArray(result.refs)) throw new Error('NODE_RESPONSE_INVALID');
         refs = result.refs.filter(isHistoryRef);
-        historyRefs.value = refs;
-        historyRefsRepository = selection.repositoryPath;
         const availableRefs = new Set(refs.map((entry) => entry.name));
         selection.refs = selection.refs.filter((name) => availableRefs.has(name));
-        selectedHistoryRefs.value = [...selection.refs];
       }
       const result = await input.http.request<{
         readonly commits?: unknown;
@@ -343,6 +340,11 @@ export function createWorkspaceGitService(input: {
       historyError.value = undefined;
       historyFailureCause.value = undefined;
       if (resetPage) {
+        if (refs !== undefined) {
+          historyRefs.value = refs;
+          historyRefsRepository = selection.repositoryPath;
+          selectedHistoryRefs.value = [...selection.refs];
+        }
         historySource.value = selection;
         clearHistoryFiles();
       }

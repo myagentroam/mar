@@ -1994,6 +1994,72 @@ describe('Workbench controller composition behavior', () => {
     ]);
   });
 
+  it('restores a Workspace Tab session list before workspace registration finishes', async () => {
+    const { page } = controller();
+    const workspaces = ['workspace-a', 'workspace-b'].map((id) => ({
+      id,
+      path: `/${id}`,
+      kind: 'DIRECTORY' as const
+    }));
+    const manifest: NodeWorkbenchManifest = {
+      manifestVersion: 1,
+      observedAt: 1,
+      sessionGroups: { apiVersion: 1 },
+      conversation: { available: true, reasonCode: null }
+    };
+    await captured.seedNodes!([{ ...node, nodeAppVersion: '0.11.19' }]);
+    await captured.seedManifest!(manifest);
+    captured.tree!.cacheWorkspaces(node.id, workspaces);
+    let holdRegistration = false;
+    let release!: () => void;
+    const registration = new Promise<void>((resolve) => (release = resolve));
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = new URL(String(input), 'https://console.example.test');
+      if (url.pathname === '/api/workspaces' && holdRegistration) await registration;
+      const workspaceId = url.searchParams.get('workspaceId');
+      return new Response(
+        JSON.stringify({
+          manifest,
+          workspaces,
+          profiles: [],
+          sessions: [
+            {
+              id: `${workspaceId}-session`,
+              workspaceId,
+              runner: 'codex',
+              externalSessionId: `${workspaceId}-native`,
+              sessionGroup: 'MAIN'
+            }
+          ],
+          nextCursor: null
+        })
+      );
+    });
+    for (const workspace of workspaces) {
+      captured.tabs!.remember(node.id, node, workspace);
+      await page.selection.activateWorkspaceTab(
+        page.selection.workspaceTabs.find((tab) => tab.workspaceId === workspace.id)!
+      );
+      await page.sessionList.refreshWorkspaceSessions();
+      expect(page.sessionList.visibleWorkspaceSessions.map((session) => session.id)).toEqual([
+        `${workspace.id}-session`
+      ]);
+    }
+    holdRegistration = true;
+    const switching = page.selection.activateWorkspaceTab(
+      page.selection.workspaceTabs.find((tab) => tab.workspaceId === 'workspace-a')!
+    );
+    await flushComponent();
+    expect(page.sessionList.visibleWorkspaceSessions.map((session) => session.id)).toEqual([
+      'workspace-a-session'
+    ]);
+    release();
+    await switching;
+    expect(page.sessionList.visibleWorkspaceSessions.map((session) => session.id)).toEqual([
+      'workspace-a-session'
+    ]);
+  });
+
   it('does not project ordinary session broadcasts before a Session Watch initial', async () => {
     const { page } = controller();
     captured.setTarget!({ nodeId: 'node-a', workspaceId: 'workspace-a' });

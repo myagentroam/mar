@@ -169,7 +169,6 @@ const emit = defineEmits<{
 }>();
 
 const timelineElement = ref<HTMLElement>();
-const quoteMenu = ref<InstanceType<typeof ConversationQuoteMenu>>();
 let focusedRecord: HTMLElement | undefined;
 let previousEntrySignature = '';
 let previousMotionVersion = props.initialRenderVersion;
@@ -599,7 +598,6 @@ function stepDuration(item: ConversationItem): string | undefined {
   >
     <ConversationQuoteMenu
       v-if="props.quoteTarget"
-      ref="quoteMenu"
       :root="timelineElement"
       :target="props.quoteTarget"
       :context-key="props.turns[0]?.sessionId"
@@ -1038,15 +1036,15 @@ function stepDuration(item: ConversationItem): string | undefined {
               >{{ messageHeading(displayItem.item.payload).label }}</strong
             >
           </div>
+          <MessageReferenceTags
+            :references="composerMessagePresentation(displayItem.item.payload).references"
+          />
           <p
             v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
             class="conversation-message"
           >
             {{ conversationItemText(displayItem.item.kind, displayItem.item.payload) }}
           </p>
-          <MessageReferenceTags
-            :references="composerMessagePresentation(displayItem.item.payload).references"
-          />
           <MessageAttachmentFiles
             :files="composerMessagePresentation(displayItem.item.payload).files"
             :image-resource-url="props.imageResourceUrl"
@@ -1188,18 +1186,6 @@ function stepDuration(item: ConversationItem): string | undefined {
               :datetime="new Date(messageTimestamp(turn, displayItem.item)!).toISOString()"
               >{{ messageTimeLabel(messageTimestamp(turn, displayItem.item)!) }}</time
             >
-            <button
-              v-if="quoteMenu?.touch"
-              class="conversation-message-action icon-button utility-control"
-              type="button"
-              :aria-label="translate('composer.quote')"
-              v-tooltip="translate('composer.quote')"
-              :disabled="quoteMenu.selectedMessageId !== displayItem.item.id"
-              @pointerdown.prevent
-              @click="quoteMenu.quote()"
-            >
-              <MarIcon name="quote" />
-            </button>
             <button
               v-tooltip="
                 translate(

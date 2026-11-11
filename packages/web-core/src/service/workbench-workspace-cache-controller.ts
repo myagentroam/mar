@@ -16,12 +16,17 @@ import {
 import type { WorkspaceContentSearchSnapshot } from './workspace-content-search-service.js';
 import type { WorkspaceFileTreeSnapshot } from './workspace-file-tree-service.js';
 import type { WorkspaceGitSnapshot } from './workspace-git-service.js';
+import type { WorkspaceSessionListSnapshot } from './workspace-session-service.js';
 import type { WorkspaceFileWorkbenchSnapshot } from '../model/workspace-file-workbench.js';
 
 interface WorkbenchWorkspaceCacheControllerOptions {
   readonly cacheService: ReturnType<typeof createWorkspaceViewCacheService>;
   readonly paging: ReturnType<typeof createWorkspaceSessionPagingService>;
   readonly sessions: Readonly<Ref<readonly Session[]>>;
+  readonly sessionList?: {
+    snapshot(): WorkspaceSessionListSnapshot;
+    restore(snapshot: WorkspaceSessionListSnapshot | undefined): void;
+  };
   readonly captureDetail: (sessionId: string) => CachedSessionDetail;
   readonly queue: Readonly<Ref<WorkspaceQueue>>;
   readonly runner: Readonly<Ref<Session['runner']>>;
@@ -77,6 +82,9 @@ function connectWorkspaceCache(options: WorkbenchWorkspaceCacheControllerOptions
     options.cacheService.captureActive(
       {
         sessions: options.sessions.value,
+        ...(options.sessionList === undefined
+          ? {}
+          : { sessionList: options.sessionList.snapshot() }),
         fileWorkbench: options.fileWorkbench.snapshot(),
         ...(options.search === undefined
           ? {}
@@ -119,6 +127,7 @@ function connectWorkspaceCache(options: WorkbenchWorkspaceCacheControllerOptions
     )
       return;
     const cached = workspaceViewCache(nodeId, workspaceId);
+    options.sessionList?.restore(cached.sessionList);
     options.files?.restore(cached.files);
     options.git?.restore(cached.git);
     options.search?.restore(cached.search);

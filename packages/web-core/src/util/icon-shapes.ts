@@ -89,7 +89,7 @@ export const iconShapes = {
   stop: '<rect x="5.5" y="5.5" width="13" height="13" rx="2.5" fill="currentColor" stroke="none"/>',
   queue:
     '<path d="M8 5h12M8 12h12M8 19h8" /><circle cx="3.5" cy="5" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="0.9" fill="currentColor" stroke="none"/><circle cx="3.5" cy="19" r="0.9" fill="currentColor" stroke="none"/>',
-  quote: '<path d="M4 6h6v6a6 6 0 0 1-6 6m0-12v6h6m4-6h6v6a6 6 0 0 1-6 6m0-12v6h6" />',
+  quote: '<path d="M4.5 5v14M9.5 8h10M9.5 12h8M9.5 16h10" />',
   adjustments:
     '<path d="M4 7h3m5 0h8M4 17h8m5 0h3" /><circle cx="9.5" cy="7" r="2.5"/><circle cx="14.5" cy="17" r="2.5"/>',
   reasoning:

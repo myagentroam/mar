@@ -21,11 +21,16 @@
       localePreferenceService().setLocale('en-US');
       const selected = ref('model-0');
       const effort = ref('medium');
-      const selection = ref('model:model-0');
-      const models = Array.from({ length: 32 }, (_, index) => ({
-        id: `model-${index}`,
-        label: `Engineering model ${index + 1} with a descriptive configuration name`
-      }));
+      const selection = ref(query.get('single') === 'effort' ? 'effort:medium' : 'model:model-0');
+      const models = ref(
+        Array.from(
+          { length: query.get('single') === 'effort' ? 0 : query.has('short') ? 3 : 32 },
+          (_, index) => ({
+            id: `model-${index}`,
+            label: `Engineering model ${index + 1} with a descriptive configuration name`
+          })
+        )
+      );
       createTooltipApp({
         setup: () => () =>
           h(
@@ -44,11 +49,15 @@
                 runnerLoading: false,
                 runnerLabel: 'MAR Agent',
                 modelEffortSelection: selection.value,
-                modelEffortLabel: models.find((model) => model.id === selected.value).label,
+                modelEffortLabel:
+                  models.value.find((model) => model.id === selected.value)?.label ?? effort.value,
                 selectedModel: selected.value,
                 selectedEffort: effort.value,
-                models,
-                efforts: ['medium', 'high'],
+                models: models.value,
+                efforts:
+                  query.get('single') === 'model'
+                    ? []
+                    : ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
                 access: 'auto',
                 accessLabel: 'Auto',
                 accessOptions: [
@@ -76,7 +85,19 @@
                   else effort.value = value.slice(7);
                 }
               }),
-              h('output', { 'data-testid': 'selected-model' }, selected.value)
+              h('output', { 'data-testid': 'selected-model' }, selected.value),
+              h('output', { 'data-testid': 'selected-effort' }, effort.value),
+              query.has('dynamic')
+                ? h(
+                    'button',
+                    {
+                      onClick: () => {
+                        models.value = [...models.value].reverse();
+                      }
+                    },
+                    'Reverse models'
+                  )
+                : null
             ]
           )
       })

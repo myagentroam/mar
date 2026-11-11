@@ -14,9 +14,10 @@ export async function startCustomThemeFixture(
     import(webRequire.resolve('unplugin-vue-components/vite')),
     import(webRequire.resolve('unplugin-vue-components/resolvers'))
   ]);
+  const cacheKey = `${encodeURIComponent(entry ?? 'all')}-${options?.protocolSource ? 'source' : 'dist'}`;
   const server = await createServer({
     root: productRoot,
-    cacheDir: resolve(productRoot, `test/runs/theme-vite-${process.pid}`),
+    cacheDir: resolve(productRoot, `test/runs/theme-vite-${process.pid}-${cacheKey}`),
     configFile: false,
     plugins: [
       vue.default(),
