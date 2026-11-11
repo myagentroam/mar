@@ -294,7 +294,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           <el-dropdown trigger="click" @command="themeAction(item, $event)">
             <el-button
               v-tooltip="t('customThemes.moreActions', { name: item.name })"
-              class="utility-control"
+              class="icon-action"
               text
               :aria-label="t('customThemes.moreActions', { name: item.name })"
             >

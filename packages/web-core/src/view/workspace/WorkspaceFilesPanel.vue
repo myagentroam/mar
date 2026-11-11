@@ -315,7 +315,7 @@ defineExpose({
       </el-input>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshFiles2')"
-        class="file-explorer-utility-button utility-control"
+        class="file-explorer-utility-button icon-action"
         :disabled="filesBusy"
         :aria-label="translate('generated.workspaceInspector.refreshFiles')"
         :aria-busy="filesBusy || undefined"
@@ -326,7 +326,7 @@ defineExpose({
       </button>
       <button
         v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"
-        class="file-explorer-utility-button utility-control"
+        class="file-explorer-utility-button icon-action"
         :disabled="preparingUploads"
         :aria-label="translate('generated.workspaceInspector.uploadFiles')"
         :aria-busy="preparingUploads || undefined"
@@ -560,7 +560,7 @@ button.file-explorer-utility-button {
   min-height: 26px;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   font: inherit;

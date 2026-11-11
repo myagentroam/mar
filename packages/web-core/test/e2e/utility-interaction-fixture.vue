@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import MarIcon from '../../src/view/common/MarIcon.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
+import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
@@ -107,16 +109,39 @@ const request = async <T,>(): Promise<T> => ({}) as T;
     <output data-testid="events">{{ events.join('|') }}</output>
     <section>
       <button
-        class="icon-button utility-control"
+        class="icon-button icon-action"
         data-testid="native"
+        aria-label="Native icon action"
         :disabled="disabled"
         @click="record('native')"
       >
-        N
+        <MarIcon name="copy" />
       </button>
-      <el-button class="utility-control" data-testid="element" link :disabled="disabled"
+      <el-button class="text-action" data-testid="element" link :disabled="disabled"
         >Utility</el-button
       >
+      <el-button
+        class="icon-action"
+        data-testid="element-icon"
+        text
+        circle
+        :disabled="disabled"
+        aria-label="Element icon action"
+      >
+        <MarIcon name="copy" />
+      </el-button>
+      <button
+        class="icon-button icon-action"
+        data-testid="aria-disabled-icon"
+        aria-disabled="true"
+        aria-label="Unavailable icon action"
+      >
+        <MarIcon name="copy" />
+      </button>
+      <SessionPerformanceInfo
+        data-testid="performance-icon"
+        :performance="{ runId: 'run', latencyMs: 420, tokensPerSecond: 42 }"
+      />
     </section>
     <WorkspaceSessionList
       :sessions="[]"

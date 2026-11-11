@@ -732,7 +732,7 @@ onBeforeUnmount(() => {
           }}</small>
           <button
             v-if="attachment.status === 'FAILED'"
-            class="utility-control"
+            class="text-action"
             type="button"
             :disabled="composerReadonly"
             :aria-label="
@@ -746,7 +746,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="utility-control"
+            class="icon-action"
             :aria-label="
               translate('hostedConversations.removeAttachment', {
                 name: attachment.name
@@ -774,7 +774,7 @@ onBeforeUnmount(() => {
         />
         <button
           v-tooltip="translate('hostedConversations.addAttachment')"
-          class="hosted-icon-button utility-control"
+          class="hosted-icon-button icon-action"
           type="button"
           :disabled="composerReadonly"
           :aria-label="translate('hostedConversations.addAttachment')"
@@ -1017,7 +1017,6 @@ onBeforeUnmount(() => {
   height: 30px;
   place-items: center;
   border: 0;
-  border-radius: 50%;
   background: transparent;
   color: var(--mar-text-secondary);
   cursor: pointer;
@@ -1040,12 +1039,14 @@ onBeforeUnmount(() => {
 }
 
 .hosted-send-button {
+  border-radius: 50%;
   margin-left: auto;
   background: var(--mar-color-brand);
   color: var(--mar-color-on-accent);
 }
 
 .hosted-stop-button {
+  border-radius: 50%;
   margin-left: auto;
   border: 1px solid var(--mar-color-danger-text);
   color: var(--mar-color-danger-text);

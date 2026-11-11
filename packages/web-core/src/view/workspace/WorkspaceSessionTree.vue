@@ -152,7 +152,7 @@ function openContext(event: MouseEvent): void {
         >
           <button
             type="button"
-            class="icon-button utility-control session-tree-actions"
+            class="icon-button icon-action icon-action--inline session-tree-actions"
             v-tooltip="translate('sessionGroups.actions')"
             :aria-label="translate('sessionGroups.actions')"
           >
@@ -251,7 +251,7 @@ function openContext(event: MouseEvent): void {
           >
             <button
               type="button"
-              class="icon-button utility-control session-tree-actions"
+              class="icon-button icon-action icon-action--inline session-tree-actions"
               v-tooltip="translate('sessionGroups.actions')"
               :aria-label="translate('sessionGroups.actions')"
               @click.stop

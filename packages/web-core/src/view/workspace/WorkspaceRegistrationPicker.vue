@@ -201,7 +201,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           <div class="workspace-picker-toolbar-actions">
             <el-button
               v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
-              class="utility-control"
+              class="icon-action"
               :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
               :icon="marIcon('refresh')"
               :disabled="loadingDirectory"
@@ -253,6 +253,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             </button>
             <button
               v-tooltip="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
+              class="icon-action"
               :aria-label="translate('generated.workspaceRegistrationPicker.cancelNewDirectory')"
               type="button"
               @click="emit('discard-pending')"
@@ -278,6 +279,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
               v-tooltip="
                 translate('generated.workspaceRegistrationPicker.open2', { value0: entry.name })
               "
+              class="icon-action"
               :aria-label="
                 translate('generated.workspaceRegistrationPicker.open', { value0: entry.name })
               "
@@ -535,14 +537,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
   cursor: pointer;
-}
-
-.workspace-directory-list > li > button:last-child:hover:not(:disabled) {
-  background: var(--mar-fill-hover);
-  color: var(--mar-text-primary);
 }
 
 .workspace-directory-list > li > button:last-child:disabled {

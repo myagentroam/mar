@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import MarIcon from '../../src/view/common/MarIcon.vue';
 import { unicodeLongFilePath } from '../support/unicode-layout-fixtures.js';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
@@ -556,9 +557,21 @@ function finishPreview() {
       @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />
     <section aria-label="Utility controls">
-      <button class="icon-button utility-control" data-testid="native-utility">Utility</button>
-      <el-button class="utility-control" data-testid="element-utility">Utility</el-button>
-      <el-button class="utility-control" disabled data-testid="disabled-utility"
+      <button
+        class="icon-button icon-action"
+        data-testid="native-utility"
+        aria-label="Native icon action"
+      >
+        <MarIcon name="copy" />
+      </button>
+      <el-button
+        class="icon-action"
+        data-testid="element-utility"
+        text
+        aria-label="Element icon action"
+        ><MarIcon name="copy"
+      /></el-button>
+      <el-button class="icon-action" disabled data-testid="disabled-utility"
         >Disabled utility</el-button
       >
     </section>

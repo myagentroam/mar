@@ -27,7 +27,7 @@ const emit = defineEmits<{
   >
     <button
       v-if="!mobileViewport"
-      class="workbench-tree-toggle icon-button utility-control"
+      class="workbench-tree-toggle icon-button icon-action"
       :aria-label="
         sidebarCollapsed ? $t('navigation.expandSidebar') : $t('navigation.collapseSidebar')
       "
@@ -96,7 +96,8 @@ const emit = defineEmits<{
   line-height: 1;
 }
 
-.workbench-tree-toggle[aria-expanded='true']:not(:hover):not(:focus-visible) {
+.workbench-tree-toggle[aria-expanded='true']:not(:hover):not(:focus-visible):not(:active) {
+  background: transparent;
   color: var(--mar-text-secondary);
 }
 

@@ -120,7 +120,7 @@ function close(id: string | number): void {
       <button
         v-if="mobile"
         type="button"
-        class="workbench-aside-back"
+        class="workbench-aside-back icon-action"
         :aria-label="closeSurfaceLabel"
         @click="emit('closeSurface')"
       >
@@ -231,7 +231,6 @@ html:not([data-theme]) .workbench-aside-header :deep(.tab-strip-separator) {
   place-items: center;
   border: 0;
   background: transparent;
-  color: var(--mar-text-primary);
   cursor: pointer;
 }
 .workbench-aside-content {

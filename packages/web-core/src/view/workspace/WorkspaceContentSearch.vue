@@ -77,7 +77,7 @@ defineExpose({
       />
       <button
         v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
-        class="content-search-button file-explorer-utility-button utility-control"
+        class="content-search-button file-explorer-utility-button icon-action"
         :disabled="contentSearchLoading"
         :aria-label="translate('generated.workspaceInspector.runContentSearch')"
         :aria-busy="contentSearchLoading || undefined"
@@ -302,7 +302,7 @@ button.file-explorer-utility-button {
   min-height: 26px;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   font: inherit;

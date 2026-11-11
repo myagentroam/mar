@@ -453,7 +453,7 @@ defineExpose({ release, toggle: toggleTerminal });
           </button>
           <button
             v-tooltip="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
-            class="terminal-tab-close icon-button utility-control mar-tab-close"
+            class="terminal-tab-close icon-button icon-action icon-action--inline mar-tab-close"
             type="button"
             :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
             :disabled="closingId === item.id"
@@ -464,7 +464,7 @@ defineExpose({ release, toggle: toggleTerminal });
         </div>
         <button
           v-tooltip="terminalActionTitle"
-          class="terminal-tab terminal-tab-add"
+          class="terminal-tab terminal-tab-add icon-action"
           type="button"
           :aria-label="translate('generated.terminalDock.newTerminal2')"
           :disabled="!canUseTerminal || creating"
@@ -638,7 +638,7 @@ defineExpose({ release, toggle: toggleTerminal });
   color: var(--mar-text-primary);
 }
 
-.terminal-tab:not(.active):hover:not(:disabled) {
+.terminal-tab:not(.active, .terminal-tab-add):hover {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
@@ -648,6 +648,7 @@ defineExpose({ release, toggle: toggleTerminal });
   justify-content: center;
   padding: 0.3rem 0.55rem;
   border: 0;
+  color: var(--mar-text-secondary);
   cursor: pointer;
 }
 

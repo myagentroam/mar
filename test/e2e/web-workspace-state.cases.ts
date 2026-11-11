@@ -495,9 +495,7 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await expect(tree).toBeVisible();
   await expect(tree.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
   await expect(page.locator('.session-tree-popover .el-popper__arrow')).toHaveCount(0);
-  await expect(tree.getByRole('button', { name: '会话操作' }).first()).toHaveClass(
-    /utility-control/
-  );
+  await expect(tree.getByRole('button', { name: '会话操作' }).first()).toHaveClass(/icon-action/);
   await expect(tree.locator('.session-tree-list .session-tree-title')).toHaveText([
     '树会话 2',
     '树会话 3'

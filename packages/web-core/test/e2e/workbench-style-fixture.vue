@@ -632,6 +632,7 @@ if (composerFixture) {
     </section>
     <section aria-label="Workspace tree fixture">
       <WorkspaceTree
+        :visible="true"
         :nodes="listState === 'no-nodes' ? [] : [node]"
         :expanded-node-ids="['node']"
         :workspace-target="
@@ -689,11 +690,11 @@ if (composerFixture) {
           parentPath: '/',
           browseRoots: ['/'],
           selectable: true,
-          entries: [],
+          entries: [{ path: '/home/example', name: 'example', selectable: true }],
           truncated: false
         }"
         selected-path="/home"
-        pending-directory-name=""
+        pending-directory-name="new-workspace"
         :loading-directory="false"
         :loading="false"
         :node-ready="true"

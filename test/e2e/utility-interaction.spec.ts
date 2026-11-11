@@ -40,7 +40,7 @@ async function customPalette(page: Page) {
       '--mar-text-faint': '#53616e',
       '--mar-color-brand': '#9672d1',
       '--mar-color-brand-text': '#af79d0',
-      '--mar-fill-row-hover': '#253342',
+      '--mar-fill-row-hover': '#25334280',
       '--mar-fill-selection': '#35475a'
     }))
       element.style.setProperty(token, value);
@@ -51,11 +51,13 @@ async function customPalette(page: Page) {
 async function checkUtility(
   page: Page,
   control: Locator,
-  colors: Awaited<ReturnType<typeof palette>>
+  colors: Awaited<ReturnType<typeof palette>>,
+  inline = false
 ) {
   await control.hover();
   await expect(control).toHaveCSS('color', colors.primary);
-  await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(control).toHaveCSS('background-color', inline ? 'rgba(0, 0, 0, 0)' : colors.hover);
+  if (!inline) await expect(control).toHaveCSS('border-radius', '6px');
   await expect(control).toHaveCSS('transform', 'none');
   await control.focus();
   await page.keyboard.press('Tab');
@@ -64,6 +66,7 @@ async function checkUtility(
   await expect(control).toHaveCSS('outline-style', 'solid');
   await expect(control).toHaveCSS('outline-width', '2px');
   await expect(control).toHaveCSS('outline-color', colors.focus);
+  await expect(control).toHaveCSS('background-color', inline ? 'rgba(0, 0, 0, 0)' : colors.hover);
 }
 
 for (const width of [1280, 390]) {
@@ -408,23 +411,31 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(header.locator('.session-activity')).toHaveCount(0);
       await expect(header).not.toHaveAttribute('activity');
       await expect(header).not.toHaveAttribute('activity-label');
-      const controls = [
-        page.getByTestId('native'),
-        page.getByTestId('element'),
-        page.locator('.session-search-button'),
-        page.locator('.workspace-more-button'),
-        page.locator('.conversation-session-id button'),
-        ...(await page.locator('.queue-item-actions').getByRole('button').all())
+      const controls: [Locator, boolean][] = [
+        [page.getByTestId('native'), false],
+        [page.getByTestId('element'), true],
+        [page.getByTestId('element-icon'), false],
+        [page.getByTestId('performance-icon'), false],
+        [page.locator('.session-search-button'), false],
+        [page.locator('.workspace-more-button'), false],
+        [page.locator('.conversation-session-id button'), true],
+        ...(await page.locator('.queue-item-actions').getByRole('button').all()).map(
+          (control): [Locator, boolean] => [control, true]
+        )
       ];
       if (width < 768)
-        controls.push(...(await page.locator('.mobile-conversation-tools button').all()));
+        controls.push(
+          ...(await page.locator('.mobile-conversation-tools button').all()).map(
+            (control): [Locator, boolean] => [control, true]
+          )
+        );
       for (const custom of [false, true]) {
         const colors = custom ? await customPalette(page) : await palette(page);
-        for (const control of controls) {
+        for (const [control, inline] of controls) {
           await page.mouse.move(0, 0);
           await page.getByTestId('disable').focus();
           await expect(control).toHaveCSS('color', colors.secondary);
-          await checkUtility(page, control, colors);
+          await checkUtility(page, control, colors, inline);
           for (const code of await control.locator('code').all()) {
             await expect(code).toHaveCSS('color', colors.primary);
             if (width < 768) await expect(control).toHaveCSS('outline-offset', '-2px');
@@ -457,6 +468,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       for (const control of [
         page.getByTestId('native'),
         page.getByTestId('element'),
+        page.getByTestId('element-icon'),
         page.locator('.session-search-button'),
         page.locator('.workspace-more-button'),
         page.locator('.queue-item-actions .work-item-primary-action')
@@ -468,9 +480,100 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const normal = await control.evaluate((el) => getComputedStyle(el).color);
         await control.hover({ force: true });
         await expect(control).toHaveCSS('color', normal);
+        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       }
+      const unavailable = page.getByTestId('aria-disabled-icon');
+      const normal = await unavailable.evaluate((element) => getComputedStyle(element).color);
+      await unavailable.hover();
+      await expect(unavailable).toHaveCSS('color', normal);
+      await expect(unavailable).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     });
   }
+
+  test(`Attachment removal preserves danger feedback across stylesheet ordering in ${theme}`, async ({
+    page
+  }) => {
+    await page.goto(
+      `${fixture.url}icon-system.html?attachment-icons=1&theme=${theme === 'daylight' ? 'light' : 'dark'}`
+    );
+    const control = page.locator('.composer-attachment-remove');
+    const colors = await control.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+      probe.style.color = 'var(--mar-color-danger-text)';
+      element.append(probe);
+      const style = getComputedStyle(probe);
+      const colors = { background: style.backgroundColor, danger: style.color };
+      probe.remove();
+      return colors;
+    });
+    // Public styles can load after lazy component styles in the application.
+    await page.evaluate(() => {
+      const style = document.querySelector('style[data-vite-dev-id$="/src/styles.css"]');
+      if (!style) throw new Error('Shared action stylesheet is unavailable');
+      document.head.append(style);
+    });
+    await control.hover();
+    await expect(control).toHaveCSS('color', colors.danger);
+    await expect(control).toHaveCSS('background-color', colors.background);
+    await control.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(control).toBeFocused();
+    await page.mouse.move(1, 1);
+    await expect(control).toHaveCSS('color', colors.danger);
+    await expect(control).toHaveCSS('outline-width', '2px');
+    await page.keyboard.down('Space');
+    await expect(control).toHaveCSS('color', colors.danger);
+    await expect(control).toHaveCSS('background-color', colors.background);
+    await page.keyboard.up('Space');
+    await expect(page.locator('.composer-attachments li')).toHaveCount(0);
+  });
+
+  test(`Composer context percentage keeps transparent feedback in ${theme}`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}visual-alignment.html?theme=${theme}${width < 768 ? '&mobile=1' : ''}`
+      );
+      const control = page.locator('.composer-context-button');
+      await expect(control).toHaveText('42%');
+      await checkUtility(page, control, await palette(page), true);
+      await control.press('Enter');
+      await expect(page.getByTestId('compact-count')).toHaveText('1');
+      await page.getByRole('button', { name: 'Toggle availability', exact: true }).click();
+      await expect(control).toHaveAttribute('aria-disabled', 'true');
+      await control.hover();
+      await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await control.press('Enter');
+      await expect(page.getByTestId('compact-count')).toHaveText('1');
+    }
+  });
+
+  test(`Native and hosted Composer attachment controls share neutral feedback in ${theme}`, async ({
+    page
+  }) => {
+    for (const [query, selector, width] of [
+      ['send-gesture', '.composer-attachment-button', 1280],
+      ['hosted-gesture', '.hosted-icon-button', 390]
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${fixture.url}workbench-style.html?${query}&theme=${theme}`);
+      const control = page.locator(selector);
+      await expect(control).toBeEnabled();
+      const colors = await palette(page);
+      await control.hover();
+      await expect(control).toHaveCSS('background-color', colors.hover);
+      await expect(control).toHaveCSS('border-radius', '6px');
+      await expect(control).toHaveCSS('color', colors.primary);
+      await page.mouse.move(0, 0);
+      await page.keyboard.press('Tab');
+      await control.focus();
+      await expect(control).toHaveCSS('outline-color', colors.focus);
+      await expect(control).toHaveCSS('outline-style', 'solid');
+      await expect(control).toHaveCSS('background-color', colors.hover);
+    }
+  });
 
   test(`candidate hover preserves selection and text hierarchy in ${theme}`, async ({ page }) => {
     await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}`);
@@ -542,7 +645,7 @@ test('native utility keeps neutral pressed feedback outside hover', async ({ pag
       true
     );
     await expect(control).toHaveCSS('color', colors.primary);
-    await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(control).toHaveCSS('background-color', colors.hover);
   } finally {
     await page.mouse.up();
   }
@@ -551,7 +654,9 @@ test('native utility keeps neutral pressed feedback outside hover', async ({ pag
 
 test.describe('touch utility feedback', () => {
   test.use({ isMobile: true, hasTouch: true, viewport: { width: 390, height: 844 } });
-  test('touch tap keeps transparent feedback and a single original action', async ({ page }) => {
+  test('touch tap keeps a single original action and clears feedback after leaving', async ({
+    page
+  }) => {
     await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
     const colors = await customPalette(page);
     const control = page.getByTestId('native');
@@ -559,9 +664,9 @@ test.describe('touch utility feedback', () => {
     // Touch pseudo-class timing belongs to the browser; held :active is covered above.
     await control.tap();
     await expect(page.getByTestId('events')).toHaveText('native');
-    await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(control).toHaveCSS('transform', 'none');
     await page.touchscreen.tap(1, 1);
+    await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(control).toHaveCSS('color', colors.secondary);
   });
 });

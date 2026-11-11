@@ -166,7 +166,7 @@ for (const theme of ['daylight', 'midnight']) {
     }
   });
 
-  test(`Help shares notification utility colors without changing link behavior in ${theme}`, async ({
+  test(`Icon-only Help shares notification utility feedback without changing link behavior in ${theme}`, async ({
     browser
   }, testInfo) => {
     for (const width of [1280, 390]) {
@@ -189,8 +189,14 @@ for (const theme of ['daylight', 'midnight']) {
         await expect(help).toHaveAttribute('href', /getting-started\/overview/);
         await expect(help).toHaveAttribute('target', '_blank');
         await expect(help).toHaveAttribute('rel', 'noopener noreferrer');
+        await expect(help).toHaveText('');
+        await expect(help.locator('svg')).toBeVisible();
+        const iconBounds = (await help.locator('svg').boundingBox())!;
+        expect(iconBounds.width).toBe(22);
+        expect(iconBounds.height).toBe(22);
         if (width >= 768) {
           const bounds = (await help.boundingBox())!;
+          expect(bounds.width).toBe(bounds.height);
           expect(width - bounds.x - bounds.width).toBeGreaterThanOrEqual(8);
           expect(width - bounds.x - bounds.width).toBeLessThanOrEqual(12);
         } else await expect(help).toHaveCSS('position', 'static');
@@ -201,6 +207,7 @@ for (const theme of ['daylight', 'midnight']) {
               element.style.setProperty('--mar-text-secondary', '#8295a4');
               element.style.setProperty('--mar-color-brand', '#9672d1');
               element.style.setProperty('--mar-color-brand-text', '#af79d0');
+              element.style.setProperty('--mar-fill-row-hover', '#25334280');
             });
           const colors = await help.evaluate((element) => {
             const probe = document.createElement('span');
@@ -223,10 +230,7 @@ for (const theme of ['daylight', 'midnight']) {
             await expect(control).toHaveCSS('color', colors.normal);
             await control.hover();
             await expect(control).toHaveCSS('color', colors.hover);
-            await expect(control).toHaveCSS(
-              'background-color',
-              control === activity ? colors.hoverBackground : 'rgba(0, 0, 0, 0)'
-            );
+            await expect(control).toHaveCSS('background-color', colors.hoverBackground);
             await control.focus();
             await page.keyboard.press('Tab');
             await page.keyboard.press('Shift+Tab');
@@ -335,7 +339,7 @@ for (const theme of ['daylight', 'midnight']) {
       const tokens = await remove.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.cssText =
-          'position:absolute;color:var(--mar-text-primary);background:transparent;border-color:var(--mar-color-brand)';
+          'position:absolute;color:var(--mar-text-primary);background:var(--mar-fill-row-hover);border-color:var(--mar-color-brand)';
         element.append(probe);
         const style = getComputedStyle(probe);
         const colors = {
@@ -372,7 +376,7 @@ for (const theme of ['daylight', 'midnight']) {
       await expect(remove).toHaveCSS('outline-color', tokens.focus);
       await expect(remove).toHaveCSS('outline-offset', '2px');
       await expect(remove).toHaveCSS('color', tokens.foreground);
-      await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(remove).toHaveCSS('background-color', tokens.surface);
 
       await remove.evaluate((element: HTMLButtonElement) => {
         element.disabled = true;

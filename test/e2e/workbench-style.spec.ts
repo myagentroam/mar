@@ -1026,6 +1026,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.locator('.workspace-group-toggle').click();
       const plain = page.getByRole('button', { name: 'plain', exact: true });
       const grouped = page.getByRole('button', { name: 'grouped', exact: true });
+      for (const row of [
+        page.locator('.tree-node-row').first(),
+        plain.locator('..'),
+        page.locator('.session-row').first()
+      ]) {
+        await row.hover();
+        const rowBackground = await row.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        );
+        expect(rowBackground).not.toBe('rgba(0, 0, 0, 0)');
+        const action = row.locator('.tree-more-button, .session-more-button');
+        await action.hover();
+        await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(row).toHaveCSS('background-color', rowBackground);
+      }
       const indent = (await grouped.boundingBox())!.x - (await plain.boundingBox())!.x;
       expect(indent).toBeCloseTo(16, 0);
       const sessions = page.locator('.session-list');
@@ -1047,6 +1062,30 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(bounds.height).toBeGreaterThanOrEqual(28);
         await expect(button.locator('svg')).toHaveCount(1);
       }
+      const actionHover = await picker.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        probe.style.color = 'var(--mar-text-primary)';
+        element.append(probe);
+        const style = getComputedStyle(probe);
+        const colors = { background: style.backgroundColor, color: style.color };
+        probe.remove();
+        return colors;
+      });
+      expect(actionHover.background).not.toBe('rgba(0, 0, 0, 0)');
+      const directoryActions = picker.locator('.workspace-directory-list > li > button:last-child');
+      await expect(directoryActions).toHaveCount(2);
+      for (const button of await directoryActions.all()) {
+        await button.hover();
+        await expect(button).toHaveCSS('background-color', actionHover.background);
+        await expect(button).toHaveCSS('color', actionHover.color);
+        await expect(button).toHaveCSS('border-radius', '6px');
+        await page.mouse.move(0, 0);
+        await page.keyboard.press('Tab');
+        await button.focus();
+        await expect(button).toHaveCSS('background-color', actionHover.background);
+        await expect(button).toHaveCSS('outline-width', '2px');
+      }
       const strip = page.locator('.workbench-aside-tabs .tab-strip');
       await expect(strip.getByRole('tab')).toHaveCount(4);
       expect(await strip.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(
@@ -1063,6 +1102,28 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       );
       await expect(terminal.locator('.terminal-tab.active')).toHaveCSS('border-radius', '6px');
       await expect(terminal.locator('.terminal-tab.active')).toHaveCSS('box-shadow', 'none');
+      const terminalSelection = await terminal
+        .locator('.terminal-tab.active')
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      const terminalClose = terminal.locator('.terminal-tab.active .terminal-tab-close');
+      await terminalClose.hover();
+      await expect(terminalClose).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(terminal.locator('.terminal-tab.active')).toHaveCSS(
+        'background-color',
+        terminalSelection
+      );
+      const add = terminal.locator('.terminal-tab-add');
+      await add.hover();
+      const hoverBackground = await add.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        element.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+      });
+      await expect(add).toHaveCSS('background-color', hoverBackground);
+      await expect(add).toHaveCSS('border-radius', '6px');
       await expect(terminal.locator('.admin-terminal-body')).toBeVisible();
       if (width >= 768) {
         const chrome = await terminal.evaluate((element) => {

@@ -95,7 +95,7 @@ defineExpose({ root });
         "
         class="mar-tooltip-control"
         ><button
-          class="workspace-file-mobile-actions-toggle icon-button utility-control"
+          class="workspace-file-mobile-actions-toggle icon-button icon-action"
           type="button"
           :aria-expanded="mobileActionsExpanded"
           :aria-label="

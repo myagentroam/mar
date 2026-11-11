@@ -55,7 +55,7 @@ const defaultFenceRenderer = renderer.renderer.rules.fence ?? (() => '');
 renderer.renderer.rules.fence = (tokens, index, options, environment, self) => {
   const rendered = defaultFenceRenderer(tokens, index, options, environment, self);
   const label = renderer.utils.escapeHtml(translate('generated.conversationTimeline.copyCode'));
-  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy icon-button utility-control" data-code-copy aria-label="${label}">${copyIconSvg}${checkIconSvg}</button></div>`;
+  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy icon-button icon-action" data-code-copy aria-label="${label}">${copyIconSvg}${checkIconSvg}</button></div>`;
 };
 
 renderer.core.ruler.after('linkify', 'workspace-file-locations', (state) => {
@@ -554,7 +554,7 @@ function onLinkClick(event: MouseEvent): void {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   opacity: 0;
   transition:
     opacity 0.12s ease,

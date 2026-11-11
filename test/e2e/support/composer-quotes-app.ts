@@ -3,6 +3,8 @@ import '../../../packages/web-core/src/styles.css';
 import Fixture from './composer-quotes-fixture.vue';
 import { localePreferenceService } from '../../../packages/web-core/src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../../packages/web-core/src/service/theme-preference-service.js';
-themePreferenceService();
+themePreferenceService().setTheme(
+  new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
+);
 localePreferenceService().setLocale('en-US');
 createTooltipApp(Fixture).mount('#app');

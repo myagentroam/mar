@@ -928,10 +928,10 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   const searchSessionsButton = page.getByRole('button', { name: '刷新当前工作区会话' });
   await expect(searchSessionsButton).toHaveCSS('height', '26px');
   await expect(searchSessionsButton).toHaveAttribute('type', 'submit');
-  await expect(searchSessionsButton).toHaveClass(/utility-control/u);
+  await expect(searchSessionsButton).toHaveClass(/icon-action/u);
   const workspaceMoreButton = page.locator('.new-session-form .workspace-more-button');
   await expect(workspaceMoreButton).toHaveAttribute('type', 'button');
-  await expect(workspaceMoreButton).toHaveClass(/utility-control/u);
+  await expect(workspaceMoreButton).toHaveClass(/icon-action/u);
   const workspaceGridGeometry = await page.locator('.session-layout').evaluate((layout) => {
     const grid = layout.querySelector<HTMLElement>('.workspace-grid');
     if (grid === null) throw new Error('workspace grid is missing');
@@ -973,7 +973,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.getByRole('button', { name: '上传文件' })).toBeVisible();
   await expect(refreshFilesButton).toHaveAttribute('type', 'button');
   await expect(refreshFilesButton).toHaveClass(/file-explorer-utility-button/u);
-  await expect(refreshFilesButton).toHaveClass(/utility-control/u);
+  await expect(refreshFilesButton).toHaveClass(/icon-action/u);
   await expect(refreshFilesButton).not.toHaveClass(/el-button/u);
   await expect(page.getByRole('button', { name: '.. 返回上级目录' })).toHaveCount(0);
   await expect(page.getByRole('treeitem', { name: 'project' })).toHaveAttribute(

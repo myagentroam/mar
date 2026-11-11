@@ -85,7 +85,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   >
     <template #reference>
       <button
-        class="web-performance-indicator icon-button utility-control"
+        class="web-performance-indicator icon-button icon-action"
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
       >
@@ -99,7 +99,8 @@ onBeforeUnmount(props.diagnostics.dispose);
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
           <el-button
             v-tooltip="t('performanceDiagnostics.copy')"
-            link
+            class="icon-action"
+            text
             :aria-label="t('performanceDiagnostics.copy')"
             @click="copyDiagnostics"
           >
@@ -186,7 +187,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   padding: 3px;
   cursor: pointer;
   line-height: 1;

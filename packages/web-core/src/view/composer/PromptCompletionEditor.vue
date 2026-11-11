@@ -489,7 +489,7 @@ onBeforeUnmount(() => {
       <span class="completion-buttons">
         <el-button
           data-completion-action
-          class="utility-control"
+          class="text-action"
           link
           size="small"
           :disabled="blocked"
@@ -500,7 +500,7 @@ onBeforeUnmount(() => {
         <el-button
           v-if="state.kind === 'ready'"
           data-completion-cancel
-          class="utility-control"
+          class="text-action"
           link
           size="small"
           :aria-label="translate('promptCompletion.cancel')"

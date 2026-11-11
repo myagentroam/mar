@@ -470,7 +470,10 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         >
           <button
             v-if="!filterActive"
-            :class="['node-expand-button', { expanded: expandedNodeIds.includes(result.node.id) }]"
+            :class="[
+              'node-expand-button icon-action icon-action--inline',
+              { expanded: expandedNodeIds.includes(result.node.id) }
+            ]"
             :aria-expanded="nodeExpanded(result.node.id)"
             :aria-label="
               expandedNodeIds.includes(result.node.id)
@@ -515,7 +518,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
             @visible-change="openNodeActionsId = $event ? result.node.id : undefined"
           >
             <button
-              class="tree-more-button utility-control"
+              class="tree-more-button icon-action icon-action--inline"
               :aria-label="translate('generated.workspaceTree.nodeActions')"
               type="button"
               @click.stop
@@ -631,7 +634,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     "
                   >
                     <button
-                      class="tree-more-button utility-control"
+                      class="tree-more-button icon-action icon-action--inline"
                       :aria-label="translate('generated.workspaceTree.workspaceActions')"
                       type="button"
                       @click.stop
@@ -801,7 +804,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                         "
                       >
                         <button
-                          class="tree-more-button utility-control"
+                          class="tree-more-button icon-action icon-action--inline"
                           :aria-label="translate('generated.workspaceTree.workspaceActions')"
                           type="button"
                           @click.stop
@@ -1242,7 +1245,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   cursor: pointer;

@@ -327,7 +327,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               <button
                 v-if="repository.source === 'ROOT'"
                 v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
-                class="changes-refresh-button file-explorer-utility-button utility-control"
+                class="changes-refresh-button file-explorer-utility-button icon-action"
                 :disabled="changesLoading"
                 :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
                 :aria-busy="changesLoading || undefined"
@@ -454,7 +454,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 ? translate('generated.workspaceInspector.deleteUntrackedFile2')
                 : translate('generated.workspaceInspector.revertChanges2')
             "
-            class="change-restore utility-control"
+            class="change-restore icon-action icon-action--inline"
             text
             :icon="marIcon('undo')"
             :loading-icon="marIcon('loading-action')"
@@ -818,7 +818,7 @@ button.file-explorer-utility-button {
   min-height: var(--mar-compact-control-size);
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   font: inherit;

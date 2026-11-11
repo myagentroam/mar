@@ -104,6 +104,51 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
+test('Message, Dialog, MessageBox and Drawer close controls share the icon action surface', async ({
+  page
+}, testInfo) => {
+  await expect(page.getByTestId('show-info-feedback')).toBeVisible();
+  await page.evaluate(() => {
+    for (const [token, value] of Object.entries({
+      '--mar-fill-row-hover': 'rgba(52, 86, 120, 0.5)',
+      '--mar-text-primary': '#ddeeff',
+      '--mar-text-secondary': '#8899aa',
+      '--mar-color-brand': '#5d97d8'
+    }))
+      document.documentElement.style.setProperty(token, value);
+  });
+  for (const [trigger, selector] of [
+    ['show-info-feedback', '.mar-message-close'],
+    ['open-feedback-dialog', '.el-dialog__headerbtn'],
+    ['open-close-confirmation', '.el-message-box__headerbtn'],
+    ['open-close-drawer', '.el-drawer__close-btn']
+  ] as const) {
+    await page.getByTestId(trigger).click();
+    const close = page.locator(selector);
+    await expect(close).toBeVisible();
+    await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(close.locator('svg')).toHaveCSS('color', 'rgb(136, 153, 170)');
+    await close.hover();
+    await expect(close).toHaveCSS('background-color', 'rgba(52, 86, 120, 0.5)');
+    await expect(close).toHaveCSS('border-radius', '6px');
+    await expect(close.locator('svg')).toHaveCSS('color', 'rgb(221, 238, 255)');
+    await page.mouse.move(0, 0);
+    await page.keyboard.press('Tab');
+    await close.focus();
+    await expect(close).toHaveCSS('outline-style', 'solid');
+    await expect(close).toHaveCSS('outline-width', '2px');
+    await expect(close).toHaveCSS('outline-color', 'rgb(93, 151, 216)');
+    await expect(close).toHaveCSS(
+      'outline-offset',
+      trigger === 'show-info-feedback' ? '2px' : '-2px'
+    );
+    await expect(close).toHaveCSS('background-color', 'rgba(52, 86, 120, 0.5)');
+    await page.screenshot({ path: testInfo.outputPath(`icon-action-${trigger}.png`) });
+    await close.press('Enter');
+    await expect(close).toHaveCount(0);
+  }
+});
+
 test('lazy loading directive displays and removes its styled mask', async ({ page }) => {
   const sample = page.getByRole('region', { name: 'Loading directive sample' });
   const panel = sample.locator('.page-loading-panel');

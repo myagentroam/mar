@@ -402,7 +402,7 @@ function submitSessionSearch(): void {
               : 'generated.workspaceSessionList.refreshWorkspaceSessions'
           )
         "
-        class="session-search-button utility-control"
+        class="session-search-button icon-action"
         :aria-label="
           translate(
             searchInput.trim()
@@ -431,7 +431,7 @@ function submitSessionSearch(): void {
       </el-button>
       <el-dropdown trigger="click" popper-class="workspace-tool-menu">
         <button
-          class="workspace-more-button utility-control"
+          class="workspace-more-button icon-action"
           :aria-label="translate('generated.workspaceSessionList.moreWorkspaceActions')"
           :disabled="!nodeReady"
           type="button"
@@ -596,7 +596,7 @@ function submitSessionSearch(): void {
           >
             <button
               v-tooltip="translate('generated.workspaceSessionList.moreSessionActions2')"
-              class="session-more-button utility-control"
+              class="session-more-button icon-action icon-action--inline"
               :disabled="loading"
               :aria-label="
                 translate('generated.workspaceSessionList.moreSessionActions', {
@@ -990,7 +990,7 @@ function submitSessionSearch(): void {
   margin: 0;
   place-items: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--mar-radius-control);
   font: inherit;
   padding: 0;
   cursor: pointer;
@@ -1104,7 +1104,7 @@ function submitSessionSearch(): void {
   height: 24px;
   place-items: center;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   cursor: pointer;

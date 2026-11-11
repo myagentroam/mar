@@ -37,6 +37,7 @@ onBeforeUnmount(preview.release);
       <span class="html-browser-file-name" v-tooltip="path">{{ path.split('/').at(-1) }}</span>
       <div class="html-browser-actions">
         <el-button
+          class="icon-action"
           text
           circle
           size="small"
@@ -46,6 +47,7 @@ onBeforeUnmount(preview.release);
           ><MarIcon name="refresh"
         /></el-button>
         <el-button
+          class="icon-action"
           text
           circle
           size="small"
@@ -55,6 +57,7 @@ onBeforeUnmount(preview.release);
           ><MarIcon name="document"
         /></el-button>
         <el-button
+          class="icon-action"
           text
           circle
           size="small"

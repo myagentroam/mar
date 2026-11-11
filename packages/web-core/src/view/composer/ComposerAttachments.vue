@@ -77,7 +77,7 @@ const emit = defineEmits<{
           })
         "
         type="button"
-        class="composer-attachment-remove"
+        class="composer-attachment-remove icon-action"
         :aria-label="
           translate('generated.composerAttachments.removeAttachment', {
             value0: attachment.file.name
@@ -164,6 +164,7 @@ const emit = defineEmits<{
 
 .composer-attachment-remove {
   --mar-action-icon-size: 14px;
+  --mar-action-hover-color: var(--mar-color-danger-text);
   display: inline-grid;
   width: 24px;
   min-width: 24px;
@@ -171,15 +172,8 @@ const emit = defineEmits<{
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
-  color: var(--mar-text-faint);
   cursor: pointer;
-}
-
-.composer-attachment-remove:hover,
-.composer-attachment-remove:focus-visible {
-  background: var(--mar-color-danger-bg);
-  color: var(--mar-color-danger-text);
 }
 </style>

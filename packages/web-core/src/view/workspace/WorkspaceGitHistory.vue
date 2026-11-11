@@ -288,7 +288,7 @@ onBeforeUnmount(() => {
       </el-select>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshGitHistory2')"
-        class="history-refresh file-explorer-utility-button utility-control"
+        class="history-refresh file-explorer-utility-button icon-action"
         :disabled="historyLoading"
         :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
         :aria-busy="historyLoading || undefined"
@@ -536,7 +536,7 @@ button.file-explorer-utility-button {
   min-height: 26px;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   font: inherit;
@@ -593,7 +593,6 @@ button.history-refresh {
   min-width: 24px;
   height: 24px;
   min-height: 24px;
-  color: var(--mar-text-tertiary);
   font-size: var(--mar-action-icon-size);
 }
 

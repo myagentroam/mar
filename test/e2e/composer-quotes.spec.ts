@@ -312,6 +312,39 @@ test('a long draft quote stays compact while preserving its full snapshot', asyn
   });
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`quote removal preserves its brand foreground in ${theme}`, async ({ page }) => {
+    await page.goto(`${fixture.url}composer-quotes.html?theme=${theme}`);
+    if (theme === 'daylight') await expect(page.locator('html')).not.toHaveClass(/dark/u);
+    else await expect(page.locator('html')).toHaveClass(/dark/u);
+    await selectReply(page);
+    await page.getByRole('group', { name: 'Quote', exact: true }).getByRole('button').click();
+    const tag = page.locator('.composer-quote-tag');
+    const remove = tag.locator('.quote-tag-remove');
+    const brand = await tag.evaluate((element) => getComputedStyle(element).color);
+    await expect(remove).toHaveCSS('color', brand);
+    await remove.hover();
+    await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(remove).toHaveCSS('color', brand);
+    await remove.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(remove).toBeFocused();
+    await expect(remove).toHaveCSS('outline-width', '2px');
+    await page.mouse.move(1, 1);
+    await expect(remove).toHaveCSS('color', brand);
+    await remove.hover();
+    await page.mouse.down();
+    await expect(remove).toHaveCSS('color', brand);
+    await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await page.mouse.move(1, 1);
+    await page.mouse.up();
+    await remove.press('Enter');
+    await expect(tag).toHaveCount(0);
+    expect(await result(page, 'references')).toEqual([]);
+  });
+}
+
 test('the Chat context menu stays available for a scrolled multiline selection', async ({
   page
 }, testInfo) => {

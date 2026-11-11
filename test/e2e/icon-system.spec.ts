@@ -374,6 +374,7 @@ for (const theme of ['dark', 'light']) {
     page
   }) => {
     await page.goto(`${fixture.url}icon-system.html?attachment-icons=1&theme=${theme}`);
+    await expect(page.locator('.composer-attachments .attachment-name')).toHaveText('notes.txt');
     for (const iconTheme of ['material', 'seti']) {
       await page.evaluate((value) => localStorage.setItem('mar.icon-theme', value), iconTheme);
       await page.reload();

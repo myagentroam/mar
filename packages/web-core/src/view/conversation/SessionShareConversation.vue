@@ -408,10 +408,10 @@ onBeforeUnmount(() => {
         <el-button
           v-tooltip="translate('sessionShare.editName')"
           v-if="chat.canRename.value && visitor.visitorId === access.visitor.value.visitorId"
-          class="share-edit-name"
+          class="share-edit-name icon-action"
           :icon="marIcon('edit')"
           :aria-label="translate('sessionShare.editName')"
-          link
+          text
           @click="editingName = true"
         />
       </div>

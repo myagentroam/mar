@@ -3,11 +3,14 @@ import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
+import { ElDrawer } from 'element-plus';
+import 'element-plus/es/components/drawer/style/css';
 import MarIcon from '../../src/view/common/MarIcon.vue';
 import { marIcon } from '../../src/util/mar-icons.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
+import { ElMessageBox } from '../../src/service/message-box-service.js';
 const value = ref('');
 const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
@@ -53,6 +56,14 @@ function recordMarkdownFile(
 }
 
 const dialogOpen = ref(false);
+const drawerOpen = ref(false);
+
+async function openConfirmation(): Promise<void> {
+  await ElMessageBox.confirm('Confirm this fixture action.', 'Action confirmation', {
+    closeIcon: marIcon('close')
+  }).catch(() => undefined);
+}
+
 const longFeedback = Array.from(
   { length: 36 },
   (_, index) => `Line ${index + 1}: long feedback remains readable and can be dismissed.`
@@ -147,7 +158,7 @@ function saveFeedbackDialog(): void {
   </section>
   <section aria-label="Dropdown state samples">
     <el-dropdown trigger="click" @command="menuAction = $event">
-      <button type="button" class="utility-control">Sample menu</button>
+      <button type="button" class="icon-action">Sample menu</button>
       <template #dropdown>
         <el-dropdown-menu>
           <el-dropdown-item command="rename"><MarIcon name="edit" />Rename</el-dropdown-item>
@@ -222,6 +233,20 @@ function saveFeedbackDialog(): void {
     <button type="button" data-testid="open-feedback-dialog" @click="dialogOpen = true">
       Open feedback dialog
     </button>
+    <button type="button" data-testid="open-close-confirmation" @click="openConfirmation">
+      Open confirmation
+    </button>
+    <button type="button" data-testid="open-close-drawer" @click="drawerOpen = true">
+      Open drawer
+    </button>
+    <el-drawer
+      v-if="drawerOpen"
+      v-model="drawerOpen"
+      title="Action drawer"
+      :close-icon="marIcon('close')"
+    >
+      Drawer content
+    </el-drawer>
     <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Message feedback dialog">
       <p>Dialog content</p>
       <button

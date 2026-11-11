@@ -60,7 +60,7 @@ async function copySessionId(sessionId: string): Promise<void> {
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button
-          class="utility-control conversation-session-id-copy"
+          class="text-action conversation-session-id-copy"
           v-tooltip="
             translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
           "
@@ -80,7 +80,7 @@ async function copySessionId(sessionId: string): Promise<void> {
       :aria-label="translate('generated.conversationHeader.workspaceTools')"
     >
       <button
-        class="utility-control"
+        class="text-action"
         type="button"
         :aria-label="translate('generated.conversationHeader.openSessionList')"
         @click="emit('openSurface', 'sessions')"
@@ -88,7 +88,7 @@ async function copySessionId(sessionId: string): Promise<void> {
         {{ translate('generated.conversationHeader.sessions') }}
       </button>
       <button
-        class="utility-control"
+        class="text-action"
         v-if="asideReady || filesReady || terminalReady"
         type="button"
         :aria-label="translate('generated.conversationHeader.openAside')"
@@ -240,7 +240,7 @@ async function copySessionId(sessionId: string): Promise<void> {
     justify-content: center;
     gap: 0.2rem;
     border: 0;
-    border-radius: 5px;
+    border-radius: var(--mar-radius-control);
     padding: 0.25rem 0.42rem;
     font: inherit;
     font-size: var(--mar-font-size-body);
