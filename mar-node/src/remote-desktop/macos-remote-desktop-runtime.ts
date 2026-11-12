@@ -130,7 +130,11 @@ export class MacosRemoteDesktopRuntime {
     const signature = JSON.stringify(screens);
     if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
     if (signature === this.#signature) return;
-    const layout = macosCombinedDesktopLayout(screens, this.#generation, this.#revision + 1);
+    const layout = macosCombinedDesktopLayout(
+      screens.filter((screen) => screen.primary),
+      this.#generation,
+      this.#revision + 1
+    );
     if (layout.framebuffer.width * layout.framebuffer.height > this.options.maxPixels)
       throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
     if (this.#layout) this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');

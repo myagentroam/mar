@@ -7,7 +7,7 @@ import {
   TigerVncSetupCleanupError,
   type TigerVncRfbSessionOptions
 } from '../../src/remote-desktop/tigervnc-rfb-session.js';
-import type { TigerVncAttachment } from '../../src/remote-desktop/tigervnc-attachment.js';
+import type { StandardRfbAttachment } from '../../src/remote-desktop/standard-rfb-attachment.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -83,7 +83,7 @@ describe('Remote Desktop attachment control lifecycle', () => {
   it('retains failed setup cleanup until its original owner confirms a retry', async () => {
     const f = fixture('CONTROL');
     const receipt = deferred();
-    const native = { close: vi.fn(() => receipt.promise) } as unknown as TigerVncAttachment;
+    const native = { close: vi.fn(() => receipt.promise) } as unknown as StandardRfbAttachment;
     f.open.mockRejectedValueOnce(
       new TigerVncSetupCleanupError('DESKTOP_NATIVE_CLEANUP_TIMEOUT', native)
     );
@@ -141,7 +141,7 @@ describe('Remote Desktop attachment control lifecycle', () => {
   it('waits for a late setup-cleanup retry before releasing a cancelled attachment', async () => {
     const f = fixture('CONTROL');
     const receipt = deferred();
-    const native = { close: vi.fn(() => receipt.promise) } as unknown as TigerVncAttachment;
+    const native = { close: vi.fn(() => receipt.promise) } as unknown as StandardRfbAttachment;
     f.open.mockImplementation(
       (_options, signal) =>
         new Promise((_resolve, reject) => {

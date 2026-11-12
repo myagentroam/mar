@@ -2046,7 +2046,7 @@ export class NodeConnector {
                   : 'TIGERVNC_X0',
             supportsView: true,
             supportsControl: true,
-            supportsMultiDisplay: true,
+            supportsMultiDisplay: !(this.desktopRuntime instanceof MacosRemoteDesktopRuntime),
             supportsUnicodePaste: !(this.desktopRuntime instanceof MacosRemoteDesktopRuntime),
             transports
           }

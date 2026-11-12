@@ -46,6 +46,21 @@ describe('Node desktop discovery', () => {
       expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(runtime.describe).mock.invocationCallOrder[0]!
       );
+      const projection = connector as unknown as {
+        directTransferService: unknown;
+        projectRemoteDesktopCapability(input: object): {
+          remoteDesktop: { supportsMultiDisplay: boolean };
+        };
+      };
+      const previous = projection.directTransferService;
+      try {
+        projection.directTransferService = {};
+        expect(
+          projection.projectRemoteDesktopCapability({}).remoteDesktop.supportsMultiDisplay
+        ).toBe(false);
+      } finally {
+        projection.directTransferService = previous;
+      }
     } finally {
       await connector.stop();
       vi.restoreAllMocks();

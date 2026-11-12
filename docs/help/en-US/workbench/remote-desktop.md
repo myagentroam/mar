@@ -11,6 +11,8 @@ The bundled Linux x64 backend is built on Debian 12 and requires compatible syst
 
 Remote Desktop has no separate switch. Availability depends on access to a graphical desktop and the managed backend. It operates independently of Computer Use; simultaneous input to the same desktop can interfere.
 
+Display capabilities depend on the platform backend. macOS currently shares only the primary display; multi-display selection is available only when reported by the Node. Reconnect after changing display settings on Windows or macOS.
+
 Choose Low, Medium, or High picture quality; Medium is the default. Quality uses the VNC backend's native encoding settings and does not change the Node's display resolution. The effect depends on the backend and encoding.
 
 ## Prerequisites
@@ -22,12 +24,11 @@ Choose Low, Medium, or High picture quality; Medium is the default. Quality uses
 ## Steps
 
 1. In **Work**, choose **Remote Desktop** from the Node action menu. A separate same-origin browser tab opens without changing the active Workspace or borrowing the original tab's connection.
-2. The native primary display opens in view-only mode. Use the display selector to show one display or the entire desktop; the picture is the Node's real desktop.
+2. The native primary display opens in view-only mode. When the backend supports multiple displays, use the display selector to show one display or the entire desktop; the picture is the Node's real desktop.
 3. Select **Control desktop** to operate it. Other people or programs may operate the same desktop at the same time.
 4. In control mode, select **Send clipboard text** and grant browser permission when requested. Only this explicit action reads the local clipboard and sends its text to the desktop; then paste in the remote application. The clipboard is not synchronized automatically, and view-only mode cannot send it.
 
-On a mobile device, open **Text keyboard** in control mode, compose text locally, and select **Send text**. Enter and Backspace are also available as buttons. Text is sent as remote keyboard events; the result depends on the remote application and system. Unsent text is cleared when changing mode, hiding the page, or losing control.
-5. Losing window focus stops input from this tab. Hiding the tab ends its active picture in either mode. Reconnect explicitly after returning. Closing the tab does not stop Agent work.
+On a mobile device, open **Text keyboard** in control mode, compose text locally, and select **Send text**. Enter and Backspace are also available as buttons. Text is sent as remote keyboard events; the result depends on the remote application and system. Unsent text is cleared when changing mode, hiding the page, or losing control. 5. Losing window focus stops input from this tab. Hiding the tab ends its active picture in either mode. Reconnect explicitly after returning. Closing the tab does not stop Agent work.
 
 Browsers may reserve some system shortcuts. If a shortcut cannot reach the page, use the target application's controls instead. Available input methods on mobile also depend on the browser and device.
 
