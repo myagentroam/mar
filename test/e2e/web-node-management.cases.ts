@@ -1912,6 +1912,9 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
   await tlsRow.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('系统配置已保存').last()).toBeVisible();
   await expect(tlsRow.getByRole('switch')).toBeDisabled();
+  await expect(tlsRow.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  await expect(tlsRow.getByText(/默认关闭此开关/u)).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Skill 回源 TLS' })).toHaveCount(0);
 
   expect(writes.filter((entry) => entry.url.includes('/api/system-settings/'))).toEqual([
     expect.objectContaining({

@@ -13,8 +13,6 @@ export const systemConfigurationZhCN = {
       actions: '操作',
       edit: '编辑',
       save: '保存',
-      skillSourceTLSCertificateVerificationIsDisabled:
-        'Skill 回源 TLS 证书校验已关闭，下载版本会标记为未验证。',
       disableSkillSourceTLSVerification: '关闭 Skill 回源 TLS 证书校验',
       htmlPreviewOrigin: 'HTML 预览域名',
       htmlPreviewOriginDescription:

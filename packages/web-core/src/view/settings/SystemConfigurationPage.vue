@@ -500,17 +500,6 @@ onMounted(() => {
         </div>
       </template>
     </el-dialog>
-    <el-alert
-      v-if="snapshot.skillTlsVerificationDisabled"
-      class="skill-tls-warning"
-      type="error"
-      :closable="false"
-      :title="
-        translate(
-          'generated.systemConfigurationPage.skillSourceTLSCertificateVerificationIsDisabled'
-        )
-      "
-    />
   </section>
 </template>
 
@@ -549,9 +538,5 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.skill-tls-warning {
-  margin-top: 18px;
 }
 </style>
