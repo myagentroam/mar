@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -53,7 +53,7 @@ export async function checkNodeDeploySource(source, deployed) {
     if (name === 'binaries') {
       const target = `${process.platform}-${process.arch}`;
       const packageName = `@myagentroam/binaries-${target}`;
-      const installed = createRequire(resolve(actual, 'package.json')).resolve(
+      const installed = createRequire(await realpath(resolve(actual, 'package.json'))).resolve(
         `${packageName}/package.json`
       );
       const originalTarget = resolve(source, 'packages', `binaries-${target}`);
