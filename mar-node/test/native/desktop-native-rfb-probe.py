@@ -45,8 +45,18 @@ with connection:
     assert read(12) == b'RFB 003.008\n'
     connection.sendall(b'RFB 003.008\n')
     count = read(1)[0]
-    assert 1 in read(count), 'Server did not offer RFB None security'
-    connection.sendall(b'\x01')
+    offered = read(count)
+    password = os.environ.get('MAR_RFB_PASSWORD')
+    if password:
+        assert 2 in offered and 1 not in offered, 'Server did not require VNC authentication'
+        connection.sendall(b'\x02')
+        challenge = read(16)
+        cipher = Path(__file__).with_name('windows-vnc-test-cipher.cjs')
+        response = subprocess.check_output(['node', str(cipher), 'challenge', challenge.hex()])
+        connection.sendall(bytes.fromhex(response.decode()))
+    else:
+        assert 1 in offered, 'Server did not offer RFB None security'
+        connection.sendall(b'\x01')
     assert read(4) == bytes(4), 'RFB security failed'
     connection.sendall(b'\x01')
     header = read(24)

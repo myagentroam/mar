@@ -156,7 +156,19 @@ jobs:
           $port = $listener.LocalEndpoint.Port
           $listener.Stop()
           $config = Join-Path $root 'ultravnc.ini'
-          @('[admin]', 'LoopbackOnly=1', 'AllowLoopback=1', 'AuthRequired=0', 'SocketConnect=1', 'AutoPortSelect=0', "PortNumber=$port", 'InputsEnabled=1', 'QuerySetting=0') | Set-Content -Encoding Ascii $config
+          @('[admin]', 'LoopbackOnly=1', 'AllowLoopback=1', 'AuthRequired=1', 'SocketConnect=1', 'AutoPortSelect=0', "PortNumber=$port", 'InputsEnabled=1', 'QuerySetting=0') | Set-Content -Encoding Ascii $config
+          $env:MAR_RFB_PASSWORD = 'testvnc1'
+          $encrypted = node mar-node/test/native/windows-vnc-test-cipher.cjs store
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare test password' }
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class TestProfile {
+            [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+            public static extern bool WritePrivateProfileStruct(string section, string key, byte[] data, uint size, string file);
+          }
+          '@
+          if (-not [TestProfile]::WritePrivateProfileStruct('UltraVNC', 'passwd', [Convert]::FromHexString($encrypted), 8, $config)) { throw 'Cannot write test password' }
           $window = Start-Process powershell -ArgumentList @('-NoProfile', '-STA', '-File', (Join-Path $env:GITHUB_WORKSPACE 'mar-node/test/native/windows-desktop-window.ps1')) -PassThru
           $server = $null
           try {
@@ -166,6 +178,9 @@ jobs:
             $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop)
             $listeners | Format-Table LocalAddress,LocalPort,OwningProcess
             if ($listeners.Count -ne 1 -or $listeners[0].LocalAddress -ne '127.0.0.1') { throw 'UltraVNC is not listening exclusively on IPv4 loopback' }
+            python mar-node/test/native/desktop-native-rfb-probe.py $port control
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT -ErrorAction SilentlyContinue
             $otherRoot = Join-Path $env:RUNNER_TEMP 'remote-desktop-native-other'
             New-Item -ItemType Directory -Path $otherRoot | Out-Null
             foreach ($name in @('winvnc.exe', 'vnchooks.dll', 'ddengine64.dll', 'ultravnc.portable')) {
@@ -176,7 +191,7 @@ jobs:
             $otherPort = $listener.LocalEndpoint.Port
             $listener.Stop()
             $otherConfig = Join-Path $otherRoot 'ultravnc.ini'
-            @('[admin]', 'LoopbackOnly=1', 'AllowLoopback=1', 'AuthRequired=0', 'SocketConnect=1', 'AutoPortSelect=0', "PortNumber=$otherPort", 'InputsEnabled=1', 'QuerySetting=0') | Set-Content -Encoding Ascii $otherConfig
+            (Get-Content -Raw $config).Replace("PortNumber=$port", "PortNumber=$otherPort") | Set-Content -Encoding Ascii $otherConfig
             $other = Start-Process (Join-Path $otherRoot 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $otherConfig + '"')) -WorkingDirectory $otherRoot -PassThru
             try {
               Start-Sleep -Seconds 3
