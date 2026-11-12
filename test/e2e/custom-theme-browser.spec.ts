@@ -1034,19 +1034,23 @@ for (const scheme of ['Light', 'Dark']) {
         await options.nth(1).getByRole('button', { name: 'Apply theme', exact: true }).click();
       const palette = await page.locator('html').evaluate((element) => {
         const style = getComputedStyle(element);
-        return {
-          utility: style.getPropertyValue('--mar-text-primary').trim()
-        };
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        element.append(probe);
+        const hover = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { utility: style.getPropertyValue('--mar-text-primary').trim(), hover };
       });
       const help = page.getByRole('button', { name: 'Theme color reference', exact: true });
       const more = options.first().getByRole('button', { name: /^More actions for / });
+      await page.mouse.move(0, 0);
       for (const control of [help, more]) {
         const label = (await control.getAttribute('aria-label')) ?? '';
         expect(label).not.toBe('');
         await expect(control).not.toHaveAttribute('title');
         await control.hover();
         await expect(page.getByRole('tooltip', { name: label, exact: true })).toBeVisible();
-        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('background-color', palette.hover);
         await expect(control).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
         await expect
           .poll(async () =>
@@ -1081,15 +1085,16 @@ for (const scheme of ['Light', 'Dark']) {
       await page.locator('html').evaluate((element) => {
         element.style.setProperty('--mar-text-primary', '#d9e2d0');
         element.style.setProperty('--mar-color-brand-text', '#8a4fc7');
+        element.style.setProperty('--mar-fill-row-hover', '#345678');
       });
       for (const control of [help, more]) {
         await control.hover();
         await expect(control).toHaveCSS('color', 'rgb(217, 226, 208)');
-        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('background-color', 'rgb(52, 86, 120)');
         await page.mouse.move(0, 0);
         await control.focus();
         await expect(control).toHaveCSS('color', 'rgb(217, 226, 208)');
-        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('background-color', 'rgb(52, 86, 120)');
       }
     }
   );
