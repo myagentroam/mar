@@ -160,12 +160,36 @@ jobs:
           $window = Start-Process powershell -ArgumentList @('-NoProfile', '-STA', '-File', (Join-Path $env:GITHUB_WORKSPACE 'mar-node/test/native/windows-desktop-window.ps1')) -PassThru
           $server = $null
           try {
-            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
+            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
             Start-Sleep -Seconds 3
             if ($server.HasExited) { throw "UltraVNC exited with code $($server.ExitCode)" }
             $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop)
             $listeners | Format-Table LocalAddress,LocalPort,OwningProcess
             if ($listeners.Count -ne 1 -or $listeners[0].LocalAddress -ne '127.0.0.1') { throw 'UltraVNC is not listening exclusively on IPv4 loopback' }
+            $otherRoot = Join-Path $env:RUNNER_TEMP 'remote-desktop-native-other'
+            New-Item -ItemType Directory -Path $otherRoot | Out-Null
+            foreach ($name in @('winvnc.exe', 'vnchooks.dll', 'ddengine64.dll', 'ultravnc.portable')) {
+              Copy-Item (Join-Path $root $name) (Join-Path $otherRoot $name)
+            }
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+            $listener.Start()
+            $otherPort = $listener.LocalEndpoint.Port
+            $listener.Stop()
+            $otherConfig = Join-Path $otherRoot 'ultravnc.ini'
+            @('[admin]', 'LoopbackOnly=1', 'AllowLoopback=1', 'AuthRequired=0', 'SocketConnect=1', 'AutoPortSelect=0', "PortNumber=$otherPort", 'InputsEnabled=1', 'QuerySetting=0') | Set-Content -Encoding Ascii $otherConfig
+            $other = Start-Process (Join-Path $otherRoot 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $otherConfig + '"')) -WorkingDirectory $otherRoot -PassThru
+            try {
+              Start-Sleep -Seconds 3
+              if ($other.HasExited -or $server.HasExited) { throw 'A concurrent UltraVNC instance exited' }
+              $otherListeners = @(Get-NetTCPConnection -State Listen -LocalPort $otherPort -ErrorAction Stop)
+              if ($otherListeners.Count -ne 1 -or $otherListeners[0].LocalAddress -ne '127.0.0.1' -or $otherListeners[0].OwningProcess -ne $other.Id) { throw 'Second instance listener is not isolated' }
+              python mar-node/test/native/desktop-native-rfb-probe.py $otherPort
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              Write-Output 'Two independent UltraVNC instances provide real framebuffer concurrently'
+            } finally {
+              if (-not $other.HasExited) { Stop-Process -Id $other.Id; $other.WaitForExit() }
+            }
+            if ($server.HasExited) { throw 'First instance exited when the second closed' }
             python mar-node/test/native/desktop-native-rfb-probe.py $port control
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
@@ -179,7 +203,7 @@ jobs:
             python mar-node/test/native/desktop-native-rfb-probe.py $port native-after-stop
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
-            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
+            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
             Start-Sleep -Seconds 3
             if ($server.HasExited) { throw "UltraVNC restart exited with code $($server.ExitCode)" }
             python mar-node/test/native/desktop-native-rfb-probe.py $port cleanup
