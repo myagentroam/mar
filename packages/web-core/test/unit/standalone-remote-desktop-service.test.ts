@@ -52,8 +52,7 @@ const capability = {
   supportsControl: true,
   supportsMultiDisplay: true,
   supportsUnicodePaste: true,
-  transports: ['DIRECT', 'RELAY'],
-
+  transports: ['DIRECT', 'RELAY']
 };
 const description = {
   desktopGeneration: 'desktop-123',
@@ -98,39 +97,79 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('standalone Remote Desktop page composition', () => {
-  it('uses this tab connection and the validated Node generation for its attachment', async () => {
-    const f = fixture();
-    const snapshot = await f.service.discover(new AbortController().signal);
-    const handle = { channel: {}, ready: vi.fn(), close: vi.fn(async () => true) };
-    mocks.direct.attach.mockResolvedValueOnce(handle);
-    const selected = await f.service.select({
-      discovery: snapshot,
-      mode: 'VIEW',
-      signal: new AbortController().signal,
-      onDisconnected: vi.fn()
-    });
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/nodes/node%201/desktop',
-      expect.objectContaining({
-        credentials: 'same-origin',
-        cache: 'no-store'
-      })
-    );
-    expect(mocks.transport.ensureTransport).toHaveBeenCalledWith('node 1', 'generation-123');
-    expect(mocks.direct.attach).toHaveBeenCalledWith(
-      expect.objectContaining({
-        nodeId: 'node 1',
+  it.each([true, false])(
+    'opens VIEW with multi-display support reported as %s',
+    async (supportsMultiDisplay) => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        response({
+          capability: {
+            ...capability,
+            backend: supportsMultiDisplay ? 'TIGERVNC_X0' : 'MACVNC',
+            supportsMultiDisplay
+          },
+          description
+        }) as never
+      );
+      const f = fixture();
+      const snapshot = await f.service.discover(new AbortController().signal);
+      expect(snapshot.capability.supportsMultiDisplay).toBe(supportsMultiDisplay);
+      const handle = { channel: {}, ready: vi.fn(), close: vi.fn(async () => true) };
+      mocks.direct.attach.mockResolvedValueOnce(handle);
+      const selected = await f.service.select({
+        discovery: snapshot,
+        mode: 'VIEW',
+        signal: new AbortController().signal,
+        onDisconnected: vi.fn()
+      });
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/nodes/node%201/desktop',
+        expect.objectContaining({
+          credentials: 'same-origin',
+          cache: 'no-store'
+        })
+      );
+      expect(mocks.transport.ensureTransport).toHaveBeenCalledWith('node 1', 'generation-123');
+      expect(mocks.direct.attach).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeId: 'node 1',
+          nodeGeneration: 'generation-123',
+          desktopGeneration: 'desktop-123',
+          topologyRevision: 1,
+          mode: 'VIEW'
+        })
+      );
+      expect(mocks.state.relayOptions.connectionId()).toBe('page-connection');
+      selected.ready();
+      expect(handle.ready).toHaveBeenCalledOnce();
+      expect(await f.service.close()).toBe(true);
+      expect(handle.close).toHaveBeenCalledOnce();
+    }
+  );
+
+  it.each([
+    {
+      capability: {
+        apiVersion: 1,
+        available: false,
         nodeGeneration: 'generation-123',
-        desktopGeneration: 'desktop-123',
-        topologyRevision: 1,
-        mode: 'VIEW'
-      })
-    );
-    expect(mocks.state.relayOptions.connectionId()).toBe('page-connection');
-    selected.ready();
-    expect(handle.ready).toHaveBeenCalledOnce();
-    expect(await f.service.close()).toBe(true);
-    expect(handle.close).toHaveBeenCalledOnce();
+        reasonCode: 'DESKTOP_UNAVAILABLE'
+      },
+      description
+    },
+    { capability, description: { ...description, framebuffer: { width: 0, height: 600 } } }
+  ])('still rejects unavailable or malformed discovery %#', async (value) => {
+    vi.mocked(fetch).mockResolvedValueOnce(response(value) as never);
+    const f = fixture();
+    try {
+      await expect(f.service.discover(new AbortController().signal)).rejects.toMatchObject({
+        code: 'DESKTOP_UNAVAILABLE'
+      });
+      expect(mocks.transport.ensureTransport).not.toHaveBeenCalled();
+      expect(mocks.direct.attach).not.toHaveBeenCalled();
+      expect(mocks.relay.attach).not.toHaveBeenCalled();
+    } finally {
+      await f.service.close();
+    }
   });
 
   it('keeps the control connection until attachment settlement and fails closed on loss', async () => {
