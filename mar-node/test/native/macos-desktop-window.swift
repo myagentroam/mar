@@ -14,6 +14,14 @@ final class ProbeView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 1, event.modifierFlags.contains([.control, .shift]),
+           let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_CTRL_SHIFT_RECEIPT"] {
+            try? "ctrl-shift-s\n".write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        if event.keyCode == 1,
+           let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_S_DOWN_RECEIPT"] {
+            try? "s-down\n".write(toFile: path, atomically: true, encoding: .utf8)
+        }
         guard event.charactersIgnoringModifiers == "a",
               let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_KEY_RECEIPT"] else { return }
         try? "key-a\n".write(toFile: path, atomically: true, encoding: .utf8)
@@ -25,6 +33,10 @@ final class ProbeView: NSView {
     }
 
     override func keyUp(with event: NSEvent) {
+        if event.keyCode == 1,
+           let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_S_UP_RECEIPT"] {
+            try? "s-up\n".write(toFile: path, atomically: true, encoding: .utf8)
+        }
         guard event.charactersIgnoringModifiers?.lowercased() == "a",
               let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_KEY_UP_RECEIPT"] else { return }
         try? "key-up\n".write(toFile: path, atomically: true, encoding: .utf8)

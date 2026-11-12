@@ -12,6 +12,8 @@ receipt = Path(os.environ['MAR_DESKTOP_KEY_RECEIPT'])
 mouse_receipt = Path(os.environ['MAR_DESKTOP_MOUSE_RECEIPT'])
 want_input = len(sys.argv) > 2 and sys.argv[2] == 'control'
 want_cleanup = len(sys.argv) > 2 and sys.argv[2] == 'cleanup'
+want_shift_cleanup = len(sys.argv) > 2 and sys.argv[2] == 'shift-cleanup'
+want_ctrl_shift = len(sys.argv) > 2 and sys.argv[2] == 'ctrl-shift'
 deadline = time.monotonic() + 20
 while True:
     try:
@@ -84,3 +86,31 @@ with connection:
             assert key_up.read_text().strip() == 'key-up', 'Key was not released after disconnect'
             assert mouse_up.read_text().strip() == 'mouse-up', 'Button was not released after disconnect'
             print('Native application received key-up and mouse-up after disconnect')
+    if want_shift_cleanup:
+        s_down = Path(os.environ['MAR_DESKTOP_S_DOWN_RECEIPT'])
+        s_up = Path(os.environ['MAR_DESKTOP_S_UP_RECEIPT'])
+        connection.sendall(struct.pack('>BBHI', 4, 1, 0, 0xffe1))  # Shift_L down
+        connection.sendall(struct.pack('>BBHI', 4, 1, 0, ord('S')))
+        deadline = time.monotonic() + 5
+        while not s_down.exists() and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert s_down.read_text().strip() == 's-down', 'Native S key-down was not received'
+        assert not s_up.exists(), 'S was released before disconnect'
+        connection.sendall(struct.pack('>BBHI', 4, 0, 0, 0xffe1))  # Shift_L up, S held
+        connection.close()
+        deadline = time.monotonic() + 8
+        while not s_up.exists() and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert s_up.read_text().strip() == 's-up', 'Native S was not released after disconnect'
+        print('Native S key-down and disconnect key-up observed after Shift release')
+    if want_ctrl_shift:
+        flags_receipt = Path(os.environ['MAR_DESKTOP_CTRL_SHIFT_RECEIPT'])
+        for symbol in (0xffe3, 0xffe1, ord('S')):  # Control_L, Shift_L, S
+            connection.sendall(struct.pack('>BBHI', 4, 1, 0, symbol))
+        deadline = time.monotonic() + 5
+        while not flags_receipt.exists() and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert flags_receipt.read_text().strip() == 'ctrl-shift-s', 'Native event lost Ctrl or Shift'
+        for symbol in (ord('S'), 0xffe1, 0xffe3):
+            connection.sendall(struct.pack('>BBHI', 4, 0, 0, symbol))
+        print('Native S event retained Ctrl and Shift flags')

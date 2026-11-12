@@ -75,6 +75,9 @@ jobs:
           export MAR_DESKTOP_MOUSE_RECEIPT="$RUNNER_TEMP/mouse-receipt"
           export MAR_DESKTOP_KEY_UP_RECEIPT="$RUNNER_TEMP/key-up-receipt"
           export MAR_DESKTOP_MOUSE_UP_RECEIPT="$RUNNER_TEMP/mouse-up-receipt"
+          export MAR_DESKTOP_S_DOWN_RECEIPT="$RUNNER_TEMP/s-down-receipt"
+          export MAR_DESKTOP_S_UP_RECEIPT="$RUNNER_TEMP/s-up-receipt"
+          export MAR_DESKTOP_CTRL_SHIFT_RECEIPT="$RUNNER_TEMP/ctrl-shift-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!
           DYLD_PRINT_LIBRARIES=1 "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
@@ -96,6 +99,8 @@ jobs:
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 control
           rm -f "$MAR_DESKTOP_KEY_RECEIPT" "$MAR_DESKTOP_MOUSE_RECEIPT" "$MAR_DESKTOP_KEY_UP_RECEIPT" "$MAR_DESKTOP_MOUSE_UP_RECEIPT"
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 cleanup
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 shift-cleanup
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 ctrl-shift
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native build
@@ -118,6 +123,10 @@ jobs:
           $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild not found' }
           Push-Location UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21
+          # The upstream gitlink is unavailable; pin a noVNC revision containing every referenced resource.
+          Invoke-WebRequest -Uri 'https://codeload.github.com/novnc/noVNC/tar.gz/e8b5024d4603587b29ffede4fbd28b1fa2939829' -OutFile novnc.tar.gz
+          tar -xzf novnc.tar.gz
+          Copy-Item -Path 'noVNC-e8b5024d4603587b29ffede4fbd28b1fa2939829\*' -Destination '3rdparty\noVNC' -Recurse -Force
           & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # These non-MFC projects use afxres.h only for standard resource constants.
@@ -154,6 +163,7 @@ jobs:
             New-Item -ItemType Directory -Force -Path $destination | Out-Null
             Copy-Item $_.FullName (Join-Path $destination 'copyright')
           }
+          Copy-Item '3rdparty\noVNC\LICENSE.txt' "$env:RUNNER_TEMP\remote-desktop-native\licenses\noVNC.txt"
 
       - name: Save Windows native build for UAT
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

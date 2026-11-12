@@ -3,41 +3,68 @@
 @@ -321,0 +322,14 @@
 +/* Input state belongs to a VNC client and is released when that client leaves. */
 +typedef struct {
-+    CFMutableSetRef keys;
++    CFMutableDictionaryRef keys;
 +    int buttons;
 +    int x;
 +    int y;
 +} ClientInput;
 +
-+static void firstKey(const void *value, void *context)
++static void firstKey(const void *key, const void *value, void *context)
 +{
-+    const void **key = context;
-+    if (!*key) *key = value;
++    const void **first = context;
++    if (!*first) *first = key;
 +}
 +
-@@ -385,0 +400,8 @@
+@@ -335,0 +350,4 @@
++    int unicodeFallback = 0;
 +    ClientInput *input = cl->clientData;
-+    if (input) {
-+        int64_t value = keySym;
-+        CFNumberRef key = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &value);
-+        if (down) CFSetAddValue(input->keys, key);
-+        else CFSetRemoveValue(input->keys, key);
-+        CFRelease(key);
++    int64_t symbol = keySym;
++    CFNumberRef key = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &symbol);
+@@ -350 +367,0 @@
+-	keyboardEvent = CGEventCreateKeyboardEvent(eventSource, keyCode, down);
+@@ -371 +388 @@
+-	    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, keyCodeFromDict, down);
++	    keyCode = keyCodeFromDict;
+@@ -374,2 +391,2 @@
+-	    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, 0, down);
+-	    CGEventKeyboardSetUnicodeString(keyboardEvent, 1, (UniChar*)&keySym);
++	    keyCode = 0;
++	    unicodeFallback = 1;
+@@ -380,0 +398,12 @@
++    /* Preserve the native key selected on key-down even if modifiers change. */
++    CFNumberRef previous = input ? CFDictionaryGetValue(input->keys, key) : NULL;
++    int64_t native = keyCode | ((int64_t)unicodeFallback << 16);
++    if (previous) CFNumberGetValue(previous, kCFNumberSInt64Type, &native);
++    else if (input && down) {
++        CFNumberRef stored = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &native);
++        CFDictionarySetValue(input->keys, key, stored);
++        CFRelease(stored);
 +    }
-@@ -394,0 +417,6 @@
++    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, (CGKeyCode)(native & 0xffff), down);
++    if (native & (1 << 16)) CGEventKeyboardSetUnicodeString(keyboardEvent, 1, (UniChar*)&keySym);
++
+@@ -382 +411,3 @@
+-    CGEventSetFlags(keyboardEvent, CGEventGetFlags(keyboardEvent) & (isShiftDown ? kCGEventFlagMaskShift : ~kCGEventFlagMaskShift));
++    CGEventFlags flags = CGEventGetFlags(keyboardEvent);
++    flags = isShiftDown ? flags | kCGEventFlagMaskShift : flags & ~kCGEventFlagMaskShift;
++    CGEventSetFlags(keyboardEvent, flags);
+@@ -385,0 +417,2 @@
++    if (input && !down) CFDictionaryRemoveValue(input->keys, key);
++    CFRelease(key);
+@@ -394,0 +428,6 @@
 +    ClientInput *input = cl->clientData;
 +    if (input) {
 +        input->buttons = buttonMask & 7;
 +        input->x = x;
 +        input->y = y;
 +    }
-@@ -633 +661,13 @@
+@@ -633 +672,13 @@
 -    //TODO
 +    ClientInput *input = cl->clientData;
 +    if (!input) return;
-+    while (CFSetGetCount(input->keys) > 0) {
++    while (CFDictionaryGetCount(input->keys) > 0) {
 +        const void *key = NULL;
-+        CFSetApplyFunction(input->keys, firstKey, &key);
++        CFDictionaryApplyFunction(input->keys, firstKey, &key);
 +        int64_t value = 0;
 +        CFNumberGetValue(key, kCFNumberSInt64Type, &value);
 +        KbdAddEvent(FALSE, (rfbKeySym)value, cl);
@@ -46,9 +73,9 @@
 +    CFRelease(input->keys);
 +    free(input);
 +    cl->clientData = NULL;
-@@ -637,0 +678,5 @@
+@@ -637,0 +689,5 @@
 +  ClientInput *input = calloc(1, sizeof(*input));
 +  if (!input) return RFB_CLIENT_REFUSE;
-+  input->keys = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
++  input->keys = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 +  if (!input->keys) { free(input); return RFB_CLIENT_REFUSE; }
 +  cl->clientData = input;
