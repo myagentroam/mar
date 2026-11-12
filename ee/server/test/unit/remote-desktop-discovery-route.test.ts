@@ -12,8 +12,7 @@ const capability = {
   supportsMultiDisplay: true,
   supportsControl: true,
   supportsUnicodePaste: true,
-  transports: ['DIRECT', 'RELAY'],
-
+  transports: ['DIRECT', 'RELAY']
 } as const;
 const description = {
   desktopGeneration: 'desktop-a',
@@ -155,4 +154,30 @@ describe('Remote Desktop discovery route', () => {
       await f.app.close();
     }
   });
+
+  it.each(['revoked', 'replaced'] as const)(
+    'does not return a description when the session is %s during the final authorization',
+    async (change) => {
+      const f = fixture();
+      try {
+        let release!: (allowed: boolean) => void;
+        f.canUseNode
+          .mockResolvedValueOnce(true)
+          .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+        const pending = f.get();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        f.lookup.mockReturnValue(
+          change === 'revoked' ? undefined : { ...f.lookup()!, sessionHash: 'replacement-session' }
+        );
+        release(true);
+        const response = await pending;
+        expect(response.statusCode).toBe(401);
+        expect(response.body).not.toContain('desktop-a');
+        expect(f.requestNode).toHaveBeenCalledOnce();
+        expect(f.canUseNode).toHaveBeenCalledTimes(2);
+      } finally {
+        await f.app.close();
+      }
+    }
+  );
 });
