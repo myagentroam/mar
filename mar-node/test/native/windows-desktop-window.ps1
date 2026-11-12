@@ -7,7 +7,10 @@ $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
 $form.TopMost = $true
 $form.KeyPreview = $true
 $form.BackColor = [System.Drawing.Color]::Red
-$form.Add_Shown({ $form.Activate() })
+$form.Add_Shown({
+    $form.Activate()
+    [Console]::Out.WriteLine('DESKTOP_WINDOW_READY')
+})
 $form.Add_KeyDown({
     param($sender, $event)
     if ($event.KeyCode -eq [System.Windows.Forms.Keys]::A) {

@@ -11,6 +11,10 @@ on:
         description: Run extended native validation on Apple Silicon and Intel macOS
         type: boolean
         default: false
+      product_desktop_validation:
+        description: Run packaged Connector and browser Direct/Relay product journeys
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,7 +26,7 @@ concurrency:
 jobs:
   remote-desktop-macos-native:
     name: Remote desktop macOS native feasibility (${{ matrix.os }})
-    if: ${{ inputs.macos_validation }}
+    if: ${{ inputs.macos_validation && !inputs.product_desktop_validation }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -167,7 +171,7 @@ jobs:
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native acceptance
-    if: ${{ inputs.macos_validation }}
+    if: ${{ inputs.macos_validation && !inputs.product_desktop_validation }}
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
@@ -241,9 +245,68 @@ jobs:
             if ($window -and -not $window.HasExited) { Stop-Process -Id $window.Id -ErrorAction SilentlyContinue }
           }
 
+  remote-desktop-product:
+    name: Remote desktop product (${{ matrix.os }})
+    if: ${{ inputs.product_desktop_validation }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-15, macos-15-intel]
+    env:
+      MAR_TEST_RUN_ID: desktop-product-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
+      MAR_TEST_RED_FRAME: ${{ matrix.os == 'macos-15-intel' && '0' || '1' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.12.0'
+          package-manager-cache: false
+      - name: Install frozen candidate and browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global "$(node -p "require('./package.json').packageManager")"
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+      - name: Build production dependencies and complete Web
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @myagentroam/server-core... build
+          pnpm --filter @myagentroam/web-console build
+      - name: Locate isolated Windows MySQL executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binary = Get-ChildItem 'C:/Program Files/MySQL','C:/tools/mysql' -Filter mysqld.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $binary) { throw 'Runner MySQL server executable is missing' }
+          "MAR_TEST_MYSQLD=$($binary.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Prepare isolated macOS MySQL executable
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install mysql@8.4
+          echo "MAR_TEST_MYSQLD=$(brew --prefix mysql@8.4)/bin/mysqld" >> "$GITHUB_ENV"
+      - name: Run actual packaged product Direct and Relay
+        shell: bash
+        run: node --import tsx mar-node/test/native/product-desktop-runner.mjs
+      - name: Preserve product journey evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-product-${{ matrix.os }}
+          path: test/runs/desktop-product-*/
+          if-no-files-found: warn
+
   smoke:
     # This temporary acceptance branch dedicates the extended dispatch to native desktop jobs.
-    if: ${{ !inputs.macos_validation }}
+    if: ${{ !inputs.macos_validation && !inputs.product_desktop_validation }}
     name: Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
