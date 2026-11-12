@@ -137,8 +137,10 @@ export const resourceDetailsEnUS = {
       nodeVersion: 'Node Version',
       toolEnvironment: 'Tool Environment',
       computerUse: 'Computer Use',
-      computerUseEnabled: 'Enabled; the node is probing or ready',
-      computerUseDisabled: 'Off by default',
+      computerUseEnabled: 'Enabled',
+      computerUseDisabled: 'Disabled',
+      computerUseDescription:
+        'When enabled, the node checks availability; see Tool Environment below for status.',
       status: 'Status',
       disabled: 'Disabled',
       online: 'Online',

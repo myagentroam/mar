@@ -284,6 +284,71 @@ test('Node detail actions stay above Close and capability refresh stays within i
   }
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Computer Use separates its switch state from the supporting hint in ${theme}`, async ({
+    page
+  }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const locale of ['en-US', 'zh-CN']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?resource-details=1&theme=${theme}&locale=${locale}`
+        );
+        const setting = page.locator('.node-feature-setting');
+        const control = setting.locator('.node-feature-control');
+        const hint = setting.locator('.node-feature-hint');
+        const toggle = setting.getByRole('switch', { name: 'Computer Use', exact: true });
+        await expect(toggle).toBeChecked();
+        await expect(control).toHaveText(locale === 'en-US' ? 'Enabled' : '已开启');
+        await expect(hint).toHaveText(
+          locale === 'en-US'
+            ? 'When enabled, the node checks availability; see Tool Environment below for status.'
+            : '启用后由节点检测可用性，实际状态见下方工具环境。'
+        );
+        await hint.scrollIntoViewIfNeeded();
+        const layout = await setting.evaluate((element) => {
+          const row = element.querySelector('.node-feature-control')!;
+          const hint = element.querySelector('.node-feature-hint')!;
+          const rowBounds = row.getBoundingClientRect();
+          const hintBounds = hint.getBoundingClientRect();
+          const cell = element.closest('td')!;
+          const style = getComputedStyle(hint);
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--mar-text-secondary)';
+          probe.style.fontSize = 'var(--mar-font-size-meta)';
+          element.append(probe);
+          const tokens = getComputedStyle(probe);
+          const result = {
+            gap: hintBounds.top - rowBounds.bottom,
+            alignment: Math.abs(hintBounds.left - rowBounds.left),
+            contained: hintBounds.right <= cell.getBoundingClientRect().right,
+            overflow: cell.scrollWidth - cell.clientWidth,
+            fontSize: Number.parseFloat(style.fontSize),
+            controlFontSize: Number.parseFloat(getComputedStyle(row).fontSize),
+            usesMeta: style.fontSize === tokens.fontSize,
+            usesSecondary: style.color === tokens.color
+          };
+          probe.remove();
+          return result;
+        });
+        expect(layout.gap).toBeGreaterThan(0);
+        expect(layout.alignment).toBeLessThan(1);
+        expect(layout.contained).toBe(true);
+        expect(layout.overflow).toBeLessThanOrEqual(1);
+        expect(layout.fontSize).toBeLessThan(layout.controlFontSize);
+        expect(layout.usesMeta && layout.usesSecondary).toBe(true);
+        await setting.screenshot({
+          path: test.info().outputPath(`computer-use-${theme}-${width}-${locale}.png`)
+        });
+        await control.locator('.el-switch').click();
+        await expect(toggle).not.toBeChecked();
+        await expect(control).toHaveText(locale === 'en-US' ? 'Disabled' : '已关闭');
+        await expect(hint).toBeVisible();
+      }
+    }
+  });
+}
+
 test('Shared tooltip keeps one active instance for thousands of targets and preserves ARIA', async ({
   page
 }) => {

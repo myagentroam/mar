@@ -173,25 +173,31 @@ function usagePercentageLabel(value: number): string {
         v-if="computerUseCapability !== undefined"
         :label="translate('generated.nodeDetailsDialogs.computerUse')"
       >
-        <div class="node-feature-control">
-          <el-switch
-            :model-value="computerUseCapability.enabled"
-            :loading="computerUseChanging"
-            :disabled="
-              computerUseChanging ||
-              node.manageable !== true ||
-              node.connected !== true ||
-              node.disabled === true
-            "
-            @change="setComputerUse(Boolean($event))"
-          />
-          <span>{{
-            translate(
-              computerUseCapability.enabled
-                ? 'generated.nodeDetailsDialogs.computerUseEnabled'
-                : 'generated.nodeDetailsDialogs.computerUseDisabled'
-            )
-          }}</span>
+        <div class="node-feature-setting">
+          <div class="node-feature-control">
+            <el-switch
+              :model-value="computerUseCapability.enabled"
+              :loading="computerUseChanging"
+              :aria-label="translate('generated.nodeDetailsDialogs.computerUse')"
+              :disabled="
+                computerUseChanging ||
+                node.manageable !== true ||
+                node.connected !== true ||
+                node.disabled === true
+              "
+              @change="setComputerUse(Boolean($event))"
+            />
+            <span>{{
+              translate(
+                computerUseCapability.enabled
+                  ? 'generated.nodeDetailsDialogs.computerUseEnabled'
+                  : 'generated.nodeDetailsDialogs.computerUseDisabled'
+              )
+            }}</span>
+          </div>
+          <p class="node-feature-hint">
+            {{ translate('generated.nodeDetailsDialogs.computerUseDescription') }}
+          </p>
         </div>
       </el-descriptions-item>
       <el-descriptions-item
@@ -453,14 +459,28 @@ function usagePercentageLabel(value: number): string {
 </style>
 
 <style scoped>
+.node-feature-setting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
 .node-feature-control {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .node-feature-control > span {
   min-width: 0;
+}
+
+.node-feature-hint {
+  margin: 0;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
 }
 
 .node-secret-section {

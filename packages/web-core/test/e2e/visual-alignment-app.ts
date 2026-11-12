@@ -419,6 +419,17 @@ const resourceDetailsFixture = {
     const open = ref(true);
     const waiting = ref(false);
     const refreshed = ref(0);
+    const computerUse = {
+      apiVersion: 1 as const,
+      enabled: true,
+      state: 'AVAILABLE' as const,
+      backend: 'PYAUTOGUI' as const,
+      supportsScreenshot: true,
+      supportsInput: true,
+      supportsUnicodePaste: true,
+      supportsPrimaryDisplay: true,
+      measuredAt: 1
+    };
     return () =>
       h('main', [
         h('output', { 'data-testid': 'capability-refresh-count' }, String(refreshed.value)),
@@ -432,6 +443,7 @@ const resourceDetailsFixture = {
             connected: true,
             manageable: true,
             capabilities: {
+              computerUse,
               codex: { available: true },
               claudeCode: { available: true },
               openCode: { available: true }
@@ -439,7 +451,21 @@ const resourceDetailsFixture = {
           },
           nodeRefreshable: true,
           usageDisabledReason: () => '',
-          request: async () => ({ secrets: [] }),
+          request: async <T>(path: string) => {
+            if (!path.includes('/computer-use/')) return { secrets: [] } as T;
+            const enabled = path.endsWith('/enable');
+            return {
+              capability: {
+                ...computerUse,
+                enabled,
+                state: enabled ? 'AVAILABLE' : 'DISABLED',
+                supportsScreenshot: enabled,
+                supportsInput: enabled,
+                supportsUnicodePaste: enabled,
+                supportsPrimaryDisplay: enabled
+              }
+            } as T;
+          },
           upgrade: {
             label: 'Upgrade',
             canUpgrade: !waiting.value,
