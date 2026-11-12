@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RfbClientGate } from '../../src/remote-desktop/rfb-client-gate.js';
 import { submitRfbInputRelease } from '../../src/remote-desktop/rfb-input-release.js';
 
@@ -12,6 +12,98 @@ function key(down: boolean, symbol: number): Buffer {
 }
 
 describe('RFB input release submission', () => {
+  it('releases a submitted key after a protocol failure and its pending write callback', async () => {
+    const writes: Buffer[] = [];
+    let completeInput!: () => void;
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        writes.push(Buffer.from(chunk));
+        if (writes.length === 1) completeInput = callback;
+        else callback();
+      }
+    });
+    const failure = vi.fn();
+    const gate = new RfbClientGate(stream, 'CONTROL', () => true, failure);
+    gate.receive(key(true, 0x61));
+    gate.receive(Buffer.from([255]));
+    expect(failure).toHaveBeenCalledExactlyOnceWith('DESKTOP_RFB_INVALID');
+    const release = submitRfbInputRelease(gate, stream, AbortSignal.timeout(1_000));
+    gate.receive(key(true, 0x62));
+    expect(writes).toEqual([key(true, 0x61)]);
+    completeInput();
+    await release;
+    expect(writes).toEqual([key(true, 0x61), key(false, 0x61)]);
+    gate.dispose();
+    stream.destroy();
+  });
+
+  it('releases a held eighth pointer button', async () => {
+    const writes: Buffer[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        writes.push(Buffer.from(chunk));
+        callback();
+      }
+    });
+    const gate = new RfbClientGate(
+      stream,
+      'CONTROL',
+      () => true,
+      () => {}
+    );
+    gate.receive(Buffer.from([5, 0x80, 0, 9, 0, 12]));
+    await submitRfbInputRelease(gate, stream, new AbortController().signal);
+    expect(writes).toEqual([Buffer.from([5, 0x80, 0, 9, 0, 12]), Buffer.from([5, 0, 0, 9, 0, 12])]);
+    gate.dispose();
+    stream.destroy();
+  });
+
+  it('stops a pending release when the backend fails after the protocol failure', async () => {
+    const writes: Buffer[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer) {
+        writes.push(Buffer.from(chunk));
+      }
+    });
+    const gate = new RfbClientGate(
+      stream,
+      'CONTROL',
+      () => true,
+      () => {}
+    );
+    gate.receive(key(true, 0x61));
+    gate.receive(Buffer.from([255]));
+    const release = submitRfbInputRelease(gate, stream, AbortSignal.timeout(1_000));
+    stream.emit('error', new Error('backend failed'));
+    await expect(release).rejects.toMatchObject({ code: 'DESKTOP_TRANSPORT_ERROR' });
+    expect(writes).toEqual([key(true, 0x61)]);
+    gate.dispose();
+    stream.destroy();
+  });
+
+  it('discards queued input on backpressure failure but releases what was submitted', async () => {
+    const writes: Buffer[] = [];
+    let completeInput!: () => void;
+    const stream = new Writable({
+      highWaterMark: 1,
+      write(chunk: Buffer, _encoding, callback) {
+        writes.push(Buffer.from(chunk));
+        if (writes.length === 1) completeInput = callback;
+        else callback();
+      }
+    });
+    const failure = vi.fn();
+    const gate = new RfbClientGate(stream, 'CONTROL', () => true, failure);
+    gate.receive(key(true, 0x61));
+    gate.receive(Buffer.concat(Array.from({ length: 1025 }, () => key(true, 0x62))));
+    expect(failure).toHaveBeenCalledExactlyOnceWith('DESKTOP_BACKPRESSURE');
+    const release = submitRfbInputRelease(gate, stream, AbortSignal.timeout(1_000));
+    completeInput();
+    await release;
+    expect(writes).toEqual([key(true, 0x61), key(false, 0x61)]);
+    gate.dispose();
+    stream.destroy();
+  });
   it('fences input and submits ordinary key-ups before modifiers and pointer-up at the last submitted position', async () => {
     const writes: Buffer[] = [];
     const stream = new Writable({
