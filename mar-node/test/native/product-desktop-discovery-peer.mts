@@ -145,14 +145,32 @@ try {
     ]);
     const page = await context.newPage();
     const controlFrames: string[] = [];
+    const controlDiagnostics: { direction: string; type: string; code?: string }[] = [];
+    const recordControl = (direction: string, payload: string | Buffer) => {
+      if (typeof payload !== 'string' || !payload.includes('desktop.')) return;
+      try {
+        const value = JSON.parse(payload) as { type?: unknown; code?: unknown };
+        if (typeof value.type !== 'string' || !value.type.startsWith('desktop.')) return;
+        controlDiagnostics.push({
+          direction,
+          type: value.type,
+          ...(typeof value.code === 'string' ? { code: value.code } : {})
+        });
+        if (controlDiagnostics.length > 100) controlDiagnostics.shift();
+      } catch {
+        // Binary frames and malformed messages do not belong in diagnostics.
+      }
+    };
     page.on('websocket', (socket) => {
       socket.on('framesent', ({ payload }) => {
+        recordControl('sent', payload);
         if (
           typeof payload === 'string' &&
           (payload.includes('desktop.direct.') || payload.includes('desktop.relay.'))
         )
           controlFrames.push(payload);
       });
+      socket.on('framereceived', ({ payload }) => recordControl('received', payload));
     });
     await page.goto(`${origin}/console?remoteDesktop=1&nodeId=${encodeURIComponent(nodeId)}`);
     trace('browser loaded');
@@ -243,30 +261,43 @@ try {
       await waitForKey(true);
     } catch (error) {
       const frame = await page
-        .locator('.remote-desktop-target canvas')
-        .evaluate((canvas: HTMLCanvasElement) => {
+        .evaluate(() => {
+          const canvas = document.querySelector<HTMLCanvasElement>('.remote-desktop-target canvas');
+          if (!canvas) return undefined;
           const context = canvas.getContext('2d');
           return {
             width: canvas.width,
             height: canvas.height,
-            samples: [0.25, 0.5, 0.75].map((ratio) =>
-              context && canvas.width && canvas.height
-                ? Array.from(
-                    context.getImageData(
-                      Math.floor(canvas.width * ratio),
-                      Math.floor(canvas.height * ratio),
-                      1,
-                      1
-                    ).data
-                  )
-                : []
+            samples: [0.25, 0.5, 0.75].flatMap((x) =>
+              [0.25, 0.5, 0.75].map((y) => ({
+                x,
+                y,
+                rgba:
+                  context && canvas.width && canvas.height
+                    ? Array.from(
+                        context.getImageData(
+                          Math.floor(canvas.width * x),
+                          Math.floor(canvas.height * y),
+                          1,
+                          1
+                        ).data
+                      )
+                    : []
+              }))
             )
           };
         })
         .catch(() => undefined);
+      if (process.env.MAR_TEST_DESKTOP_REPORT) {
+        const screenshot = join(
+          process.env.MAR_TEST_DESKTOP_REPORT,
+          `${process.env.MAR_TEST_TRANSPORT?.toLowerCase() ?? 'desktop'}-failure.png`
+        );
+        await page.screenshot({ path: screenshot }).catch(() => {});
+      }
       console.error(
         'PRODUCT_DESKTOP_FRAME_DIAGNOSTIC',
-        JSON.stringify({ description: discovery.json().description, frame })
+        JSON.stringify({ description: discovery.json().description, frame, controlDiagnostics })
       );
       throw new Error(
         `Browser desktop did not become ready: ${await page.locator('body').innerText()}`,

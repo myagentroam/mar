@@ -3,7 +3,7 @@ import { RemoteDesktopError } from './desktop-error.js';
 import type { RfbClientGate, RfbInputSnapshot } from './rfb-client-gate.js';
 
 /** Sends this attachment's held inputs up before closing an unmodified RFB backend.
- * A successful write is not native cleanup confirmation; the caller must obtain it separately.
+ * A successful write does not confirm that the OS or application processed it.
  */
 export async function submitRfbInputRelease(
   gate: RfbClientGate,
@@ -57,7 +57,7 @@ function releaseFrames(snapshot: RfbInputSnapshot): Buffer {
     frame.writeUInt32BE(key, 4);
     return frame;
   });
-  if (snapshot.buttons & 7) {
+  if (snapshot.buttons !== 0) {
     const frame = Buffer.alloc(6);
     frame[0] = 5;
     frame.writeUInt16BE(snapshot.x, 2);

@@ -248,6 +248,7 @@ try {
             MAR_TEST_TRANSPORT: transport,
             MAR_TEST_PAGE_QUALITY: '1',
             MAR_TEST_TRACE: '1',
+            MAR_TEST_DESKTOP_REPORT: report,
             MAR_TEST_WEB_ROOT: join(product, 'mar-web-console/dist')
           }
         }

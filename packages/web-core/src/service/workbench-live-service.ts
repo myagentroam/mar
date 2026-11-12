@@ -284,12 +284,13 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
       connected.value = false;
       stopPing();
       options.diagnostics?.setConnectionState('disconnected');
-      options.onDisconnected?.();
       if (event.code === 4001 && event.reason === 'UNAUTHENTICATED') {
         finishReady(false);
         options.onUnauthenticated();
+        options.onDisconnected?.();
         return;
       }
+      options.onDisconnected?.();
       if (!options.canConnect()) {
         finishReady(false);
         return;

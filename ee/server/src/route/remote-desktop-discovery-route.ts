@@ -41,6 +41,10 @@ export function registerRemoteDesktopDiscoveryRoute(input: {
       if (!(await resources.canUseNode(user.userId, nodeId)))
         return sendError(reply, 403, 'NODE_ACCESS_DENIED');
       const latest = nodeControl.nodeCapabilities(nodeId)?.remoteDesktop;
+      const authorized = protectedAdmin(database, request, reply);
+      if (authorized === undefined) return;
+      if (authorized.userId !== user.userId || authorized.sessionHash !== user.sessionHash)
+        return sendError(reply, 401, 'UNAUTHENTICATED');
       if (!latest?.available || latest.nodeGeneration !== capability.nodeGeneration)
         return sendError(reply, 409, 'DESKTOP_UNAVAILABLE');
       if (!description.success) return sendError(reply, 502, 'DESKTOP_DESCRIPTION_INVALID');

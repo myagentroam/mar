@@ -26,6 +26,7 @@ export class RfbClientGate {
   #inFlightBytes = 0;
   #extendedClipboard = false;
   #state: 'active' | 'fenced' | 'failed' = 'active';
+  #transportFailed = false;
   #fencePromise: Promise<RfbInputSnapshot> | undefined;
   #fenceResolve: ((snapshot: RfbInputSnapshot) => void) | undefined;
   #fenceReject: ((error: Error) => void) | undefined;
@@ -65,14 +66,13 @@ export class RfbClientGate {
   /** Fencing discards unwritten messages; write completion is not an OS input ACK. */
   fence(): Promise<RfbInputSnapshot> {
     if (this.#fencePromise !== undefined) return this.#fencePromise;
-    if (this.#state === 'failed')
-      return Promise.reject(new RemoteDesktopError('DESKTOP_RFB_CLOSED'));
-    this.#state = 'fenced';
+    if (this.#transportFailed) return Promise.reject(new RemoteDesktopError('DESKTOP_RFB_CLOSED'));
+    if (this.#state === 'active') this.#state = 'fenced';
     this.#queue.length = 0;
     this.#queuedBytes = 0;
     this.#begin = this.#end = 0;
     this.#fencePromise =
-      this.#waitingDrain || this.#inFlight > 0
+      (this.#state === 'fenced' && this.#waitingDrain) || this.#inFlight > 0
         ? new Promise((resolve, reject) => {
             this.#fenceResolve = resolve;
             this.#fenceReject = reject;
@@ -81,13 +81,14 @@ export class RfbClientGate {
     return this.#fencePromise;
   }
 
-  /** Available after failure for native cleanup; it does not confirm delivery or release. */
+  /** Available after failure for cleanup; it does not confirm delivery or release. */
   submittedInputSnapshot(): RfbInputSnapshot {
     return this.#snapshot();
   }
 
   dispose(): void {
     this.#state = 'failed';
+    this.#transportFailed = true;
     this.#queue.length = 0;
     this.#queuedBytes = 0;
     this.target.removeListener('drain', this.#drain);
@@ -251,7 +252,7 @@ export class RfbClientGate {
           this.#inFlight--;
           this.#inFlightBytes -= frame.bytes.length;
           if (error) this.#fail('DESKTOP_TRANSPORT_ERROR');
-          else if (this.#state === 'fenced') this.#finishFence();
+          else if (this.#state !== 'active') this.#finishFence();
           else this.#pump();
         });
         this.#recordInput(frame.bytes);
@@ -282,12 +283,17 @@ export class RfbClientGate {
 
   #drain = (): void => {
     this.#waitingDrain = false;
-    if (this.#state === 'fenced') this.#finishFence();
+    if (this.#state !== 'active') this.#finishFence();
     else this.#pump();
   };
 
   #finishFence(): void {
-    if (this.#state === 'fenced' && !this.#waitingDrain && this.#inFlight === 0) {
+    if (
+      this.#state !== 'active' &&
+      !this.#transportFailed &&
+      (this.#state === 'failed' || !this.#waitingDrain) &&
+      this.#inFlight === 0
+    ) {
       this.#fenceResolve?.(this.#snapshot());
       this.#fenceResolve = this.#fenceReject = undefined;
     }
@@ -296,12 +302,16 @@ export class RfbClientGate {
   #streamError = (): void => this.#fail('DESKTOP_TRANSPORT_ERROR');
 
   #fail(code: RfbGateError): void {
+    if (code === 'DESKTOP_TRANSPORT_ERROR') {
+      this.#transportFailed = true;
+      this.#fenceReject?.(new RemoteDesktopError(code));
+      this.#fenceResolve = this.#fenceReject = undefined;
+    }
     if (this.#state === 'failed') return;
     this.#state = 'failed';
     this.#queue.length = 0;
     this.#queuedBytes = 0;
-    this.#fenceReject?.(new RemoteDesktopError(code));
-    this.#fenceResolve = this.#fenceReject = undefined;
+    this.#finishFence();
     this.onFailure(code);
   }
 }

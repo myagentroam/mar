@@ -40,7 +40,7 @@ export class TigerVncManagedProcess {
   #didExit = false;
   #notified = false;
   #stopPromise: Promise<void> | undefined;
-  #directoryCleanup: Promise<void> = Promise.resolve();
+  #directoryCleanup: Promise<void> | undefined;
 
   private constructor(
     private readonly child: ChildProcess,
@@ -263,12 +263,16 @@ export class TigerVncManagedProcess {
         if (stillRunning) throw new RemoteDesktopError('DESKTOP_BACKEND_STOP_FAILED');
       }
       try {
-        await this.#directoryCleanup;
+        await (this.#directoryCleanup ??= rm(this.directory, { recursive: true, force: true }));
       } catch {
+        this.#directoryCleanup = undefined;
         throw new RemoteDesktopError('DESKTOP_BACKEND_STOP_FAILED');
       }
-      if (timeout) throw new RemoteDesktopError('DESKTOP_BACKEND_STOP_TIMEOUT');
     })();
+    const stopping = this.#stopPromise;
+    void stopping.catch(() => {
+      if (this.#stopPromise === stopping) this.#stopPromise = undefined;
+    });
     return this.#stopPromise;
   }
 

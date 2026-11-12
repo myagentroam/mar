@@ -126,6 +126,7 @@ async function connect(nextMode: Mode): Promise<void> {
       () => {
         if (disposed || token !== generation || rfb !== client) return;
         next.ready();
+        if (disposed || token !== generation || rfb !== client) return;
         state.value = 'ready';
       },
       { once: true }

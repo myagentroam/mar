@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { remoteDesktopDescriptionSchema } from '@myagentroam/protocol';
 import { RemoteDesktopError } from './desktop-error.js';
+import { startDesktopTopologyNotifications } from './desktop-topology-notifications.js';
 import type { DirectDesktopOptions } from './direct-desktop-service.js';
 import { PooledDesktopAttachment } from './pooled-desktop-attachment.js';
 import { RemoteDesktopAttachment } from './remote-desktop-attachment.js';
@@ -93,6 +94,16 @@ export class MacosRemoteDesktopRuntime {
   #signature = '';
   #revision = 0;
   #disposed = false;
+  #epoch = 0;
+  #notifications: Awaited<ReturnType<typeof startDesktopTopologyNotifications>> | undefined;
+
+  readonly #invalidate = (): void => {
+    if (this.#disposed) return;
+    this.#epoch++;
+    this.#layout = undefined;
+    this.#signature = '';
+    this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');
+  };
 
   private constructor(
     private readonly options: {
@@ -119,21 +130,42 @@ export class MacosRemoteDesktopRuntime {
     signal: AbortSignal
   ) {
     const runtime = new MacosRemoteDesktopRuntime(options);
-    await runtime.refresh(signal);
-    return runtime;
+    try {
+      runtime.#notifications = await startDesktopTopologyNotifications(
+        {
+          binary: options.topologyBinary,
+          args: ['--watch'],
+          invalidate: runtime.#invalidate,
+          unavailable: runtime.#invalidate
+        },
+        signal
+      );
+      await runtime.refresh(signal);
+      return runtime;
+    } catch (error) {
+      await runtime.dispose();
+      throw error;
+    }
   }
 
   async refresh(signal: AbortSignal): Promise<void> {
-    const screens = (await queryScreens(this.options.topologyBinary, signal)).sort(
-      (left, right) => left.id - right.id
-    );
+    const epoch = this.#epoch;
+    if (!this.#notifications?.isAvailable())
+      throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    const screens = (
+      await queryScreens(this.options.topologyBinary, signal).catch((error: unknown) => {
+        this.#invalidate();
+        throw error;
+      })
+    ).sort((left, right) => left.id - right.id);
     const signature = JSON.stringify(screens);
     if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
+    if (epoch !== this.#epoch) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
     if (signature === this.#signature) return;
+    if (this.#layout) this.#invalidate();
     const layout = macosCombinedDesktopLayout(screens, this.#generation, this.#revision + 1);
     if (layout.framebuffer.width * layout.framebuffer.height > this.options.maxPixels)
       throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
-    if (this.#layout) this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');
     this.#signature = signature;
     this.#revision++;
     this.#layout = layout;
@@ -181,6 +213,7 @@ export class MacosRemoteDesktopRuntime {
       this.#disposed = true;
       this.options.fence('DESKTOP_SESSION_UNAVAILABLE');
     }
+    await this.#notifications?.stop();
     await this.#pool.dispose();
   }
 }
