@@ -236,6 +236,32 @@ try {
       await page.keyboard.down('a');
       await waitForKey(true);
     } catch (error) {
+      const frame = await page
+        .locator('.remote-desktop-target canvas')
+        .evaluate((canvas: HTMLCanvasElement) => {
+          const context = canvas.getContext('2d');
+          return {
+            width: canvas.width,
+            height: canvas.height,
+            samples: [0.25, 0.5, 0.75].map((ratio) =>
+              context && canvas.width && canvas.height
+                ? Array.from(
+                    context.getImageData(
+                      Math.floor(canvas.width * ratio),
+                      Math.floor(canvas.height * ratio),
+                      1,
+                      1
+                    ).data
+                  )
+                : []
+            )
+          };
+        })
+        .catch(() => undefined);
+      console.error(
+        'PRODUCT_DESKTOP_FRAME_DIAGNOSTIC',
+        JSON.stringify({ description: discovery.json().description, frame })
+      );
       throw new Error(
         `Browser desktop did not become ready: ${await page.locator('body').innerText()}`,
         { cause: error }

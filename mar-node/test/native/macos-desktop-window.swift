@@ -7,6 +7,7 @@ final class ProbeWindow: NSWindow {
 // An isolated runner window gives the RFB probe observable pixels and input.
 final class ProbeView: NSView {
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.red.setFill()
@@ -45,6 +46,7 @@ final class ProbeView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        FileHandle.standardError.write(Data("mouseDown x=\(event.locationInWindow.x) y=\(event.locationInWindow.y)\n".utf8))
         guard let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_MOUSE_RECEIPT"] else { return }
         try? "mouse-down\n".write(toFile: path, atomically: true, encoding: .utf8)
     }

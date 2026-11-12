@@ -303,7 +303,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: desktop-product-${{ matrix.os }}
-          path: test/runs/desktop-product-*/
+          path: |
+            test/runs/desktop-product-*/*.log
+            test/runs/desktop-product-*/key-*
+            test/runs/desktop-product-*/mouse-*
           if-no-files-found: warn
 
   smoke:

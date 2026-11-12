@@ -14,6 +14,7 @@ import {
   writeFile
 } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
@@ -35,6 +36,7 @@ const root = await mkdtemp(join(report, 'product-'));
 const windows = process.platform === 'win32';
 const target = `${process.platform}-${process.arch}`;
 const children = new Set();
+let mysqlSocketDirectory;
 if (process.platform === 'darwin' || windows)
   for (const [name, filename] of [
     ['MAR_DESKTOP_KEY_RECEIPT', 'key-down'],
@@ -51,7 +53,7 @@ function start(command, args, options = {}) {
     ...options
   });
   children.add(child);
-  child.once('exit', () => children.delete(child));
+  child.once('close', () => children.delete(child));
   return child;
 }
 
@@ -65,7 +67,7 @@ async function command(command, args, options = {}) {
   child.stderr.on('data', (data) => {
     error += data;
   });
-  const [code] = await once(child, 'exit');
+  const [code] = await once(child, 'close');
   assert.equal(code, 0, `${command} failed: ${error}`);
   return output;
 }
@@ -97,19 +99,27 @@ try {
   if (process.env.MAR_TEST_MYSQLD) {
     const binary = process.env.MAR_TEST_MYSQLD;
     const data = join(root, 'mysql');
-    await command(binary, ['--no-defaults', '--initialize-insecure', `--datadir=${data}`]);
+    await command(binary, [
+      '--no-defaults',
+      ...(windows ? ['--console'] : []),
+      '--initialize-insecure',
+      `--datadir=${data}`
+    ]);
+    if (!windows) mysqlSocketDirectory = await mkdtemp(join(tmpdir(), 'mrd-'));
     const tcp = await port();
     const server = start(binary, [
       '--no-defaults',
+      ...(windows ? ['--console', '--no-monitor'] : []),
       `--datadir=${data}`,
       `--port=${tcp}`,
       '--bind-address=127.0.0.1',
       '--mysqlx=OFF',
-      `--socket=${join(root, 'mysql.sock')}`
+      ...(mysqlSocketDirectory ? [`--socket=${join(mysqlSocketDirectory, 's')}`] : [])
     ]);
     const log = createWriteStream(join(report, 'mysql.log'));
     server.stdout.pipe(log, { end: false });
     server.stderr.pipe(log, { end: false });
+    server.once('close', () => log.end());
     process.env.MAR_TEST_DATABASE_ADMIN_URL = `mysql://root@127.0.0.1:${tcp}/mysql`;
     await until(
       async () => {
@@ -253,7 +263,7 @@ try {
       });
       let code;
       try {
-        [code] = await Promise.race([once(peerProcess, 'exit'), deadline]);
+        [code] = await Promise.race([once(peerProcess, 'close'), deadline]);
       } finally {
         clearTimeout(timeout);
       }
@@ -275,11 +285,16 @@ try {
       await dropPlaywrightTestDatabase(database);
     }
   }
+} catch (error) {
+  console.error('PRODUCT_JOURNEY_ERROR', error);
+  throw error;
 } finally {
   for (const child of [...children]) {
-    const exited = once(child, 'exit');
-    child.kill();
-    await exited;
+    if (!children.has(child)) continue;
+    const closed = once(child, 'close');
+    if (child.exitCode === null) child.kill();
+    await closed;
   }
+  if (mysqlSocketDirectory) await rm(mysqlSocketDirectory, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 }
