@@ -122,6 +122,13 @@ jobs:
             $text = $text.Replace('#include "afxres.h"', "#include `"winres.h`"`r`n#ifndef IDC_STATIC`r`n#define IDC_STATIC (-1)`r`n#endif")
             [System.IO.File]::WriteAllBytes($_.FullName, $encoding.GetBytes($text))
           }
+          # Disable the legacy Active Desktop mutation; normal capture does not use it.
+          $hideDesktop = (Resolve-Path 'winvnc/winvnc/HideDesktop.cpp').Path
+          $text = $encoding.GetString([System.IO.File]::ReadAllBytes($hideDesktop))
+          $guard = '#if !defined(__MINGW32__)'
+          if (($text.Split(@($guard), [System.StringSplitOptions]::None).Count - 1) -ne 2) { throw 'Unexpected Active Desktop source' }
+          $text = $text.Replace($guard, '#if 0')
+          [System.IO.File]::WriteAllBytes($hideDesktop, $encoding.GetBytes($text))
           $vcpkg = Join-Path (Get-Location) 'vcpkg_installed\x64-windows'
           if (-not (Test-Path "$vcpkg\include\zlib.h")) { throw 'vcpkg zlib headers missing' }
           $env:CL = "/I`"$vcpkg\include`""
