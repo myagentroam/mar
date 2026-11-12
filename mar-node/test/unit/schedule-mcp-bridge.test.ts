@@ -44,7 +44,21 @@ describe('scheduled task MCP capability', () => {
       externalSessionId: 'native-session',
       workspaceId: workspace.id
     });
+    database.saveNativeSessionMetadata({
+      runner: 'codex',
+      externalSessionId: 'other-session',
+      workspaceId: workspace.id
+    });
     const store = new ScheduledSessionStore(database.raw);
+    const otherTask = store.create({
+      sessionId: 'other-session',
+      workspaceId: workspace.id,
+      runner: 'codex',
+      ownerUserId: 4,
+      objective: 'Other session task',
+      cron: '0 10 * * *',
+      timezone: 'UTC'
+    });
     const create = vi.fn(
       async (input: {
         sessionId: string;
@@ -89,16 +103,29 @@ describe('scheduled task MCP capability', () => {
       });
       const endpoint = executionServer.environment!.MAR_SCHEDULE_MCP_ENDPOINT!;
       let token = executionServer.environment!.MAR_SCHEDULE_MCP_TOKEN!;
-      expect((await invoke(endpoint, token, 'get_scheduled_task')).result).toBeNull();
+      expect(
+        (
+          await invoke(endpoint, token, 'get_scheduled_task', {
+            sessionId: 'other-session',
+            taskId: otherTask.id
+          })
+        ).result
+      ).toBeNull();
       const created = await invoke(endpoint, token, 'create_scheduled_task', {
         objective: 'Check build',
         cron: '0 9 * * *'
       });
       expect(created.result).toMatchObject({ objective: 'Check build', ownerUserId: 3 });
       expect(typeof created.token).toBe('string');
-      expect((await invoke(endpoint, token, 'get_scheduled_task')).error).toBe(
-        'SCHEDULE_CAPABILITY_STALE'
-      );
+      const createdRead = await invoke(endpoint, token, 'get_scheduled_task', {
+        sessionId: 'other-session',
+        taskId: otherTask.id
+      });
+      expect(createdRead.result).toMatchObject({
+        objective: 'Check build',
+        revision: 1
+      });
+      expect(createdRead.result).not.toMatchObject({ id: otherTask.id });
       token = created.token as string;
       expect(create).toHaveBeenCalledWith({
         sessionId: 'native-session',
@@ -174,9 +201,10 @@ describe('scheduled task MCP capability', () => {
       });
       expect(updated.result).toMatchObject({ objective: 'Updated', revision: 2, ownerUserId: 1 });
       expect(typeof updated.token).toBe('string');
-      expect((await invoke(endpoint, token, 'get_scheduled_task')).error).toBe(
-        'SCHEDULE_CAPABILITY_STALE'
-      );
+      expect((await invoke(endpoint, token, 'get_scheduled_task')).result).toMatchObject({
+        objective: 'Updated',
+        revision: 2
+      });
       token = updated.token as string;
       expect((await invoke(endpoint, token, 'get_scheduled_task')).result).toMatchObject({
         objective: 'Updated',

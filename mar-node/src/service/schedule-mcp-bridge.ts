@@ -117,16 +117,19 @@ export class ScheduleMcpBridge {
       const sessionId = this.resolveExecution(capability);
       if (sessionId === undefined) throw new Error('SCHEDULE_CAPABILITY_STALE');
       const task = this.store().get(sessionId);
+      if (request.tool === NODE_MCP.schedule.tools.get) {
+        // A create may commit before stdio receives the token that binds its task identity.
+        if (capability.taskId !== undefined && task?.id !== capability.taskId)
+          throw new Error('SCHEDULE_CAPABILITY_STALE');
+        socket.end(`${JSON.stringify({ result: task ?? null })}\n`);
+        return;
+      }
       if (
         (task === undefined && capability.taskId !== undefined) ||
         (task !== undefined &&
           (task.id !== capability.taskId || task.revision !== capability.revision))
       )
         throw new Error('SCHEDULE_CAPABILITY_STALE');
-      if (request.tool === NODE_MCP.schedule.tools.get) {
-        socket.end(`${JSON.stringify({ result: task ?? null })}\n`);
-        return;
-      }
       if (request.tool === NODE_MCP.schedule.tools.create) {
         if (task !== undefined) throw new Error('SCHEDULE_ALREADY_EXISTS');
         const args = record(request.arguments);
