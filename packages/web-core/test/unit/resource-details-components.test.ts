@@ -25,6 +25,98 @@ afterEach(() => {
   i18n.global.locale.value = originalLocale;
 });
 describe('Public resource details', () => {
+  it.each([true, false])(
+    'keeps Computer Use settings independent of automatic desktop availability (%s)',
+    async (available) => {
+      vi.stubGlobal('HTMLElement', class {});
+      vi.stubGlobal('window', {
+        location: { search: '', href: 'http://fixture/console' },
+        history: { replaceState() {} },
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+        addEventListener() {},
+        removeEventListener() {}
+      });
+      i18n.global.locale.value = 'en-US';
+      const computerUse = {
+        apiVersion: 1,
+        enabled: false,
+        state: 'DISABLED',
+        backend: 'PYAUTOGUI',
+        supportsScreenshot: false,
+        supportsInput: false,
+        supportsUnicodePaste: false,
+        supportsPrimaryDisplay: false,
+        measuredAt: 1
+      };
+      const enabled = {
+        ...computerUse,
+        enabled: true,
+        state: 'AVAILABLE',
+        supportsScreenshot: true,
+        supportsInput: true,
+        supportsUnicodePaste: true,
+        supportsPrimaryDisplay: true
+      };
+      const remoteDesktop = available
+        ? {
+            apiVersion: 1,
+            available: true,
+            nodeGeneration: 'generation-1',
+            backend: 'TIGERVNC_X0',
+            supportsView: true,
+            supportsControl: true,
+            supportsMultiDisplay: false,
+            supportsUnicodePaste: false,
+            transports: ['DIRECT', 'RELAY']
+          }
+        : {
+            apiVersion: 1,
+            available: false,
+            nodeGeneration: 'generation-1',
+            reasonCode: 'DESKTOP_UNAVAILABLE'
+          };
+      const changed = vi.fn();
+      const request = vi.fn(
+        async <T>(path: string) =>
+          (path.includes('/computer-use/') ? { capability: enabled } : { secrets: [] }) as T
+      );
+      const view = renderComponent(UnitDetails, {
+        request,
+        nodeOpen: true,
+        workspaceOpen: false,
+        usageOpen: false,
+        node: {
+          id: 'node-1',
+          label: 'Node',
+          connected: true,
+          manageable: true,
+          capabilities: { computerUse, remoteDesktop }
+        },
+        usageDisabledReason: () => '',
+        onComputerUseChanged: changed
+      });
+      try {
+        await flushComponent();
+        const controls = view.findAll('ElSwitch');
+        expect(controls).toHaveLength(1);
+        expect(view.findAll('ElDescriptionsItem').map((item) => item.props['label'])).toContain(
+          commonMessages['en-US'].generated.nodeDetailsDialogs.computerUse
+        );
+        expect(textContent(view.root)).not.toContain('Remote Desktop');
+        await trigger(controls[0]!, 'onChange', true);
+        await flushComponent();
+        expect(request).toHaveBeenCalledWith('/api/management/nodes/node-1/computer-use/enable', {
+          method: 'POST',
+          body: JSON.stringify({ enabled: true })
+        });
+        expect(changed).toHaveBeenCalledWith(enabled);
+        expect(request.mock.calls.every(([path]) => !path.includes('/remote-desktop/'))).toBe(true);
+        expect(remoteDesktop.available).toBe(available);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
   it('keeps ownership policies and hosted management in the enterprise extension', () => {
     const source = readFileSync(
       new URL('../../src/view/settings/NodeDetailsDialogs.vue', import.meta.url),

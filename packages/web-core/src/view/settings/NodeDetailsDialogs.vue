@@ -173,7 +173,7 @@ function usagePercentageLabel(value: number): string {
         v-if="computerUseCapability !== undefined"
         :label="translate('generated.nodeDetailsDialogs.computerUse')"
       >
-        <div class="computer-use-control">
+        <div class="node-feature-control">
           <el-switch
             :model-value="computerUseCapability.enabled"
             :loading="computerUseChanging"
@@ -453,6 +453,16 @@ function usagePercentageLabel(value: number): string {
 </style>
 
 <style scoped>
+.node-feature-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-feature-control > span {
+  min-width: 0;
+}
+
 .node-secret-section {
   padding-top: 12px;
   border-top: 1px solid var(--mar-border-default);
