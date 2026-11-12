@@ -18,7 +18,11 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "executableFiles": [
+      "vendor/ctags/linux-arm64/ctags",
+      "vendor/ripgrep/linux-arm64/rg"
+    ]
   },
   "repository": {
     "type": "git",

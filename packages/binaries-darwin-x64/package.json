@@ -18,7 +18,18 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "executableFiles": [
+      "vendor/ctags/darwin-x64/ctags",
+      "vendor/macvnc/darwin-x64/lib/libcrypto.4.dylib",
+      "vendor/macvnc/darwin-x64/lib/libjpeg.8.dylib",
+      "vendor/macvnc/darwin-x64/lib/libpng16.16.dylib",
+      "vendor/macvnc/darwin-x64/lib/libssl.4.dylib",
+      "vendor/macvnc/darwin-x64/lib/libvncserver.1.dylib",
+      "vendor/macvnc/darwin-x64/macVNC",
+      "vendor/macvnc/darwin-x64/macos-topology",
+      "vendor/ripgrep/darwin-x64/rg"
+    ]
   },
   "repository": {
     "type": "git",

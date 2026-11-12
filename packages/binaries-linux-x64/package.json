@@ -18,7 +18,13 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "executableFiles": [
+      "vendor/ctags/linux-x64/ctags",
+      "vendor/ripgrep/linux-x64/rg",
+      "vendor/tigervnc/linux-x64/x0vncserver",
+      "vendor/tigervnc/linux-x64/x11-topology"
+    ]
   },
   "repository": {
     "type": "git",
