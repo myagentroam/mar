@@ -14,6 +14,8 @@ final class ProbeView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        let diagnostic = "keyDown code=\(event.keyCode) flags=\(event.modifierFlags.rawValue)\n"
+        FileHandle.standardError.write(Data(diagnostic.utf8))
         if event.keyCode == 1, event.modifierFlags.contains([.control, .shift]),
            let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_CTRL_SHIFT_RECEIPT"] {
             try? "ctrl-shift-s\n".write(toFile: path, atomically: true, encoding: .utf8)

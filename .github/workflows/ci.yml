@@ -154,7 +154,17 @@ jobs:
           }
           $env:CL = "/I`"$vcpkg\include`""
           $env:LIB = "$vcpkg\lib;$env:LIB"
-          $env:LINK = "/LIBPATH:`"$vcpkg\lib`""
+          # The runner's MSBuild does not inject vcpkg autolink dependencies.
+          # Use the actual installed import/static libraries, not guessed paths.
+          $libraryFiles = @(Get-ChildItem "$vcpkg\lib" -Filter '*.lib')
+          $libraryFiles | Format-Table Name,Length
+          $defaults = @('^zlib\.lib$', '^(lib)?zstd\.lib$', '^jpeg\.lib$', '^(lib)?lzma\.lib$', '^minizip(-ng)?\.lib$') | ForEach-Object {
+            $pattern = $_
+            $found = @($libraryFiles | Where-Object { $_.Name -match $pattern })
+            if ($found.Count -ne 1) { throw "Expected one library matching $pattern, found $($found.Count)" }
+            "/DEFAULTLIB:`"$($found[0].FullName)`""
+          }
+          $env:LINK = "/LIBPATH:`"$vcpkg\lib`" /DEFAULTLIB:shlwapi.lib $($defaults -join ' ')"
           & $msbuild 'winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:VcpkgEnableManifest=true /p:VcpkgTriplet=x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $binaries = @(Get-ChildItem -Path . -Filter winvnc.exe -Recurse)
