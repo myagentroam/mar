@@ -565,7 +565,7 @@ export function createWorkspaceDirectTransferService(
     clearTimeout(transport.request.timer);
     transportRequests.delete(transport.request.requestId);
     clearRetry(transport.request.nodeId);
-    transport.bootstrapChannel.close();
+    // Keep the bootstrap channel owned by the transport until transport teardown.
     transport.heartbeat ??= setInterval(() => {
       if (!options.send({ type: 'direct.heartbeat', directSessionId: transport.directSessionId }))
         closeTransport(transport, 'DIRECT_TRANSFER_CONTROL_UNAVAILABLE');

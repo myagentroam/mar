@@ -185,7 +185,7 @@ describe('Workspace direct transfer browser service', () => {
     await connect(f);
     expect(f.service.isConnected('node-1', 'generation-1')).toBe(true);
     expect(f.peers[0]!.channels[0]?.label).toBe('mar-direct-transport');
-    expect(f.peers[0]!.channels[0]?.readyState).toBe('closed');
+    expect(f.peers[0]!.channels[0]?.readyState).toBe('open');
     await expect(f.service.ensureTransport('node-1', 'generation-1')).resolves.toBe(
       'DIRECT_AVAILABLE'
     );
@@ -194,6 +194,7 @@ describe('Workspace direct transfer browser service', () => {
       f.sent.filter((value) => (value as { type?: string }).type === 'direct.prepare')
     ).toHaveLength(1);
     f.service.close();
+    expect(f.peers[0]!.channels[0]?.readyState).toBe('closed');
   });
 
   it('exposes the selected candidate pair network category after connecting', async () => {
