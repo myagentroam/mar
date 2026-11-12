@@ -11212,6 +11212,7 @@ async function handshakeRfbBackend(stream, password, maxPixels, signal) {
     const width = header.readUInt16BE(0);
     const height = header.readUInt16BE(2);
     const nameLength = header.readUInt32BE(20);
+    console.error('SERVER_INIT_HEADER', header.toString('hex'));
     if (
       width === 0 ||
       height === 0 ||
