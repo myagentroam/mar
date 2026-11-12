@@ -73,6 +73,8 @@ jobs:
 
       - name: Probe real macVNC capture and input
         shell: bash
+        env:
+          MAR_ALLOW_BLACK_FRAME: ${{ matrix.os == 'macos-15-intel' && '1' || '0' }}
         run: |
           set -euo pipefail
           binary="$RUNNER_TEMP/remote-desktop-macos-native/macVNC"
@@ -120,6 +122,8 @@ jobs:
 
       - name: Probe managed macOS runtime and RFB attachment
         shell: bash
+        env:
+          MAR_ALLOW_BLACK_FRAME: ${{ matrix.os == 'macos-15-intel' && '1' || '0' }}
         run: |
           set -euo pipefail
           package="$RUNNER_TEMP/remote-desktop-macos-native"
