@@ -11212,7 +11212,6 @@ async function handshakeRfbBackend(stream, password, maxPixels, signal) {
     const width = header.readUInt16BE(0);
     const height = header.readUInt16BE(2);
     const nameLength = header.readUInt32BE(20);
-    console.error('SERVER_INIT_HEADER', header.toString('hex'));
     if (
       width === 0 ||
       height === 0 ||
@@ -11252,8 +11251,7 @@ function vncResponse(challenge, password) {
 function validPixelFormat(format) {
   const bpp = format[0];
   const depth = format[1];
-  if (![8, 16, 32].includes(bpp) || depth === 0 || depth > bpp || format[2] > 1 || format[3] !== 1)
-    return false;
+  if (![8, 16, 32].includes(bpp) || depth === 0 || depth > bpp || format[3] === 0) return false;
   let occupied = 0n;
   for (let i = 0; i < 3; i++) {
     const max = format.readUInt16BE(4 + i * 2);
@@ -11290,7 +11288,7 @@ var MacVncManagedProcess = class _MacVncManagedProcess {
     this.secret = secret;
     this.onUnexpectedExit = onUnexpectedExit;
     child.on('error', () => {});
-    child.stderr?.pipe(process.stderr);
+    child.stderr?.resume();
     this.#exited = new Promise((resolve) => {
       child.once('close', () => {
         this.#didExit = true;
@@ -11370,7 +11368,6 @@ var MacVncManagedProcess = class _MacVncManagedProcess {
           backend.#ready = true;
           return backend;
         } catch (error) {
-          console.error('BACKEND_CONNECT_FAILURE', error);
           if (deadline.aborted || backend.#didExit) throw error;
           await delay(50, void 0, { signal: deadline });
         }
