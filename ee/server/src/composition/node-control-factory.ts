@@ -71,7 +71,6 @@ export function createNodeControl(
             const desktop = capabilities?.remoteDesktop;
             return (
               !!desktop?.available &&
-              desktop.supportsMultiDisplay &&
               desktop.transports.includes('DIRECT') &&
               (await authorize(userId, nodeId, 'desktop.describe', {}))
             );
@@ -135,7 +134,6 @@ export function createNodeControl(
           const capability = transport.capabilities(nodeId)?.remoteDesktop;
           if (
             !capability?.available ||
-            !capability.supportsMultiDisplay ||
             !capability.transports.includes(path) ||
             (mode === 'CONTROL' && !capability.supportsControl)
           )
@@ -158,7 +156,6 @@ export function createNodeControl(
           if (
             !capability?.available ||
             capability.nodeGeneration !== request.nodeGeneration ||
-            !capability.supportsMultiDisplay ||
             !capability.transports.includes(path) ||
             (request.mode === 'CONTROL' && !capability.supportsControl)
           )
@@ -176,7 +173,6 @@ export function createNodeControl(
           if (
             !current?.available ||
             current.nodeGeneration !== request.nodeGeneration ||
-            !current.supportsMultiDisplay ||
             !current.transports.includes(path) ||
             (request.mode === 'CONTROL' && !current.supportsControl)
           )
