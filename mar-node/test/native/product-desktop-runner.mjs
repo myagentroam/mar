@@ -14,7 +14,7 @@ import {
   writeFile
 } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
@@ -96,6 +96,40 @@ async function link(from, to) {
 }
 
 try {
+  if (process.platform === 'darwin') {
+    const local = Object.values(networkInterfaces())
+      .flat()
+      .find(
+        (entry) =>
+          entry?.family === 'IPv4' &&
+          !entry.internal &&
+          entry.cidr &&
+          Number(entry.cidr.split('/')[1]) <= 30
+      );
+    assert(local, 'CI local-network consent requires a local IPv4 subnet.');
+    const address =
+      local.address.split('.').reduce((value, octet) => (value << 8) | Number(octet), 0) >>> 0;
+    const hostMask = 0xffffffff >>> Number(local.cidr.split('/')[1]);
+    const host = (address & hostMask) === hostMask - 1 ? hostMask - 2 : hostMask - 1;
+    const probe = ((address & ~hostMask) | host) >>> 0;
+    const probeAddress = [24, 16, 8, 0].map((shift) => (probe >>> shift) & 255).join('.');
+    const binary = join(root, 'local-network-authorization');
+    await command('swiftc', [
+      join(product, 'mar-node/test/native/macos-local-network-authorization.swift'),
+      '-o',
+      binary
+    ]);
+    const consent = start(binary, [probeAddress]);
+    const consentLog = createWriteStream(join(report, 'local-network-authorization.log'));
+    consent.stdout.pipe(consentLog, { end: false });
+    consent.stderr.pipe(consentLog, { end: false });
+    const [code] = await once(consent, 'close');
+    consentLog.end();
+    await once(consentLog, 'finish');
+    const receipt = await readFile(join(report, 'local-network-authorization.log'), 'utf8');
+    console.log(receipt);
+    assert.equal(code, 0, 'CI local-network consent must succeed before product tests.');
+  }
   if (process.env.MAR_TEST_MYSQLD) {
     const binary = process.env.MAR_TEST_MYSQLD;
     const data = join(root, 'mysql');
