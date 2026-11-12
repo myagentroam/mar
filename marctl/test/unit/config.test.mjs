@@ -66,12 +66,14 @@ test('never falls back to a legacy home configuration', async () => {
 test('validates the injected Server origin and transport', async () => {
   assert.equal(validateServerUrl('http://localhost:3000'), 'http://localhost:3000');
   assert.equal(validateServerUrl('http://[::1]:3000'), 'http://[::1]:3000');
+  assert.equal(validateServerUrl('http://example.test'), 'http://example.test');
   assert.equal(validateServerUrl('https://example.test'), 'https://example.test');
   for (const serverUrl of [
-    'http://example.test',
+    'ftp://example.test',
     'https://example.test/path',
     'https://user:password@example.test',
     'https://example.test?token=hidden',
+    'https://example.test#fragment',
     'not-a-url'
   ]) {
     await assert.rejects(loadConfig({ env: { ...context, MAR_CTL_SERVER_URL: serverUrl } }));

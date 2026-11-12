@@ -1,6 +1,6 @@
 ---
 title: 接入第一台 Node
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # 接入第一台 Node
@@ -27,7 +27,7 @@ Server 不包含 Node 执行器。即使 Node 与 Server 位于同一主机，�
 ## 失败排查
 
 - 注册密钥只能使用一次；失败后请重新创建注册密钥。
-- Node 离线时先检查 `serverUrl`、本机时间、出站 TLS/WSS 和服务日志。
+- Node 离线时先检查 `serverUrl`、本机时间、出站 HTTP/WS 或 HTTPS/WSS 和服务日志。
 - Agent 未出现时，先在 Node 实际运行账号下检查安装、`PATH` 和登录状态。
 
 下一步：[安装与注册 Node](../deployment/node-installation.md)提供完整 Linux/Windows/macOS 指引；随后[登记 Workspace](register-workspace.md)。

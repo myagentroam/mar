@@ -1,13 +1,13 @@
 ---
 title: Configure OAuth 2.0 SSO
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # Configure OAuth 2.0 SSO
 
 OAuth management requires Enterprise licensing and System Administrator access. Prepare a provider application whose redirect URL exactly matches the value shown by MyAgentRoam.
 
-Configure an OAuth 2.0 authorization-code provider; automatic OIDC discovery is not provided. Register the complete HTTPS callback shown after creating the provider, `/api/oauth/<providerKey>/callback`, with that provider. Never include raw access tokens or user-information responses in screenshots or support requests.
+Configure an OAuth 2.0 authorization-code provider; automatic OIDC discovery is not provided. Register the complete HTTP or HTTPS callback generated from `MAR_PUBLIC_ORIGIN` after creating the provider, `/api/oauth/<providerKey>/callback`, with that provider; the provider may independently require HTTPS. Never include raw access tokens or user-information responses in screenshots or support requests.
 
 1. In **Admin → OAuth**, create a unique provider key and a user-facing display name.
 2. Enter HTTPS authorization, token, and user-information endpoints, client authentication, PKCE, scopes, and field mappings.

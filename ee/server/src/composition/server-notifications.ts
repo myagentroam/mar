@@ -25,6 +25,7 @@ export function composeServerNotifications(input: {
   authorizeHosted: (userId: number, nodeId: string, templateId: string) => Promise<boolean>;
   dataDirectory: string;
   publicOrigin: string | undefined;
+  webPushSubject?: string | undefined;
   now: () => number;
   transport: WebPushTransport | undefined;
 }) {
@@ -33,7 +34,7 @@ export function composeServerNotifications(input: {
   const configuration = new WebPushConfiguration(
     database,
     loadOrCreateRuntimeCredentialHmacKey(input.dataDirectory),
-    publicOrigin,
+    input.webPushSubject ?? publicOrigin,
     () => true
   );
   const clients = new WebPushClients(database, now);

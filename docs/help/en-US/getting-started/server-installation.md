@@ -1,11 +1,11 @@
 ---
 title: Deploy MyAgentRoam Server and Web
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # Deploy MyAgentRoam Server and Web
 
-The public product repository's single root `compose.yaml` runs MySQL, SearXNG, and Server with its bundled Web application. Your reverse proxy provides the production HTTPS entry point.
+The public product repository's single root `compose.yaml` runs MySQL, SearXNG, and Server with its bundled Web application. Use a direct HTTP entry point or provide HTTPS through your reverse proxy.
 
 ## Formal deployment
 
@@ -22,7 +22,9 @@ Both license states use `/console` for the workbench and `/docs/` for documentat
    chmod 600 .env
    ```
 
-   Edit every blank value before continuing. Set `MAR_PUBLIC_ORIGIN` to your external HTTPS origin, generate separate strong MySQL root/application passwords and a long random `MAR_SEARXNG_SECRET`, and set `MAR_SERVER_SSH_DIR` to an existing absolute directory. Use a URL-safe application password because Compose embeds `MAR_MYSQL_PASSWORD` in a database URL. The template intentionally has no working secrets; Compose rejects missing required values.
+   Fill every required value before continuing. Set `MAR_PUBLIC_ORIGIN` to your actual external HTTP or HTTPS origin, generate separate strong MySQL root/application passwords and a long random `MAR_SEARXNG_SECRET`, and set `MAR_SERVER_SSH_DIR` to an existing absolute directory. Use a URL-safe application password because Compose embeds `MAR_MYSQL_PASSWORD` in a database URL. The template intentionally has no working secrets; Compose rejects missing required values.
+
+   For direct HTTP, set `MAR_SERVER_BIND_ADDRESS=0.0.0.0` and the intended `MAR_SERVER_PUBLIC_PORT` before the first `docker compose up`, matching `MAR_PUBLIC_ORIGIN`. Replace `5190` in the health check below if you use a different host port.
 
    `MAR_SERVER_SSH_DIR` must be the deployment account's absolute `.ssh` path. Compose mounts it read-only. Create a correctly protected empty directory even if SSH skill sources are not yet used.
 
@@ -43,12 +45,12 @@ Both license states use `/console` for the workbench and `/docs/` for documentat
    curl -fsS http://127.0.0.1:5190/health
    ```
 
-4. Proxy HTTPS traffic to the unified Server host port `5190`. Allow Upgrade/WebSocket requests and do not cache `/api/` or upgraded connections.
+4. When using HTTPS, proxy traffic to the unified Server host port (default `5190`). For direct HTTP, ensure the configured host port is reachable. Allow Upgrade/WebSocket requests and do not cache `/api/` or upgraded connections.
 5. Open `MAR_PUBLIC_ORIGIN` in a browser.
 
-**Success:** all three Compose services—MySQL, SearXNG, and Server—are healthy, and `/console` opens for sign-in through the HTTPS site.
+**Success:** all three Compose services—MySQL, SearXNG, and Server—are healthy, and `/console` opens for sign-in through the configured HTTP or HTTPS site.
 
-For failures, inspect `docker compose logs mysql`, verify the external origin, certificate chain, `/api/` proxying, and outbound HTTPS/WSS from Nodes. The Node control connection does not require a public inbound HTTP API; see [Network, TLS, and WebSocket](../deployment/network.md) for optional LAN direct-transfer UDP requirements.
+For failures, inspect `docker compose logs mysql`, verify the external origin, certificate chain, `/api/` proxying, and outbound HTTP/WS or HTTPS/WSS from Nodes. The Node control connection does not require a public inbound HTTP API; see [Network, TLS, and WebSocket](../deployment/network.md) for optional LAN direct-transfer UDP requirements.
 
 Keep `.env` out of Git, chats, and the Web root because it contains database credentials.
 

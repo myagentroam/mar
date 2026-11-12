@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { createWorkbenchDirectTransportCoordinator } from './workbench-direct-transport-coordinator.js';
 import {
   terminalDataFrameSchema,
@@ -103,7 +104,7 @@ export function createTerminalDirectClient(options: TerminalDirectClientOptions)
   }): Promise<{ send(frame: object): void; dispose(): void } | undefined> {
     const transport = options.acquire(input.nodeId);
     if (transport === undefined) return undefined;
-    const requestId = crypto.randomUUID().replaceAll('-', '');
+    const requestId = createUuid().replaceAll('-', '');
     let removeAbort = () => undefined;
     let grantedSessionId: string | undefined;
     try {

@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import { isPublicErrorCode } from '@myagentroam/protocol';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { ApiError, errorCode } from '../util/api-error.js';
@@ -138,12 +139,12 @@ export function createWorkbenchSessionWatchController(options: {
       return;
     if (mode === 'initial') {
       appliedInitialSnapshot.value = undefined;
-      watchId = crypto.randomUUID().replace(/-/g, '');
+      watchId = createUuid().replace(/-/g, '');
       nodeGeneration = undefined;
       watchedSessionId = sessionId;
       watchedNodeId = nodeId;
       watchedWorkspaceId = workspaceId;
-    } else watchId ??= crypto.randomUUID().replace(/-/g, '');
+    } else watchId ??= createUuid().replace(/-/g, '');
     const currentWatchId = watchId;
     const initialSnapshot =
       mode === 'initial' ? waitForInitialSnapshot(sessionId, currentWatchId, signal) : undefined;
@@ -215,7 +216,7 @@ export function createWorkbenchSessionWatchController(options: {
     // Lifecycle.start returns the existing in-flight promise for the same target.
     // All callers must await snapshot confirmation, not just the first caller.
     if (watchedSessionId !== sessionId) {
-      watchId = crypto.randomUUID().replace(/-/g, '');
+      watchId = createUuid().replace(/-/g, '');
       nodeGeneration = undefined;
       if (input.preserveFailures !== true) failureRetries = 0;
       watchedSessionId = sessionId;

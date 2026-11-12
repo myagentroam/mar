@@ -164,7 +164,7 @@ By default, the local Node registers automatically when you start `run`; no sepa
 
 ### Docker Compose deployment
 
-The standard deployment uses Docker Compose on a Linux host with a real host UUID and an HTTPS entry point. Work Nodes support Windows, Linux, and macOS with Node.js `>=22.13`; native Server requires Node.js `>=24.12` and MySQL 8.4.
+The standard deployment uses Docker Compose on a Linux host with a real host UUID and an HTTP or HTTPS entry point. Work Nodes support Windows, Linux, and macOS with Node.js `>=22.13`; native Server requires Node.js `>=24.12` and MySQL 8.4.
 
 Start with the blank-secret [Compose environment template](.env.example); configure it using the deployment guide before starting services. Server deployment alone does not install a Node executor.
 
@@ -187,7 +187,7 @@ Workspace files and execution stay on your Node. Your Server stores accounts, au
 
 ```text
 Browser workbench
-       │  HTTPS / WebSocket: sign-in, authorization, control
+       │  HTTP(S) / WebSocket: sign-in, authorization, control
        ▼
 Your Server
        ▲  Node-initiated outbound connection

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../../util/uuid.js';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -734,7 +735,7 @@ async function uploadRelatedFiles(selectedFiles: Iterable<File>): Promise<void> 
   try {
     for (const file of files) {
       try {
-        await props.workspace.uploadFile(file, crypto.randomUUID());
+        await props.workspace.uploadFile(file, createUuid());
         uploaded += 1;
       } catch (error) {
         showMessage(

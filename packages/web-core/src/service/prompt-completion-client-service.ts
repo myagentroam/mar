@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import { computed, type ComputedRef } from 'vue';
 import {
   promptCompletionContextSchema,
@@ -93,11 +94,11 @@ export class PromptCompletionClientService {
   ): Promise<PromptCompletionResponse> {
     if (this.connection !== connectionId) {
       this.connection = connectionId;
-      this.pageEpoch = crypto.randomUUID();
+      this.pageEpoch = createUuid();
       this.sequence = 0;
     }
     const intent = {
-      requestId: crypto.randomUUID(),
+      requestId: createUuid(),
       pageEpoch: this.pageEpoch,
       intentSequence: ++this.sequence
     };

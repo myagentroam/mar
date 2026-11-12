@@ -1,4 +1,5 @@
 import { toolResultResourcePageSchema } from '@myagentroam/protocol';
+import { sha256 } from '../util/sha256.js';
 import type { FileChangeEntry } from '../util/conversation-presentation.js';
 import type { WorkspaceFileOpenIntent, WorkspaceFileTab } from '../util/workspace-file-tab.js';
 import { createWorkspaceFileTabService } from './workspace-file-tab-service.js';
@@ -73,13 +74,8 @@ export async function loadToolChangeDiff(
     if (page.nextCursor === undefined) {
       if (bytes !== source.diff.byteSize) throw new Error('TOOL_RESOURCE_RESPONSE_INVALID');
       const text = chunks.join('');
-      if (globalThis.crypto?.subtle) {
-        const digest = await globalThis.crypto.subtle.digest('SHA-256', encoder.encode(text));
-        const sha256 = [...new Uint8Array(digest)]
-          .map((byte) => byte.toString(16).padStart(2, '0'))
-          .join('');
-        if (sha256 !== source.diff.sha256) throw new Error('TOOL_RESOURCE_RESPONSE_INVALID');
-      }
+      if ((await sha256(encoder.encode(text))) !== source.diff.sha256)
+        throw new Error('TOOL_RESOURCE_RESPONSE_INVALID');
       signal?.throwIfAborted();
       return { text };
     }

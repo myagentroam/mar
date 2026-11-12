@@ -2,6 +2,8 @@ export const cliMessagesZhCN = {
   quickUsage:
     '用法: mar-server setup [--config 路径] [--no-node] [--no-searxng]\n      mar-server run [--config 路径]',
   quickInvalidArguments: '参数无效，请使用 mar-server --help 查看帮助。',
+  quickNetworkInvalid:
+    'MAR_PUBLIC_ORIGIN 必须是 HTTP 或 HTTPS Origin，不含账号密码、路径、查询参数或片段（QUICK_START_NETWORK_INVALID）。',
   quickExternalDatabaseUnsupported: 'Quick Start 仅使用自己的 MySQL，不接受 MAR_DATABASE_URL。',
   quickSetupRequired: 'Quick Start 尚未初始化，请先执行 mar-server setup。',
   quickSetupComplete: '初始化完成。数据目录：{path}。请执行 mar-server run。',

@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type {
   DirectBrowserMessage,
   DirectPrepareRequest,
@@ -133,7 +134,7 @@ export function createWorkspaceDirectTransferService(
   >();
   const createPeerConnection =
     options.createPeerConnection ?? (() => new RTCPeerConnection({ iceServers: [] }));
-  const randomId = options.randomId ?? (() => crypto.randomUUID().replaceAll('-', ''));
+  const randomId = options.randomId ?? (() => createUuid().replaceAll('-', ''));
   const transportTimeoutMs = options.probeTimeoutMs ?? TRANSPORT_TIMEOUT_MS;
   const retryDelaysMs = options.probeRetryDelaysMs ?? RETRY_DELAYS_MS;
 

@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { computed, ref, watch, type Ref } from 'vue';
 import { translate } from './locale-preference-service.js';
@@ -143,7 +144,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   const cancellations = new Map<string, Promise<boolean>>();
   const committing = new Set<string>();
   const disposedRecoveryEntries = new Map<string, StoredWorkspaceUploadTask>();
-  const recoveryOwner = crypto.randomUUID();
+  const recoveryOwner = createUuid();
   const recoveryGenerations = new Map<string, string>();
   const recoveryReceiver: RecoveryReceiver = { receive: receiveCleanupFailure };
   let closed = false;
@@ -251,7 +252,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   }
 
   function invalidateRecovery(task: WorkspaceUploadTask): void {
-    recoveryGenerations.set(task.id, crypto.randomUUID());
+    recoveryGenerations.set(task.id, createUuid());
   }
 
   function restore(): void {
@@ -309,7 +310,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     tasks.value.push(
       ...uploads.map((upload) => ({
         ...upload,
-        id: crypto.randomUUID(),
+        id: createUuid(),
         nodeId,
         workspaceId,
         name: upload.file.name,

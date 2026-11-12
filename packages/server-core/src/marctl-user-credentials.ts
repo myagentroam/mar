@@ -116,14 +116,7 @@ export class MarctlUserCredentials {
     const identity = await this.userEnvironment(user);
     if (serverUrl === undefined) return { ...identity, MAR_CTL_CONTEXT_REQUIRED: '1' };
     const origin = new URL(serverUrl);
-    if (
-      (origin.protocol !== 'https:' &&
-        !(
-          origin.protocol === 'http:' &&
-          ['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)
-        )) ||
-      origin.origin !== serverUrl
-    )
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== serverUrl)
       throw new Error('MARCTL_SERVER_URL_INVALID');
     return {
       ...identity,

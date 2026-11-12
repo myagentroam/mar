@@ -5,8 +5,7 @@ const app = (
   await createServerApp({
     webRoot: resolve(process.env['MAR_WEB_ROOT'] ?? resolve(import.meta.dirname, '../web')),
     productUuid: readLicenseHostUuid(),
-    logger: true,
-    secureCookies: process.env['MAR_SECURE_COOKIES'] !== 'false'
+    logger: true
   })
 ).app;
 const port = Number(process.env['MAR_SERVER_PORT'] ?? 5090);

@@ -38,13 +38,36 @@ describe('Shared system configuration transactions', () => {
     }));
     const service = createSystemConfigurationService(request as never);
     service.beginEdit('html-preview-origin');
-    service.setDraft('html-preview-origin', 'https://preview.example.test/');
-    expect(await service.save('html-preview-origin')).toBe(false);
+    for (const invalidOrigin of [
+      'https://preview.example.test/',
+      'https://user:password@preview.example.test',
+      'https://preview.example.test?token=hidden',
+      'https://preview.example.test#fragment',
+      'ftp://preview.example.test'
+    ]) {
+      service.setDraft('html-preview-origin', invalidOrigin);
+      expect(await service.save('html-preview-origin')).toBe(false);
+    }
     service.setDraft('html-preview-origin', 'https://preview.example.test');
     expect(await service.save('html-preview-origin')).toBe(true);
     expect(request).toHaveBeenCalledWith('/api/system-settings/html-preview-origin', {
       method: 'PATCH',
       body: JSON.stringify({ origin: 'https://preview.example.test' })
+    });
+  });
+
+  it('saves an external HTTP HTML preview origin', async () => {
+    const request = vi.fn(async () => ({
+      htmlPreviewOrigin: 'http://preview.example.test',
+      skillTlsVerificationDisabled: false
+    }));
+    const service = createSystemConfigurationService(request as never);
+    service.beginEdit('html-preview-origin');
+    service.setDraft('html-preview-origin', 'http://preview.example.test');
+    expect(await service.save('html-preview-origin')).toBe(true);
+    expect(request).toHaveBeenCalledWith('/api/system-settings/html-preview-origin', {
+      method: 'PATCH',
+      body: JSON.stringify({ origin: 'http://preview.example.test' })
     });
   });
 

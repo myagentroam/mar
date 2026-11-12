@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { computed, ref, type Ref } from 'vue';
 import type { ComposerAttachment } from '../model/workbench.js';
@@ -88,7 +89,7 @@ export function createComposerAttachmentService(options: {
           'warning'
         );
       const attachment: ComposerAttachment = {
-        id: crypto.randomUUID(),
+        id: createUuid(),
         file,
         nodeId: context.nodeId,
         workspaceId: context.workspaceId,

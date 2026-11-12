@@ -10,7 +10,7 @@ const props = defineProps<{
 const blocked = computed(
   () =>
     !props.service.enabled.value &&
-    (['unsupported', 'insecure', 'denied'].includes(props.service.status.value) ||
+    (['unsupported', 'denied'].includes(props.service.status.value) ||
       (props.service.mode === 'mobile-push' &&
         !props.service.pushReady() &&
         props.service.pushStatus.value !== 'unavailable'))

@@ -12,7 +12,8 @@ const fixture = vi.hoisted(() => ({
 vi.mock('../../mar-server/src/quick-start/lock.js', () => ({
   acquireQuickStartLock: async () => fixture.release
 }));
-vi.mock('../../mar-server/src/quick-start/config.js', () => ({
+vi.mock('../../mar-server/src/quick-start/config.js', async (original) => ({
+  ...(await original<typeof import('../../mar-server/src/quick-start/config.js')>()),
   resolveQuickStartConfigPath: () => '/fixture/server.json',
   readQuickStartConfig: async () => ({
     serverPort: 41331,

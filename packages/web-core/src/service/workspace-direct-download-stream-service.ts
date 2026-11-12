@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { DirectTransferResource } from '@myagentroam/protocol';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
@@ -56,7 +57,7 @@ export async function createWorkspaceDirectDownloadStream(
   const worker = await activeWorker();
   if (worker === undefined) throw new Error('DIRECT_DOWNLOAD_STREAM_UNAVAILABLE');
   const channel = new MessageChannel();
-  const id = crypto.randomUUID().replaceAll('-', '');
+  const id = createUuid().replaceAll('-', '');
   const abortController = new AbortController();
   let created = false;
   let downloadStarted = false;

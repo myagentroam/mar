@@ -1,6 +1,6 @@
 ---
 title: npm 快速开始
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # npm 快速开始
@@ -31,9 +31,9 @@ Windows 本机 Quick Start 的受管 Node 使用 IPv4 直连；如果只能通�
 
 ## 远程访问
 
-默认本机访问不是使用场景限制。你可以自行配置安全隧道或对外入口；setup 不会配置域名、TLS、防火墙或访问控制。公网入口应使用 HTTPS，并支持 WebSocket；不要直接裸露 HTTP 端口。
+默认本机访问不是使用场景限制。Quick Start 支持外部 HTTP/HTTPS；setup 不会配置域名、TLS、防火墙或访问控制。HTTPS 需由代理或隧道提供，建议用于不可信网络；HTTP 为明文传输。入口须支持 WebSocket。
 
-当前 run 监听 `127.0.0.1`，应用 Origin 固定为打印出的 `http://127.0.0.1:<端口>`，不会采用 `MAR_PUBLIC_ORIGIN` 覆盖值。隧道访问应保留浏览器侧相同的回环地址和端口；使用自定义域名时，仅转发端口不足以保证登录、Origin 校验和 WebSocket 正常，还需匹配应用与网关的配置。不要关闭 Origin 校验来绕过问题。网络要求见[网络、TLS 与 WebSocket](../deployment/network.md)。
+run 默认监听 `127.0.0.1`。设置 `MAR_SERVER_HOST` 可调整监听地址，设置 `MAR_PUBLIC_ORIGIN` 可指定浏览器实际使用的 HTTP 或 HTTPS Origin（含非默认端口，不含路径）；Cookie 策略随公开入口协议选择。例如在 Bash 中执行 `MAR_SERVER_HOST=0.0.0.0 MAR_PUBLIC_ORIGIN=http://192.168.1.10:5190 mar-server run`，其中端口应替换成 `server.json` 的 `serverPort`。Windows 可在当前终端设置相同环境变量。反向代理或隧道转发须与该 Origin 一致；不要关闭 Origin 校验绕过配置问题。受管 MySQL、搜索和本机 Node 的内部连接不会因此全部对外开放。网络与浏览器能力边界见[网络、TLS 与 WebSocket](../deployment/network.md)。
 
 ## 更新 Server 与受管 Node
 

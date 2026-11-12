@@ -1,3 +1,4 @@
+import { createUuid } from './uuid.js';
 import {
   composerQuoteSchema,
   serializeComposerTag,
@@ -11,7 +12,7 @@ export function appendComposerQuote(
   references: readonly ComposerReference[],
   quote: ComposerQuoteDraft,
   input: string,
-  id: string = crypto.randomUUID()
+  id: string = createUuid()
 ): readonly ComposerReference[] {
   const snapshot = composerQuoteSchema.parse({ ...quote, id });
   const next = [...references, snapshot];

@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import { ref } from 'vue';
 import {
   sessionShareAuthResultSchema,
@@ -66,9 +67,7 @@ export function createSessionShareAccessService(
   const parsedVisitor = browserVisitor.success
     ? browserVisitor
     : sessionShareVisitorSchema.safeParse(stored.visitor);
-  const visitor = ref(
-    parsedVisitor.success ? parsedVisitor.data : { visitorId: crypto.randomUUID() }
-  );
+  const visitor = ref(parsedVisitor.success ? parsedVisitor.data : { visitorId: createUuid() });
   let credential = sessionShareCredentialSchema.safeParse(stored.credential).success
     ? (stored.credential as string)
     : undefined;

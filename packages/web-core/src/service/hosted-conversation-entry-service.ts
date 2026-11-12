@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import {
   hostedConversationModelOptionsSchema,
   hostedConversationSnapshotSchema,
@@ -145,11 +146,11 @@ export function createHostedConversationEntryService(
     for (const file of files) {
       if (attachments.value.length >= 32) break;
       attachments.value.push({
-        id: crypto.randomUUID(),
+        id: createUuid(),
         file,
         name: file.name,
         previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-        clientRequestId: crypto.randomUUID(),
+        clientRequestId: createUuid(),
         controller: new AbortController(),
         receivedBytes: 0,
         status: 'PENDING'
@@ -180,7 +181,7 @@ export function createHostedConversationEntryService(
       attachment.error !== undefined &&
       /^[A-Z][A-Z0-9_]+$/u.test(attachment.error)
     )
-      attachment.clientRequestId = crypto.randomUUID();
+      attachment.clientRequestId = createUuid();
     attachment.status = 'UPLOADING';
     const progress = (upload: HostedConversationUpload): void => {
       attachment.receivedBytes = upload.receivedBytes;
@@ -274,7 +275,7 @@ export function createHostedConversationEntryService(
       };
       const fingerprint = JSON.stringify(input);
       if (messageIntent?.fingerprint !== fingerprint)
-        messageIntent = { fingerprint, clientMessageId: crypto.randomUUID() };
+        messageIntent = { fingerprint, clientMessageId: createUuid() };
       submittedIntent = messageIntent;
       await submission.workspace.sendMessage({
         ...input,
@@ -410,7 +411,7 @@ export function createHostedConversationEntryService(
     if (template === undefined || !template.available)
       throw new Error('HOSTED_CONVERSATION_TEMPLATE_NOT_AVAILABLE');
     if (creationClientRequestId === undefined) {
-      creationClientRequestId = clientRequestId ?? crypto.randomUUID();
+      creationClientRequestId = clientRequestId ?? createUuid();
       creationModelId = selectedModelId.value;
     }
     const creationRevision = ++creationIntentRevision;

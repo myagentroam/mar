@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import {
   type RemoteDesktopDirectBrowserMessage,
   type RemoteDesktopDirectServerMessage,
@@ -77,7 +78,7 @@ export function createRemoteDesktopClientCore(options: {
   const closing = new Map<string, Active>();
   let uncertain = false;
   let disposed = false;
-  const randomId = options.randomId ?? (() => crypto.randomUUID().replaceAll('-', ''));
+  const randomId = options.randomId ?? (() => createUuid().replaceAll('-', ''));
   const send = (message: BrowserMessage): boolean => {
     try {
       return options.send(message);

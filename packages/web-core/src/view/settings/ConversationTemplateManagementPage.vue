@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../../util/uuid.js';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -545,7 +546,7 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
     );
     if (disposed) return;
     publishingIds.value = new Set(publishingIds.value).add(row.id);
-    let job = await service.publish(row.id, row.draftRevision, crypto.randomUUID());
+    let job = await service.publish(row.id, row.draftRevision, createUuid());
     job = await awaitPublish(row.id, job);
     if (disposed) return;
     if (job.status === 'SUCCEEDED')

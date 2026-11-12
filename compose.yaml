@@ -51,6 +51,7 @@ services:
     environment:
       MAR_DATABASE_URL: mysql://${MAR_MYSQL_USER:-myagentroam}:${MAR_MYSQL_PASSWORD}@mysql:13006/${MAR_MYSQL_DATABASE:-myagentroam}
       MAR_PUBLIC_ORIGIN: ${MAR_PUBLIC_ORIGIN:?MAR_PUBLIC_ORIGIN is required}
+      MAR_WEB_PUSH_SUBJECT: ${MAR_WEB_PUSH_SUBJECT:-}
       MAR_DATA_DIR: /var/lib/myagentroam
       MAR_SEARXNG_URL: http://searxng:8080
     depends_on:
@@ -73,7 +74,7 @@ services:
         bind:
           create_host_path: false
     ports:
-      - '127.0.0.1:5190:5190'
+      - '${MAR_SERVER_BIND_ADDRESS:-127.0.0.1}:${MAR_SERVER_PUBLIC_PORT:-5190}:5190'
     healthcheck:
       test:
         [

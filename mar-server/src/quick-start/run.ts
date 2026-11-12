@@ -2,7 +2,11 @@ import { cliText } from '@myagentroam-enterprise/server-implementation/cli-local
 import { dirname } from 'node:path';
 import type { QuickStartArguments } from './arguments.js';
 import { createLocalApplication } from './application.js';
-import { readQuickStartConfig, resolveQuickStartConfigPath } from './config.js';
+import {
+  readQuickStartConfig,
+  resolveQuickStartConfigPath,
+  resolveQuickStartNetwork
+} from './config.js';
 import { acquireQuickStartLock } from './lock.js';
 import { startManagedMysql, waitForMysql } from './mysql-runtime.js';
 import { startLocalNode } from './node-runtime.js';
@@ -34,6 +38,7 @@ export async function runQuickStart(
   try {
     const config = await readQuickStartConfig(path);
     if (!config) throw new Error('QUICK_START_SETUP_REQUIRED');
+    const network = resolveQuickStartNetwork(config);
     const mysql = await startManagedMysql(root, config);
     try {
       let connection: Awaited<ReturnType<typeof waitForMysql>>;
@@ -59,16 +64,14 @@ export async function runQuickStart(
       let stoppingNode = false;
       try {
         try {
-          await app.listen({ host: '127.0.0.1', port: config.serverPort });
+          await app.listen({ host: network.host, port: config.serverPort });
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE')
             throw new Error('QUICK_START_SERVER_PORT_IN_USE');
           throw error;
         }
         if (interrupted) return;
-        console.log(
-          cliText('quickStarted', { url: `http://127.0.0.1:${config.serverPort}`, path: root })
-        );
+        console.log(cliText('quickStarted', { url: network.publicOrigin, path: root }));
         if (config.search.mode === 'external') {
           void probeSearchEndpoint(config.search.url).then((available) => {
             if (stoppingSearch) return;

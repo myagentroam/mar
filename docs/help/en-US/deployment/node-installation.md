@@ -1,6 +1,6 @@
 ---
 title: Install and Register a Node
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # Install and Register a Node
@@ -9,7 +9,7 @@ Only one Node runtime may use a local data directory at a time. A duplicate star
 
 Normal restarts and managed upgrades hand over after the old instance exits. An ordinary disconnect does not stop accepted executions, and a replaced control connection does not prove that execution on the old host has ended. Local directory ownership does not fence identities copied to another directory or host; do not copy credentials to bypass a duplicate-instance error.
 
-Use Node.js `>=22.13`, an HTTPS Server URL, a dedicated service account, and real Workspace roots writable by that account. Windows, Linux, and macOS work hosts are supported. Hosted conversations require Bubblewrap and run only on Linux Nodes.
+Use Node.js `>=22.13`, an HTTP or HTTPS Server URL, a dedicated service account, and real Workspace roots writable by that account. Windows, Linux, and macOS work hosts are supported. Hosted conversations require Bubblewrap and run only on Linux Nodes.
 
 For a first connection, you can use [built-in MAR Agent](../runners/mar-agent.md) without an external Agent CLI; an administrator configures and authorizes its model. If you use Codex, Claude Code, or OpenCode, install and configure the corresponding CLI under the same service account.
 
@@ -45,7 +45,7 @@ Supervisor stores versioned installations in the service account's writable Node
 
 After setting up automatic startup, restart the service or host and confirm that Node reconnects and its upgrade status is not **Enable Supervisor manually**. A Node without Supervisor must first be installed manually at a version meeting the current business baseline and have its startup entry changed; it cannot bootstrap Supervisor through an unsupported remote operation.
 
-After registration, open a Workspace and verify files, terminals, and Agent sessions. The Node needs outbound HTTPS/WSS and exposes no browser HTTP API. For authorized ordinary Workspace file, Git, and terminal direct connections, permit the configured UDP range only from the browser LAN; the Server relay remains available when direct connection cannot be established. A transfer already in progress can still fail and need a retry. Each Node process uses ICE UDP Mux to reuse one selected port. Multiple Nodes on one host can share the default pool and select separate free ports; assign distinct fixed ports or non-overlapping ranges when each Node needs isolation. For missing Agents, reproduce discovery under the service account; for MCP or Python failures, verify the exact `npx`, Python, and pip commands reported in Node details.
+After registration, open a Workspace and verify files, terminals, and Agent sessions. The Node needs outbound HTTP/WS or HTTPS/WSS and exposes no browser HTTP API. For authorized ordinary Workspace file, Git, and terminal direct connections, permit the configured UDP range only from the browser LAN; the Server relay remains available when direct connection cannot be established. A transfer already in progress can still fail and need a retry. Each Node process uses ICE UDP Mux to reuse one selected port. Multiple Nodes on one host can share the default pool and select separate free ports; assign distinct fixed ports or non-overlapping ranges when each Node needs isolation. For missing Agents, reproduce discovery under the service account; for MCP or Python failures, verify the exact `npx`, Python, and pip commands reported in Node details.
 
 Configure automatic startup for the target platform: [Linux systemd](node-linux.md), [Windows Task Scheduler](node-windows.md), or [macOS launchd](node-macos.md).
 

@@ -1,6 +1,6 @@
 ---
 title: npm Quick Start
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # npm Quick Start
@@ -31,9 +31,9 @@ The managed Node in Windows Quick Start uses IPv4 for direct connections. When o
 
 ## Remote access
 
-Local access is the default, not a restriction on usage. You can configure a secure tunnel or an external entry point yourself; setup does not configure domains, TLS, firewalls, or access controls. Public entry points should use HTTPS and support WebSocket; do not expose an unprotected HTTP port.
+Local access is the default, not a usage restriction. Quick Start supports external HTTP/HTTPS. Setup does not configure domains, TLS, firewalls, or access controls. Use a proxy or tunnel for HTTPS, which is recommended on untrusted networks; HTTP traffic is plaintext. The entry point must support WebSocket.
 
-Currently, run listens on `127.0.0.1` and fixes the application Origin to the printed `http://127.0.0.1:<port>`; it does not use a `MAR_PUBLIC_ORIGIN` override. Tunnel access should preserve the same browser-side loopback address and port. With a custom domain, forwarding a port alone does not ensure working sign-in, Origin checks, and WebSocket: application and gateway configuration must also match. Do not disable Origin checks to bypass failures. See [Network, TLS, and WebSocket](../deployment/network.md).
+Run defaults to `127.0.0.1`. Set `MAR_SERVER_HOST` to change the listener and `MAR_PUBLIC_ORIGIN` to the browser-facing HTTP or HTTPS origin (including a non-default port, without a path); Cookie policy follows that scheme. For example in Bash: `MAR_SERVER_HOST=0.0.0.0 MAR_PUBLIC_ORIGIN=http://192.168.1.10:5190 mar-server run`, replacing the port with `serverPort` from `server.json`. On Windows, set the same environment variables in your terminal. Proxy or tunnel forwarding must match the configured origin; do not disable Origin checks to bypass configuration errors. Managed MySQL, search, and local Node internal connections are not all exposed by this setting. See [Network, TLS, and WebSocket](../deployment/network.md) for network and browser capability boundaries.
 
 ## Update Server and its managed Node
 

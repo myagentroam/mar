@@ -1,6 +1,6 @@
 ---
 title: 安装与注册 Node
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # 安装与注册 Node
@@ -14,7 +14,7 @@ lastUpdated: 2026-10-29
 正常重启和受控升级会在旧实例退出后交接。普通断线不会停止已接受的执行，控制连接被替换也不代表旧主机上的执行已结束；本地目录排他不覆盖复制到另一目录或主机的身份，不应通过复制凭据规避重复实例错误。
 
 - Node.js `>=22.13`；最终运行服务的账号也必须能找到同一个 `node` 与 `mar-node`。
-- 可访问 Server 的公开 HTTPS 地址；Node 使用出站 WSS。普通工作区直传的网络要求见下文。
+- 可访问 Server 的公开 HTTP 或 HTTPS 地址；Node 对应使用出站 WS 或 WSS。普通工作区直传的网络要求见下文。
 - 目标 Workspace 在 `allowedRoots` 内，且运行账号有相应目录权限。
 - 首次接入可使用[内置 MAR Agent](../runners/mar-agent.md)：无需外部 Agent CLI，由管理员配置并授权模型。若使用 Codex、Claude Code 或 OpenCode，则在**同一服务账号**下完成对应 CLI 安装、登录或模型服务配置。
 
@@ -133,7 +133,7 @@ Node 还会在服务账号环境中探测以下按需工具，并在节点详情
 2. 重启 Node 服务后，确认它自动重连；不要开放 Node 公网入站端口。需要局域网直连时，只允许 Browser 所在局域网访问配置的 UDP 范围，默认 `49152-49215`。同主机多个 Node 可共享默认池并自动选择空闲端口；需要独立容量时，为各配置文件设置互不重叠的范围。
 3. Node 在线但 Agent 不可用时，先以服务账号检查 CLI、`PATH`、用户目录、认证和工作区权限。
 4. MCP 启动失败时，在节点详情确认 `npx` 是否可用；Python Skill 失败时确认页面显示的实际 Python/pip 命令，并在同一服务账号下复现。
-5. Node 完全离线时，检查 Server URL、HTTPS/WSS 出站网络、配置权限与服务日志。
+5. Node 完全离线时，检查 Server URL、HTTP/WS 或 HTTPS/WSS 出站网络、配置权限与服务日志。
 
 安全提示：注册密钥、Node 凭据和 Agent 登录状态都不可提交 Git 或发送给 Agent。下一步：[登记第一个 Workspace](../getting-started/register-workspace.md)。
 

@@ -1,11 +1,11 @@
 ---
 title: 部署 MyAgentRoam Server 与 Web
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # 部署 MyAgentRoam Server 与 Web
 
-本页以公开产品根目录的唯一 `compose.yaml` 部署 MySQL、SearXNG 和自带 Web 的 Server；生产入口由你的反向代理提供 HTTPS。
+本页以公开产品根目录的唯一 `compose.yaml` 部署 MySQL、SearXNG 和自带 Web 的 Server；支持直接 HTTP 或由反向代理提供 HTTPS 入口。
 
 ## 正式部署
 
@@ -26,7 +26,9 @@ lastUpdated: 2026-11-10
    chmod 600 .env
    ```
 
-   继续前填写所有空值：`MAR_PUBLIC_ORIGIN` 为外部 HTTPS 地址；MySQL Root 与应用密码应分别生成高强度值，`MAR_SEARXNG_SECRET` 使用随机长字符串；`MAR_SERVER_SSH_DIR` 指向已存在目录的绝对路径。Compose 会把 `MAR_MYSQL_PASSWORD` 嵌入数据库 URL，因此应用密码应使用 URL 安全字符。模板故意不提供可用秘密值，缺少必填值时 Compose 会拒绝启动。
+   继续前填写必填值：`MAR_PUBLIC_ORIGIN` 为实际外部 HTTP 或 HTTPS Origin；MySQL Root 与应用密码应分别生成高强度值，`MAR_SEARXNG_SECRET` 使用随机长字符串；`MAR_SERVER_SSH_DIR` 指向已存在目录的绝对路径。Compose 会把 `MAR_MYSQL_PASSWORD` 嵌入数据库 URL，因此应用密码应使用 URL 安全字符。模板故意不提供可用秘密值，缺少必填值时 Compose 会拒绝启动。
+
+   直接 HTTP 部署请在首次 `docker compose up` 前设置 `MAR_SERVER_BIND_ADDRESS=0.0.0.0` 和宿主机端口 `MAR_SERVER_PUBLIC_PORT`，并使 `MAR_PUBLIC_ORIGIN` 与实际入口一致；使用非默认端口时同步替换下文健康检查的 `5190`。
 
    `MAR_SERVER_SSH_DIR` 填写当前独立部署账号的 `.ssh` 绝对路径。Compose 会把整个目录只读挂载到 Server；即使暂不使用 SSH 技能源，也应创建权限正确的空目录。
 
@@ -46,7 +48,7 @@ lastUpdated: 2026-11-10
    docker compose ps
    ```
 
-4. 将反向代理的 HTTPS 流量转发到统一 Server 的宿主机 `5190` 端口；同时允许 Upgrade/WebSocket 请求，不要把 `/api/` 或 WebSocket 升级请求缓存。
+4. 使用反向代理时，将 HTTPS 流量转发到统一 Server 的宿主机端口（默认 `5190`）；直接 HTTP 访问时确认已配置的宿主机端口可达；同时允许 Upgrade/WebSocket 请求，不要把 `/api/` 或 WebSocket 升级请求缓存。
 5. 在 Server 主机检查健康状态：
 
    ```bash
@@ -55,14 +57,14 @@ lastUpdated: 2026-11-10
 
 6. 用浏览器打开 `MAR_PUBLIC_ORIGIN`。
 
-**成功标志：** `docker compose ps` 中 MySQL、SearXNG、Server 三个服务健康，打开 HTTPS 站点后可进入 `/console` 登录。
+**成功标志：** `docker compose ps` 中 MySQL、SearXNG、Server 三个服务健康，打开配置的 HTTP 或 HTTPS 站点后可进入 `/console` 登录。
 
 ## 失败排查
 
 - MySQL 未健康：执行 `docker compose logs mysql`，确认密码变量已填写且 `13006` 未被占用。
 - SSH 技能源不可读：确认 `MAR_SERVER_SSH_DIR` 是绝对路径、部署账号 UID 为 `1000`，并检查 `.ssh/config` 的 `IdentityFile` 在容器内仍指向 `~/.ssh/`。
 - 登录页打开但请求失败：检查反向代理是否把 `/api/` 转到同一站点，以及 `MAR_PUBLIC_ORIGIN` 是否完全匹配外部地址。
-- Node 无法连接：Node 控制连接无需开放入站 HTTP API；检查 Node 到 `MAR_PUBLIC_ORIGIN` 的出站 HTTPS/WSS 与证书链。
+- Node 无法连接：Node 控制连接无需开放入站 HTTP API；检查 Node 到 `MAR_PUBLIC_ORIGIN` 的出站 HTTP/WS 或 HTTPS/WSS（HTTPS 时检查证书链）。
 
 安全提示：`.env` 含数据库密码，不要提交 Git、贴入对话或放在 Web 根目录。
 

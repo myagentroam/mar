@@ -36,7 +36,6 @@ export function createWorkbenchSystemNotificationService(
   }
 
   const status = computed(() => {
-    if (typeof window !== 'undefined' && !globalThis.isSecureContext) return 'insecure';
     if (!supported()) return 'unsupported';
     if (unavailable.value) return 'unavailable';
     if (permission.value === 'denied') return 'denied';
@@ -86,7 +85,7 @@ export function createWorkbenchSystemNotificationService(
   async function setEnabled(value: boolean): Promise<void> {
     const account = username.value;
     if (account === undefined || (value && requesting.value)) return;
-    if (value && (!supported() || !globalThis.isSecureContext)) return;
+    if (value && !supported()) return;
     const currentGeneration = ++generation;
     const current = () => generation === currentGeneration && username.value === account;
     if (!value) {

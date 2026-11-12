@@ -93,7 +93,7 @@ describe('Web Push configuration', () => {
     }
   );
 
-  it('rejects unavailable transports, invalid contact origins and invalid flags before writing', async () => {
+  it('rejects unavailable transports, invalid VAPID contacts and invalid flags before writing', async () => {
     const f = fixture();
     await expect(f.make(undefined, undefined, false).setEnabled(true)).rejects.toThrow(
       'WEB_PUSH_UNAVAILABLE'
@@ -101,13 +101,22 @@ describe('Web Push configuration', () => {
     await expect(f.make(undefined, 'http://console.example.test').setEnabled(true)).rejects.toThrow(
       'WEB_PUSH_CONFIGURATION_INVALID'
     );
-    await expect(f.make(undefined, 'https://localhost').setEnabled(true)).rejects.toThrow(
+    await expect(f.make(undefined, 'mailto:invalid').setEnabled(true)).rejects.toThrow(
       'WEB_PUSH_CONFIGURATION_INVALID'
     );
     await expect(f.make().setEnabled('true' as never)).rejects.toThrow('WEB_PUSH_INPUT_INVALID');
     expect(f.stored()).toBeUndefined();
     await f.make(undefined, undefined, false).setEnabled(false);
   });
+
+  it.each(['mailto:admin@example.test', 'https://localhost', 'https://contact.example.test/push'])(
+    'accepts an independent VAPID contact %s',
+    async (subject) => {
+      const f = fixture();
+      await f.make(undefined, subject).setEnabled(true);
+      expect((await f.make(undefined, subject).delivery())?.subject).toBe(subject);
+    }
+  );
 
   it('fails closed on an incompatible runtime key without rotating a working subscription key', async () => {
     const f = fixture();

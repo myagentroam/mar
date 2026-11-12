@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../../util/uuid.js';
 // Owns the current hosted Composer draft; quote callbacks bind its watch and reuse the existing submission snapshot.
 import { parseComposerTags, type ComposerReference } from '@myagentroam/protocol';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
@@ -314,11 +315,11 @@ function queueFiles(files: Iterable<File>): void {
       break;
     }
     const attachment: HostedAttachment = {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       file,
       previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
       name: file.name,
-      clientRequestId: crypto.randomUUID(),
+      clientRequestId: createUuid(),
       controller: new AbortController(),
       receivedBytes: 0,
       status: props.draft && snapshot.value === undefined ? 'PENDING' : 'UPLOADING'
@@ -372,7 +373,7 @@ function retryAttachment(attachmentId: string): void {
     file: attachment.file,
     previewUrl: attachment.previewUrl,
     name: attachment.name,
-    clientRequestId: crypto.randomUUID(),
+    clientRequestId: createUuid(),
     controller: new AbortController(),
     receivedBytes: 0,
     status: 'UPLOADING'
@@ -540,7 +541,7 @@ async function send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void> {
     const submittedAttachments = attachments.value;
     const fingerprint = JSON.stringify({ deliveryIntent, message: submittedMessage });
     if (messageIntent?.fingerprint !== fingerprint)
-      messageIntent = { fingerprint, clientMessageId: crypto.randomUUID() };
+      messageIntent = { fingerprint, clientMessageId: createUuid() };
     submittedIntent = messageIntent;
     await props.workspace.sendMessage({
       prompt: serializeComposerMessage([], input.value, references.value),

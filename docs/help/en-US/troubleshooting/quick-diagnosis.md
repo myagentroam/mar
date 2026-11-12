@@ -1,6 +1,6 @@
 ---
 title: Quick Diagnosis
-lastUpdated: 2026-10-17
+lastUpdated: 2026-11-12
 ---
 
 # Quick Diagnosis
@@ -10,7 +10,7 @@ Start at the narrowest failing boundary:
 | Symptom                    | First check                                                            |
 | -------------------------- | ---------------------------------------------------------------------- |
 | Cannot sign in             | Server health, browser origin, password or OAuth provider              |
-| Node offline               | Node service logs and outbound HTTPS/WSS                               |
+| Node offline               | Node service logs and outbound HTTP/WS or HTTPS/WSS                    |
 | Workspace unavailable      | `allowedRoots` and service-account permissions                         |
 | Agent or model missing     | MAR Agent model access or external Agent service-account configuration |
 | Session stuck or read-only | Node connectivity and external Agent activity                          |

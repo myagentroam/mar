@@ -39,7 +39,6 @@ export const notificationsZhCN = {
       enabled: '已开启',
       disabled: '未开启',
       denied: '通知权限已被拒绝，请在浏览器通知设置中允许当前网站。',
-      insecure: '系统通知需要 HTTPS 或受信任的 localhost 地址。',
       unsupported: '当前浏览器不支持通过 Service Worker 显示系统通知。',
       unavailable: '系统通知暂不可用，请刷新页面后重试。'
     },

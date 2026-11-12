@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-12
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -63,11 +63,11 @@ Enable the capability offered under **Settings → System notifications**. Opt-i
 
 Run, approval, plan, user-input, scheduled-task, and explicit Agent notifications retain their existing scope. Clicking a system notification focuses or opens Console, marks only that item read, and locates its target. Deleted, expired, or unauthorized items do not navigate. Uploads and Web updates remain in-app only; email requires an explicit request.
 
-Mobile Push also requires the administrator to enable the default-off **Web Push** setting under **Admin → System Configuration** and configure a valid public HTTPS origin. Personal settings show preference, browser permission, and subscription readiness separately. Administrator-disabled and Server-unavailable states are not browser permission denials. Choose **Enable / retry offline Push** when action is required. Disabling one client does not disable others. Notifications skipped while online or disabled are not replayed.
+Mobile Push also requires the administrator to enable the default-off **Web Push** setting under **Admin → System Configuration** and configure a valid VAPID contact (`MAR_WEB_PUSH_SUBJECT`, accepting `mailto:` or HTTPS; HTTPS sites default to their public origin). Personal settings show preference, browser permission, and subscription readiness separately. Administrator-disabled and Server-unavailable states are not browser permission denials. Choose **Enable / retry offline Push** when action is required. Disabling one client does not disable others. Notifications skipped while online or disabled are not replayed.
 
 **Re-enable after upgrading:** old Push registrations are cleared once; notification history, read state, and other user data are preserved. Refresh or close all old workbench tabs in this browser, then explicitly enable Push from the updated mobile app. Retry failed preparation or subscription retirement before enabling; do not mix old and new pages. Old PC subscriptions are retired and are not registered again.
 
-Windows, macOS, and Linux use browser notification interfaces; banners, sounds, and Do Not Disturb are controlled by the OS. Use HTTPS or trusted localhost with Notifications API and a Service Worker. Mobile also requires Web Push; on supported iOS/iPadOS, launch the Home Screen web app and explicitly allow notifications. Ordinary iOS tabs, offline networks, power saving, fully closed browsers, and OS restrictions have no delivery guarantee. Standard HTTPS subscription endpoints are not restricted by provider; deployment policies isolate Server outbound access.
+Windows, macOS, and Linux use browser notification interfaces; banners, sounds, and Do Not Disturb are controlled by the OS. Browsers generally require HTTPS or trusted localhost with Notifications API and a Service Worker; the project checks actual capabilities and permission rather than imposing an extra HTTP restriction. Mobile also requires Web Push; on supported iOS/iPadOS, launch the Home Screen web app and explicitly allow notifications. Ordinary iOS tabs, offline networks, power saving, fully closed browsers, and OS restrictions have no delivery guarantee. Standard HTTPS subscription endpoints are not restricted by provider; deployment policies isolate Server outbound access.
 
 Logout or Session revocation invalidates the corresponding mobile binding. Late Push with an unconfirmed binding shows only a generic prompt opening Console. Already dispatched messages cannot reliably be recalled, and provider acceptance does not prove display. Check site permission, OS notification settings, and Do Not Disturb if no banner appears; failure does not lose in-app notifications.
 

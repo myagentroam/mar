@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
@@ -61,7 +62,7 @@ export function createWorkbenchRunnerChannelService(options: {
           body: JSON.stringify({
             nodeId,
             token,
-            clientMessageId: crypto.randomUUID(),
+            clientMessageId: createUuid(),
             content
           })
         }

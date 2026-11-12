@@ -105,6 +105,7 @@ export interface ServerAppOptions {
   readonly searchBackendAvailable?: () => boolean;
   readonly webSearchFetch?: typeof fetch;
   readonly webPushTransport?: WebPushTransport;
+  readonly webPushSubject?: string;
 }
 export interface ServerApplication extends FastifyInstance {
   shutdown(): Promise<void>;
@@ -134,9 +135,14 @@ export async function composeServerApplication(
     : {};
   const dataDirectory = resolve(options.dataDirectory ?? process.env['MAR_DATA_DIR'] ?? './data');
   const skillCacheDirectory = resolve(dataDirectory, 'skills');
-  // Issue HTTPS-only cookies by default; callers must explicitly pass false for local plaintext development.
-  const secureCookies = options.secureCookies ?? true;
   const publicOrigin = options.publicOrigin ?? process.env['MAR_PUBLIC_ORIGIN'];
+  // The listener is HTTP; external HTTPS termination must declare its public origin.
+  // The public browser origin, not the proxy's internal HTTP hop, owns Cookie transport policy.
+  const secureCookies =
+    options.secureCookies ??
+    (process.env['MAR_SECURE_COOKIES'] === undefined
+      ? publicOrigin?.startsWith('https:') === true
+      : process.env['MAR_SECURE_COOKIES'] !== 'false');
   const userCredentials = new MarctlUserCredentials(
     mysqlPool,
     loadOrCreateRuntimeCredentialHmacKey(dataDirectory),
@@ -366,7 +372,9 @@ export async function composeServerApplication(
       dataDirectory,
       publicOrigin,
       now,
-      transport: options.webPushTransport
+      transport: options.webPushTransport,
+      webPushSubject:
+        options.webPushSubject ?? (process.env['MAR_WEB_PUSH_SUBJECT'] || publicOrigin)
     });
     constructedPush = webPushDispatcher;
     const hostedConversationActivity = new HostedConversationActivityService(

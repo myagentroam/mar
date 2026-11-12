@@ -27,13 +27,7 @@ export function validateServerUrl(value, translate = createTranslator()) {
     throw new MarctlError(translate('errors.serverUrlInvalid'));
   }
 
-  const isLoopbackHttp =
-    url.protocol === 'http:' &&
-    (url.hostname === 'localhost' ||
-      url.hostname === '127.0.0.1' ||
-      url.hostname === '::1' ||
-      url.hostname === '[::1]');
-  if (url.protocol !== 'https:' && !isLoopbackHttp)
+  if (url.protocol !== 'https:' && url.protocol !== 'http:')
     throw new MarctlError(translate('errors.serverUrlTransport'));
   if (url.username || url.password || url.search || url.hash || url.pathname !== '/')
     throw new MarctlError(translate('errors.serverUrlOrigin'));

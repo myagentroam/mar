@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { PromptCompletionResponse } from '@myagentroam/protocol';
 import type { ConversationTurn } from '../model/workbench.js';
 
@@ -252,7 +253,7 @@ export class PromptCompletionService {
     this.lastRequestAt = this.now();
     const controller = new AbortController();
     this.controller = controller;
-    const id = crypto.randomUUID();
+    const id = createUuid();
     this.state = { kind: 'pending', id, ...(previous ? { previous } : {}) };
     if (previous) this.expireCandidate(previous);
     this.options.changed();

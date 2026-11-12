@@ -164,7 +164,7 @@ npx --no-install mar-server run
 
 ### Docker Compose 部署
 
-标准部署使用具备真实主机 UUID 的 Linux 主机、Docker Compose 与 HTTPS 入口。工作 Node 支持 Windows、Linux、macOS，要求 Node.js `>=22.13`；原生 Server 要求 Node.js `>=24.12` 和 MySQL 8.4。
+标准部署使用具备真实主机 UUID 的 Linux 主机、Docker Compose 与 HTTP/HTTPS 入口。工作 Node 支持 Windows、Linux、macOS，要求 Node.js `>=22.13`；原生 Server 要求 Node.js `>=24.12` 和 MySQL 8.4。
 
 从不含秘密值的 [Compose 环境模板](.env.example)开始，按部署指南填写配置后再启动服务。仅部署 Server 不会安装 Node 执行器。
 
@@ -187,7 +187,7 @@ npx --no-install mar-server run
 
 ```text
 浏览器工作台
-       │  HTTPS / WebSocket：登录、授权与控制
+       │  HTTP(S) / WebSocket：登录、授权与控制
        ▼
 自己的 Server
        ▲  Node 主动建立出站连接

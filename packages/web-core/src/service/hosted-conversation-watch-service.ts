@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import {
   hostedConversationSnapshotSchema,
   watchAcceptedSchema,
@@ -423,7 +424,7 @@ function responseInvalid(): Error {
   return new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
 }
 function randomWatchId(): string {
-  return crypto.randomUUID().replace(/-/g, '');
+  return createUuid().replace(/-/g, '');
 }
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

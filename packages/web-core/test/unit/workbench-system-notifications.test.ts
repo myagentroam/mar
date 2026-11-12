@@ -245,8 +245,7 @@ describe('Workbench system notifications', () => {
 
   it.each([
     ['denied', true, 'denied'],
-    ['default', true, 'disabled'],
-    ['granted', false, 'insecure']
+    ['default', true, 'disabled']
   ] as const)(
     'does not enable notifications with permission %s and secure origin %s',
     async (permission, secure, status) => {
@@ -257,6 +256,13 @@ describe('Workbench system notifications', () => {
       expect(f.registration.showNotification).not.toHaveBeenCalled();
     }
   );
+
+  it('uses available notification APIs without imposing a secure-context policy', async () => {
+    const f = await fixture({ permission: 'granted', secure: false });
+    await f.system.setEnabled(true);
+    expect(f.system.status.value).toBe('enabled');
+    expect(f.system.enabled.value).toBe(true);
+  });
 
   it('handles missing browser APIs, registration failures and rejected permission requests without affecting the center', async () => {
     const f = await fixture();
