@@ -1,9 +1,59 @@
+--- a/src/ScreenCapturer.h
++++ b/src/ScreenCapturer.h
+@@ -9,0 +10 @@
++                     targetSize:(CGSize)targetSize
+--- a/src/ScreenCapturer.m
++++ b/src/ScreenCapturer.m
+@@ -5,0 +6 @@
++@property (nonatomic, assign) CGSize targetSize;
+@@ -17,0 +19 @@
++                     targetSize:(CGSize)targetSize
+@@ -21,0 +24 @@
++        _targetSize = targetSize;
+@@ -35,5 +38,4 @@
+-        SCDisplay *display = content.displays[[content.displays indexOfObjectPassingTest:^BOOL(SCDisplay *_Nonnull d, NSUInteger idx, BOOL *_Nonnull stop) {
+-                    return d.displayID == self.displayID;
+-                }]];
+-
+-        if (!display) {
++        NSUInteger index = [content.displays indexOfObjectPassingTest:^BOOL(SCDisplay *_Nonnull d, NSUInteger idx, BOOL *_Nonnull stop) {
++            return d.displayID == self.displayID;
++        }];
++        if (index == NSNotFound) {
+@@ -46,0 +49 @@
++        SCDisplay *display = content.displays[index];
+@@ -48,3 +51,2 @@
+-        // can later be adjusted for server-side scaling
+-        config.width = display.width;
+-        config.height = display.height;
++        config.width = (size_t)self.targetSize.width;
++        config.height = (size_t)self.targetSize.height;
 --- a/src/mac.m
 +++ b/src/mac.m
-@@ -143,0 +144,2 @@
+@@ -38,0 +39 @@
++#include <math.h>
+@@ -47,3 +48,5 @@
+-/* Two framebuffers. */
+-void *frameBufferOne;
+-void *frameBufferTwo;
++/* The framebuffer covers all active displays in global logical coordinates. */
++static CGRect desktopBounds;
++static CGFloat desktopScale;
++static NSMutableArray *activeCapturers;
++static NSObject *captureLock;
+@@ -51,4 +54 @@
+-/* Pointer to the current backbuffer. */
+-void *backBuffer;
+-
+-/* The multi-sceen display number chosen by the user */
++/* Optional upstream single-display selection. */
+@@ -56,2 +55,0 @@
+-/* The corresponding multi-sceen display ID */
+-CGDirectDisplayID displayID;
+@@ -143,0 +142,2 @@
 +    XK_Mode_switch,       58,      /* Left Option from noVNC */
 +    XK_Super_L,           54,      /* Right Command from noVNC */
-@@ -321,0 +324,29 @@
+@@ -321,0 +322,29 @@
 +/* Input state belongs to a VNC client and is released when that client leaves. */
 +typedef struct {
 +    CFMutableDictionaryRef keys;
@@ -33,25 +83,25 @@
 +    }
 +}
 +
-@@ -335,0 +367,4 @@
+@@ -335,0 +365,4 @@
 +    int unicodeFallback = 0;
 +    ClientInput *input = cl->clientData;
 +    int64_t symbol = keySym;
 +    CFNumberRef key = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &symbol);
-@@ -350 +384,0 @@
+@@ -350 +382,0 @@
 -	keyboardEvent = CGEventCreateKeyboardEvent(eventSource, keyCode, down);
-@@ -352 +386 @@
+@@ -352 +384 @@
 -	if(keySym == XK_ISO_Level3_Shift)
 +	if(keySym == XK_ISO_Level3_Shift || keySym == XK_Mode_switch)
-@@ -371 +405 @@
+@@ -371 +403 @@
 -	    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, keyCodeFromDict, down);
 +	    keyCode = keyCodeFromDict;
-@@ -374,2 +408,2 @@
+@@ -374,2 +406,2 @@
 -	    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, 0, down);
 -	    CGEventKeyboardSetUnicodeString(keyboardEvent, 1, (UniChar*)&keySym);
 +	    keyCode = 0;
 +	    unicodeFallback = 1;
-@@ -380,0 +415,12 @@
+@@ -380,0 +413,12 @@
 +    /* Preserve the native key selected on key-down even if modifiers change. */
 +    CFNumberRef previous = input ? CFDictionaryGetValue(input->keys, key) : NULL;
 +    int64_t native = keyCode | ((int64_t)unicodeFallback << 16);
@@ -64,7 +114,7 @@
 +    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, (CGKeyCode)(native & 0xffff), down);
 +    if (native & (1 << 16)) CGEventKeyboardSetUnicodeString(keyboardEvent, 1, (UniChar*)&keySym);
 +
-@@ -382 +428,8 @@
+@@ -382 +426,8 @@
 -    CGEventSetFlags(keyboardEvent, CGEventGetFlags(keyboardEvent) & (isShiftDown ? kCGEventFlagMaskShift : ~kCGEventFlagMaskShift));
 +    CGEventFlags flags = CGEventGetFlags(keyboardEvent);
 +    if (input) {
@@ -74,21 +124,195 @@
 +        CFDictionaryApplyFunction(input->keys, heldModifier, &flags);
 +    }
 +    CGEventSetFlags(keyboardEvent, flags);
-@@ -385,0 +439 @@
+@@ -385,0 +437 @@
 +    CFRelease(key);
-@@ -394,0 +449,6 @@
+@@ -393 +444,0 @@
+-    CGRect displayBounds = CGDisplayBounds(displayID);
+@@ -394,0 +446,6 @@
 +    ClientInput *input = cl->clientData;
 +    if (input) {
 +        input->buttons = buttonMask & 7;
 +        input->x = x;
 +        input->y = y;
 +    }
-@@ -398,2 +459,2 @@
+@@ -398,2 +455,2 @@
 -    position.x = x + displayBounds.origin.x;
 -    position.y = y + displayBounds.origin.y;
-+    position.x = x * displayBounds.size.width / CGDisplayPixelsWide(displayID) + displayBounds.origin.x;
-+    position.y = y * displayBounds.size.height / CGDisplayPixelsHigh(displayID) + displayBounds.origin.y;
-@@ -633 +693,13 @@
++    position.x = x / desktopScale + desktopBounds.origin.x;
++    position.y = y / desktopScale + desktopBounds.origin.y;
+@@ -512,2 +569,2 @@
+-  int bitsPerSample = 8;
+-  CGDisplayCount displayCount;
++  const int bitsPerSample = 8;
++  CGDisplayCount displayCount = 0;
+@@ -515,15 +572 @@
+-
+-  /* grab the active displays */
+-  CGGetActiveDisplayList(32, displays, &displayCount);
+-  for (int i=0; i<displayCount; i++) {
+-      CGRect bounds = CGDisplayBounds(displays[i]);
+-      printf("Found %s display %d at (%d,%d) and a resolution of %dx%d\n", (CGDisplayIsMain(displays[i]) ? "primary" : "secondary"), i, (int)bounds.origin.x, (int)bounds.origin.y, (int)bounds.size.width, (int)bounds.size.height);
+-  }
+-  if(displayNumber < 0) {
+-      printf("Using primary display as a default\n");
+-      displayID = CGMainDisplayID();
+-  } else if (displayNumber < displayCount) {
+-      printf("Using specified display %d\n", displayNumber);
+-      displayID = displays[displayNumber];
+-  } else {
+-      fprintf(stderr, "Specified display %d does not exist\n", displayNumber);
++  if (CGGetActiveDisplayList(32, displays, &displayCount) != kCGErrorSuccess || !displayCount)
+@@ -530,0 +574,4 @@
++  if (displayNumber >= 0) {
++      if (displayNumber >= displayCount) return FALSE;
++      displays[0] = displays[displayNumber];
++      displayCount = 1;
+@@ -533,10 +580,8 @@
+-
+-  rfbScreen = rfbGetScreen(&argc,argv,
+-			   CGDisplayPixelsWide(displayID),
+-			   CGDisplayPixelsHigh(displayID),
+-			   bitsPerSample,
+-			   3,
+-			   4);
+-  if(!rfbScreen) {
+-      rfbErr("Could not init rfbScreen.\n");
+-      return FALSE;
++  desktopBounds = CGRectNull;
++  desktopScale = 1;
++  for (CGDisplayCount i = 0; i < displayCount; i++) {
++      CGRect bounds = CGDisplayBounds(displays[i]);
++      desktopBounds = CGRectUnion(desktopBounds, bounds);
++      CGFloat xScale = CGDisplayPixelsWide(displays[i]) / bounds.size.width;
++      CGFloat yScale = CGDisplayPixelsHigh(displays[i]) / bounds.size.height;
++      desktopScale = MAX(desktopScale, MAX(xScale, yScale));
+@@ -544,3 +589,7 @@
+-
+-  rfbScreen->serverFormat.redShift = bitsPerSample*2;
+-  rfbScreen->serverFormat.greenShift = bitsPerSample*1;
++  desktopScale = ceil(desktopScale);
++  int desktopWidth = (int)lround(desktopBounds.size.width * desktopScale);
++  int desktopHeight = (int)lround(desktopBounds.size.height * desktopScale);
++  rfbScreen = rfbGetScreen(&argc, argv, desktopWidth, desktopHeight, bitsPerSample, 3, 4);
++  if (!rfbScreen) return FALSE;
++  rfbScreen->serverFormat.redShift = bitsPerSample * 2;
++  rfbScreen->serverFormat.greenShift = bitsPerSample;
+@@ -548 +596,0 @@
+-
+@@ -550,10 +598,2 @@
+-
+-  frameBufferOne = malloc(CGDisplayPixelsWide(displayID) * CGDisplayPixelsHigh(displayID) * 4);
+-  frameBufferTwo = malloc(CGDisplayPixelsWide(displayID) * CGDisplayPixelsHigh(displayID) * 4);
+-
+-  /* back buffer */
+-  backBuffer = frameBufferOne;
+-  /* front buffer */
+-  rfbScreen->frameBuffer = frameBufferTwo;
+-
+-  /* we already capture the cursor in the framebuffer */
++  rfbScreen->frameBuffer = calloc((size_t)desktopWidth * desktopHeight, 4);
++  if (!rfbScreen->frameBuffer) return FALSE;
+@@ -561 +600,0 @@
+-
+@@ -565,59 +604,38 @@
+-  ScreenCapturer *capturer = [[ScreenCapturer alloc] initWithDisplay: displayID
+-                                                        frameHandler:^(CMSampleBufferRef sampleBuffer) {
+-          rfbClientIteratorPtr iterator;
+-          rfbClientPtr cl;
+-
+-           /*
+-             Copy new frame to back buffer.
+-           */
+-          CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+-          if(!pixelBuffer)
+-              return;
+-
+-          CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+-
+-          memcpy(backBuffer,
+-                 CVPixelBufferGetBaseAddress(pixelBuffer),
+-                 CGDisplayPixelsWide(displayID) *  CGDisplayPixelsHigh(displayID) * 4);
+-
+-          CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+-
+-          /* Lock out client reads. */
+-          iterator=rfbGetClientIterator(rfbScreen);
+-          while((cl=rfbClientIteratorNext(iterator))) {
+-              LOCK(cl->sendMutex);
+-          }
+-          rfbReleaseClientIterator(iterator);
+-
+-          /* Swap framebuffers. */
+-          if (backBuffer == frameBufferOne) {
+-              backBuffer = frameBufferTwo;
+-              rfbScreen->frameBuffer = frameBufferOne;
+-          } else {
+-              backBuffer = frameBufferOne;
+-              rfbScreen->frameBuffer = frameBufferTwo;
+-          }
+-
+-          /*
+-            Mark modified rect in new framebuffer.
+-            ScreenCaptureKit does not have something like CGDisplayStreamUpdateGetRects(),
+-            so mark the whole framebuffer.
+-           */
+-          rfbMarkRectAsModified(rfbScreen, 0, 0, CGDisplayPixelsWide(displayID), CGDisplayPixelsHigh(displayID));
+-
+-          /* Swapping framebuffers finished, reenable client reads. */
+-          iterator=rfbGetClientIterator(rfbScreen);
+-          while((cl=rfbClientIteratorNext(iterator))) {
+-              UNLOCK(cl->sendMutex);
+-          }
+-          rfbReleaseClientIterator(iterator);
+-
+-      } errorHandler:^(NSError *error) {
+-          fprintf(stderr, "Error: %s\n", [error.description UTF8String]);
+-          if(error.code == SCStreamErrorUserDeclined) {
+-              fprintf(stderr, "Could not get screen contents. Check if the program has been given screen recording permissions in 'System Preferences'->'Security & Privacy'->'Privacy'->'Screen Recording'.\n");
+-          }
+-          //TODO handle other errors
+-          exit(EXIT_FAILURE);
+-      }];
+-  [capturer startCapture];
++  activeCapturers = [[NSMutableArray alloc] init];
++  captureLock = [[NSObject alloc] init];
++  for (CGDisplayCount i = 0; i < displayCount; i++) {
++      CGDirectDisplayID current = displays[i];
++      CGRect bounds = CGDisplayBounds(current);
++      int x = (int)lround((bounds.origin.x - desktopBounds.origin.x) * desktopScale);
++      int y = (int)lround((bounds.origin.y - desktopBounds.origin.y) * desktopScale);
++      int width = (int)lround(bounds.size.width * desktopScale);
++      int height = (int)lround(bounds.size.height * desktopScale);
++      ScreenCapturer *capturer = [[ScreenCapturer alloc]
++          initWithDisplay:current targetSize:CGSizeMake(width, height)
++          frameHandler:^(CMSampleBufferRef sampleBuffer) {
++              CVPixelBufferRef pixels = CMSampleBufferGetImageBuffer(sampleBuffer);
++              if (!pixels) return;
++              @synchronized(captureLock) {
++                  rfbClientIteratorPtr iterator = rfbGetClientIterator(rfbScreen);
++                  rfbClientPtr client;
++                  while ((client = rfbClientIteratorNext(iterator))) LOCK(client->sendMutex);
++                  rfbReleaseClientIterator(iterator);
++                  CVPixelBufferLockBaseAddress(pixels, kCVPixelBufferLock_ReadOnly);
++                  const unsigned char *source = CVPixelBufferGetBaseAddress(pixels);
++                  size_t stride = CVPixelBufferGetBytesPerRow(pixels);
++                  for (int row = 0; row < height; row++)
++                      memcpy(rfbScreen->frameBuffer + ((size_t)(y + row) * desktopWidth + x) * 4,
++                             source + row * stride, (size_t)width * 4);
++                  CVPixelBufferUnlockBaseAddress(pixels, kCVPixelBufferLock_ReadOnly);
++                  rfbMarkRectAsModified(rfbScreen, x, y, x + width, y + height);
++                  iterator = rfbGetClientIterator(rfbScreen);
++                  while ((client = rfbClientIteratorNext(iterator))) UNLOCK(client->sendMutex);
++                  rfbReleaseClientIterator(iterator);
++              }
++          } errorHandler:^(NSError *error) {
++              fprintf(stderr, "Screen capture error: %s\n", [error.description UTF8String]);
++              exit(EXIT_FAILURE);
++          }];
++      [activeCapturers addObject:capturer];
++      [capturer startCapture];
++  }
+@@ -633 +651,13 @@
 -    //TODO
 +    ClientInput *input = cl->clientData;
 +    if (!input) return;
@@ -103,7 +327,7 @@
 +    CFRelease(input->keys);
 +    free(input);
 +    cl->clientData = NULL;
-@@ -637,0 +710,5 @@
+@@ -637,0 +668,5 @@
 +  ClientInput *input = calloc(1, sizeof(*input));
 +  if (!input) return RFB_CLIENT_REFUSE;
 +  input->keys = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
