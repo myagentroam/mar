@@ -1743,6 +1743,15 @@ for (const theme of ['dark', 'light'])
       await search.press('Enter');
       await expect(page.getByTestId('searched')).toHaveText('refreshed');
       await expect(page.locator('.agent-markdown-code-copy [data-mar-icon="copy"]')).toHaveCount(1);
+      const codeCopy = page.locator('.agent-markdown-code-copy');
+      await codeCopy.hover();
+      await expect(codeCopy).toHaveCSS('width', mobile ? '36px' : '24px');
+      await expect(codeCopy).toHaveCSS('height', mobile ? '36px' : '24px');
+      await codeCopy.locator('..').screenshot({
+        path: testInfo.outputPath(
+          `code-action-density-${theme}-${mobile ? 'mobile' : 'desktop'}.png`
+        )
+      });
       const quantity = page.getByTestId('quantity');
       await page.getByPlaceholder('Review date').click();
       const calendar = page.locator('.el-date-picker:visible');

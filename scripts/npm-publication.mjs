@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import { lstat, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { computerRuntimeTargets } from './computer-runtime-packages.mjs';
+import { binariesTargets } from './binaries-packages.mjs';
 
 // Validate the public upload boundary and own the durable, per-package submission
 // state. Callers supply transport/process adapters; this module never builds,
@@ -14,12 +15,13 @@ export const publicationPackagePaths = {
   '@myagentroam/agent': 'mar-agent',
   '@myagentroam/node': 'mar-node',
   '@myagentroam/binaries': 'packages/binaries',
+  ...Object.fromEntries(binariesTargets.map(({ name, path }) => [name, path])),
   '@myagentroam/server': 'mar-server',
   ...Object.fromEntries(computerRuntimeTargets.map(({ name, path }) => [name, path]))
 };
 const groups = {
   common: ['@myagentroam/protocol', '@myagentroam/agent', '@myagentroam/node'],
-  binaries: ['@myagentroam/binaries'],
+  binaries: ['@myagentroam/binaries', ...binariesTargets.map(({ name }) => name)],
   runtime: computerRuntimeTargets.map(({ name }) => name),
   server: ['@myagentroam/server']
 };
@@ -133,9 +135,16 @@ export async function verifyNpmPublication(directory, sourceRoot, expected) {
     );
     checkRepository(metadata, item.name);
     checkRepository(source, item.name);
+    const executableFiles = metadata.publishConfig?.executableFiles;
     publicationCheck(
       metadata.publishConfig?.access === 'public' &&
-        Object.keys(metadata.publishConfig).every((key) => key === 'access'),
+        Object.keys(metadata.publishConfig).every(
+          (key) => key === 'access' || key === 'executableFiles'
+        ) &&
+        (executableFiles === undefined ||
+          (Array.isArray(executableFiles) &&
+            executableFiles.every((file) => typeof file === 'string'))) &&
+        JSON.stringify(executableFiles) === JSON.stringify(source.publishConfig?.executableFiles),
       'NPM_PUBLICATION_PUBLISH_CONFIG_INVALID'
     );
   }

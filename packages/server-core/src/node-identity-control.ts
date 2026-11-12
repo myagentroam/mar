@@ -483,7 +483,10 @@ function toStoredCapabilities(capabilities: NodeCapabilities): {
     ...(capabilities.conversationHosting === undefined
       ? {}
       : { conversationHosting: capabilities.conversationHosting }),
-    ...(capabilities.computerUse === undefined ? {} : { computerUse: capabilities.computerUse })
+    ...(capabilities.computerUse === undefined ? {} : { computerUse: capabilities.computerUse }),
+    ...(capabilities.remoteDesktop === undefined
+      ? {}
+      : { remoteDesktop: capabilities.remoteDesktop })
   };
   return {
     metadata: JSON.stringify(metadata)

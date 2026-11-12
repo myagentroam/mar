@@ -1,0 +1,32 @@
+{
+  "name": "@myagentroam/binaries-linux-arm64",
+  "version": "0.10.3",
+  "description": "Managed native resources for MyAgentRoam (linux-arm64).",
+  "license": "(MIT OR Unlicense) AND GPL-2.0-or-later AND Apache-2.0",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "vendor",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "executableFiles": [
+      "vendor/ctags/linux-arm64/ctags",
+      "vendor/ripgrep/linux-arm64/rg"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "packages/binaries-linux-arm64"
+  }
+}

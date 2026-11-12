@@ -135,6 +135,53 @@ test('publication rejects redirected Registry configuration inside an otherwise 
   );
 });
 
+async function setExecutableFileConfiguration(input, sourceFiles, archiveFiles) {
+  const item = input.manifest.packages.find(
+    ({ name }) => name === '@myagentroam/binaries-linux-x64'
+  );
+  const stage = join(input.root, 'binaries-linux-x64');
+  const archivePath = join(stage, 'package/package.json');
+  const metadata = JSON.parse(await readFile(archivePath, 'utf8'));
+  metadata.publishConfig.executableFiles = sourceFiles;
+  await writeFile(
+    join(input.source, publicationPackagePaths[item.name], 'package.json'),
+    JSON.stringify(metadata)
+  );
+  metadata.publishConfig.executableFiles = archiveFiles;
+  await writeFile(archivePath, JSON.stringify(metadata));
+  execFileSync('tar', ['-czf', join(input.directory, item.file), '-C', stage, 'package']);
+  item.sha512 = digest(await readFile(join(input.directory, item.file)), 'sha512');
+  const bytes = JSON.stringify(input.manifest);
+  await writeFile(join(input.directory, 'npm-publication.json'), bytes);
+  input.expected.manifestSha256 = digest(bytes);
+}
+
+test('publication accepts source-bound executable file packaging metadata', async (t) => {
+  const input = await fixture(t, 'binaries');
+  const files = ['vendor/ripgrep/linux-x64/rg'];
+  await setExecutableFileConfiguration(input, files, files);
+  assert.deepEqual(
+    await verifyNpmPublication(input.directory, input.source, input.expected),
+    input.manifest
+  );
+});
+
+test('publication rejects executable file metadata that is malformed or differs from source', async (t) => {
+  for (const [sourceFiles, archiveFiles] of [
+    [['vendor/tool'], ['vendor/other']],
+    [['vendor/tool'], undefined],
+    ['vendor/tool', 'vendor/tool'],
+    [[42], [42]]
+  ]) {
+    const input = await fixture(t, 'binaries');
+    await setExecutableFileConfiguration(input, sourceFiles, archiveFiles);
+    await assert.rejects(
+      verifyNpmPublication(input.directory, input.source, input.expected),
+      /PUBLISH_CONFIG_INVALID/u
+    );
+  }
+});
+
 test('publication rejects archive symlinks instead of following files outside the delivery set', async (t) => {
   const input = await fixture(t);
   const path = join(input.directory, input.manifest.packages[0].file);
@@ -655,7 +702,8 @@ test('isolated GitHub entrypoint submits real tarball paths and persists a parti
   for (const file of [
     'npm-publication.mjs',
     'npm-publish-github.mjs',
-    'computer-runtime-packages.mjs'
+    'computer-runtime-packages.mjs',
+    'binaries-packages.mjs'
   ])
     await copyFile(
       new URL(`../../scripts/${file}`, import.meta.url),

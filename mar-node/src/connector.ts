@@ -12,9 +12,11 @@ import { ModelUsageOutbox } from './service/model-usage-outbox.js';
 import { NodeModelUsageService } from './service/model-usage-service.js';
 import { dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import WebSocket from 'ws';
 import {
   createEnvelope,
   directNodeCommandSchema,
+  remoteDesktopDescriptionSchema,
   type NodeCapabilities,
   type NodeEnvelope,
   type WorkbenchEventCategory
@@ -72,6 +74,19 @@ import { GitExecutionService } from './service/git-execution-service.js';
 import { GitOperationService } from './service/git-operation-service.js';
 import { WorkspaceService } from './service/workspace-service.js';
 import { DirectTransferService } from './connection/direct-transfer-service.js';
+import { nodeDesktopRelayEndpoint } from './connection/endpoints.js';
+import { RelayDesktopService } from './remote-desktop/relay-desktop-service.js';
+import {
+  DesktopAttachmentRegistry,
+  type DesktopPrepare
+} from './remote-desktop/desktop-service-core.js';
+import { X11RemoteDesktopRuntime } from './remote-desktop/x11-remote-desktop-runtime.js';
+import { WindowsRemoteDesktopRuntime } from './remote-desktop/windows-remote-desktop-runtime.js';
+import { windowsManagedDesktopBinaries } from './remote-desktop/windows-managed-binaries.js';
+import { MacosRemoteDesktopRuntime } from './remote-desktop/macos-remote-desktop-runtime.js';
+import { macosManagedDesktopBinaries } from './remote-desktop/macos-managed-binaries.js';
+import { linuxManagedDesktopBinaries } from './remote-desktop/linux-managed-binaries.js';
+import { RemoteDesktopError } from './remote-desktop/desktop-error.js';
 import { WorkspaceChangeService } from './workspace/workspace-change-service.js';
 import { WorkbenchEventService } from './service/workbench-event-service.js';
 import { RecentRunProjectionService } from './service/recent-run-projection-service.js';
@@ -227,7 +242,8 @@ export class NodeConnector {
     () => this.config?.nodeId
   );
 
-  private readonly nodeGeneration = crypto.randomUUID().replace(/-/g, '');
+  private nodeGeneration = crypto.randomUUID().replace(/-/g, '');
+  private nodeGenerationRetired = false;
   private readonly controlChannel: NodeControlChannel;
   private readonly controlMessages: NodeControlMessageService;
   private readonly scheduledRunAuthorization: RunAuthorizationControl;
@@ -321,6 +337,7 @@ export class NodeConnector {
   private readonly marAgentClient: MarAgentRunner;
   private readonly marAgentRunController: MarAgentManagedRunController;
   private readonly computerUseProvider: PyAutoGuiComputerUseProvider;
+  private readonly desktopAttachmentRegistry = new DesktopAttachmentRegistry();
   private readonly computerUseEnablement: ComputerUseEnablementService;
   private readonly configMutations = new NodeConfigMutations();
   private readonly managedComputerUseRuntime: ManagedComputerUseRuntime;
@@ -405,6 +422,13 @@ export class NodeConnector {
     typeof composeWorkspaceResources
   >['invalidateFiles'];
   private directTransferService: DirectTransferService | undefined;
+  private relayDesktopService: RelayDesktopService | undefined;
+  private desktopRuntime:
+    X11RemoteDesktopRuntime | WindowsRemoteDesktopRuntime | MacosRemoteDesktopRuntime | undefined;
+  private desktopDiscovery: Promise<void> | undefined;
+  private desktopStarting: Promise<void> | undefined;
+  private desktopDiscoveryAbort: AbortController | undefined;
+  private desktopDiscoveryEpoch = 0;
 
   private attachmentTemporaryRoot(): string {
     if (this.config === undefined) throw new Error('NODE_CONFIG_UNAVAILABLE');
@@ -529,15 +553,18 @@ export class NodeConnector {
     const detect = options.capabilityDetector ?? detectCapabilitiesAsync;
     this.capabilityDetector = async () => {
       const capabilities = await detect();
-      return this.projectComputerUseCapability(
-        await this.conversationHosting.project({
-          ...capabilities,
-          metadata: upgradeMetadata(
-            capabilities.metadata,
-            this.upgradeCoordinator.snapshot(),
-            options.supervisorUpgradeHandoff !== undefined
-          )
-        })
+      if (!this.stopped) await this.initializeDesktopRuntime();
+      return this.projectRemoteDesktopCapability(
+        this.projectComputerUseCapability(
+          await this.conversationHosting.project({
+            ...capabilities,
+            metadata: upgradeMetadata(
+              capabilities.metadata,
+              this.upgradeCoordinator.snapshot(),
+              options.supervisorUpgradeHandoff !== undefined
+            )
+          })
+        )
       );
     };
     this.reconnect = options.reconnect ?? true;
@@ -1497,6 +1524,7 @@ export class NodeConnector {
         this.promptCompletion?.disconnect();
         this.usageOutbox?.disconnected();
         this.directTransferService?.close('DIRECT_TRANSFER_CONTROL_UNAVAILABLE');
+        this.relayDesktopService?.invalidate('DESKTOP_TRANSPORT_ERROR');
         this.runtimeCredentials.disconnected();
         this.chatgptLogins.close();
         this.scheduledRunAuthorization.disconnected();
@@ -1570,6 +1598,8 @@ export class NodeConnector {
       handleUpgradeCredentialResponse: (envelope) => this.upgradeCredentials.handle(envelope),
       handleDirectTransfer: (envelope) => this.handleDirectTransfer(envelope),
       handleTerminalDirect: (envelope) => this.handleTerminalDirect(envelope),
+      handleDesktopDirect: (envelope) => this.handleDesktopDirect(envelope),
+      handleDesktopRelay: (envelope) => this.handleDesktopRelay(envelope),
       runners: this.runners,
       deliverSessionChannelMessage: (envelope) => this.runnerChannelMessages.handle(envelope),
       completeUncontrolledCancellation: (runId) => {
@@ -1675,14 +1705,14 @@ export class NodeConnector {
       capabilitiesProvided: this.capabilitiesProvided,
       stopped: () => this.stopped,
       setCapabilities: (capabilities) =>
-        (this.capabilities = {
+        (this.capabilities = this.projectRemoteDesktopCapability({
           ...capabilities,
           metadata: upgradeMetadata(
             capabilities.metadata,
             this.upgradeCoordinator.snapshot(),
             options.supervisorUpgradeHandoff !== undefined
           )
-        }),
+        })),
       control: this.controlChannel,
       terminal: this.terminalChannel,
       metrics: this.metrics,
@@ -1692,6 +1722,8 @@ export class NodeConnector {
         await this.conversationHosting.initialize();
         this.capabilities = await this.conversationHosting.project(this.capabilities);
         this.computerUseEnablement.initialize();
+        if (!this.stopped) this.initializeDesktopRelay();
+        this.capabilities = this.projectRemoteDesktopCapability(this.capabilities);
       },
       onConnected: () => {
         this.runtimeCredentials.connected();
@@ -1839,6 +1871,18 @@ export class NodeConnector {
         observations: this.agentNetworkObservations
       })
     );
+    this.operationRouter.register('desktop.describe', async () => {
+      const runtime = this.desktopRuntime;
+      if (!runtime) throw new RemoteDesktopError('DESKTOP_UNAVAILABLE');
+      if (
+        runtime instanceof WindowsRemoteDesktopRuntime ||
+        runtime instanceof MacosRemoteDesktopRuntime
+      )
+        await runtime.refresh(AbortSignal.timeout(10_000));
+      const description = remoteDesktopDescriptionSchema.safeParse(runtime.describe());
+      if (!description.success) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+      return description.data;
+    });
     this.operationRouter.registerAll(this.promptCompletion.operations());
     for (const operation of CONVERSATION_TEMPLATE_OPERATIONS)
       this.operationRouter.register(operation, (data) => {
@@ -1975,9 +2019,50 @@ export class NodeConnector {
   }
 
   private projectComputerUseCapability(capabilities: NodeCapabilities): NodeCapabilities {
-    return {
+    return this.projectRemoteDesktopCapability({
       ...capabilities,
       computerUse: this.computerUseEnablement.capability()
+    });
+  }
+
+  private projectRemoteDesktopCapability(capabilities: NodeCapabilities): NodeCapabilities {
+    try {
+      if (this.desktopRuntime && (this.directTransferService || this.relayDesktopService)) {
+        this.desktopRuntime.describe();
+        const transports: Array<'DIRECT' | 'RELAY'> = [];
+        if (this.directTransferService) transports.push('DIRECT');
+        if (this.relayDesktopService) transports.push('RELAY');
+        return {
+          ...capabilities,
+          remoteDesktop: {
+            apiVersion: 1,
+            available: true,
+            nodeGeneration: this.nodeGeneration,
+            backend:
+              this.desktopRuntime instanceof WindowsRemoteDesktopRuntime
+                ? 'ULTRAVNC'
+                : this.desktopRuntime instanceof MacosRemoteDesktopRuntime
+                  ? 'MACVNC'
+                  : 'TIGERVNC_X0',
+            supportsView: true,
+            supportsControl: true,
+            supportsMultiDisplay: !(this.desktopRuntime instanceof MacosRemoteDesktopRuntime),
+            supportsUnicodePaste: !(this.desktopRuntime instanceof MacosRemoteDesktopRuntime),
+            transports
+          }
+        };
+      }
+    } catch {
+      // A temporarily unavailable topology is not a usable desktop.
+    }
+    return {
+      ...capabilities,
+      remoteDesktop: {
+        apiVersion: 1,
+        available: false,
+        nodeGeneration: this.nodeGeneration,
+        reasonCode: 'DESKTOP_UNAVAILABLE'
+      }
     };
   }
 
@@ -1986,6 +2071,11 @@ export class NodeConnector {
   }
 
   private async startResources(): Promise<void> {
+    if (this.nodeGenerationRetired) {
+      this.nodeGeneration = crypto.randomUUID().replace(/-/g, '');
+      this.nodeGenerationRetired = false;
+    }
+    this.capabilities = this.projectRemoteDesktopCapability(this.capabilities);
     this.workspaceSessionService.resume();
     this.continuousRunCoordinator.resumeScheduling();
     this.sessionMessageService.setAccepting(true);
@@ -2017,17 +2107,140 @@ export class NodeConnector {
     await this.conversationHosting.initialize();
     this.capabilities = await this.conversationHosting.project(this.capabilities);
     this.computerUseEnablement.initialize();
+    await this.initializeDesktopRuntime();
     this.directTransferService ??= await this.createDirectTransferService();
+    this.initializeDesktopRelay();
+    this.capabilities = this.projectRemoteDesktopCapability(this.capabilities);
     await this.terminalManager.warmup();
     this.connectionLifecycle.start();
     this.controlChannel.connect();
   }
 
+  /** Discover the current process's existing GUI using only packaged native resources. */
+  private initializeDesktopRuntime(): Promise<void> {
+    if (this.desktopDiscovery) return this.desktopDiscovery;
+    const epoch = this.desktopDiscoveryEpoch;
+    const cancel = new AbortController();
+    this.desktopDiscoveryAbort = cancel;
+    const discovery = this.discoverDesktopRuntime(epoch, cancel.signal).finally(() => {
+      if (this.desktopDiscovery === discovery) this.desktopDiscovery = undefined;
+      if (this.desktopDiscoveryAbort === cancel) this.desktopDiscoveryAbort = undefined;
+    });
+    this.desktopDiscovery = discovery;
+    return discovery;
+  }
+
+  private async discoverDesktopRuntime(epoch: number, signal: AbortSignal): Promise<void> {
+    const display = process.env.DISPLAY;
+    const cancelled = () => signal.aborted || this.stopped || epoch !== this.desktopDiscoveryEpoch;
+    if (
+      cancelled() ||
+      (process.platform !== 'linux' &&
+        process.platform !== 'win32' &&
+        process.platform !== 'darwin')
+    )
+      return;
+    if (process.platform === 'linux' && !display) return;
+    try {
+      const previous = this.desktopRuntime;
+      if (previous) {
+        try {
+          if (
+            previous instanceof WindowsRemoteDesktopRuntime ||
+            previous instanceof MacosRemoteDesktopRuntime
+          )
+            await previous.refresh(signal);
+          previous.describe();
+          return;
+        } catch {
+          // Keep ownership on cleanup failure; a later refresh can retry disposal.
+          await previous.dispose();
+          if (this.desktopRuntime === previous) this.desktopRuntime = undefined;
+        }
+      }
+      if (cancelled()) return;
+      const binaries =
+        process.platform === 'win32'
+          ? await windowsManagedDesktopBinaries()
+          : process.platform === 'darwin'
+            ? await macosManagedDesktopBinaries()
+            : await linuxManagedDesktopBinaries();
+      if (!binaries || cancelled()) return;
+      const starting = (async () => {
+        let runtime:
+          X11RemoteDesktopRuntime | WindowsRemoteDesktopRuntime | MacosRemoteDesktopRuntime;
+        try {
+          const fence = (code: string) => {
+            this.directTransferService?.invalidateDesktop(code);
+            this.relayDesktopService?.invalidate(code);
+          };
+          const deadline = AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
+          runtime =
+            process.platform === 'win32'
+              ? await WindowsRemoteDesktopRuntime.start(
+                  { binaryPath: binaries.binaryPath, maxPixels: 67_108_864, fence },
+                  deadline
+                )
+              : process.platform === 'darwin'
+                ? await MacosRemoteDesktopRuntime.start(
+                    {
+                      binaryPath: binaries.binaryPath,
+                      topologyBinary:
+                        'topologyBinary' in binaries && typeof binaries.topologyBinary === 'string'
+                          ? binaries.topologyBinary
+                          : '',
+                      maxPixels: 67_108_864,
+                      fence
+                    },
+                    deadline
+                  )
+                : await X11RemoteDesktopRuntime.start(
+                    {
+                      ...binaries,
+                      topologyBinary:
+                        'topologyBinary' in binaries && typeof binaries.topologyBinary === 'string'
+                          ? binaries.topologyBinary
+                          : '',
+                      display: display!,
+                      xAuthority: resolve(
+                        process.env.XAUTHORITY || resolve(homedir(), '.Xauthority')
+                      ),
+                      maxPixels: 67_108_864,
+                      fence
+                    },
+                    deadline
+                  );
+        } catch (error) {
+          if (cancelled()) return;
+          throw error;
+        }
+        if (cancelled() || this.desktopRuntime) await runtime.dispose();
+        else this.desktopRuntime = runtime;
+      })();
+      this.desktopStarting = starting;
+      try {
+        await starting;
+      } finally {
+        if (this.desktopStarting === starting) this.desktopStarting = undefined;
+      }
+    } catch {
+      // No accessible existing GUI or managed backend: advertise unavailable.
+    }
+  }
+
   private async createDirectTransferService(): Promise<DirectTransferService | undefined> {
+    const nodeGeneration = this.nodeGeneration;
     try {
       return await DirectTransferService.create({
-        nodeGeneration: () => this.nodeGeneration,
+        nodeGeneration: () => nodeGeneration,
         send: (type, payload) => this.send(type, payload),
+        desktop: {
+          registry: this.desktopAttachmentRegistry,
+          isCurrent: (command) => this.isCurrentDesktop(command, nodeGeneration),
+          createAttachment: (command, stream, callbacks) =>
+            this.createDesktopAttachment(command, stream, callbacks, nodeGeneration),
+          emit: (event) => this.emitDesktopEvent(event, nodeGeneration)
+        },
         terminalManager: this.terminalManager,
         sendTerminalReady: (directSessionId, phase) =>
           this.send('terminal.direct.ready', { directSessionId, ...(phase ? { phase } : {}) }),
@@ -2070,6 +2283,71 @@ export class NodeConnector {
     }
   }
 
+  /** Owns both path adapters; a real runtime and capability must independently permit admission. */
+  private initializeDesktopRelay(): void {
+    const config = this.config;
+    if (this.relayDesktopService || !config?.nodeId || !config.credential || this.stopped) return;
+    const nodeId = config.nodeId;
+    const nodeGeneration = this.nodeGeneration;
+    this.relayDesktopService = new RelayDesktopService({
+      registry: this.desktopAttachmentRegistry,
+      nodeId,
+      nodeGeneration: () => nodeGeneration,
+      connect: () =>
+        new WebSocket(nodeDesktopRelayEndpoint(config.serverUrl), {
+          maxPayload: 16_384,
+          perMessageDeflate: false
+        }),
+      credential: () => {
+        if (
+          this.config?.nodeId !== nodeId ||
+          this.config.serverUrl !== config.serverUrl ||
+          this.config.credential !== config.credential
+        )
+          throw new RemoteDesktopError('DESKTOP_UNAVAILABLE');
+        return config.credential!;
+      },
+      isCurrent: (command) =>
+        this.config?.nodeId === nodeId &&
+        this.config.serverUrl === config.serverUrl &&
+        this.config.credential === config.credential &&
+        this.isCurrentDesktop(command, nodeGeneration),
+      createAttachment: (command, stream, callbacks) =>
+        this.createDesktopAttachment(command, stream, callbacks, nodeGeneration),
+      emit: (event) => this.emitDesktopEvent(event, nodeGeneration)
+    });
+  }
+
+  private isCurrentDesktop(command: DesktopPrepare, nodeGeneration: string): boolean {
+    return (
+      !this.stopped &&
+      this.nodeGeneration === nodeGeneration &&
+      command.nodeGeneration === nodeGeneration &&
+      this.capabilities.remoteDesktop?.available === true &&
+      this.capabilities.remoteDesktop.nodeGeneration === nodeGeneration &&
+      this.controlChannel.connected() &&
+      this.desktopRuntime?.isCurrent(command) === true
+    );
+  }
+
+  private createDesktopAttachment(
+    command: DesktopPrepare,
+    stream: Parameters<X11RemoteDesktopRuntime['createAttachment']>[1],
+    callbacks: Parameters<X11RemoteDesktopRuntime['createAttachment']>[2],
+    nodeGeneration: string
+  ): ReturnType<X11RemoteDesktopRuntime['createAttachment']> {
+    const runtime = this.desktopRuntime;
+    if (!runtime || !this.isCurrentDesktop(command, nodeGeneration))
+      throw new RemoteDesktopError('DESKTOP_UNAVAILABLE');
+    return runtime.createAttachment(command, stream, callbacks);
+  }
+
+  private emitDesktopEvent(event: { readonly type: string }, nodeGeneration: string): boolean {
+    if (this.nodeGeneration !== nodeGeneration || !this.controlChannel.connected()) return false;
+    this.send(event.type, event);
+    return true;
+  }
+
   private handleDirectTransfer(envelope: NodeEnvelope): boolean {
     const command = {
       type: envelope.type,
@@ -2095,11 +2373,35 @@ export class NodeConnector {
     return this.directTransferService?.handleTerminal(command) ?? false;
   }
 
+  private handleDesktopDirect(envelope: NodeEnvelope): boolean {
+    const command = {
+      ...(typeof envelope.payload === 'object' && envelope.payload !== null
+        ? envelope.payload
+        : {}),
+      type: envelope.type
+    };
+    return this.directTransferService?.handleDesktop(command) ?? false;
+  }
+
+  private handleDesktopRelay(envelope: NodeEnvelope): boolean {
+    const command = {
+      ...(typeof envelope.payload === 'object' && envelope.payload !== null
+        ? envelope.payload
+        : {}),
+      type: envelope.type
+    };
+    return this.relayDesktopService?.handle(command) ?? false;
+  }
+
   stop(options: { readonly handoff?: boolean } = {}): Promise<void> {
+    this.desktopDiscoveryEpoch++;
+    this.desktopDiscoveryAbort?.abort();
     return this.lifecycle.stop(options.handoff === true);
   }
 
   private disposeRuntime(): Promise<void> {
+    this.nodeGenerationRetired = true;
+    this.controlChannel.muteInbound();
     // Earlier shutdown stages may fail; disposal must still join internal reads before DB release.
     const workspaceSessionDrain = this.workspaceSessionService.stop();
     this.recentRunProjectionService.dispose();
@@ -2141,9 +2443,20 @@ export class NodeConnector {
     this.upgradeCredentials.disconnect();
     const notificationMcpDrain = this.notificationMcpBridge.close();
     const webToolDrain = this.webToolService.close();
-    this.directTransferService?.dispose();
+    const desktopShutdown = AbortSignal.timeout(10_000);
+    const directDrain = this.directTransferService?.shutdown(desktopShutdown);
+    const relayDrain = this.relayDesktopService?.shutdown(desktopShutdown);
+    const desktopRuntime = this.desktopRuntime;
     this.directTransferService = undefined;
-    this.controlChannel.stop();
+    this.relayDesktopService = undefined;
+    this.desktopRuntime = undefined;
+    const controlDrain = Promise.allSettled([directDrain, relayDrain, this.desktopStarting])
+      .then(async (results) => {
+        const runtime = await Promise.allSettled([desktopRuntime?.dispose()]);
+        const failure = [...results, ...runtime].find((result) => result.status === 'rejected');
+        if (failure) throw failure.reason;
+      })
+      .finally(() => this.controlChannel.stop());
     const database = this.database;
     const drains = Promise.allSettled([
       workspaceSessionDrain,
@@ -2155,7 +2468,8 @@ export class NodeConnector {
       goalMcpDrain,
       scheduleMcpDrain,
       notificationMcpDrain,
-      webToolDrain
+      webToolDrain,
+      controlDrain
     ]);
     return (async () => {
       const hosting = await Promise.allSettled([conversationHostingDrain]);

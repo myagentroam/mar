@@ -1,0 +1,4 @@
+jpeg-turbo 3.2.1
+libpng 1.6.59
+libvncserver 0.9.15_1
+openssl@4 4.1.0

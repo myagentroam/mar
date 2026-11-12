@@ -21,6 +21,7 @@ interface NodeControlChannelOptions {
 
 export class NodeControlChannel {
   private socket: WebSocket | undefined;
+  private inboundMuted = false;
   private authenticated = false;
   private preauthFrames = 0;
   private preauthBytes = 0;
@@ -44,6 +45,7 @@ export class NodeControlChannel {
     )
       return;
     this.options.onConnecting(this.attempts);
+    this.inboundMuted = false;
     const socket = new WebSocket(nodeConnectEndpoint(config.serverUrl));
     this.socket = socket;
     socket.once('open', () => {
@@ -66,7 +68,7 @@ export class NodeControlChannel {
       else socket.close(4000, 'NODE_CREDENTIAL_MISSING');
     });
     socket.on('message', (raw) => {
-      if (this.socket === socket) this.options.onMessage(raw.toString());
+      if (this.socket === socket && !this.inboundMuted) this.options.onMessage(raw.toString());
     });
     socket.once('close', (code, reason) => {
       if (this.socket !== socket) return;
@@ -84,6 +86,10 @@ export class NodeControlChannel {
 
   connected(): boolean {
     return this.authenticated && this.socket?.readyState === WebSocket.OPEN;
+  }
+  /** Stop admitting new work while allowing final owned cleanup events to be sent. */
+  muteInbound(): void {
+    this.inboundMuted = true;
   }
   connection(): object | undefined {
     return this.socket;

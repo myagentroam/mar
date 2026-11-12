@@ -301,6 +301,68 @@ describe('public Node identity connection lifecycle', () => {
     }
   });
 
+  it('projects only valid Remote Desktop capability from Node metadata', async () => {
+    const { control, store, attach } = fixture();
+    const remoteDesktop = {
+      apiVersion: 1,
+      available: false,
+      nodeGeneration: 'generation-123',
+      reasonCode: 'DESKTOP_UNAVAILABLE'
+    };
+    try {
+      const socket = attach();
+      socket.receive('authenticate', { nodeId: 'node-1', credential: 'fixture' });
+      await vi.waitFor(() => expect(control.isNodeConnected('node-1')).toBe(true));
+      socket.receive('capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: 'v24.15.0',
+        nodeAppVersion: '0.11.39',
+        codex: { available: false },
+        claudeCode: { available: false },
+        remoteDesktop
+      });
+      await vi.waitFor(() => expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(2));
+      const metadata = store.updateNodeHeartbeat.mock.calls[1]![1]!.metadata;
+      const node = { ...(await store.authenticateNode()), metadata, connected: true };
+      expect(publicNode(node).capabilities.remoteDesktop).toEqual(remoteDesktop);
+      expect(
+        publicNode({
+          ...node,
+          metadata: JSON.stringify({ remoteDesktop: { ...remoteDesktop, available: true } })
+        }).capabilities.remoteDesktop
+      ).toBeUndefined();
+      const available = {
+        apiVersion: 1,
+        available: true,
+        nodeGeneration: 'generation-123',
+        backend: 'TIGERVNC_X0',
+        supportsView: true,
+        supportsControl: true,
+        supportsMultiDisplay: true,
+        supportsUnicodePaste: true,
+        transports: ['DIRECT', 'RELAY'],
+
+      };
+      socket.receive('capabilities', {
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: 'v24.15.0',
+        nodeAppVersion: '0.11.39',
+        codex: { available: false },
+        claudeCode: { available: false },
+        remoteDesktop: available
+      });
+      await vi.waitFor(() => expect(store.updateNodeHeartbeat).toHaveBeenCalledTimes(3));
+      const updated = store.updateNodeHeartbeat.mock.calls[2]![1]!.metadata;
+      expect(publicNode({ ...node, metadata: updated }).capabilities.remoteDesktop).toEqual(
+        available
+      );
+    } finally {
+      control.close();
+    }
+  });
+
   it('persists and projects the local ChatGPT login capability across reconnection', async () => {
     const { control, store, attach } = fixture();
     const chatgptLogin = { apiVersion: 1, loopback: true };

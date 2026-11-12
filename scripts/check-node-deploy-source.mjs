@@ -1,4 +1,5 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, realpath } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -14,9 +15,9 @@ async function files(directory, prefix = '') {
   return result.sort();
 }
 
-async function sameFiles(source, deployed, include = () => true) {
+async function sameFiles(source, deployed, include = () => true, filterDeployed = true) {
   const original = (await files(source)).filter(include);
-  const actual = (await files(deployed)).filter(include);
+  const actual = (await files(deployed)).filter(filterDeployed ? include : () => true);
   if (JSON.stringify(original) !== JSON.stringify(actual) || original.length === 0)
     throw new Error(`NODE_DEPLOY_FILES_MISMATCH: ${source}`);
   for (const path of original)
@@ -40,8 +41,29 @@ export async function checkNodeDeploySource(source, deployed) {
       throw new Error(`NODE_DEPLOY_VERSION_MISMATCH: ${name}`);
     await sameFiles(
       resolve(original, name === 'binaries' ? 'vendor' : 'dist'),
-      resolve(actual, name === 'binaries' ? 'vendor' : 'dist')
+      resolve(actual, name === 'binaries' ? 'vendor' : 'dist'),
+      name === 'binaries'
+        ? (path) =>
+            !/^(?:ripgrep|ctags|tigervnc|ultravnc|macvnc)\/(?:linux|darwin|win32)-(?:x64|arm64)\//u.test(
+              path
+            )
+        : undefined,
+      name !== 'binaries'
     );
+    if (name === 'binaries') {
+      const target = `${process.platform}-${process.arch}`;
+      const packageName = `@myagentroam/binaries-${target}`;
+      const installed = createRequire(await realpath(resolve(actual, 'package.json'))).resolve(
+        `${packageName}/package.json`
+      );
+      const originalTarget = resolve(source, 'packages', `binaries-${target}`);
+      if (
+        (await json(resolve(originalTarget, 'package.json'))).version !==
+        (await json(installed)).version
+      )
+        throw new Error(`NODE_DEPLOY_VERSION_MISMATCH: ${packageName}`);
+      await sameFiles(resolve(originalTarget, 'vendor'), resolve(installed, '../vendor'));
+    }
   }
   await sameFiles(
     resolve(source, 'packages/code-navigation/dist'),

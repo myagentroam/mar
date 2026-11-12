@@ -6,6 +6,7 @@ export const iconShapes = {
   'chevrons-right': '<path d="m5 6 6 6-6 6m8-12 6 6-6 6" />',
   workspace:
     '<rect x="3.5" y="4" width="17" height="12.5" rx="2.5"/><path d="m7 8 2.75 2.25L7 12.5m5.5 0h4M12 16.5v4M8 20.5h8"/>',
+  desktop: '<rect x="3.5" y="4" width="17" height="12.5" rx="2.5"/><path d="M12 16.5v4M8 20.5h8"/>',
   node: '<rect x="3" y="4" width="18" height="6.5" rx="2.25"/><rect x="3" y="13.5" width="18" height="6.5" rx="2.25"/><path d="M7 7.25h5m-5 9.5h5"/><circle cx="16.5" cy="7.25" r=".65" fill="currentColor" stroke="none"/><circle cx="16.5" cy="16.75" r=".65" fill="currentColor" stroke="none"/>',
   conversation:
     '<path d="M9 4h6a6 6 0 0 1 6 6v3a6 6 0 0 1-6 6H9l-5 2v-5.5A6 6 0 0 1 3 12v-2a6 6 0 0 1 6-6Z" /><circle cx="8" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="16" cy="11.5" r="0.9" fill="currentColor" stroke="none"/>',

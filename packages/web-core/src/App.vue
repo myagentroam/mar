@@ -19,6 +19,9 @@ import SharedTooltipHost from './view/common/SharedTooltipHost.vue';
 const SessionSharePage = defineAsyncComponent(
   () => import('./view/conversation/SessionSharePage.vue')
 );
+const RemoteDesktopPage = defineAsyncComponent(
+  () => import('./view/remote-desktop/RemoteDesktopPage.vue')
+);
 
 const props = defineProps<{
   readonly documentationAvailable?: boolean;
@@ -29,6 +32,9 @@ const props = defineProps<{
 provide(DOCUMENTATION_AVAILABLE_KEY, props.documentationAvailable ?? true);
 
 const query = new URLSearchParams(location.search);
+const remoteDesktopNode = query.get('remoteDesktop') === '1' ? query.get('nodeId') : null;
+const standaloneDesktop =
+  remoteDesktopNode !== null && remoteDesktopNode.length > 0 && remoteDesktopNode.length <= 512;
 const shareId = /^[/]share[/]([A-Za-z0-9_-]{1,128})$/u.exec(location.pathname)?.[1];
 const renderedFilePreview =
   query.get('markdownPreview') === '1' || query.get('htmlPreview') === '1';
@@ -45,6 +51,7 @@ function revealApplication(): void {
 }
 
 function preventBrowserContextMenu(event: MouseEvent): void {
+  if (standaloneDesktop) return;
   if (standaloneFilePreview && renderedFilePreview) return;
   const pointerType = (event as PointerEvent).pointerType;
   if (pointerType === 'touch' || window.matchMedia('(hover: none) and (pointer: coarse)').matches)
@@ -69,7 +76,8 @@ onMounted(() => {
       `/console${location.search}${location.hash}`
     );
   document.addEventListener('contextmenu', preventBrowserContextMenu);
-  document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
+  if (!standaloneDesktop)
+    document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
 onBeforeUnmount(() => {
   clearMessages();
@@ -83,6 +91,7 @@ onBeforeUnmount(() => {
     <el-config-provider :locale="elementLocale" :table="{ tooltipOptions: tableTooltipOptions }">
       <SharedTooltipHost />
       <SessionSharePage v-if="shareId" :share-id="shareId" />
+      <RemoteDesktopPage v-else-if="standaloneDesktop" :node-id="remoteDesktopNode!" />
       <component :is="filePreview" v-else-if="standaloneFilePreview" />
       <component :is="workbench" v-else />
     </el-config-provider>

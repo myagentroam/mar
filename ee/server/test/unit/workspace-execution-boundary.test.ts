@@ -18,6 +18,25 @@ import { ResourceAccessService } from '../../src/rbac/resource-access-service.js
 import { NodeRequestBroker } from '../../src/service/node-request-broker.js';
 
 describe('Workspace execution boundary across Server and Node', () => {
+  it('requires Node use for desktop discovery even with a usable Workspace context', async () => {
+    const access = new ResourceAccessService(
+      {
+        raw: {
+          execute: async (sql: string) => {
+            const owner = sql.includes('FROM nodes') ? 8 : sql.includes('FROM workspaces') ? 7 : 0;
+            if (!owner) throw new Error('UNEXPECTED_QUERY');
+            return [[{ owner_type: 'PERSONAL', owner_user_id: owner }], []];
+          }
+        }
+      } as never,
+      { authorize: async (userId: number) => ({ allowed: userId === 8 }) } as never
+    );
+    expect(await access.canUseWorkspace(7, 'node-a', 'workspace-a')).toBe(true);
+    expect(await access.canRelay(7, 'node-a', 'desktop.describe', {}, 'workspace-a')).toBe(false);
+    expect(await access.canRelay(7, 'node-a', 'desktop.describe', {})).toBe(false);
+    expect(await access.canRelay(8, 'node-a', 'desktop.describe', {}, 'workspace-a')).toBe(true);
+  });
+
   it('preserves personal Workspace authorization while rejecting a foreign execution directory', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-workspace-boundary-'));
     const a = join(root, 'a');

@@ -20,6 +20,8 @@ interface NodeControlMessageServiceOptions {
   readonly handleUpgradeCredentialResponse?: (envelope: NodeEnvelope) => boolean;
   readonly handleDirectTransfer?: (envelope: NodeEnvelope) => boolean;
   readonly handleTerminalDirect?: (envelope: NodeEnvelope) => boolean;
+  readonly handleDesktopDirect?: (envelope: NodeEnvelope) => boolean;
+  readonly handleDesktopRelay?: (envelope: NodeEnvelope) => boolean;
   readonly runners: RunnerRegistry;
   readonly deliverSessionChannelMessage: (envelope: NodeEnvelope) => void;
   readonly completeUncontrolledCancellation: (runId: string) => void;
@@ -76,6 +78,21 @@ export class NodeControlMessageService {
     if (
       envelope.type.startsWith('terminal.direct.') &&
       this.options.handleTerminalDirect?.(envelope) === true
+    )
+      return;
+    if (envelope.type === 'desktop.ready') {
+      if (this.options.handleDesktopDirect?.(envelope) !== true)
+        this.options.handleDesktopRelay?.(envelope);
+      return;
+    }
+    if (
+      envelope.type.startsWith('desktop.direct.') &&
+      this.options.handleDesktopDirect?.(envelope) === true
+    )
+      return;
+    if (
+      envelope.type.startsWith('desktop.relay.') &&
+      this.options.handleDesktopRelay?.(envelope) === true
     )
       return;
     if (envelope.type === 'usage.ack') {

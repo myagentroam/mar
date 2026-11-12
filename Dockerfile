@@ -10,6 +10,7 @@ RUN corepack enable \
   && corepack install --global pnpm@11.21.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY patches patches
 COPY packages/protocol/package.json packages/protocol/package.json
 COPY packages/code-navigation/package.json packages/code-navigation/package.json
 COPY packages/server-core/package.json packages/server-core/package.json

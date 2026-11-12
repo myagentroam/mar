@@ -118,7 +118,7 @@ const detailsNode = computed<NodeDetailsData | undefined>(() => {
     metadata: row.metadata,
     connected: row.connected,
     disabled: row.disabled,
-    manageable: true,
+    manageable: props.writable && row.manageable !== false,
     secretManageable: true,
     capabilities: row.capabilities
   };

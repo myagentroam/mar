@@ -263,7 +263,12 @@ const emit = defineEmits<{
 
 function nodeCommand(node: NodeSummary, command: string): void {
   if (command === 'details') emit('openNodeDetails', node);
-  else if (command === 'add') emit('addWorkspace', node.id);
+  else if (command === 'desktop' && node.usable && node.capabilities.remoteDesktop?.available) {
+    const url = new URL('/console', window.location.origin);
+    url.searchParams.set('remoteDesktop', '1');
+    url.searchParams.set('nodeId', node.id);
+    window.open(url.href, '_blank', 'noopener');
+  } else if (command === 'add') emit('addWorkspace', node.id);
   else if (command === 'refresh') emit('refreshNodeWorkspaces', node.id);
   else if (!filterActive.value && (command === 'up' || command === 'down'))
     emit(
@@ -530,6 +535,17 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                 <el-dropdown-item command="details" :icon="marIcon('view')">{{
                   translate('generated.workspaceTree.nodeDetails')
                 }}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="result.node.usable && result.node.capabilities.remoteDesktop"
+                  command="desktop"
+                  :icon="marIcon('desktop')"
+                  :disabled="
+                    !result.node.connected ||
+                    result.node.disabled ||
+                    !result.node.capabilities.remoteDesktop.available
+                  "
+                  >{{ translate('remoteDesktop.title') }}</el-dropdown-item
+                >
                 <el-dropdown-item
                   command="up"
                   :icon="marIcon('chevron-up')"

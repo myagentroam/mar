@@ -1,0 +1,39 @@
+{
+  "name": "@myagentroam/binaries-darwin-arm64",
+  "version": "0.10.3",
+  "description": "Managed native resources for MyAgentRoam (darwin-arm64).",
+  "license": "(MIT OR Unlicense) AND GPL-2.0-or-later AND Apache-2.0",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "vendor",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "executableFiles": [
+      "vendor/ctags/darwin-arm64/ctags",
+      "vendor/macvnc/darwin-arm64/lib/libcrypto.4.dylib",
+      "vendor/macvnc/darwin-arm64/lib/libjpeg.8.dylib",
+      "vendor/macvnc/darwin-arm64/lib/libpng16.16.dylib",
+      "vendor/macvnc/darwin-arm64/lib/libssl.4.dylib",
+      "vendor/macvnc/darwin-arm64/lib/libvncserver.1.dylib",
+      "vendor/macvnc/darwin-arm64/macVNC",
+      "vendor/macvnc/darwin-arm64/macos-topology",
+      "vendor/ripgrep/darwin-arm64/rg"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "packages/binaries-darwin-arm64"
+  }
+}

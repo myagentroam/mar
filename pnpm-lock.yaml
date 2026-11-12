@@ -5,6 +5,17 @@ settings:
   excludeLinksFromLockfile: false
   injectWorkspacePackages: true
 
+overrides:
+  '@myagentroam/binaries-linux-x64': workspace:0.10.3
+  '@myagentroam/binaries-linux-arm64': workspace:0.10.3
+  '@myagentroam/binaries-darwin-x64': workspace:0.10.3
+  '@myagentroam/binaries-darwin-arm64': workspace:0.10.3
+  '@myagentroam/binaries-win32-x64': workspace:0.10.3
+  '@myagentroam/binaries-win32-arm64': workspace:0.10.3
+
+patchedDependencies:
+  '@novnc/novnc@1.7.0': 522818af4ffec14cfb0ebd1e291597a69e92aa1738e7479dda87b62849c9eef9
+
 importers:
   .:
     devDependencies:
@@ -168,7 +179,7 @@ importers:
         specifier: workspace:*
         version: link:../mar-agent
       '@myagentroam/binaries':
-        specifier: workspace:0.10.2
+        specifier: workspace:0.10.3
         version: link:../packages/binaries
       '@myagentroam/protocol':
         specifier: workspace:*
@@ -270,7 +281,38 @@ importers:
         specifier: 8.21.3
         version: 8.21.3
 
-  packages/binaries: {}
+  packages/binaries:
+    optionalDependencies:
+      '@myagentroam/binaries-darwin-arm64':
+        specifier: workspace:0.10.3
+        version: link:../binaries-darwin-arm64
+      '@myagentroam/binaries-darwin-x64':
+        specifier: workspace:0.10.3
+        version: link:../binaries-darwin-x64
+      '@myagentroam/binaries-linux-arm64':
+        specifier: workspace:0.10.3
+        version: link:../binaries-linux-arm64
+      '@myagentroam/binaries-linux-x64':
+        specifier: workspace:0.10.3
+        version: link:../binaries-linux-x64
+      '@myagentroam/binaries-win32-arm64':
+        specifier: workspace:0.10.3
+        version: link:../binaries-win32-arm64
+      '@myagentroam/binaries-win32-x64':
+        specifier: workspace:0.10.3
+        version: link:../binaries-win32-x64
+
+  packages/binaries-darwin-arm64: {}
+
+  packages/binaries-darwin-x64: {}
+
+  packages/binaries-linux-arm64: {}
+
+  packages/binaries-linux-x64: {}
+
+  packages/binaries-win32-arm64: {}
+
+  packages/binaries-win32-x64: {}
 
   packages/code-navigation: {}
 
@@ -364,6 +406,9 @@ importers:
       '@myagentroam/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@novnc/novnc':
+        specifier: 1.7.0
+        version: 1.7.0(patch_hash=522818af4ffec14cfb0ebd1e291597a69e92aa1738e7479dda87b62849c9eef9)
       '@vue-office/docx':
         specifier: 1.6.3
         version: 1.6.3(vue-demi@0.14.10(vue@3.5.41(typescript@5.9.3)))(vue@3.5.41(typescript@5.9.3))
@@ -2997,6 +3042,12 @@ packages:
       }
     cpu: [x64]
     os: [win32]
+
+  '@novnc/novnc@1.7.0':
+    resolution:
+      {
+        integrity: sha512-ucEJOx4T2avIRCleodk7YobZj5O2Ga2AeLfQ69A/yjG9HHba2+PDgwSkN3FttrmG+70ZGx21sElNFouK13RzyA==
+      }
 
   '@opencode-ai/sdk@1.18.20':
     resolution:
@@ -10277,6 +10328,9 @@ snapshots:
 
   '@node-datachannel/win32-x64-msvc@0.33.4':
     optional: true
+
+  '@novnc/novnc@1.7.0(patch_hash=522818af4ffec14cfb0ebd1e291597a69e92aa1738e7479dda87b62849c9eef9)':
+    {}
 
   '@opencode-ai/sdk@1.18.20':
     dependencies:

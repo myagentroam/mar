@@ -10,6 +10,10 @@ import {
 import type { TerminalManager } from '../terminal.js';
 import { TerminalDirectService } from '../service/terminal-direct-service.js';
 import {
+  DirectDesktopService,
+  type DirectDesktopOptions
+} from '../remote-desktop/direct-desktop-service.js';
+import {
   IceUdpMuxListener as NativeIceUdpMuxListener,
   type IceUdpMuxListener
 } from 'node-datachannel';
@@ -41,6 +45,7 @@ export interface DirectTransferServiceOptions {
   readonly probeUdp4Port?: (port: number) => Promise<void>;
   readonly terminalManager?: TerminalManager;
   readonly sendTerminalReady?: (directSessionId: string, phase?: 'ATTACHED') => void;
+  readonly desktop?: Omit<DirectDesktopOptions, 'peer' | 'now' | 'nodeGeneration'>;
 }
 
 interface NodeRtcConfiguration extends RTCConfiguration {
@@ -60,6 +65,7 @@ interface ActiveTransport {
   readonly command: TransportCommand;
   readonly peer: RTCPeerConnection;
   readonly sentCandidateKeys: Set<string>;
+  readonly pendingChannels: Set<RTCDataChannel>;
   lastLeaseAliveAt: number;
   leaseExpiresAt: number;
   leaseTimer: ReturnType<typeof setInterval>;
@@ -100,6 +106,7 @@ export class DirectTransferService {
   private readonly leaseGraceMs: number;
   private readonly leaseCheckMs: number;
   private readonly terminalDirect?: TerminalDirectService;
+  private readonly desktopDirect?: DirectDesktopService;
   private disposed = false;
 
   static async create(options: DirectTransferServiceOptions): Promise<DirectTransferService> {
@@ -156,6 +163,26 @@ export class DirectTransferService {
         },
         this.now
       );
+    if (options.desktop) {
+      this.desktopDirect = new DirectDesktopService({
+        ...options.desktop,
+        nodeGeneration: options.nodeGeneration,
+        peer: (command) => {
+          const transport = this.transports.get(command.transportSessionId);
+          const peer = transport?.peer;
+          return peer &&
+            transport.command.workbenchConnectionId === command.workbenchConnectionId &&
+            transport.command.nodeGeneration === command.nodeGeneration &&
+            command.nodeGeneration === options.nodeGeneration() &&
+            peer.connectionState === 'connected' &&
+            command.browserFingerprint === fingerprint(peer.remoteDescription?.sdp) &&
+            command.nodeFingerprint === fingerprint(peer.localDescription?.sdp)
+            ? peer
+            : undefined;
+        },
+        ...(options.now ? { now: options.now } : {})
+      });
+    }
   }
 
   handle(value: unknown): boolean {
@@ -179,7 +206,29 @@ export class DirectTransferService {
     return this.terminalDirect?.handle(value, (id) => this.transports.get(id)?.peer) ?? false;
   }
 
+  handleDesktop(value: unknown): boolean {
+    return this.desktopDirect?.handle(value) ?? false;
+  }
+
+  invalidateDesktop(code: string): void {
+    this.desktopDirect?.invalidate(code);
+  }
+
+  /** Pause only Remote Desktop; the RTC transport remains owned by Direct Transfer. */
+  suspendDesktop(signal: AbortSignal): Promise<void> {
+    return this.desktopDirect?.suspend(signal) ?? Promise.resolve();
+  }
+
+  canResumeDesktop(): boolean {
+    return this.desktopDirect?.canResume() ?? true;
+  }
+
+  resumeDesktop(): boolean {
+    return this.desktopDirect?.resume() ?? true;
+  }
+
   close(code = 'DIRECT_NODE_STOPPED'): void {
+    this.desktopDirect?.invalidate('DESKTOP_TRANSPORT_ERROR');
     this.terminalDirect?.close();
     for (const transfer of [...this.transfers.values()]) void this.removeTransfer(transfer, code);
     for (const transport of [...this.transports.values()]) this.removeTransport(transport, code);
@@ -188,9 +237,17 @@ export class DirectTransferService {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Preserve the shutdown reason before closing the shared RTC transport.
+    this.desktopDirect?.dispose();
     this.close();
     this.terminalDirect?.dispose();
     this.iceUdpMuxListener.stop();
+  }
+
+  /** Stop transport admission immediately, then join Remote-owned native cleanup. */
+  shutdown(signal: AbortSignal): Promise<void> {
+    this.dispose();
+    return this.desktopDirect?.shutdown(signal) ?? Promise.resolve();
   }
 
   private async dispatch(command: DirectNodeCommand): Promise<void> {
@@ -251,6 +308,7 @@ export class DirectTransferService {
       command,
       peer,
       sentCandidateKeys: new Set<string>(),
+      pendingChannels: new Set<RTCDataChannel>(),
       lastLeaseAliveAt: this.now(),
       leaseExpiresAt: command.expiresAt,
       leaseTimer: undefined as unknown as ReturnType<typeof setInterval>
@@ -390,11 +448,20 @@ export class DirectTransferService {
   }
 
   private attachPendingChannel(transport: ActiveTransport, channel: RTCDataChannel): void {
+    if (this.transports.get(transport.command.directSessionId) !== transport) {
+      channel.close();
+      return;
+    }
+    transport.pendingChannels.add(channel);
+    channel.addEventListener('close', () => transport.pendingChannels.delete(channel), {
+      once: true
+    });
     channel.binaryType = 'arraybuffer';
     let attached = false;
     channel.onmessage = (event) => {
       if (attached) return;
       attached = true;
+      transport.pendingChannels.delete(channel);
       if (channel.label.startsWith('mar-terminal-')) {
         this.terminalDirect?.open(transport.command.directSessionId, channel, event.data);
         if (this.terminalDirect === undefined) channel.close();
@@ -587,9 +654,12 @@ export class DirectTransferService {
     if (!this.transports.delete(transport.command.directSessionId)) return;
     clearInterval(transport.leaseTimer);
     this.terminalDirect?.removeTransport(transport.command.directSessionId);
+    this.desktopDirect?.removeTransport(transport.command.directSessionId);
     for (const transfer of [...this.transfers.values()])
       if (transfer.command.transportSessionId === transport.command.directSessionId)
         void this.removeTransfer(transfer, code ?? 'DIRECT_CONNECTION_FAILED');
+    for (const channel of transport.pendingChannels) channel.close();
+    transport.pendingChannels.clear();
     transport.peer.close();
     if (code !== undefined)
       this.options.send('direct.error', {

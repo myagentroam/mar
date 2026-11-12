@@ -471,6 +471,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(header.locator('.session-activity')).toHaveCount(0);
       await expect(header).not.toHaveAttribute('activity');
       await expect(header).not.toHaveAttribute('activity-label');
+      const performanceInfo = page.getByTestId('performance-icon');
+      await expect(performanceInfo).toHaveCSS('width', width >= 768 ? '24px' : '28px');
+      await expect(performanceInfo).toHaveCSS('height', width >= 768 ? '24px' : '28px');
       const controls: [Locator, boolean][] = [
         [page.getByTestId('native'), false],
         [page.getByTestId('element'), true],

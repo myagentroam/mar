@@ -173,6 +173,77 @@ describe('Public Workbench Real-Time Connection', () => {
     service.close();
   });
 
+  it('routes strict desktop Direct and Relay control frames only on a ready page', () => {
+    const sent: string[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static instance: FakeWebSocket;
+      readyState = FakeWebSocket.OPEN;
+      constructor(readonly url: string) {
+        super();
+        FakeWebSocket.instance = this;
+      }
+      send(value: string): void {
+        sent.push(value);
+      }
+      close(): void {}
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const onDesktopDirectMessage = vi.fn();
+    const onDesktopRelayMessage = vi.fn();
+    const onInvalidMessage = vi.fn();
+    const service = createWorkbenchLiveService({
+      canConnect: () => true,
+      onEvent: vi.fn(),
+      onResyncRequired: vi.fn(),
+      onNodeConnection: vi.fn(),
+      onNodeReplaced: vi.fn(),
+      onReconnect: vi.fn(),
+      onUnauthenticated: vi.fn(),
+      onInvalidMessage,
+      onDesktopDirectMessage,
+      onDesktopRelayMessage
+    });
+    const direct = { type: 'desktop.direct.cancel' as const, attachmentId: 'attachment-12345678' };
+    const relay = { type: 'desktop.relay.cancel' as const, attachmentId: 'attachment-12345678' };
+    service.connect();
+    FakeWebSocket.instance.dispatchEvent(new Event('open'));
+    expect(service.sendDesktopDirect(direct)).toBe(false);
+    FakeWebSocket.instance.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({
+          type: 'workbench.ready',
+          workbenchConnectionId: 'connection-1',
+          workbenchResumeToken: 'resume-token-1'
+        })
+      })
+    );
+    expect(service.sendDesktopDirect(direct)).toBe(true);
+    expect(service.sendDesktopRelay(relay)).toBe(true);
+    expect(
+      sent.map((frame) => JSON.parse(frame)).filter((frame) => frame.type.startsWith('desktop.'))
+    ).toEqual([direct, relay]);
+    for (const type of ['desktop.direct.closed', 'desktop.relay.closed'])
+      FakeWebSocket.instance.dispatchEvent(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type,
+            attachmentId: 'attachment-12345678',
+            code: 'DESKTOP_LOCKED'
+          })
+        })
+      );
+    expect(onDesktopDirectMessage).toHaveBeenCalledOnce();
+    expect(onDesktopRelayMessage).toHaveBeenCalledOnce();
+    FakeWebSocket.instance.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify({ type: 'desktop.relay.closed' }) })
+    );
+    expect(onInvalidMessage).toHaveBeenCalledOnce();
+    service.close();
+    expect(service.sendDesktopRelay(relay)).toBe(false);
+  });
+
   it('Project a Node takeover reason as an independent prompt event', () => {
     const sent: string[] = [];
     class FakeWebSocket extends EventTarget {

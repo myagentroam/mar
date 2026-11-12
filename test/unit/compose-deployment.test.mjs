@@ -80,6 +80,14 @@ test('Server image reuses the pnpm store and trusts the copied lockfile', async 
   );
 });
 
+test('Server image copies dependency patches before the frozen install', async () => {
+  const dockerfile = await readFile(resolve(root, 'Dockerfile'), 'utf8');
+  const dependencies = dockerfile.split('FROM dependencies AS web-build')[0];
+  const copyIndex = dependencies.indexOf('COPY patches patches');
+  const installIndex = dependencies.indexOf('install --frozen-lockfile');
+  assert.ok(copyIndex >= 0 && installIndex > copyIndex);
+});
+
 test('Web image build includes product help without marketing-only screenshots', async () => {
   const dockerfile = await readFile(resolve(root, 'Dockerfile'), 'utf8');
   const webBuild = dockerfile.split('FROM dependencies AS web-build')[1]?.split('FROM ')[0] ?? '';

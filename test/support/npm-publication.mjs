@@ -51,7 +51,9 @@ export async function fixture(t, unit = 'common') {
       ? ['@myagentroam/protocol', '@myagentroam/agent', '@myagentroam/node'].includes(name)
       : unit === 'runtime'
         ? name.startsWith('@myagentroam/computer-runtime-')
-        : name === `@myagentroam/${unit}`
+        : unit === 'binaries'
+          ? name === '@myagentroam/binaries' || name.startsWith('@myagentroam/binaries-')
+          : name === `@myagentroam/${unit}`
   );
   const packages = [];
   for (const name of names) {

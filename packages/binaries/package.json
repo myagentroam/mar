@@ -1,16 +1,37 @@
 {
   "name": "@myagentroam/binaries",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
     "directory": "packages/binaries"
   },
-  "description": "Cross-platform ripgrep and Universal Ctags resources for MyAgentRoam.",
-  "license": "(MIT OR Unlicense) AND GPL-2.0-or-later",
+  "description": "Managed native resources for MyAgentRoam.",
+  "license": "(MIT OR Unlicense) AND GPL-2.0-or-later AND Apache-2.0 AND GPL-3.0-or-later",
   "type": "module",
   "files": [
     "vendor",
+    "!vendor/ripgrep/linux-x64",
+    "!vendor/ripgrep/linux-arm64",
+    "!vendor/ripgrep/darwin-x64",
+    "!vendor/ripgrep/darwin-arm64",
+    "!vendor/ripgrep/win32-x64",
+    "!vendor/ripgrep/win32-arm64",
+    "!vendor/ctags/linux-x64",
+    "!vendor/ctags/linux-arm64",
+    "!vendor/ctags/darwin-x64",
+    "!vendor/ctags/darwin-arm64",
+    "!vendor/ctags/win32-x64",
+    "!vendor/ctags/win32-arm64",
+    "!vendor/tigervnc/linux-x64",
+    "!vendor/tigervnc/linux-arm64",
+    "!vendor/tigervnc/darwin-x64",
+    "!vendor/tigervnc/darwin-arm64",
+    "!vendor/tigervnc/win32-x64",
+    "!vendor/tigervnc/win32-arm64",
+    "!vendor/ultravnc/win32-x64",
+    "!vendor/macvnc/darwin-x64",
+    "!vendor/macvnc/darwin-arm64",
     "LICENSE",
     "NOTICE"
   ],
@@ -19,5 +40,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "optionalDependencies": {
+    "@myagentroam/binaries-linux-x64": "0.10.3",
+    "@myagentroam/binaries-linux-arm64": "0.10.3",
+    "@myagentroam/binaries-darwin-x64": "0.10.3",
+    "@myagentroam/binaries-darwin-arm64": "0.10.3",
+    "@myagentroam/binaries-win32-x64": "0.10.3",
+    "@myagentroam/binaries-win32-arm64": "0.10.3"
   }
 }

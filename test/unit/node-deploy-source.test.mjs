@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -17,13 +17,22 @@ test('Node deploy source verifies binaries and embedded navigation and CLI again
   for (const [name, original, content] of [
     ['agent', 'mar-agent', 'dist/index.js'],
     ['protocol', 'packages/protocol', 'dist/index.js'],
-    ['binaries', 'packages/binaries', 'vendor/ripgrep/linux-x64/rg']
+    ['binaries', 'packages/binaries', 'vendor/ripgrep/manifest.json']
   ]) {
     const target = `node_modules/@myagentroam/${name}`;
     await put(join(source, original, 'package.json'), '{"version":"1.0.0"}');
     await put(join(stage, target, 'package.json'), '{"version":"1.0.0"}');
     await put(join(source, original, content), 'fixture');
     await put(join(stage, target, content), 'fixture');
+  }
+  const platform = `${process.platform}-${process.arch}`;
+  const platformPackage = `binaries-${platform}`;
+  for (const root of [
+    join(source, 'packages', platformPackage),
+    join(stage, 'node_modules/@myagentroam', platformPackage)
+  ]) {
+    await put(join(root, 'package.json'), '{"version":"1.0.0"}');
+    await put(join(root, `vendor/ripgrep/${platform}/rg`), 'fixture');
   }
   for (const [original, target] of [
     ['packages/code-navigation/dist/index.js', 'dist/code-navigation/index.js'],
@@ -37,7 +46,7 @@ test('Node deploy source verifies binaries and embedded navigation and CLI again
   await put(join(stage, 'dist/marctl/package.json'), '{"version":"1.0.0"}');
   await checkNodeDeploySource(source, stage);
   for (const path of [
-    'node_modules/@myagentroam/binaries/vendor/ripgrep/linux-x64/rg',
+    `node_modules/@myagentroam/${platformPackage}/vendor/ripgrep/${platform}/rg`,
     'dist/code-navigation/index.js',
     'dist/marctl/src/scp-worker.cjs'
   ]) {
@@ -45,6 +54,29 @@ test('Node deploy source verifies binaries and embedded navigation and CLI again
     await assert.rejects(checkNodeDeploySource(source, stage), /NODE_DEPLOY_CONTENT_MISMATCH/u);
     await put(join(stage, path), 'fixture');
   }
+  const leaked = join(stage, 'node_modules/@myagentroam/binaries/vendor/ripgrep/linux-x64/rg');
+  await put(leaked, 'unexpected');
+  await assert.rejects(checkNodeDeploySource(source, stage), /NODE_DEPLOY_FILES_MISMATCH/u);
+  await rm(leaked);
   await put(join(stage, 'dist/marctl/package.json'), '{"version":"2.0.0"}');
   await assert.rejects(checkNodeDeploySource(source, stage), /NODE_DEPLOY_VERSION_MISMATCH/u);
+  await put(join(stage, 'dist/marctl/package.json'), '{"version":"1.0.0"}');
+
+  await t.test('resolves platform packages beside the real pnpm entry package', async () => {
+    const scope = join(stage, 'node_modules/.pnpm/binaries/node_modules/@myagentroam');
+    await mkdir(scope, { recursive: true });
+    for (const name of ['binaries', platformPackage])
+      await rename(join(stage, 'node_modules/@myagentroam', name), join(scope, name));
+    await symlink(
+      join(scope, 'binaries'),
+      join(stage, 'node_modules/@myagentroam/binaries'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+    await checkNodeDeploySource(source, stage);
+    await put(join(scope, platformPackage, 'package.json'), '{"version":"2.0.0"}');
+    await assert.rejects(checkNodeDeploySource(source, stage), /NODE_DEPLOY_VERSION_MISMATCH/u);
+    await put(join(scope, platformPackage, 'package.json'), '{"version":"1.0.0"}');
+    await put(join(scope, platformPackage, `vendor/ripgrep/${platform}/rg`), 'mismatch');
+    await assert.rejects(checkNodeDeploySource(source, stage), /NODE_DEPLOY_CONTENT_MISMATCH/u);
+  });
 });
