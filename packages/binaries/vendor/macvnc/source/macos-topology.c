@@ -1,7 +1,7 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <stdio.h>
 
-/* Reports actual active displays; macVNC currently captures the primary one. */
+/* Reports active displays in the enumeration order used by macVNC -display. */
 int main(void) {
   CGDirectDisplayID displays[32];
   uint32_t count = 0;

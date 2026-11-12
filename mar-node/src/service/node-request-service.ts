@@ -97,7 +97,7 @@ export class NodeRequestService {
         }
       ).usageGrant;
       const data =
-        payload.data !== null && typeof payload.data === 'object'
+        payload.data !== null && typeof payload.data === 'object' && !Array.isArray(payload.data)
           ? (() => {
               const {
                 __marctlCaller: _untrustedCaller,

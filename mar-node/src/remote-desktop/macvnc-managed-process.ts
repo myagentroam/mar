@@ -11,6 +11,7 @@ import { obfuscateVncPassword } from './vnc-password.js';
 
 interface MacVncOptions {
   readonly binaryPath: string;
+  readonly displayIndex?: number;
   readonly onUnexpectedExit: () => void;
 }
 
@@ -50,6 +51,13 @@ export class MacVncManagedProcess {
   static async start(options: MacVncOptions, signal: AbortSignal): Promise<MacVncManagedProcess> {
     if (process.platform !== 'darwin' || !isAbsolute(options.binaryPath))
       throw new RemoteDesktopError('DESKTOP_BACKEND_CONFIG_INVALID');
+    if (
+      options.displayIndex !== undefined &&
+      (!Number.isInteger(options.displayIndex) ||
+        options.displayIndex < 0 ||
+        options.displayIndex >= 64)
+    )
+      throw new RemoteDesktopError('DESKTOP_BACKEND_CONFIG_INVALID');
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
     if (deadline.aborted) throw new RemoteDesktopError('DESKTOP_SETUP_CANCELLED');
     const directory = await mkdtemp(join(tmpdir(), 'mar-macvnc-'));
@@ -79,7 +87,8 @@ export class MacVncManagedProcess {
           '127.0.0.1',
           '-rfbauth',
           config,
-          '-alwaysshared'
+          '-alwaysshared',
+          ...(options.displayIndex === undefined ? [] : ['-display', String(options.displayIndex)])
         ],
         {
           cwd: dirname(options.binaryPath),

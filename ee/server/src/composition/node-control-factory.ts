@@ -163,7 +163,7 @@ export function createNodeControl(
           const raw = await transport.request(
             request.nodeId,
             'desktop.describe',
-            {},
+            { desktopGeneration: request.desktopGeneration },
             { userId: identity.userId, sessionHash: identity.sessionHash },
             15_000,
             signal

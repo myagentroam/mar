@@ -7,12 +7,14 @@ dependencies to relative `@executable_path`/`@loader_path` locations. They
 do not require Homebrew or a compiler on the Node. Actual build dependency
 versions and third-party notices are recorded in each platform directory.
 
-The bundle was built on macOS 15 GitHub-hosted runners. Its native server
-shares the active displays as one framebuffer. Screen Recording and
-Accessibility remain subject to macOS permission settings. A two-display
-framebuffer and secondary pointer were exercised on an ARM runner with a
-virtual second display; this does not establish physical multi-display or
-complete product-path acceptance.
+The bundle was built on macOS 15 GitHub-hosted runners. The native server
+captures one display per process: the primary by default, or the display
+selected with `-display <index>`. It does not combine active displays. The Node
+uses independent per-display backends for screen selection; switching one page
+does not change another page's capture. Screen Recording and Accessibility
+remain subject to macOS permission settings. Physical multi-display acceptance
+requires an explicit native desktop test; source and adapter tests are not a
+substitute for that verification.
 
 Build inputs: compile macVNC with CMake against Homebrew LibVNCServer, apply
 `patches/macos-input-cleanup.patch`, bundle with `source/macos-bundle.py`,

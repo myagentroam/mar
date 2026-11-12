@@ -57,16 +57,50 @@ function fixture() {
     nodeControl: { nodeCapabilities, requestNode, listNodes } as never,
     resources: { canUseNode }
   });
-  const get = (headers: Record<string, string> = {}) =>
+  const get = (headers: Record<string, string> = {}, query = '') =>
     app.inject({
       method: 'GET',
-      url: '/api/nodes/node-a/desktop',
+      url: `/api/nodes/node-a/desktop${query}`,
       headers: { cookie: 'mar_user_session=session', ...headers }
     });
   return { app, get, lookup, canUseNode, nodeCapabilities, requestNode, node, listNodes };
 }
 
 describe('Remote Desktop discovery route', () => {
+  it('forwards an authorized display selector and rejects an ignored selector', async () => {
+    const f = fixture();
+    try {
+      const response = await f.get({}, '?displayId=display-a');
+      expect(response.statusCode).toBe(200);
+      expect(f.requestNode).toHaveBeenLastCalledWith(
+        'node-a',
+        'desktop.describe',
+        { displayId: 'display-a' },
+        expect.anything(),
+        undefined
+      );
+      const ignored = await f.get({}, '?displayId=display-b');
+      expect(ignored.statusCode).toBe(409);
+      expect(ignored.json().error.code).toBe('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    } finally {
+      await f.app.close();
+    }
+  });
+  it('rejects ambiguous selectors and unexpected query fields without requesting the Node', async () => {
+    const f = fixture();
+    try {
+      for (const query of [
+        '?displayId=../screen',
+        '?desktopGeneration=generation',
+        '?displayId=display-a&displayId=display-b',
+        '?host=localhost'
+      ])
+        expect((await f.get({}, query)).statusCode).toBe(400);
+      expect(f.requestNode).not.toHaveBeenCalled();
+    } finally {
+      await f.app.close();
+    }
+  });
   it('uses the registered address when the Node has no display name, never its internal ID', async () => {
     const f = fixture();
     f.node.displayName = null;

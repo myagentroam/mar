@@ -42,7 +42,8 @@
     "test:unit": "vitest run --config vitest.config.mts && node --test test/unit/*.test.mjs",
     "test:e2e:real": "vitest run --config vitest.e2e.config.mts",
     "test:e2e:computer-use:windows": "node --test test/e2e/computer-use-windows.test.mjs",
-    "test:e2e:remote-desktop:windows": "node --test test/e2e/remote-desktop-windows.test.mjs"
+    "test:e2e:remote-desktop:windows": "node --test test/e2e/remote-desktop-windows.test.mjs",
+    "test:e2e:remote-desktop:macos": "node --test test/e2e/remote-desktop-macos.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.233",

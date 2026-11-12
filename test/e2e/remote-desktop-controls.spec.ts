@@ -24,6 +24,31 @@ test.afterAll(async () => {
   await realServer?.close();
 });
 
+test('switches a selected capture back to VIEW through the display selector', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
+  await page.goto(`${server.url}remote-desktop-controls.html?displaySelection`);
+  await expect.poll(() => page.evaluate(() => window.desktopControls?.modes)).toEqual(['VIEW']);
+  await page.evaluate(() => window.desktopControls.paint());
+  await expect(page.getByTestId('desktop-control')).toBeEnabled();
+  await page.getByTestId('desktop-control').click();
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.modes))
+    .toEqual(['VIEW', 'CONTROL']);
+  await page.evaluate(() => window.desktopControls.paint());
+  await page.getByTestId('desktop-screen').click();
+  await expect(page.getByRole('option')).toHaveCount(2);
+  await page.getByRole('option', { name: 'Display2', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.displays))
+    .toEqual(['screen', 'secondary']);
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.modes))
+    .toEqual(['VIEW', 'CONTROL', 'VIEW']);
+  await page.evaluate(() => window.desktopControls.paint());
+  await expect(page.getByTestId('desktop-control-prompt')).toBeVisible();
+  await expect(page.getByTestId('desktop-view')).toHaveCount(0);
+});
+
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 390, height: 844 }

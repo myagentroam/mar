@@ -3,6 +3,7 @@ import {
   remoteDesktopAttachedFrameSchema,
   remoteDesktopCapabilitySchema,
   remoteDesktopDescriptionSchema,
+  remoteDesktopDescribeInputSchema,
   remoteDesktopDirectBrowserMessageSchema,
   remoteDesktopDirectNodeCommandSchema,
   remoteDesktopDirectNodeEventSchema,
@@ -17,6 +18,49 @@ import {
 } from '../../src/remote-desktop.js';
 
 const id = 'abcdefgh';
+describe('single-display capture discovery', () => {
+  it('accepts one display or capture generation selector and rejects ambiguous or unbounded input', () => {
+    for (const input of [{}, { displayId: 'display_2' }, { desktopGeneration: id }])
+      expect(remoteDesktopDescribeInputSchema.safeParse(input).success).toBe(true);
+    for (const input of [
+      { displayId: 'display_2', desktopGeneration: id },
+      { displayId: '../../display' },
+      { host: 'localhost' }
+    ])
+      expect(remoteDesktopDescribeInputSchema.safeParse(input).success).toBe(false);
+  });
+  it('keeps the physical display catalog separate from the selected capture surface', () => {
+    const selected = {
+      desktopGeneration: id,
+      topologyRevision: 1,
+      framebuffer: { width: 640, height: 480 },
+      displays: [
+        {
+          displayId: 'display_2',
+          name: 'Secondary',
+          primary: true,
+          nativeBounds: { x: -640, y: 0, width: 640, height: 480 },
+          framebufferBounds: { x: 0, y: 0, width: 640, height: 480 },
+          nativeToFramebuffer: [1, 0, 0, 1, 640, 0]
+        }
+      ],
+      selectableDisplays: [
+        { displayId: 'display_1', name: 'Primary', primary: true },
+        { displayId: 'display_2', name: 'Secondary', primary: false }
+      ]
+    };
+    expect(remoteDesktopDescriptionSchema.safeParse(selected).success).toBe(true);
+    for (const selectableDisplays of [
+      [],
+      [selected.selectableDisplays[0]],
+      [selected.selectableDisplays[1]],
+      [selected.selectableDisplays[0], selected.selectableDisplays[0]]
+    ])
+      expect(
+        remoteDesktopDescriptionSchema.safeParse({ ...selected, selectableDisplays }).success
+      ).toBe(false);
+  });
+});
 describe('desktop browser settlement', () => {
   it('distinguishes settled from closed and rejects foreign fields', () => {
     for (const [path, schema] of [
@@ -346,8 +390,7 @@ describe('remote desktop authorization envelope', () => {
       supportsControl: true,
       supportsMultiDisplay: true,
       supportsUnicodePaste: true,
-      transports: ['DIRECT', 'RELAY'],
-
+      transports: ['DIRECT', 'RELAY']
     };
     expect(remoteDesktopCapabilitySchema.safeParse(available).success).toBe(true);
     expect(
