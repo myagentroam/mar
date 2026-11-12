@@ -47,7 +47,7 @@ jobs:
           set -euo pipefail
           binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
           swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/desktop-window"
-          export MAR_MACOS_KEY_RECEIPT="$RUNNER_TEMP/key-receipt"
+          export MAR_DESKTOP_KEY_RECEIPT="$RUNNER_TEMP/key-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!
           "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
@@ -56,14 +56,14 @@ jobs:
           sleep 3
           kill -0 "$pid"
           kill -0 "$window"
-          python3 mar-node/test/native/macos-rfb-probe.py 15991
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15991
           kill "$pid"
           wait "$pid" || true
           "$binary" -listen localhost -rfbport 15992 -rfbportv6 -1 >macvnc-control.log 2>&1 &
           pid=$!
           sleep 3
           kill -0 "$pid"
-          python3 mar-node/test/native/macos-rfb-probe.py 15992 control
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 control
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native build
@@ -71,6 +71,11 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
+      - name: Check out acceptance fixtures
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Build fixed UltraVNC source
         shell: pwsh
         run: |
@@ -103,6 +108,31 @@ jobs:
           name: remote-desktop-windows-native
           path: ${{ runner.temp }}/remote-desktop-native/
           if-no-files-found: error
+
+      - name: Probe real Windows framebuffer and input
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'remote-desktop-native'
+          $env:MAR_DESKTOP_KEY_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-key-receipt'
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          $port = $listener.LocalEndpoint.Port
+          $listener.Stop()
+          $config = Join-Path $root 'ultravnc.ini'
+          @('[admin]', 'LoopbackOnly=1', 'AllowLoopback=1', 'AuthRequired=0', 'SocketConnect=1', 'AutoPortSelect=0', "PortNumber=$port", 'InputsEnabled=1', 'QuerySetting=0') | Set-Content -Encoding Ascii $config
+          $window = Start-Process powershell -ArgumentList @('-NoProfile', '-STA', '-File', (Join-Path $env:GITHUB_WORKSPACE 'mar-node/test/native/windows-desktop-window.ps1')) -PassThru
+          $server = $null
+          try {
+            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
+            Start-Sleep -Seconds 3
+            if ($server.HasExited) { throw "UltraVNC exited with code $($server.ExitCode)" }
+            python mar-node/test/native/desktop-native-rfb-probe.py $port control
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id }
+            if ($window -and -not $window.HasExited) { Stop-Process -Id $window.Id }
+          }
 
   smoke:
     # This temporary acceptance branch dedicates the extended dispatch to native desktop jobs.

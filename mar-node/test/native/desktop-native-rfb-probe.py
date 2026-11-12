@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check real macVNC pixels and, when requested, native keyboard delivery."""
+"""Check real VNC pixels and, when requested, native keyboard delivery."""
 import os
 from pathlib import Path
 import socket
@@ -8,7 +8,7 @@ import sys
 import time
 
 port = int(sys.argv[1])
-receipt = Path(os.environ['MAR_MACOS_KEY_RECEIPT'])
+receipt = Path(os.environ['MAR_DESKTOP_KEY_RECEIPT'])
 want_input = len(sys.argv) > 2 and sys.argv[2] == 'control'
 deadline = time.monotonic() + 20
 while True:

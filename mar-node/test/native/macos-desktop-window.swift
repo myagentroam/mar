@@ -15,7 +15,7 @@ final class ProbeView: NSView {
 
     override func keyDown(with event: NSEvent) {
         guard event.charactersIgnoringModifiers == "a",
-              let path = ProcessInfo.processInfo.environment["MAR_MACOS_KEY_RECEIPT"] else { return }
+              let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_KEY_RECEIPT"] else { return }
         try? "key-a\n".write(toFile: path, atomically: true, encoding: .utf8)
     }
 }
