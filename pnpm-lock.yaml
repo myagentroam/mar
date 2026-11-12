@@ -14,7 +14,7 @@ overrides:
   '@myagentroam/binaries-win32-arm64': workspace:0.10.2
 
 patchedDependencies:
-  '@novnc/novnc@1.7.0': 0b8dd9db3f1588ec4b0ebcae577b0f2c0c70ba84ad93af168c54c3fafc9c04a7
+  '@novnc/novnc@1.7.0': 6e106d9a2bb4e29e5984ac85bda21dfdd29f9414259efcb179c2938ee7651a82
 
 importers:
 
@@ -409,7 +409,7 @@ importers:
         version: link:../protocol
       '@novnc/novnc':
         specifier: 1.7.0
-        version: 1.7.0(patch_hash=0b8dd9db3f1588ec4b0ebcae577b0f2c0c70ba84ad93af168c54c3fafc9c04a7)
+        version: 1.7.0(patch_hash=6e106d9a2bb4e29e5984ac85bda21dfdd29f9414259efcb179c2938ee7651a82)
       '@vue-office/docx':
         specifier: 1.6.3
         version: 1.6.3(vue-demi@0.14.10(vue@3.5.41(typescript@5.9.3)))(vue@3.5.41(typescript@5.9.3))
@@ -7062,7 +7062,7 @@ snapshots:
   '@node-datachannel/win32-x64-msvc@0.33.4':
     optional: true
 
-  '@novnc/novnc@1.7.0(patch_hash=0b8dd9db3f1588ec4b0ebcae577b0f2c0c70ba84ad93af168c54c3fafc9c04a7)': {}
+  '@novnc/novnc@1.7.0(patch_hash=6e106d9a2bb4e29e5984ac85bda21dfdd29f9414259efcb179c2938ee7651a82)': {}
 
   '@opencode-ai/sdk@1.18.20':
     dependencies:
