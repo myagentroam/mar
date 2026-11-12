@@ -371,10 +371,8 @@ watch(
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
-@media (min-width: 768px) {
-  .tab-strip-item + .tab-strip-item {
-    margin-inline-start: -1px;
-  }
+.tab-strip-item + .tab-strip-item {
+  margin-inline-start: -1px;
 }
 @media (max-width: 767px) {
   .mar-tab-scroll {
@@ -396,11 +394,6 @@ watch(
   }
   .mar-tab.can-scroll-next .tab-strip {
     --mar-tab-fade-end: calc(100% - 12px);
-  }
-  .tab-strip {
-    align-items: center;
-    gap: 4px;
-    padding: 2px 4px;
   }
   .tab-strip-item {
     height: var(--mar-tab-strip-item-height, 36px);

@@ -808,6 +808,25 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             expect(tabBounds.x).toBeGreaterThanOrEqual(bounds.x);
             expect(tabBounds.x + tabBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width);
           }
+          const items = await strip.locator('.tab-strip-item').evaluateAll((elements) =>
+            elements.map((element) => {
+              const bounds = element.getBoundingClientRect();
+              return {
+                left: bounds.left,
+                right: bounds.right,
+                bottom: bounds.bottom,
+                border: parseFloat(getComputedStyle(element).borderLeftWidth)
+              };
+            })
+          );
+          for (let index = 1; index < items.length; index += 1) {
+            // Both layouts join adjacent tabs at a single shared border, without a gap.
+            expect(items[index]!.left).toBeCloseTo(
+              items[index - 1]!.right - items[index]!.border,
+              1
+            );
+            expect(items[index]!.bottom).toBeCloseTo(bounds.y + bounds.height, 1);
+          }
         }
         await inspector.screenshot({ path: testInfo.outputPath('inspector-tabs.png') });
         await inspector.evaluate((element) => {
