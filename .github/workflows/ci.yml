@@ -265,6 +265,18 @@ jobs:
         with:
           node-version: '24.12.0'
           package-manager-cache: false
+      - name: Authorize isolated macOS runner local networking
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "test/runs/$MAR_TEST_RUN_ID"
+          swiftc mar-node/test/native/macos-local-network-authorization.swift -o "$RUNNER_TEMP/local-network-authorization"
+          gateway=$(/sbin/route -n get -inet default | awk '/gateway:/ {print $2}')
+          if ! "$RUNNER_TEMP/local-network-authorization" "$gateway" 2>&1 | tee "test/runs/$MAR_TEST_RUN_ID/local-network-preflight.log"; then
+            /usr/sbin/screencapture -x "test/runs/$MAR_TEST_RUN_ID/local-network-failure.png"
+            exit 1
+          fi
       - name: Install frozen candidate and browser
         shell: bash
         run: |

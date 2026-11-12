@@ -39,6 +39,19 @@ func approveRunnerNetworkSettings() {
     for window in attribute(root, kAXWindowsAttribute) as? [AXUIElement] ?? [] {
         let all = descendants(window)
         guard labels(all).contains("local network") else { continue }
+        if labels(all).contains("control which apps can access your data") {
+            let links = all.filter { item in
+                [kAXTitleAttribute, kAXDescriptionAttribute].contains {
+                    let name = (attribute(item, $0) as? String)?.lowercased() ?? ""
+                    return name == "local network" || name.hasPrefix("local network,")
+                }
+            }
+            if let link = links.first,
+               AXUIElementPerformAction(link, kAXPressAction as CFString) == .success {
+                print("CI_LOCAL_NETWORK_SETTINGS_OPENED")
+            }
+            return
+        }
         for row in all.reversed() {
             let elements = descendants(row)
             let text = labels(elements)
