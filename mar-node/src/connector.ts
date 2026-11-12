@@ -377,8 +377,10 @@ export class NodeConnector {
   private readonly commandStates = new CommandStateStore();
   private readonly goalRuntime = new GoalRuntime(() => undefined);
   private sessionScheduleService?: SessionScheduleService;
-  private readonly goalMcpBridge = new GoalMcpBridge(this.goalRuntime, (sessionId) =>
-    this.goalCoordinator.changed(sessionId)
+  private readonly goalMcpBridge = new GoalMcpBridge(
+    this.goalRuntime,
+    (sessionId) => this.goalCoordinator.changed(sessionId),
+    (capability) => this.runtime.resolveMcpExecution(capability)?.sessionId
   );
   private readonly scheduleMcpBridge = new ScheduleMcpBridge(
     () => {
@@ -394,12 +396,14 @@ export class NodeConnector {
       this.scheduledSessions.changed();
     },
     (sessionId, proposalId) => this.scheduledSessions.proposalCreated(sessionId, proposalId),
+    (capability) =>
+      this.runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })
+        ?.sessionId,
     (input) => {
       if (this.sessionScheduleService === undefined)
         throw new Error('SCHEDULE_SERVICE_UNAVAILABLE');
       return this.sessionScheduleService.createFromMcp(input);
-    },
-    (sessionId) => this.runtime.getAgentSession(sessionId)?.externalSessionId ?? sessionId
+    }
   );
   private readonly notificationMcpBridge = new NotificationMcpBridge(
     (capability) => resolveNotificationCapability(this.runtime, capability),
@@ -1092,7 +1096,6 @@ export class NodeConnector {
         this.runAttachmentService.migrateSession(previousId, nextId),
       migrateGoal: (previousId, nextId) => {
         this.goalCoordinator.migrateSession(previousId, nextId);
-        this.goalMcpBridge.migrateSession(previousId, nextId);
       },
       migrateQueue: (previousId, nextId) =>
         this.continuousRunCoordinator.migrateSession(previousId, nextId),
@@ -1532,7 +1535,6 @@ export class NodeConnector {
         this.mailNotificationControl.disconnected();
         this.marctlExecutionCredentials.disconnected();
         this.upgradeCredentials.disconnect();
-        this.notificationMcpBridge.revokeAll();
         this.terminalChannel.disconnect();
         if (code === 4000 && reason === 'NODE_CONNECTION_REPLACED')
           nodeLog('node.connection.replaced', {
@@ -1782,9 +1784,7 @@ export class NodeConnector {
       this.continuousRunCoordinator,
       this.goalCoordinator,
       this.modelUsage,
-      this.goalMcpBridge,
-      this.scheduleMcpBridge,
-      this.notificationMcpBridge,
+      this.runtime,
       this.runEventBridge,
       this.upgradeCoordinator
     );

@@ -314,7 +314,11 @@ describe('MAR Agent MCP client pool', () => {
   it('prepares Goal MCP as an execution-only server during unified resolution', async () => {
     const goals = new GoalRuntime(() => undefined);
     const goal = goals.start('goal-session', 'Goal Start');
-    const goalBridge = new GoalMcpBridge(goals, () => undefined);
+    const goalBridge = new GoalMcpBridge(
+      goals,
+      () => undefined,
+      (capability) => capability.sessionId
+    );
     const executionServer = await goalBridge.prepare({
       executionId: 'goal-run',
       sessionId: goal.sessionId,
@@ -403,7 +407,11 @@ describe('MAR Agent MCP client pool', () => {
   it('starts Goal stdio MCP in source mode and reads the current goal', async () => {
     const goals = new GoalRuntime(() => undefined);
     const goal = goals.start('goal-session', 'Complete source-mode verification');
-    const server = new GoalMcpBridge(goals, () => undefined);
+    const server = new GoalMcpBridge(
+      goals,
+      () => undefined,
+      (capability) => capability.sessionId
+    );
     const descriptor = await server.prepare({
       executionId: 'goal-execution',
       sessionId: goal.sessionId,

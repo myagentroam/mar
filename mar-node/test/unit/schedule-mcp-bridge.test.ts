@@ -65,8 +65,8 @@ describe('scheduled task MCP capability', () => {
       () => store,
       vi.fn(),
       vi.fn(),
-      create,
-      () => 'native-session'
+      () => 'native-session',
+      create
     );
     try {
       const executionServer = await server.prepare({
@@ -88,18 +88,20 @@ describe('scheduled task MCP capability', () => {
         }
       });
       const endpoint = executionServer.environment!.MAR_SCHEDULE_MCP_ENDPOINT!;
-      const token = executionServer.environment!.MAR_SCHEDULE_MCP_TOKEN!;
+      let token = executionServer.environment!.MAR_SCHEDULE_MCP_TOKEN!;
       expect((await invoke(endpoint, token, 'get_scheduled_task')).result).toBeNull();
-      expect(
-        (
-          await invoke(endpoint, token, 'create_scheduled_task', {
-            objective: 'Check build',
-            cron: '0 9 * * *'
-          })
-        ).result
-      ).toMatchObject({ objective: 'Check build', ownerUserId: 3 });
+      const created = await invoke(endpoint, token, 'create_scheduled_task', {
+        objective: 'Check build',
+        cron: '0 9 * * *'
+      });
+      expect(created.result).toMatchObject({ objective: 'Check build', ownerUserId: 3 });
+      expect(typeof created.token).toBe('string');
+      expect((await invoke(endpoint, token, 'get_scheduled_task')).error).toBe(
+        'SCHEDULE_CAPABILITY_STALE'
+      );
+      token = created.token as string;
       expect(create).toHaveBeenCalledWith({
-        sessionId: 'bootstrap-session',
+        sessionId: 'native-session',
         workspaceId: workspace.id,
         actorUserId: 3,
         objective: 'Check build',
@@ -149,7 +151,14 @@ describe('scheduled task MCP capability', () => {
     });
     const changed = vi.fn();
     const proposed = vi.fn();
-    const server = new ScheduleMcpBridge(() => store, changed, proposed);
+    let released = false;
+    const server = new ScheduleMcpBridge(
+      () => store,
+      changed,
+      proposed,
+      (capability) =>
+        released && capability.executionId === 'owner-run' ? undefined : capability.sessionId
+    );
     try {
       const owner = await server.prepare({
         executionId: 'owner-run',
@@ -159,10 +168,16 @@ describe('scheduled task MCP capability', () => {
         actorUserId: 1
       });
       const endpoint = owner.environment!.MAR_SCHEDULE_MCP_ENDPOINT!;
-      const token = owner.environment!.MAR_SCHEDULE_MCP_TOKEN!;
-      expect(
-        (await invoke(endpoint, token, 'update_scheduled_task', { objective: 'Updated' })).result
-      ).toMatchObject({ objective: 'Updated', revision: 2, ownerUserId: 1 });
+      let token = owner.environment!.MAR_SCHEDULE_MCP_TOKEN!;
+      const updated = await invoke(endpoint, token, 'update_scheduled_task', {
+        objective: 'Updated'
+      });
+      expect(updated.result).toMatchObject({ objective: 'Updated', revision: 2, ownerUserId: 1 });
+      expect(typeof updated.token).toBe('string');
+      expect((await invoke(endpoint, token, 'get_scheduled_task')).error).toBe(
+        'SCHEDULE_CAPABILITY_STALE'
+      );
+      token = updated.token as string;
       expect((await invoke(endpoint, token, 'get_scheduled_task')).result).toMatchObject({
         objective: 'Updated',
         revision: 2
@@ -242,9 +257,9 @@ describe('scheduled task MCP capability', () => {
           )
         ).result
       ).toMatchObject({ status: 'PENDING' });
-      server.revoke('owner-run');
+      released = true;
       expect((await invoke(endpoint, token, 'get_scheduled_task')).error).toBe(
-        'SCHEDULE_CAPABILITY_INVALID'
+        'SCHEDULE_CAPABILITY_STALE'
       );
     } finally {
       await server.close();

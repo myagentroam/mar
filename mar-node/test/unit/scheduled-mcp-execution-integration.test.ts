@@ -57,7 +57,14 @@ it.each(
           timezone: 'UTC'
         })
     );
-    const server = new ScheduleMcpBridge(() => store, vi.fn(), vi.fn(), create);
+    const server = new ScheduleMcpBridge(
+      () => store,
+      vi.fn(),
+      vi.fn(),
+      (capability) =>
+        runtime.resolveMcpExecution({ ...capability, userId: capability.actorUserId })?.sessionId,
+      create
+    );
     const starts: Record<string, unknown>[] = [];
     const coordinator = new ContinuousRunCoordinator({
       executionTerminating: () => undefined,
@@ -279,11 +286,11 @@ it.each(
         payload: {},
         status: 'SUCCEEDED'
       });
-      server.revoke(firstExecution);
+      runtime.revokeExecutionMcps(firstExecution);
       coordinator.remove(firstExecution);
       host.unbindExecutionMcp(firstBinding);
-      expect((await pools[0]!.call('mcp__mar_schedule__get_scheduled_task', {})).content).toContain(
-        'SCHEDULE_CAPABILITY_INVALID'
+      await expect(pools[0]!.call('mcp__mar_schedule__get_scheduled_task', {})).rejects.toThrow(
+        'SCHEDULE_CAPABILITY_STALE'
       );
       await coordinator.dispatch(session.id);
       const secondExecution = runtime.currentExecutionId(first.run.id)!;
@@ -299,6 +306,35 @@ it.each(
       expect(create).toHaveBeenCalledOnce();
       expect(requests).toHaveLength(4);
       expect(requests[0]!.tools).toEqual(requests[2]!.tools);
+
+      // The real stdio client must privately renew after create and every owner update.
+      expect((await pools[1]!.call('mcp__mar_schedule__get_scheduled_task', {})).content).toContain(
+        'Check the build'
+      );
+      for (const [index, objective] of ['Updated once', 'Updated twice'].entries()) {
+        const result = await pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
+          objective
+        });
+        expect(result.content).toContain(objective);
+        expect(JSON.stringify(result)).not.toContain('"token"');
+        expect(store.get(session.id)).toMatchObject({ objective, revision: index + 2 });
+      }
+
+      // Concurrent calls from this one client must consume its own renewed scope in order.
+      const parallel = await Promise.all([
+        pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
+          objective: 'Parallel objective'
+        }),
+        pools[1]!.call('mcp__mar_schedule__update_scheduled_task', {
+          cron: '30 10 * * *'
+        })
+      ]);
+      expect(parallel).toHaveLength(2);
+      expect(store.get(session.id)).toMatchObject({
+        objective: 'Parallel objective',
+        cron: '30 10 * * *',
+        revision: 5
+      });
 
       expect(
         requests[0]!.tools.some((tool) => tool.name === 'mcp__mar_schedule__create_scheduled_task')
@@ -325,9 +361,9 @@ it.each(
         expect(requests[0]!.tools.find((tool) => tool.name === 'code_exec')!.description).toContain(
           'mcp__mar_schedule__get_scheduled_task'
         );
-      server.revoke(secondExecution);
-      expect((await pools[1]!.call('mcp__mar_schedule__get_scheduled_task', {})).content).toContain(
-        'SCHEDULE_CAPABILITY_INVALID'
+      runtime.revokeExecutionMcps(secondExecution);
+      await expect(pools[1]!.call('mcp__mar_schedule__get_scheduled_task', {})).rejects.toThrow(
+        'SCHEDULE_CAPABILITY_STALE'
       );
     } finally {
       coordinator.clear();

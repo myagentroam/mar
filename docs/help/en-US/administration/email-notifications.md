@@ -1,6 +1,6 @@
 ---
 title: Configure SMTP Email and Notification Templates
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-13
 ---
 
 # Configure SMTP Email and Notification Templates
@@ -35,6 +35,8 @@ Do not paste your password into a conversation or commit it to a repository. If 
 An Agent in an ordinary Workspace conversation can call `mar_notification` → `send_email_notification` with a message and optional title. Omit `recipientEmail` to use the initiating account’s email address saved on the Server. A request to “email my account” does not require looking up or passing an address; specify `recipientEmail` only for another authorized recipient. If the account has no valid email address, the tool returns `MAIL_RECIPIENT_NOT_CONFIGURED`; configure an account email or specify a recipient. An invalid explicit address never falls back to the account email. The notification template ID can be omitted or left empty; the built-in Chinese or English template is then selected using the sender's saved interface language. A template can also be selected explicitly. An empty title uses the default title in the selected template's language, independently of the sender's interface language. The Agent works in the **current authorized Workspace on its MAR Node**. The Server sends the email using its configured SMTP connection; this is not browser or Node local email, and it does not change the repository cron or CI.
 
 The recipient does not have to belong to the current user or any account, but the initiator must still have access to the current Node and Workspace. The Agent cannot access SMTP credentials. Manual and scheduled Runs can explicitly call the tool. The Workspace session list labels email notification “Injected during execution” under “Loaded MCP”; this does not mean SMTP is configured or sending is available. Existing workbench notifications are not forwarded automatically, and hosted conversations do not provide the tool. Sending has a real external effect and is limited to 50 emails per execution. Do not blindly retry an uncertain result.
+
+Notification sending is unavailable while the Node is disconnected from the Server. After reconnection, the same execution can continue using the tools if it is still valid and current authorization checks pass; a temporary disconnect does not require restarting the execution. Reconnection does not restore access for an execution that has ended, been cancelled, or had its authorization revoked. A disconnect during an in-flight send can still leave the outcome uncertain, and the system does not resend automatically.
 
 ## Multi-channel notifications
 

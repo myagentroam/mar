@@ -1,6 +1,8 @@
 import type { ResolvedMcpServer } from '../mcp/model.js';
 import { NODE_MCP } from '../mcp/naming.js';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { McpCapabilityToken } from '../mcp/capability-token.js';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { existsSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -9,12 +11,13 @@ import { unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type { GoalRuntime } from './goal-runtime.js';
 
-interface GoalCapability {
-  readonly executionId: string;
-  readonly sessionId: string;
-  readonly goalId: string;
-  readonly revision: number;
-}
+const capabilitySchema = z.object({
+  executionId: z.string(),
+  sessionId: z.string(),
+  goalId: z.string(),
+  revision: z.number().int().nonnegative()
+});
+type GoalCapability = z.infer<typeof capabilitySchema>;
 
 interface IpcRequest {
   readonly token?: unknown;
@@ -22,8 +25,9 @@ interface IpcRequest {
   readonly arguments?: unknown;
 }
 
+/** Owns Goal IPC and revision validation, not Execution authorization or Session aliases. */
 export class GoalMcpBridge {
-  private readonly capabilities = new Map<string, GoalCapability>();
+  private readonly tokens = new McpCapabilityToken(NODE_MCP.goal.name, capabilitySchema);
   private readonly sockets = new Set<Socket>();
   private readonly endpoint =
     process.platform === 'win32'
@@ -33,7 +37,8 @@ export class GoalMcpBridge {
 
   constructor(
     private readonly goals: GoalRuntime,
-    private readonly changed: (sessionId: string) => void
+    private readonly changed: (sessionId: string) => void,
+    private readonly resolveExecution: (capability: GoalCapability) => string | undefined
   ) {}
 
   private listen(): Promise<Server> {
@@ -48,8 +53,7 @@ export class GoalMcpBridge {
   async prepare(capability: GoalCapability): Promise<ResolvedMcpServer> {
     await this.listen();
     const args = goalMcpStdioArgs();
-    const token = randomBytes(32).toString('base64url');
-    this.capabilities.set(token, capability);
+    const token = this.tokens.sign(capability);
     return {
       name: NODE_MCP.goal.name,
       origin: 'BUILTIN',
@@ -71,25 +75,12 @@ export class GoalMcpBridge {
   async close(): Promise<void> {
     if (this.listening === undefined) return;
     const server = await this.listening;
-    this.capabilities.clear();
     const closed = new Promise<void>((resolve, reject) =>
       server.close((error) => (error === undefined ? resolve() : reject(error)))
     );
     for (const socket of this.sockets) socket.destroy();
     await closed;
     if (process.platform !== 'win32') await unlink(this.endpoint).catch(() => undefined);
-  }
-
-  revoke(executionId: string): void {
-    for (const [token, capability] of this.capabilities)
-      if (capability.executionId === executionId) this.capabilities.delete(token);
-  }
-
-  migrateSession(previousId: string, nextId: string): void {
-    if (previousId === nextId) return;
-    for (const [token, capability] of this.capabilities)
-      if (capability.sessionId === previousId)
-        this.capabilities.set(token, { ...capability, sessionId: nextId });
   }
 
   private handle(socket: Socket): void {
@@ -108,9 +99,11 @@ export class GoalMcpBridge {
   private async respond(socket: Socket, body: string): Promise<void> {
     try {
       const request = JSON.parse(body) as IpcRequest;
-      const capability =
-        typeof request.token === 'string' ? this.capabilities.get(request.token) : undefined;
-      if (capability === undefined) throw new Error('GOAL_CAPABILITY_INVALID');
+      const claims = this.tokens.verify(request.token);
+      if (claims === undefined) throw new Error('GOAL_CAPABILITY_INVALID');
+      const sessionId = this.resolveExecution(claims);
+      if (sessionId === undefined) throw new Error('GOAL_CAPABILITY_STALE');
+      const capability = { ...claims, sessionId };
       const current = this.current(capability);
       if (request.tool === NODE_MCP.goal.tools.get) {
         socket.end(`${JSON.stringify({ result: current })}\n`);

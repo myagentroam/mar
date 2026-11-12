@@ -1,6 +1,8 @@
 import type { ResolvedMcpServer } from '../mcp/model.js';
 import { NODE_MCP } from '../mcp/naming.js';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { McpCapabilityToken } from '../mcp/capability-token.js';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { existsSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { createServer, type Server, type Socket } from 'node:net';
@@ -18,17 +20,21 @@ import {
 import type { NodeRuntimeState } from '../runtime-state.js';
 import { sessionGroup } from '../session/session-presentation-service.js';
 
-interface Capability {
+const capabilitySchema = z.object({
+  executionId: z.string(),
+  sessionId: z.string(),
+  workspaceId: z.string(),
+  userId: z.number().int().positive(),
+  source: z.enum(['MANUAL', 'SCHEDULED'])
+});
+
+interface Capability extends z.infer<typeof capabilitySchema> {
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
-  readonly executionId: string;
-  readonly sessionId: string;
-  readonly workspaceId: string;
-  readonly userId: number;
-  readonly source: 'MANUAL' | 'SCHEDULED';
 }
 
+/** Owns notification IPC and signed scope; live authorization belongs to Runtime and Server. */
 export class NotificationMcpBridge {
-  private readonly capabilities = new Map<string, Capability>();
+  private readonly tokens = new McpCapabilityToken(NODE_MCP.notification.name, capabilitySchema);
   private readonly sockets = new Set<Socket>();
   private readonly endpoint =
     process.platform === 'win32'
@@ -48,9 +54,8 @@ export class NotificationMcpBridge {
   async prepare(capability: Capability): Promise<ResolvedMcpServer> {
     await this.listen();
     const args = notificationMcpStdioArgs();
-    const token = randomBytes(32).toString('base64url');
+    const token = this.tokens.sign(capability);
     const notificationChannels = this.channels?.supported() === true;
-    this.capabilities.set(token, capability);
     return {
       name: NODE_MCP.notification.name,
       origin: 'BUILTIN',
@@ -72,19 +77,9 @@ export class NotificationMcpBridge {
     };
   }
 
-  revoke(executionId: string): void {
-    for (const [token, capability] of this.capabilities)
-      if (capability.executionId === executionId) this.capabilities.delete(token);
-  }
-
-  revokeAll(): void {
-    this.capabilities.clear();
-  }
-
   async close(): Promise<void> {
     if (this.listening === undefined) return;
     const server = await this.listening;
-    this.revokeAll();
     const closed = new Promise<void>((resolve, reject) =>
       server.close((error) => (error === undefined ? resolve() : reject(error)))
     );
@@ -125,8 +120,7 @@ export class NotificationMcpBridge {
   private async respond(socket: Socket, body: string): Promise<void> {
     try {
       const request = JSON.parse(body) as Record<string, unknown>;
-      const capability =
-        typeof request['token'] === 'string' ? this.capabilities.get(request['token']) : undefined;
+      const capability = this.tokens.verify(request['token']);
       if (capability === undefined) throw new Error('MAIL_CAPABILITY_INVALID');
       const current = this.resolve(capability);
       if (current === undefined) throw new Error('MAIL_CAPABILITY_STALE');
@@ -197,19 +191,14 @@ export class NotificationMcpBridge {
 }
 
 export function resolveNotificationCapability(
-  runtime: Pick<NodeRuntimeState, 'getRun' | 'getAgentSession' | 'currentExecutionId'>,
+  runtime: Pick<NodeRuntimeState, 'resolveMcpExecution' | 'getAgentSession'>,
   capability: Capability
 ): Capability | undefined {
-  const run = runtime.getRun(capability.executionId);
+  const run = runtime.resolveMcpExecution(capability);
   const session = runtime.getAgentSession(capability.sessionId);
   if (
     run === undefined ||
     session === undefined ||
-    ['SUCCEEDED', 'FAILED', 'INTERRUPTED'].includes(run.status) ||
-    runtime.currentExecutionId(run.id) !== capability.executionId ||
-    run.sessionId !== session.id ||
-    run.workspaceId !== capability.workspaceId ||
-    run.initiatedByUserId !== capability.userId ||
     (run.source === 'SCHEDULED' ? 'SCHEDULED' : 'MANUAL') !== capability.source
   )
     return undefined;

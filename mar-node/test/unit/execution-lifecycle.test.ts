@@ -13,8 +13,6 @@ describe('execution lifecycle', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
-      {} as never,
       { pending: () => pending } as never
     );
     await owner.dispatchQueue('session');
@@ -38,7 +36,7 @@ describe('execution lifecycle', () => {
       executionProgress: vi.fn(() => calls.push('progress'))
     };
     const usage = { release: vi.fn(() => calls.push('usage')) };
-    const mcp = (name: string) => ({ revoke: vi.fn(() => calls.push(name)) });
+    const runtime = { revokeExecutionMcps: vi.fn(() => calls.push('revoke-mcps')) };
     const events = { emitConversationItem: vi.fn(() => calls.push('event')) };
     let available = true;
     const owner = new ExecutionLifecycle(
@@ -47,9 +45,7 @@ describe('execution lifecycle', () => {
       continuous as never,
       goal as never,
       usage as never,
-      mcp('goal-mcp') as never,
-      mcp('schedule-mcp') as never,
-      mcp('notification-mcp') as never,
+      runtime,
       events as never,
       { pending: () => false } as never
     );
@@ -63,11 +59,10 @@ describe('execution lifecycle', () => {
       'event',
       'usage',
       'goal-release',
-      'goal-mcp',
-      'schedule-mcp',
-      'notification-mcp',
+      'revoke-mcps',
       'remove'
     ]);
+    expect(runtime.revokeExecutionMcps).toHaveBeenCalledWith('run');
     available = false;
     owner.terminal({ sessionId: 'session' } as never, 'FAILED');
     expect(scheduled.executionTerminated).toHaveBeenCalledOnce();

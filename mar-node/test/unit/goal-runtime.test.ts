@@ -299,7 +299,11 @@ describe('GoalMcpBridge', () => {
       () => 1_000
     );
     const goal = runtime.start('session-1', 'objective');
-    const server = new GoalMcpBridge(runtime, () => undefined);
+    const server = new GoalMcpBridge(
+      runtime,
+      () => undefined,
+      (capability) => capability.sessionId
+    );
     const descriptor = await server.prepare({
       executionId: 'execution-1',
       sessionId: 'session-1',
@@ -338,7 +342,12 @@ describe('GoalMcpBridge', () => {
       () => now
     );
     const goal = runtime.start('session-1', 'objective');
-    const server = new GoalMcpBridge(runtime, () => undefined);
+    let sessionId = 'session-1';
+    const server = new GoalMcpBridge(
+      runtime,
+      () => undefined,
+      () => sessionId
+    );
     const descriptor = await server.prepare({
       executionId: 'execution-1',
       sessionId: 'session-1',
@@ -347,7 +356,7 @@ describe('GoalMcpBridge', () => {
     });
     const endpoint = descriptor.environment!['MAR_GOAL_MCP_ENDPOINT']!;
     const token = descriptor.environment!['MAR_GOAL_MCP_TOKEN']!;
-    expect(token).toHaveLength(43);
+    expect(token).toMatch(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/u);
     expect(descriptor).toMatchObject({
       name: 'mar_goal',
       origin: 'BUILTIN',
@@ -362,7 +371,7 @@ describe('GoalMcpBridge', () => {
         'GOAL_TOOL_INVALID'
       );
       runtime.migrateSession('session-1', 'native-session');
-      server.migrateSession('session-1', 'native-session');
+      sessionId = 'native-session';
       now += 4_321;
       expect(
         await goalRequest(endpoint, token, 'update_goal', { status: 'completed' })
@@ -387,7 +396,11 @@ describe('GoalMcpBridge', () => {
       () => now
     );
     const goal = runtime.start('session-1', 'objective');
-    const server = new GoalMcpBridge(runtime, () => undefined);
+    const server = new GoalMcpBridge(
+      runtime,
+      () => undefined,
+      (capability) => capability.sessionId
+    );
     const descriptor = await server.prepare({
       executionId: 'execution-1',
       sessionId: 'session-1',

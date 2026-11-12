@@ -888,6 +888,39 @@ export class NodeRuntimeState {
     const canonical = this.executions.get(id)?.runId ?? id;
     return this.runs.get(canonical);
   }
+
+  /** Resolves signed MCP scope against live execution ownership, never a token registry. */
+  resolveMcpExecution(scope: {
+    readonly executionId: string;
+    readonly sessionId: string;
+    readonly workspaceId?: string | undefined;
+    readonly userId?: number | undefined;
+  }): NodeAgentRun | undefined {
+    const execution = this.executions.get(scope.executionId);
+    const run = execution === undefined ? undefined : this.runs.get(execution.runId);
+    const session = this.getAgentSession(scope.sessionId);
+    if (
+      execution === undefined ||
+      execution.mcpRevoked === true ||
+      terminalExecution(execution.status) ||
+      this.isExecutionInterruptRequested(execution.id) ||
+      run === undefined ||
+      (run.status !== 'STARTING' && run.status !== 'RUNNING') ||
+      this.currentExecutionId(run.id) !== execution.id ||
+      session === undefined ||
+      session.id !== run.sessionId ||
+      (scope.workspaceId !== undefined && scope.workspaceId !== run.workspaceId) ||
+      (scope.userId !== undefined && scope.userId !== run.initiatedByUserId)
+    )
+      return undefined;
+    return run;
+  }
+
+  revokeExecutionMcps(executionId: string): void {
+    const execution = this.executions.get(executionId);
+    if (execution !== undefined)
+      this.executions.set(executionId, { ...execution, mcpRevoked: true });
+  }
   /** Only the current execution may replace an active Run's ephemeral metrics. */
   updateRunPerformance(id: string, performance: RunPerformance): boolean {
     const run = this.getRun(id);
