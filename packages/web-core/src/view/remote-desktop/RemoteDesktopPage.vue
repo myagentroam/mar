@@ -24,7 +24,7 @@ const displayOptions = computed(
   () =>
     discovery.value?.description.selectableDisplays ?? discovery.value?.description.displays ?? []
 );
-const state = ref<'connecting' | 'ready' | 'released' | 'hidden' | 'error'>('connecting');
+const state = ref<'connecting' | 'ready' | 'hidden' | 'error'>('connecting');
 const errorCode = ref<string>();
 const pasteError = ref(false);
 const softKeyboardOpen = ref(false);
@@ -59,6 +59,7 @@ let rfb: RFB | undefined;
 let opening: AbortController | undefined;
 let observer: ResizeObserver | undefined;
 let generation = 0;
+let inputRevision = 0;
 let disposed = false;
 let connectionClosed = false;
 
@@ -71,6 +72,7 @@ function codeOf(error: unknown): string {
     : 'DESKTOP_UNAVAILABLE';
 }
 function detachDisplay(): void {
+  ++inputRevision;
   statistics.value?.close();
   statistics.value = undefined;
   softText.value = '';
@@ -90,20 +92,21 @@ function failed(code: string, token: number): void {
   detachDisplay();
 }
 
-async function connect(nextMode: Mode): Promise<void> {
+async function connect(): Promise<void> {
   if (!service || !discovery.value || disposed || document.hidden) return;
+  const authorizationMode = discovery.value.capability.supportsControl ? 'CONTROL' : 'VIEW';
   const token = ++generation;
   opening?.abort();
   const controller = new AbortController();
   opening = controller;
-  mode.value = nextMode;
+  mode.value = 'VIEW';
   pasteError.value = false;
   errorCode.value = undefined;
   state.value = 'connecting';
   // The owner fences the previous attachment synchronously before opening the replacement.
   const pending = service.select({
     discovery: discovery.value,
-    mode: nextMode,
+    mode: authorizationMode,
     signal: controller.signal,
     onDisconnected: (code) => failed(code, token)
   });
@@ -125,7 +128,7 @@ async function connect(nextMode: Mode): Promise<void> {
     const client = new RFB(target.value, next.channel, {
       manualClipboard: true,
       requestDrivenUpdates: true,
-      allowedEncodings: remoteDesktopEncodings(nextMode)
+      allowedEncodings: remoteDesktopEncodings(authorizationMode)
     });
     rfb = client;
     statistics.value = createRemoteDesktopStatistics({
@@ -134,7 +137,7 @@ async function connect(nextMode: Mode): Promise<void> {
       path: next.path,
       controlRoundTripMs: () => next.controlRoundTripMs
     });
-    client.viewOnly = nextMode === 'VIEW';
+    client.viewOnly = true;
     client.scaleViewport = true;
     client.qualityLevel = quality.value;
     client.addEventListener(
@@ -182,7 +185,7 @@ async function discoverAndConnect(displayId?: string): Promise<void> {
     if (disposed || token !== generation || controller.signal.aborted) return;
     discovery.value = snapshot;
     screenId.value = snapshot.description.displays.find((display) => display.primary)?.displayId;
-    await connect('VIEW');
+    await connect();
   } catch (error) {
     if (token === generation && !disposed) failed(codeOf(error), token);
   } finally {
@@ -206,42 +209,60 @@ function dataRate(bytes: number | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB/s`;
 }
 
-function stopActivity(hidden: boolean): void {
-  if (disposed || (!hidden && mode.value !== 'CONTROL')) return;
+function setInputMode(nextMode: Mode): void {
+  if (
+    disposed ||
+    !rfb ||
+    state.value !== 'ready' ||
+    document.hidden ||
+    nextMode === mode.value ||
+    (nextMode === 'CONTROL' && !discovery.value?.capability.supportsControl)
+  )
+    return;
+  ++inputRevision;
+  mode.value = nextMode;
+  rfb.viewOnly = nextMode === 'VIEW';
+  pasteError.value = false;
+  softKeyboardOpen.value = false;
+  softText.value = '';
+  textFailed.value = false;
+}
+function stopActivity(): void {
+  if (disposed) return;
   ++generation;
   opening?.abort();
   opening = undefined;
   const previous = attachment;
   attachment = undefined;
   mode.value = 'VIEW';
-  state.value = hidden ? 'hidden' : 'released';
+  state.value = 'hidden';
   const closing = previous?.close();
   detachDisplay();
   if (closing)
     void closing.then((settled) => {
-      if (!settled && !disposed && (state.value === 'released' || state.value === 'hidden')) {
+      if (!settled && !disposed && state.value === 'hidden') {
         errorCode.value = 'DESKTOP_CONTROL_UNAVAILABLE';
         state.value = 'error';
       }
     });
 }
 function releaseControl(): void {
-  stopActivity(false);
+  setInputMode('VIEW');
 }
 function changeQuality(): void {
   if (rfb) rfb.qualityLevel = quality.value;
 }
 function visibilityChanged(): void {
-  if (document.hidden) stopActivity(true);
+  if (document.hidden) stopActivity();
 }
 async function paste(): Promise<void> {
-  const token = generation;
+  const token = inputRevision;
   const client = rfb;
   if (!client || mode.value !== 'CONTROL' || state.value !== 'ready') return;
   try {
     const text = await navigator.clipboard.readText();
     if (
-      token !== generation ||
+      token !== inputRevision ||
       rfb !== client ||
       mode.value !== 'CONTROL' ||
       document.hidden ||
@@ -251,7 +272,7 @@ async function paste(): Promise<void> {
     client.clipboardPasteFrom(text);
     pasteError.value = false;
   } catch {
-    if (token === generation && rfb === client) pasteError.value = true;
+    if (token === inputRevision && rfb === client) pasteError.value = true;
   }
 }
 function sendSoftText(): void {
@@ -348,14 +369,17 @@ onBeforeUnmount(() => {
             "
           />
         </el-select>
-        <el-button v-if="mode === 'CONTROL'" data-testid="desktop-view" @click="connect('VIEW')">{{
-          translate('remoteDesktop.viewing')
-        }}</el-button>
+        <el-button
+          v-if="mode === 'CONTROL'"
+          data-testid="desktop-view"
+          @click="setInputMode('VIEW')"
+          >{{ translate('remoteDesktop.viewing') }}</el-button
+        >
         <el-button
           v-else
           data-testid="desktop-control"
           :disabled="!discovery?.capability.supportsControl || state !== 'ready'"
-          @click="connect('CONTROL')"
+          @click="setInputMode('CONTROL')"
           >{{ translate('remoteDesktop.controlling') }}</el-button
         >
         <el-button
@@ -419,7 +443,7 @@ onBeforeUnmount(() => {
         v-if="state === 'ready' && mode === 'VIEW' && discovery?.capability.supportsControl"
         class="remote-desktop-control-prompt"
       >
-        <el-button data-testid="desktop-control-prompt" @click="connect('CONTROL')">{{
+        <el-button data-testid="desktop-control-prompt" @click="setInputMode('CONTROL')">{{
           translate('remoteDesktop.controlling')
         }}</el-button>
       </div>
@@ -431,16 +455,12 @@ onBeforeUnmount(() => {
               ? translate('remoteDesktop.connecting')
               : state === 'hidden'
                 ? translate('remoteDesktop.hidden')
-                : state === 'released'
-                  ? translate('remoteDesktop.releaseControl')
-                  : errorText
+                : errorText
           }}</span>
         </p>
-        <el-button
-          v-if="state === 'released' || state === 'hidden' || state === 'error'"
-          @click="discoverAndConnect()"
-          >{{ translate('remoteDesktop.retry') }}</el-button
-        >
+        <el-button v-if="state === 'hidden' || state === 'error'" @click="discoverAndConnect()">{{
+          translate('remoteDesktop.retry')
+        }}</el-button>
         <el-button v-if="errorCode === 'UNAUTHENTICATED'" tag="a" href="/console">{{
           translate('remoteDesktop.openWorkbench')
         }}</el-button>

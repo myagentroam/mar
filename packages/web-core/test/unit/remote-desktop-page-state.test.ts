@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   close: vi.fn(async () => true),
   clients: [] as EventTarget[],
-  disconnect: vi.fn()
+  disconnect: vi.fn(),
+  paste: vi.fn()
 }));
 const channel = { getStatistics: () => ({ receivedBytes: 0, sentBytes: 0 }) };
 vi.mock('../../src/service/standalone-remote-desktop-service.js', () => ({
@@ -21,6 +22,9 @@ vi.mock('@novnc/novnc', () => ({
     }
     disconnect() {
       mocks.disconnect();
+    }
+    clipboardPasteFrom(text: string) {
+      mocks.paste(text);
     }
   }
 }));
@@ -38,7 +42,7 @@ beforeEach(() => {
     }
   );
   mocks.discover.mockResolvedValue({
-    capability: { supportsControl: true },
+    capability: { supportsControl: true, supportsUnicodePaste: true },
     description: {
       framebuffer: { width: 800, height: 600 },
       displays: [
@@ -114,7 +118,7 @@ describe('Remote Desktop first-frame state', () => {
     }
   });
 
-  it('offers control only on a ready view and uses the existing mode-switch authorization', async () => {
+  it('toggles local input on the same authorized attachment without another first frame', async () => {
     mocks.select.mockResolvedValue({ channel, path: 'direct', ready() {}, close: mocks.close });
     const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
     const prompt = () =>
@@ -124,32 +128,35 @@ describe('Remote Desktop first-frame state', () => {
     try {
       await flushComponent();
       expect(prompt()).toBeUndefined();
-      expect(mocks.select.mock.calls[0]![0].mode).toBe('VIEW');
+      expect(mocks.select.mock.calls[0]![0].mode).toBe('CONTROL');
+      expect(mocks.clients[0]).toHaveProperty('viewOnly', true);
       mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
       await flushComponent();
       expect(prompt()).toBeDefined();
       await (prompt()!.props['onClick'] as () => Promise<void>)();
       await flushComponent();
-      expect(mocks.select.mock.calls[1]![0].mode).toBe('CONTROL');
+      expect(mocks.select).toHaveBeenCalledOnce();
+      expect(mocks.clients).toHaveLength(1);
+      expect(mocks.clients[0]).toHaveProperty('viewOnly', false);
       expect(prompt()).toBeUndefined();
-      mocks.clients[1]!.dispatchEvent(new Event('firstframe'));
+      const button = view
+        .findAll('ElButton')
+        .find((node) => node.props['data-testid'] === 'desktop-view')!;
+      await (button.props['onClick'] as () => void)();
       await flushComponent();
-      expect(prompt()).toBeUndefined();
+      expect(prompt()).toBeDefined();
+      expect(mocks.clients[0]).toHaveProperty('viewOnly', true);
+      expect(mocks.select).toHaveBeenCalledOnce();
+      expect(mocks.close).not.toHaveBeenCalled();
+      expect(mocks.disconnect).not.toHaveBeenCalled();
     } finally {
       view.unmount();
     }
   });
 
-  it('can return to VIEW while a CONTROL attachment is still opening', async () => {
-    const late = { channel, path: 'direct' as const, ready() {}, close: vi.fn(async () => true) };
-    const pending = Promise.withResolvers<typeof late>();
-    const viewing = { channel, path: 'direct', ready() {}, close: mocks.close };
-    mocks.select
-      .mockResolvedValueOnce(viewing)
-      .mockImplementationOnce(() => pending.promise)
-      .mockResolvedValueOnce(viewing);
+  it('returns to local viewing on blur without closing the picture', async () => {
+    mocks.select.mockResolvedValue({ channel, path: 'direct', ready() {}, close: mocks.close });
     const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
-    let opening: Promise<void> | undefined;
     try {
       await flushComponent();
       mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
@@ -157,27 +164,80 @@ describe('Remote Desktop first-frame state', () => {
       const control = view
         .findAll('ElButton')
         .find((node) => node.props['data-testid'] === 'desktop-control-prompt')!;
-      opening = (control.props['onClick'] as () => Promise<void>)();
+      await (control.props['onClick'] as () => void)();
+      window.dispatchEvent(new Event('blur'));
       await flushComponent();
-      const button = view
-        .findAll('ElButton')
-        .find((node) => node.props['data-testid'] === 'desktop-view')!;
-      expect(button.props['disabled']).not.toBe(true);
-      await (button.props['onClick'] as () => Promise<void>)();
-      expect(mocks.select.mock.calls[1]![0].signal.aborted).toBe(true);
-      pending.resolve(late);
-      await opening;
-      expect(late.close).toHaveBeenCalledOnce();
-      expect(mocks.select.mock.calls.map(([input]) => input.mode)).toEqual([
-        'VIEW',
-        'CONTROL',
-        'VIEW'
-      ]);
-      expect(mocks.clients).toHaveLength(2);
-      expect(mocks.clients[1]).toHaveProperty('viewOnly', true);
+      expect(mocks.clients[0]).toHaveProperty('viewOnly', true);
+      expect(mocks.select).toHaveBeenCalledOnce();
+      expect(mocks.close).not.toHaveBeenCalled();
+      expect(mocks.disconnect).not.toHaveBeenCalled();
+      expect(view.findAll('div').some((node) => node.props['role'] === 'status')).toBe(false);
     } finally {
-      pending.resolve(late);
-      await opening;
+      view.unmount();
+    }
+  });
+
+  it('discards a clipboard read spanning a VIEW/CONTROL round trip on the same client', async () => {
+    const read = Promise.withResolvers<string>();
+    const readText = vi.fn(() => read.promise);
+    vi.stubGlobal('navigator', { clipboard: { readText } });
+    Object.assign(document, { hasFocus: () => true });
+    mocks.select.mockResolvedValue({ channel, path: 'direct', ready() {}, close: mocks.close });
+    const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+    const click = (id: string) =>
+      (
+        view.findAll('ElButton').find((node) => node.props['data-testid'] === id)!.props[
+          'onClick'
+        ] as () => Promise<void>
+      )();
+    let pasting: Promise<void> | undefined;
+    try {
+      await flushComponent();
+      mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
+      await flushComponent();
+      await click('desktop-control-prompt');
+      await flushComponent();
+      pasting = click('desktop-paste');
+      await click('desktop-view');
+      await flushComponent();
+      await click('desktop-control-prompt');
+      await flushComponent();
+      read.resolve('stale clipboard');
+      await pasting;
+      expect(mocks.paste).not.toHaveBeenCalled();
+      readText.mockResolvedValue('fresh clipboard');
+      await click('desktop-paste');
+      expect(mocks.paste).toHaveBeenCalledExactlyOnceWith('fresh clipboard');
+      expect(mocks.select).toHaveBeenCalledOnce();
+    } finally {
+      read.resolve('stale clipboard');
+      await pasting;
+      view.unmount();
+    }
+  });
+
+  it.each(['hidden', 'revoked'])('still closes or fences the picture when %s', async (reason) => {
+    mocks.select.mockResolvedValue({ channel, path: 'direct', ready() {}, close: mocks.close });
+    const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+    try {
+      await flushComponent();
+      mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
+      await flushComponent();
+      const control = view
+        .findAll('ElButton')
+        .find((node) => node.props['data-testid'] === 'desktop-control-prompt')!;
+      await (control.props['onClick'] as () => void)();
+      if (reason === 'hidden') {
+        Object.assign(document, { hidden: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(mocks.close).toHaveBeenCalledOnce();
+      } else mocks.select.mock.calls[0]![0].onDisconnected('NODE_ACCESS_DENIED');
+      await flushComponent();
+      expect(mocks.disconnect).toHaveBeenCalledOnce();
+      expect(mocks.clients[0]).toHaveProperty('viewOnly', true);
+      expect(mocks.select).toHaveBeenCalledOnce();
+      expect(view.findAll('div').some((node) => node.props['role'] === 'status')).toBe(true);
+    } finally {
       view.unmount();
     }
   });
@@ -191,6 +251,7 @@ describe('Remote Desktop first-frame state', () => {
     const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
     try {
       await flushComponent();
+      expect(mocks.select.mock.calls[0]![0].mode).toBe('VIEW');
       mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
       await flushComponent();
       expect(

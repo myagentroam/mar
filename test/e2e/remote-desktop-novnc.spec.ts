@@ -53,6 +53,26 @@ test('noVNC waits for real pixels and does not request the remote clipboard', as
   expect(await page.evaluate(() => (window as any).fixture.events.firstframe)).toBe(1);
 });
 
+test('noVNC preserves clipboard negotiation across local viewing toggles without sending stale text', async ({
+  page
+}) => {
+  await page.evaluate(() => (window as any).fixture.setViewing(true));
+  expect(await page.evaluate(() => (window as any).fixture.clipboardNotify())).toEqual([]);
+  await page.evaluate(() => (window as any).fixture.setViewing(false));
+  const pasted = await page.evaluate(() => (window as any).fixture.pasteOnce());
+  expect(pasted[0]).toBe(true);
+  expect(pasted[1]).toBeGreaterThan(0);
+  expect(pasted[2]).toBe(0);
+  expect(await page.evaluate(() => (window as any).fixture.pendingPasteAcrossViewing())).toEqual(
+    []
+  );
+  const fresh = await page.evaluate(() => (window as any).fixture.pasteOnce());
+  expect(fresh[0]).toBe(true);
+  expect(fresh[1]).toBeGreaterThan(0);
+  expect(fresh[2]).toBe(0);
+  expect(await page.evaluate(() => (window as any).fixture.events.clipboardRead)).toBe(0);
+});
+
 test('noVNC sends native quality levels when quality changes', async ({ page }) => {
   expect(await page.evaluate(() => (window as any).fixture.offeredEncodings())).toEqual(
     expect.arrayContaining([7, -26, -254])

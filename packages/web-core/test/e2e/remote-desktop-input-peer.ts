@@ -3,6 +3,7 @@ import { RemoteDesktopChannel } from '../../src/service/remote-desktop-channel.j
 /** A controlled RFB peer for exercising the real page and noVNC input handlers. */
 export function createDesktopInputPeer() {
   const pointerMasks: number[] = [];
+  const keyEvents: number[][] = [];
   let phase = 0;
   class Wire extends EventTarget {
     readonly readyState = 'open';
@@ -22,6 +23,11 @@ export function createDesktopInputPeer() {
         ]);
       } else if (data[0] === 5) {
         pointerMasks.push(data[1]!);
+      } else if (data[0] === 4) {
+        keyEvents.push([
+          data[1]!,
+          new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(4)
+        ]);
       }
     }
     close() {
@@ -42,6 +48,7 @@ export function createDesktopInputPeer() {
   return {
     channel,
     pointerMasks,
+    keyEvents,
     get ready() {
       return phase === 3;
     },

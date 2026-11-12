@@ -34,7 +34,7 @@ index 4efd6f4b97dfda3ab450723ff8c722c8258d60fc..b21f0e9c67c1fa4696fb31d409d8f99d
                  case 'copy':
                      this.copyImage(a.oldX, a.oldY, a.x, a.y, a.width, a.height, true);
 diff --git a/core/rfb.js b/core/rfb.js
-index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470113beebe 100644
+index 80011e4a10203806f14df1ffc3b8425861a965a7..54f376027dff34b9368c74cc740411b219f8cc59 100644
 --- a/core/rfb.js
 +++ b/core/rfb.js
 @@ -22,6 +22,7 @@ import GestureHandler from "./input/gesturehandler.js";
@@ -58,7 +58,37 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
  
          // Internal state
          this._rfbConnectionState = '';
-@@ -489,6 +496,21 @@ export default class RFB extends EventTargetMixin {
+@@ -309,15 +316,22 @@ export default class RFB extends EventTargetMixin {
+ 
+     get viewOnly() { return this._viewOnly; }
+     set viewOnly(viewOnly) {
++        // MAR: release held input before viewOnly starts suppressing key/pointer events.
++        if (viewOnly && !this._viewOnly) {
++            this._keyboard.ungrab();
++            clearTimeout(this._mouseMoveTimer);
++            this._mouseMoveTimer = null;
++            if (this._mouseButtonMask) {
++                this._mouseButtonMask = 0;
++                this._sendMouse(this._mousePos.x, this._mousePos.y, 0);
++            }
++            this._clipboardText = null;
++        }
+         this._viewOnly = viewOnly;
+ 
+-        if (this._rfbConnectionState === "connecting" ||
+-            this._rfbConnectionState === "connected") {
+-            if (viewOnly) {
+-                this._keyboard.ungrab();
+-            } else {
+-                this._keyboard.grab();
+-            }
++        if (!viewOnly && (this._rfbConnectionState === "connecting" ||
++                          this._rfbConnectionState === "connected")) {
++            this._keyboard.grab();
+         }
+     }
+ 
+@@ -489,6 +503,21 @@ export default class RFB extends EventTargetMixin {
          }
      }
  
@@ -80,7 +110,15 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
      focus(options) {
          this._canvas.focus(options);
      }
-@@ -2266,7 +2288,8 @@ export default class RFB extends EventTargetMixin {
+@@ -1170,6 +1199,7 @@ export default class RFB extends EventTargetMixin {
+     }
+ 
+     _handleMouseButton(x, y, bmask) {
++        this._mousePos = { 'x': x, 'y': y };
+         // Flush waiting move event first
+         this._flushMouseMoveTimer(x, y);
+ 
+@@ -2266,7 +2296,8 @@ export default class RFB extends EventTargetMixin {
              encs.push(encodings.pseudoEncodingCursor);
          }
  
@@ -90,7 +128,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
      }
  
      /* RFB protocol initialization states:
-@@ -2338,7 +2361,7 @@ export default class RFB extends EventTargetMixin {
+@@ -2338,7 +2369,7 @@ export default class RFB extends EventTargetMixin {
          if (length >= 0) {
              //Standard msg
              const text = this._sock.rQshiftStr(length);
@@ -99,7 +137,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
                  return true;
              }
  
-@@ -2382,10 +2405,12 @@ export default class RFB extends EventTargetMixin {
+@@ -2382,10 +2413,12 @@ export default class RFB extends EventTargetMixin {
                  let clientActions = [
                      extendedClipboardActionCaps,
                      extendedClipboardActionRequest,
@@ -113,7 +151,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
                  RFB.messages.extendedClipboardCaps(this._sock, clientActions, {extendedClipboardFormatText: 0});
  
              } else if (actions === extendedClipboardActionRequest) {
-@@ -2399,11 +2424,12 @@ export default class RFB extends EventTargetMixin {
+@@ -2399,11 +2432,12 @@ export default class RFB extends EventTargetMixin {
  
                      if (formats & extendedClipboardFormatText) {
                          RFB.messages.extendedClipboardProvide(this._sock, [extendedClipboardFormatText], [this._clipboardText]);
@@ -127,7 +165,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
                      return true;
                  }
  
-@@ -2417,7 +2443,7 @@ export default class RFB extends EventTargetMixin {
+@@ -2417,7 +2451,7 @@ export default class RFB extends EventTargetMixin {
                  }
  
              } else if (actions === extendedClipboardActionNotify) {
@@ -136,7 +174,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
                      return true;
                  }
  
-@@ -2429,7 +2455,8 @@ export default class RFB extends EventTargetMixin {
+@@ -2429,7 +2463,8 @@ export default class RFB extends EventTargetMixin {
                  }
  
              } else if (actions === extendedClipboardActionProvide) {
@@ -146,7 +184,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
                      return true;
                  }
  
-@@ -2591,7 +2618,7 @@ export default class RFB extends EventTargetMixin {
+@@ -2591,7 +2626,7 @@ export default class RFB extends EventTargetMixin {
                  first = !this._supportsContinuousUpdates;
                  this._supportsContinuousUpdates = true;
                  this._enabledContinuousUpdates = false;
@@ -155,7 +193,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470
                      this._enabledContinuousUpdates = true;
                      this._updateContinuousUpdates();
                      Log.Info("Enabling continuous updates.");
-@@ -2654,11 +2681,29 @@ export default class RFB extends EventTargetMixin {
+@@ -2654,11 +2689,29 @@ export default class RFB extends EventTargetMixin {
                  return false;
              }
  

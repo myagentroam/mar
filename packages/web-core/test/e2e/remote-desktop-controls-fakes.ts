@@ -85,6 +85,7 @@ declare global {
       displays: string[];
       readonly rfbReady: boolean;
       readonly pointerMasks: readonly number[];
+      readonly keyEvents: readonly (readonly number[])[];
       paint(): void;
     };
   }
@@ -97,6 +98,9 @@ window.desktopControls = {
   },
   get pointerMasks() {
     return inputPeer?.pointerMasks ?? [];
+  },
+  get keyEvents() {
+    return inputPeer?.keyEvents ?? [];
   },
   paint() {
     if (inputPeer) {
