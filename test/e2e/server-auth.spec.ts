@@ -1,9 +1,13 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createHash, generateKeyPairSync } from 'node:crypto';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, request as playwrightRequest, test } from '@playwright/test';
+import nodePackage from '../../mar-node/package.json' with { type: 'json' };
 import { createQuickStartServerApp, createServerApp } from '../../ee/server/src/app.js';
+import { createLocalApplicationOptions } from '../../mar-server/src/quick-start/application.js';
+import { createQuickStartConfig } from '../../mar-server/src/quick-start/config.js';
 import {
   createLicenseDocument,
   inspectLicenseRequestCode
@@ -23,6 +27,11 @@ import {
 } from '../../packages/server-core/src/mysql-schema.js';
 import { validateMysqlSchema } from '../../packages/server-core/src/mysql-schema-support.js';
 import { hashPassword, INITIAL_ADMIN_PASSWORD } from '../../packages/server-core/src/password.js';
+import {
+  createEnvelope,
+  nodeEnvelopeSchema,
+  type NodeEnvelope
+} from '../../packages/protocol/src/index.js';
 import {
   createPlaywrightTestDatabase,
   dropPlaywrightTestDatabase,
@@ -271,6 +280,460 @@ test('Linux Quick Start activates through administrator URLs and retains authori
   } finally {
     if (previousKey === undefined) delete process.env['MAR_LICENSE_PUBLIC_KEY'];
     else process.env['MAR_LICENSE_PUBLIC_KEY'] = previousKey;
+    await app?.close();
+    await dropPlaywrightTestDatabase(target);
+    if (directory !== undefined) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Quick Start injects its HTTP marctl URL only for the registered local Node', async () => {
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+  const target = resolvePlaywrightTestDatabase(`${runId}-quick-start-marctl-url`);
+  await createPlaywrightTestDatabase(target);
+  let directory: string | undefined;
+  let app: Awaited<ReturnType<typeof createQuickStartServerApp>>['app'] | undefined;
+  const sockets: WebSocket[] = [];
+
+  try {
+    directory = await mkdtemp(join(tmpdir(), 'quick-start-marctl-url-e2e-'));
+    const portProbe = createServer();
+    await new Promise<void>((resolve, reject) => {
+      portProbe.once('error', reject);
+      portProbe.listen(0, '127.0.0.1', resolve);
+    });
+    const address = portProbe.address() as AddressInfo;
+    await new Promise<void>((resolve, reject) =>
+      portProbe.close((error) => (error ? reject(error) : resolve()))
+    );
+    const localServerUrl = `http://127.0.0.1:${address.port}`;
+    const publicOrigin = 'https://public.invalid';
+    const quickStartOptions = createLocalApplicationOptions(
+      directory,
+      createQuickStartConfig({
+        serverPort: address.port,
+        mysqlPort: 3306,
+        node: true,
+        search: 'disabled'
+      }),
+      () => false,
+      { MAR_SERVER_HOST: '127.0.0.1', MAR_PUBLIC_ORIGIN: publicOrigin }
+    );
+    expect(await quickStartOptions.readQuickStartLocalNodeId?.()).toBeUndefined();
+    const composition = await createQuickStartServerApp({
+      ...quickStartOptions,
+      databaseUrl: target.databaseUrl,
+      secureCookies: true,
+      logger: false
+    });
+    app = composition.app;
+    let baseUrl = await app.listen({ host: '127.0.0.1', port: address.port });
+    expect(baseUrl).toBe(localServerUrl);
+    expect(new URL(baseUrl).protocol).toBe('http:');
+
+    type NodeRequestFrame = Omit<NodeEnvelope, 'type' | 'payload'> & {
+      readonly type: 'node.request';
+      readonly payload: {
+        readonly operation: string;
+        readonly userAuthorization: {
+          readonly userId: number;
+          readonly nodeId: string;
+          readonly operation: string;
+          readonly workspaceId?: string;
+          readonly requestId: string;
+          readonly sessionHash: string;
+          readonly issuedAt: number;
+          readonly expiresAt: number;
+        };
+        readonly data: unknown;
+      };
+    };
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      typeof value === 'object' && value !== null && !Array.isArray(value);
+    const isNodeRequest = (frame: NodeEnvelope): frame is NodeRequestFrame => {
+      if (frame.type !== 'node.request' || !isRecord(frame.payload)) return false;
+      const authorization = frame.payload['userAuthorization'];
+      return (
+        typeof frame.payload['operation'] === 'string' &&
+        Object.hasOwn(frame.payload, 'data') &&
+        isRecord(authorization) &&
+        typeof authorization['userId'] === 'number' &&
+        typeof authorization['nodeId'] === 'string' &&
+        typeof authorization['operation'] === 'string' &&
+        (authorization['workspaceId'] === undefined ||
+          typeof authorization['workspaceId'] === 'string') &&
+        typeof authorization['requestId'] === 'string' &&
+        typeof authorization['sessionHash'] === 'string' &&
+        typeof authorization['issuedAt'] === 'number' &&
+        typeof authorization['expiresAt'] === 'number'
+      );
+    };
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { origin: publicOrigin },
+      payload: { username: 'admin', password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(login.statusCode).toBe(200);
+    expect(String(login.headers['set-cookie'])).toMatch(/;\s*Secure(?:;|$)/u);
+    const changed = await app.inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      headers: {
+        origin: publicOrigin,
+        cookie: String(login.headers['set-cookie']).split(';')[0]!,
+        'x-csrf-token': login.json<{ csrfToken: string }>().csrfToken
+      },
+      payload: { currentPassword: INITIAL_ADMIN_PASSWORD, password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(changed.statusCode).toBe(200);
+    let adminHeaders = {
+      origin: publicOrigin,
+      cookie: String(changed.headers['set-cookie']).split(';')[0]!,
+      'x-csrf-token': changed.json<{ csrfToken: string }>().csrfToken
+    };
+
+    const receiveFrame = (socket: WebSocket): Promise<NodeEnvelope> =>
+      new Promise((resolve, reject) => {
+        const cleanup = () => {
+          socket.removeEventListener('message', onMessage);
+          socket.removeEventListener('error', onError);
+        };
+        const onMessage = (event: MessageEvent) => {
+          cleanup();
+          try {
+            resolve(nodeEnvelopeSchema.parse(JSON.parse(String(event.data))));
+          } catch {
+            reject(new Error('FAKE_NODE_MESSAGE_INVALID'));
+          }
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('FAKE_NODE_SOCKET_ERROR'));
+        };
+        socket.addEventListener('message', onMessage, { once: true });
+        socket.addEventListener('error', onError, { once: true });
+      });
+    const registerNode = async (registrationToken: string) => {
+      const socket = new WebSocket(`${baseUrl.replace('http', 'ws')}/api/node/connect`);
+      sockets.push(socket);
+      await new Promise<void>((resolve, reject) => {
+        socket.addEventListener('open', () => resolve(), { once: true });
+        socket.addEventListener('error', () => reject(new Error('FAKE_NODE_SOCKET_ERROR')), {
+          once: true
+        });
+      });
+      const registeredPromise = receiveFrame(socket);
+      socket.send(
+        JSON.stringify(
+          createEnvelope('register', {
+            registrationToken,
+            capabilities: {
+              platform: 'linux',
+              architecture: 'x64',
+              nodeVersion: process.version,
+              nodeAppVersion: nodePackage.version,
+              codex: { available: true, version: 'test' },
+              claudeCode: { available: false }
+            }
+          })
+        )
+      );
+      const registered = await registeredPromise;
+      if (registered.type !== 'registered' || !isRecord(registered.payload))
+        throw new Error('FAKE_NODE_REGISTRATION_FAILED');
+      const nodeId = registered.payload['nodeId'];
+      if (typeof nodeId !== 'string') throw new Error('FAKE_NODE_REGISTRATION_FAILED');
+      return { socket, nodeId };
+    };
+    const nextRequest = async (socket: WebSocket, operation: string): Promise<NodeRequestFrame> => {
+      while (true) {
+        const frame = await receiveFrame(socket);
+        if (isNodeRequest(frame) && frame.payload.operation === operation) return frame;
+        if (frame.type === 'error') throw new Error('FAKE_NODE_REQUEST_REJECTED');
+      }
+    };
+    const assertAuthorization = (
+      frame: NodeRequestFrame,
+      nodeId: string,
+      operation: string,
+      workspaceId: string
+    ) => {
+      const authorization = frame.payload.userAuthorization;
+      expect({
+        userId: authorization.userId === 1,
+        nodeId: authorization.nodeId === nodeId,
+        operation: authorization.operation === operation,
+        workspaceId:
+          authorization.workspaceId === undefined || authorization.workspaceId === workspaceId,
+        requestId: authorization.requestId === frame.id,
+        sessionHash: typeof authorization.sessionHash === 'string',
+        lifetime: authorization.expiresAt > authorization.issuedAt
+      }).toEqual({
+        userId: true,
+        nodeId: true,
+        operation: true,
+        workspaceId: true,
+        requestId: true,
+        sessionHash: true,
+        lifetime: true
+      });
+    };
+    const createWorkspace = async (node: { socket: WebSocket; nodeId: string }, name: string) => {
+      const workspaceId = `workspace-${name}`;
+      const pending = app!.inject({
+        method: 'POST',
+        url: '/api/workspaces',
+        headers: adminHeaders,
+        payload: { nodeId: node.nodeId, path: `/project/${name}` }
+      });
+      const frame = await nextRequest(node.socket, 'workspace.register');
+      node.socket.send(
+        JSON.stringify(
+          createEnvelope(
+            'node.response',
+            {
+              result: {
+                workspace: { id: workspaceId, path: `/project/${name}`, kind: 'DIRECTORY' }
+              }
+            },
+            { replyTo: frame.id }
+          )
+        )
+      );
+      const response = await pending;
+      expect(response.statusCode).toBeLessThan(300);
+      return workspaceId;
+    };
+
+    const localRegistration = await composition.quickStartNode.issue();
+    const localNode = await registerNode(localRegistration.token);
+    expect(await quickStartOptions.readQuickStartLocalNodeId?.()).toBeUndefined();
+    const nodeDataDirectory = join(directory, 'node-data');
+    const workspaceDirectory = join(directory, 'workspace');
+    await mkdir(nodeDataDirectory, { recursive: true, mode: 0o700 });
+    await mkdir(workspaceDirectory, { recursive: true, mode: 0o700 });
+    await writeFile(
+      join(nodeDataDirectory, 'node.json'),
+      `${JSON.stringify(
+        {
+          serverUrl: localServerUrl,
+          allowedRoots: [workspaceDirectory],
+          dataDirectory: nodeDataDirectory,
+          conversationHosting: { enabled: false },
+          nodeId: localNode.nodeId,
+          credential: 'fixture-local-node-credential'
+        },
+        null,
+        2
+      )}\n`,
+      { mode: 0o600 }
+    );
+    expect(await quickStartOptions.readQuickStartLocalNodeId?.()).toBe(localNode.nodeId);
+    const remoteTokenResponse = await app.inject({
+      method: 'POST',
+      url: '/api/node-registration-tokens',
+      headers: adminHeaders,
+      payload: { displayName: 'Quick Start remote fixture' }
+    });
+    expect(remoteTokenResponse.statusCode).toBe(200);
+    const remoteNode = await registerNode(remoteTokenResponse.json<{ token: string }>().token);
+
+    for (const [name, node, expectedServerUrl] of [
+      ['local', localNode, localServerUrl],
+      ['remote', remoteNode, publicOrigin]
+    ] as const) {
+      const workspaceId = await createWorkspace(node, name);
+      const sessionRequest = app!.inject({
+        method: 'POST',
+        url: '/api/agent-sessions/start',
+        headers: adminHeaders,
+        payload: {
+          nodeId: node.nodeId,
+          workspaceId,
+          runner: 'codex',
+          cwd: `/project/${name}`,
+          clientMessageId: `first-${name}`,
+          content: 'hello'
+        }
+      });
+      const sessionCommand = await nextRequest(node.socket, 'session.start');
+      assertAuthorization(sessionCommand, node.nodeId, 'session.start', workspaceId);
+      const sessionData = sessionCommand.payload.data as {
+        readonly secretEnvironment: Readonly<Record<string, string>>;
+      };
+      expect(sessionData.secretEnvironment.MAR_CTL_SERVER_URL).toBe(expectedServerUrl);
+      expect(typeof sessionData.secretEnvironment.MAR_CTL_USER_TOKEN).toBe('string');
+      node.socket.send(
+        JSON.stringify(
+          createEnvelope(
+            'node.response',
+            {
+              result: {
+                session: {
+                  id: `session-${name}`,
+                  nodeId: node.nodeId,
+                  workspaceId,
+                  runner: 'codex',
+                  cwd: `/project/${name}`
+                },
+                run: { id: `run-${name}`, sessionId: `session-${name}`, status: 'RUNNING' },
+                delivery: 'STARTED',
+                auditReceipt: { sessionId: `session-${name}`, inputMode: 'NEW_SESSION' }
+              }
+            },
+            { replyTo: sessionCommand.id }
+          )
+        )
+      );
+      expect((await sessionRequest).statusCode).toBe(201);
+
+      const terminalRequest = app!.inject({
+        method: 'POST',
+        url: '/api/terminals',
+        headers: adminHeaders,
+        payload: { nodeId: node.nodeId, workspaceId }
+      });
+      const terminalCommand = await nextRequest(node.socket, 'terminal.open');
+      assertAuthorization(terminalCommand, node.nodeId, 'terminal.open', workspaceId);
+      const terminalData = terminalCommand.payload.data as {
+        readonly secretEnvironment: Readonly<Record<string, string>>;
+      };
+      expect(terminalData.secretEnvironment.MAR_CTL_SERVER_URL).toBe(expectedServerUrl);
+      expect(typeof terminalData.secretEnvironment.MAR_CTL_USER_TOKEN).toBe('string');
+      node.socket.send(
+        JSON.stringify(
+          createEnvelope(
+            'node.response',
+            { result: { terminal: { id: `terminal-${name}` } } },
+            { replyTo: terminalCommand.id }
+          )
+        )
+      );
+      expect((await terminalRequest).statusCode).toBe(201);
+    }
+
+    await Promise.all(
+      sockets.splice(0).map(
+        (socket) =>
+          new Promise<void>((resolve) => {
+            if (socket.readyState === WebSocket.CLOSED) return resolve();
+            socket.addEventListener('close', () => resolve(), { once: true });
+            socket.close();
+          })
+      )
+    );
+    await app.close();
+    app = undefined;
+    app = (
+      await createServerApp({
+        databaseUrl: target.databaseUrl,
+        dataDirectory: directory,
+        publicOrigin,
+        secureCookies: true,
+        logger: false
+      })
+    ).app;
+    baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+    const ordinaryLogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { origin: publicOrigin },
+      payload: { username: 'admin', password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(ordinaryLogin.statusCode).toBe(200);
+    adminHeaders = {
+      origin: publicOrigin,
+      cookie: String(ordinaryLogin.headers['set-cookie']).split(';')[0]!,
+      'x-csrf-token': ordinaryLogin.json<{ csrfToken: string }>().csrfToken
+    };
+    const ordinaryTokenResponse = await app.inject({
+      method: 'POST',
+      url: '/api/node-registration-tokens',
+      headers: adminHeaders,
+      payload: { displayName: 'Ordinary server fixture' }
+    });
+    expect(ordinaryTokenResponse.statusCode).toBe(200);
+    const ordinaryNode = await registerNode(ordinaryTokenResponse.json<{ token: string }>().token);
+    const ordinaryWorkspaceId = await createWorkspace(ordinaryNode, 'ordinary');
+    const ordinarySessionRequest = app.inject({
+      method: 'POST',
+      url: '/api/agent-sessions/start',
+      headers: adminHeaders,
+      payload: {
+        nodeId: ordinaryNode.nodeId,
+        workspaceId: ordinaryWorkspaceId,
+        runner: 'codex',
+        cwd: '/project/ordinary',
+        clientMessageId: 'first-ordinary',
+        content: 'hello'
+      }
+    });
+    const ordinarySessionCommand = await nextRequest(ordinaryNode.socket, 'session.start');
+    assertAuthorization(
+      ordinarySessionCommand,
+      ordinaryNode.nodeId,
+      'session.start',
+      ordinaryWorkspaceId
+    );
+    const ordinarySessionData = ordinarySessionCommand.payload.data as {
+      readonly secretEnvironment: Readonly<Record<string, string>>;
+    };
+    expect(ordinarySessionData.secretEnvironment.MAR_CTL_SERVER_URL).toBe(publicOrigin);
+    ordinaryNode.socket.send(
+      JSON.stringify(
+        createEnvelope(
+          'node.response',
+          {
+            result: {
+              session: {
+                id: 'session-ordinary',
+                nodeId: ordinaryNode.nodeId,
+                workspaceId: ordinaryWorkspaceId,
+                runner: 'codex',
+                cwd: '/project/ordinary'
+              },
+              run: { id: 'run-ordinary', sessionId: 'session-ordinary', status: 'RUNNING' },
+              delivery: 'STARTED',
+              auditReceipt: { sessionId: 'session-ordinary', inputMode: 'NEW_SESSION' }
+            }
+          },
+          { replyTo: ordinarySessionCommand.id }
+        )
+      )
+    );
+    expect((await ordinarySessionRequest).statusCode).toBe(201);
+
+    const ordinaryTerminalRequest = app.inject({
+      method: 'POST',
+      url: '/api/terminals',
+      headers: adminHeaders,
+      payload: { nodeId: ordinaryNode.nodeId, workspaceId: ordinaryWorkspaceId }
+    });
+    const ordinaryTerminalCommand = await nextRequest(ordinaryNode.socket, 'terminal.open');
+    assertAuthorization(
+      ordinaryTerminalCommand,
+      ordinaryNode.nodeId,
+      'terminal.open',
+      ordinaryWorkspaceId
+    );
+    const ordinaryTerminalData = ordinaryTerminalCommand.payload.data as {
+      readonly secretEnvironment: Readonly<Record<string, string>>;
+    };
+    expect(ordinaryTerminalData.secretEnvironment.MAR_CTL_SERVER_URL).toBe(publicOrigin);
+    ordinaryNode.socket.send(
+      JSON.stringify(
+        createEnvelope(
+          'node.response',
+          { result: { terminal: { id: 'terminal-ordinary' } } },
+          { replyTo: ordinaryTerminalCommand.id }
+        )
+      )
+    );
+    expect((await ordinaryTerminalRequest).statusCode).toBe(201);
+  } finally {
+    for (const socket of sockets) socket.close();
     await app?.close();
     await dropPlaywrightTestDatabase(target);
     if (directory !== undefined) await rm(directory, { recursive: true, force: true });

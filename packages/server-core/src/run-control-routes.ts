@@ -26,7 +26,7 @@ import {
   type ImagePreviewQuery,
   type ImageResourceResponse
 } from './image-resource-response.js';
-import type { MarctlUserCredentials } from './marctl-user-credentials.js';
+import type { MarctlServerUrlForNode, MarctlUserCredentials } from './marctl-user-credentials.js';
 export function registerRunControlRoutes(input: {
   readonly app: FastifyInstance;
   readonly databaseError: (reply: FastifyReply, error: unknown) => FastifyReply;
@@ -35,6 +35,7 @@ export function registerRunControlRoutes(input: {
   readonly nodeControl: SessionRunNodeControl;
   readonly secrets: ProcessSecretResolver;
   readonly userCredentials?: MarctlUserCredentials;
+  readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
   readonly searchBackendAvailable?: () => boolean;

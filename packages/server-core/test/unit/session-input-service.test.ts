@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SessionInputService } from '../../src/session-input-service.js';
+import type {
+  MarctlServerUrlForNode,
+  MarctlUserCredentials
+} from '../../src/marctl-user-credentials.js';
 
-function fixture() {
+function fixture(
+  overrides: {
+    readonly publicOrigin?: string;
+    readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
+    readonly userCredentials?: MarctlUserCredentials;
+  } = {}
+) {
   const requestNode = vi.fn().mockResolvedValue({
     accepted: true,
     auditReceipt: { sessionId: 'new-session', inputMode: 'NEW_SESSION' }
@@ -12,7 +22,13 @@ function fixture() {
   const service = new SessionInputService({
     nodeControl: { requestNode },
     secrets: { resolve },
-    publicOrigin: undefined,
+    publicOrigin: overrides.publicOrigin,
+    ...(overrides.marctlServerUrlForNode === undefined
+      ? {}
+      : { marctlServerUrlForNode: overrides.marctlServerUrlForNode }),
+    ...(overrides.userCredentials === undefined
+      ? {}
+      : { userCredentials: overrides.userCredentials }),
     marAgentRuntimeModels: { prepare },
     audits: { recordSharedConversation }
   });
@@ -76,6 +92,45 @@ describe('SessionInputService execution entry', () => {
     });
     expect(f.prepare).not.toHaveBeenCalled();
     expect(f.requestNode.mock.calls[0]?.[2]).toMatchObject({ modelId: 'codex-model' });
+  });
+
+  it('uses a managed Node URL only for its exact node identity', async () => {
+    const publicOrigin = 'https://public.invalid';
+    const localServerUrl = 'http://127.0.0.1:5190';
+    const environment = vi.fn(async (_user: unknown, serverUrl?: string) => ({
+      MAR_CTL_SERVER_URL: serverUrl ?? ''
+    }));
+    const f = fixture({
+      publicOrigin,
+      marctlServerUrlForNode: (nodeId) => (nodeId === 'managed-node' ? localServerUrl : undefined),
+      userCredentials: { environment } as unknown as MarctlUserCredentials
+    });
+
+    for (const [nodeId, expectedServerUrl] of [
+      ['managed-node', localServerUrl],
+      ['remote-node', publicOrigin]
+    ] as const) {
+      await f.service.startSession(
+        { ...f.context, nodeId },
+        {
+          runner: 'codex',
+          cwd: '/fixture',
+          content: 'hello',
+          clientMessageId: `message-${nodeId}`
+        }
+      );
+
+      const forwarded = f.requestNode.mock.calls.at(-1)?.[2] as {
+        readonly secretEnvironment?: Readonly<Record<string, string>>;
+      };
+      expect(forwarded.secretEnvironment?.MAR_CTL_SERVER_URL).toBe(expectedServerUrl);
+      expect(f.requestNode.mock.calls.at(-1)?.[0]).toBe(nodeId);
+      expect(f.requestNode.mock.calls.at(-1)?.[3]).toMatchObject({
+        userId: 7,
+        sessionHash: 'fingerprint',
+        workspaceId: 'workspace'
+      });
+    }
   });
 
   it('audits preparation failure once and never dispatches the execution', async () => {

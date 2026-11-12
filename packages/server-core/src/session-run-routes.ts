@@ -25,7 +25,7 @@ import type {
   MarAgentRuntimeModelService
 } from './session-run-contracts.js';
 import { runnerNameSchema, workspaceSessionCleanupResultSchema } from '@myagentroam/protocol';
-import type { MarctlUserCredentials } from './marctl-user-credentials.js';
+import type { MarctlServerUrlForNode, MarctlUserCredentials } from './marctl-user-credentials.js';
 import { requireMarAgentAutoSupport } from './mar-agent-auto-support.js';
 import { SessionInputService } from './session-input-service.js';
 import { prepareRunnerProfileContext } from './runner-profile-context.js';
@@ -36,6 +36,7 @@ export function registerSessionRunRoutes(input: {
   readonly nodeControl: SessionRunNodeControl;
   readonly secrets: ProcessSecretResolver;
   readonly userCredentials?: MarctlUserCredentials;
+  readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
   readonly personalInstructions?: PersonalInstructionReader;
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;

@@ -11,6 +11,41 @@ interface Bootstrap {
   online(nodeId: string): boolean;
 }
 
+/** Reads only the complete managed Node identity from Quick Start's private Node data. */
+export async function readQuickStartLocalNodeId(root: string): Promise<string | undefined> {
+  let serialized: string;
+  try {
+    serialized = await readFile(join(root, 'node-data', 'node.json'), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw Object.assign(new Error('QUICK_START_NODE_CONFIG_READ_FAILED'), {
+      code: 'QUICK_START_NODE_CONFIG_READ_FAILED'
+    });
+  }
+
+  let config: unknown;
+  try {
+    config = JSON.parse(serialized);
+  } catch {
+    throw Object.assign(new Error('QUICK_START_NODE_CONFIG_INVALID'), {
+      code: 'QUICK_START_NODE_CONFIG_INVALID'
+    });
+  }
+  if (typeof config !== 'object' || config === null || Array.isArray(config)) return undefined;
+
+  const record = config as Record<string, unknown>;
+  const nodeId = record['nodeId'];
+  const credential = record['credential'];
+  if (
+    typeof nodeId === 'string' &&
+    nodeId.trim().length > 0 &&
+    typeof credential === 'string' &&
+    credential.trim().length > 0
+  )
+    return nodeId;
+  return undefined;
+}
+
 /** Owns one Supervisor. Credentials remain in the existing Node configuration. */
 export async function startLocalNode(
   root: string,
