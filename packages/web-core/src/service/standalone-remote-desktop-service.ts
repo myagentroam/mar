@@ -14,6 +14,7 @@ import { apiErrorFromResponse } from '../util/api-error.js';
 
 type AvailableCapability = Extract<RemoteDesktopCapability, { available: true }>;
 export interface StandaloneDesktopDiscovery {
+  readonly nodeName?: string;
   readonly capability: AvailableCapability;
   readonly description: RemoteDesktopDescription;
 }
@@ -102,7 +103,7 @@ export function createStandaloneRemoteDesktopService(options: {
     const value: unknown = await response.json();
     if (value === null || typeof value !== 'object')
       throw new RemoteDesktopClientError('DESKTOP_UNAVAILABLE');
-    const data = value as { capability?: unknown; description?: unknown };
+    const data = value as { capability?: unknown; description?: unknown; nodeName?: unknown };
     const capability = remoteDesktopCapabilitySchema.safeParse(data.capability);
     const description = remoteDesktopDescriptionSchema.safeParse(data.description);
     if (!capability.success || !capability.data.available || !description.success)
@@ -114,7 +115,11 @@ export function createStandaloneRemoteDesktopService(options: {
       connection !== connectionId
     )
       throw new RemoteDesktopClientError('DESKTOP_CONTROL_UNAVAILABLE');
-    const result = { capability: capability.data, description: description.data };
+    const result = {
+      capability: capability.data,
+      description: description.data,
+      ...(typeof data.nodeName === 'string' ? { nodeName: data.nodeName } : {})
+    };
     discovery = result;
     if (result.capability.transports.includes('DIRECT'))
       await waitFor(

@@ -1,5 +1,8 @@
 // Controlled transport/render boundaries; the page, layout, and controls are real.
+import { createDesktopInputPeer } from './remote-desktop-input-peer.js';
+
 const modes: string[] = [];
+let inputPeer: ReturnType<typeof createDesktopInputPeer> | undefined;
 let current: RFB | undefined;
 let activeChannel: ReturnType<typeof channel>;
 const settings = new URLSearchParams(location.search);
@@ -28,13 +31,14 @@ export function createStandaloneRemoteDesktopService() {
   return {
     async discover() {
       return {
+        nodeName: 'Fixture Node',
         capability: { supportsControl: !settings.has('viewOnly'), supportsUnicodePaste: true },
         description: {
           framebuffer: { width: 800, height: 600 },
           displays: [
             {
               displayId: 'screen',
-              name: 'Display',
+              name: '\\\\.\\DISPLAY1',
               primary: true,
               framebufferBounds: { x: 0, y: 0, width: 800, height: 600 }
             }
@@ -44,13 +48,16 @@ export function createStandaloneRemoteDesktopService() {
     },
     async select(input: { mode: string }) {
       modes.push(input.mode);
-      activeChannel = channel();
+      const selectedChannel = settings.has('realRfb')
+        ? (inputPeer = createDesktopInputPeer()).channel
+        : (activeChannel = channel());
       return {
         path: settings.get('path') === 'relay' ? 'relay' : 'direct',
-        channel: activeChannel,
+        channel: selectedChannel,
         controlRoundTripMs: 24,
         ready() {},
         async close() {
+          if ('close' in selectedChannel) selectedChannel.close();
           return true;
         }
       };
@@ -63,12 +70,27 @@ export function createStandaloneRemoteDesktopService() {
 
 declare global {
   interface Window {
-    desktopControls: { modes: string[]; paint(): void };
+    desktopControls: {
+      modes: string[];
+      readonly rfbReady: boolean;
+      readonly pointerMasks: readonly number[];
+      paint(): void;
+    };
   }
 }
 window.desktopControls = {
   modes,
+  get rfbReady() {
+    return inputPeer?.ready ?? false;
+  },
+  get pointerMasks() {
+    return inputPeer?.pointerMasks ?? [];
+  },
   paint() {
+    if (inputPeer) {
+      inputPeer.paint();
+      return;
+    }
     activeChannel.bytes.receivedBytes += 2048;
     activeChannel.bytes.sentBytes += 128;
     current!.dispatchEvent(new Event('frame'));

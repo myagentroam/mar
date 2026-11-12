@@ -12,7 +12,7 @@ import type { ResourceAccessService } from '../rbac/resource-access-service.js';
 export function registerRemoteDesktopDiscoveryRoute(input: {
   readonly app: FastifyInstance;
   readonly database: SessionLookup;
-  readonly nodeControl: Pick<NodeControl, 'nodeCapabilities' | 'requestNode'>;
+  readonly nodeControl: Pick<NodeControl, 'nodeCapabilities' | 'requestNode' | 'listNodes'>;
   readonly resources: Pick<ResourceAccessService, 'canUseNode'>;
   readonly publicOrigin: string | undefined;
 }): void {
@@ -26,6 +26,8 @@ export function registerRemoteDesktopDiscoveryRoute(input: {
     try {
       if (!(await resources.canUseNode(user.userId, nodeId)))
         return sendError(reply, 403, 'NODE_ACCESS_DENIED');
+      const node = (await nodeControl.listNodes()).find((candidate) => candidate.id === nodeId);
+      const nodeName = node?.displayName?.trim() || node?.registeredAddress || undefined;
       const admitted = protectedAdmin(database, request, reply);
       if (admitted === undefined) return;
       if (admitted.userId !== user.userId || admitted.sessionHash !== user.sessionHash)
@@ -48,7 +50,7 @@ export function registerRemoteDesktopDiscoveryRoute(input: {
       if (!latest?.available || latest.nodeGeneration !== capability.nodeGeneration)
         return sendError(reply, 409, 'DESKTOP_UNAVAILABLE');
       if (!description.success) return sendError(reply, 502, 'DESKTOP_DESCRIPTION_INVALID');
-      return reply.send({ capability: latest, description: description.data });
+      return reply.send({ capability: latest, description: description.data, nodeName });
     } catch (error) {
       return databaseError(reply, error);
     }

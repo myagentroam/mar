@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 
@@ -18,7 +19,7 @@ export async function startCustomThemeFixture(
     import(webRequire.resolve('unplugin-vue-components/vite')),
     import(webRequire.resolve('unplugin-vue-components/resolvers'))
   ]);
-  const cacheKey = `${encodeURIComponent(entry ?? 'all')}-${options?.protocolSource ? 'source' : 'dist'}`;
+  const cacheKey = `${encodeURIComponent(entry ?? 'all')}-${options?.protocolSource ? 'source' : 'dist'}-${randomUUID()}`;
   const server = await createServer({
     root: productRoot,
     cacheDir: resolve(productRoot, `test/runs/theme-vite-${process.pid}-${cacheKey}`),

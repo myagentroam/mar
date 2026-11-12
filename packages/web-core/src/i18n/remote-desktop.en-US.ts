@@ -22,7 +22,7 @@ export const remoteDesktopEnUS = {
   qualityLow: 'Low quality',
   qualityMedium: 'Medium quality',
   qualityHigh: 'High quality',
-  allScreens: 'All displays',
+  displayName: 'Display{number}',
   primary: '{name} (primary)',
   paste: 'Send clipboard text',
   keyboard: 'Text keyboard',

@@ -91,12 +91,21 @@ beforeEach(() => {
   mocks.transport.ensureTransport.mockResolvedValue('DIRECT_AVAILABLE');
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => response({ capability, description }))
+    vi.fn(async () => response({ capability, description, nodeName: 'Studio desktop' }))
   );
 });
 afterEach(() => vi.unstubAllGlobals());
 
 describe('standalone Remote Desktop page composition', () => {
+  it('preserves the server-provided Node name without deriving it from the internal ID', async () => {
+    const f = fixture();
+    try {
+      const snapshot = await f.service.discover(new AbortController().signal);
+      expect(snapshot.nodeName).toBe('Studio desktop');
+    } finally {
+      await f.service.close();
+    }
+  });
   it.each([true, false])(
     'opens VIEW with multi-display support reported as %s',
     async (supportsMultiDisplay) => {

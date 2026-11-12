@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let server: Awaited<ReturnType<typeof startCustomThemeFixture>>;
+let realServer: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   const replacement = resolve(
     import.meta.dirname,
@@ -14,9 +15,13 @@ test.beforeAll(async () => {
       { find: '../../service/standalone-remote-desktop-service.js', replacement }
     ]
   });
+  realServer = await startCustomThemeFixture('test/e2e/support/remote-desktop-controls.html', {
+    aliases: [{ find: '../../service/standalone-remote-desktop-service.js', replacement }]
+  });
 });
 test.afterAll(async () => {
   await server?.close();
+  await realServer?.close();
 });
 
 for (const viewport of [
@@ -37,8 +42,22 @@ for (const viewport of [
     await expect.poll(() => page.evaluate(() => window.desktopControls?.modes)).toEqual(['VIEW']);
     const prompt = page.getByTestId('desktop-control-prompt');
     await expect(prompt).toBeHidden();
+    await expect(
+      page.locator('.remote-desktop-overlay [data-mar-icon="loading-action"]')
+    ).toBeVisible();
     await page.evaluate(() => window.desktopControls.paint());
     await expect(prompt).toBeVisible();
+    await expect(page.locator('.remote-desktop-title')).not.toContainText('node-a-internal-id');
+    await expect(page.getByTestId('desktop-node-name')).toHaveText('Fixture Node');
+    const buttonStyle = (element: HTMLElement) => {
+      const style = getComputedStyle(element);
+      return [style.height, style.fontSize, style.color, style.backgroundColor, style.borderColor];
+    };
+    await expect(async () => {
+      expect(await prompt.evaluate(buttonStyle)).toEqual(
+        await page.getByTestId('desktop-control').evaluate(buttonStyle)
+      );
+    }).toPass({ timeout: 5000 });
     const stage = await page.locator('.remote-desktop-stage').boundingBox();
     const button = await prompt.boundingBox();
     expect(Math.abs(button!.x + button!.width / 2 - stage!.x - stage!.width / 2)).toBeLessThan(1);
@@ -52,7 +71,15 @@ for (const viewport of [
     await expect(statistics).not.toHaveAttribute('title');
     await expect(statistics).toContainText(/Server (中继|relay)/u);
     await expect(statistics).toContainText('FPS');
-    await expect(statistics).toContainText('—');
+    await expect(statistics).toContainText(' -');
+    await expect(statistics).not.toContainText('—');
+    const screen = page.getByTestId('desktop-screen');
+    await screen.click();
+    await expect(page.getByRole('option')).toHaveCount(1);
+    await expect(page.getByRole('option')).toHaveText(
+      viewport.width === 390 ? 'Display1（主屏）' : 'Display1 (primary)'
+    );
+    await screen.click();
     await page.clock.runFor(1000);
     await expect(statistics).toContainText('24 ms');
     if (viewport.width === 1280) {
@@ -83,4 +110,40 @@ test('a viewing-only Node never offers a control prompt', async ({ page }) => {
   await expect(page.getByTestId('desktop-control-prompt')).toBeHidden();
   await expect(page.getByTestId('desktop-control')).toBeDisabled();
   await expect(page.getByTestId('desktop-statistics')).toContainText(/直连|Direct/u);
+});
+
+test('real noVNC leaves the local mouse free in VIEW and accepts input only after Control desktop', async ({
+  page
+}) => {
+  await page.goto(`${realServer.url}remote-desktop-controls.html?realRfb`);
+  await page.waitForFunction(() => window.desktopControls?.rfbReady);
+  await page.evaluate(() => window.desktopControls.paint());
+  const prompt = page.getByTestId('desktop-control-prompt');
+  await expect(prompt).toBeVisible();
+  const canvas = page.locator('.remote-desktop-target canvas');
+  const box = (await canvas.boundingBox())!;
+  const point = { x: box.x + 10, y: box.y + 10 };
+  const hit = () =>
+    page.evaluate(({ x, y }) => {
+      const element = document.elementFromPoint(x, y)!;
+      return { tag: element.tagName, cursor: getComputedStyle(element).cursor };
+    }, point);
+  expect((await hit()).tag).not.toBe('CANVAS');
+  expect((await hit()).cursor).not.toBe('none');
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => page.evaluate(() => window.desktopControls.pointerMasks)).toEqual([]);
+  await prompt.hover();
+  await expect.poll(() => prompt.evaluate((element) => element.matches(':hover'))).toBe(true);
+  await prompt.click();
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.modes))
+    .toEqual(['VIEW', 'CONTROL']);
+  await expect.poll(() => page.evaluate(() => window.desktopControls.rfbReady)).toBe(true);
+  await page.evaluate(() => window.desktopControls.paint());
+  await expect(prompt).toBeHidden();
+  await expect.poll(async () => (await hit()).tag).toBe('CANVAS');
+  await page.mouse.click(point.x, point.y);
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.pointerMasks.slice(-2)))
+    .toEqual([1, 0]);
 });
