@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../../util/uuid.js';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -133,7 +134,7 @@ async function load(showRefresh = false) {
 function edit(model?: ImageGenerationModel) {
   if (sorting.value || !props.writable || busy.value) return;
   Object.assign(draft, {
-    id: model?.id ?? crypto.randomUUID(),
+    id: model?.id ?? createUuid(),
     name: model?.name ?? '',
     enabled: model?.enabled ?? true,
     provider: model?.provider ?? 'CODEX',

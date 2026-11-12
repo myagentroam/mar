@@ -234,7 +234,7 @@ No configuration, authorization, or Server connection is required.`
     userContextUnavailable: 'This Node session has no valid marctl user authorization.',
     sessionContextRequired: 'No current Session is available; specify a Session ID explicitly.',
     serverUrlInvalid: 'MAR_CTL_SERVER_URL is invalid.',
-    serverUrlTransport: 'MAR_CTL_SERVER_URL must use HTTPS or loopback HTTP.',
+    serverUrlTransport: 'MAR_CTL_SERVER_URL must use HTTP or HTTPS.',
     serverUrlOrigin: 'MAR_CTL_SERVER_URL must be an origin without credentials or query data.',
     fetchUnavailable: 'Fetch is unavailable in this Node.js runtime.',
     serverInvalidNodes: 'The server returned an invalid node list.',

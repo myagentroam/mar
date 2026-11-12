@@ -133,6 +133,13 @@ function fixture() {
 }
 
 describe('browser Push subscription lifecycle', () => {
+  it('uses available Push APIs without imposing a secure-context policy', async () => {
+    const f = fixture();
+    vi.stubGlobal('isSecureContext', false);
+    await f.service.refresh(false);
+    expect(f.service.canSubscribe()).toBe(true);
+  });
+
   it('keeps subscription readiness reactive while preparation is refreshed', async () => {
     const f = fixture();
     await f.service.refresh(false);

@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { DirectTransferResource } from '@myagentroam/protocol';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
 import type { WorkspaceDirectFileIdentity } from '../model/workspace-direct-file.js';
@@ -69,7 +70,7 @@ export async function createWorkspaceDirectObjectUrlSink(
   if (storage.getDirectory === undefined) throw new Error('DIRECT_OPFS_UNAVAILABLE');
   const root = await storage.getDirectory();
   const directory = await root.getDirectoryHandle('mar-direct-preview', { create: true });
-  const entryName = `${crypto.randomUUID()}-${safeFileName(fileName)}`;
+  const entryName = `${createUuid()}-${safeFileName(fileName)}`;
   const handle = await directory.getFileHandle(entryName, { create: true });
   const writable = await handle.createWritable();
   let closed = false;

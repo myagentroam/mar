@@ -27,13 +27,11 @@ test.afterAll(async () => {
 test('switches a selected capture back to VIEW through the display selector', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mar.locale.v2', 'en-US'));
   await page.goto(`${server.url}remote-desktop-controls.html?displaySelection`);
-  await expect.poll(() => page.evaluate(() => window.desktopControls?.modes)).toEqual(['VIEW']);
+  await expect.poll(() => page.evaluate(() => window.desktopControls?.modes)).toEqual(['CONTROL']);
   await page.evaluate(() => window.desktopControls.paint());
   await expect(page.getByTestId('desktop-control')).toBeEnabled();
   await page.getByTestId('desktop-control').click();
-  await expect
-    .poll(() => page.evaluate(() => window.desktopControls.modes))
-    .toEqual(['VIEW', 'CONTROL']);
+  await expect.poll(() => page.evaluate(() => window.desktopControls.modes)).toEqual(['CONTROL']);
   await page.evaluate(() => window.desktopControls.paint());
   await page.getByTestId('desktop-screen').click();
   await expect(page.getByRole('option')).toHaveCount(2);
@@ -43,7 +41,7 @@ test('switches a selected capture back to VIEW through the display selector', as
     .toEqual(['screen', 'secondary']);
   await expect
     .poll(() => page.evaluate(() => window.desktopControls.modes))
-    .toEqual(['VIEW', 'CONTROL', 'VIEW']);
+    .toEqual(['CONTROL', 'CONTROL']);
   await page.evaluate(() => window.desktopControls.paint());
   await expect(page.getByTestId('desktop-control-prompt')).toBeVisible();
   await expect(page.getByTestId('desktop-view')).toHaveCount(0);
@@ -64,7 +62,9 @@ for (const viewport of [
       localStorage.setItem('mar.theme', mobile ? 'vscode-dark-2026' : 'daylight');
     }, viewport.width === 390);
     await page.goto(`${server.url}remote-desktop-controls.html?path=relay`);
-    await expect.poll(() => page.evaluate(() => window.desktopControls?.modes)).toEqual(['VIEW']);
+    await expect
+      .poll(() => page.evaluate(() => window.desktopControls?.modes))
+      .toEqual(['CONTROL']);
     const prompt = page.getByTestId('desktop-control-prompt');
     await expect(prompt).toBeHidden();
     await expect(
@@ -118,9 +118,7 @@ for (const viewport of [
     await page.screenshot({ path: test.info().outputPath('view-only.png') });
     await prompt.focus();
     await page.keyboard.press('Enter');
-    await expect
-      .poll(() => page.evaluate(() => window.desktopControls.modes))
-      .toEqual(['VIEW', 'CONTROL']);
+    await expect.poll(() => page.evaluate(() => window.desktopControls.modes)).toEqual(['CONTROL']);
     await expect(prompt).toBeHidden();
     await page.evaluate(() => window.desktopControls.paint());
     await expect(page.getByTestId('desktop-keyboard')).toBeVisible();
@@ -146,6 +144,7 @@ test('real noVNC leaves the local mouse free in VIEW and accepts input only afte
   const prompt = page.getByTestId('desktop-control-prompt');
   await expect(prompt).toBeVisible();
   const canvas = page.locator('.remote-desktop-target canvas');
+  const original = (await canvas.elementHandle())!;
   const box = (await canvas.boundingBox())!;
   const point = { x: box.x + 10, y: box.y + 10 };
   const hit = () =>
@@ -160,13 +159,36 @@ test('real noVNC leaves the local mouse free in VIEW and accepts input only afte
   await prompt.hover();
   await expect.poll(() => prompt.evaluate((element) => element.matches(':hover'))).toBe(true);
   await prompt.click();
-  await expect
-    .poll(() => page.evaluate(() => window.desktopControls.modes))
-    .toEqual(['VIEW', 'CONTROL']);
+  await expect.poll(() => page.evaluate(() => window.desktopControls.modes)).toEqual(['CONTROL']);
   await expect.poll(() => page.evaluate(() => window.desktopControls.rfbReady)).toBe(true);
-  await page.evaluate(() => window.desktopControls.paint());
   await expect(prompt).toBeHidden();
   await expect.poll(async () => (await hit()).tag).toBe('CANVAS');
+  await page.mouse.click(point.x, point.y);
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.pointerMasks.slice(-2)))
+    .toEqual([1, 0]);
+  await page.keyboard.down('a');
+  await page.mouse.down();
+  await expect.poll(() => page.evaluate(() => window.desktopControls.pointerMasks.at(-1))).toBe(1);
+  // Click without releasing the held pointer/key first, exercising the actual viewOnly setter.
+  await page.getByTestId('desktop-view').evaluate((button: HTMLButtonElement) => button.click());
+  await expect(prompt).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.keyEvents))
+    .toEqual([
+      [1, 97],
+      [0, 97]
+    ]);
+  await expect
+    .poll(() => page.evaluate(() => window.desktopControls.pointerMasks.slice(-2)))
+    .toEqual([1, 0]);
+  await page.keyboard.up('a');
+  await page.mouse.up();
+  await prompt.click();
+  await expect(prompt).toBeHidden();
+  await expect(page.locator('.remote-desktop-overlay')).toHaveCount(0);
+  expect(await original.evaluate((element) => element.isConnected)).toBe(true);
+  expect(await page.evaluate(() => window.desktopControls.modes)).toEqual(['CONTROL']);
   await page.mouse.click(point.x, point.y);
   await expect
     .poll(() => page.evaluate(() => window.desktopControls.pointerMasks.slice(-2)))

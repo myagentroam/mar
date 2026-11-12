@@ -1,4 +1,5 @@
 import type { DirectTransferDescriptor, DirectTransferResource } from '@myagentroam/protocol';
+import { sha256 } from '../util/sha256.js';
 import type { createWorkspaceDirectTransferService } from './workspace-direct-transfer-service.js';
 
 import type {
@@ -66,8 +67,7 @@ export async function directFileContentRevision(
 ): Promise<string | undefined> {
   if (file.offset !== 0 || file.nextOffset !== null || file.bytes.byteLength !== file.size)
     return undefined;
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', file.bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return sha256(file.bytes);
 }
 
 export async function readWorkspaceDirectFileRange(input: {

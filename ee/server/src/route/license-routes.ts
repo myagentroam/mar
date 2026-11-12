@@ -15,13 +15,15 @@ export function registerLicenseRoutes(input: {
   readonly licenses: LicenseService;
   readonly publicOrigin: string | undefined;
   readonly activationAvailable?: boolean;
+  readonly activationVisible?: boolean;
 }): void {
   const { app, database, licenses, publicOrigin } = input;
   app.get('/api/license', async (request, reply) => {
     if (protectedManagementAdmin(database, request, reply) === undefined) return;
     return reply.header('cache-control', 'private, no-store').send({
       ...(await licenses.status()),
-      activationAvailable: input.activationAvailable !== false
+      activationAvailable: input.activationAvailable !== false,
+      activationVisible: input.activationAvailable !== false && input.activationVisible !== false
     });
   });
   if (input.activationAvailable === false) return;

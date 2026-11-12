@@ -1,6 +1,6 @@
 import { createQuickStartServerApp } from '@myagentroam-enterprise/server-implementation';
 import { resolve } from 'node:path';
-import type { QuickStartConfig } from './config.js';
+import { resolveQuickStartNetwork, type QuickStartConfig } from './config.js';
 
 /** Creates the existing product with only the local deployment's paths and database. */
 export async function createLocalApplication(
@@ -16,8 +16,7 @@ export async function createLocalApplication(
     databaseUrl: databaseUrl.toString(),
     dataDirectory: resolve(root, 'server-data'),
     webRoot: resolve(import.meta.dirname, '../../web'),
-    publicOrigin: `http://127.0.0.1:${config.serverPort}`,
-    secureCookies: false,
+    publicOrigin: resolveQuickStartNetwork(config).publicOrigin,
     searchBackendAvailable,
     ...(config.search.mode === 'external'
       ? { webSearchEndpoint: config.search.url }

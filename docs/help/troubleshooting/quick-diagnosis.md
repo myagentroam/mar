@@ -1,21 +1,21 @@
 ---
 title: 从现象开始排查
-lastUpdated: 2026-10-17
+lastUpdated: 2026-11-12
 ---
 
 # 从现象开始排查
 
-| 现象                       | 先检查                                 | 下一页                                                      |
-| -------------------------- | -------------------------------------- | ----------------------------------------------------------- |
-| 页面空白或登录失败         | HTTPS、反向代理、`MAR_PUBLIC_ORIGIN`   | [网络、TLS 与 WebSocket](../deployment/network.md)          |
-| Node 离线/注册失败         | Node 服务日志、URL、时间、出站网络     | [Node 注册失败或离线](node-offline.md)                      |
-| Workspace/文件/Git 不可用  | `allowedRoots`、实际路径、服务账号权限 | [Workspace、文件或 Git 不可用](workspace-files.md)          |
-| 会话卡住或只读             | Node 在线、Agent 状态、当前任务        | [会话卡在 Working、Idle 或只读](session-run.md)             |
-| 终端打不开/断线            | Node 在线、服务账号、代理 WebSocket    | [终端无法打开或频繁断线](terminal.md)                       |
-| MAR Agent 无模型或认证失败 | 模型启用、授权、凭据作用域和模型测试   | [Agent 排障](../runners/runner-troubleshooting.md)          |
-| 托管对话不可用或历史为空   | 模板授权、承载 Node 在线与托管能力     | [托管对话](../workbench/hosted-conversations.md)            |
-| 模板发布失败               | 来源目录、安全检查、模型、MCP 与容量   | [管理对话模板](../administration/conversation-templates.md) |
-| Skill/MCP 安装失败         | 目标权限、Node 环境、网络与密钥引用    | [技能与 MCP 配置](../workbench/skills.md)                   |
+| 现象                       | 先检查                                  | 下一页                                                      |
+| -------------------------- | --------------------------------------- | ----------------------------------------------------------- |
+| 页面空白或登录失败         | 入口协议、反向代理、`MAR_PUBLIC_ORIGIN` | [网络、TLS 与 WebSocket](../deployment/network.md)          |
+| Node 离线/注册失败         | Node 服务日志、URL、时间、出站网络      | [Node 注册失败或离线](node-offline.md)                      |
+| Workspace/文件/Git 不可用  | `allowedRoots`、实际路径、服务账号权限  | [Workspace、文件或 Git 不可用](workspace-files.md)          |
+| 会话卡住或只读             | Node 在线、Agent 状态、当前任务         | [会话卡在 Working、Idle 或只读](session-run.md)             |
+| 终端打不开/断线            | Node 在线、服务账号、代理 WebSocket     | [终端无法打开或频繁断线](terminal.md)                       |
+| MAR Agent 无模型或认证失败 | 模型启用、授权、凭据作用域和模型测试    | [Agent 排障](../runners/runner-troubleshooting.md)          |
+| 托管对话不可用或历史为空   | 模板授权、承载 Node 在线与托管能力      | [托管对话](../workbench/hosted-conversations.md)            |
+| 模板发布失败               | 来源目录、安全检查、模型、MCP 与容量    | [管理对话模板](../administration/conversation-templates.md) |
+| Skill/MCP 安装失败         | 目标权限、Node 环境、网络与密钥引用     | [技能与 MCP 配置](../workbench/skills.md)                   |
 
 ## 提供可关联的故障信息
 

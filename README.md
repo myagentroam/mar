@@ -152,7 +152,7 @@ The file window supports code and text, images, PDFs, modern Office documents, a
 
 ### npm Quick Start
 
-The fixed Community Quick Start runs Server, its own MySQL, and optionally a local Node and search on loopback HTTP. Server has a normal dependency on the matching Node, whose npm installation also prepares Chromium. Once Server and its required dependencies are available in your npm registry, use Node.js `>=24.12` on a verified Linux x64 or Windows x64 system:
+Quick Start defaults to Community and runs Server, its own MySQL, and optionally a local Node and search on loopback HTTP. Server has a normal dependency on the matching Node, whose npm installation also prepares Chromium. Once Server and its required dependencies are available in your npm registry, use Node.js `>=24.12` on a verified Linux x64 or Windows x64 system:
 
 ```bash
 npm install @myagentroam/server
@@ -164,7 +164,7 @@ By default, the local Node registers automatically when you start `run`; no sepa
 
 ### Docker Compose deployment
 
-The standard deployment uses Docker Compose on a Linux host with a real host UUID and an HTTPS entry point. Work Nodes support Windows, Linux, and macOS with Node.js `>=22.13`; native Server requires Node.js `>=24.12` and MySQL 8.4.
+The standard deployment uses Docker Compose on a Linux host with a real host UUID and an HTTP or HTTPS entry point. Work Nodes support Windows, Linux, and macOS with Node.js `>=22.13`; native Server requires Node.js `>=24.12` and MySQL 8.4.
 
 Start with the blank-secret [Compose environment template](.env.example); configure it using the deployment guide before starting services. Server deployment alone does not install a Node executor.
 
@@ -187,7 +187,7 @@ Workspace files and execution stay on your Node. Your Server stores accounts, au
 
 ```text
 Browser workbench
-       │  HTTPS / WebSocket: sign-in, authorization, control
+       │  HTTP(S) / WebSocket: sign-in, authorization, control
        ▼
 Your Server
        ▲  Node-initiated outbound connection
@@ -211,7 +211,7 @@ There is one source tree, build, and deployment baseline. Activation changes the
 | Organizations, multi-user administration, roles, and shared-resource grants | Requires activation | Available within the license scope |
 | Enterprise SSO and operation auditing                                       | Requires activation | Available within the license scope |
 
-In formal deployments, both states require a valid real host UUID. The [npm Quick Start](docs/help/en-US/getting-started/npm-quick-start.md) instead uses fixed Community capabilities without a UUID or activation. Enterprise license expiry retains management-freeze behavior; it does not delete user data or reset the installation to a new Community state. [Activation and license management](docs/help/en-US/administration/license.md).
+In formal deployments, both states require a valid real host UUID. The [npm Quick Start](docs/help/en-US/getting-started/npm-quick-start.md) defaults to Community; Linux uses machine-id and supports administrator API activation without Web activation controls, while Windows remains fixed Community. Enterprise license expiry retains management-freeze behavior; it does not delete user data or reset the installation to a new Community state. [Activation and license management](docs/help/en-US/administration/license.md).
 
 ## Develop and contribute
 

@@ -1,18 +1,18 @@
 ---
 title: Before You Deploy
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # Before You Deploy
 
-Choose your installation first. With the [npm Quick Start](npm-quick-start.md), you do not need to deploy Docker or MySQL yourself, or manually register the local Node. Access is local by default; configure your own remote entry point and HTTPS when needed. It does not configure models or external Agents for you.
+Choose your installation first. With the [npm Quick Start](npm-quick-start.md), you do not need to deploy Docker or MySQL yourself, or manually register the local Node. Access is local by default; configure your own HTTP/HTTPS remote entry point when needed. It does not configure models or external Agents for you.
 
 The checklist below covers Docker Compose or a separately managed Server/MySQL installation. Quick Start has different component preparation and UUID requirements; follow its dedicated guide. Remote access still requires a secure network entry point.
 
 ## Requirements
 
 - A Server host that can run Docker Compose, or an environment where you manage MySQL 8.4, Server, and Web yourself.
-- An HTTPS hostname for browsers. Production deployments should terminate TLS at a reverse proxy.
+- An HTTP or HTTPS address for browsers. HTTPS through a reverse proxy is recommended on untrusted networks.
 - Node.js `>=22.13` on every Windows, Linux, or macOS work host, plus a Workspace writable by the Node service account. Hosted conversations require a Linux Node with Bubblewrap.
 - For built-in MAR Agent, no external Agent CLI is required. An administrator must [configure, enable, and authorize a model](../runners/mar-agent.md), and the user must be within its bound credential scope.
 - For Codex, Claude Code, or OpenCode, install only the required Agent CLI and complete authentication or provider configuration under the same Node service account.
@@ -21,7 +21,7 @@ The checklist below covers Docker Compose or a separately managed Server/MySQL i
 
 1. Choose `MAR_PUBLIC_ORIGIN`, such as `https://mar.example.com`. It must exactly match the browser-facing origin.
 2. Prepare strong, separate passwords for the MySQL root and application accounts.
-3. Confirm that Server can serve HTTPS and every Node can make outbound HTTPS/WSS connections to it.
+3. Confirm that the Server HTTP/HTTPS entry point is reachable and every Node can make the corresponding outbound HTTP/WS or HTTPS/WSS connections.
 4. Under the final Node service account, check `node --version` and `npm --version`. For MAR Agent, test the model in management; for external Agents, also check the corresponding CLI version.
 5. Record the exact Workspace paths. Never use an entire disk as `allowedRoots`.
 

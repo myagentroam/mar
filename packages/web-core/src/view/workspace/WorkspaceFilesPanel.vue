@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createUuid } from '../../util/uuid.js';
 import { ref, watch } from 'vue';
 import MarIcon from '../common/MarIcon.vue';
 import WorkspaceFileTree from './WorkspaceFileTree.vue';
@@ -217,7 +218,7 @@ async function prepareUploads(
   pendingUploadTransaction.value = transaction;
   pendingUploads.value = transaction.files.map((file, index) => ({
     ...transaction.candidates[index]!,
-    id: crypto.randomUUID(),
+    id: createUuid(),
     file,
     overwrite: false
   }));

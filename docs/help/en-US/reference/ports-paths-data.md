@@ -1,18 +1,18 @@
 ---
 title: Ports, Paths, and Data
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # Ports, Paths, and Data
 
-| Item                              | Default or location                   | Exposure                                                              |
-| --------------------------------- | ------------------------------------- | --------------------------------------------------------------------- |
-| Server (Web/API/WebSocket/health) | TCP `5190` inside and outside Compose | External HTTPS proxy target                                           |
-| MySQL host mapping in Compose     | TCP `13006`                           | Mapped on the host by default; restrict access, never expose publicly |
-| Node direct connection            | UDP `49152-49215`                     | Files, Git, and terminals; browser LAN sources only                   |
-| Server persistent data            | Compose `./data` binding              | Private and backed up                                                 |
-| Node data                         | Configured `dataDirectory`            | Private to Node service account                                       |
-| Workspaces                        | Registered paths below `allowedRoots` | Authorized access; direct transfer or Server relay                    |
+| Item                              | Default or location                          | Exposure                                                              |
+| --------------------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
+| Server (Web/API/WebSocket/health) | Container TCP `5190`; configurable host port | Direct HTTP entry point or external HTTPS proxy target                |
+| MySQL host mapping in Compose     | TCP `13006`                                  | Mapped on the host by default; restrict access, never expose publicly |
+| Node direct connection            | UDP `49152-49215`                            | Files, Git, and terminals; browser LAN sources only                   |
+| Server persistent data            | Compose `./data` binding                     | Private and backed up                                                 |
+| Node data                         | Configured `dataDirectory`                   | Private to Node service account                                       |
+| Workspaces                        | Registered paths below `allowedRoots`        | Authorized access; direct transfer or Server relay                    |
 
 Node data contains SQLite state and structured logs. External Runner credentials and native histories follow each Runner's configuration directories; MAR Agent model credentials configured in the product are stored by Server. Terminal text is transmitted live through an authorized direct connection or Server relay and is not retained as a Server transcript.
 

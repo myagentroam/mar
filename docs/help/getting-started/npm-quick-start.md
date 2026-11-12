@@ -1,11 +1,11 @@
 ---
 title: npm 快速开始
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # npm 快速开始
 
-Quick Start 一次准备固定社区版 Server、专用 MySQL 和本机 Node，并在支持受管搜索的平台准备 SearXNG。默认通过本机回环 HTTP 访问；远程访问的网络入口和安全配置由你自行管理。它不安装系统常驻服务，不要求主机 UUID，也不支持激活 License。另一种安装方式见 [Docker Compose 部署](server-installation.md)。
+Quick Start 一次准备默认社区版 Server、专用 MySQL 和本机 Node，并在支持受管搜索的平台准备 SearXNG。默认通过本机回环 HTTP 访问；远程访问的网络入口和安全配置由你自行管理。它不安装系统常驻服务。Linux 使用 `/etc/machine-id`，无需读取硬件 UUID 或提权；常规 Web 不显示升级操作，管理员可通过 [License API](../administration/license.md#linux-一键包的管理员-api)获取申请码和导入授权，npm 与 pnpm 安装行为相同。Windows 仍固定社区版，不提供激活。另一种安装方式见 [Docker Compose 部署](server-installation.md)。
 
 目前实际验证的安装目标是带 glibc 2.28 或更高版本、`tar` 和 `dpkg-deb` 的 Linux x64（例如受支持的 Debian 或 Ubuntu 系统），以及可使用 `tar` 的 Windows x64。需要 Node.js 24.12 或更高版本以及 npm。安装包时原生依赖可能要求系统已有可用的构建工具；安装和 setup 均不安装系统包，也不请求提权。浏览器和所选组件的准备需要网络。其他原生平台尚未完成此 Quick Start 的验证。
 
@@ -27,13 +27,15 @@ Server 以普通依赖使用同版本 Node；npm 安装会按 Node 原有生命�
 
 run 在前台运行并打印本机浏览器地址。使用 Ctrl+C 停止并等待子进程退出；run 不会下载缺失组件。同一数据目录不能并发执行 setup 和 run。
 
+Linux 启动要求 `/etc/machine-id` 可读且包含有效的非全零 32 位十六进制身份；缺失或无效时报告 `LICENSE_HOST_UNAVAILABLE`，不会自动生成替代值。重装系统或变更该身份后，已有企业 License 需要重新签发。激活不替换一键包或重建已有数据。
+
 Windows 本机 Quick Start 的受管 Node 使用 IPv4 直连；如果只能通过 IPv6 连接，文件和终端流量会回退到 Server 中继。
 
 ## 远程访问
 
-默认本机访问不是使用场景限制。你可以自行配置安全隧道或对外入口；setup 不会配置域名、TLS、防火墙或访问控制。公网入口应使用 HTTPS，并支持 WebSocket；不要直接裸露 HTTP 端口。
+默认本机访问不是使用场景限制。Quick Start 支持外部 HTTP/HTTPS；setup 不会配置域名、TLS、防火墙或访问控制。HTTPS 需由代理或隧道提供，建议用于不可信网络；HTTP 为明文传输。入口须支持 WebSocket。
 
-当前 run 监听 `127.0.0.1`，应用 Origin 固定为打印出的 `http://127.0.0.1:<端口>`，不会采用 `MAR_PUBLIC_ORIGIN` 覆盖值。隧道访问应保留浏览器侧相同的回环地址和端口；使用自定义域名时，仅转发端口不足以保证登录、Origin 校验和 WebSocket 正常，还需匹配应用与网关的配置。不要关闭 Origin 校验来绕过问题。网络要求见[网络、TLS 与 WebSocket](../deployment/network.md)。
+run 默认监听 `127.0.0.1`。设置 `MAR_SERVER_HOST` 可调整监听地址，设置 `MAR_PUBLIC_ORIGIN` 可指定浏览器实际使用的 HTTP 或 HTTPS Origin（含非默认端口，不含路径）；Cookie 策略随公开入口协议选择。例如在 Bash 中执行 `MAR_SERVER_HOST=0.0.0.0 MAR_PUBLIC_ORIGIN=http://192.168.1.10:5190 mar-server run`，其中端口应替换成 `server.json` 的 `serverPort`。Windows 可在当前终端设置相同环境变量。反向代理或隧道转发须与该 Origin 一致；不要关闭 Origin 校验绕过配置问题。受管 MySQL、搜索和本机 Node 的内部连接不会因此全部对外开放。网络与浏览器能力边界见[网络、TLS 与 WebSocket](../deployment/network.md)。
 
 ## 更新 Server 与受管 Node
 

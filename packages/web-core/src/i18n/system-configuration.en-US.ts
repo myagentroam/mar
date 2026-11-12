@@ -20,7 +20,8 @@ export const systemConfigurationEnUS = {
       htmlPreviewOriginDescription:
         'Empty uses the Console origin, where HTML runs with your permissions. A separate origin must route previews to this Server.',
       htmlPreviewOriginPlaceholder: 'https://preview.example.com (leave empty for current origin)',
-      htmlPreviewOriginInvalid: 'Enter an HTTPS origin without a path, or leave this empty.',
+      htmlPreviewOriginInvalid:
+        'Enter an HTTP or HTTPS origin without a path, or leave this empty.',
       htmlPreviewCurrentOrigin: 'Current Console origin',
       keepThisOffByDefaultUseIt:
         'Keep this off by default. Use it only to troubleshoot internal self-signed certificates; repository host and path validation remain enforced.',

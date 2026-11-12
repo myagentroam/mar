@@ -44,7 +44,6 @@ export const notificationsEnUS = {
       enabled: 'Enabled',
       disabled: 'Disabled',
       denied: 'Notifications are blocked. Allow this site in your browser notification settings.',
-      insecure: 'System notifications require HTTPS or a trusted localhost origin.',
       unsupported: 'This browser does not support system notifications with a Service Worker.',
       unavailable: 'System notifications are unavailable. Reload the page and try again.'
     },

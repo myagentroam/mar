@@ -32,15 +32,7 @@ export class NodeUpgradeReporter {
     const endpoint = new URL(serverUrl);
     if (endpoint.protocol === 'ws:') endpoint.protocol = 'http:';
     if (endpoint.protocol === 'wss:') endpoint.protocol = 'https:';
-    if (
-      endpoint.username ||
-      endpoint.password ||
-      (endpoint.protocol !== 'https:' &&
-        !(
-          endpoint.protocol === 'http:' &&
-          ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname)
-        ))
-    )
+    if (endpoint.username || endpoint.password || !['http:', 'https:'].includes(endpoint.protocol))
       throw new Error('NODE_UPGRADE_REPORT_ORIGIN_INVALID');
     endpoint.pathname = `/api/nodes/${encodeURIComponent(nodeId)}/upgrade/report`;
     endpoint.search = '';

@@ -10,7 +10,7 @@ describe('Quick Start local Node bootstrap', () => {
         recoverable ? { token: 'recovered', expiresAt: 100 } : undefined
       );
       const bootstrap = createQuickStartNodeBootstrap({
-        isPersonalAdmin: async () => true,
+        isLocalAdmin: async () => true,
         assertOwnershipSelection: async () => {},
         createNodeRegistrationToken,
         recoverPersonalNodeRegistrationToken,
@@ -37,20 +37,20 @@ describe('Quick Start local Node bootstrap', () => {
     }
   );
 
-  it('issues at most one registration token for the authorized fixed personal administrator', async () => {
-    const isPersonalAdmin = vi.fn(async () => true);
+  it('issues at most one registration token for the authorized fixed local administrator', async () => {
+    const isLocalAdmin = vi.fn(async () => true);
     const assertOwnershipSelection = vi.fn(async () => {});
     const createNodeRegistrationToken = vi.fn(async () => ({ token: 'one-time', expiresAt: 50 }));
     const isNodeConnected = vi.fn(() => true);
     const bootstrap = createQuickStartNodeBootstrap({
-      isPersonalAdmin,
+      isLocalAdmin,
       assertOwnershipSelection,
       createNodeRegistrationToken,
       recoverPersonalNodeRegistrationToken: vi.fn(),
       isNodeConnected
     });
     await expect(bootstrap.issue()).resolves.toEqual({ token: 'one-time', expiresAt: 50 });
-    expect(isPersonalAdmin).toHaveBeenCalledWith(1);
+    expect(isLocalAdmin).toHaveBeenCalledWith(1);
     expect(assertOwnershipSelection).toHaveBeenCalledWith(1, {
       ownerType: 'PERSONAL',
       ownerUserId: 1
@@ -69,7 +69,7 @@ describe('Quick Start local Node bootstrap', () => {
   it('does not issue a token when fixed administrator admission fails', async () => {
     const createNodeRegistrationToken = vi.fn();
     const bootstrap = createQuickStartNodeBootstrap({
-      isPersonalAdmin: async () => false,
+      isLocalAdmin: async () => false,
       assertOwnershipSelection: async () => {},
       createNodeRegistrationToken,
       recoverPersonalNodeRegistrationToken: vi.fn(),

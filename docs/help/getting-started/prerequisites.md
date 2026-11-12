@@ -1,18 +1,18 @@
 ---
 title: 部署前准备
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # 部署前准备
 
-先选择安装方式：使用 [npm 快速开始](npm-quick-start.md)，无需自行部署 Docker 或 MySQL，也无需手工注册本机 Node；默认通过本机地址访问，远程入口与 HTTPS 由你自行配置。它不会自动配置模型或外部 Agent。
+先选择安装方式：使用 [npm 快速开始](npm-quick-start.md)，无需自行部署 Docker 或 MySQL，也无需手工注册本机 Node；默认通过本机地址访问，远程 HTTP/HTTPS 入口由你自行配置。它不会自动配置模型或外部 Agent。
 
 以下清单用于 Docker Compose 或自行管理 Server/MySQL 的安装。Quick Start 的组件准备和 UUID 规则不同，请按其专页操作；远程访问同样需要安全的网络入口。
 
 ## 前置条件
 
 - 一台可运行 Docker Compose 的 Server 主机，或能自行提供 MySQL 8.4、Server 和 Web 的运行环境。
-- 一个供浏览器访问的 HTTPS 域名；生产环境应由反向代理终止 TLS。
+- 一个供浏览器访问的 HTTP 或 HTTPS 地址；推荐在不可信网络使用 HTTPS，并由反向代理终止 TLS。
 - 每台 Windows、Linux 或 macOS 工作主机安装 Node.js `>=22.13`，并为 Node 运行账号准备可读写的 Workspace；托管对话仅部署在具备 Bubblewrap 的 Linux Node。
 - 使用内置 MAR Agent：不需要外部 Agent CLI，管理员须先[配置、启用并授权模型](../runners/mar-agent.md)，且当前用户处于所绑定凭据的作用域内。
 - 使用 Codex、Claude Code 或 OpenCode：仅安装需要的 Agent CLI，并在同一 Node 服务账号下完成登录或模型服务配置。
@@ -21,7 +21,7 @@ lastUpdated: 2026-11-10
 
 1. 为 Server 准备 `MAR_PUBLIC_ORIGIN`，例如 `https://mar.example.com`；它必须与浏览器实际访问地址完全一致。
 2. 准备两个强密码：MySQL root 密码和 MySQL 应用账号密码。
-3. 确认 Server 可对外提供 HTTPS，Node 主机可向该地址发起 HTTPS/WSS 出站连接。
+3. 确认 Server 的 HTTP/HTTPS 入口可达，Node 主机可向该地址发起对应的 HTTP/WS 或 HTTPS/WSS 出站连接。
 4. 在每台 Node 主机用最终服务账号执行 `node --version`、`npm --version`。使用 MAR Agent 时，在管理页测试模型；使用外部 Agent 时再检查对应 CLI 版本。
 5. 记录需要登记的真实 Workspace 路径，不要将整个磁盘作为 `allowedRoots`。
 

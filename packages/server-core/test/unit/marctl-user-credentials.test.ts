@@ -252,7 +252,7 @@ describe('user-scoped marctl authorization', () => {
     expect(await service.authenticate('Bearer invalid')).toBeUndefined();
   });
 
-  it('accepts only server-issued scheduled owner contexts and rejects invalid server origins', async () => {
+  it('accepts HTTP and HTTPS origins for server-issued scheduled owner contexts', async () => {
     let enabled = true;
     const execute = vi.fn(async (_sql: string) => [
       enabled ? [{ id: 9, username: 'task-owner' }] : []
@@ -262,10 +262,19 @@ describe('user-scoped marctl authorization', () => {
       MAR_CTL_CONTEXT_REQUIRED: '1',
       MAR_USERNAME: 'task-owner'
     });
-    await expect(service.environment({ userId: 9 }, 'http://remote.test')).rejects.toThrow(
-      'MARCTL_SERVER_URL_INVALID'
-    );
-    const environment = await service.environment({ userId: 9 }, 'https://server.test');
+    for (const invalidOrigin of [
+      'ftp://remote.test',
+      'http://remote.test/path',
+      'https://user:password@server.test',
+      'https://server.test?token=hidden',
+      'https://server.test#fragment'
+    ]) {
+      await expect(service.environment({ userId: 9 }, invalidOrigin)).rejects.toThrow(
+        'MARCTL_SERVER_URL_INVALID'
+      );
+    }
+    const environment = await service.environment({ userId: 9 }, 'http://remote.test');
+    expect(environment.MAR_CTL_SERVER_URL).toBe('http://remote.test');
     expect(environment.MAR_USERNAME).toBe('task-owner');
     const authenticated = await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`);
     expect(authenticated?.userId).toBe(9);
@@ -273,6 +282,8 @@ describe('user-scoped marctl authorization', () => {
     expect(await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`)).toEqual(
       authenticated
     );
+    const httpsEnvironment = await service.environment({ userId: 9 }, 'https://server.test');
+    expect(httpsEnvironment.MAR_CTL_SERVER_URL).toBe('https://server.test');
     enabled = false;
     expect(await service.authenticate(`Bearer ${environment.MAR_CTL_USER_TOKEN}`)).toBeUndefined();
     expect(execute.mock.calls.at(-1)?.[0]).toContain('u.enabled=TRUE');

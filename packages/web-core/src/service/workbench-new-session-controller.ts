@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { nextTick, type Ref } from 'vue';
 import type { RunnerProfile, Session, Workspace } from '../model/workbench.js';
@@ -46,7 +47,7 @@ export function createWorkbenchNewSessionController(options: WorkbenchNewSession
     )
       return;
     const draft: Session = {
-      id: `draft:${crypto.randomUUID()}`,
+      id: `draft:${createUuid()}`,
       workspaceId: options.selectedWorkspace.value.id,
       runner: options.newSessionRunner.value,
       nativeControl: 'MAR_MANAGED',

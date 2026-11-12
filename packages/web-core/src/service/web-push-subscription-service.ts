@@ -41,7 +41,6 @@ export function createWebPushSubscriptionService(
   function supported(): boolean {
     return (
       request !== undefined &&
-      globalThis.isSecureContext === true &&
       typeof PushManager !== 'undefined' &&
       typeof indexedDB !== 'undefined' &&
       typeof navigator !== 'undefined' &&

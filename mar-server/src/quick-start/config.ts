@@ -42,6 +42,25 @@ export interface MysqlInstallation {
   readonly libraryDirectory: string;
 }
 
+/** Resolve ingress separately from managed Node traffic; database/search remain loopback-only. */
+export function resolveQuickStartNetwork(
+  config: Pick<QuickStartConfig, 'serverPort'>,
+  environment: NodeJS.ProcessEnv = process.env
+): { host: string; publicOrigin: string; localServerUrl: string } {
+  const host = environment['MAR_SERVER_HOST'] ?? '127.0.0.1';
+  const localHost = host === '0.0.0.0' ? '127.0.0.1' : host === '::' ? '::1' : host;
+  const localServerUrl = `http://${localHost.includes(':') && !localHost.startsWith('[') ? `[${localHost}]` : localHost}:${config.serverPort}`;
+  const publicOrigin = environment['MAR_PUBLIC_ORIGIN'] ?? localServerUrl;
+  try {
+    const url = new URL(publicOrigin);
+    if (!['http:', 'https:'].includes(url.protocol) || url.origin !== publicOrigin)
+      throw new Error('invalid origin');
+  } catch {
+    throw new Error('QUICK_START_NETWORK_INVALID');
+  }
+  return { host, publicOrigin, localServerUrl };
+}
+
 export function resolveQuickStartConfigPath(
   path: string | undefined,
   home = homedir(),

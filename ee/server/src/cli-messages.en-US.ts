@@ -2,6 +2,8 @@ export const cliMessagesEnUS = {
   quickUsage:
     'Usage: mar-server setup [--config PATH] [--no-node] [--no-searxng]\n       mar-server run [--config PATH]',
   quickInvalidArguments: 'Invalid arguments. Use mar-server --help.',
+  quickNetworkInvalid:
+    'MAR_PUBLIC_ORIGIN must be an HTTP or HTTPS origin without credentials, a path, query, or fragment (QUICK_START_NETWORK_INVALID).',
   quickExternalDatabaseUnsupported:
     'Quick Start uses its own MySQL and does not accept MAR_DATABASE_URL.',
   quickSetupRequired: 'Quick Start is not initialized. Run mar-server setup first.',

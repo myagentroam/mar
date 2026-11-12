@@ -137,12 +137,7 @@ export function createSystemConfigurationService(
       if (typeof value !== 'string' || value.length > 253) return false;
       try {
         const url = new URL(value);
-        return (
-          url.origin === value &&
-          (url.protocol === 'https:' ||
-            (url.protocol === 'http:' &&
-              ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))
-        );
+        return url.origin === value && (url.protocol === 'https:' || url.protocol === 'http:');
       } catch {
         return false;
       }

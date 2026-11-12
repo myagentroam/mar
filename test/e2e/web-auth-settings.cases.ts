@@ -181,6 +181,48 @@ test('Hidden management URLs fall back safely without requesting enterprise page
   expect(forbiddenRequests).toEqual([]);
 });
 
+test('Linux Quick Start shows Community status without requesting or displaying activation', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/auth/me', (route) =>
+    json(route, {
+      authenticated: true,
+      mustChangePassword: false,
+      username: 'admin',
+      isAdmin: true,
+      edition: 'COMMUNITY',
+      licenseState: 'COMMUNITY',
+      role: 'ADMIN',
+      organizationId: 1,
+      managementWritable: true
+    })
+  );
+  await page.route('**/api/license', (route) =>
+    json(route, {
+      edition: 'COMMUNITY',
+      state: 'COMMUNITY',
+      reason: null,
+      licenseId: null,
+      enterpriseName: null,
+      expiresAt: null,
+      managementWritable: true,
+      activationAvailable: true,
+      activationVisible: false
+    })
+  );
+  const activationRequests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/license/')) activationRequests.push(path);
+  });
+  await page.goto('/console?view=management&management=system');
+  await expect(page.locator('.license-version')).toContainText('社区版');
+  await expect(page.locator('.license-request')).toHaveCount(0);
+  await expect(page.locator('.license-import')).toHaveCount(0);
+  expect(activationRequests).toEqual([]);
+});
+
 test('Importing a License refreshes product capabilities and enterprise menus', async ({
   page
 }) => {

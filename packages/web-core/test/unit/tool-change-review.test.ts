@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
@@ -46,6 +46,8 @@ const page = {
   sha256: diff.sha256,
   content: text
 };
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('tool change review', () => {
   it.each(['WORKING_TREE', 'HISTORY', 'TOOL_CHANGE'] as const)(
@@ -151,5 +153,17 @@ describe('tool change review', () => {
     });
     await expect(loadToolChangeDiff(tab(), request, controller.signal)).rejects.toThrow();
     expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies content integrity without SubtleCrypto, including same-length tampering', async () => {
+    vi.stubGlobal('crypto', {});
+    await expect(loadToolChangeDiff(tab(), vi.fn().mockResolvedValue(page))).resolves.toEqual({
+      text
+    });
+    const tampered = { ...page, content: text.replace('+new', '+bad') };
+    expect(Buffer.byteLength(tampered.content)).toBe(page.byteSize);
+    await expect(loadToolChangeDiff(tab(), vi.fn().mockResolvedValue(tampered))).rejects.toThrow(
+      'TOOL_RESOURCE_RESPONSE_INVALID'
+    );
   });
 });

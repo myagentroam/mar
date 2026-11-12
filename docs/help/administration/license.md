@@ -1,6 +1,6 @@
 ---
 title: 社区版、企业 License 与冻结态
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # 社区版、企业 License 与冻结态
@@ -15,6 +15,8 @@ lastUpdated: 2026-11-10
 
 ## 步骤
 
+以下页面步骤适用于正式部署；Linux 一键包使用下文的管理员 API，不显示升级操作。
+
 1. 以系统管理员打开“管理 → 系统信息”，在“License 授权”中复制申请码并交给授权方签发，不要公开完整环境或主机信息。
 2. 将授权方返回的完整 License 文档粘贴到输入区，点击“导入 License”，检查企业名称和到期状态。
 3. 状态有效后再创建组织、用户和共享资源。
@@ -25,7 +27,19 @@ lastUpdated: 2026-11-10
 
 导入失败时核对主机、授权状态与文件完整性；不要通过修改数据库或系统时间绕过校验。
 
-正式部署使用同一套程序和镜像，激活不需要替换安装包。正式部署的两种授权状态都必须提供真实主机 UUID；容器必须只读挂载宿主 UUID 文件，缺失或无效时不能启动。[npm 快速开始](../getting-started/npm-quick-start.md)固定为社区能力，无需 UUID，也不支持激活；系统信息不生成申请码或显示 License 导入操作。社区基础功能与企业功能的区别由 License 决定，不影响个人资源与组织资源的权限隔离。
+正式部署使用同一套程序和镜像，激活不需要替换安装包。正式部署的两种授权状态都必须提供真实主机 UUID；容器必须只读挂载宿主 UUID 文件，缺失或无效时不能启动。社区基础功能与企业功能的区别由 License 决定，不影响个人资源与组织资源的权限隔离。
+
+## Linux 一键包的管理员 API
+
+[npm 快速开始](../getting-started/npm-quick-start.md)在 Linux 上默认社区版，使用 `/etc/machine-id` 绑定授权；npm 与 pnpm 安装行为相同。系统信息只展示真实授权状态，不自动生成申请码或显示导入操作。管理员登录并完成首次密码确认后，可以向同一 Server 请求以下接口：
+
+- `GET /api/license`：读取状态；Linux 一键包返回 `activationAvailable=true`、`activationVisible=false`。
+- `GET /api/license/request-code`：返回 `{ "requestCode": "MAR1.…" }`，将申请码私下交给授权方签发。
+- `POST /api/license/import`：以 `Content-Type: application/json` 提交 `{ "document": "完整 License 文档" }`。必须携带管理员会话 Cookie、该会话的 `x-csrf-token`，以及与 Server 公开入口匹配的 Origin；不能用浏览器地址栏的 GET 或 URL 查询参数导入授权。
+
+导入成功后刷新页面，确认 `/api/license` 为 `ENTERPRISE_VALID`；一键包和原有数据无需替换。过期、签名无效或主机不匹配沿用企业冻结规则，不能通过改库回退为社区版。machine-id 缺失、不可读或无效时启动报 `LICENSE_HOST_UNAVAILABLE`；重装系统或变更 machine-id 后须重新签发 License。不要公开 machine-id、申请码、会话凭据或 License。
+
+Windows 一键包仍固定社区版，不读取主机身份，也不提供申请码和导入接口。
 
 ## 为什么正式部署的社区版也需要主机 UUID？
 

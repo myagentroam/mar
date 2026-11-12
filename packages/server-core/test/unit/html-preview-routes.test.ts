@@ -28,8 +28,17 @@ describe('Executable HTML preview', () => {
     expect(parseHtmlPreviewOrigin('https://preview.example.test')).toBe(
       'https://preview.example.test'
     );
-    expect(parseHtmlPreviewOrigin('http://example.test')).toBeUndefined();
-    expect(parseHtmlPreviewOrigin('https://example.test/path')).toBeUndefined();
+    expect(parseHtmlPreviewOrigin('http://preview.example.test')).toBe(
+      'http://preview.example.test'
+    );
+    for (const invalidOrigin of [
+      'https://example.test/path',
+      'https://user:password@example.test',
+      'https://example.test?token=hidden',
+      'https://example.test#fragment',
+      'ftp://example.test'
+    ])
+      expect(parseHtmlPreviewOrigin(invalidOrigin)).toBeUndefined();
   });
 
   it('reads persisted origin values and validates writes', async () => {
@@ -42,6 +51,8 @@ describe('Executable HTML preview', () => {
     });
     const settings = new HtmlPreviewOrigin({ raw: { execute } as never });
     expect(await settings.read()).toBe('');
+    await settings.write('http://preview.example.test');
+    expect(await settings.read()).toBe('http://preview.example.test');
     await settings.write('https://preview.example.test');
     expect(await settings.read()).toBe('https://preview.example.test');
     stored = 'https://preview.example.test';

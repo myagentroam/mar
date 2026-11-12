@@ -1,6 +1,6 @@
 ---
 title: 上线安全检查清单
-lastUpdated: 2026-08-23
+lastUpdated: 2026-11-12
 ---
 
 # 上线安全检查清单
@@ -8,8 +8,8 @@ lastUpdated: 2026-08-23
 上线前逐项确认：
 
 - [ ] 已修改 `admin` 初始密码，并限制管理员登录访问。
-- [ ] 浏览器入口使用 HTTPS，`MAR_PUBLIC_ORIGIN` 与真实地址一致。
-- [ ] MySQL、Server 回环端口和 Node 均不直接暴露公网。
+- [ ] `MAR_PUBLIC_ORIGIN` 与真实 HTTP/HTTPS 入口一致；HTTPS 反向代理必须显式配置该值，漏配时 Server 只看到内部 HTTP，Cookie 默认不会自动带上 `Secure`。不可信网络推荐 HTTPS，HTTP 为明文传输。
+- [ ] MySQL、内部组件和 Node 不直接暴露公网；仅开放配置的 Server 入口。
 - [ ] Node 使用最小权限非 root/非管理员服务账号，私有配置与 SQLite 仅该账号可读。
 - [ ] `allowedRoots` 只列出必要工作目录。
 - [ ] Agent 登录状态、模型服务配置和密钥不提交 Git、不贴入 Agent 消息或日志。

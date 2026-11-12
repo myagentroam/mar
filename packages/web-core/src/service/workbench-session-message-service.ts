@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
@@ -371,7 +372,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         outgoing
       );
       if (retryCandidate?.signature !== signature) retryCandidate = undefined;
-      const clientMessageId = retryCandidate?.clientMessageId ?? crypto.randomUUID();
+      const clientMessageId = retryCandidate?.clientMessageId ?? createUuid();
       attemptedRetryCandidate = { signature, clientMessageId };
       retryCandidate = attemptedRetryCandidate;
       options.scrollToLatest();

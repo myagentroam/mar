@@ -1,3 +1,4 @@
+import { createUuid } from '../util/uuid.js';
 /**
  * Owns ordinary Workspace Watch topics, leases and protocol identity/revision acceptance.
  * Accepted snapshots leave through onSnapshot; cross-domain projection belongs to its receiver.
@@ -238,7 +239,7 @@ export function createWorkspaceWatchService(options: {
       nodeId,
       workspaceId,
       directory,
-      watchId: crypto.randomUUID().replace(/-/g, ''),
+      watchId: createUuid().replace(/-/g, ''),
       connectionId: currentConnectionId,
       git: workspace.kind === 'GIT_WORKSPACE',
       ...(sessionGroup === undefined ? {} : { sessionGroup }),

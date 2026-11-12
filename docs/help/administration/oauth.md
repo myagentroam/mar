@@ -1,6 +1,6 @@
 ---
 title: 配置 OAuth 2.0 SSO
-lastUpdated: 2026-08-22
+lastUpdated: 2026-11-12
 ---
 
 # 配置 OAuth 2.0 SSO
@@ -13,7 +13,7 @@ lastUpdated: 2026-08-22
 
 ## 前置条件
 
-准备身份服务提供商给出的授权地址、令牌地址、用户信息地址、Client ID、Client Secret，以及能唯一标识用户的字段路径。创建配置后，界面会显示该来源专用的回调地址 `/api/oauth/<providerKey>/callback`，把完整 HTTPS 地址登记到身份服务提供商。
+准备身份服务提供商给出的授权地址、令牌地址、用户信息地址、Client ID、Client Secret，以及能唯一标识用户的字段路径。创建配置后，界面会显示该来源专用的回调地址 `/api/oauth/<providerKey>/callback`，把基于 `MAR_PUBLIC_ORIGIN` 生成的完整 HTTP 或 HTTPS 地址登记到身份服务提供商；提供商可能自行要求 HTTPS。
 
 ## 步骤
 

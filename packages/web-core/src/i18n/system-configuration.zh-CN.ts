@@ -20,7 +20,7 @@ export const systemConfigurationZhCN = {
       htmlPreviewOriginDescription:
         '留空使用控制台域名，HTML 以当前用户权限运行；独立域名须转发预览请求至本 Server。',
       htmlPreviewOriginPlaceholder: 'https://preview.example.com（留空使用当前域名）',
-      htmlPreviewOriginInvalid: '请输入不含路径的 HTTPS 域名，或留空使用当前域名。',
+      htmlPreviewOriginInvalid: '请输入不含路径的 HTTP 或 HTTPS Origin，或留空使用当前 Origin。',
       htmlPreviewCurrentOrigin: '当前控制台域名',
       keepThisOffByDefaultUseIt:
         '默认关闭此开关。仅用于企业内自签名证书排障；不会放宽 Repo Host 或路径校验。',

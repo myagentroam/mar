@@ -9,7 +9,6 @@ export function parseHtmlPreviewOrigin(value: unknown): string | undefined {
     const url = new URL(value);
     if (
       !['https:', 'http:'].includes(url.protocol) ||
-      (url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) ||
       url.origin !== value ||
       url.username !== '' ||
       url.password !== ''

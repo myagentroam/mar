@@ -11,6 +11,7 @@ import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { ProductCapabilities, ProductCapabilityProvider } from '../product/product-policy.js';
 import {
   computeHostFingerprint,
+  computeMachineIdFingerprint,
   createLicenseRequestCode,
   evaluateLicense,
   verifyLicenseDocument,
@@ -34,10 +35,14 @@ export class LicenseService implements ProductCapabilityProvider {
   constructor(
     private readonly database: MysqlServerDatabase,
     private readonly publicKey: string,
-    options: { readonly now?: () => number; readonly productUuid?: string | null } = {}
+    options: {
+      readonly now?: () => number;
+      readonly productUuid?: string | null;
+      readonly hostFingerprint?: string;
+    } = {}
   ) {
     this.now = options.now ?? Date.now;
-    this.hostFingerprint = hostFingerprint(options.productUuid);
+    this.hostFingerprint = options.hostFingerprint ?? hostFingerprint(options.productUuid);
   }
 
   async status(): Promise<LicenseStatus> {
@@ -155,6 +160,15 @@ export class LicenseService implements ProductCapabilityProvider {
       connection.release();
     }
     return this.status();
+  }
+}
+
+/** Linux Quick Start binds licenses to the OS instance without reading privileged DMI files. */
+export function readQuickStartHostFingerprint(path = '/etc/machine-id'): string {
+  try {
+    return computeMachineIdFingerprint(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error('LICENSE_HOST_UNAVAILABLE');
   }
 }
 

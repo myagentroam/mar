@@ -210,6 +210,18 @@ window.fixture = {
     await Promise.resolve();
     return [true, sent, channel.sent.length];
   },
+  setViewing(viewOnly) {
+    rfb.viewOnly = viewOnly;
+  },
+  async pendingPasteAcrossViewing() {
+    rfb.clipboardPasteFrom('stale clipboard');
+    rfb.viewOnly = true;
+    rfb.viewOnly = false;
+    channel.sent.length = 0;
+    channel.receive(extendedClipboard(be32((1 << 25) | 1)));
+    await Promise.resolve();
+    return channel.sent;
+  },
   close() {
     rfb.disconnect();
   },

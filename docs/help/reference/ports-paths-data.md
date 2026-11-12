@@ -1,19 +1,19 @@
 ---
 title: 端口、配置目录与数据位置
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # 端口、配置目录与数据位置
 
-| 项目            | 默认/示例                     | 说明                                                                     |
-| --------------- | ----------------------------- | ------------------------------------------------------------------------ |
-| Server 容器端口 | `5190`（内外一致）            | 同时提供 Web、API、WebSocket 和健康检查；HTTPS 由外部基础设施提供        |
-| MySQL 主机映射  | `13006`                       | Compose 默认映射到主机；应限制访问，不能直接对公网开放                   |
-| Node 直连       | UDP `49152-49215`             | 文件、Git 与终端仅允许 Browser 局域网来源，不对公网开放                  |
-| Node 配置       | 自定义私有 JSON               | 通过 `--config` 或 `MAR_NODE_CONFIG` 指定                                |
-| Server 数据     | `MAR_DATA_DIR`，默认 `./data` | Skill 位于 `skills/`，日志位于 `logs/`                                   |
-| Node 数据       | 配置旁目录或 `dataDirectory`  | SQLite 位于根目录，日志位于 `logs/`                                      |
-| Agent 配置目录  | Node 服务账号自己的用户目录   | 外部 Runner 的配置与历史按各自规则管理；MAR Server 模型凭据另存于 Server |
+| 项目            | 默认/示例                     | 说明                                                                             |
+| --------------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| Server 容器端口 | 容器 `5190`，宿主机端口可配置 | 同时提供 Web、API、WebSocket 和健康检查；支持直接 HTTP；HTTPS 由外部基础设施提供 |
+| MySQL 主机映射  | `13006`                       | Compose 默认映射到主机；应限制访问，不能直接对公网开放                           |
+| Node 直连       | UDP `49152-49215`             | 文件、Git 与终端仅允许 Browser 局域网来源，不对公网开放                          |
+| Node 配置       | 自定义私有 JSON               | 通过 `--config` 或 `MAR_NODE_CONFIG` 指定                                        |
+| Server 数据     | `MAR_DATA_DIR`，默认 `./data` | Skill 位于 `skills/`，日志位于 `logs/`                                           |
+| Node 数据       | 配置旁目录或 `dataDirectory`  | SQLite 位于根目录，日志位于 `logs/`                                              |
+| Agent 配置目录  | Node 服务账号自己的用户目录   | 外部 Runner 的配置与历史按各自规则管理；MAR Server 模型凭据另存于 Server         |
 
 路径必须以 Node 服务账号的视角确认。Linux systemd、Windows 任务计划和 macOS launchd 经常因为用户目录或 `PATH` 不同而找不到 Agent 或历史。
 

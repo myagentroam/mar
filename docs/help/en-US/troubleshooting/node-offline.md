@@ -1,13 +1,13 @@
 ---
 title: Node Registration or Offline Issues
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # Node Registration or Offline Issues
 
 1. Confirm that the Node service is running and inspect its foreground, systemd, or Task Scheduler logs.
-2. Verify that `serverUrl` is the browser-facing HTTPS origin and that system time is correct.
-3. Test DNS, TLS, and outbound HTTPS/WSS from the Node host. The control connection does not require a public Node HTTP API; see [network guidance](../deployment/network.md) for optional direct-connection UDP settings.
+2. Verify that `serverUrl` is the browser-facing HTTP or HTTPS origin and that system time is correct.
+3. Test DNS, TLS, and outbound HTTP/WS or HTTPS/WSS from the Node host. The control connection does not require a public Node HTTP API; see [network guidance](../deployment/network.md) for optional direct-connection UDP settings.
 4. Create a new one-time token after a failed first registration. An already registered Node reconnects with the identity and credentials written to its private configuration.
 5. After recovery, verify heartbeat, platform, Agent discovery, and Workspace access in Node details.
 

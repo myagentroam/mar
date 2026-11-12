@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { link, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { QuickStartConfig } from './config.js';
+import { resolveQuickStartNetwork, type QuickStartConfig } from './config.js';
 import { serverNodeEntrypoint } from './node-dependency.js';
 
 interface Bootstrap {
@@ -24,6 +24,7 @@ export async function startLocalNode(
   const data = join(root, 'node-data');
   const workspace = join(root, 'workspace');
   const path = join(data, 'node.json');
+  const { localServerUrl: serverUrl } = resolveQuickStartNetwork(config);
   await mkdir(data, { recursive: true, mode: 0o700 });
   await mkdir(workspace, { recursive: true, mode: 0o700 });
   let created = false;
@@ -38,7 +39,7 @@ export async function startLocalNode(
         temporary,
         JSON.stringify(
           {
-            serverUrl: `http://127.0.0.1:${config.serverPort}`,
+            serverUrl,
             allowedRoots: [workspace],
             dataDirectory: data,
             conversationHosting: { enabled: false },
@@ -81,7 +82,6 @@ export async function startLocalNode(
     !created && !hasIdentity
       ? (await bootstrap.issue(record['registrationToken'] as string)).token
       : undefined;
-  const serverUrl = `http://127.0.0.1:${config.serverPort}`;
   if (
     record['serverUrl'] !== serverUrl ||
     (token !== undefined && token !== record['registrationToken'])

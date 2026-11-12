@@ -1,6 +1,6 @@
 ---
 title: Connect Your First Node
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-12
 ---
 
 # Connect Your First Node
@@ -23,6 +23,6 @@ Server does not include a Node executor. Install and register Node separately, e
 
 **Success:** Node details show the correct platform, Node.js version, and supported Agents.
 
-Registration keys are single use. If registration fails, create a new registration key. For an offline Node, check `serverUrl`, system time, outbound TLS/WSS, and service logs. If an Agent is missing, verify its installation, `PATH`, and authentication under the actual Node service account.
+Registration keys are single use. If registration fails, create a new registration key. For an offline Node, check `serverUrl`, system time, outbound HTTP/WS or HTTPS/WSS, and service logs. If an Agent is missing, verify its installation, `PATH`, and authentication under the actual Node service account.
 
 Next: [Install and Register a Node](../deployment/node-installation.md), then [Register a Workspace](register-workspace.md).

@@ -6,6 +6,7 @@ import {
   createQuickStartConfig,
   readQuickStartConfig,
   resolveQuickStartConfigPath,
+  resolveQuickStartNetwork,
   selectQuickStartComponents,
   writeQuickStartConfig
 } from '../../mar-server/src/quick-start/config.js';
@@ -18,6 +19,49 @@ afterEach(async () => {
 });
 
 describe('Quick Start configuration', () => {
+  it('separates public HTTP/HTTPS origins from managed Node traffic', () => {
+    expect(resolveQuickStartNetwork({ serverPort: 5190 }, {})).toEqual({
+      host: '127.0.0.1',
+      publicOrigin: 'http://127.0.0.1:5190',
+      localServerUrl: 'http://127.0.0.1:5190'
+    });
+    for (const publicOrigin of [
+      'http://192.0.2.10:5190',
+      'http://mar.example.test:5190',
+      'https://mar.example.test'
+    ]) {
+      expect(
+        resolveQuickStartNetwork(
+          { serverPort: 5190 },
+          { MAR_SERVER_HOST: '0.0.0.0', MAR_PUBLIC_ORIGIN: publicOrigin }
+        )
+      ).toEqual({
+        host: '0.0.0.0',
+        publicOrigin,
+        localServerUrl: 'http://127.0.0.1:5190'
+      });
+    }
+    expect(
+      resolveQuickStartNetwork({ serverPort: 5190 }, { MAR_SERVER_HOST: '::' }).localServerUrl
+    ).toBe('http://[::1]:5190');
+    expect(
+      resolveQuickStartNetwork({ serverPort: 5190 }, { MAR_SERVER_HOST: '192.0.2.10' })
+        .localServerUrl
+    ).toBe('http://192.0.2.10:5190');
+  });
+
+  it.each([
+    'ftp://mar.example.test',
+    'http://user:pass@mar.example.test',
+    'http://mar.example.test/path',
+    'http://mar.example.test?query',
+    'http://mar.example.test#fragment'
+  ])('rejects a public URL that is not an HTTP(S) origin: %s', (publicOrigin) => {
+    expect(() =>
+      resolveQuickStartNetwork({ serverPort: 5190 }, { MAR_PUBLIC_ORIGIN: publicOrigin })
+    ).toThrow('QUICK_START_NETWORK_INVALID');
+  });
+
   it('uses the home directory by default and resolves explicit paths once', () => {
     const home = resolve('example-home');
     const cwd = resolve('example-cwd');
@@ -125,12 +169,10 @@ describe('Quick Start configuration', () => {
       ...node,
       enabled: false
     });
-    await expect(
-      writeQuickStartConfig(path, {
-        ...config,
-        node: { ...node, preparedVersion: '../other' }
-      })
-    ).rejects.toThrow('QUICK_START_CONFIG_INVALID');
+    const invalid = { ...config, node: { ...node, preparedVersion: '../other' } };
+    await expect(writeQuickStartConfig(path, invalid)).rejects.toThrow(
+      'QUICK_START_CONFIG_INVALID'
+    );
     expect(await readQuickStartConfig(path)).toEqual(config);
   });
 

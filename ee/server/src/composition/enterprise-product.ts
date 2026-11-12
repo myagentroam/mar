@@ -4,7 +4,11 @@ import type {
   AuthorizationProvider,
   ProductCapabilityProvider
 } from '../product/product-policy.js';
-import { LicenseService, type LicenseStatus } from '../license/license-service.js';
+import {
+  LicenseService,
+  readQuickStartHostFingerprint,
+  type LicenseStatus
+} from '../license/license-service.js';
 import { LICENSE_PUBLIC_KEY } from '../license/public-key.js';
 import { registerManagementLicenseGate } from '../license/management-gate.js';
 import { registerLicenseRoutes } from '../route/license-routes.js';
@@ -28,10 +32,10 @@ export function createEnterpriseServerProduct(input: {
     now: input.now,
     ...(input.productUuid === undefined ? {} : { productUuid: input.productUuid })
   });
-  return assembleProduct(input.database, licenses, true);
+  return assembleProduct(input.database, licenses, { activationAvailable: true });
 }
 
-/** Quick Start has a fixed community policy and cannot activate a license. */
+/** Non-Linux Quick Start retains fixed community policy without host identity or activation. */
 class QuickStartLicenseService extends LicenseService {
   override async status(): Promise<LicenseStatus> {
     return {
@@ -55,18 +59,29 @@ class QuickStartLicenseService extends LicenseService {
 export function createQuickStartServerProduct(input: {
   readonly database: MysqlServerDatabase;
   readonly now: () => number;
+  readonly publicKey?: string;
 }): EnterpriseServerProduct {
+  if (process.platform === 'linux') {
+    const licenses = new LicenseService(input.database, input.publicKey ?? LICENSE_PUBLIC_KEY, {
+      now: input.now,
+      hostFingerprint: readQuickStartHostFingerprint()
+    });
+    return assembleProduct(input.database, licenses, {
+      activationAvailable: true,
+      activationVisible: false
+    });
+  }
   const licenses = new QuickStartLicenseService(input.database, LICENSE_PUBLIC_KEY, {
     now: input.now,
     productUuid: null
   });
-  return assembleProduct(input.database, licenses, false);
+  return assembleProduct(input.database, licenses, { activationAvailable: false });
 }
 
 function assembleProduct(
   database: MysqlServerDatabase,
   licenses: LicenseService,
-  activationAvailable: boolean
+  activation: { readonly activationAvailable: boolean; readonly activationVisible?: boolean }
 ): EnterpriseServerProduct {
   const authorization = new AuthorizationService(
     database,
@@ -79,7 +94,7 @@ function assembleProduct(
     capabilities: licenses,
     registerLicenseManagement(app, publicOrigin) {
       registerManagementLicenseGate(app, licenses, database, publicOrigin);
-      registerLicenseRoutes({ app, database, licenses, publicOrigin, activationAvailable });
+      registerLicenseRoutes({ app, database, licenses, publicOrigin, ...activation });
     }
   };
 }

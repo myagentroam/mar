@@ -16,12 +16,13 @@ export interface WebPushDeliveryKeys {
   readonly privateKey: string;
 }
 
+/** Own protected VAPID keys; the contact URI is independent of the browser's site Origin. */
 export class WebPushConfiguration {
   private readonly encryptionKey: Buffer;
   constructor(
     private readonly database: { readonly raw: Pool },
     applicationKey: Buffer,
-    private readonly publicOrigin: string | undefined,
+    private readonly subjectUri: string | undefined,
     private readonly available: () => boolean
   ) {
     if (applicationKey.length !== 32) throw new Error('WEB_PUSH_CONFIGURATION_INVALID');
@@ -80,16 +81,11 @@ export class WebPushConfiguration {
 
   private subject(): string | undefined {
     try {
-      const url = new URL(this.publicOrigin ?? '');
-      if (
-        url.protocol !== 'https:' ||
-        url.username ||
-        url.password ||
-        url.hostname === 'localhost' ||
-        url.hostname.endsWith('.localhost')
-      )
-        return undefined;
-      return url.origin;
+      const url = new URL(this.subjectUri ?? '');
+      if (url.username || url.password || url.hash) return undefined;
+      if (url.protocol === 'https:') return this.subjectUri;
+      if (url.protocol === 'mailto:' && url.pathname.includes('@')) return this.subjectUri;
+      return undefined;
     } catch {
       return undefined;
     }
