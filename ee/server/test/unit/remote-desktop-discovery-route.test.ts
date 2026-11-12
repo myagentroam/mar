@@ -44,11 +44,17 @@ function fixture() {
   const canUseNode = vi.fn(async () => true);
   const nodeCapabilities = vi.fn(() => ({ remoteDesktop: capability }) as unknown);
   const requestNode = vi.fn(async () => description as unknown);
+  const node = {
+    id: 'node-a',
+    displayName: 'Studio desktop' as string | null,
+    registeredAddress: '192.0.2.10'
+  };
+  const listNodes = vi.fn(async () => [node]);
   registerRemoteDesktopDiscoveryRoute({
     app,
     publicOrigin: 'http://trusted.test',
     database: { findCurrentUserSession: lookup },
-    nodeControl: { nodeCapabilities, requestNode } as never,
+    nodeControl: { nodeCapabilities, requestNode, listNodes } as never,
     resources: { canUseNode }
   });
   const get = (headers: Record<string, string> = {}) =>
@@ -57,10 +63,38 @@ function fixture() {
       url: '/api/nodes/node-a/desktop',
       headers: { cookie: 'mar_user_session=session', ...headers }
     });
-  return { app, get, lookup, canUseNode, nodeCapabilities, requestNode };
+  return { app, get, lookup, canUseNode, nodeCapabilities, requestNode, node, listNodes };
 }
 
 describe('Remote Desktop discovery route', () => {
+  it('uses the registered address when the Node has no display name, never its internal ID', async () => {
+    const f = fixture();
+    f.node.displayName = null;
+    try {
+      const response = await f.get();
+      expect(response.statusCode).toBe(200);
+      expect(response.json().nodeName).toBe('192.0.2.10');
+    } finally {
+      await f.app.close();
+    }
+  });
+
+  it('rechecks the Session after the Node-name lookup without dispatching after revocation', async () => {
+    const f = fixture();
+    f.listNodes.mockImplementationOnce(async () => {
+      f.lookup.mockReturnValue(undefined);
+      return [f.node];
+    });
+    try {
+      const response = await f.get();
+      expect(response.statusCode).toBe(401);
+      expect(response.body).not.toContain('Studio desktop');
+      expect(f.requestNode).not.toHaveBeenCalled();
+    } finally {
+      await f.app.close();
+    }
+  });
+
   it('returns the live capability and validated description for a Node user', async () => {
     expect(remoteDesktopCapabilitySchema.parse(capability)).toEqual(capability);
     const f = fixture();
@@ -68,7 +102,7 @@ describe('Remote Desktop discovery route', () => {
       const response = await f.get({ origin: 'http://trusted.test' });
       expect(response.statusCode).toBe(200);
       expect(response.headers['cache-control']).toBe('no-store');
-      expect(response.json()).toEqual({ capability, description });
+      expect(response.json()).toEqual({ capability, description, nodeName: 'Studio desktop' });
       expect(f.requestNode).toHaveBeenCalledWith(
         'node-a',
         'desktop.describe',

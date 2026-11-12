@@ -44,6 +44,7 @@ beforeEach(() => {
       displays: [
         {
           displayId: 'primary-1',
+          name: 'Display',
           primary: true,
           framebufferBounds: { x: 0, y: 0, width: 800, height: 600 }
         }
@@ -54,6 +55,31 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Remote Desktop first-frame state', () => {
+  it.each([
+    ['\\\\.\\DISPLAY1', 'Display1'],
+    ['\\\\.\\display2', 'Display2'],
+    ['DELL U2723QE', 'DELL U2723QE']
+  ])(
+    'shows a readable display name for %s without changing its selector value',
+    async (name, label) => {
+      const discovery = await mocks.discover();
+      discovery.description.displays[0].name = name;
+      mocks.select.mockResolvedValue({ channel, path: 'direct', ready() {}, close: mocks.close });
+      const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+      try {
+        await flushComponent();
+        const options = view
+          .findAll('ElOption')
+          .filter((node) => typeof node.props['value'] === 'string');
+        expect(options.map((node) => node.props['value'])).toEqual(['primary-1']);
+        expect(options[0]!.props['label']).toContain(label);
+        expect(options[0]!.props['label']).not.toContain('\\\\.\\');
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it.each([false, true])('preserves synchronous readiness failure: %s', async (fails) => {
     const ready = vi.fn();
     mocks.select.mockImplementation(async (input: { onDisconnected(code: string): void }) => ({
@@ -110,6 +136,48 @@ describe('Remote Desktop first-frame state', () => {
       await flushComponent();
       expect(prompt()).toBeUndefined();
     } finally {
+      view.unmount();
+    }
+  });
+
+  it('can return to VIEW while a CONTROL attachment is still opening', async () => {
+    const late = { channel, path: 'direct' as const, ready() {}, close: vi.fn(async () => true) };
+    const pending = Promise.withResolvers<typeof late>();
+    const viewing = { channel, path: 'direct', ready() {}, close: mocks.close };
+    mocks.select
+      .mockResolvedValueOnce(viewing)
+      .mockImplementationOnce(() => pending.promise)
+      .mockResolvedValueOnce(viewing);
+    const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+    let opening: Promise<void> | undefined;
+    try {
+      await flushComponent();
+      mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
+      await flushComponent();
+      const control = view
+        .findAll('ElButton')
+        .find((node) => node.props['data-testid'] === 'desktop-control-prompt')!;
+      opening = (control.props['onClick'] as () => Promise<void>)();
+      await flushComponent();
+      const button = view
+        .findAll('ElButton')
+        .find((node) => node.props['data-testid'] === 'desktop-view')!;
+      expect(button.props['disabled']).not.toBe(true);
+      await (button.props['onClick'] as () => Promise<void>)();
+      expect(mocks.select.mock.calls[1]![0].signal.aborted).toBe(true);
+      pending.resolve(late);
+      await opening;
+      expect(late.close).toHaveBeenCalledOnce();
+      expect(mocks.select.mock.calls.map(([input]) => input.mode)).toEqual([
+        'VIEW',
+        'CONTROL',
+        'VIEW'
+      ]);
+      expect(mocks.clients).toHaveLength(2);
+      expect(mocks.clients[1]).toHaveProperty('viewOnly', true);
+    } finally {
+      pending.resolve(late);
+      await opening;
       view.unmount();
     }
   });

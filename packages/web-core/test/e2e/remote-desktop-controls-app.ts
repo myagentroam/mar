@@ -9,7 +9,7 @@ import '../../src/styles.css';
 document.documentElement.classList.add('console-ui');
 createThemePreferenceService();
 createApp({
-  render: () => [h(RemoteDesktopPage, { nodeId: 'Fixture Node' }), h(SharedTooltipHost)]
+  render: () => [h(RemoteDesktopPage, { nodeId: 'node-a-internal-id' }), h(SharedTooltipHost)]
 })
   .use(i18n)
   .use(tooltipPlugin)

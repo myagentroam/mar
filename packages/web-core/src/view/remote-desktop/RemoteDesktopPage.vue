@@ -9,6 +9,7 @@ import {
 import { remoteDesktopViewport } from '../../service/remote-desktop-viewport.js';
 import { remoteDesktopEncodings } from '../../service/remote-desktop-encodings.js';
 import { createRemoteDesktopStatistics } from '../../service/remote-desktop-statistics.js';
+import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{ readonly nodeId: string }>();
 type Mode = 'VIEW' | 'CONTROL';
@@ -185,8 +186,13 @@ async function discoverAndConnect(): Promise<void> {
   }
 }
 
+function displayName(name: string): string {
+  const device = /^\\\\\.\\DISPLAY(\d+)$/iu.exec(name);
+  return device ? translate('remoteDesktop.displayName', { number: device[1]! }) : name;
+}
+
 function dataRate(bytes: number | undefined): string {
-  if (bytes === undefined) return '—';
+  if (bytes === undefined) return '-';
   if (bytes < 1024) return `${Math.round(bytes)} B/s`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB/s`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB/s`;
@@ -291,7 +297,12 @@ onBeforeUnmount(() => {
     <header class="remote-desktop-toolbar">
       <div class="remote-desktop-title">
         <strong>{{ translate('remoteDesktop.title') }}</strong
-        ><span>{{ nodeId }}</span>
+        ><span
+          v-if="discovery?.nodeName"
+          v-tooltip="discovery.nodeName"
+          data-testid="desktop-node-name"
+          >{{ discovery.nodeName }}</span
+        >
       </div>
       <div class="remote-desktop-actions">
         <el-select
@@ -318,13 +329,12 @@ onBeforeUnmount(() => {
             :value="display.displayId"
             :label="
               display.primary
-                ? translate('remoteDesktop.primary', { name: display.name })
-                : display.name
+                ? translate('remoteDesktop.primary', { name: displayName(display.name) })
+                : displayName(display.name)
             "
           />
-          <el-option value="" :label="translate('remoteDesktop.allScreens')" />
         </el-select>
-        <el-button v-if="mode === 'CONTROL'" @click="connect('VIEW')">{{
+        <el-button v-if="mode === 'CONTROL'" data-testid="desktop-view" @click="connect('VIEW')">{{
           translate('remoteDesktop.viewing')
         }}</el-button>
         <el-button
@@ -382,6 +392,7 @@ onBeforeUnmount(() => {
           :key="renderKey"
           ref="target"
           class="remote-desktop-target"
+          :class="{ 'is-interactive': mode === 'CONTROL' && state === 'ready' }"
           :style="{
             width: `${viewport.framebufferWidth}px`,
             height: `${viewport.framebufferHeight}px`,
@@ -394,18 +405,14 @@ onBeforeUnmount(() => {
         v-if="state === 'ready' && mode === 'VIEW' && discovery?.capability.supportsControl"
         class="remote-desktop-control-prompt"
       >
-        <el-button
-          type="primary"
-          plain
-          size="large"
-          data-testid="desktop-control-prompt"
-          @click="connect('CONTROL')"
-          >{{ translate('remoteDesktop.controlling') }}</el-button
-        >
+        <el-button data-testid="desktop-control-prompt" @click="connect('CONTROL')">{{
+          translate('remoteDesktop.controlling')
+        }}</el-button>
       </div>
       <div v-if="state !== 'ready'" class="remote-desktop-overlay" role="status">
-        <p>
-          {{
+        <p class="remote-desktop-status-line">
+          <MarIcon v-if="state === 'connecting'" name="loading-action" />
+          <span>{{
             state === 'connecting'
               ? translate('remoteDesktop.connecting')
               : state === 'hidden'
@@ -413,7 +420,7 @@ onBeforeUnmount(() => {
                 : state === 'released'
                   ? translate('remoteDesktop.releaseControl')
                   : errorText
-          }}
+          }}</span>
         </p>
         <el-button
           v-if="state === 'released' || state === 'hidden' || state === 'error'"
@@ -442,13 +449,13 @@ onBeforeUnmount(() => {
         >{{ translate('remoteDesktop.latency') }}:
         {{
           metrics.controlRoundTripMs === undefined
-            ? '—'
+            ? '-'
             : `${Math.round(metrics.controlRoundTripMs)} ms`
         }}</span
       >
       <span
         >{{ translate('remoteDesktop.frameRate') }}:
-        {{ metrics.framesPerSecond?.toFixed(1) ?? '—' }} FPS</span
+        {{ metrics.framesPerSecond?.toFixed(1) ?? '-' }} FPS</span
       >
       <span
         >{{ translate('remoteDesktop.receiving') }}:
@@ -552,6 +559,15 @@ onBeforeUnmount(() => {
 }
 .remote-desktop-target {
   position: absolute;
+  pointer-events: none;
+}
+.remote-desktop-target.is-interactive {
+  pointer-events: auto;
+}
+.remote-desktop-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .remote-desktop-control-prompt {
   position: absolute;

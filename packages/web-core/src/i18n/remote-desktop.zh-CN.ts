@@ -22,7 +22,7 @@ export const remoteDesktopZhCN = {
   qualityLow: '低画质',
   qualityMedium: '中画质',
   qualityHigh: '高画质',
-  allScreens: '全部显示器',
+  displayName: 'Display{number}',
   primary: '{name}（主屏）',
   paste: '发送剪贴板文本',
   keyboard: '文本键盘',
