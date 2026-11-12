@@ -139,6 +139,24 @@ jobs:
           wait "$runtime"
           grep -q CLOSED managed-runtime.log
 
+      - name: Probe two macOS displays and secondary-display input
+        if: ${{ matrix.os == 'macos-15' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="$RUNNER_TEMP/remote-desktop-macos-native"
+          swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/primary-window"
+          clang -fobjc-arc -framework Cocoa -framework CoreGraphics mar-node/test/native/macos-virtual-screen.m -o "$RUNNER_TEMP/virtual-screen"
+          export MAR_MULTISCREEN_CLICK="$RUNNER_TEMP/multiscreen-click"
+          "$RUNNER_TEMP/primary-window" >primary-window.log 2>&1 & primary=$!
+          "$RUNNER_TEMP/virtual-screen" >virtual-screen.log 2>&1 & virtual=$!
+          server=''
+          trap 'kill "$primary" "$virtual" ${server:+"$server"} 2>/dev/null || true; wait 2>/dev/null || true; cat primary-window.log virtual-screen.log; test ! -f multi-server.log || cat multi-server.log' EXIT
+          for _ in $(seq 1 100); do grep -q '^READY ' virtual-screen.log && break; kill -0 "$virtual"; sleep .1; done
+          grep -q '^READY ' virtual-screen.log
+          "$package/macVNC" -listen localhost -rfbport 15994 -rfbportv6 0 >multi-server.log 2>&1 & server=$!
+          python3 mar-node/test/native/macos-multidisplay-rfb.py 15994 "$package/macos-topology"
+
   remote-desktop-windows-native:
     name: Remote desktop Windows native acceptance
     if: ${{ inputs.macos_validation }}
