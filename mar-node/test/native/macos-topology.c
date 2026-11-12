@@ -10,8 +10,8 @@ int main(void) {
   printf("{\"displays\":[");
   for (uint32_t i = 0; i < count; i++) {
     CGRect bounds = CGDisplayBounds(displays[i]);
-    printf("%s{\"id\":%u,\"primary\":%s,\"x\":%.0f,\"y\":%.0f,"
-           "\"width\":%.0f,\"height\":%.0f,\"pixelWidth\":%zu,\"pixelHeight\":%zu}",
+    printf("%s{\"id\":%u,\"primary\":%s,\"x\":%.6f,\"y\":%.6f,"
+           "\"width\":%.6f,\"height\":%.6f,\"pixelWidth\":%zu,\"pixelHeight\":%zu}",
            i ? "," : "", displays[i], CGDisplayIsMain(displays[i]) ? "true" : "false",
            bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
            CGDisplayPixelsWide(displays[i]), CGDisplayPixelsHigh(displays[i]));

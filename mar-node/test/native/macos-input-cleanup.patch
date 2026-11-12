@@ -214,7 +214,7 @@
 +  if (!rfbScreen->frameBuffer) return FALSE;
 @@ -561 +600,0 @@
 -
-@@ -565,59 +604,38 @@
+@@ -565,59 +604,40 @@
 -  ScreenCapturer *capturer = [[ScreenCapturer alloc] initWithDisplay: displayID
 -                                                        frameHandler:^(CMSampleBufferRef sampleBuffer) {
 -          rfbClientIteratorPtr iterator;
@@ -281,8 +281,8 @@
 +      CGRect bounds = CGDisplayBounds(current);
 +      int x = (int)lround((bounds.origin.x - desktopBounds.origin.x) * desktopScale);
 +      int y = (int)lround((bounds.origin.y - desktopBounds.origin.y) * desktopScale);
-+      int width = (int)lround(bounds.size.width * desktopScale);
-+      int height = (int)lround(bounds.size.height * desktopScale);
++      int width = (int)lround((CGRectGetMaxX(bounds) - desktopBounds.origin.x) * desktopScale) - x;
++      int height = (int)lround((CGRectGetMaxY(bounds) - desktopBounds.origin.y) * desktopScale) - y;
 +      ScreenCapturer *capturer = [[ScreenCapturer alloc]
 +          initWithDisplay:current targetSize:CGSizeMake(width, height)
 +          frameHandler:^(CMSampleBufferRef sampleBuffer) {
@@ -296,11 +296,13 @@
 +                  CVPixelBufferLockBaseAddress(pixels, kCVPixelBufferLock_ReadOnly);
 +                  const unsigned char *source = CVPixelBufferGetBaseAddress(pixels);
 +                  size_t stride = CVPixelBufferGetBytesPerRow(pixels);
-+                  for (int row = 0; row < height; row++)
++                  size_t copyWidth = MIN((size_t)width, MIN(CVPixelBufferGetWidth(pixels), stride / 4));
++                  size_t copyHeight = source ? MIN((size_t)height, CVPixelBufferGetHeight(pixels)) : 0;
++                  for (size_t row = 0; row < copyHeight; row++)
 +                      memcpy(rfbScreen->frameBuffer + ((size_t)(y + row) * desktopWidth + x) * 4,
-+                             source + row * stride, (size_t)width * 4);
++                             source + row * stride, copyWidth * 4);
 +                  CVPixelBufferUnlockBaseAddress(pixels, kCVPixelBufferLock_ReadOnly);
-+                  rfbMarkRectAsModified(rfbScreen, x, y, x + width, y + height);
++                  rfbMarkRectAsModified(rfbScreen, x, y, x + (int)copyWidth, y + (int)copyHeight);
 +                  iterator = rfbGetClientIterator(rfbScreen);
 +                  while ((client = rfbClientIteratorNext(iterator))) UNLOCK(client->sendMutex);
 +                  rfbReleaseClientIterator(iterator);
@@ -312,7 +314,7 @@
 +      [activeCapturers addObject:capturer];
 +      [capturer startCapture];
 +  }
-@@ -633 +651,13 @@
+@@ -633 +653,13 @@
 -    //TODO
 +    ClientInput *input = cl->clientData;
 +    if (!input) return;
@@ -327,7 +329,7 @@
 +    CFRelease(input->keys);
 +    free(input);
 +    cl->clientData = NULL;
-@@ -637,0 +668,5 @@
+@@ -637,0 +670,5 @@
 +  ClientInput *input = calloc(1, sizeof(*input));
 +  if (!input) return RFB_CLIENT_REFUSE;
 +  input->keys = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
