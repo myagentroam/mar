@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
           "$binary" --help
-          "$binary" -viewonly -localhost -rfbport 15991 >macvnc.log 2>&1 &
+          "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; cat macvnc.log' EXIT
           python3 -c 'import socket,time; deadline=time.monotonic()+20
@@ -57,11 +57,22 @@ jobs:
           sleep 3
           kill -0 "$pid"
 
+      - name: Probe macOS control permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
+          "$binary" -listen localhost -rfbport 15992 -rfbportv6 -1 >macvnc-control.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; cat macvnc-control.log' EXIT
+          sleep 3
+          kill -0 "$pid"
+
   remote-desktop-windows-native:
     name: Remote desktop Windows native build
     if: ${{ inputs.macos_validation }}
     runs-on: windows-2025
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Build fixed UltraVNC source
         shell: pwsh
@@ -69,11 +80,32 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Invoke-WebRequest -Uri 'https://codeload.github.com/ultravnc/UltraVNC/tar.gz/c757708e83b6c8249a1cdc9b9c0427c4e72f1c21' -OutFile source.tar.gz
           tar -xzf source.tar.gz
-          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $install = Start-Process -FilePath $installer -ArgumentList @('modify', '--installPath', $vs, '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC', '--quiet', '--norestart', '--wait') -Wait -PassThru
+          if ($install.ExitCode -notin @(0, 3010)) { throw "MFC installation failed: $($install.ExitCode)" }
+          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild not found' }
-          & $msbuild 'UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21\winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0
+          Push-Location UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-ChildItem -Path UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21 -Filter winvnc.exe -Recurse | Format-List FullName,Length
+          & $msbuild 'winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:VcpkgEnableManifest=true /p:VcpkgTriplet=x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $binaries = @(Get-ChildItem -Path . -Filter winvnc.exe -Recurse)
+          if ($binaries.Count -eq 0) { throw 'winvnc.exe not found after build' }
+          $binaries | Format-List FullName,Length
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\remote-desktop-native" | Out-Null
+          Copy-Item $binaries[0].FullName "$env:RUNNER_TEMP\remote-desktop-native\winvnc.exe"
+          Get-ChildItem -Path $binaries[0].DirectoryName -Filter '*.dll' | Copy-Item -Destination "$env:RUNNER_TEMP\remote-desktop-native"
+          Copy-Item LICENSE "$env:RUNNER_TEMP\remote-desktop-native\LICENSE"
+
+      - name: Save Windows native build for UAT
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: remote-desktop-windows-native
+          path: ${{ runner.temp }}/remote-desktop-native/
+          if-no-files-found: error
 
   smoke:
     name: Smoke (${{ matrix.os }})
