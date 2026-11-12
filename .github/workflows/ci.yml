@@ -175,6 +175,13 @@ jobs:
             python mar-node/test/native/desktop-native-rfb-probe.py $port native-release
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
+            $env:MAR_DESKTOP_SERVER_PID = $server.Id.ToString()
+            python mar-node/test/native/desktop-native-rfb-probe.py $port native-after-stop
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
+            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
+            Start-Sleep -Seconds 3
+            if ($server.HasExited) { throw "UltraVNC restart exited with code $($server.ExitCode)" }
             python mar-node/test/native/desktop-native-rfb-probe.py $port cleanup
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
