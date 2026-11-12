@@ -65,6 +65,7 @@ interface ActiveTransport {
   readonly command: TransportCommand;
   readonly peer: RTCPeerConnection;
   readonly sentCandidateKeys: Set<string>;
+  readonly pendingChannels: Set<RTCDataChannel>;
   lastLeaseAliveAt: number;
   leaseExpiresAt: number;
   leaseTimer: ReturnType<typeof setInterval>;
@@ -307,6 +308,7 @@ export class DirectTransferService {
       command,
       peer,
       sentCandidateKeys: new Set<string>(),
+      pendingChannels: new Set<RTCDataChannel>(),
       lastLeaseAliveAt: this.now(),
       leaseExpiresAt: command.expiresAt,
       leaseTimer: undefined as unknown as ReturnType<typeof setInterval>
@@ -446,11 +448,20 @@ export class DirectTransferService {
   }
 
   private attachPendingChannel(transport: ActiveTransport, channel: RTCDataChannel): void {
+    if (this.transports.get(transport.command.directSessionId) !== transport) {
+      channel.close();
+      return;
+    }
+    transport.pendingChannels.add(channel);
+    channel.addEventListener('close', () => transport.pendingChannels.delete(channel), {
+      once: true
+    });
     channel.binaryType = 'arraybuffer';
     let attached = false;
     channel.onmessage = (event) => {
       if (attached) return;
       attached = true;
+      transport.pendingChannels.delete(channel);
       if (channel.label.startsWith('mar-terminal-')) {
         this.terminalDirect?.open(transport.command.directSessionId, channel, event.data);
         if (this.terminalDirect === undefined) channel.close();
@@ -647,6 +658,8 @@ export class DirectTransferService {
     for (const transfer of [...this.transfers.values()])
       if (transfer.command.transportSessionId === transport.command.directSessionId)
         void this.removeTransfer(transfer, code ?? 'DIRECT_CONNECTION_FAILED');
+    for (const channel of transport.pendingChannels) channel.close();
+    transport.pendingChannels.clear();
     transport.peer.close();
     if (code !== undefined)
       this.options.send('direct.error', {

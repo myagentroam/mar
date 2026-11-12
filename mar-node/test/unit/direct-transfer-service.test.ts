@@ -197,6 +197,31 @@ function uploadState(service: WorkspaceUploadService) {
 }
 
 describe('Node direct transfer service', () => {
+  it('closes unclaimed incoming channels before their transport and rejects late channels', async () => {
+    const f = await createFixture();
+    try {
+      await connectTransport(f);
+      const bootstrap = new FakeDataChannel();
+      bootstrap.label = 'mar-direct-transport';
+      const closeBootstrap = vi.spyOn(bootstrap, 'close');
+      const closePeer = vi.spyOn(f.peer, 'close');
+      f.peer.attach(bootstrap);
+
+      f.service.close();
+      expect(closeBootstrap).toHaveBeenCalledOnce();
+      expect(closeBootstrap.mock.invocationCallOrder[0]).toBeLessThan(
+        closePeer.mock.invocationCallOrder[0]!
+      );
+
+      const late = new FakeDataChannel();
+      const closeLate = vi.spyOn(late, 'close');
+      f.peer.attach(late);
+      expect(closeLate).toHaveBeenCalledOnce();
+    } finally {
+      f.service.dispose();
+    }
+  });
+
   it('suspends only Remote Desktop and leaves the shared RTC transport running', async () => {
     let release!: () => void;
     const cleanup = new Promise<void>((resolve) => {
