@@ -23,6 +23,17 @@ final class ProbeView: NSView {
         guard let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_MOUSE_RECEIPT"] else { return }
         try? "mouse-down\n".write(toFile: path, atomically: true, encoding: .utf8)
     }
+
+    override func keyUp(with event: NSEvent) {
+        guard event.charactersIgnoringModifiers?.lowercased() == "a",
+              let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_KEY_UP_RECEIPT"] else { return }
+        try? "key-up\n".write(toFile: path, atomically: true, encoding: .utf8)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_MOUSE_UP_RECEIPT"] else { return }
+        try? "mouse-up\n".write(toFile: path, atomically: true, encoding: .utf8)
+    }
 }
 
 let app = NSApplication.shared

@@ -1,0 +1,54 @@
+--- a/src/mac.m
++++ b/src/mac.m
+@@ -321,0 +322,14 @@
++/* Input state belongs to a VNC client and is released when that client leaves. */
++typedef struct {
++    CFMutableSetRef keys;
++    int buttons;
++    int x;
++    int y;
++} ClientInput;
++
++static void firstKey(const void *value, void *context)
++{
++    const void **key = context;
++    if (!*key) *key = value;
++}
++
+@@ -385,0 +400,8 @@
++    ClientInput *input = cl->clientData;
++    if (input) {
++        int64_t value = keySym;
++        CFNumberRef key = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &value);
++        if (down) CFSetAddValue(input->keys, key);
++        else CFSetRemoveValue(input->keys, key);
++        CFRelease(key);
++    }
+@@ -394,0 +417,6 @@
++    ClientInput *input = cl->clientData;
++    if (input) {
++        input->buttons = buttonMask & 7;
++        input->x = x;
++        input->y = y;
++    }
+@@ -633 +661,13 @@
+-    //TODO
++    ClientInput *input = cl->clientData;
++    if (!input) return;
++    while (CFSetGetCount(input->keys) > 0) {
++        const void *key = NULL;
++        CFSetApplyFunction(input->keys, firstKey, &key);
++        int64_t value = 0;
++        CFNumberGetValue(key, kCFNumberSInt64Type, &value);
++        KbdAddEvent(FALSE, (rfbKeySym)value, cl);
++    }
++    if (input->buttons) PtrAddEvent(0, input->x, input->y, cl);
++    CFRelease(input->keys);
++    free(input);
++    cl->clientData = NULL;
+@@ -637,0 +678,5 @@
++  ClientInput *input = calloc(1, sizeof(*input));
++  if (!input) return RFB_CLIENT_REFUSE;
++  input->keys = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
++  if (!input->keys) { free(input); return RFB_CLIENT_REFUSE; }
++  cl->clientData = input;

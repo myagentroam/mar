@@ -37,6 +37,7 @@ jobs:
           set -euo pipefail
           brew install libvncserver
           curl -fsSL https://codeload.github.com/LibVNC/macVNC/tar.gz/6c45640168dd170120d96661b3b711d283257166 | tar xz
+          patch -d macVNC-6c45640168dd170120d96661b3b711d283257166 -p1 < mar-node/test/native/macos-input-cleanup.patch
           cmake -S macVNC-6c45640168dd170120d96661b3b711d283257166 -B macvnc-build
           cmake --build macvnc-build --parallel 2
           otool -L macvnc-build/macVNC.app/Contents/MacOS/macVNC
@@ -72,6 +73,8 @@ jobs:
           swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/desktop-window"
           export MAR_DESKTOP_KEY_RECEIPT="$RUNNER_TEMP/key-receipt"
           export MAR_DESKTOP_MOUSE_RECEIPT="$RUNNER_TEMP/mouse-receipt"
+          export MAR_DESKTOP_KEY_UP_RECEIPT="$RUNNER_TEMP/key-up-receipt"
+          export MAR_DESKTOP_MOUSE_UP_RECEIPT="$RUNNER_TEMP/mouse-up-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!
           DYLD_PRINT_LIBRARIES=1 "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
@@ -91,6 +94,8 @@ jobs:
           sleep 3
           kill -0 "$pid"
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 control
+          rm -f "$MAR_DESKTOP_KEY_RECEIPT" "$MAR_DESKTOP_MOUSE_RECEIPT" "$MAR_DESKTOP_KEY_UP_RECEIPT" "$MAR_DESKTOP_MOUSE_UP_RECEIPT"
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 cleanup
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native build
@@ -128,6 +133,7 @@ jobs:
           $guard = '#if !defined(__MINGW32__)'
           if (($text.Split(@($guard), [System.StringSplitOptions]::None).Count - 1) -ne 2) { throw 'Unexpected Active Desktop source' }
           $text = $text.Replace($guard, '#if 0')
+          $text = $text.Replace('#include <windows.h>', "#include <windows.h>`r`n#include <objbase.h>")
           [System.IO.File]::WriteAllBytes($hideDesktop, $encoding.GetBytes($text))
           $vcpkg = Join-Path (Get-Location) 'vcpkg_installed\x64-windows'
           if (-not (Test-Path "$vcpkg\include\zlib.h")) { throw 'vcpkg zlib headers missing' }
