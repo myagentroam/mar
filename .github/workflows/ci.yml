@@ -84,15 +84,22 @@ jobs:
           Invoke-WebRequest -Uri 'https://codeload.github.com/ultravnc/UltraVNC/tar.gz/c757708e83b6c8249a1cdc9b9c0427c4e72f1c21' -OutFile source.tar.gz
           tar -xzf source.tar.gz
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $install = Start-Process -FilePath $installer -ArgumentList @('modify', '--installPath', ('"' + $vs + '"'), '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC', '--quiet', '--norestart') -Wait -PassThru
-          if ($install.ExitCode -notin @(0, 3010)) { throw "MFC installation failed: $($install.ExitCode)" }
           $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild not found' }
           Push-Location UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21
           & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # These non-MFC projects use afxres.h only for standard resource constants.
+          $encoding = [System.Text.Encoding]::GetEncoding(28591)
+          Get-ChildItem winvnc,addon/ms-logon -Filter '*.rc' -Recurse | ForEach-Object {
+            $text = $encoding.GetString([System.IO.File]::ReadAllBytes($_.FullName))
+            $text = $text.Replace('#include "afxres.h"', "#include `"winres.h`"`r`n#ifndef IDC_STATIC`r`n#define IDC_STATIC (-1)`r`n#endif")
+            [System.IO.File]::WriteAllBytes($_.FullName, $encoding.GetBytes($text))
+          }
+          $vcpkg = Join-Path (Get-Location) 'vcpkg_installed\x64-windows'
+          if (-not (Test-Path "$vcpkg\include\zlib.h")) { throw 'vcpkg zlib headers missing' }
+          $env:CL = "/I`"$vcpkg\include`""
+          $env:LIB = "$vcpkg\lib;$env:LIB"
           & $msbuild 'winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:VcpkgEnableManifest=true /p:VcpkgTriplet=x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $binaries = @(Get-ChildItem -Path . -Filter winvnc.exe -Recurse)
@@ -101,7 +108,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\remote-desktop-native" | Out-Null
           Copy-Item $binaries[0].FullName "$env:RUNNER_TEMP\remote-desktop-native\winvnc.exe"
           Get-ChildItem -Path $binaries[0].DirectoryName -Filter '*.dll' | Copy-Item -Destination "$env:RUNNER_TEMP\remote-desktop-native"
+          Get-ChildItem -Path "$vcpkg\bin" -Filter '*.dll' | Copy-Item -Destination "$env:RUNNER_TEMP\remote-desktop-native"
           Copy-Item LICENSE "$env:RUNNER_TEMP\remote-desktop-native\LICENSE"
+          Get-ChildItem "$vcpkg\share" -Filter copyright -Recurse | ForEach-Object {
+            $destination = Join-Path "$env:RUNNER_TEMP\remote-desktop-native\licenses" $_.Directory.Name
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            Copy-Item $_.FullName (Join-Path $destination 'copyright')
+          }
 
       - name: Save Windows native build for UAT
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
