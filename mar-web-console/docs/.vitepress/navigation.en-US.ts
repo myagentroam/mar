@@ -50,6 +50,7 @@ export const enSidebar = [
       { text: 'Git Changes and Diff', link: '/en-US/workbench/git-changes' },
       { text: 'Git History', link: '/en-US/workbench/git-history' },
       { text: 'Workspace Terminals', link: '/en-US/workbench/terminal' },
+      { text: 'Node Remote Desktop', link: '/en-US/workbench/remote-desktop' },
       { text: 'Continue on Mobile', link: '/en-US/workbench/mobile' }
     ]
   },

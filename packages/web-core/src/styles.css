@@ -634,7 +634,7 @@ html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
     --mar-font-size-title: 15px;
     --mar-compact-control-size: 26px;
     --mar-primary-control-size: 30px;
-    --mar-utility-control-size: 31px;
+    --mar-utility-control-size: 24px;
     --mar-compact-row-size: 27px;
     --mar-session-row-min-height: 32px;
     --mar-session-row-padding-block: 0.2rem;

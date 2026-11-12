@@ -274,8 +274,11 @@ jobs:
           pnpm exec playwright install chromium
       - name: Build production dependencies and complete Web
         shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           set -euo pipefail
+          node --test test/unit/help-docs-validation.test.mjs
           pnpm --filter @myagentroam/server-core... --filter @myagentroam/node... --filter @myagentroam/web-console... build
       - name: Locate isolated Windows MySQL executable
         if: runner.os == 'Windows'

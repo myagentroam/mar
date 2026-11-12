@@ -47,12 +47,20 @@ class FakeDataChannel extends EventTarget {
 }
 
 class FakePeerConnection extends EventTarget {
+  sctp = { maxMessageSize: 16_384 };
   localDescription: RTCSessionDescription | null = null;
   remoteDescription: RTCSessionDescription | null = null;
   connectionState = 'new' as RTCPeerConnectionState;
   onicecandidate: RTCPeerConnection['onicecandidate'] = null;
   ondatachannel: RTCPeerConnection['ondatachannel'] = null;
   onconnectionstatechange: RTCPeerConnection['onconnectionstatechange'] = null;
+  readonly channels: FakeDataChannel[] = [];
+  createDataChannel(label: string): RTCDataChannel {
+    const channel = new FakeDataChannel();
+    channel.label = label;
+    this.channels.push(channel);
+    return channel as unknown as RTCDataChannel;
+  }
   constructor(public answerSdp = `v=0\r\na=fingerprint:${nodeFingerprint}\r\n`) {
     super();
   }
@@ -189,6 +197,199 @@ function uploadState(service: WorkspaceUploadService) {
 }
 
 describe('Node direct transfer service', () => {
+  it('closes unclaimed incoming channels before their transport and rejects late channels', async () => {
+    const f = await createFixture();
+    try {
+      await connectTransport(f);
+      const bootstrap = new FakeDataChannel();
+      bootstrap.label = 'mar-direct-transport';
+      const closeBootstrap = vi.spyOn(bootstrap, 'close');
+      const closePeer = vi.spyOn(f.peer, 'close');
+      f.peer.attach(bootstrap);
+
+      f.service.close();
+      expect(closeBootstrap).toHaveBeenCalledOnce();
+      expect(closeBootstrap.mock.invocationCallOrder[0]).toBeLessThan(
+        closePeer.mock.invocationCallOrder[0]!
+      );
+
+      const late = new FakeDataChannel();
+      const closeLate = vi.spyOn(late, 'close');
+      f.peer.attach(late);
+      expect(closeLate).toHaveBeenCalledOnce();
+    } finally {
+      f.service.dispose();
+    }
+  });
+
+  it('suspends only Remote Desktop and leaves the shared RTC transport running', async () => {
+    let release!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const close = vi.fn(() => cleanup);
+    const events = vi.fn(() => true);
+    const f = await createFixture({
+      desktop: {
+        isCurrent: () => true,
+        createAttachment: (_command, _stream, callbacks) => ({
+          open: async () => callbacks.attached(),
+          close
+        }),
+        emit: events
+      }
+    });
+    try {
+      await connectTransport(f);
+      const prepare = {
+        type: 'desktop.direct.prepare',
+        attachmentId: 'attachment-1',
+        transportSessionId: 'transport-0001',
+        workbenchConnectionId: 'connection-0001',
+        nodeGeneration: 'generation-1',
+        desktopGeneration: 'desktop-1',
+        topologyRevision: 1,
+        mode: 'VIEW',
+        grant: 'g'.repeat(32),
+        browserFingerprint,
+        nodeFingerprint,
+        openExpiresAt: 500,
+        expiresAt: 900
+      };
+      f.service.handleDesktop(prepare);
+      f.peer.channels[0]!.receive(
+        JSON.stringify({ type: 'OPEN', attachmentId: prepare.attachmentId, grant: prepare.grant })
+      );
+      const pending = f.service.suspendDesktop(AbortSignal.timeout(5_000));
+      expect(close).toHaveBeenCalledOnce();
+      expect(f.peer.connectionState).toBe('connected');
+      expect(f.stop).not.toHaveBeenCalled();
+      expect(f.service.resumeDesktop()).toBe(false);
+      f.service.handleDesktop({ ...prepare, attachmentId: 'attachment-2' });
+      expect(f.peer.channels).toHaveLength(1);
+      release();
+      await pending;
+      expect(events).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'desktop.direct.closed', code: 'DESKTOP_UNAVAILABLE' })
+      );
+      expect(f.service.resumeDesktop()).toBe(true);
+      f.service.handleDesktop({ ...prepare, attachmentId: 'attachment-3' });
+      expect(f.peer.channels).toHaveLength(2);
+      expect(f.peer.connectionState).toBe('connected');
+    } finally {
+      f.service.dispose();
+    }
+  });
+
+  it('joins Remote native cleanup before completing transport shutdown', async () => {
+    let release!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const close = vi.fn(() => cleanup);
+    const desktopEvents = vi.fn(() => true);
+    const f = await createFixture({
+      desktop: {
+        isCurrent: () => true,
+        createAttachment: (_command, _stream, callbacks) => ({
+          open: async () => callbacks.attached(),
+          close
+        }),
+        emit: desktopEvents
+      }
+    });
+    await connectTransport(f);
+    const grant = 'g'.repeat(32);
+    f.service.handleDesktop({
+      type: 'desktop.direct.prepare',
+      attachmentId: 'attachment-1',
+      transportSessionId: 'transport-0001',
+      workbenchConnectionId: 'connection-0001',
+      nodeGeneration: 'generation-1',
+      desktopGeneration: 'desktop-1',
+      topologyRevision: 1,
+      mode: 'VIEW',
+      grant,
+      browserFingerprint,
+      nodeFingerprint,
+      openExpiresAt: 500,
+      expiresAt: 900
+    });
+    const channel = f.peer.channels[0]!;
+    channel.receive(JSON.stringify({ type: 'OPEN', attachmentId: 'attachment-1', grant }));
+    let finished = false;
+    const shutdown = f.service.shutdown(AbortSignal.timeout(5_000)).then(() => {
+      finished = true;
+    });
+    expect(close).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    release();
+    await shutdown;
+    expect(finished).toBe(true);
+    expect(desktopEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'desktop.direct.closed', code: 'DESKTOP_SERVER_SHUTDOWN' })
+    );
+  });
+
+  it('binds desktop channels to the authenticated transport and closes them when it ends', async () => {
+    const events: unknown[] = [];
+    const createAttachment = vi.fn();
+    const f = await createFixture({
+      desktop: {
+        isCurrent: () => true,
+        createAttachment,
+        emit: (event) => {
+          events.push(event);
+          return true;
+        }
+      }
+    });
+    await connectTransport(f);
+    const desktop = {
+      type: 'desktop.direct.prepare',
+      attachmentId: 'attachment-1',
+      transportSessionId: 'transport-0001',
+      workbenchConnectionId: 'connection-0001',
+      nodeGeneration: 'generation-1',
+      desktopGeneration: 'desktop-1',
+      topologyRevision: 1,
+      mode: 'VIEW',
+      grant: 'g'.repeat(32),
+      browserFingerprint,
+      nodeFingerprint,
+      openExpiresAt: 500,
+      expiresAt: 900
+    };
+    expect(
+      f.service.handleDesktop({
+        ...desktop,
+        attachmentId: 'attachment-2',
+        nodeFingerprint: browserFingerprint
+      })
+    ).toBe(true);
+    expect(f.peer.channels).toHaveLength(0);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'desktop.direct.closed', attachmentId: 'attachment-2' })
+    );
+    expect(f.service.handleDesktop(desktop)).toBe(true);
+    expect(f.peer.channels).toHaveLength(1);
+    expect(f.peer.channels[0]?.label).toBe('mar-desktop-attachment-1');
+    expect(createAttachment).not.toHaveBeenCalled();
+    f.service.handle({
+      type: 'direct.cancel',
+      directSessionId: 'transport-0001',
+      code: 'DIRECT_CANCELLED'
+    });
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'desktop.direct.closed', attachmentId: 'attachment-1' })
+      )
+    );
+    expect(f.peer.channels[0]?.readyState).toBe('closed');
+    f.service.dispose();
+  });
+
   it('derives prioritized loopback candidates without replacing the LAN candidate', async () => {
     const source = 'candidate:1 1 UDP 2114977791 192.168.1.20 50000 typ host';
     expect(loopbackHostCandidate(source)).toBe(
