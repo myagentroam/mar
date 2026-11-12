@@ -1692,7 +1692,7 @@ for (const scheme of ['Light', 'Dark']) {
           '--mar-font-size-body': mobile ? '13px' : '14px',
           '--el-component-size-small': mobile ? '24px' : '26px',
           '--mar-utility-control-size': mobile ? '28px' : '31px',
-          '--mar-session-row-min-height': mobile ? '40px' : '34px',
+          '--mar-session-row-min-height': '32px',
           '--mar-workbench-sidebar-width': mobile ? '222px' : width <= 860 ? '220px' : '244px'
         };
         const actual = await page.locator('html').evaluate((element, names) => {
