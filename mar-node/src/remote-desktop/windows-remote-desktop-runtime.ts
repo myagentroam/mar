@@ -23,13 +23,33 @@ const run = promisify(execFile);
 const SCREEN_QUERY = `
 $ErrorActionPreference = "Stop"
 if (-not [Environment]::UserInteractive) { exit 2 }
-Add-Type -AssemblyName System.Windows.Forms
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-$screens = @([System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
-  @{ name=$_.DeviceName; primary=$_.Primary; x=$_.Bounds.X; y=$_.Bounds.Y;
-     width=$_.Bounds.Width; height=$_.Bounds.Height }
-})
-ConvertTo-Json -InputObject $screens -Compress
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class MarRemoteDesktopDpi {
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+}
+'@
+# Query every monitor in physical pixels, matching UltraVNC even with mixed DPI scales.
+$previousDpiContext = [MarRemoteDesktopDpi]::SetThreadDpiAwarenessContext([IntPtr](-4))
+if ($previousDpiContext -eq [IntPtr]::Zero) {
+  throw [System.ComponentModel.Win32Exception]::new(
+    [System.Runtime.InteropServices.Marshal]::GetLastWin32Error(),
+    "Cannot query physical desktop coordinates."
+  )
+}
+try {
+  Add-Type -AssemblyName System.Windows.Forms
+  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+  $screens = @([System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
+    @{ name=$_.DeviceName; primary=$_.Primary; x=$_.Bounds.X; y=$_.Bounds.Y;
+       width=$_.Bounds.Width; height=$_.Bounds.Height }
+  })
+  ConvertTo-Json -InputObject $screens -Compress
+} finally {
+  [void][MarRemoteDesktopDpi]::SetThreadDpiAwarenessContext($previousDpiContext)
+}
 `;
 
 /** Maps Windows virtual-screen coordinates into the full VNC framebuffer. */
@@ -108,10 +128,19 @@ export class WindowsRemoteDesktopRuntime {
   }
 
   async refresh(signal: AbortSignal): Promise<void> {
-    const screens = (await queryScreens(signal)).sort((left, right) => left.name.localeCompare(right.name));
-    const signature = JSON.stringify(screens.map((screen) => [
-      screen.name, screen.primary, screen.x, screen.y, screen.width, screen.height
-    ]));
+    const screens = (await queryScreens(signal)).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    );
+    const signature = JSON.stringify(
+      screens.map((screen) => [
+        screen.name,
+        screen.primary,
+        screen.x,
+        screen.y,
+        screen.width,
+        screen.height
+      ])
+    );
     if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
     if (signature === this.#signature) return;
     const layout = windowsDesktopLayout(screens, this.#generation, this.#revision + 1);
