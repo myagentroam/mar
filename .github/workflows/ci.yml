@@ -21,9 +21,13 @@ concurrency:
 
 jobs:
   remote-desktop-macos-native:
-    name: Remote desktop macOS native feasibility
+    name: Remote desktop macOS native feasibility (${{ matrix.os }})
     if: ${{ inputs.macos_validation }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
     timeout-minutes: 20
     steps:
       - name: Check out acceptance fixtures
@@ -63,7 +67,7 @@ jobs:
       - name: Save macOS native package candidate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: remote-desktop-macos-native
+          name: remote-desktop-macos-native-${{ runner.arch }}
           path: ${{ runner.temp }}/remote-desktop-macos-native/
           if-no-files-found: error
 
@@ -196,8 +200,7 @@ jobs:
             $probe = Start-Process node -ArgumentList @(('"' + $fixture + '"'), ('"' + $binary + '"'), $port) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
             python mar-node/test/native/desktop-native-rfb-probe.py $port control
             if ($LASTEXITCODE -ne 0) { throw 'Managed RFB input or framebuffer probe failed' }
-            Wait-Process -Id $probe.Id -Timeout 30 -ErrorAction Stop
-            $probe.Refresh()
+            if (-not $probe.WaitForExit(30000)) { throw 'Managed runtime did not exit' }
             if ($probe.ExitCode -ne 0) { throw "Managed runtime exited with code $($probe.ExitCode)" }
             if (-not (Select-String -Path $stdout -SimpleMatch 'CLOSED' -Quiet)) { throw 'Managed attachment did not close' }
           } finally {

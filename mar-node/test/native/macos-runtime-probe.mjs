@@ -11369,6 +11369,7 @@ var MacVncManagedProcess = class _MacVncManagedProcess {
           backend.#ready = true;
           return backend;
         } catch (error) {
+          console.error('BACKEND_CONNECT_FAILURE', error);
           if (deadline.aborted || backend.#didExit) throw error;
           await delay(50, void 0, { signal: deadline });
         }
