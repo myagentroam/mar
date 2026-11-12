@@ -28,7 +28,9 @@ Choose Low, Medium, or High picture quality; Medium is the default. Quality uses
 3. Select **Control desktop** to operate it. Other people or programs may operate the same desktop at the same time.
 4. In control mode, select **Send clipboard text** and grant browser permission when requested. Only this explicit action reads the local clipboard and sends its text to the desktop; then paste in the remote application. The clipboard is not synchronized automatically, and view-only mode cannot send it.
 
-On a mobile device, open **Text keyboard** in control mode, compose text locally, and select **Send text**. Enter and Backspace are also available as buttons. Text is sent as remote keyboard events; the result depends on the remote application and system. Unsent text is cleared when changing mode, hiding the page, or losing control. 5. Losing window focus stops input from this tab. Hiding the tab ends its active picture in either mode. Reconnect explicitly after returning. Closing the tab does not stop Agent work.
+On a mobile device, open **Text keyboard** in control mode, compose text locally, and select **Send text**. Enter and Backspace are also available as buttons. Text is sent as remote keyboard events; the result depends on the remote application and system. Unsent text is cleared when changing mode, hiding the page, or losing control.
+
+5. Losing window focus stops input from this tab. Hiding the tab ends its active picture in either mode. Reconnect explicitly after returning. Closing the tab does not stop Agent work.
 
 Browsers may reserve some system shortcuts. If a shortcut cannot reach the page, use the target application's controls instead. Available input methods on mobile also depend on the browser and device.
 
