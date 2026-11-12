@@ -20,6 +20,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  remote-desktop-macos-native:
+    name: Remote desktop macOS native feasibility
+    if: ${{ inputs.macos_validation }}
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Build fixed macVNC source
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install libvncserver
+          curl -fsSL https://codeload.github.com/LibVNC/macVNC/tar.gz/6c45640168dd170120d96661b3b711d283257166 | tar xz
+          cmake -S macVNC-6c45640168dd170120d96661b3b711d283257166 -B macvnc-build
+          cmake --build macvnc-build --parallel 2
+          otool -L macvnc-build/macVNC.app/Contents/MacOS/macVNC
+
+      - name: Probe real macVNC server and desktop permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
+          "$binary" --help
+          "$binary" -viewonly -localhost -rfbport 15991 >macvnc.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; cat macvnc.log' EXIT
+          python3 -c 'import socket,time; deadline=time.monotonic()+20
+          while True:
+              try:
+                  s=socket.create_connection(("127.0.0.1",15991),timeout=1); break
+              except OSError:
+                  if time.monotonic()>deadline: raise
+                  time.sleep(.2)
+          data=s.recv(12); print("RFB banner:",repr(data)); assert data.startswith(b"RFB ") and len(data)==12
+          s.close()'
+          sleep 3
+          kill -0 "$pid"
+
+  remote-desktop-windows-native:
+    name: Remote desktop Windows native build
+    if: ${{ inputs.macos_validation }}
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Build fixed UltraVNC source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri 'https://codeload.github.com/ultravnc/UltraVNC/tar.gz/c757708e83b6c8249a1cdc9b9c0427c4e72f1c21' -OutFile source.tar.gz
+          tar -xzf source.tar.gz
+          $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if (-not $msbuild) { throw 'MSBuild not found' }
+          & $msbuild 'UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21\winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem -Path UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21 -Filter winvnc.exe -Recurse | Format-List FullName,Length
+
   smoke:
     name: Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
