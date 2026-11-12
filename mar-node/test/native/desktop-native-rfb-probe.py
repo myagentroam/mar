@@ -14,6 +14,7 @@ want_input = len(sys.argv) > 2 and sys.argv[2] == 'control'
 want_cleanup = len(sys.argv) > 2 and sys.argv[2] == 'cleanup'
 want_shift_cleanup = len(sys.argv) > 2 and sys.argv[2] == 'shift-cleanup'
 want_ctrl_shift = len(sys.argv) > 2 and sys.argv[2] == 'ctrl-shift'
+want_mac_modifiers = len(sys.argv) > 2 and sys.argv[2] == 'mac-modifiers'
 deadline = time.monotonic() + 20
 while True:
     try:
@@ -122,3 +123,16 @@ with connection:
         for symbol in (ord('S'), 0xffe1, 0xffe3):
             connection.sendall(struct.pack('>BBHI', 4, 0, 0, symbol))
         print('Native S event retained Ctrl and Shift flags')
+    if want_mac_modifiers:
+        for symbol, variable, expected in (
+            (0xff7e, 'MAR_DESKTOP_OPTION_RECEIPT', 'option-58'),
+            (0xffeb, 'MAR_DESKTOP_COMMAND_RECEIPT', 'command-54'),
+        ):
+            receipt_path = Path(os.environ[variable])
+            connection.sendall(struct.pack('>BBHI', 4, 1, 0, symbol))
+            deadline = time.monotonic() + 5
+            while not receipt_path.exists() and time.monotonic() < deadline:
+                time.sleep(.05)
+            assert receipt_path.read_text().strip() == expected, f'Native modifier not received: {expected}'
+            connection.sendall(struct.pack('>BBHI', 4, 0, 0, symbol))
+        print('Native Option and Command keycodes and flags observed')

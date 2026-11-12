@@ -78,6 +78,8 @@ jobs:
           export MAR_DESKTOP_S_DOWN_RECEIPT="$RUNNER_TEMP/s-down-receipt"
           export MAR_DESKTOP_S_UP_RECEIPT="$RUNNER_TEMP/s-up-receipt"
           export MAR_DESKTOP_CTRL_SHIFT_RECEIPT="$RUNNER_TEMP/ctrl-shift-receipt"
+          export MAR_DESKTOP_OPTION_RECEIPT="$RUNNER_TEMP/option-receipt"
+          export MAR_DESKTOP_COMMAND_RECEIPT="$RUNNER_TEMP/command-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!
           DYLD_PRINT_LIBRARIES=1 "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
@@ -101,6 +103,7 @@ jobs:
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 cleanup
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 shift-cleanup
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 ctrl-shift
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 mac-modifiers
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native acceptance

@@ -29,6 +29,17 @@ final class ProbeView: NSView {
         try? "key-a\n".write(toFile: path, atomically: true, encoding: .utf8)
     }
 
+    override func flagsChanged(with event: NSEvent) {
+        if event.keyCode == 58, event.modifierFlags.contains(.option),
+           let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_OPTION_RECEIPT"] {
+            try? "option-58\n".write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        if event.keyCode == 54, event.modifierFlags.contains(.command),
+           let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_COMMAND_RECEIPT"] {
+            try? "command-54\n".write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_MOUSE_RECEIPT"] else { return }
         try? "mouse-down\n".write(toFile: path, atomically: true, encoding: .utf8)
