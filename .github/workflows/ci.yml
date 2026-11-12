@@ -146,8 +146,15 @@ jobs:
           [System.IO.File]::WriteAllBytes($hideDesktop, $encoding.GetBytes($text))
           $vcpkg = Join-Path (Get-Location) 'vcpkg_installed\x64-windows'
           if (-not (Test-Path "$vcpkg\include\zlib.h")) { throw 'vcpkg zlib headers missing' }
+          $sodium = @(Get-ChildItem "$vcpkg\lib" -Filter '*sodium*.lib')
+          $sodium | Format-List FullName,Length
+          if ($sodium.Count -eq 0) { throw 'vcpkg libsodium import library missing' }
+          if (-not (Test-Path "$vcpkg\lib\libsodium.lib")) {
+            Copy-Item $sodium[0].FullName "$vcpkg\lib\libsodium.lib"
+          }
           $env:CL = "/I`"$vcpkg\include`""
           $env:LIB = "$vcpkg\lib;$env:LIB"
+          $env:LINK = "/LIBPATH:`"$vcpkg\lib`""
           & $msbuild 'winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:VcpkgEnableManifest=true /p:VcpkgTriplet=x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $binaries = @(Get-ChildItem -Path . -Filter winvnc.exe -Recurse)
