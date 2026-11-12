@@ -179,13 +179,19 @@ try {
             );
             const context = canvas?.getContext('2d');
             if (!canvas || !context || !canvas.width || !canvas.height) return false;
-            const [r, g, b] = context.getImageData(
-              Math.floor(canvas.width / 2),
-              Math.floor(canvas.height / 2),
-              1,
-              1
-            ).data;
-            return r > 150 && g < 100 && b < 100;
+            // The native cursor may cover the center; require red across the image instead.
+            let red = 0;
+            for (const x of [0.25, 0.5, 0.75])
+              for (const y of [0.25, 0.5, 0.75]) {
+                const [r, g, b] = context.getImageData(
+                  Math.floor(canvas.width * x),
+                  Math.floor(canvas.height * y),
+                  1,
+                  1
+                ).data;
+                if (r > 150 && g < 100 && b < 100) red++;
+              }
+            return red >= 8;
           },
           { timeout: 10_000 }
         );
