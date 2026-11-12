@@ -9,6 +9,7 @@ import time
 
 port = int(sys.argv[1])
 receipt = Path(os.environ['MAR_DESKTOP_KEY_RECEIPT'])
+mouse_receipt = Path(os.environ['MAR_DESKTOP_MOUSE_RECEIPT'])
 want_input = len(sys.argv) > 2 and sys.argv[2] == 'control'
 deadline = time.monotonic() + 20
 while True:
@@ -61,10 +62,13 @@ with connection:
     assert red > 100, f'Expected red fixture in captured framebuffer; found {red} pixels'
     print(f'Native RFB framebuffer {width}x{height}, red fixture pixels: {red}')
     if want_input:
+        connection.sendall(struct.pack('>BBHH', 5, 1, width // 2, height // 2))
+        connection.sendall(struct.pack('>BBHH', 5, 0, width // 2, height // 2))
         connection.sendall(struct.pack('>BBHI', 4, 1, 0, ord('a')))
         connection.sendall(struct.pack('>BBHI', 4, 0, 0, ord('a')))
         deadline = time.monotonic() + 5
-        while not receipt.exists() and time.monotonic() < deadline:
+        while (not receipt.exists() or not mouse_receipt.exists()) and time.monotonic() < deadline:
             time.sleep(.05)
         assert receipt.read_text().strip() == 'key-a', 'Native application did not receive key'
-        print('Native application received RFB key-a')
+        assert mouse_receipt.read_text().strip() == 'mouse-down', 'Native application did not receive pointer click'
+        print('Native application received RFB pointer click and key-a')

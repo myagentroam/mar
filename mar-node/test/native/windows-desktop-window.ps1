@@ -14,4 +14,7 @@ $form.Add_KeyDown({
         [System.IO.File]::WriteAllText($env:MAR_DESKTOP_KEY_RECEIPT, "key-a`n")
     }
 })
+$form.Add_MouseDown({
+    [System.IO.File]::WriteAllText($env:MAR_DESKTOP_MOUSE_RECEIPT, "mouse-down`n")
+})
 [System.Windows.Forms.Application]::Run($form)

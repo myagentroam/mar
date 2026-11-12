@@ -18,6 +18,11 @@ final class ProbeView: NSView {
               let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_KEY_RECEIPT"] else { return }
         try? "key-a\n".write(toFile: path, atomically: true, encoding: .utf8)
     }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_MOUSE_RECEIPT"] else { return }
+        try? "mouse-down\n".write(toFile: path, atomically: true, encoding: .utf8)
+    }
 }
 
 let app = NSApplication.shared

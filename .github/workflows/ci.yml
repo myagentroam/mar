@@ -48,6 +48,7 @@ jobs:
           binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
           swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/desktop-window"
           export MAR_DESKTOP_KEY_RECEIPT="$RUNNER_TEMP/key-receipt"
+          export MAR_DESKTOP_MOUSE_RECEIPT="$RUNNER_TEMP/mouse-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!
           "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
@@ -115,6 +116,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:RUNNER_TEMP 'remote-desktop-native'
           $env:MAR_DESKTOP_KEY_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-key-receipt'
+          $env:MAR_DESKTOP_MOUSE_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-mouse-receipt'
           $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
           $listener.Start()
           $port = $listener.LocalEndpoint.Port
@@ -130,8 +132,8 @@ jobs:
             python mar-node/test/native/desktop-native-rfb-probe.py $port control
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
-            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id }
-            if ($window -and -not $window.HasExited) { Stop-Process -Id $window.Id }
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id; $server.WaitForExit() }
+            if ($window -and -not $window.HasExited) { Stop-Process -Id $window.Id; $window.WaitForExit() }
           }
 
   smoke:
