@@ -276,8 +276,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm --filter @myagentroam/server-core... build
-          pnpm --filter @myagentroam/web-console build
+          pnpm --filter @myagentroam/server-core... --filter @myagentroam/node... --filter @myagentroam/web-console... build
       - name: Locate isolated Windows MySQL executable
         if: runner.os == 'Windows'
         shell: pwsh
