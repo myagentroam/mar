@@ -103,7 +103,7 @@ jobs:
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 ctrl-shift
 
   remote-desktop-windows-native:
-    name: Remote desktop Windows native build
+    name: Remote desktop Windows native acceptance
     if: ${{ inputs.macos_validation }}
     runs-on: windows-2025
     timeout-minutes: 45
@@ -113,76 +113,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build fixed UltraVNC source
+      - name: Prepare official UltraVNC 1.8.3.2 binary
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Invoke-WebRequest -Uri 'https://codeload.github.com/ultravnc/UltraVNC/tar.gz/c757708e83b6c8249a1cdc9b9c0427c4e72f1c21' -OutFile source.tar.gz
-          tar -xzf source.tar.gz
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
-          if (-not $msbuild) { throw 'MSBuild not found' }
-          Push-Location UltraVNC-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21
-          # The upstream gitlink is unavailable; pin a noVNC revision containing every referenced resource.
-          Invoke-WebRequest -Uri 'https://codeload.github.com/novnc/noVNC/tar.gz/e8b5024d4603587b29ffede4fbd28b1fa2939829' -OutFile novnc.tar.gz
-          tar -xzf novnc.tar.gz
-          Copy-Item -Path 'noVNC-e8b5024d4603587b29ffede4fbd28b1fa2939829\*' -Destination '3rdparty\noVNC' -Recurse -Force
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # These non-MFC projects use afxres.h only for standard resource constants.
-          $encoding = [System.Text.Encoding]::GetEncoding(28591)
-          Get-ChildItem winvnc,addon/ms-logon -Filter '*.rc' -Recurse | ForEach-Object {
-            $text = $encoding.GetString([System.IO.File]::ReadAllBytes($_.FullName))
-            $text = $text.Replace('#include "afxres.h"', "#include `"winres.h`"`r`n#ifndef IDC_STATIC`r`n#define IDC_STATIC (-1)`r`n#endif")
-            [System.IO.File]::WriteAllBytes($_.FullName, $encoding.GetBytes($text))
+          $archive = Join-Path $env:RUNNER_TEMP 'UltraVNC_1832.zip'
+          Invoke-WebRequest -Uri 'https://uvnc.eu/download/1800/UltraVNC_1832.zip' -OutFile $archive
+          $sha = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($sha -ne '8984e920169238de2a878ca3af71b7b8ac4feb3bbe295916dcd3ff1219456aad') { throw "Official archive digest mismatch: $sha" }
+          $expanded = Join-Path $env:RUNNER_TEMP 'ultravnc-official'
+          Expand-Archive -Path $archive -DestinationPath $expanded
+          $root = Join-Path $env:RUNNER_TEMP 'remote-desktop-native'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          foreach ($name in @('winvnc.exe', 'vnchooks.dll', 'ddengine64.dll')) {
+            Copy-Item (Join-Path $expanded "x64/$name") (Join-Path $root $name)
           }
-          # Disable the legacy Active Desktop mutation; normal capture does not use it.
-          $hideDesktop = (Resolve-Path 'winvnc/winvnc/HideDesktop.cpp').Path
-          $text = $encoding.GetString([System.IO.File]::ReadAllBytes($hideDesktop))
-          $guard = '#if !defined(__MINGW32__)'
-          if (($text.Split(@($guard), [System.StringSplitOptions]::None).Count - 1) -ne 2) { throw 'Unexpected Active Desktop source' }
-          $text = $text.Replace($guard, '#if 0')
-          $text = $text.Replace('#include <windows.h>', "#include <windows.h>`r`n#include <objbase.h>")
-          [System.IO.File]::WriteAllBytes($hideDesktop, $encoding.GetBytes($text))
-          $vcpkg = Join-Path (Get-Location) 'vcpkg_installed\x64-windows'
-          if (-not (Test-Path "$vcpkg\include\zlib.h")) { throw 'vcpkg zlib headers missing' }
-          $sodium = @(Get-ChildItem "$vcpkg\lib" -Filter '*sodium*.lib')
-          $sodium | Format-List FullName,Length
-          if ($sodium.Count -eq 0) { throw 'vcpkg libsodium import library missing' }
-          if (-not (Test-Path "$vcpkg\lib\libsodium.lib")) {
-            Copy-Item $sodium[0].FullName "$vcpkg\lib\libsodium.lib"
-          }
-          $env:CL = "/I`"$vcpkg\include`""
-          $env:LIB = "$vcpkg\lib;$env:LIB"
-          # The runner's MSBuild does not inject vcpkg autolink dependencies.
-          # Use the actual installed import/static libraries, not guessed paths.
-          $libraryFiles = @(Get-ChildItem "$vcpkg\lib" -Filter '*.lib')
-          $libraryFiles | Format-Table Name,Length
-          $defaults = @('^zlib\.lib$', '^(lib)?zstd\.lib$', '^jpeg\.lib$', '^(lib)?lzma\.lib$', '^minizip(-ng)?\.lib$') | ForEach-Object {
-            $pattern = $_
-            $found = @($libraryFiles | Where-Object { $_.Name -match $pattern })
-            if ($found.Count -ne 1) { throw "Expected one library matching $pattern, found $($found.Count)" }
-            "/DEFAULTLIB:`"$($found[0].FullName)`""
-          }
-          $env:LINK = "/LIBPATH:`"$vcpkg\lib`" /DEFAULTLIB:shlwapi.lib $($defaults -join ' ')"
-          & $msbuild 'winvnc\winvnc.sln' /m /t:winvnc /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:VcpkgEnableManifest=true /p:VcpkgTriplet=x64-windows
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $binaries = @(Get-ChildItem -Path . -Filter winvnc.exe -Recurse)
-          if ($binaries.Count -eq 0) { throw 'winvnc.exe not found after build' }
-          $binaries | Format-List FullName,Length
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\remote-desktop-native" | Out-Null
-          Copy-Item $binaries[0].FullName "$env:RUNNER_TEMP\remote-desktop-native\winvnc.exe"
-          Get-ChildItem -Path $binaries[0].DirectoryName -Filter '*.dll' | Copy-Item -Destination "$env:RUNNER_TEMP\remote-desktop-native"
-          Get-ChildItem -Path "$vcpkg\bin" -Filter '*.dll' | Copy-Item -Destination "$env:RUNNER_TEMP\remote-desktop-native"
-          Copy-Item LICENSE "$env:RUNNER_TEMP\remote-desktop-native\LICENSE"
-          Get-ChildItem "$vcpkg\share" -Filter copyright -Recurse | ForEach-Object {
-            $destination = Join-Path "$env:RUNNER_TEMP\remote-desktop-native\licenses" $_.Directory.Name
-            New-Item -ItemType Directory -Force -Path $destination | Out-Null
-            Copy-Item $_.FullName (Join-Path $destination 'copyright')
-          }
-          Copy-Item '3rdparty\noVNC\LICENSE.txt' "$env:RUNNER_TEMP\remote-desktop-native\licenses\noVNC.txt"
+          New-Item -ItemType File -Path (Join-Path $root 'ultravnc.portable') | Out-Null
+          Get-ChildItem $root | Format-Table Name,Length
 
-      - name: Save Windows native build for UAT
+      - name: Save Windows native binary candidate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: remote-desktop-windows-native
@@ -208,6 +157,9 @@ jobs:
             $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
             Start-Sleep -Seconds 3
             if ($server.HasExited) { throw "UltraVNC exited with code $($server.ExitCode)" }
+            $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop)
+            $listeners | Format-Table LocalAddress,LocalPort,OwningProcess
+            if ($listeners.Count -ne 1 -or $listeners[0].LocalAddress -ne '127.0.0.1') { throw 'UltraVNC is not listening exclusively on IPv4 loopback' }
             python mar-node/test/native/desktop-native-rfb-probe.py $port control
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
