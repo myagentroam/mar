@@ -11289,7 +11289,7 @@ var MacVncManagedProcess = class _MacVncManagedProcess {
     this.secret = secret;
     this.onUnexpectedExit = onUnexpectedExit;
     child.on('error', () => {});
-    child.stderr?.resume();
+    child.stderr?.pipe(process.stderr);
     this.#exited = new Promise((resolve) => {
       child.once('close', () => {
         this.#didExit = true;
