@@ -41,17 +41,40 @@ jobs:
           cmake --build macvnc-build --parallel 2
           otool -L macvnc-build/macVNC.app/Contents/MacOS/macVNC
 
+      - name: Bundle macVNC and native libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="$RUNNER_TEMP/remote-desktop-macos-native"
+          python3 mar-node/test/native/macos-bundle.py macvnc-build/macVNC.app/Contents/MacOS/macVNC "$package"
+          mkdir "$package/licenses"
+          cp macVNC-6c45640168dd170120d96661b3b711d283257166/COPYING "$package/licenses/macVNC.txt"
+          for formula in libvncserver jpeg-turbo libpng openssl@4; do
+            prefix="$(brew --prefix "$formula")"
+            license="$(find -L "$prefix" -type f \( -iname 'license*' -o -iname 'copying*' -o -iname 'copyright*' \) -print -quit)"
+            if [ -z "$license" ]; then echo "Missing license for $formula" >&2; exit 1; fi
+            cp "$license" "$package/licenses/$formula.txt"
+          done
+          brew list --versions libvncserver jpeg-turbo libpng openssl@4 > "$package/BUILD-DEPENDENCIES.txt"
+
+      - name: Save macOS native package candidate
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: remote-desktop-macos-native
+          path: ${{ runner.temp }}/remote-desktop-macos-native/
+          if-no-files-found: error
+
       - name: Probe real macVNC capture and input
         shell: bash
         run: |
           set -euo pipefail
-          binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
+          binary="$RUNNER_TEMP/remote-desktop-macos-native/macVNC"
           swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/desktop-window"
           export MAR_DESKTOP_KEY_RECEIPT="$RUNNER_TEMP/key-receipt"
           export MAR_DESKTOP_MOUSE_RECEIPT="$RUNNER_TEMP/mouse-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!
-          "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
+          DYLD_PRINT_LIBRARIES=1 "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
           pid=$!
           trap 'kill "$pid" "$window" 2>/dev/null || true; wait "$pid" "$window" 2>/dev/null || true; cat window.log macvnc.log; test ! -f macvnc-control.log || cat macvnc-control.log' EXIT
           sleep 3
@@ -60,6 +83,9 @@ jobs:
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15991
           kill "$pid"
           wait "$pid" || true
+          if grep -E '(/opt/homebrew/|/usr/local/opt/)' macvnc.log; then
+            echo 'Packaged process loaded a Homebrew library' >&2; exit 1
+          fi
           "$binary" -listen localhost -rfbport 15992 -rfbportv6 -1 >macvnc-control.log 2>&1 &
           pid=$!
           sleep 3
