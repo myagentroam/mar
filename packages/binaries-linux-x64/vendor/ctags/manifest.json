@@ -1,0 +1,42 @@
+{
+  "version": "6.2.0-ab95af1",
+  "license": "GPL-2.0-or-later",
+  "upstreamCommit": "ab95af198f8eaeb6d50dc96e3adf52e769d3e5f0",
+  "source": {
+    "archive": "source/universal-ctags-ab95af198f8eaeb6d50dc96e3adf52e769d3e5f0.tar.gz",
+    "sha256": "cb1cded13468dca8ca2e84b8749de0d64b7a71cc6f691ff140bf312ae24beec5",
+    "url": "https://github.com/universal-ctags/ctags/archive/ab95af198f8eaeb6d50dc96e3adf52e769d3e5f0.tar.gz"
+  },
+  "targets": {
+    "linux-x64": {
+      "executable": "linux-x64/ctags",
+      "executableSha256": "92572584ec4502c54634bf4d63ff82c57f228241eb301411236e00d1dec9752a",
+      "archiveSha256": "470d339f688bb75f0418791e57670d36f3d3e57b05336f2b06329b0a2ba99495",
+      "provenance": "https://github.com/universal-ctags/ctags-nightly-build/releases/download/2026.09.16%2Bab95af198f8eaeb6d50dc96e3adf52e769d3e5f0/uctags-2026.09.16-linux-x86_64.release.tar.gz"
+    },
+    "linux-arm64": {
+      "executable": "linux-arm64/ctags",
+      "executableSha256": "a7193a1b2f2adc92646cf7819493c13b266a86beb336af27019c80ba0c41ee32",
+      "archiveSha256": "3e1fee7c572ea924899c92363d8ef42f5d5b88d6442dbbde536fcd56d69cdf95",
+      "provenance": "https://github.com/universal-ctags/ctags-nightly-build/releases/download/2026.09.16%2Bab95af198f8eaeb6d50dc96e3adf52e769d3e5f0/uctags-2026.09.16-linux-aarch64.release.tar.gz"
+    },
+    "darwin-x64": {
+      "executable": "darwin-x64/ctags",
+      "executableSha256": "94c16e0256f384076e88b6f92e265702b2fefdcf9a5c18499f1ee61cb944d794",
+      "archiveSha256": "6d9791b5fb3f84c35049a9fa91d08dfcaaa0ffd96265891a141c52303e31a086",
+      "provenance": "https://github.com/universal-ctags/ctags-nightly-build/releases/download/2026.09.16%2Bab95af198f8eaeb6d50dc96e3adf52e769d3e5f0/uctags-2026.09.16-macos-10.15-x86_64.release.tar.gz"
+    },
+    "darwin-arm64": {
+      "executable": "darwin-arm64/ctags",
+      "executableSha256": "b2bb7d23b0c90c26d3b3a48c260a461d33973e8013352498f755a6f928979f02",
+      "archiveSha256": "ab27b1880536608edd62a5ebad3322a4753e9dbdb75825260740531abacba5cb",
+      "provenance": "https://github.com/universal-ctags/ctags-nightly-build/releases/download/2026.09.16%2Bab95af198f8eaeb6d50dc96e3adf52e769d3e5f0/uctags-2026.09.16-macos-10.15-arm64.release.tar.gz"
+    },
+    "win32-x64": {
+      "executable": "win32-x64/ctags.exe",
+      "executableSha256": "ce539d7bae0c6cc8cd3b44baa27f1592a289f316ab689286a77820478e191550",
+      "archiveSha256": "210a8417918e6bc034528ed7d734a4056be5978dc103f9d6673926b447afb5d5",
+      "provenance": "https://github.com/universal-ctags/ctags-win32/releases/download/2026-09-16/p6.2.20260913.0-2-gab95af1/ctags-2026-09-16_p6.2.20260913.0-2-gab95af1-x64.zip"
+    }
+  }
+}

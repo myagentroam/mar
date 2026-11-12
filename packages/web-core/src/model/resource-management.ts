@@ -1,4 +1,8 @@
-import type { ComputerUseCapability, ConversationHostingCapability } from '@myagentroam/protocol';
+import type {
+  ComputerUseCapability,
+  ConversationHostingCapability,
+  RemoteDesktopCapability
+} from '@myagentroam/protocol';
 import type { NodeUpgradeProgress } from './node-upgrade.js';
 
 export interface ResourceRow<Owner = unknown> {
@@ -44,6 +48,7 @@ export interface ResourceRow<Owner = unknown> {
     openCode?: { available?: boolean; version?: string };
     conversationHosting?: ConversationHostingCapability;
     computerUse?: ComputerUseCapability;
+    remoteDesktop?: RemoteDesktopCapability;
   };
   path?: string;
 }

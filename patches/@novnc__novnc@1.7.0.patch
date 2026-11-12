@@ -1,0 +1,200 @@
+diff --git a/core/display.js b/core/display.js
+index 4efd6f4b97dfda3ab450723ff8c722c8258d60fc..b21f0e9c67c1fa4696fb31d409d8f99d0a0e2c51 100644
+--- a/core/display.js
++++ b/core/display.js
+@@ -250,10 +250,11 @@ export default class Display {
+ 
+     // Update the visible canvas with the contents of the
+     // rendering canvas
+-    flip(fromQueue) {
++    flip(fromQueue, onPaint) {
+         if (this._renderQ.length !== 0 && !fromQueue) {
+             this._renderQPush({
+-                'type': 'flip'
++                'type': 'flip',
++                'onPaint': onPaint
+             });
+         } else {
+             let x = this._damageBounds.left;
+@@ -289,6 +290,7 @@ export default class Display {
+                 this._targetCtx.drawImage(this._backbuffer,
+                                           x, y, w, h,
+                                           vx, vy, w, h);
++                if (onPaint) onPaint();
+             }
+ 
+             this._damageBounds.left = this._damageBounds.top = 65535;
+@@ -501,7 +503,7 @@ export default class Display {
+             const a = this._renderQ[0];
+             switch (a.type) {
+                 case 'flip':
+-                    this.flip(true);
++                    this.flip(true, a.onPaint);
+                     break;
+                 case 'copy':
+                     this.copyImage(a.oldX, a.oldY, a.x, a.y, a.width, a.height, true);
+diff --git a/core/rfb.js b/core/rfb.js
+index 80011e4a10203806f14df1ffc3b8425861a965a7..150a2fdb51bfdb5cd394f7447da56598aa729673 100644
+--- a/core/rfb.js
++++ b/core/rfb.js
+@@ -22,6 +22,7 @@ import GestureHandler from "./input/gesturehandler.js";
+ import Cursor from "./util/cursor.js";
+ import Websock from "./websock.js";
+ import KeyTable from "./input/keysym.js";
++import keysyms from "./input/keysymdef.js";
+ import XtScancode from "./input/xtscancodes.js";
+ import { encodings } from "./encodings.js";
+ import RSAAESAuthenticationState from "./ra2.js";
+@@ -119,6 +120,12 @@ export default class RFB extends EventTargetMixin {
+         this._shared = 'shared' in options ? !!options.shared : true;
+         this._repeaterID = options.repeaterID || '';
+         this._wsProtocols = options.wsProtocols || [];
++        // MAR: keep clipboard exchange and update scheduling explicitly controlled.
++        this._manualClipboard = !!options.manualClipboard;
++        this._requestDrivenUpdates = !!options.requestDrivenUpdates;
++        this._allowedEncodings = options.allowedEncodings || null;
++        this._firstFrame = false;
++        this._frameHasPixels = false;
+ 
+         // Internal state
+         this._rfbConnectionState = '';
+@@ -489,6 +496,21 @@ export default class RFB extends EventTargetMixin {
+         }
+     }
+ 
++    // MAR: submit explicit soft-keyboard text through the existing RFB writer.
++    sendText(text) {
++        if (this._rfbConnectionState !== 'connected' || this._viewOnly ||
++            typeof text !== 'string' || text.length > 512) {
++            return false;
++        }
++        const characters = Array.from(text);
++        if (characters.length === 0 || characters.length > 256) return false;
++        const values = characters.map(character => character.codePointAt(0));
++        if (values.some(value => value < 0x20 || (value >= 0x7f && value < 0xa0) ||
++                                (value >= 0xd800 && value <= 0xdfff))) return false;
++        for (const value of values) this.sendKey(keysyms.lookup(value), 'Unidentified');
++        return true;
++    }
++
+     focus(options) {
+         this._canvas.focus(options);
+     }
+@@ -2266,7 +2288,8 @@ export default class RFB extends EventTargetMixin {
+             encs.push(encodings.pseudoEncodingCursor);
+         }
+ 
+-        RFB.messages.clientEncodings(this._sock, encs);
++        RFB.messages.clientEncodings(this._sock, this._allowedEncodings === null ? encs :
++                                     encs.filter(encoding => this._allowedEncodings.includes(encoding)));
+     }
+ 
+     /* RFB protocol initialization states:
+@@ -2338,7 +2361,7 @@ export default class RFB extends EventTargetMixin {
+         if (length >= 0) {
+             //Standard msg
+             const text = this._sock.rQshiftStr(length);
+-            if (this._viewOnly) {
++            if (this._viewOnly || this._manualClipboard) {
+                 return true;
+             }
+ 
+@@ -2382,10 +2405,12 @@ export default class RFB extends EventTargetMixin {
+                 let clientActions = [
+                     extendedClipboardActionCaps,
+                     extendedClipboardActionRequest,
+-                    extendedClipboardActionPeek,
+                     extendedClipboardActionNotify,
+                     extendedClipboardActionProvide
+                 ];
++                if (!this._manualClipboard) {
++                    clientActions.push(extendedClipboardActionPeek);
++                }
+                 RFB.messages.extendedClipboardCaps(this._sock, clientActions, {extendedClipboardFormatText: 0});
+ 
+             } else if (actions === extendedClipboardActionRequest) {
+@@ -2399,11 +2424,12 @@ export default class RFB extends EventTargetMixin {
+ 
+                     if (formats & extendedClipboardFormatText) {
+                         RFB.messages.extendedClipboardProvide(this._sock, [extendedClipboardFormatText], [this._clipboardText]);
++                        if (this._manualClipboard) this._clipboardText = null;
+                     }
+                 }
+ 
+             } else if (actions === extendedClipboardActionPeek) {
+-                if (this._viewOnly) {
++                if (this._viewOnly || this._manualClipboard) {
+                     return true;
+                 }
+ 
+@@ -2417,7 +2443,7 @@ export default class RFB extends EventTargetMixin {
+                 }
+ 
+             } else if (actions === extendedClipboardActionNotify) {
+-                if (this._viewOnly) {
++                if (this._viewOnly || this._manualClipboard) {
+                     return true;
+                 }
+ 
+@@ -2429,7 +2455,8 @@ export default class RFB extends EventTargetMixin {
+                 }
+ 
+             } else if (actions === extendedClipboardActionProvide) {
+-                if (this._viewOnly) {
++                if (this._viewOnly || this._manualClipboard) {
++                    this._sock.rQskipBytes(length - 4);
+                     return true;
+                 }
+ 
+@@ -2591,7 +2618,7 @@ export default class RFB extends EventTargetMixin {
+                 first = !this._supportsContinuousUpdates;
+                 this._supportsContinuousUpdates = true;
+                 this._enabledContinuousUpdates = false;
+-                if (first) {
++                if (first && !this._requestDrivenUpdates) {
+                     this._enabledContinuousUpdates = true;
+                     this._updateContinuousUpdates();
+                     Log.Info("Enabling continuous updates.");
+@@ -2654,11 +2681,26 @@ export default class RFB extends EventTargetMixin {
+                 return false;
+             }
+ 
++            // CopyRect and pseudo-encodings do not establish fresh pixel data.
++            if (this._FBU.width > 0 && this._FBU.height > 0 &&
++                [encodings.encodingRaw, encodings.encodingRRE,
++                 encodings.encodingHextile, encodings.encodingZlib,
++                 encodings.encodingTight, encodings.encodingZRLE,
++                 encodings.encodingTightPNG, encodings.encodingJPEG,
++                 encodings.encodingH264].includes(this._FBU.encoding)) {
++                this._frameHasPixels = true;
++            }
+             this._FBU.rects--;
+             this._FBU.encoding = null;
+         }
+ 
+-        this._display.flip();
++        const reportFirstFrame = this._frameHasPixels && !this._firstFrame ? () => {
++            if (this._rfbConnectionState !== 'connected' || this._firstFrame) return;
++            this._firstFrame = true;
++            this.dispatchEvent(new CustomEvent('firstframe'));
++        } : null;
++        this._display.flip(false, reportFirstFrame);
++        this._frameHasPixels = false;
+ 
+         return true;  // We finished this FBU
+     }
+diff --git a/core/websock.js b/core/websock.js
+index ee8a4bc42819ca0a9f55472ccc29bfd1f25c8887..76b3918a126091c20e22a45d623c2f02aba846d7 100644
+--- a/core/websock.js
++++ b/core/websock.js
+@@ -329,7 +329,9 @@ export default class Websock {
+         if (this._rQbufferSize > MAX_RQ_GROW_SIZE) {
+             this._rQbufferSize = MAX_RQ_GROW_SIZE;
+             if (this._rQbufferSize - (this._rQlen - this._rQi) < minFit) {
+-                throw new Error("Receive queue buffer exceeded " + MAX_RQ_GROW_SIZE + " bytes, and the new message could not fit");
++                const error = new Error("Receive queue buffer exceeded " + MAX_RQ_GROW_SIZE + " bytes, and the new message could not fit");
++                error.code = "DESKTOP_BACKPRESSURE";
++                throw error;
+             }
+         }
+ 

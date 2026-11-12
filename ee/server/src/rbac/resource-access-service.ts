@@ -229,6 +229,8 @@ export class ResourceAccessService {
     _data: unknown,
     workspaceId?: string
   ): Promise<boolean> {
+    // Desktop access is Node-wide and cannot be delegated by a Workspace grant.
+    if (operation === 'desktop.describe') return this.canUseNode(actorUserId, nodeId);
     if (operation === 'workspace.git.settings.get' && workspaceId !== undefined)
       return (
         (await this.canUseWorkspace(actorUserId, nodeId, workspaceId)) ||

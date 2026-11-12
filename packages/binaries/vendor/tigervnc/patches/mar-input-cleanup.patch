@@ -1,0 +1,351 @@
+diff --git a/common/rfb/VNCSConnectionST.cxx b/common/rfb/VNCSConnectionST.cxx
+index e14970f..1da0bb9 100644
+--- a/common/rfb/VNCSConnectionST.cxx
++++ b/common/rfb/VNCSConnectionST.cxx
+@@ -108,6 +108,32 @@ VNCSConnectionST::~VNCSConnectionST()
+ 
+ // SConnection methods
+ 
++// MAR's private registration is consumed only between its Node and the local
++// managed backend. Browser-provided encodings never reach this marker.
++void VNCSConnectionST::setEncodings(int count, const int32_t* encodings)
++{
++  if (count > 0 && encodings[0] == 0x4d415231) {
++    if (count != 5 || marAttachmentRegistered) {
++      close("Invalid MAR attachment registration");
++      return;
++    }
++    for (int i = 0; i < 4; i++)
++      marAttachmentToken[i] = static_cast<uint32_t>(encodings[i + 1]);
++    marAttachmentRegistered = true;
++    return;
++  }
++  SConnection::setEncodings(count, encodings);
++}
++
++bool VNCSConnectionST::marAttachment(uint32_t token[4]) const
++{
++  if (!marAttachmentRegistered)
++    return false;
++  for (int i = 0; i < 4; i++)
++    token[i] = marAttachmentToken[i];
++  return true;
++}
++
+ bool VNCSConnectionST::accessCheck(AccessRights ar) const
+ {
+   // Reverse connections are user initiated, so they are implicitly
+diff --git a/common/rfb/VNCSConnectionST.h b/common/rfb/VNCSConnectionST.h
+index b7785e7..dbdcd51 100644
+--- a/common/rfb/VNCSConnectionST.h
++++ b/common/rfb/VNCSConnectionST.h
+@@ -49,6 +49,8 @@ namespace rfb {
+ 
+     bool accessCheck(AccessRights ar) const override;
+     void close(const char* reason) override;
++    void setEncodings(int count, const int32_t* encodings) override;
++    bool marAttachment(uint32_t token[4]) const;
+ 
+     using SConnection::authenticated;
+ 
+@@ -173,6 +175,8 @@ namespace rfb {
+ 
+   private:
+     network::Socket* sock;
++    bool marAttachmentRegistered = false;
++    uint32_t marAttachmentToken[4] = {};
+     std::string peerEndpoint;
+     bool reverseConnection;
+ 
+diff --git a/common/rfb/VNCServerST.cxx b/common/rfb/VNCServerST.cxx
+index a7d68d7..5cd34ad 100644
+--- a/common/rfb/VNCServerST.cxx
++++ b/common/rfb/VNCServerST.cxx
+@@ -179,6 +179,14 @@ void VNCServerST::addSocket(network::Socket* sock, bool outgoing, AccessRights a
+   }
+ }
+ 
++bool VNCServerST::marAttachment(network::Socket* sock, uint32_t token[4]) const {
++  for (auto* client : clients) {
++    if (client->getSock() == sock)
++      return client->marAttachment(token);
++  }
++  return false;
++}
++
+ void VNCServerST::removeSocket(network::Socket* sock) {
+   // - If the socket has resources allocated to it, delete them
+   std::list<VNCSConnectionST*>::iterator ci;
+diff --git a/common/rfb/VNCServerST.h b/common/rfb/VNCServerST.h
+index 1188b9c..0f02e2b 100644
+--- a/common/rfb/VNCServerST.h
++++ b/common/rfb/VNCServerST.h
+@@ -63,6 +63,7 @@ namespace rfb {
+     // removeSocket
+     //   Clean up any resources associated with the Socket
+     void removeSocket(network::Socket* sock) override;
++    bool marAttachment(network::Socket* sock, uint32_t token[4]) const;
+ 
+     // getSockets() gets a list of sockets.  This can be used to generate an
+     // fd_set for calling select().
+diff --git a/unix/x0vncserver/XDesktop.cxx b/unix/x0vncserver/XDesktop.cxx
+index b52b20e..a36f79f 100644
+--- a/unix/x0vncserver/XDesktop.cxx
++++ b/unix/x0vncserver/XDesktop.cxx
+@@ -80,6 +80,31 @@ core::IntParameter
+ 
+ static core::LogWriter vlog("XDesktop");
+ 
++static bool marCleanupXError = false;
++static int marCleanupErrorHandler(Display*, XErrorEvent*)
++{
++  marCleanupXError = true;
++  return 0;
++}
++
++void XDesktop::beginMarInputCleanup()
++{
++  // Account for earlier requests before attributing errors to cleanup.
++  XSync(dpy, False);
++  marCleanupXError = false;
++  marCleanupAccepted = haveXtest;
++  marCleanupActive = true;
++  marPreviousErrorHandler = XSetErrorHandler(marCleanupErrorHandler);
++}
++
++bool XDesktop::endMarInputCleanup()
++{
++  XSync(dpy, False);
++  XSetErrorHandler(marPreviousErrorHandler);
++  marCleanupActive = false;
++  return marCleanupAccepted && !marCleanupXError;
++}
++
+ // order is important as it must match RFB extension
+ static const char * ledNames[XDESKTOP_N_LEDS] = {
+   "Scroll Lock", "Num Lock", "Caps Lock"
+@@ -356,17 +381,20 @@ void XDesktop::pointerEvent(const core::Point& pos,
+ {
+ #ifdef HAVE_XTEST
+   if (!haveXtest) return;
+-  XTestFakeMotionEvent(dpy, DefaultScreen(dpy),
+-                       geometry->offsetLeft() + pos.x,
+-                       geometry->offsetTop() + pos.y,
+-                       CurrentTime);
++  if (!XTestFakeMotionEvent(dpy, DefaultScreen(dpy),
++                            geometry->offsetLeft() + pos.x,
++                            geometry->offsetTop() + pos.y,
++                            CurrentTime) && marCleanupActive)
++    marCleanupAccepted = false;
+   if (buttonMask != oldButtonMask) {
+     for (int i = 0; i < maxButtons; i++) {
+       if ((buttonMask ^ oldButtonMask) & (1<<i)) {
+         if (buttonMask & (1<<i)) {
+-          XTestFakeButtonEvent(dpy, i+1, True, CurrentTime);
++          if (!XTestFakeButtonEvent(dpy, i+1, True, CurrentTime) && marCleanupActive)
++            marCleanupAccepted = false;
+         } else {
+-          XTestFakeButtonEvent(dpy, i+1, False, CurrentTime);
++          if (!XTestFakeButtonEvent(dpy, i+1, False, CurrentTime) && marCleanupActive)
++            marCleanupAccepted = false;
+         }
+       }
+     }
+@@ -590,6 +618,7 @@ void XDesktop::keyEvent(uint32_t keysym, uint32_t xtcode, bool down) {
+ 
+   if (!keycode) {
+     vlog.error("Could not map key event to X11 key code");
++    if (marCleanupActive) marCleanupAccepted = false;
+     return;
+   }
+ 
+@@ -603,7 +632,8 @@ void XDesktop::keyEvent(uint32_t keysym, uint32_t xtcode, bool down) {
+ 
+   vlog.debug("%d %s", keycode, down ? "down" : "up");
+ 
+-  XTestFakeKeyEvent(dpy, keycode, down, CurrentTime);
++  if (!XTestFakeKeyEvent(dpy, keycode, down, CurrentTime) && marCleanupActive)
++    marCleanupAccepted = false;
+ #else
+   (void)keysym;
+   (void)xtcode;
+diff --git a/unix/x0vncserver/XDesktop.h b/unix/x0vncserver/XDesktop.h
+index 89e2531..bc5a693 100644
+--- a/unix/x0vncserver/XDesktop.h
++++ b/unix/x0vncserver/XDesktop.h
+@@ -61,6 +61,8 @@ public:
+   void stop() override;
+   void terminate() override;
+   bool isRunning();
++  void beginMarInputCleanup();
++  bool endMarInputCleanup();
+   void queryConnection(network::Socket* sock,
+                        const char* userName) override;
+   void pointerEvent(const core::Point& pos,
+@@ -93,6 +95,9 @@ protected:
+   XSelection selection;
+   uint16_t oldButtonMask;
+   bool haveXtest;
++  bool marCleanupActive = false;
++  bool marCleanupAccepted = false;
++  XErrorHandler marPreviousErrorHandler = nullptr;
+   bool haveDamage;
+   int maxButtons;
+   std::list<AddedKeySym> addedKeysyms;
+diff --git a/unix/x0vncserver/x0vncserver.cxx b/unix/x0vncserver/x0vncserver.cxx
+index b8b631a..8d4bc5b 100644
+--- a/unix/x0vncserver/x0vncserver.cxx
++++ b/unix/x0vncserver/x0vncserver.cxx
+@@ -27,9 +27,12 @@
+ #include <strings.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#include <sys/socket.h>
++#include <fcntl.h>
+ #include <unistd.h>
+ #include <errno.h>
+ #include <pwd.h>
++#include <stdlib.h>
+ 
+ #include <core/Configuration.h>
+ #include <core/Logger_stdio.h>
+@@ -62,6 +65,49 @@
+ extern char buildtime[];
+ 
+ static core::LogWriter vlog("Main");
++static int marControlFd = -1;
++static bool marManaged = false;
++static bool marControlLost = false;
++
++static bool initMarControl()
++{
++  const char* value = getenv("MAR_RFB_CONTROL_FD");
++  if (!value)
++    return true;
++  char* end = nullptr;
++  errno = 0;
++  long fd = strtol(value, &end, 10);
++  int type = 0;
++  socklen_t typeLen = sizeof(type);
++  sockaddr_storage peer = {};
++  socklen_t peerLen = sizeof(peer);
++  if (errno || !*value || *end || fd < 3 || fd >= FD_SETSIZE ||
++      getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &typeLen) ||
++      type != SOCK_STREAM || getpeername(fd, (sockaddr*)&peer, &peerLen) ||
++      peer.ss_family != AF_UNIX)
++    return false;
++  int flags = fcntl(fd, F_GETFD);
++  if (flags < 0 || fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0)
++    return false;
++  marControlFd = static_cast<int>(fd);
++  marManaged = true;
++  return true;
++}
++
++static void sendMarCleanup(const uint32_t token[4], bool ok)
++{
++  if (marControlFd < 0)
++    return;
++  char message[64];
++  int len = snprintf(message, sizeof(message), "MAR1 %08x%08x%08x%08x %s\n",
++                     token[0], token[1], token[2], token[3], ok ? "OK" : "FAILED");
++  // A missing, short, or congested control channel fails closed at Node.
++  if (send(marControlFd, message, len, MSG_DONTWAIT | MSG_NOSIGNAL) != len) {
++    close(marControlFd);
++    marControlFd = -1;
++    marControlLost = true;
++  }
++}
+ 
+ static const char* defaultDesktopName();
+ 
+@@ -293,6 +339,11 @@ int main(int argc, char** argv)
+   core::initStdIOLoggers();
+   core::LogWriter::setLogParams("*:stderr:30");
+ 
++  if (!initMarControl()) {
++    vlog.error("Invalid MAR private control socket");
++    return 1;
++  }
++
+   programName = argv[0];
+   Display* dpy;
+ 
+@@ -405,7 +456,7 @@ int main(int argc, char** argv)
+ 
+     PollingScheduler sched((int)pollingCycle, (int)maxProcessorUsage);
+ 
+-    while (!caughtSignal) {
++    while (!caughtSignal && !marControlLost) {
+       int wait_ms, nextTimeout;
+       struct timeval tv;
+       fd_set rfds, wfds;
+@@ -419,6 +470,8 @@ int main(int argc, char** argv)
+       FD_ZERO(&wfds);
+ 
+       FD_SET(ConnectionNumber(dpy), &rfds);
++      if (marControlFd >= 0)
++        FD_SET(marControlFd, &rfds);
+       for (network::SocketListener* listener : listeners)
+         FD_SET(listener->getFd(), &rfds);
+ 
+@@ -466,6 +519,15 @@ int main(int argc, char** argv)
+         }
+       }
+ 
++      if (marControlFd >= 0 && FD_ISSET(marControlFd, &rfds)) {
++        char unexpected;
++        int received = recv(marControlFd, &unexpected, 1, MSG_PEEK | MSG_DONTWAIT);
++        if (received >= 0 || (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)) {
++          marControlLost = true;
++          break;
++        }
++      }
++
+       // Accept new VNC connections
+       for (network::SocketListener* listener : listeners) {
+         if (FD_ISSET(listener->getFd(), &rfds)) {
+@@ -512,18 +574,43 @@ int main(int argc, char** argv)
+           }
+ 
+           if (done) {
++            uint32_t token[4];
++            bool registered = marControlFd >= 0 && server.marAttachment(*i, token);
++            if (registered)
++              desktop.beginMarInputCleanup();
+             server.removeSocket(*i);
++            if (registered)
++              sendMarCleanup(token, desktop.endMarInputCleanup());
+             delete (*i);
+           }
+         }
++        if (marControlLost)
++          break;
+       }
+ 
++      if (marControlLost)
++        break;
++
+       if (desktop.isRunning() && sched.goodTimeToPoll()) {
+         sched.newPass();
+         desktop.poll();
+       }
+     }
+ 
++    if (marManaged) {
++      // Node is gone or requested shutdown: release each attachment through
++      // the same path, including the pointer, before this owned backend exits.
++      std::list<network::Socket*> remaining;
++      server.getSockets(&remaining);
++      desktop.beginMarInputCleanup();
++      for (network::Socket* sock : remaining) {
++        server.removeSocket(sock);
++        delete sock;
++      }
++      if (!desktop.endMarInputCleanup())
++        vlog.error("Unable to confirm input cleanup during managed shutdown");
++    }
++
+   } catch (std::exception& e) {
+     vlog.error("%s", e.what());
+     return 1;

@@ -1,0 +1,28 @@
+{
+  "name": "@myagentroam/binaries-win32-x64",
+  "version": "0.10.2",
+  "description": "Managed native resources for MyAgentRoam (win32-x64).",
+  "license": "(MIT OR Unlicense) AND GPL-2.0-or-later AND Apache-2.0 AND GPL-3.0-or-later",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "vendor",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myagentroam/mar.git",
+    "directory": "packages/binaries-win32-x64"
+  }
+}

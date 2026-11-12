@@ -29,3 +29,17 @@ export function nodeTerminalConnectEndpoint(serverUrl: string): string {
   endpoint.hash = '';
   return endpoint.toString();
 }
+
+export function nodeDesktopRelayEndpoint(serverUrl: string): string {
+  const endpoint = new URL(serverUrl);
+  if (endpoint.username || endpoint.password) throw new Error('SERVER_URL_INVALID');
+  if (endpoint.protocol === 'http:') endpoint.protocol = 'ws:';
+  if (endpoint.protocol === 'https:') endpoint.protocol = 'wss:';
+  if (endpoint.protocol !== 'ws:' && endpoint.protocol !== 'wss:') {
+    throw new Error('SERVER_URL_INVALID');
+  }
+  endpoint.pathname = `${endpoint.pathname.replace(/\/$/, '')}/api/node/desktop-relay`;
+  endpoint.search = '';
+  endpoint.hash = '';
+  return endpoint.toString();
+}

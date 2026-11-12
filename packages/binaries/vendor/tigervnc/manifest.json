@@ -1,0 +1,22 @@
+{
+  "version": "1.16.2",
+  "license": "GPL-2.0-or-later",
+  "upstreamCommit": "b555312d70d7ff017f866649a7e7167af4eb8fca",
+  "source": {
+    "archive": "source/tigervnc-b555312d70d7ff017f866649a7e7167af4eb8fca.tar.gz",
+    "sha256": "06111c9b4ddc7a2d7d10a495dd4a891a6d4aa65ea07400341c2e9fb8789cc0f3",
+    "url": "https://github.com/TigerVNC/tigervnc/tree/b555312d70d7ff017f866649a7e7167af4eb8fca"
+  },
+  "patches": [
+    {
+      "path": "patches/mar-input-cleanup.patch",
+      "sha256": "e451898caac627b8fe1932910b6308ddb8562de8dc2b0721512f4ffec9c44043"
+    }
+  ],
+  "targets": {
+    "linux-x64": {
+      "server": "linux-x64/x0vncserver",
+      "topology": "linux-x64/x11-topology"
+    }
+  }
+}

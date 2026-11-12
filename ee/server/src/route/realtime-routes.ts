@@ -10,6 +10,7 @@ import type { SessionLookup } from '@myagentroam/server-core/session';
 import type { NodeControl } from '../node-control.js';
 import type { WebSocket } from 'ws';
 import type { FastifyRequest } from 'fastify';
+import { DesktopWebSocketDispatcher } from '../service/desktop-websocket-dispatcher.js';
 
 export function registerRealtimeRoutes(input: {
   readonly app: FastifyInstance;
@@ -35,6 +36,9 @@ export function registerRealtimeRoutes(input: {
         }
       }
     });
+    const desktopWebSockets = new DesktopWebSocketDispatcher(routes.websocketServer);
+    routes.addHook('preClose', async () => desktopWebSockets.close());
+    const desktopWire = async (request: FastifyRequest) => desktopWebSockets.mark(request.raw);
     if (input.sessionShares !== undefined)
       registerSessionShareRealtimeRoute({
         app: routes,
@@ -46,6 +50,23 @@ export function registerRealtimeRoutes(input: {
     routes.get('/api/node/connect', { websocket: true }, (socket) => nodeControl.attach(socket));
     routes.get('/api/node/terminal-connect', { websocket: true }, (socket) =>
       nodeControl.attachTerminal(socket)
+    );
+    routes.get(
+      '/api/node/desktop-relay',
+      { websocket: true, preValidation: desktopWire },
+      (socket) => nodeControl.attachNodeDesktopRelay(socket)
+    );
+    routes.get(
+      '/api/desktop/relay',
+      { websocket: true, preValidation: desktopWire },
+      (socket, request) => {
+        const admin = authorizeRealtimeConnection(socket, request, database, publicOrigin);
+        if (admin !== undefined)
+          nodeControl.attachBrowserDesktopRelay(socket, {
+            userId: admin.userId,
+            sessionHash: admin.sessionHash
+          });
+      }
     );
     registerWorkbenchRoute({
       app: routes,

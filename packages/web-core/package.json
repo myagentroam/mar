@@ -263,6 +263,7 @@
   "dependencies": {
     "@myagentroam/code-navigation": "workspace:*",
     "@myagentroam/protocol": "workspace:*",
+    "@novnc/novnc": "1.7.0",
     "element-plus": "^2.14.4",
     "vue": "^3.5.41",
     "vue-i18n": "^11.4.8",

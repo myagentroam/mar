@@ -1,0 +1,18 @@
+{
+  "upstreamCommit": "6c45640168dd170120d96661b3b711d283257166",
+  "source": "source/macVNC-6c45640168dd170120d96661b3b711d283257166.tar.gz",
+  "libvncserverSource": "source/libvncserver-0.9.15.tar.gz",
+  "patches": ["patches/macos-input-cleanup.patch"],
+  "targets": {
+    "darwin-arm64": {
+      "server": "darwin-arm64/macVNC",
+      "topology": "darwin-arm64/macos-topology",
+      "dependencies": "darwin-arm64/BUILD-DEPENDENCIES.txt"
+    },
+    "darwin-x64": {
+      "server": "darwin-x64/macVNC",
+      "topology": "darwin-x64/macos-topology",
+      "dependencies": "darwin-x64/BUILD-DEPENDENCIES.txt"
+    }
+  }
+}

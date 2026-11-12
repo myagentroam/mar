@@ -1,0 +1,18 @@
+{
+  "version": "1.8.3.2",
+  "archive": "https://uvnc.com/all/summary/519-ultravnc-1-8-3-2-zip.html",
+  "archiveSha256": "8984e920169238de2a878ca3af71b7b8ac4feb3bbe295916dcd3ff1219456aad",
+  "sourceCommit": "c757708e83b6c8249a1cdc9b9c0427c4e72f1c21",
+  "sourceArchive": "source/ultravnc-c757708e83b6c8249a1cdc9b9c0427c4e72f1c21.tar.gz",
+  "sourceArchiveSha256": "f8f04087435d79ae712f21e37d9682458e8f56b1c0be69422f6c205007198713",
+  "targets": {
+    "win32-x64": {
+      "server": "win32-x64/winvnc.exe",
+      "serverSha256": "7ab89d79e519b31f4c972dd0d28454f430ce8ece00988d7ae2eb5c424fd7491b",
+      "hooks": "win32-x64/vnchooks.dll",
+      "hooksSha256": "8eb6f0f2d25f3d9fa075c311c6ad6f4d18cd4309d497f0d2a0e60b84f1fb19eb",
+      "capture": "win32-x64/ddengine64.dll",
+      "captureSha256": "b131ea39ca40544e6805246057213faa9ed86e49b5b1cac0029bc9532386cb75"
+    }
+  }
+}

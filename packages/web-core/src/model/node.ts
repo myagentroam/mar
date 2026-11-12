@@ -1,4 +1,8 @@
-import type { ComputerUseCapability, MarAgentResponsesServiceTier } from '@myagentroam/protocol';
+import type {
+  ComputerUseCapability,
+  MarAgentResponsesServiceTier,
+  RemoteDesktopCapability
+} from '@myagentroam/protocol';
 import type { NodeUpgradeProgress } from './node-upgrade.js';
 
 export interface NodeSummary {
@@ -14,6 +18,7 @@ export interface NodeSummary {
   readonly upgradeProgress?: NodeUpgradeProgress | null;
   readonly disabled: boolean;
   readonly manageable?: boolean;
+  readonly usable?: boolean;
   readonly workspaceCreatable?: boolean;
   readonly secretManageable?: boolean;
   readonly ownership?:
@@ -41,6 +46,7 @@ export interface NodeSummary {
       readonly reasonCode?: string;
     };
     readonly computerUse?: ComputerUseCapability;
+    readonly remoteDesktop?: RemoteDesktopCapability;
     readonly marAgentRuntimeCredentials?: {
       readonly apiVersion: number;
       readonly websocket: boolean;
