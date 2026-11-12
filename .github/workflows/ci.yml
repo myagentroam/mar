@@ -79,6 +79,7 @@ jobs:
           export MAR_DESKTOP_S_UP_RECEIPT="$RUNNER_TEMP/s-up-receipt"
           export MAR_DESKTOP_CTRL_SHIFT_RECEIPT="$RUNNER_TEMP/ctrl-shift-receipt"
           export MAR_DESKTOP_OPTION_RECEIPT="$RUNNER_TEMP/option-receipt"
+          export MAR_DESKTOP_OPTION_S_RECEIPT="$RUNNER_TEMP/option-s-receipt"
           export MAR_DESKTOP_COMMAND_RECEIPT="$RUNNER_TEMP/command-receipt"
           "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
           window=$!

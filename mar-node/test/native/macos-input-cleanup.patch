@@ -40,6 +40,9 @@
 +    CFNumberRef key = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &symbol);
 @@ -350 +384,0 @@
 -	keyboardEvent = CGEventCreateKeyboardEvent(eventSource, keyCode, down);
+@@ -352 +386 @@
+-	if(keySym == XK_ISO_Level3_Shift)
++	if(keySym == XK_ISO_Level3_Shift || keySym == XK_Mode_switch)
 @@ -371 +405 @@
 -	    keyboardEvent = CGEventCreateKeyboardEvent(eventSource, keyCodeFromDict, down);
 +	    keyCode = keyCodeFromDict;

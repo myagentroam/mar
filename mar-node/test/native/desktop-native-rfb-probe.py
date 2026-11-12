@@ -147,5 +147,14 @@ with connection:
             while not receipt_path.exists() and time.monotonic() < deadline:
                 time.sleep(.05)
             assert receipt_path.read_text().strip() == expected, f'Native modifier not received: {expected}'
+            if symbol == 0xff7e:
+                option_s = Path(os.environ['MAR_DESKTOP_OPTION_S_RECEIPT'])
+                connection.sendall(struct.pack('>BBHI', 4, 1, 0, 0xdf))  # Option+S: ß
+                deadline = time.monotonic() + 5
+                while not option_s.exists() and time.monotonic() < deadline:
+                    time.sleep(.05)
+                assert option_s.read_text().strip() == 'option-s', 'Option+S native keycode/flags missing'
+                connection.sendall(struct.pack('>BBHI', 4, 0, 0, 0xdf))
+                print('Native Option+S keycode and flags observed')
             connection.sendall(struct.pack('>BBHI', 4, 0, 0, symbol))
         print('Native Option and Command keycodes and flags observed')

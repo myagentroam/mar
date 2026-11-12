@@ -20,6 +20,10 @@ final class ProbeView: NSView {
            let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_CTRL_SHIFT_RECEIPT"] {
             try? "ctrl-shift-s\n".write(toFile: path, atomically: true, encoding: .utf8)
         }
+        if event.keyCode == 1, event.modifierFlags.contains(.option),
+           let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_OPTION_S_RECEIPT"] {
+            try? "option-s\n".write(toFile: path, atomically: true, encoding: .utf8)
+        }
         if event.keyCode == 1,
            let path = ProcessInfo.processInfo.environment["MAR_DESKTOP_S_DOWN_RECEIPT"] {
             try? "s-down\n".write(toFile: path, atomically: true, encoding: .utf8)
