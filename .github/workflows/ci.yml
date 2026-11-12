@@ -169,6 +169,9 @@ jobs:
           }
           '@
           if (-not [TestProfile]::WritePrivateProfileStruct('UltraVNC', 'passwd', [Convert]::FromHexString($encrypted), 8, $config)) { throw 'Cannot write test password' }
+          $expectedProfile = node mar-node/test/native/windows-vnc-test-cipher.cjs profile
+          $profileLine = Get-Content $config | Where-Object { $_ -match '^passwd=' } | Select-Object -First 1
+          if (-not $profileLine -or $profileLine.Substring(7).ToLowerInvariant() -ne $expectedProfile) { throw 'Windows profile encoding did not match candidate implementation' }
           $window = Start-Process powershell -ArgumentList @('-NoProfile', '-STA', '-File', (Join-Path $env:GITHUB_WORKSPACE 'mar-node/test/native/windows-desktop-window.ps1')) -PassThru
           $server = $null
           try {
