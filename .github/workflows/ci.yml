@@ -26,6 +26,11 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
+      - name: Check out acceptance fixtures
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Build fixed macVNC source
         shell: bash
         run: |
@@ -36,37 +41,29 @@ jobs:
           cmake --build macvnc-build --parallel 2
           otool -L macvnc-build/macVNC.app/Contents/MacOS/macVNC
 
-      - name: Probe real macVNC server and desktop permission
+      - name: Probe real macVNC capture and input
         shell: bash
         run: |
           set -euo pipefail
           binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
-          "$binary" --help
+          swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/desktop-window"
+          export MAR_MACOS_KEY_RECEIPT="$RUNNER_TEMP/key-receipt"
+          "$RUNNER_TEMP/desktop-window" >window.log 2>&1 &
+          window=$!
           "$binary" -viewonly -listen localhost -rfbport 15991 -rfbportv6 -1 >macvnc.log 2>&1 &
           pid=$!
-          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; cat macvnc.log' EXIT
-          python3 -c 'import socket,time; deadline=time.monotonic()+20
-          while True:
-              try:
-                  s=socket.create_connection(("127.0.0.1",15991),timeout=1); break
-              except OSError:
-                  if time.monotonic()>deadline: raise
-                  time.sleep(.2)
-          data=s.recv(12); print("RFB banner:",repr(data)); assert data.startswith(b"RFB ") and len(data)==12
-          s.close()'
+          trap 'kill "$pid" "$window" 2>/dev/null || true; wait "$pid" "$window" 2>/dev/null || true; cat window.log macvnc.log; test ! -f macvnc-control.log || cat macvnc-control.log' EXIT
           sleep 3
           kill -0 "$pid"
-
-      - name: Probe macOS control permission
-        shell: bash
-        run: |
-          set -euo pipefail
-          binary=macvnc-build/macVNC.app/Contents/MacOS/macVNC
+          kill -0 "$window"
+          python3 mar-node/test/native/macos-rfb-probe.py 15991
+          kill "$pid"
+          wait "$pid" || true
           "$binary" -listen localhost -rfbport 15992 -rfbportv6 -1 >macvnc-control.log 2>&1 &
           pid=$!
-          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; cat macvnc-control.log' EXIT
           sleep 3
           kill -0 "$pid"
+          python3 mar-node/test/native/macos-rfb-probe.py 15992 control
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native build
@@ -83,7 +80,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath
           $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-          $install = Start-Process -FilePath $installer -ArgumentList @('modify', '--installPath', $vs, '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC', '--quiet', '--norestart', '--wait') -Wait -PassThru
+          $install = Start-Process -FilePath $installer -ArgumentList @('modify', '--installPath', ('"' + $vs + '"'), '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC', '--quiet', '--norestart', '--wait') -Wait -PassThru
           if ($install.ExitCode -notin @(0, 3010)) { throw "MFC installation failed: $($install.ExitCode)" }
           $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild not found' }
