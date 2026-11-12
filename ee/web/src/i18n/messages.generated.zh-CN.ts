@@ -2064,6 +2064,8 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
   'userManagementPage.username3': '用户名',
   'userManagementPage.temporaryPassword': '临时密码',
   'userManagementPage.copyUsernameAndPassword': '复制用户名和密码',
+  'userManagementPage.unableToAccessTheClipboardCopyThe':
+    '无法访问剪贴板，请手动复制用户名和密码。',
   'userManagementPage.theUserMustChangeThePasswordAfter': '用户首次登录后必须修改密码。',
   'organizationUserManagementPage.enterAnOrganizationName': '请输入组织名称',
   'organizationUserManagementPage.theOrganizationNameCannotExceed128Characters':

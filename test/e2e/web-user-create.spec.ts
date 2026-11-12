@@ -3,6 +3,7 @@ import { startUserManagementFixture } from './support/user-management-vite.js';
 
 // @test-covers ee/web/src/composition/enterprise-management.ts
 // @test-covers ee/web/src/view/settings/EnterpriseUserManagementPage.vue
+// @test-covers ee/web/src/view/settings/UserManagementPage.vue
 
 let fixture: Awaited<ReturnType<typeof startUserManagementFixture>>;
 test.beforeAll(async () => {
@@ -309,3 +310,186 @@ test('Registered users preserves both one-time credentials when the old write fi
   await receipt.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(receipt).toHaveCount(0);
 });
+
+type ClipboardBehavior = 'missing' | 'non-callable' | 'throws' | 'rejects' | 'succeeds';
+
+async function preparePersonalCredentials(
+  page: import('@playwright/test').Page,
+  locale: 'en-US' | 'zh-CN',
+  clipboardBehavior: ClipboardBehavior
+) {
+  const writes: Record<string, unknown>[] = [];
+  let pageErrors = 0;
+  page.on('pageerror', () => {
+    pageErrors += 1;
+  });
+  await page.addInitScript((behavior: ClipboardBehavior) => {
+    const fixture = { calls: 0, copiedText: '', unhandledRejections: 0 };
+    Object.defineProperty(window, '__credentialClipboardFixture', { value: fixture });
+    window.addEventListener('unhandledrejection', (event) => {
+      fixture.unhandledRejections += 1;
+      event.preventDefault();
+    });
+    const writeText =
+      behavior === 'missing'
+        ? undefined
+        : behavior === 'non-callable'
+          ? null
+          : (value: string) => {
+              fixture.calls += 1;
+              if (behavior === 'throws') throw new Error('Fixture clipboard write failed');
+              if (behavior === 'rejects')
+                return Promise.reject(new Error('Fixture clipboard write failed'));
+              fixture.copiedText = value;
+              return Promise.resolve();
+            };
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: behavior === 'missing' ? undefined : { writeText }
+    });
+  }, clipboardBehavior);
+  await page.route('**/api/management/users**', async (route) => {
+    const method = route.request().method();
+    if (method === 'POST') {
+      writes.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({
+        status: 201,
+        json: { temporaryPassword: 'fixture-temporary-password' }
+      });
+    }
+    if (method === 'GET')
+      return route.fulfill({
+        json: { users: [], page: 1, pageSize: 20, total: 0, hasMore: false }
+      });
+    throw new Error(`Unexpected user-management method: ${method}`);
+  });
+  await page.goto(`${fixture.url}?locale=${locale}&page=personal`);
+
+  const copy = locale === 'en-US' ? 'Copy username and password' : '复制用户名和密码';
+  const create = locale === 'en-US' ? 'Create user' : '创建用户';
+  const createTitle = locale === 'en-US' ? 'Create User' : '创建用户';
+  const createdTitle = locale === 'en-US' ? 'User Created' : '创建成功';
+  const usernameLabel = locale === 'en-US' ? 'Username' : '用户名';
+  const createTrigger = page.locator('.table-actions').getByRole('button', {
+    name: create,
+    exact: true
+  });
+  await expect(createTrigger).toBeVisible();
+  await createTrigger.click();
+  const createDialog = page.getByRole('dialog', { name: createTitle, exact: true });
+  await createDialog.getByRole('textbox', { name: usernameLabel }).fill('fixture-user');
+  await createDialog.getByRole('button', { name: create, exact: true }).click();
+
+  const credentials = page.getByRole('dialog', { name: createdTitle, exact: true });
+  await expect(credentials).toBeVisible();
+  await expect(credentials.locator('.credential-result dd')).toHaveText([
+    'fixture-user',
+    'fixture-temporary-password'
+  ]);
+  return {
+    credentials,
+    copy: credentials.getByRole('button', { name: copy, exact: true }),
+    writes,
+    pageErrors: () => pageErrors,
+    clipboardFixture: () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __credentialClipboardFixture: {
+                calls: number;
+                copiedText: string;
+                unhandledRejections: number;
+              };
+            }
+          ).__credentialClipboardFixture
+      )
+  };
+}
+
+const manualCopyMessage = {
+  'en-US': 'Unable to access the clipboard. Copy the username and password manually.',
+  'zh-CN': '无法访问剪贴板，请手动复制用户名和密码。'
+} as const;
+
+for (const locale of ['en-US', 'zh-CN'] as const) {
+  for (const behavior of ['missing', 'non-callable', 'throws', 'rejects'] as const) {
+    test(`Personal user credentials show manual-copy feedback for ${behavior} clipboard API (${locale})`, async ({
+      page
+    }) => {
+      const ui = await preparePersonalCredentials(page, locale, behavior);
+      await ui.copy.click();
+
+      const errorMessage = page.locator('.el-message--error');
+      await expect(errorMessage).toHaveCount(1);
+      await expect(errorMessage.locator('.el-message__content')).toHaveText(
+        manualCopyMessage[locale]
+      );
+      await expect(ui.credentials).toBeVisible();
+      await expect(ui.credentials.locator('.credential-result dd')).toHaveText([
+        'fixture-user',
+        'fixture-temporary-password'
+      ]);
+      const selections = await ui.credentials
+        .locator('.credential-result dd')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            return {
+              text: selection?.toString(),
+              userSelect: getComputedStyle(node).userSelect
+            };
+          })
+        );
+      expect(selections.map((selection) => selection.text)).toEqual([
+        'fixture-user',
+        'fixture-temporary-password'
+      ]);
+      expect(selections.every((selection) => selection.userSelect !== 'none')).toBe(true);
+      await expect(errorMessage).not.toContainText('fixture-user');
+      await expect(errorMessage).not.toContainText('fixture-temporary-password');
+      expect(ui.writes).toHaveLength(1);
+      const clipboard = await ui.clipboardFixture();
+      expect(clipboard.calls).toBe(behavior === 'missing' || behavior === 'non-callable' ? 0 : 1);
+      expect(clipboard.unhandledRejections).toBe(0);
+      expect(ui.pageErrors()).toBe(0);
+    });
+  }
+
+  test(`Personal user credentials copy the existing format on clipboard success (${locale})`, async ({
+    page
+  }) => {
+    const ui = await preparePersonalCredentials(page, locale, 'succeeds');
+    await ui.copy.click();
+    const expectedPayload =
+      locale === 'en-US'
+        ? 'Username: fixture-user\nPassword: fixture-temporary-password'
+        : '用户名：fixture-user\n密码：fixture-temporary-password';
+    const clipboard = await ui.clipboardFixture();
+    expect(clipboard.calls).toBe(1);
+    expect(clipboard.copiedText).toBe(expectedPayload);
+    expect(clipboard.unhandledRejections).toBe(0);
+    expect(ui.pageErrors()).toBe(0);
+    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(ui.credentials).toBeVisible();
+    expect(ui.writes).toHaveLength(1);
+
+    await ui.credentials.locator('.el-dialog__headerbtn').click();
+    await expect(ui.credentials).toHaveCount(0);
+    await page
+      .locator('.table-actions')
+      .getByRole('button', { name: locale === 'en-US' ? 'Create user' : '创建用户', exact: true })
+      .click();
+    await expect(
+      page.getByRole('dialog', {
+        name: locale === 'en-US' ? 'Create User' : '创建用户',
+        exact: true
+      })
+    ).toBeVisible();
+    expect(ui.writes).toHaveLength(1);
+  });
+}

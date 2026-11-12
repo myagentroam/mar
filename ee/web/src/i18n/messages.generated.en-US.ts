@@ -2084,6 +2084,8 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
   'userManagementPage.username3': 'Username',
   'userManagementPage.temporaryPassword': 'Temporary Password',
   'userManagementPage.copyUsernameAndPassword': 'Copy username and password',
+  'userManagementPage.unableToAccessTheClipboardCopyThe':
+    'Unable to access the clipboard. Copy the username and password manually.',
   'userManagementPage.theUserMustChangeThePasswordAfter':
     'The user must change the password after signing in for the first time.',
   'organizationUserManagementPage.enterAnOrganizationName': 'Enter an organization name',
