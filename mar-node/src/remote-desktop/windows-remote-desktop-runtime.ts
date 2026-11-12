@@ -99,7 +99,7 @@ async function queryScreens(signal: AbortSignal): Promise<WindowsScreen[]> {
   return JSON.parse(stdout) as WindowsScreen[];
 }
 
-/** Owns the current interactive Windows GUI layout and one shared UltraVNC backend. */
+/** Owns serialized Windows GUI layout discovery and one shared UltraVNC backend. */
 export class WindowsRemoteDesktopRuntime {
   readonly #pool: TigerVncBackendPool;
   readonly #generation = randomUUID();
@@ -107,6 +107,7 @@ export class WindowsRemoteDesktopRuntime {
   #signature = '';
   #revision = 0;
   #disposed = false;
+  #refreshTail: Promise<void> = Promise.resolve();
 
   private constructor(
     private readonly options: { binaryPath: string; maxPixels: number; fence(code: string): void }
@@ -127,7 +128,13 @@ export class WindowsRemoteDesktopRuntime {
     return runtime;
   }
 
-  async refresh(signal: AbortSignal): Promise<void> {
+  refresh(signal: AbortSignal): Promise<void> {
+    const result = this.#refreshTail.then(() => this.#refresh(signal));
+    this.#refreshTail = result.catch(() => {});
+    return result;
+  }
+
+  async #refresh(signal: AbortSignal): Promise<void> {
     const screens = (await queryScreens(signal)).sort((left, right) =>
       left.name.localeCompare(right.name)
     );
