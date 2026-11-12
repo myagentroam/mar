@@ -267,6 +267,110 @@ describe('Remote Desktop Direct coordinator', () => {
     }
   });
 
+  it.each(['connection', 'session', 'user', 'node'] as const)(
+    'does not cancel another owner’s pending prepare when an unrelated %s is revoked',
+    async (scope) => {
+      const f = fixture();
+      let resume!: (value: number) => void;
+      f.preflight.mockImplementationOnce(() => new Promise((resolve) => (resume = resolve)));
+      try {
+        const pending = f.coordinator.handleBrowser(identity, prepare);
+        await vi.waitFor(() => expect(resume).toBeDefined());
+        if (scope === 'connection') f.coordinator.revokeConnection('other-page');
+        if (scope === 'session') f.coordinator.revokeSession('other-session');
+        if (scope === 'user') f.coordinator.revokeUser(2);
+        if (scope === 'node') f.coordinator.revokeNode('other-node');
+        resume(4);
+        await pending;
+        expect(f.sendNode).toHaveBeenCalledOnce();
+        expect(f.sendNode).toHaveBeenCalledWith(
+          'node-a',
+          expect.objectContaining({ type: 'desktop.direct.prepare' })
+        );
+        expect(f.sendBrowser).not.toHaveBeenCalled();
+      } finally {
+        f.coordinator.close();
+      }
+    }
+  );
+
+  it('keeps a second window’s pending prepare when the first window disconnects', async () => {
+    const f = fixture();
+    const second = { ...identity, workbenchConnectionId: 'page-87654321' };
+    let resume!: (value: number) => void;
+    try {
+      await f.coordinator.handleBrowser(identity, prepare);
+      const firstCommand = f.sendNode.mock.calls[0]![1];
+      if (firstCommand.type !== 'desktop.direct.prepare') throw new Error('unexpected command');
+      f.preflight.mockImplementationOnce(() => new Promise((resolve) => (resume = resolve)));
+      const pending = f.coordinator.handleBrowser(second, {
+        ...prepare,
+        requestId: 'second',
+        transportSessionId: 'transport-b'
+      });
+      await vi.waitFor(() => expect(resume).toBeDefined());
+      f.coordinator.revokeConnection(identity.workbenchConnectionId);
+      resume(4);
+      await pending;
+      expect(f.sendNode).toHaveBeenCalledWith(
+        'node-a',
+        expect.objectContaining({
+          type: 'desktop.direct.cancel',
+          attachmentId: firstCommand.attachmentId
+        })
+      );
+      const commands = f.sendNode.mock.calls.map(([, message]) => message);
+      const prepares = commands.filter((message) => message.type === 'desktop.direct.prepare');
+      expect(prepares).toHaveLength(2);
+      expect(prepares[1]!.attachmentId).not.toBe(firstCommand.attachmentId);
+      expect(f.admission.get(prepares[1]!.attachmentId)?.phase).toBe('RESERVED');
+    } finally {
+      f.coordinator.close();
+    }
+  });
+
+  it.each(['connection', 'session', 'user', 'node', 'generation', 'shutdown'] as const)(
+    'does not dispatch a pending prepare after its own %s is revoked',
+    async (scope) => {
+      const f = fixture();
+      let resume!: (value: number) => void;
+      f.preflight.mockImplementationOnce(() => new Promise((resolve) => (resume = resolve)));
+      try {
+        const pending = f.coordinator.handleBrowser(identity, prepare);
+        await vi.waitFor(() => expect(resume).toBeDefined());
+        if (scope === 'connection') f.coordinator.revokeConnection(identity.workbenchConnectionId);
+        if (scope === 'session') f.coordinator.revokeSession(identity.sessionHash);
+        if (scope === 'user') f.coordinator.revokeUser(identity.userId);
+        if (scope === 'node') f.coordinator.revokeNode(prepare.nodeId);
+        if (scope === 'generation') f.coordinator.retireOtherGenerations(prepare.nodeId, 'new');
+        if (scope === 'shutdown') f.coordinator.close();
+        resume(4);
+        await pending;
+        expect(f.sendNode).not.toHaveBeenCalled();
+        expect(f.admission.countNode(prepare.nodeId)).toBe(0);
+      } finally {
+        f.coordinator.close();
+      }
+    }
+  );
+
+  it('does not dispatch when its user is revoked during the initial authorization', async () => {
+    const f = fixture();
+    let resume!: (value: boolean) => void;
+    f.authorize.mockImplementationOnce(() => new Promise((resolve) => (resume = resolve)));
+    try {
+      const pending = f.coordinator.handleBrowser(identity, prepare);
+      await vi.waitFor(() => expect(resume).toBeDefined());
+      f.coordinator.revokeUser(identity.userId);
+      resume(true);
+      await pending;
+      expect(f.sendNode).not.toHaveBeenCalled();
+      expect(f.admission.countNode(prepare.nodeId)).toBe(0);
+    } finally {
+      f.coordinator.close();
+    }
+  });
+
   it('retries cleanup after page disconnect until the same generation acknowledges or is replaced', async () => {
     vi.useFakeTimers();
     const f = fixture();

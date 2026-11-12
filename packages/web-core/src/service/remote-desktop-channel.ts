@@ -17,6 +17,8 @@ export class RemoteDesktopChannel {
   #closed = false;
   #drainTimer: ReturnType<typeof setTimeout> | undefined;
   #incomingScheduled = false;
+  #receivedBytes = 0;
+  #sentBytes = 0;
 
   constructor(
     private readonly channel: WebSocket | RTCDataChannel,
@@ -51,6 +53,10 @@ export class RemoteDesktopChannel {
     return this.#closed ? 'closed' : 'open';
   }
 
+  getStatistics(): { receivedBytes: number; sentBytes: number } {
+    return { receivedBytes: this.#receivedBytes, sentBytes: this.#sentBytes };
+  }
+
   get onmessage(): ((event: MessageEvent<ArrayBuffer>) => void) | null {
     return this.#onmessage;
   }
@@ -74,6 +80,7 @@ export class RemoteDesktopChannel {
     ) {
       try {
         this.channel.send(bytes);
+        this.#sentBytes += bytes.byteLength;
       } catch {
         this.#finish('DESKTOP_TRANSPORT_ERROR', true);
       }
@@ -117,6 +124,7 @@ export class RemoteDesktopChannel {
     }
     // The previous owner may reuse a preread buffer; ownership must not alias it.
     this.#incoming.push(bytes.slice().buffer);
+    this.#receivedBytes += bytes.byteLength;
     this.#incomingBytes += bytes.byteLength;
     return true;
   }
@@ -149,6 +157,7 @@ export class RemoteDesktopChannel {
       if (this.channel.bufferedAmount + chunk.byteLength > this.options.highWaterBytes) break;
       try {
         this.channel.send(chunk);
+        this.#sentBytes += chunk.byteLength;
       } catch {
         this.#finish('DESKTOP_TRANSPORT_ERROR', true);
         return;

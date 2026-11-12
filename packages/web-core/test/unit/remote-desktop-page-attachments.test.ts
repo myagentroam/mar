@@ -43,6 +43,7 @@ describe('remote desktop page attachment ownership', () => {
     f.direct.attach.mockResolvedValueOnce(old).mockResolvedValueOnce(undefined);
     f.relay.attach.mockResolvedValueOnce(next);
     const previous = await f.service.select(f.target);
+    expect(previous.path).toBe('direct');
     const switching = f.service.select({ ...f.target, mode: 'VIEW' });
     expect(old.close).toHaveBeenCalledOnce();
     previous.ready();
@@ -51,6 +52,7 @@ describe('remote desktop page attachment ownership', () => {
     expect(f.relay.attach).not.toHaveBeenCalled();
     old.settlement.resolve(true);
     const replacement = await switching;
+    expect(replacement.path).toBe('relay');
     expect(f.relay.attach).toHaveBeenCalledOnce();
     expect(await previous.close()).toBe(true);
     replacement.ready();
@@ -104,7 +106,9 @@ describe('remote desktop page attachment ownership', () => {
     const unavailable = new RemoteDesktopClientError('DESKTOP_TOPOLOGY_UNAVAILABLE');
     unavailable.settlement = Promise.resolve(true);
     f.direct.attach.mockRejectedValueOnce(unavailable);
-    await expect(f.service.select(f.target)).rejects.toMatchObject({ code: 'DESKTOP_TOPOLOGY_UNAVAILABLE' });
+    await expect(f.service.select(f.target)).rejects.toMatchObject({
+      code: 'DESKTOP_TOPOLOGY_UNAVAILABLE'
+    });
     expect(f.relay.attach).toHaveBeenCalledOnce();
     expect(await f.service.close()).toBe(true);
   });

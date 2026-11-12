@@ -65,7 +65,6 @@ export class RemoteDesktopRelayCoordinator {
   readonly #eventCounts = new Map<string, number>();
   readonly #now: () => number;
   readonly #timer: NodeJS.Timeout;
-  #revision = 0;
   #closed = false;
 
   constructor(private readonly options: RemoteDesktopRelayOptions) {
@@ -188,25 +187,21 @@ export class RemoteDesktopRelayCoordinator {
   }
 
   revokeConnection(id: string): void {
-    this.#revision++;
     this.#closeEntries(
       this.options.admission.closeForConnection(id, 'RELAY'),
       'DESKTOP_NOT_AUTHORIZED'
     );
   }
   revokeSession(id: string): void {
-    this.#revision++;
     this.#closeEntries(
       this.options.admission.closeForSession(id, 'RELAY'),
       'DESKTOP_NOT_AUTHORIZED'
     );
   }
   revokeUser(id: number): void {
-    this.#revision++;
     this.#closeEntries(this.options.admission.closeForUser(id, 'RELAY'), 'DESKTOP_NOT_AUTHORIZED');
   }
   revokeNode(id: string): void {
-    this.#revision++;
     this.#closeEntries(this.options.admission.closeForNode(id, 'RELAY'), 'NODE_OFFLINE');
   }
 
@@ -229,13 +224,11 @@ export class RemoteDesktopRelayCoordinator {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
-    this.#revision++;
     clearInterval(this.#timer);
     this.#closeEntries(this.options.admission.closeAll('RELAY'), 'DESKTOP_SERVER_SHUTDOWN');
   }
 
   async #prepare(identity: DirectTransferBrowserIdentity, request: Prepare): Promise<void> {
-    const revision = this.#revision;
     if (this.#closed)
       return this.#error(identity, request.requestId, 'DESKTOP_CONTROL_UNAVAILABLE', true);
     const attachmentId = randomBytes(24).toString('base64url');
@@ -291,11 +284,8 @@ export class RemoteDesktopRelayCoordinator {
       this.options.admission.beginClose(attachmentId);
       return this.#error(identity, request.requestId, failureCode, true);
     }
-    if (
-      this.#closed ||
-      revision !== this.#revision ||
-      !this.options.admission.dispatched(attachmentId, this.#now())
-    ) {
+    // Admission revocation removes only matching pending reservations before dispatch.
+    if (this.#closed || !this.options.admission.dispatched(attachmentId, this.#now())) {
       this.options.admission.beginClose(attachmentId);
       return this.#error(identity, request.requestId, 'DESKTOP_CONTROL_UNAVAILABLE', true);
     }

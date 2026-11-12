@@ -34,7 +34,7 @@ index 4efd6f4b97dfda3ab450723ff8c722c8258d60fc..b21f0e9c67c1fa4696fb31d409d8f99d
                  case 'copy':
                      this.copyImage(a.oldX, a.oldY, a.x, a.y, a.width, a.height, true);
 diff --git a/core/rfb.js b/core/rfb.js
-index 80011e4a10203806f14df1ffc3b8425861a965a7..150a2fdb51bfdb5cd394f7447da56598aa729673 100644
+index 80011e4a10203806f14df1ffc3b8425861a965a7..a8a60e238e1a7f7f07f0e17798915470113beebe 100644
 --- a/core/rfb.js
 +++ b/core/rfb.js
 @@ -22,6 +22,7 @@ import GestureHandler from "./input/gesturehandler.js";
@@ -155,7 +155,7 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..150a2fdb51bfdb5cd394f7447da56598
                      this._enabledContinuousUpdates = true;
                      this._updateContinuousUpdates();
                      Log.Info("Enabling continuous updates.");
-@@ -2654,11 +2681,26 @@ export default class RFB extends EventTargetMixin {
+@@ -2654,11 +2681,29 @@ export default class RFB extends EventTargetMixin {
                  return false;
              }
  
@@ -173,12 +173,15 @@ index 80011e4a10203806f14df1ffc3b8425861a965a7..150a2fdb51bfdb5cd394f7447da56598
          }
  
 -        this._display.flip();
-+        const reportFirstFrame = this._frameHasPixels && !this._firstFrame ? () => {
-+            if (this._rfbConnectionState !== 'connected' || this._firstFrame) return;
-+            this._firstFrame = true;
-+            this.dispatchEvent(new CustomEvent('firstframe'));
-+        } : null;
-+        this._display.flip(false, reportFirstFrame);
++        const hasPixels = this._frameHasPixels;
++        this._display.flip(false, () => {
++            if (this._rfbConnectionState !== 'connected') return;
++            this.dispatchEvent(new CustomEvent('frame'));
++            if (hasPixels && !this._firstFrame) {
++                this._firstFrame = true;
++                this.dispatchEvent(new CustomEvent('firstframe'));
++            }
++        });
 +        this._frameHasPixels = false;
  
          return true;  // We finished this FBU

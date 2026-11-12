@@ -68,6 +68,21 @@ describe('Remote Desktop noVNC channel handoff', () => {
     channel.close();
   });
 
+  it('counts received bytes once and counts writes only after they reach the raw channel', async () => {
+    const { peer, channel } = setup([Uint8Array.of(1, 2)]);
+    peer.receive(Uint8Array.of(3).buffer);
+    peer.bufferedAmount = 8;
+    channel.send(Uint8Array.of(4, 5, 6));
+    expect(channel.getStatistics()).toEqual({ receivedBytes: 3, sentBytes: 0 });
+    channel.onmessage = () => {};
+    await Promise.resolve();
+    expect(channel.getStatistics().receivedBytes).toBe(3);
+    peer.bufferedAmount = 0;
+    vi.advanceTimersByTime(20);
+    expect(channel.getStatistics()).toEqual({ receivedBytes: 3, sentBytes: 3 });
+    channel.close();
+  });
+
   it('closes only this channel on queue overflow and does not drain stale data', async () => {
     const { peer, channel, onFailure } = setup();
     const closed = vi.fn();

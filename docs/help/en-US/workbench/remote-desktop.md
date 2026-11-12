@@ -25,12 +25,14 @@ Choose Low, Medium, or High picture quality; Medium is the default. Quality uses
 
 1. In **Work**, choose **Remote Desktop** from the Node action menu. A separate same-origin browser tab opens without changing the active Workspace or borrowing the original tab's connection.
 2. The native primary display opens in view-only mode. When the backend supports multiple displays, use the display selector to show one display or the entire desktop; the picture is the Node's real desktop.
-3. Select **Control desktop** to operate it. Other people or programs may operate the same desktop at the same time.
+3. The desktop starts in view-only mode. Select the bordered **Control desktop** button in the center of the picture (or the matching toolbar action) to operate it. Other people or programs may operate the same desktop at the same time.
 4. In control mode, select **Send clipboard text** and grant browser permission when requested. Only this explicit action reads the local clipboard and sends its text to the desktop; then paste in the remote application. The clipboard is not synchronized automatically, and view-only mode cannot send it.
 
 On a mobile device, open **Text keyboard** in control mode, compose text locally, and select **Send text**. Enter and Backspace are also available as buttons. Text is sent as remote keyboard events; the result depends on the remote application and system. Unsent text is cleared when changing mode, hiding the page, or losing control.
 
-5. Losing window focus stops input from this tab. Hiding the tab ends its active picture in either mode. Reconnect explicitly after returning. Closing the tab does not stop Agent work.
+5. Losing window focus stops input from this tab. Hiding the tab ends its active picture in either mode. Reconnect explicitly after returning. Closing or disconnecting this tab cleans up only its own connection; it does not revoke credentials or affect other desktop windows or Agent work. Losing Node access ends the affected desktop connections when authorization is rechecked.
+
+The bar below the picture shows the connection path (Direct or Server relay), Server RTT, frame rate, and receive/send rates. Unmeasured values show “—”; FPS can be 0 on a static desktop.
 
 Browsers may reserve some system shortcuts. If a shortcut cannot reach the page, use the target application's controls instead. Available input methods on mobile also depend on the browser and device.
 

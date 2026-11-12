@@ -538,7 +538,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                 <el-dropdown-item
                   v-if="result.node.usable && result.node.capabilities.remoteDesktop"
                   command="desktop"
-                  :icon="marIcon('view')"
+                  :icon="marIcon('desktop')"
                   :disabled="
                     !result.node.connected ||
                     result.node.disabled ||

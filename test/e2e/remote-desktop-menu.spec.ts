@@ -14,6 +14,10 @@ test('Node menu opens a same-origin desktop tab without an opener or Workspace',
     await page.locator('.node-tree-actions button').first().click();
     const desktop = page.getByRole('menuitem', { name: /Remote Desktop|远程桌面/u });
     await expect(desktop).toBeVisible();
+    await expect(desktop.locator('svg')).toHaveAttribute('data-mar-icon', 'desktop');
+    await expect(
+      page.getByRole('menuitem', { name: /Node details|节点详情/u }).locator('svg')
+    ).toHaveAttribute('data-mar-icon', 'view');
     await context.route('**/console?*', (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Desktop</title>' })
     );

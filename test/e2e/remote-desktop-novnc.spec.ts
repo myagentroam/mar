@@ -26,6 +26,7 @@ test('noVNC waits for real pixels and does not request the remote clipboard', as
   expect(await page.evaluate(() => (window as any).fixture.endContinuousUpdates())).toEqual([]);
   await page.evaluate(() => (window as any).fixture.pseudo());
   expect(await page.evaluate(() => (window as any).fixture.events.firstframe)).toBe(0);
+  expect(await page.evaluate(() => (window as any).fixture.events.frame)).toBe(0);
   expect(await page.evaluate(() => (window as any).fixture.clipboardNotify())).toEqual([]);
   expect(await page.evaluate(() => (window as any).fixture.events.clipboard)).toBe(0);
   expect(
@@ -41,6 +42,15 @@ test('noVNC waits for real pixels and does not request the remote clipboard', as
   await page.evaluate(() => (window as any).fixture.clipboardProvide());
   await page.evaluate(() => (window as any).fixture.raw());
   await expect.poll(() => page.evaluate(() => (window as any).fixture.events.firstframe)).toBe(1);
+  expect(await page.evaluate(() => (window as any).fixture.events.frame)).toBe(1);
+  await page.evaluate(() => (window as any).fixture.raw());
+  await expect.poll(() => page.evaluate(() => (window as any).fixture.events.frame)).toBe(2);
+  await page.evaluate(() => {
+    (window as any).fixture.empty();
+    (window as any).fixture.pseudo();
+  });
+  expect(await page.evaluate(() => (window as any).fixture.events.frame)).toBe(2);
+  expect(await page.evaluate(() => (window as any).fixture.events.firstframe)).toBe(1);
 });
 
 test('noVNC sends native quality levels when quality changes', async ({ page }) => {
@@ -66,8 +76,10 @@ test('noVNC sends native quality levels when quality changes', async ({ page }) 
 test('noVNC waits for asynchronous image painting', async ({ page }) => {
   await page.evaluate(() => (window as any).fixture.delayedImage());
   expect(await page.evaluate(() => (window as any).fixture.events.firstframe)).toBe(0);
+  expect(await page.evaluate(() => (window as any).fixture.events.frame)).toBe(0);
   await page.evaluate(() => (window as any).fixture.releaseImage());
   await expect.poll(() => page.evaluate(() => (window as any).fixture.events.firstframe)).toBe(1);
+  expect(await page.evaluate(() => (window as any).fixture.events.frame)).toBe(1);
 });
 
 test('noVNC sends bounded explicit soft-keyboard text through ordinary RFB key events', async ({

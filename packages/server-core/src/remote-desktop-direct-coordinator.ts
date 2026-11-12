@@ -69,7 +69,6 @@ export class RemoteDesktopDirectCoordinator {
   readonly #nodeEventCounts = new Map<string, number>();
   readonly #now: () => number;
   readonly #timer: NodeJS.Timeout;
-  #revocation = 0;
   #closed = false;
 
   constructor(private readonly options: RemoteDesktopDirectOptions) {
@@ -267,22 +266,18 @@ export class RemoteDesktopDirectCoordinator {
   }
 
   revokeConnection(id: string, code = 'DESKTOP_NOT_AUTHORIZED'): void {
-    this.#revocation++;
     this.#closeEntries(this.options.admission.closeForConnection(id, 'DIRECT'), code);
   }
   revokeSession(id: string): void {
-    this.#revocation++;
     this.#closeEntries(
       this.options.admission.closeForSession(id, 'DIRECT'),
       'DESKTOP_NOT_AUTHORIZED'
     );
   }
   revokeUser(id: number): void {
-    this.#revocation++;
     this.#closeEntries(this.options.admission.closeForUser(id, 'DIRECT'), 'DESKTOP_NOT_AUTHORIZED');
   }
   revokeNode(id: string, code = 'NODE_OFFLINE'): void {
-    this.#revocation++;
     this.#closeEntries(this.options.admission.closeForNode(id, 'DIRECT'), code);
   }
 
@@ -304,13 +299,11 @@ export class RemoteDesktopDirectCoordinator {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
-    this.#revocation++;
     clearInterval(this.#timer);
     this.#closeEntries(this.options.admission.closeAll('DIRECT'), 'DESKTOP_SERVER_SHUTDOWN');
   }
 
   async #prepare(identity: DirectTransferBrowserIdentity, request: Prepare): Promise<void> {
-    const revision = this.#revocation;
     const transport = () => {
       try {
         return this.options.transport.authorizedTransport(
@@ -385,12 +378,8 @@ export class RemoteDesktopDirectCoordinator {
       return;
     }
     const current = transport();
-    if (
-      this.#closed ||
-      revision !== this.#revocation ||
-      !current ||
-      !this.options.admission.dispatched(attachmentId, this.#now())
-    ) {
+    // Admission revocation removes only matching pending reservations before dispatch.
+    if (this.#closed || !current || !this.options.admission.dispatched(attachmentId, this.#now())) {
       this.options.admission.beginClose(attachmentId);
       await this.#error(identity, request.requestId, 'DESKTOP_CONTROL_UNAVAILABLE', true);
       return;

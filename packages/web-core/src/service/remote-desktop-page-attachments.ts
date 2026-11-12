@@ -3,6 +3,7 @@ import type { RemoteDesktopChannel } from './remote-desktop-channel.js';
 
 type Attachment = {
   readonly channel: RemoteDesktopChannel;
+  readonly controlRoundTripMs?: number | undefined;
   ready(): void;
   close(): Promise<boolean>;
 };
@@ -61,7 +62,7 @@ export function createRemoteDesktopPageAttachments(options: {
     if (current === record) current = undefined;
     return settled;
   }
-  function select(target: Target): Promise<Attachment> {
+  function select(target: Target): Promise<Attachment & { readonly path: 'direct' | 'relay' }> {
     const token = ++sequence;
     opening?.abort();
     if (current) void fence(current);
@@ -79,6 +80,7 @@ export function createRemoteDesktopPageAttachments(options: {
         }
       };
       let handle: Attachment | undefined;
+      let path: 'direct' | 'relay' = 'direct';
       try {
         try {
           handle = await options.direct.attach(input);
@@ -93,6 +95,7 @@ export function createRemoteDesktopPageAttachments(options: {
             throw finalError(failure);
         }
         if (!handle && !signal.aborted && token === sequence) {
+          path = 'relay';
           try {
             handle = await options.relay.attach(input);
           } catch (failure) {
@@ -110,6 +113,10 @@ export function createRemoteDesktopPageAttachments(options: {
         current = record;
         return {
           channel: handle.channel,
+          path,
+          get controlRoundTripMs() {
+            return handle!.controlRoundTripMs;
+          },
           ready: () => {
             if (current === record && token === sequence && !disposed) handle!.ready();
           },

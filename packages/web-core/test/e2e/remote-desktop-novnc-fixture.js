@@ -58,6 +58,7 @@ const options = {
 const events = {
   connected: 0,
   firstframe: 0,
+  frame: 0,
   clipboard: 0,
   imageLoaded: 0,
   clipboardRead: 0,
@@ -71,7 +72,7 @@ let releaseImage;
 let replacementChannel;
 let clipboardClientCaps = 0;
 let nativeRfb;
-for (const type of ['connected', 'firstframe', 'clipboard'])
+for (const type of ['connected', 'firstframe', 'frame', 'clipboard'])
   rfb.addEventListener(type === 'connected' ? 'connect' : type, () => events[type]++);
 Object.defineProperty(navigator, 'clipboard', {
   configurable: true,
@@ -169,6 +170,9 @@ window.fixture = {
   },
   pseudo() {
     channel.receive(fbu([rect(0, 0, 2, 2, -223), rect(0, 0, 0, 0, -239), rect(0, 0, 0, 0, -224)]));
+  },
+  empty() {
+    channel.receive(fbu([]));
   },
   raw() {
     channel.receive(

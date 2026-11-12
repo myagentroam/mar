@@ -6,7 +6,11 @@ const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package
 
 export async function startCustomThemeFixture(
   entry?: string,
-  options?: { protocolSource?: boolean; apiProxy?: string }
+  options?: {
+    protocolSource?: boolean;
+    apiProxy?: string;
+    aliases?: { find: string; replacement: string }[];
+  }
 ) {
   const [{ createServer }, vue, components, resolvers] = await Promise.all([
     import(webRequire.resolve('vite')),
@@ -26,6 +30,7 @@ export async function startCustomThemeFixture(
     optimizeDeps: { entries: [entry ?? 'test/e2e/support/*.html'] },
     resolve: {
       alias: [
+        ...(options?.aliases ?? []),
         ...(options?.protocolSource
           ? [
               {

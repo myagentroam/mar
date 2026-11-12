@@ -54,6 +54,8 @@ interface Active {
   stopped: boolean;
   ready: boolean;
   lastHeartbeat: number;
+  heartbeatSentAt?: number;
+  controlRoundTripMs?: number;
   timer?: ReturnType<typeof setInterval>;
   settlement: Promise<boolean>;
   finishSettlement(value: boolean): void;
@@ -159,9 +161,13 @@ export function createRemoteDesktopClientCore(options: {
     }
     const session = active.get(message.attachmentId);
     if (!session) return;
-    if (message.type === `desktop.${options.path}.heartbeat`)
+    if (message.type === `desktop.${options.path}.heartbeat`) {
       session.lastHeartbeat = performance.now();
-    else if (
+      if (session.heartbeatSentAt !== undefined) {
+        session.controlRoundTripMs = session.lastHeartbeat - session.heartbeatSentAt;
+        delete session.heartbeatSentAt;
+      }
+    } else if (
       message.type === 'desktop.direct.closed' ||
       message.type === 'desktop.direct.error' ||
       message.type === 'desktop.relay.closed' ||
@@ -170,10 +176,14 @@ export function createRemoteDesktopClientCore(options: {
       stop(message.attachmentId, session, message.code);
   }
 
-  async function attach(
-    input: DesktopClientInput
-  ): Promise<
-    { readonly channel: RemoteDesktopChannel; ready(): void; close(): Promise<boolean> } | undefined
+  async function attach(input: DesktopClientInput): Promise<
+    | {
+        readonly channel: RemoteDesktopChannel;
+        readonly controlRoundTripMs: number | undefined;
+        ready(): void;
+        close(): Promise<boolean>;
+      }
+    | undefined
   > {
     if (disposed || uncertain) throw options.error('DESKTOP_CONTROL_UNAVAILABLE');
     const transport = options.acquire(input.nodeId, input.nodeGeneration);
@@ -234,6 +244,7 @@ export function createRemoteDesktopClientCore(options: {
               { once: true }
             );
             current.timer = setInterval(() => {
+              current.heartbeatSentAt ??= performance.now();
               if (
                 performance.now() - current.lastHeartbeat > 30_000 ||
                 !send({
@@ -286,6 +297,9 @@ export function createRemoteDesktopClientCore(options: {
       });
       return {
         channel,
+        get controlRoundTripMs() {
+          return current.stopped ? undefined : current.controlRoundTripMs;
+        },
         ready() {
           if (current.stopped || current.ready) return;
           current.ready = true;

@@ -56,8 +56,44 @@ function fixture() {
   };
   return { raw, createSocket, send, signal, onDisconnected, client, input, prepared };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 describe('remote desktop Relay client', () => {
+  it('reports the existing authorization heartbeat RTT without adding transport traffic', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
+    const f = fixture();
+    const pending = f.client.attach(f.input);
+    f.client.handle(f.prepared);
+    await vi.waitFor(() => expect(f.createSocket).toHaveBeenCalledOnce());
+    f.raw.open();
+    f.raw.receive(JSON.stringify({ type: 'ATTACHED', attachmentId: f.prepared.attachmentId }));
+    const handle = (await pending)!;
+    expect(handle.controlRoundTripMs).toBeUndefined();
+    vi.advanceTimersByTime(10_000);
+    expect(f.send).toHaveBeenCalledWith({
+      type: 'desktop.relay.heartbeat',
+      attachmentId: f.prepared.attachmentId
+    });
+    clock.mockReturnValue(137);
+    f.client.handle({
+      type: 'desktop.relay.heartbeat',
+      attachmentId: f.prepared.attachmentId,
+      expiresAt: Date.now() + 30_000
+    });
+    expect(handle.controlRoundTripMs).toBe(37);
+    void handle.close();
+    expect(handle.controlRoundTripMs).toBeUndefined();
+    f.client.handle({
+      type: 'desktop.relay.settled',
+      attachmentId: f.prepared.attachmentId,
+      code: 'DESKTOP_CONTROL_UNAVAILABLE'
+    });
+    f.client.close();
+  });
   it('uses the settled Node code when data closes before the control event', async () => {
     const f = fixture();
     const pending = f.client.attach(f.input);

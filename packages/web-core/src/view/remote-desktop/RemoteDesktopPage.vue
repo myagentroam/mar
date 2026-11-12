@@ -8,6 +8,7 @@ import {
 } from '../../service/standalone-remote-desktop-service.js';
 import { remoteDesktopViewport } from '../../service/remote-desktop-viewport.js';
 import { remoteDesktopEncodings } from '../../service/remote-desktop-encodings.js';
+import { createRemoteDesktopStatistics } from '../../service/remote-desktop-statistics.js';
 
 const props = defineProps<{ readonly nodeId: string }>();
 type Mode = 'VIEW' | 'CONTROL';
@@ -27,6 +28,8 @@ const textFailed = ref(false);
 const stage = ref<HTMLElement>();
 const target = ref<HTMLElement>();
 const renderKey = ref(0);
+const statistics = shallowRef<ReturnType<typeof createRemoteDesktopStatistics>>();
+const metrics = computed(() => statistics.value?.value.value);
 const stageSize = ref({ width: 1, height: 1 });
 const viewport = computed(() =>
   discovery.value
@@ -63,6 +66,8 @@ function codeOf(error: unknown): string {
     : 'DESKTOP_UNAVAILABLE';
 }
 function detachDisplay(): void {
+  statistics.value?.close();
+  statistics.value = undefined;
   softText.value = '';
   softKeyboardOpen.value = false;
   textFailed.value = false;
@@ -118,6 +123,12 @@ async function connect(nextMode: Mode): Promise<void> {
       allowedEncodings: remoteDesktopEncodings(nextMode)
     });
     rfb = client;
+    statistics.value = createRemoteDesktopStatistics({
+      frames: client,
+      channel: next.channel,
+      path: next.path,
+      controlRoundTripMs: () => next.controlRoundTripMs
+    });
     client.viewOnly = nextMode === 'VIEW';
     client.scaleViewport = true;
     client.qualityLevel = quality.value;
@@ -172,6 +183,13 @@ async function discoverAndConnect(): Promise<void> {
   } finally {
     if (opening === controller) opening = undefined;
   }
+}
+
+function dataRate(bytes: number | undefined): string {
+  if (bytes === undefined) return '—';
+  if (bytes < 1024) return `${Math.round(bytes)} B/s`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB/s`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB/s`;
 }
 
 function stopActivity(hidden: boolean): void {
@@ -372,6 +390,19 @@ onBeforeUnmount(() => {
           }"
         />
       </div>
+      <div
+        v-if="state === 'ready' && mode === 'VIEW' && discovery?.capability.supportsControl"
+        class="remote-desktop-control-prompt"
+      >
+        <el-button
+          type="primary"
+          plain
+          size="large"
+          data-testid="desktop-control-prompt"
+          @click="connect('CONTROL')"
+          >{{ translate('remoteDesktop.controlling') }}</el-button
+        >
+      </div>
       <div v-if="state !== 'ready'" class="remote-desktop-overlay" role="status">
         <p>
           {{
@@ -394,6 +425,39 @@ onBeforeUnmount(() => {
         }}</el-button>
       </div>
     </div>
+    <footer
+      v-if="state === 'ready' && metrics"
+      v-tooltip="translate('remoteDesktop.statisticsHint')"
+      class="remote-desktop-statistics"
+      :aria-label="translate('remoteDesktop.statistics')"
+      data-testid="desktop-statistics"
+    >
+      <span
+        >{{ translate('remoteDesktop.connection') }}:
+        {{
+          translate(metrics.path === 'direct' ? 'remoteDesktop.direct' : 'remoteDesktop.relay')
+        }}</span
+      >
+      <span
+        >{{ translate('remoteDesktop.latency') }}:
+        {{
+          metrics.controlRoundTripMs === undefined
+            ? '—'
+            : `${Math.round(metrics.controlRoundTripMs)} ms`
+        }}</span
+      >
+      <span
+        >{{ translate('remoteDesktop.frameRate') }}:
+        {{ metrics.framesPerSecond?.toFixed(1) ?? '—' }} FPS</span
+      >
+      <span
+        >{{ translate('remoteDesktop.receiving') }}:
+        {{ dataRate(metrics.receivedBytesPerSecond) }}</span
+      >
+      <span
+        >{{ translate('remoteDesktop.sending') }}: {{ dataRate(metrics.sentBytesPerSecond) }}</span
+      >
+    </footer>
     <p v-if="pasteError" class="remote-desktop-message" role="alert">
       {{ translate('remoteDesktop.pasteFailed') }}
     </p>
@@ -418,6 +482,21 @@ onBeforeUnmount(() => {
   padding: 10px 16px;
   border-bottom: 1px solid var(--el-border-color);
   background: var(--el-bg-color);
+}
+.remote-desktop-statistics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  flex-shrink: 0;
+  padding: 6px 16px;
+  border-top: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.remote-desktop-statistics span {
+  white-space: nowrap;
 }
 .remote-desktop-title {
   display: flex;
@@ -473,6 +552,16 @@ onBeforeUnmount(() => {
 }
 .remote-desktop-target {
   position: absolute;
+}
+.remote-desktop-control-prompt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.remote-desktop-control-prompt :deep(.el-button) {
+  pointer-events: auto;
 }
 .remote-desktop-overlay {
   position: absolute;
