@@ -192,14 +192,17 @@ for (const theme of ['daylight', 'midnight']) {
         await expect(help).toHaveText('');
         await expect(help.locator('svg')).toBeVisible();
         const iconBounds = (await help.locator('svg').boundingBox())!;
-        expect(iconBounds.width).toBe(22);
-        expect(iconBounds.height).toBe(22);
+        expect(iconBounds.width).toBe(width >= 768 ? 16 : 22);
+        expect(iconBounds.height).toBe(width >= 768 ? 16 : 22);
+        await expect(help).toHaveCSS('width', width >= 768 ? '24px' : '36px');
+        await expect(help).toHaveCSS('height', width >= 768 ? '24px' : '36px');
         if (width >= 768) {
           const bounds = (await help.boundingBox())!;
           expect(bounds.width).toBe(bounds.height);
           expect(width - bounds.x - bounds.width).toBeGreaterThanOrEqual(8);
           expect(width - bounds.x - bounds.width).toBeLessThanOrEqual(12);
         } else await expect(help).toHaveCSS('position', 'static');
+        await help.screenshot({ path: testInfo.outputPath(`help-density-${width}.png`) });
         for (const custom of [false, true]) {
           if (custom)
             await page.locator('html').evaluate((element) => {

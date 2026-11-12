@@ -614,6 +614,12 @@ function openBlankMenu(event: MouseEvent): void {
     pointer-events: auto;
   }
 
+  .documentation-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+
   .workbench-brand {
     transition:
       width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),

@@ -1387,9 +1387,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(copy.locator('code')).toHaveCSS('color', tokens.primary);
       await expect(copy).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const messageAction = page.locator('.conversation-message-action').first();
+      const messageIconSize = await messageAction.locator('svg').evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { width: style.width, height: style.height };
+      });
       await messageAction.hover();
+      await expect(messageAction).toHaveCSS('width', width >= 768 ? '24px' : '36px');
+      await expect(messageAction).toHaveCSS('height', width >= 768 ? '24px' : '36px');
+      await expect(messageAction.locator('svg')).toHaveCSS('width', messageIconSize.width);
+      await expect(messageAction.locator('svg')).toHaveCSS('height', messageIconSize.height);
       await expect(messageAction).toHaveCSS('background-color', tokens.utilityHover);
       await expect(messageAction).toHaveCSS('border-radius', '6px');
+      await messageAction.locator('..').screenshot({
+        path: testInfo.outputPath(`message-action-density-${theme}-${width}.png`)
+      });
       await messageAction.focus();
       await page.keyboard.press('Tab');
       await page.keyboard.press('Shift+Tab');
@@ -1473,6 +1484,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const toolHeading = await tool.locator(':scope > summary').boundingBox();
       const groupHeading = await tool.locator('..').locator(':scope > summary').boundingBox();
       expect(toolHeading!.x).toBeGreaterThan(groupHeading!.x);
+      if (!(await tool.evaluate((element) => (element as HTMLDetailsElement).open)))
+        await tool.locator(':scope > summary').click();
+      const recordCopy = tool.locator('.tool-detail-copy').first();
+      await recordCopy.hover();
+      await expect(recordCopy).toHaveCSS('width', width >= 768 ? '24px' : '28px');
+      await expect(recordCopy).toHaveCSS('height', width >= 768 ? '24px' : '28px');
+      await expect(recordCopy).toHaveCSS('background-color', tokens.utilityHover);
       await treeToggle.click();
       await expect(treeToggle).toHaveAttribute('aria-expanded', 'false');
       await treeToggle.click();
