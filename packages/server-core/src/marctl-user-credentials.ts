@@ -30,6 +30,10 @@ export interface MarctlExecutionScope {
   readonly workspaceId: string;
 }
 
+export type MarctlServerUrlForNode = (
+  nodeId: string
+) => string | undefined | Promise<string | undefined>;
+
 export type MarctlCredentialSource =
   | { readonly type: 'terminal' }
   | { readonly type: 'delegation' }

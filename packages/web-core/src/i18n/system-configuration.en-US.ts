@@ -13,8 +13,6 @@ export const systemConfigurationEnUS = {
       actions: 'Actions',
       edit: 'Edit',
       save: 'Save',
-      skillSourceTLSCertificateVerificationIsDisabled:
-        'Skill source TLS certificate verification is disabled. Downloaded versions will be marked as unverified.',
       disableSkillSourceTLSVerification: 'Disable Skill Source TLS Verification',
       htmlPreviewOrigin: 'HTML preview origin',
       htmlPreviewOriginDescription:

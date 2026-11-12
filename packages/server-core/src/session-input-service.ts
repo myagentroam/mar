@@ -6,7 +6,7 @@ import type {
   MarAgentModelService,
   MarAgentRuntimeModelService
 } from './session-run-contracts.js';
-import type { MarctlUserCredentials } from './marctl-user-credentials.js';
+import type { MarctlServerUrlForNode, MarctlUserCredentials } from './marctl-user-credentials.js';
 import { prepareSessionExecutionContext } from './session-execution-context.js';
 import {
   recordSharedConversationAudit,
@@ -87,6 +87,7 @@ interface Options {
   /** Legacy Browser commands use Workspace only for preparation and authorization. */
   readonly commandWorkspaceInPayload?: boolean;
   readonly publicOrigin: string | undefined;
+  readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
 }
 
 /** Shared execution entry for authenticated callers; the Node broker authorizes each operation. */
@@ -242,6 +243,8 @@ export class SessionInputService {
     context: Omit<SessionControlContext, 'sessionId'> & { readonly sessionId?: string },
     modelId: string | undefined
   ): Promise<object> {
+    const serverUrl =
+      (await this.options.marctlServerUrlForNode?.(context.nodeId)) ?? this.options.publicOrigin;
     return prepareSessionExecutionContext({
       user: context.user,
       nodeId: context.nodeId,
@@ -249,7 +252,7 @@ export class SessionInputService {
       secrets: this.options.secrets,
       credentials: this.options.userCredentials,
       instructions: this.options.personalInstructions,
-      serverUrl: this.options.publicOrigin,
+      serverUrl,
       ...(this.options.searchBackendAvailable === undefined
         ? {}
         : { searchBackendAvailable: this.options.searchBackendAvailable() }),

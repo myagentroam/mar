@@ -11,7 +11,10 @@ import type { EnvironmentSecretService } from '../service/environment-secret-ser
 import type { MysqlEnvironmentSecretService } from '../mysql/environment-secret-service.js';
 import type { ResourceAccessService } from '../rbac/resource-access-service.js';
 import type { ResourceMutationService } from '../rbac/resource-mutation-service.js';
-import type { MarctlUserCredentials } from '@myagentroam/server-core/marctl-user-credentials';
+import type {
+  MarctlServerUrlForNode,
+  MarctlUserCredentials
+} from '@myagentroam/server-core/marctl-user-credentials';
 import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
 import type { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 import type { MarAgentModelService } from '../service/mar-agent-model-service.js';
@@ -32,6 +35,7 @@ export function registerNodeRoutes(input: {
   readonly nodeUpgrades: Pick<NodeUpgradeService, 'availability'>;
   readonly nodeUpgradeProgress?: NodeUpgradeProgress;
   readonly publicOrigin: string | undefined;
+  readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
   readonly capabilities: ServerWorkbenchCapabilities;
   readonly secrets: EnvironmentSecretService | MysqlEnvironmentSecretService;
   readonly userCredentials?: MarctlUserCredentials;
@@ -175,7 +179,10 @@ export function registerNodeRoutes(input: {
     secrets,
     publicOrigin,
     databaseError,
-    ...(input.userCredentials === undefined ? {} : { userCredentials: input.userCredentials })
+    ...(input.userCredentials === undefined ? {} : { userCredentials: input.userCredentials }),
+    ...(input.marctlServerUrlForNode === undefined
+      ? {}
+      : { marctlServerUrlForNode: input.marctlServerUrlForNode })
   });
 
   app.get<{ Params: { nodeId: string } }>('/api/nodes/:nodeId/metrics', async (request, reply) => {

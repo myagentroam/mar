@@ -39,10 +39,15 @@ describe('mail notification MCP capability', () => {
         email: { status: 'accepted' as const }
       })
     );
-    const server = new NotificationMcpBridge((capability) => capability, email, {
-      supported: () => true,
-      send: channels
-    });
+    let active = true;
+    const server = new NotificationMcpBridge(
+      (capability) => (active ? capability : undefined),
+      email,
+      {
+        supported: () => true,
+        send: channels
+      }
+    );
     let client: Client | undefined;
     try {
       const executionServer = await server.prepare({
@@ -153,7 +158,7 @@ describe('mail notification MCP capability', () => {
       expect(
         await invoke(endpoint, token, { userId: 99, message: 'Bad' }, 'send_notification')
       ).toEqual({ error: 'NOTIFICATION_INPUT_INVALID' });
-      server.revoke('run-1');
+      active = false;
       const late = await client.callTool({
         name: 'send_notification',
         arguments: { message: 'Too late' }
@@ -235,9 +240,11 @@ describe('mail notification MCP capability', () => {
         ).toEqual({
           error: 'MAIL_CAPABILITY_STALE'
         });
-        server.revoke('run-1');
         expect(
-          await invoke(endpoint, token, { templateId: 'notification-en-US', message: 'Again' })
+          await invoke(endpoint, 'invalid', {
+            templateId: 'notification-en-US',
+            message: 'Again'
+          })
         ).toEqual({
           error: 'MAIL_CAPABILITY_INVALID'
         });

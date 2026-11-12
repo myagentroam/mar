@@ -163,17 +163,24 @@ async function confirmRemove(user: ManagedUser): Promise<void> {
     /* The user cancelled or closed the confirmation dialog. */
   }
 }
-function copyCredential(value: string): void {
-  void window.navigator.clipboard.writeText(value);
-}
-function copyCredentials(): void {
-  if (credentialResult.value === undefined) return;
-  copyCredential(
-    translate('generated.userManagementPage.usernamePassword', {
-      value0: credentialResult.value.username,
-      value1: credentialResult.value.password
-    })
-  );
+async function copyCredentials(): Promise<void> {
+  const credentials = credentialResult.value;
+  if (credentials === undefined) return;
+  try {
+    const clipboard = window.navigator.clipboard;
+    if (typeof clipboard?.writeText !== 'function') throw new Error('CLIPBOARD_UNAVAILABLE');
+    await clipboard.writeText(
+      translate('generated.userManagementPage.usernamePassword', {
+        value0: credentials.username,
+        value1: credentials.password
+      })
+    );
+  } catch {
+    showMessage(
+      translate('generated.userManagementPage.unableToAccessTheClipboardCopyThe'),
+      'error'
+    );
+  }
 }
 onMounted(() => {
   usersPage.start();

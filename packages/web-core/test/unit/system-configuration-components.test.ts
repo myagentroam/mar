@@ -73,6 +73,26 @@ describe('Public system configuration page', () => {
     }
   );
 
+  it.each(['zh-CN', 'en-US'] as const)(
+    'keeps TLS guidance in its setting without a page-level error when verification is disabled (%s)',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const request = vi.fn().mockResolvedValue({ skillTlsVerificationDisabled: true });
+      const view = renderComponent(Page, { request, writable: false });
+      try {
+        await flushComponent();
+        const messages = commonMessages[locale].generated.systemConfigurationPage;
+        const content = textContent(view.root);
+        expect(content).toContain(messages.disableSkillSourceTLSVerification);
+        expect(content).toContain(messages.keepThisOffByDefaultUseIt);
+        expect(view.findAll('ElAlert')).toHaveLength(0);
+        expect(request).toHaveBeenCalledExactlyOnceWith('/api/system-settings');
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it('renders the complete configuration and never persists its snapshot in browser storage', async () => {
     vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
     const storage = {

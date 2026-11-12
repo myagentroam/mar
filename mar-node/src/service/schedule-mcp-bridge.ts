@@ -1,6 +1,8 @@
 import type { ResolvedMcpServer } from '../mcp/model.js';
 import { NODE_MCP } from '../mcp/naming.js';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { McpCapabilityToken } from '../mcp/capability-token.js';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { existsSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { createServer, type Server, type Socket } from 'node:net';
@@ -9,14 +11,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ScheduledSessionStore } from './scheduled-session-store.js';
 
-interface Capability {
-  readonly executionId: string;
-  readonly sessionId: string;
-  readonly workspaceId?: string;
-  readonly taskId?: string;
-  readonly revision?: number;
-  readonly actorUserId: number;
-}
+const capabilitySchema = z.object({
+  executionId: z.string(),
+  sessionId: z.string(),
+  workspaceId: z.string().optional(),
+  taskId: z.string().optional(),
+  revision: z.number().int().nonnegative().optional(),
+  actorUserId: z.number().int().positive()
+});
+type Capability = z.infer<typeof capabilitySchema>;
 
 interface Request {
   readonly token?: unknown;
@@ -24,8 +27,9 @@ interface Request {
   readonly arguments?: unknown;
 }
 
+/** Owns task IPC, revision checks and private credential renewal after successful edits. */
 export class ScheduleMcpBridge {
-  readonly #capabilities = new Map<string, Capability>();
+  readonly #tokens = new McpCapabilityToken(NODE_MCP.schedule.name, capabilitySchema);
   readonly #sockets = new Set<Socket>();
   readonly #endpoint =
     process.platform === 'win32'
@@ -37,21 +41,20 @@ export class ScheduleMcpBridge {
     private readonly store: () => ScheduledSessionStore,
     private readonly changed: (sessionId: string) => void,
     private readonly proposed: (sessionId: string, proposalId: string) => void,
+    private readonly resolveExecution: (capability: Capability) => string | undefined,
     private readonly create?: (input: {
       readonly sessionId: string;
       readonly workspaceId: string;
       readonly actorUserId: number;
       readonly objective: string;
       readonly cron: string;
-    }) => Promise<{ readonly id: string; readonly sessionId: string; readonly revision: number }>,
-    private readonly resolveSessionId?: (sessionId: string) => string
+    }) => Promise<{ readonly id: string; readonly sessionId: string; readonly revision: number }>
   ) {}
 
   async prepare(capability: Capability): Promise<ResolvedMcpServer> {
     await this.#listen();
     const args = scheduleMcpStdioArgs();
-    const token = randomBytes(32).toString('base64url');
-    this.#capabilities.set(token, capability);
+    const token = this.#tokens.sign(capability);
     return {
       name: NODE_MCP.schedule.name,
       origin: 'BUILTIN',
@@ -71,15 +74,9 @@ export class ScheduleMcpBridge {
     };
   }
 
-  revoke(executionId: string): void {
-    for (const [token, capability] of this.#capabilities)
-      if (capability.executionId === executionId) this.#capabilities.delete(token);
-  }
-
   async close(): Promise<void> {
     if (this.#listening === undefined) return;
     const server = await this.#listening;
-    this.#capabilities.clear();
     const closed = new Promise<void>((resolve, reject) =>
       server.close((error) => (error === undefined ? resolve() : reject(error)))
     );
@@ -115,21 +112,24 @@ export class ScheduleMcpBridge {
   async #respond(socket: Socket, body: string): Promise<void> {
     try {
       const request = JSON.parse(body) as Request;
-      const capability =
-        typeof request.token === 'string' ? this.#capabilities.get(request.token) : undefined;
+      const capability = this.#tokens.verify(request.token);
       if (capability === undefined) throw new Error('SCHEDULE_CAPABILITY_INVALID');
-      const sessionId = this.resolveSessionId?.(capability.sessionId) ?? capability.sessionId;
+      const sessionId = this.resolveExecution(capability);
+      if (sessionId === undefined) throw new Error('SCHEDULE_CAPABILITY_STALE');
       const task = this.store().get(sessionId);
+      if (request.tool === NODE_MCP.schedule.tools.get) {
+        // A create may commit before stdio receives the token that binds its task identity.
+        if (capability.taskId !== undefined && task?.id !== capability.taskId)
+          throw new Error('SCHEDULE_CAPABILITY_STALE');
+        socket.end(`${JSON.stringify({ result: task ?? null })}\n`);
+        return;
+      }
       if (
         (task === undefined && capability.taskId !== undefined) ||
         (task !== undefined &&
           (task.id !== capability.taskId || task.revision !== capability.revision))
       )
         throw new Error('SCHEDULE_CAPABILITY_STALE');
-      if (request.tool === NODE_MCP.schedule.tools.get) {
-        socket.end(`${JSON.stringify({ result: task ?? null })}\n`);
-        return;
-      }
       if (request.tool === NODE_MCP.schedule.tools.create) {
         if (task !== undefined) throw new Error('SCHEDULE_ALREADY_EXISTS');
         const args = record(request.arguments);
@@ -141,19 +141,19 @@ export class ScheduleMcpBridge {
         )
           throw new Error('SCHEDULE_INVALID');
         const created = await this.create({
-          sessionId: capability.sessionId,
+          sessionId,
           workspaceId: capability.workspaceId,
           actorUserId: capability.actorUserId,
           objective: args.objective,
           cron: args.cron
         });
-        this.#capabilities.set(request.token as string, {
+        const token = this.#tokens.sign({
           ...capability,
           sessionId: created.sessionId,
           taskId: created.id,
           revision: created.revision
         });
-        socket.end(`${JSON.stringify({ result: created })}\n`);
+        socket.end(`${JSON.stringify({ result: created, token })}\n`);
         return;
       }
       if (request.tool !== NODE_MCP.schedule.tools.update) throw new Error('SCHEDULE_TOOL_INVALID');
@@ -169,12 +169,12 @@ export class ScheduleMcpBridge {
         this.proposed(task.sessionId, result.proposalId);
         socket.end(`${JSON.stringify({ result })}\n`);
       } else {
-        this.#capabilities.set(request.token as string, {
+        const token = this.#tokens.sign({
           ...capability,
           revision: result.revision
         });
         this.changed(task.sessionId);
-        socket.end(`${JSON.stringify({ result })}\n`);
+        socket.end(`${JSON.stringify({ result, token })}\n`);
       }
     } catch (error) {
       socket.end(

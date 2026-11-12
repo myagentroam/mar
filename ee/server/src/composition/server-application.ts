@@ -97,6 +97,8 @@ export interface ServerAppOptions {
   readonly databaseUrl?: string;
   readonly secureCookies?: boolean;
   readonly publicOrigin?: string;
+  readonly quickStartLocalServerUrl?: string;
+  readonly readQuickStartLocalNodeId?: () => Promise<string | undefined>;
   readonly logger?: boolean;
   readonly now?: () => number;
   readonly productUuid?: string | null;
@@ -136,6 +138,11 @@ export async function composeServerApplication(
   const dataDirectory = resolve(options.dataDirectory ?? process.env['MAR_DATA_DIR'] ?? './data');
   const skillCacheDirectory = resolve(dataDirectory, 'skills');
   const publicOrigin = options.publicOrigin ?? process.env['MAR_PUBLIC_ORIGIN'];
+  // Quick Start reads its managed identity from the owned Node config at credential preparation time.
+  const marctlServerUrlForNode = async (nodeId: string): Promise<string | undefined> =>
+    quickStart && (await options.readQuickStartLocalNodeId?.()) === nodeId
+      ? (options.quickStartLocalServerUrl ?? publicOrigin)
+      : publicOrigin;
   // The listener is HTTP; external HTTPS termination must declare its public origin.
   // The public browser origin, not the proxy's internal HTTP hop, owns Cookie transport policy.
   const secureCookies =
@@ -469,6 +476,7 @@ export async function composeServerApplication(
       nodeUpgrades,
       nodeUpgradeProgress,
       publicOrigin,
+      marctlServerUrlForNode,
       capabilities: SERVER_WORKBENCH_CAPABILITIES,
       secrets: environmentSecrets,
       userCredentials,
@@ -516,6 +524,7 @@ export async function composeServerApplication(
         nodeControl,
         secrets: environmentSecrets,
         publicOrigin,
+        marctlServerUrlForNode,
         userCredentials,
         personalInstructions,
         marAgentModels,
@@ -565,7 +574,8 @@ export async function composeServerApplication(
       marAgentModels,
       marAgentRuntimeModels,
       audits,
-      publicOrigin
+      publicOrigin,
+      marctlServerUrlForNode
     });
     registerRunControlRoutes({
       ...searchProjection,
@@ -578,7 +588,8 @@ export async function composeServerApplication(
       marAgentModels,
       marAgentRuntimeModels,
       audits,
-      publicOrigin
+      publicOrigin,
+      marctlServerUrlForNode
     });
     registerEnvironmentSecretRoutes({
       app,

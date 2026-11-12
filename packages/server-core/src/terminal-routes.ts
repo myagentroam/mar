@@ -5,7 +5,7 @@ import { sendError } from './http-errors.js';
 import { isNonEmptyString, requestUserNode } from './workspace-http-support.js';
 import type { WorkspaceNodeControl } from './workspace-route-contracts.js';
 import type { TerminalRelayService } from './terminal-relay-service.js';
-import type { MarctlUserCredentials } from './marctl-user-credentials.js';
+import type { MarctlServerUrlForNode, MarctlUserCredentials } from './marctl-user-credentials.js';
 
 export function registerTerminalRoutes(input: {
   app: FastifyInstance;
@@ -20,6 +20,7 @@ export function registerTerminalRoutes(input: {
     ): Readonly<Record<string, string>> | Promise<Readonly<Record<string, string>>>;
   };
   userCredentials?: MarctlUserCredentials;
+  marctlServerUrlForNode?: MarctlServerUrlForNode;
   nodeControl: Pick<WorkspaceNodeControl, 'requestNode'> & {
     createTerminalTicket: TerminalRelayService['createTicket'];
     closeTerminal: TerminalRelayService['closeTerminal'];
@@ -50,6 +51,7 @@ export function registerTerminalRoutes(input: {
       return sendError(reply, 400, 'TERMINAL_OPEN_INVALID');
     }
     try {
+      const serverUrl = (await input.marctlServerUrlForNode?.(body.nodeId)) ?? publicOrigin;
       return reply.code(201).send(
         await requestUserNode(nodeControl, admin, body.nodeId, 'terminal.open', {
           ...(typeof body.profileId === 'string' ? { profileId: body.profileId } : {}),
@@ -65,7 +67,7 @@ export function registerTerminalRoutes(input: {
             MAR_USERNAME: admin.username,
             ...(await input.userCredentials?.environment(
               admin,
-              publicOrigin,
+              serverUrl,
               typeof body.workspaceId === 'string'
                 ? { nodeId: body.nodeId, workspaceId: body.workspaceId }
                 : undefined

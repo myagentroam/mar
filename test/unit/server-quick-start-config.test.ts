@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createQuickStartConfig,
   readQuickStartConfig,
@@ -11,14 +11,79 @@ import {
   writeQuickStartConfig
 } from '../../mar-server/src/quick-start/config.js';
 
+const createQuickStartServerAppMock = vi.hoisted(() => vi.fn());
+
 const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(
     directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))
   );
+  vi.doUnmock('../../ee/server/src/app.ts');
+  vi.resetModules();
+  createQuickStartServerAppMock.mockReset();
+  vi.unstubAllEnvs();
 });
 
 describe('Quick Start configuration', () => {
+  it('passes the resolved public and local Node URLs to Quick Start application assembly', async () => {
+    const publicOrigin = 'https://public.invalid';
+    vi.stubEnv('MAR_SERVER_HOST', '0.0.0.0');
+    vi.stubEnv('MAR_PUBLIC_ORIGIN', publicOrigin);
+    createQuickStartServerAppMock.mockResolvedValue({ app: {} });
+    vi.doMock('../../ee/server/src/app.ts', () => ({
+      createQuickStartServerApp: createQuickStartServerAppMock
+    }));
+    const config = createQuickStartConfig({
+      serverPort: 5190,
+      mysqlPort: 5191,
+      node: true,
+      search: 'disabled'
+    });
+    const root = await mkdtemp(join(tmpdir(), 'mar-quick-application-'));
+    directories.push(root);
+    const { createLocalApplication } =
+      await import('../../mar-server/src/quick-start/application.js');
+
+    await createLocalApplication(root, config);
+
+    const options = createQuickStartServerAppMock.mock.calls[0]?.[0] as {
+      readonly publicOrigin: string;
+      readonly quickStartLocalServerUrl: string;
+      readonly readQuickStartLocalNodeId?: () => Promise<string | undefined>;
+    };
+    expect({
+      publicOrigin: options.publicOrigin,
+      quickStartLocalServerUrl: options.quickStartLocalServerUrl
+    }).toEqual({ publicOrigin, quickStartLocalServerUrl: 'http://127.0.0.1:5190' });
+    expect(options.readQuickStartLocalNodeId).toBeTypeOf('function');
+    if (options.readQuickStartLocalNodeId === undefined) return;
+
+    await expect(options.readQuickStartLocalNodeId()).resolves.toBeUndefined();
+    await mkdir(join(root, 'node-data'));
+    const nodeConfigPath = join(root, 'node-data/node.json');
+    await writeFile(nodeConfigPath, JSON.stringify({ registrationToken: 'fixture-pending' }));
+    await expect(options.readQuickStartLocalNodeId()).resolves.toBeUndefined();
+    await writeFile(nodeConfigPath, JSON.stringify({ nodeId: 'fixture-partial-node' }));
+    await expect(options.readQuickStartLocalNodeId()).resolves.toBeUndefined();
+    await writeFile(
+      nodeConfigPath,
+      JSON.stringify({ nodeId: 'fixture-local-node', credential: 'fixture-node-credential' })
+    );
+    await expect(options.readQuickStartLocalNodeId()).resolves.toBe('fixture-local-node');
+    await writeFile(nodeConfigPath, '{"credential":"UNSAFE_FIXTURE_SECRET');
+    await expect(options.readQuickStartLocalNodeId()).rejects.toThrow(
+      'QUICK_START_NODE_CONFIG_INVALID'
+    );
+    await expect(options.readQuickStartLocalNodeId()).rejects.not.toThrow('UNSAFE_FIXTURE_SECRET');
+    await rm(nodeConfigPath);
+    await mkdir(nodeConfigPath);
+    const readError = await options.readQuickStartLocalNodeId().catch((error: unknown) => error);
+    expect(readError).toMatchObject({
+      code: 'QUICK_START_NODE_CONFIG_READ_FAILED',
+      message: 'QUICK_START_NODE_CONFIG_READ_FAILED'
+    });
+  });
+
   it('separates public HTTP/HTTPS origins from managed Node traffic', () => {
     expect(resolveQuickStartNetwork({ serverPort: 5190 }, {})).toEqual({
       host: '127.0.0.1',

@@ -51,6 +51,8 @@ export interface NodeRunnerExecution {
   readonly status: 'STARTING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED';
   readonly startedAt: number;
   readonly completedAt: number | null;
+  /** Execution resources may be released before the Runner reports its terminal event. */
+  readonly mcpRevoked?: true;
 }
 
 export interface NodeRunEvent {

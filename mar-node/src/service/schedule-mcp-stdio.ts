@@ -5,8 +5,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 const endpoint = process.env['MAR_SCHEDULE_MCP_ENDPOINT'];
-const token = process.env['MAR_SCHEDULE_MCP_TOKEN'];
+let token = process.env['MAR_SCHEDULE_MCP_TOKEN'];
 if (endpoint === undefined || token === undefined) throw new Error('SCHEDULE_CAPABILITY_INVALID');
+// This client owns one rotating credential; consume renewals before dispatching later calls.
+let previousRequest: Promise<unknown> = Promise.resolve();
 
 const server = new McpServer({ name: NODE_MCP.schedule.name, version: NODE_MCP_VERSION });
 const scopeNote =
@@ -22,7 +24,7 @@ server.registerTool(
       'Read the MAR scheduled task bound to this MAR-managed Workspace conversation, or null if none exists. ' +
       scopeNote
   },
-  async () => result(await request(NODE_MCP.schedule.tools.get, {}))
+  async (extra) => result(await request(NODE_MCP.schedule.tools.get, {}, extra.signal))
 );
 server.registerTool(
   NODE_MCP.schedule.tools.create,
@@ -41,7 +43,7 @@ server.registerTool(
         )
     }
   },
-  async (args) => result(await request(NODE_MCP.schedule.tools.create, args))
+  async (args, extra) => result(await request(NODE_MCP.schedule.tools.create, args, extra.signal))
 );
 server.registerTool(
   NODE_MCP.schedule.tools.update,
@@ -59,28 +61,59 @@ server.registerTool(
         .optional()
     }
   },
-  async (args) => result(await request(NODE_MCP.schedule.tools.update, args))
+  async (args, extra) => result(await request(NODE_MCP.schedule.tools.update, args, extra.signal))
 );
 
 await server.connect(new StdioServerTransport());
 
-function request(tool: string, args: unknown): Promise<unknown> {
+function request(tool: string, args: unknown, signal: AbortSignal): Promise<unknown> {
+  const operation = previousRequest.then(() => exchange(tool, args, signal));
+  previousRequest = operation.catch(() => undefined);
+  return operation;
+}
+
+function exchange(tool: string, args: unknown, signal: AbortSignal): Promise<unknown> {
+  if (signal.aborted)
+    return Promise.reject(
+      new Error('SCHEDULE_CALL_CANCELLED: The schedule call was cancelled before dispatch.')
+    );
   return new Promise((resolve, reject) => {
     const socket = connect(endpoint!);
+    const abort = () =>
+      socket.destroy(
+        new Error(
+          'SCHEDULE_DELIVERY_UNCERTAIN: The schedule call was cancelled after dispatch; its result is uncertain.'
+        )
+      );
+    signal.addEventListener('abort', abort, { once: true });
+    socket.once('close', () => signal.removeEventListener('abort', abort));
     let body = '';
     socket.setEncoding('utf8');
     socket.once('connect', () =>
-      socket.end(`${JSON.stringify({ token, tool, arguments: args })}\n`)
+      socket.write(`${JSON.stringify({ token, tool, arguments: args })}\n`)
     );
     socket.on('data', (chunk) => (body += chunk));
     socket.once('error', reject);
     socket.once('end', () => {
       try {
-        const payload = JSON.parse(body) as { readonly result?: unknown; readonly error?: string };
+        const payload = JSON.parse(body) as {
+          readonly result?: unknown;
+          readonly error?: string;
+          readonly token?: string;
+        };
         if (payload.error !== undefined) reject(new Error(payload.error));
-        else resolve(payload.result);
-      } catch (error) {
-        reject(error);
+        else {
+          // Credential renewal stays inside IPC; model-visible results never contain tokens.
+          if (typeof payload.token === 'string') token = payload.token;
+          resolve(payload.result);
+        }
+      } catch {
+        // JSON diagnostics may include a partially received private renewal credential.
+        reject(
+          new Error(
+            'SCHEDULE_IPC_RESPONSE_INVALID: The schedule service returned an invalid response.'
+          )
+        );
       }
     });
   });

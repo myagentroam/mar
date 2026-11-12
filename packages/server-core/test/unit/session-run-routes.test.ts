@@ -9,6 +9,10 @@ import { SESSION_COOKIE_NAME } from '../../src/auth.js';
 import { sendError } from '../../src/http-errors.js';
 import type { ConversationAuditObserver } from '../../src/conversation-audit.js';
 import type { MarAgentRuntimeModelService } from '../../src/session-run-contracts.js';
+import type {
+  MarctlServerUrlForNode,
+  MarctlUserCredentials
+} from '../../src/marctl-user-credentials.js';
 import {
   runnerDefaultConfigurationSchema,
   type MarAgentRuntimeModelConfiguration
@@ -1042,6 +1046,51 @@ describe('shared ordinary Session and Run routes', () => {
       );
       expect(secrets.resolve).toHaveBeenLastCalledWith(1, 'node-one', 'workspace-one');
       expect(response.body).not.toContain('forged');
+    }
+  });
+
+  it('selects terminal marctl credentials by exact Node identity and keeps public fallback', async () => {
+    const publicOrigin = 'https://public.invalid';
+    const localServerUrl = 'http://127.0.0.1:5190';
+    const environment = vi.fn(async (_user: unknown, serverUrl?: string) => ({
+      MAR_CTL_SERVER_URL: serverUrl ?? ''
+    }));
+
+    for (const [nodeId, expectedServerUrl] of [
+      ['managed-node', localServerUrl],
+      ['remote-node', publicOrigin]
+    ] as const) {
+      const input = fixture();
+      registerTerminalRoutes({
+        ...input,
+        publicOrigin,
+        marctlServerUrlForNode: (targetNodeId: string) =>
+          targetNodeId === 'managed-node' ? localServerUrl : undefined,
+        userCredentials: { environment } as unknown as MarctlUserCredentials,
+        nodeControl: {
+          ...input.nodeControl,
+          createTerminalTicket: vi.fn(),
+          closeTerminal: vi.fn()
+        }
+      });
+
+      const response = await input.app.inject({
+        method: 'POST',
+        url: '/api/terminals',
+        headers: { ...input.headers, origin: publicOrigin },
+        payload: { nodeId, workspaceId: 'workspace-one' }
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(input.requestNode).toHaveBeenCalledWith(
+        nodeId,
+        'terminal.open',
+        expect.objectContaining({
+          secretEnvironment: expect.objectContaining({ MAR_CTL_SERVER_URL: expectedServerUrl })
+        }),
+        expect.objectContaining({ userId: 1, workspaceId: 'workspace-one' }),
+        undefined
+      );
     }
   });
 

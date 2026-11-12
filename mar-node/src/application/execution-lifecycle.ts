@@ -5,9 +5,7 @@ import type { NodeModelUsageService } from '../service/model-usage-service.js';
 import type { GoalContinuationCoordinator } from '../service/goal-continuation-coordinator.js';
 import type { ContinuousRunCoordinator } from '../service/continuous-run-coordinator.js';
 import type { ScheduledSessionCoordinator } from '../service/scheduled-session-coordinator.js';
-import type { GoalMcpBridge } from '../service/goal-mcp-bridge.js';
-import type { ScheduleMcpBridge } from '../service/schedule-mcp-bridge.js';
-import type { NotificationMcpBridge } from '../service/notification-mcp-bridge.js';
+import type { NodeRuntimeState } from '../runtime-state.js';
 import type { NodeRunEventBridge } from '../service/node-run-event-bridge.js';
 import type { NodeUpgradeCoordinator } from '../service/node-upgrade-coordinator.js';
 
@@ -19,9 +17,7 @@ export class ExecutionLifecycle {
     private readonly continuous: ContinuousRunCoordinator<RunnerImageAttachment>,
     private readonly goal: GoalContinuationCoordinator,
     private readonly usage: NodeModelUsageService,
-    private readonly goalMcp: GoalMcpBridge,
-    private readonly scheduleMcp: ScheduleMcpBridge,
-    private readonly notificationMcp: NotificationMcpBridge,
+    private readonly runtime: Pick<NodeRuntimeState, 'revokeExecutionMcps'>,
     private readonly events: NodeRunEventBridge,
     private readonly upgrade: NodeUpgradeCoordinator
   ) {}
@@ -32,9 +28,7 @@ export class ExecutionLifecycle {
   }
 
   revokeMcps(executionId: string): void {
-    this.goalMcp.revoke(executionId);
-    this.scheduleMcp.revoke(executionId);
-    this.notificationMcp.revoke(executionId);
+    this.runtime.revokeExecutionMcps(executionId);
   }
 
   release(executionId: string): void {
