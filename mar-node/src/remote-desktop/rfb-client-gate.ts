@@ -11,7 +11,7 @@ export class RfbClientGate {
   static readonly maxEncodings = 256;
   static readonly maxPressedKeys = 256;
   static readonly maxQueuedFrames = 1024;
-  static readonly maxFrameBytes = RfbClientGate.maxClipboardBytes + 8;
+  static readonly maxFrameBytes = this.maxClipboardBytes + 8;
   readonly #buffer = Buffer.allocUnsafe(RfbClientGate.maxFrameBytes);
   readonly #queue: { bytes: Buffer; input: boolean }[] = [];
   readonly #keys = new Set<number>();
