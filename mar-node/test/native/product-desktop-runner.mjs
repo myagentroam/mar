@@ -13,8 +13,8 @@ import {
   symlink,
   writeFile
 } from 'node:fs/promises';
-import { createServer } from 'node:net';
-import { networkInterfaces, tmpdir } from 'node:os';
+import { createServer, isIPv4 } from 'node:net';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
@@ -97,22 +97,9 @@ async function link(from, to) {
 
 try {
   if (process.platform === 'darwin') {
-    const local = Object.values(networkInterfaces())
-      .flat()
-      .find(
-        (entry) =>
-          entry?.family === 'IPv4' &&
-          !entry.internal &&
-          entry.cidr &&
-          Number(entry.cidr.split('/')[1]) <= 30
-      );
-    assert(local, 'CI local-network consent requires a local IPv4 subnet.');
-    const address =
-      local.address.split('.').reduce((value, octet) => (value << 8) | Number(octet), 0) >>> 0;
-    const hostMask = 0xffffffff >>> Number(local.cidr.split('/')[1]);
-    const host = (address & hostMask) === hostMask - 1 ? hostMask - 2 : hostMask - 1;
-    const probe = ((address & ~hostMask) | host) >>> 0;
-    const probeAddress = [24, 16, 8, 0].map((shift) => (probe >>> shift) & 255).join('.');
+    const route = await command('/sbin/route', ['-n', 'get', '-inet', 'default']);
+    const probeAddress = route.match(/^\s*gateway:\s*(\S+)/m)?.[1];
+    assert(probeAddress && isIPv4(probeAddress), 'CI consent requires the actual IPv4 gateway.');
     const binary = join(root, 'local-network-authorization');
     await command('swiftc', [
       join(product, 'mar-node/test/native/macos-local-network-authorization.swift'),
