@@ -48,6 +48,8 @@ jobs:
           set -euo pipefail
           package="$RUNNER_TEMP/remote-desktop-macos-native"
           python3 mar-node/test/native/macos-bundle.py macvnc-build/macVNC.app/Contents/MacOS/macVNC "$package"
+          clang -O2 -framework ApplicationServices mar-node/test/native/macos-topology.c -o "$package/macos-topology"
+          "$package/macos-topology"
           mkdir "$package/licenses"
           cp macVNC-6c45640168dd170120d96661b3b711d283257166/COPYING "$package/licenses/macVNC.txt"
           for formula in libvncserver jpeg-turbo libpng openssl@4; do
@@ -105,6 +107,29 @@ jobs:
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 shift-cleanup
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 ctrl-shift
           python3 mar-node/test/native/desktop-native-rfb-probe.py 15992 mac-modifiers
+
+      - name: Set up Node for managed macOS runtime probe
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+          package-manager-cache: false
+
+      - name: Probe managed macOS runtime and RFB attachment
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="$RUNNER_TEMP/remote-desktop-macos-native"
+          swiftc mar-node/test/native/macos-desktop-window.swift -o "$RUNNER_TEMP/managed-window"
+          export MAR_DESKTOP_KEY_RECEIPT="$RUNNER_TEMP/managed-key-receipt"
+          export MAR_DESKTOP_MOUSE_RECEIPT="$RUNNER_TEMP/managed-mouse-receipt"
+          "$RUNNER_TEMP/managed-window" >managed-window.log 2>&1 &
+          window=$!
+          node mar-node/test/native/macos-runtime-probe.mjs "$package/macVNC" "$package/macos-topology" 15993 >managed-runtime.log 2>&1 &
+          runtime=$!
+          trap 'kill "$runtime" "$window" 2>/dev/null || true; wait "$runtime" "$window" 2>/dev/null || true; cat managed-window.log managed-runtime.log' EXIT
+          python3 mar-node/test/native/desktop-native-rfb-probe.py 15993 control
+          wait "$runtime"
+          grep -q CLOSED managed-runtime.log
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native acceptance

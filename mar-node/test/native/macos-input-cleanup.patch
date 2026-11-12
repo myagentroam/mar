@@ -83,6 +83,11 @@
 +        input->x = x;
 +        input->y = y;
 +    }
+@@ -398,2 +459,2 @@
+-    position.x = x + displayBounds.origin.x;
+-    position.y = y + displayBounds.origin.y;
++    position.x = x * displayBounds.size.width / CGDisplayPixelsWide(displayID) + displayBounds.origin.x;
++    position.y = y * displayBounds.size.height / CGDisplayPixelsHigh(displayID) + displayBounds.origin.y;
 @@ -633 +693,13 @@
 -    //TODO
 +    ClientInput *input = cl->clientData;
