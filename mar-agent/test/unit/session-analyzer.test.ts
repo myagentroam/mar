@@ -820,6 +820,96 @@ describe('session analyzer', () => {
     expect(JSON.stringify(report)).not.toContain('PRIVATE_MARKER_MUST_NOT_APPEAR');
   });
 
+  it('selects metrics in a half-open timestamp window while retaining prefix pairing context', async () => {
+    const directory = await createSessionDirectory();
+    const windowStart = '2026-11-12T13:00:00.000Z';
+    const windowEnd = '2026-11-12T14:00:00.000Z';
+    await writeRecords(directory, 'events-000001.jsonl', [
+      {
+        ...record(1, 'tool.started', { callId: 'prefix-call', toolName: 'exec' }, 'exec-1'),
+        timestamp: '2026-11-12T12:59:59.000Z'
+      },
+      {
+        ...record(
+          2,
+          'usage.updated',
+          { inputTokens: 20, contextInputTokens: 100, cacheReadTokens: 80 },
+          'exec-1'
+        ),
+        timestamp: '2026-11-12T12:59:59.500Z'
+      },
+      {
+        ...record(
+          3,
+          'usage.updated',
+          { inputTokens: 25, contextInputTokens: 125, cacheReadTokens: 100, outputTokens: 5 },
+          'exec-1'
+        ),
+        timestamp: '2026-11-12T08:00:00.000-05:00'
+      },
+      {
+        ...record(4, 'execution.started', {}, 'exec-2'),
+        timestamp: '2026-11-12T13:30:00.000Z'
+      },
+      {
+        ...record(5, 'tool.completed', { callId: 'prefix-call', toolName: 'exec' }, 'exec-1'),
+        timestamp: '2026-11-12T13:45:00.000Z'
+      },
+      {
+        ...record(
+          6,
+          'usage.updated',
+          { inputTokens: 999, contextInputTokens: 999, outputTokens: 99 },
+          'exec-1'
+        ),
+        timestamp: '2026-11-12T15:00:00.000+01:00'
+      }
+    ]);
+
+    const legacy = await analyzeSessionDirectory(directory, {
+      sinceSequence: 3,
+      executionId: 'exec-1'
+    });
+    expect(legacy.range.recordCount).toBe(3);
+    expect(legacy.usage.requestCount).toBe(2);
+
+    const filtered = await analyzeSessionDirectory(directory, {
+      sinceSequence: 3,
+      executionId: 'exec-1',
+      windowStart,
+      windowEnd
+    });
+    expect(filtered.range).toMatchObject({ recordCount: 2, firstSequence: 3, lastSequence: 5 });
+    expect(filtered.usage).toMatchObject({
+      requestCount: 1,
+      inputTokens: 25,
+      contextInputTokens: 125,
+      cacheReadTokens: 100,
+      outputTokens: 5
+    });
+    expect(filtered.tools.completedByName.exec).toBe(1);
+  });
+
+  it('validates an optional timestamp window before reading session records', async () => {
+    await expect(
+      analyzeSessionDirectory('/missing-session-directory', {
+        windowStart: 'not-a-timestamp',
+        windowEnd: '2026-11-12T14:00:00.000Z'
+      })
+    ).rejects.toThrow(TypeError);
+    await expect(
+      analyzeSessionDirectory('/missing-session-directory', {
+        windowStart: '2026-11-12T13:00:00.000Z'
+      })
+    ).rejects.toThrow(TypeError);
+    await expect(
+      analyzeSessionDirectory('/missing-session-directory', {
+        windowStart: '2026-11-12T14:00:00.000Z',
+        windowEnd: '2026-11-12T14:00:00.000Z'
+      })
+    ).rejects.toThrow(TypeError);
+  });
+
   it('retains partial usage at retry, execution, structural, and end-of-log boundaries', async () => {
     const directory = await createSessionDirectory();
     const input = { inputTokens: 5, contextInputTokens: 20, cacheReadTokens: 15 };

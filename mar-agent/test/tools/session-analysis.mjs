@@ -23,16 +23,30 @@ const TIMELINE_TYPES = new Set([
   'subagent.cancelled'
 ]);
 
+/**
+ * @param {string} sessionDirectory
+ * @param {object} [options]
+ * @param {number} [options.sinceSequence]
+ * @param {string} [options.executionId]
+ * @param {string} [options.windowStart]
+ * @param {string} [options.windowEnd]
+ * @param {number} [options.timelineLimit]
+ * @param {boolean} [options.validateCheckpoints]
+ * @param {(records: Array<{ sequence: number }>, checkpoint: { sequence: number }) => boolean | Promise<boolean>} [options.checkpointValidator]
+ */
 export async function analyzeSessionDirectory(
   sessionDirectory,
   {
     sinceSequence = 0,
     executionId,
+    windowStart,
+    windowEnd,
     timelineLimit = 100,
     validateCheckpoints = false,
     checkpointValidator
   } = {}
 ) {
+  const timestampWindow = resolveTimestampWindow(windowStart, windowEnd);
   const checkpointValidationSource = checkpointValidator
     ? 'provided-validator'
     : validateCheckpoints
@@ -94,8 +108,17 @@ export async function analyzeSessionDirectory(
     const record = item.record;
     if (!isRecord(record) || !Number.isInteger(record.sequence)) continue;
     const payload = isRecord(record.payload) ? record.payload : {};
+    const timestamp =
+      timestampWindow && typeof record.timestamp === 'string'
+        ? Date.parse(record.timestamp)
+        : undefined;
     const selected =
-      record.sequence >= sinceSequence && (!executionId || record.executionId === executionId);
+      record.sequence >= sinceSequence &&
+      (!executionId || record.executionId === executionId) &&
+      (!timestampWindow ||
+        (Number.isFinite(timestamp) &&
+          timestamp >= timestampWindow.start &&
+          timestamp < timestampWindow.end));
     checkpointRecords?.push(record);
     toolAnalysis.observe(record, selected);
     // Retain response boundaries before a range filter without counting excluded snapshots.
@@ -712,6 +735,19 @@ function parseToolResult(value) {
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function resolveTimestampWindow(windowStart, windowEnd) {
+  if (windowStart === undefined && windowEnd === undefined) return undefined;
+  if (typeof windowStart !== 'string' || typeof windowEnd !== 'string')
+    throw new TypeError('A timestamp window requires valid windowStart and windowEnd strings.');
+  const start = Date.parse(windowStart);
+  const end = Date.parse(windowEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end)
+    throw new TypeError(
+      'A timestamp window requires valid bounds with windowStart before windowEnd.'
+    );
+  return { start, end };
 }
 
 function numberValue(value) {
