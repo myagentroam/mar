@@ -1,30 +1,8 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <stdio.h>
-#include <string.h>
-
-/* Invalidate before and after reconfiguration; snapshots are queried separately. */
-static void display_changed(CGDirectDisplayID display,
-                            CGDisplayChangeSummaryFlags flags, void *context) {
-  (void)display;
-  (void)flags;
-  (void)context;
-  puts("invalidated");
-  fflush(stdout);
-}
 
 /* Reports the active displays captured by the managed macVNC backend. */
-int main(int argc, char **argv) {
-  if (argc == 2 && strcmp(argv[1], "--watch") == 0) {
-    if (CGDisplayRegisterReconfigurationCallback(display_changed, NULL) !=
-        kCGErrorSuccess)
-      return 1;
-    puts("ready");
-    fflush(stdout);
-    CFRunLoopRun();
-    CGDisplayRemoveReconfigurationCallback(display_changed, NULL);
-    return 0;
-  }
-  if (argc != 1) return 2;
+int main(void) {
   CGDirectDisplayID displays[32];
   uint32_t count = 0;
   if (CGGetActiveDisplayList(32, displays, &count) != kCGErrorSuccess || count == 0)

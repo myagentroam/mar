@@ -7,13 +7,6 @@ import {
   MacosRemoteDesktopRuntime
 } from '../../src/remote-desktop/macos-remote-desktop-runtime.js';
 
-vi.mock('../../src/remote-desktop/desktop-topology-notifications.js', () => ({
-  startDesktopTopologyNotifications: vi.fn(async () => ({
-    isAvailable: () => true,
-    stop: async () => undefined
-  }))
-}));
-
 it('maps a combined desktop with negative origin and mixed display scales', () => {
   const layout = macosCombinedDesktopLayout(
     [
@@ -82,7 +75,7 @@ it('describes a single display at its native pixel scale and rejects an empty to
   );
 });
 
-it('refreshes the layout when a secondary display changes', async () => {
+it('keeps the captured layout on the primary display when other monitors change', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mar-macos-layout-'));
   const topology = join(dir, 'topology.json');
   const helper = join(dir, 'topology');
@@ -127,8 +120,8 @@ it('refreshes the layout when a secondary display changes', async () => {
     await runtime.refresh(new AbortController().signal);
     expect(runtime.describe()).toMatchObject({
       topologyRevision: 2,
-      framebuffer: { width: 1440, height: 600 },
-      displays: [{ displayId: 'display_1' }, { displayId: 'display_2' }]
+      framebuffer: { width: 800, height: 600 },
+      displays: [{ displayId: 'display_1' }]
     });
     expect(fence).toHaveBeenCalledWith('DESKTOP_TOPOLOGY_UNAVAILABLE');
     await runtime.dispose();

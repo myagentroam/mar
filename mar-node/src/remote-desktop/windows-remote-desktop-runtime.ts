@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { remoteDesktopDescriptionSchema } from '@myagentroam/protocol';
 import { RemoteDesktopError } from './desktop-error.js';
-import { startDesktopTopologyNotifications } from './desktop-topology-notifications.js';
 import type { DirectDesktopOptions } from './direct-desktop-service.js';
 import { PooledDesktopAttachment } from './pooled-desktop-attachment.js';
 import { RemoteDesktopAttachment } from './remote-desktop-attachment.js';
@@ -31,22 +30,6 @@ $screens = @([System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
      width=$_.Bounds.Width; height=$_.Bounds.Height }
 })
 ConvertTo-Json -InputObject $screens -Compress
-`;
-
-const SCREEN_WATCH = `
-$ErrorActionPreference = "Stop"
-Add-Type -AssemblyName System.Windows.Forms
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-$events = @('DisplaySettingsChanging', 'DisplaySettingsChanged')
-foreach ($name in $events) {
-  Register-ObjectEvent -InputObject ([Microsoft.Win32.SystemEvents]) -EventName $name -SourceIdentifier $name | Out-Null
-}
-[Console]::WriteLine('ready')
-while ($true) {
-  $event = Wait-Event
-  [Console]::WriteLine('invalidated')
-  Remove-Event -EventIdentifier $event.EventIdentifier
-}
 `;
 
 /** Maps Windows virtual-screen coordinates into the full VNC framebuffer. */
@@ -104,16 +87,6 @@ export class WindowsRemoteDesktopRuntime {
   #signature = '';
   #revision = 0;
   #disposed = false;
-  #epoch = 0;
-  #notifications: Awaited<ReturnType<typeof startDesktopTopologyNotifications>> | undefined;
-
-  readonly #invalidate = (): void => {
-    if (this.#disposed) return;
-    this.#epoch++;
-    this.#layout = undefined;
-    this.#signature = '';
-    this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');
-  };
 
   private constructor(
     private readonly options: { binaryPath: string; maxPixels: number; fence(code: string): void }
@@ -130,51 +103,21 @@ export class WindowsRemoteDesktopRuntime {
     signal: AbortSignal
   ) {
     const runtime = new WindowsRemoteDesktopRuntime(options);
-    try {
-      runtime.#notifications = await startDesktopTopologyNotifications(
-        {
-          binary: 'powershell.exe',
-          args: ['-NoProfile', '-NonInteractive', '-Command', SCREEN_WATCH],
-          invalidate: runtime.#invalidate,
-          unavailable: runtime.#invalidate
-        },
-        signal
-      );
-      await runtime.refresh(signal);
-      return runtime;
-    } catch (error) {
-      await runtime.dispose();
-      throw error;
-    }
+    await runtime.refresh(signal);
+    return runtime;
   }
 
   async refresh(signal: AbortSignal): Promise<void> {
-    const epoch = this.#epoch;
-    if (!this.#notifications?.isAvailable())
-      throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
-    const screens = (
-      await queryScreens(signal).catch((error: unknown) => {
-        this.#invalidate();
-        throw error;
-      })
-    ).sort((left, right) => left.name.localeCompare(right.name));
-    const signature = JSON.stringify(
-      screens.map((screen) => [
-        screen.name,
-        screen.primary,
-        screen.x,
-        screen.y,
-        screen.width,
-        screen.height
-      ])
-    );
+    const screens = (await queryScreens(signal)).sort((left, right) => left.name.localeCompare(right.name));
+    const signature = JSON.stringify(screens.map((screen) => [
+      screen.name, screen.primary, screen.x, screen.y, screen.width, screen.height
+    ]));
     if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
-    if (epoch !== this.#epoch) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
     if (signature === this.#signature) return;
-    if (this.#layout) this.#invalidate();
     const layout = windowsDesktopLayout(screens, this.#generation, this.#revision + 1);
     if (layout.framebuffer.width * layout.framebuffer.height > this.options.maxPixels)
       throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    if (this.#layout) this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');
     this.#signature = signature;
     this.#revision++;
     this.#layout = layout;
@@ -222,7 +165,6 @@ export class WindowsRemoteDesktopRuntime {
       this.#disposed = true;
       this.options.fence('DESKTOP_SESSION_UNAVAILABLE');
     }
-    await this.#notifications?.stop();
     await this.#pool.dispose();
   }
 }

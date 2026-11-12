@@ -280,20 +280,6 @@ jobs:
           set -euo pipefail
           node --test test/unit/help-docs-validation.test.mjs
           pnpm --filter @myagentroam/server-core... --filter @myagentroam/node... --filter @myagentroam/web-console... build
-      - name: Build packaged macOS topology notification helper
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          target="darwin-$(node -p process.arch)"
-          mkdir -p test/runs/topology-helper
-          helper="test/runs/topology-helper/macos-topology-$target"
-          clang -Wall -Wextra -Werror -framework ApplicationServices \
-            mar-node/native/remote-desktop/macos-topology.c -o "$helper"
-          codesign --force --sign - "$helper"
-          for root in packages/binaries/vendor/macvnc "packages/binaries-$target/vendor/macvnc"; do
-            cp "$helper" "$root/$target/macos-topology"
-          done
       - name: Locate isolated Windows MySQL executable
         if: runner.os == 'Windows'
         shell: pwsh
@@ -322,7 +308,6 @@ jobs:
             test/runs/desktop-product-*/key-*
             test/runs/desktop-product-*/mouse-*
             test/runs/desktop-product-*/*-failure.png
-            test/runs/topology-helper/macos-topology-*
           if-no-files-found: warn
 
   smoke:
