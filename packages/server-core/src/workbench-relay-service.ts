@@ -4,11 +4,15 @@ import type { WebSocket } from 'ws';
 import {
   directBrowserMessageSchema,
   terminalDirectBrowserMessageSchema,
+  remoteDesktopDirectBrowserMessageSchema,
+  remoteDesktopRelayBrowserMessageSchema,
   sessionShareVisitorSchema,
   type SessionShareTarget,
   type SessionShareVisitor,
   type DirectBrowserMessage,
   type TerminalDirectBrowserMessage,
+  type RemoteDesktopDirectBrowserMessage,
+  type RemoteDesktopRelayBrowserMessage,
   type WorkbenchEvent
 } from '@myagentroam/protocol';
 
@@ -76,6 +80,22 @@ export interface WorkbenchTerminalDirectHandler {
   readonly revoked?: (connectionId: string, code: string) => void;
 }
 
+export interface WorkbenchDesktopDirectHandler {
+  readonly message: (
+    identity: WorkbenchDirectTransferIdentity,
+    message: RemoteDesktopDirectBrowserMessage
+  ) => void | Promise<void>;
+  readonly revoked?: (connectionId: string, code: string) => void;
+}
+
+export interface WorkbenchDesktopRelayHandler {
+  readonly message: (
+    identity: WorkbenchDirectTransferIdentity,
+    message: RemoteDesktopRelayBrowserMessage
+  ) => void | Promise<void>;
+  readonly revoked?: (connectionId: string, code: string) => void;
+}
+
 export class WorkbenchRelayService {
   private readonly attached = new Map<WebSocket, UserNodeAuthorization>();
   private readonly shareSockets = new Map<WebSocket, ShareWorkbenchAccess>();
@@ -92,6 +112,8 @@ export class WorkbenchRelayService {
     ((userId: number, nodeId: string, templateId: string) => Promise<boolean>) | undefined;
   private directTransferHandler: WorkbenchDirectTransferHandler | undefined;
   private terminalDirectHandler: WorkbenchTerminalDirectHandler | undefined;
+  private desktopDirectHandler: WorkbenchDesktopDirectHandler | undefined;
+  private desktopRelayHandler: WorkbenchDesktopRelayHandler | undefined;
 
   constructor(private readonly options: WorkbenchRelayOptions) {
     this.authorizeHostedConversation = options.authorizeHostedConversation;
@@ -103,6 +125,14 @@ export class WorkbenchRelayService {
 
   setTerminalDirectHandler(handler: WorkbenchTerminalDirectHandler): void {
     this.terminalDirectHandler = handler;
+  }
+
+  setDesktopDirectHandler(handler: WorkbenchDesktopDirectHandler): void {
+    this.desktopDirectHandler = handler;
+  }
+
+  setDesktopRelayHandler(handler: WorkbenchDesktopRelayHandler): void {
+    this.desktopRelayHandler = handler;
   }
 
   attach(socket: WebSocket, user: UserNodeAuthorization, share?: ShareWorkbenchAccess): void {
@@ -390,6 +420,32 @@ export class WorkbenchRelayService {
         );
         return;
       }
+      const desktop = remoteDesktopDirectBrowserMessageSchema.safeParse(message);
+      if (desktop.success) {
+        const connection = this.socketConnections.get(socket);
+        if (connection === undefined || this.desktopDirectHandler === undefined) {
+          socket.close(4002, 'WORKBENCH_MESSAGE_INVALID');
+          return;
+        }
+        await this.desktopDirectHandler.message(
+          { ...connection.user, workbenchConnectionId: connection.id },
+          desktop.data
+        );
+        return;
+      }
+      const desktopRelay = remoteDesktopRelayBrowserMessageSchema.safeParse(message);
+      if (desktopRelay.success) {
+        const connection = this.socketConnections.get(socket);
+        if (connection === undefined || this.desktopRelayHandler === undefined) {
+          socket.close(4002, 'WORKBENCH_MESSAGE_INVALID');
+          return;
+        }
+        await this.desktopRelayHandler.message(
+          { ...connection.user, workbenchConnectionId: connection.id },
+          desktopRelay.data
+        );
+        return;
+      }
       socket.close(
         4002,
         record(message) && message.type === 'resume'
@@ -565,6 +621,8 @@ export class WorkbenchRelayService {
     }, DISCONNECTED_GRACE_MS);
     connection.releaseTimer.unref();
     this.directTransferHandler?.disconnected?.(connection.id);
+    this.desktopDirectHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
+    this.desktopRelayHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
   }
 
   private revokeConnection(connection: WorkbenchConnection, reason: string): void {
@@ -572,6 +630,8 @@ export class WorkbenchRelayService {
     this.connections.delete(connection.id);
     this.directTransferHandler?.revoked?.(connection.id, directRevocationCode(reason));
     this.terminalDirectHandler?.revoked?.(connection.id, 'TERMINAL_PAGE_CONNECTION_CLOSED');
+    this.desktopDirectHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
+    this.desktopRelayHandler?.revoked?.(connection.id, 'DESKTOP_PAGE_CONNECTION_CLOSED');
     const socket = connection.socket;
     delete connection.socket;
     if (socket === undefined) return;

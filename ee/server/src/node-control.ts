@@ -7,11 +7,17 @@ import {
 import { NodeIdentityControl } from '@myagentroam/server-core/node-identity-control';
 import type { DirectTransferCoordinator } from '@myagentroam/server-core/direct-transfer-coordinator';
 import type { TerminalDirectCoordinator } from '@myagentroam/server-core/terminal-direct-coordinator';
+import type { RemoteDesktopDirectCoordinator } from '@myagentroam/server-core/remote-desktop-direct-coordinator';
+import type { RemoteDesktopRelayCoordinator } from '@myagentroam/server-core/remote-desktop-relay-coordinator';
+import type { RemoteDesktopRelayPairing } from '@myagentroam/server-core/remote-desktop-relay-pairing';
+import type { RemoteDesktopRelaySockets } from '@myagentroam/server-core/remote-desktop-relay-sockets';
 import type { WebSocket } from 'ws';
 import {
   directNodeEventSchema,
   marctlExecutionCredentialRequestSchema,
   terminalDirectNodeEventSchema,
+  remoteDesktopDirectNodeEventSchema,
+  remoteDesktopRelayNodeEventSchema,
   type MarctlExecutionCredentialRequest,
   type NodeCapabilities,
   type NodeEnvelope
@@ -72,6 +78,10 @@ export interface NodeControlComponents {
   readonly directTransfers: DirectTransferCoordinator;
   readonly terminalRelay: TerminalRelayService;
   readonly terminalDirect: TerminalDirectCoordinator;
+  readonly desktopDirect: RemoteDesktopDirectCoordinator;
+  readonly desktopRelay: RemoteDesktopRelayCoordinator;
+  readonly desktopPairing: RemoteDesktopRelayPairing;
+  readonly desktopRelaySockets: RemoteDesktopRelaySockets;
   readonly messageProjector: NodeMessageProjector;
 }
 
@@ -123,6 +133,10 @@ export class NodeControl extends NodeIdentityControl {
   private readonly workbenchRelay: WorkbenchRelayService;
   private readonly directTransfers: DirectTransferCoordinator;
   private readonly terminalDirect: TerminalDirectCoordinator;
+  private readonly desktopDirect: RemoteDesktopDirectCoordinator;
+  private readonly desktopRelay: RemoteDesktopRelayCoordinator;
+  private readonly desktopPairing: RemoteDesktopRelayPairing;
+  private readonly desktopRelaySockets: RemoteDesktopRelaySockets;
   private readonly terminalRelay: TerminalRelayService;
   private readonly messageProjector: NodeMessageProjector;
 
@@ -143,7 +157,8 @@ export class NodeControl extends NodeIdentityControl {
           operation === 'node.upgrade.request' ||
           operation === 'node.upgrade.cancel',
         capabilities: (nodeId) => this.nodeCapabilities(nodeId),
-        request: (nodeId, operation, data, user) => this.requestNode(nodeId, operation, data, user),
+        request: (nodeId, operation, data, user, timeoutMs, signal) =>
+          this.requestNode(nodeId, operation, data, user, timeoutMs, signal),
         sendNode: (nodeId, type, payload) => this.sendAuthenticatedNode(nodeId, type, payload),
         send: (socket, type, payload, replyTo) => this.send(socket, type, payload, replyTo),
         sendInvalid: (socket, replyTo) => this.sendError(socket, 'MESSAGE_INVALID', replyTo)
@@ -163,6 +178,10 @@ export class NodeControl extends NodeIdentityControl {
     this.directTransfers = components.directTransfers;
     this.terminalRelay = components.terminalRelay;
     this.terminalDirect = components.terminalDirect;
+    this.desktopDirect = components.desktopDirect;
+    this.desktopRelay = components.desktopRelay;
+    this.desktopPairing = components.desktopPairing;
+    this.desktopRelaySockets = components.desktopRelaySockets;
     this.messageProjector = components.messageProjector;
   }
 
@@ -190,7 +209,11 @@ export class NodeControl extends NodeIdentityControl {
   }
 
   protected override onNodeConnected(nodeId: string, replaced: boolean): void {
-    if (replaced) this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
+    if (replaced) {
+      this.requestBroker.rejectNode(nodeId, new Error('NODE_CONNECTION_REPLACED'));
+      this.desktopDirect.revokeNode(nodeId, 'NODE_CONNECTION_REPLACED');
+      this.desktopRelay.revokeNode(nodeId);
+    }
     this.runtimeCredentials.activateNodeConnection(nodeId);
     this.workbenchRelay.broadcast({
       type: 'node',
@@ -209,6 +232,11 @@ export class NodeControl extends NodeIdentityControl {
     nodeId: string,
     capabilities: NodeCapabilities
   ): Promise<void> {
+    const generation = this.nodeCapabilities(nodeId)?.remoteDesktop?.nodeGeneration;
+    if (generation) {
+      this.desktopDirect.retireOtherGenerations(nodeId, generation);
+      this.desktopRelay.retireOtherGenerations(nodeId, generation);
+    }
     const progress = this.consumers.nodeUpgradeProgress;
     if (!progress) return;
     const metadata = capabilities.metadata;
@@ -245,6 +273,8 @@ export class NodeControl extends NodeIdentityControl {
   protected override onNodeDisconnected(nodeId: string): void {
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
+    this.desktopDirect.revokeNode(nodeId, 'NODE_OFFLINE');
+    this.desktopRelay.revokeNode(nodeId);
     this.runtimeCredentials.deactivateNodeConnection(nodeId);
     this.requestBroker.rejectNode(nodeId, new Error('NODE_OFFLINE'));
     this.terminalRelay.disconnectNode(nodeId);
@@ -257,6 +287,8 @@ export class NodeControl extends NodeIdentityControl {
   protected override onBusinessAdmissionRevoked(nodeId: string): void {
     this.directTransfers.revokeNode(nodeId, 'DIRECT_NODE_OFFLINE');
     this.terminalDirect.revokeNode(nodeId, 'NODE_OFFLINE');
+    this.desktopDirect.revokeNode(nodeId, 'NODE_OFFLINE');
+    this.desktopRelay.revokeNode(nodeId);
     this.runtimeCredentials.deactivateNodeConnection(nodeId);
     this.requestBroker.rejectNode(nodeId, new Error('NODE_UPGRADE_REQUIRED'));
     this.terminalRelay.disconnectNode(nodeId);
@@ -296,6 +328,15 @@ export class NodeControl extends NodeIdentityControl {
     this.terminalRelay.attachBrowser(socket, ticketValue, user);
   }
 
+  attachNodeDesktopRelay(socket: WebSocket): void {
+    this.desktopRelaySockets.attachNode(socket);
+  }
+
+  /** Called only after Browser Origin/Cookie validation. */
+  attachBrowserDesktopRelay(socket: WebSocket, user: UserNodeAuthorization): void {
+    this.desktopRelaySockets.attachBrowser(socket, user);
+  }
+
   /** Called only after Browser Origin/Cookie validation by the Fastify route. */
   attachBrowserWorkbench(
     socket: WebSocket,
@@ -322,6 +363,8 @@ export class NodeControl extends NodeIdentityControl {
     this.workbenchRelay.closeUser(userId);
     this.terminalRelay.closeUser(userId);
     this.terminalDirect.revokeUser(userId);
+    this.desktopDirect.revokeUser(userId);
+    this.desktopRelay.revokeUser(userId);
   }
 
   closeAllTerminals(): void {
@@ -389,6 +432,10 @@ export class NodeControl extends NodeIdentityControl {
     for (const close of [
       () => this.directTransfers.close(),
       () => this.terminalDirect.close(),
+      () => this.desktopRelaySockets.close(),
+      () => this.desktopRelay.close(),
+      () => this.desktopPairing.close(),
+      () => this.desktopDirect.close(),
       () => super.close(),
       () => this.requestBroker.close(),
       () => this.terminalRelay.close(),
@@ -649,6 +696,40 @@ export class NodeControl extends NodeIdentityControl {
       else if (event.data.phase === 'ATTACHED')
         this.terminalDirect.onNodeAttached(nodeId, event.data.directSessionId);
       else await this.terminalDirect.onNodeReady(nodeId, event.data.directSessionId);
+      return true;
+    }
+    if (envelope.type === 'desktop.direct.ready' || envelope.type === 'desktop.direct.closed') {
+      if (this.sockets.get(nodeId) !== socket) return true;
+      const event = remoteDesktopDirectNodeEventSchema.safeParse({
+        ...(typeof envelope.payload === 'object' && envelope.payload !== null
+          ? envelope.payload
+          : {}),
+        type: envelope.type
+      });
+      if (!event.success) {
+        this.sendError(socket, 'MESSAGE_INVALID', envelope.id);
+        return true;
+      }
+      const generation = this.nodeCapabilities(nodeId)?.remoteDesktop?.nodeGeneration;
+      if (generation === undefined || event.data.nodeGeneration !== generation) return true;
+      await this.desktopDirect.onNodeEvent(nodeId, generation, event.data);
+      return true;
+    }
+    if (envelope.type === 'desktop.relay.ready' || envelope.type === 'desktop.relay.closed') {
+      if (this.sockets.get(nodeId) !== socket) return true;
+      const event = remoteDesktopRelayNodeEventSchema.safeParse({
+        ...(typeof envelope.payload === 'object' && envelope.payload !== null
+          ? envelope.payload
+          : {}),
+        type: envelope.type
+      });
+      if (!event.success) {
+        this.sendError(socket, 'MESSAGE_INVALID', envelope.id);
+        return true;
+      }
+      const generation = this.nodeCapabilities(nodeId)?.remoteDesktop?.nodeGeneration;
+      if (generation === undefined || event.data.nodeGeneration !== generation) return true;
+      await this.desktopRelay.onNodeEvent(nodeId, generation, event.data);
       return true;
     }
     if (this.messageProjector.handles(envelope.type)) {

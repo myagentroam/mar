@@ -5,7 +5,7 @@ const fingerprintA = `sha-256 ${'AA:'.repeat(31)}AA`;
 const fingerprintB = `sha-256 ${'BB:'.repeat(31)}BB`;
 const identity = { userId: 7, sessionHash: 'session', workbenchConnectionId: 'connection' };
 
-function fixture() {
+function fixture(authorizeTransport?: (userId: number, nodeId: string) => Promise<boolean>) {
   const sendNode = vi.fn((_nodeId: string, _type: string, _payload: unknown) => true);
   const sendBrowser = vi.fn(
     async (_connectionId: string, _message: unknown) => 'delivered' as const
@@ -16,6 +16,7 @@ function fixture() {
   const coordinator = new DirectTransferCoordinator({
     audits: { audit },
     authorize,
+    ...(authorizeTransport === undefined ? {} : { authorizeTransport }),
     sendNode,
     sendBrowser,
     now: () => now,
@@ -76,6 +77,68 @@ async function connectTransport(f: ReturnType<typeof fixture>, transportSessionI
 }
 
 describe('Workspace direct transfer coordinator', () => {
+  it('allows a separately authorized transport without authorizing Workspace file transfers', async () => {
+    const authorizeTransport = vi.fn(async () => true);
+    const f = fixture(authorizeTransport);
+    f.authorize.mockResolvedValue(false);
+    try {
+      const transportSessionId = await prepareTransport(f);
+      await connectTransport(f, transportSessionId);
+      await f.coordinator.handleBrowserMessage(identity, {
+        type: 'direct.prepare',
+        requestId: 'request-transfer',
+        nodeId: 'node',
+        nodeGeneration: 'generation',
+        purpose: 'TRANSFER',
+        transportSessionId,
+        transfer: {
+          direction: 'UPLOAD',
+          resource: { kind: 'WORKSPACE_FILE', workspaceId: 'workspace', path: 'file' },
+          fileName: 'file',
+          size: 1,
+          sha256: 'a'.repeat(64)
+        }
+      });
+      expect(f.authorize).toHaveBeenCalledWith(identity.userId, 'node', 'workspace');
+      expect(f.sendBrowser).toHaveBeenLastCalledWith(
+        'connection',
+        expect.objectContaining({
+          type: 'direct.error',
+          code: 'DIRECT_TRANSFER_NOT_AUTHORIZED'
+        })
+      );
+      expect(authorizeTransport).toHaveBeenCalledWith(identity.userId, 'node');
+    } finally {
+      f.coordinator.close();
+    }
+  });
+  it('borrows only a ready transport belonging to the same page and Node generation', async () => {
+    const f = fixture();
+    try {
+      const id = await prepareTransport(f);
+      expect(f.coordinator.authorizedTransport(identity, id, 'node', 'generation')).toBeUndefined();
+      await connectTransport(f, id);
+      expect(f.coordinator.authorizedTransport(identity, id, 'node', 'generation')).toEqual({
+        browserFingerprint: fingerprintA,
+        nodeFingerprint: fingerprintB
+      });
+      expect(
+        f.coordinator.authorizedTransport(
+          { ...identity, workbenchConnectionId: 'other-page' },
+          id,
+          'node',
+          'generation'
+        )
+      ).toBeUndefined();
+      expect(
+        f.coordinator.authorizedTransport(identity, id, 'node', 'old-generation')
+      ).toBeUndefined();
+      f.coordinator.revokeNode('node', 'NODE_OFFLINE');
+      expect(f.coordinator.authorizedTransport(identity, id, 'node', 'generation')).toBeUndefined();
+    } finally {
+      f.coordinator.close();
+    }
+  });
   it.each(['UPLOAD', 'DOWNLOAD'] as const)(
     'only audits completed uploads, direction=%s',
     async (direction) => {

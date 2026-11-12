@@ -1,1 +1,5 @@
 mar-node/vendor/ctags/licenses/COPYING.MinGW-w64-runtime.txt -whitespace
+packages/binaries*/vendor/**/licenses/** -whitespace
+packages/binaries*/vendor/**/patches/*.patch -whitespace
+patches/*.patch -whitespace
+packages/binaries*/vendor/tigervnc/licenses/libjpeg-turbo-2.1.5/README.md conflict-marker-size=32

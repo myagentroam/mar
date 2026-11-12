@@ -15,6 +15,7 @@ import type { MarctlUserCredentials } from '@myagentroam/server-core/marctl-user
 import type { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
 import type { NodeUpgradeProgress } from '@myagentroam/server-core/node-upgrade-progress';
 import type { MarAgentModelService } from '../service/mar-agent-model-service.js';
+import { registerRemoteDesktopDiscoveryRoute } from './remote-desktop-discovery-route.js';
 import {
   databaseError,
   protectedAdmin,
@@ -37,6 +38,7 @@ export function registerNodeRoutes(input: {
   readonly resources: Pick<
     ResourceAccessService,
     | 'canAccessNodeContainer'
+    | 'canUseNode'
     | 'nodeOwnership'
     | 'canManageNode'
     | 'canRegisterWorkspace'
@@ -58,6 +60,7 @@ export function registerNodeRoutes(input: {
     mutations,
     marAgentModels
   } = input;
+  registerRemoteDesktopDiscoveryRoute({ app, database, nodeControl, resources, publicOrigin });
   app.get('/api/nodes', async (request, reply) => {
     const user = protectedAdmin(database, request, reply);
     if (user === undefined) return;
@@ -81,6 +84,7 @@ export function registerNodeRoutes(input: {
             upgradeProgress: (await nodeUpgradeProgress?.snapshot(node.id)) ?? null,
             ownership: await resources.nodeOwnership(node.id),
             manageable: await resources.canManageNode(user.userId, node.id),
+            usable: await resources.canUseNode(user.userId, node.id),
             workspaceCreatable: await resources.canRegisterWorkspace(user.userId, node.id),
             secretManageable: await resources.canManageNodeSecrets(user.userId, node.id),
             upgradeAvailability: await nodeUpgrades.availability(

@@ -17,6 +17,11 @@ import {
 class FakeDataChannel extends EventTarget {
   readyState = 'open' as RTCDataChannelState;
   binaryType: BinaryType = 'arraybuffer';
+  ordered = true;
+  maxRetransmits: number | null = null;
+  maxPacketLifeTime: number | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onclose: (() => void) | null = null;
   readonly sent: unknown[] = [];
   constructor(readonly label = '') {
     super();
@@ -27,9 +32,11 @@ class FakeDataChannel extends EventTarget {
   close(): void {
     if (this.readyState === 'closed') return;
     this.readyState = 'closed';
+    this.onclose?.();
     this.dispatchEvent(new Event('close'));
   }
   receive(data: unknown): void {
+    this.onmessage?.(new MessageEvent('message', { data }));
     this.dispatchEvent(new MessageEvent('message', { data }));
   }
 }
@@ -40,6 +47,7 @@ class FakePeerConnection extends EventTarget {
   connectionState = 'new' as RTCPeerConnectionState;
   onicecandidate: RTCPeerConnection['onicecandidate'] = null;
   onconnectionstatechange: RTCPeerConnection['onconnectionstatechange'] = null;
+  ondatachannel: RTCPeerConnection['ondatachannel'] = null;
   readonly channels: FakeDataChannel[] = [];
   stats = new Map<string, unknown>();
   constructor(
@@ -73,6 +81,12 @@ class FakePeerConnection extends EventTarget {
     this.onconnectionstatechange?.call(
       this as unknown as RTCPeerConnection,
       new Event('connectionstatechange')
+    );
+  }
+  incoming(channel: FakeDataChannel): void {
+    this.ondatachannel?.call(
+      this as unknown as RTCPeerConnection,
+      { channel } as unknown as RTCDataChannelEvent
     );
   }
 }
@@ -117,6 +131,53 @@ describe('Workspace direct transfer browser service', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('hands off a Node-created desktop channel once, regardless of arrival order', async () => {
+    const f = fixture(['transport-request']);
+    await connect(f);
+    const desktop = f.service.acquireDesktopTransport('node-1', 'generation-1')!;
+    const peer = f.peers[0]!;
+    const early = new FakeDataChannel('mar-desktop-attachment-1');
+    peer.incoming(early);
+    await expect(desktop.waitChannel('attachment-1', new AbortController().signal)).resolves.toBe(
+      early
+    );
+    const duplicate = new FakeDataChannel('mar-desktop-attachment-1');
+    peer.incoming(duplicate);
+    expect(duplicate.readyState).toBe('closed');
+    const pending = desktop.waitChannel('attachment-2', new AbortController().signal);
+    const late = new FakeDataChannel('mar-desktop-attachment-2');
+    peer.incoming(late);
+    await expect(pending).resolves.toBe(late);
+    f.service.releaseTransport('node-1');
+    expect(peer.connectionState).toBe('connected');
+    early.close();
+    late.close();
+    desktop.release();
+    expect(peer.connectionState).toBe('closed');
+    f.service.close();
+  });
+
+  it('closes invalid or premature channels and cancels waiters on replacement', async () => {
+    const f = fixture(['transport-request']);
+    await connect(f);
+    const desktop = f.service.acquireDesktopTransport('node-1', 'generation-1')!;
+    const peer = f.peers[0]!;
+    const unreliable = new FakeDataChannel('mar-desktop-attachment-1');
+    unreliable.ordered = false;
+    peer.incoming(unreliable);
+    expect(unreliable.readyState).toBe('closed');
+    const premature = new FakeDataChannel('mar-desktop-attachment-2');
+    peer.incoming(premature);
+    premature.receive(new Uint8Array([1]));
+    expect(premature.readyState).toBe('closed');
+    const pending = desktop.waitChannel('attachment-3', new AbortController().signal);
+    const rejected = expect(pending).rejects.toThrow('DIRECT_NODE_INVALIDATED');
+    f.service.invalidateNode('node-1');
+    await rejected;
+    desktop.release();
+    f.service.close();
   });
 
   it('keeps a connected transport and reuses it without another prepare', async () => {

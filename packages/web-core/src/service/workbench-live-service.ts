@@ -4,10 +4,18 @@ import {
   directServerMessageSchema,
   terminalDirectBrowserMessageSchema,
   terminalDirectServerMessageSchema,
+  remoteDesktopDirectBrowserMessageSchema,
+  remoteDesktopDirectServerMessageSchema,
+  remoteDesktopRelayBrowserMessageSchema,
+  remoteDesktopRelayServerMessageSchema,
   type DirectBrowserMessage,
   type DirectServerMessage,
   type TerminalDirectBrowserMessage,
-  type TerminalDirectServerMessage
+  type TerminalDirectServerMessage,
+  type RemoteDesktopDirectBrowserMessage,
+  type RemoteDesktopDirectServerMessage,
+  type RemoteDesktopRelayBrowserMessage,
+  type RemoteDesktopRelayServerMessage
 } from '@myagentroam/protocol';
 
 export interface WorkbenchLiveEvent {
@@ -35,6 +43,8 @@ interface WorkbenchLiveConnectionOptions {
   readonly onWatchEvent?: (event: unknown) => void;
   readonly onDirectMessage?: (message: DirectServerMessage) => void;
   readonly onTerminalDirectMessage?: (message: TerminalDirectServerMessage) => void;
+  readonly onDesktopDirectMessage?: (message: RemoteDesktopDirectServerMessage) => void;
+  readonly onDesktopRelayMessage?: (message: RemoteDesktopRelayServerMessage) => void;
   readonly diagnostics?: {
     observeFrame(sample: {
       readonly bytes: number;
@@ -166,6 +176,18 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
         return;
       }
       options.onTerminalDirectMessage?.(direct.data);
+      return;
+    }
+    if (typeof message.type === 'string' && message.type.startsWith('desktop.direct.')) {
+      const parsed = remoteDesktopDirectServerMessageSchema.safeParse(message);
+      if (!parsed.success) options.onInvalidMessage();
+      else options.onDesktopDirectMessage?.(parsed.data);
+      return;
+    }
+    if (typeof message.type === 'string' && message.type.startsWith('desktop.relay.')) {
+      const parsed = remoteDesktopRelayServerMessageSchema.safeParse(message);
+      if (!parsed.success) options.onInvalidMessage();
+      else options.onDesktopRelayMessage?.(parsed.data);
       return;
     }
     if (options.onNotificationMessage?.(message)) return;
@@ -331,6 +353,20 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     return true;
   }
 
+  function sendDesktopDirect(message: RemoteDesktopDirectBrowserMessage): boolean {
+    const parsed = remoteDesktopDirectBrowserMessageSchema.safeParse(message);
+    if (!parsed.success || !connected.value || socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(parsed.data));
+    return true;
+  }
+
+  function sendDesktopRelay(message: RemoteDesktopRelayBrowserMessage): boolean {
+    const parsed = remoteDesktopRelayBrowserMessageSchema.safeParse(message);
+    if (!parsed.success || !connected.value || socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(parsed.data));
+    return true;
+  }
+
   function updateShareVisitor(visitor: import('@myagentroam/protocol').SessionShareVisitor): void {
     if (connected.value && socket?.readyState === WebSocket.OPEN)
       socket.send(JSON.stringify({ type: 'session-share.visitor', visitor }));
@@ -344,6 +380,8 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
     close,
     sendDirect,
     sendTerminalDirect,
+    sendDesktopDirect,
+    sendDesktopRelay,
     updateShareVisitor
   };
 }

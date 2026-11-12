@@ -1,3 +1,5 @@
+import { remoteDesktopCapabilitySchema } from '@myagentroam/protocol';
+
 export function publicNode<
   T extends {
     readonly id: string;
@@ -20,6 +22,7 @@ export function publicNode<
     // Corrupt persisted metadata does not leak an internal database error.
   }
   const info = metadata as Record<string, unknown>;
+  const desktop = remoteDesktopCapabilitySchema.safeParse(info['remoteDesktop']);
   return {
     ...node,
     platform: typeof info['platform'] === 'string' ? info['platform'] : 'unknown',
@@ -54,7 +57,8 @@ export function publicNode<
         : {}),
       ...(typeof info['computerUse'] === 'object' && info['computerUse'] !== null
         ? { computerUse: info['computerUse'] }
-        : {})
+        : {}),
+      ...(desktop.success ? { remoteDesktop: desktop.data } : {})
     },
     metadata: info
   };

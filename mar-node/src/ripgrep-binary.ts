@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
+import { managedBinariesPlatformDirectory } from './managed-binaries.js';
 
 export const BUNDLED_RIPGREP_VERSION = '15.1.0';
 
@@ -28,7 +29,11 @@ export function bundledRipgrepPath(
 ): string {
   const target = TARGETS[`${platform}-${architecture}` as keyof typeof TARGETS];
   if (target === undefined) throw new Error('RIPGREP_PLATFORM_UNSUPPORTED');
-  return resolve(bundledRipgrepDirectory(packageRoot), ...target);
+  const directory =
+    packageRoot === undefined
+      ? resolve(managedBinariesPlatformDirectory(platform, architecture), 'vendor/ripgrep')
+      : bundledRipgrepDirectory(packageRoot);
+  return resolve(directory, ...target);
 }
 
 export function prependBundledRipgrepToPath(

@@ -6,7 +6,7 @@ const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package
 
 export async function startCustomThemeFixture(
   entry?: string,
-  options?: { protocolSource?: boolean }
+  options?: { protocolSource?: boolean; apiProxy?: string }
 ) {
   const [{ createServer }, vue, components, resolvers] = await Promise.all([
     import(webRequire.resolve('vite')),
@@ -56,6 +56,9 @@ export async function startCustomThemeFixture(
     server: {
       host: '127.0.0.1',
       port: 0,
+      ...(options?.apiProxy === undefined
+        ? {}
+        : { proxy: { '/api': { target: options.apiProxy, ws: true, changeOrigin: false } } }),
       fs: { allow: [productRoot] },
       watch: { ignored: [resolve(productRoot, 'test/runs/**')] }
     },

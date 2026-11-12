@@ -28,6 +28,62 @@ function fixture(
 }
 
 describe('public page-level Workbench relay', () => {
+  it('routes Relay control to the authenticated page and fences it on disconnect', async () => {
+    const { relay, attach } = fixture();
+    const message = vi.fn(async () => {});
+    const revoked = vi.fn();
+    relay.setDesktopRelayHandler({ message, revoked });
+    const socket = attach();
+    try {
+      await vi.waitFor(() => expect(socket.sent.length).toBeGreaterThan(0));
+      const connectionId = String(socket.sent[0]!.workbenchConnectionId);
+      socket.receive({ type: 'desktop.relay.cancel', attachmentId: 'attachment-1' });
+      await vi.waitFor(() =>
+        expect(message).toHaveBeenCalledWith(
+          { userId: 1, sessionHash: 'session-one', workbenchConnectionId: connectionId },
+          { type: 'desktop.relay.cancel', attachmentId: 'attachment-1' }
+        )
+      );
+      socket.close();
+      expect(revoked).toHaveBeenCalledWith(connectionId, 'DESKTOP_PAGE_CONNECTION_CLOSED');
+    } finally {
+      relay.close();
+    }
+  });
+
+  it('routes desktop messages to their page owner and revokes immediately on disconnect', () => {
+    const { relay, attach } = fixture();
+    const message = vi.fn(async () => {});
+    const revoked = vi.fn();
+    relay.setDesktopDirectHandler({ message, revoked });
+    const first = attach();
+    const second = attach();
+    try {
+      const firstId = String(first.sent[0]!.workbenchConnectionId);
+      const secondId = String(second.sent[0]!.workbenchConnectionId);
+      const frame = {
+        type: 'desktop.direct.prepare',
+        requestId: 'request-0001',
+        nodeId: 'node-1',
+        nodeGeneration: 'generation-1',
+        transportSessionId: 'transport-1',
+        desktopGeneration: 'desktop-0001',
+        topologyRevision: 1,
+        mode: 'VIEW'
+      };
+      first.receive(frame);
+      expect(message).toHaveBeenCalledWith(
+        { userId: 1, sessionHash: 'session-one', workbenchConnectionId: firstId },
+        frame
+      );
+      first.close();
+      expect(revoked).toHaveBeenCalledWith(firstId, 'DESKTOP_PAGE_CONNECTION_CLOSED');
+      expect(revoked).not.toHaveBeenCalledWith(secondId, expect.anything());
+      expect(relay.ownsConnection('session-one', firstId)).toBe(true);
+    } finally {
+      relay.close();
+    }
+  });
   it('delivers a large Session snapshot and following control frames without reconnecting', async () => {
     const { relay, attach } = fixture();
     const socket = attach();

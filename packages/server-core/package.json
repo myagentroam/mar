@@ -175,6 +175,31 @@
       "types": "./dist/direct-transfer-coordinator.d.ts",
       "import": "./dist/direct-transfer-coordinator.js"
     },
+    "./remote-desktop-admission": {
+      "development": "./src/remote-desktop-admission.ts",
+      "types": "./dist/remote-desktop-admission.d.ts",
+      "import": "./dist/remote-desktop-admission.js"
+    },
+    "./remote-desktop-direct-coordinator": {
+      "development": "./src/remote-desktop-direct-coordinator.ts",
+      "types": "./dist/remote-desktop-direct-coordinator.d.ts",
+      "import": "./dist/remote-desktop-direct-coordinator.js"
+    },
+    "./remote-desktop-relay-coordinator": {
+      "development": "./src/remote-desktop-relay-coordinator.ts",
+      "types": "./dist/remote-desktop-relay-coordinator.d.ts",
+      "import": "./dist/remote-desktop-relay-coordinator.js"
+    },
+    "./remote-desktop-relay-pairing": {
+      "development": "./src/remote-desktop-relay-pairing.ts",
+      "types": "./dist/remote-desktop-relay-pairing.d.ts",
+      "import": "./dist/remote-desktop-relay-pairing.js"
+    },
+    "./remote-desktop-relay-sockets": {
+      "development": "./src/remote-desktop-relay-sockets.ts",
+      "types": "./dist/remote-desktop-relay-sockets.d.ts",
+      "import": "./dist/remote-desktop-relay-sockets.js"
+    },
     "./terminal-direct-coordinator": {
       "development": "./src/terminal-direct-coordinator.ts",
       "types": "./dist/terminal-direct-coordinator.d.ts",

@@ -1,0 +1,22 @@
+This directory distributes Universal Ctags binaries as a separate executable
+work. All bundled binaries are official upstream artifacts built from commit
+ab95af198f8eaeb6d50dc96e3adf52e769d3e5f0.
+
+Universal Ctags is licensed under GPL-2.0-or-later. Its complete corresponding
+source is included at:
+
+  source/universal-ctags-ab95af198f8eaeb6d50dc96e3adf52e769d3e5f0.tar.gz
+
+The official source URL, per-platform release URLs, archive SHA-256 values and
+executable SHA-256 values are recorded in manifest.json.
+
+Linux x64/ARM64 and macOS x64/ARM64 come from the official
+universal-ctags/ctags-nightly-build 2026.09.16 release. Their upstream package
+metadata and dependency notices are preserved under
+licenses/official-snapshot/<target>/.
+
+Windows x64 comes from the official universal-ctags/ctags-win32
+2026-09-16/p6.2.20260913.0-2-gab95af1 release. Its distributed license texts
+are preserved under licenses/win32-x64/.
+
+No bundled Ctags executable is built by this project.

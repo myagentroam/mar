@@ -6,6 +6,7 @@ export * from './tool-result-resource.js';
 import { resourceOwnershipSchema, type ResourceOwnership } from './enterprise.js';
 import { workspaceDirectTransferCapabilitySchema } from './direct-transfer.js';
 import { terminalDirectCapabilitySchema } from './terminal-direct.js';
+import { remoteDesktopCapabilitySchema } from './remote-desktop.js';
 import { chatgptLoginCapabilitySchema } from './chatgpt-oauth.js';
 export * from './chatgpt-oauth.js';
 export const XAI_SUBSCRIPTION_PROXY_BASE_URL = 'https://cli-chat-proxy.grok.com/v1';
@@ -19,6 +20,7 @@ export * from './mcp.js';
 export * from './git-identity.js';
 export * from './direct-transfer.js';
 export * from './terminal-direct.js';
+export * from './remote-desktop.js';
 export * from './mail-notification.js';
 export * from './marctl-execution-credential.js';
 export * from './notification-channels.js';
@@ -398,6 +400,7 @@ export const nodeCapabilitiesSchema = z
     chatgptLogin: chatgptLoginCapabilitySchema.optional(),
     workspaceDirectTransfer: workspaceDirectTransferCapabilitySchema.optional(),
     terminalDirect: terminalDirectCapabilitySchema.optional(),
+    remoteDesktop: remoteDesktopCapabilitySchema.optional(),
     sessionAside: sessionAsideCapabilitySchema.optional(),
     sessionGroups: z
       .object({ apiVersion: z.literal(1) })
@@ -1977,6 +1980,7 @@ export const nodeWorkbenchCapabilitiesSchema = z.object({
   }),
   directTransfer: workspaceDirectTransferCapabilitySchema.optional(),
   terminalDirect: terminalDirectCapabilitySchema.optional(),
+  remoteDesktop: remoteDesktopCapabilitySchema.optional(),
   sessionAside: sessionAsideCapabilitySchema.optional(),
   sessionGroups: z
     .object({ apiVersion: z.literal(1) })
@@ -3972,6 +3976,7 @@ export const workbenchNodeOperationSchema = z.enum([
   'terminal.close',
   'terminal.attach.authorize',
   'terminal.direct.preflight',
+  'desktop.describe',
   'node.upgrade.request',
   'node.upgrade.cancel',
   'node.skills.inspect',

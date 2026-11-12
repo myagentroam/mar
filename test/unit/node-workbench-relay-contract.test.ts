@@ -9,6 +9,62 @@ import { WorkbenchRelayService } from '../../packages/server-core/src/workbench-
 import { registerOwnedNode } from './support/node-control-fixture.js';
 
 describe('Node controlled relay contract', () => {
+  it('accepts desktop lifecycle only from the current authenticated Node socket', async () => {
+    const database = new ServerDatabase(':memory:');
+    const nodeId = registerOwnedNode(database);
+    const control = createTestNodeControl(database, (userId, id) =>
+      database.userOwnsNode(userId, id)
+    );
+    const internals = control as unknown as {
+      sockets: Map<string, unknown>;
+      desktopDirect: { onNodeEvent: (...args: unknown[]) => Promise<void> };
+      handleAuthenticatedMessage(
+        node: string,
+        socket: unknown,
+        envelope: ReturnType<typeof createEnvelope>
+      ): Promise<boolean>;
+    };
+    const current = { readyState: 1, OPEN: 1, send: vi.fn(), close: vi.fn() };
+    const stale = { readyState: 1, OPEN: 1, send: vi.fn(), close: vi.fn() };
+    const accepted = vi.spyOn(internals.desktopDirect, 'onNodeEvent').mockResolvedValue();
+    internals.sockets.set(nodeId, current);
+    const payload = {
+      attachmentId: 'attachment-1',
+      nodeGeneration: 'generation-1',
+      code: 'DESKTOP_CLOSED'
+    };
+    try {
+      await internals.handleAuthenticatedMessage(
+        nodeId,
+        stale,
+        createEnvelope('desktop.direct.closed', payload)
+      );
+      expect(accepted).not.toHaveBeenCalled();
+      await internals.handleAuthenticatedMessage(
+        nodeId,
+        current,
+        createEnvelope('desktop.direct.closed', payload)
+      );
+      expect(accepted).toHaveBeenCalledOnce();
+      expect(accepted).toHaveBeenCalledWith(nodeId, payload.nodeGeneration, {
+        type: 'desktop.direct.closed',
+        ...payload
+      });
+      await internals.handleAuthenticatedMessage(
+        nodeId,
+        current,
+        createEnvelope('desktop.direct.closed', {
+          attachmentId: payload.attachmentId,
+          code: payload.code
+        })
+      );
+      expect(accepted).toHaveBeenCalledOnce();
+      expect(current.send).toHaveBeenCalled();
+    } finally {
+      control.close();
+      database.close();
+    }
+  });
   it('clears offline recent sessions after previously admitted projections finish', async () => {
     const database = new ServerDatabase(':memory:');
     const nodeId = registerOwnedNode(database);

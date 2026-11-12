@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { binariesTargets } from './binaries-packages.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const commonNames = [
@@ -93,6 +94,18 @@ export async function readReleaseVersions(directory = root) {
       common[2].dependencies?.['@myagentroam/binaries'] === `workspace:${binaries.version}`,
     'RELEASE_BINARIES_DEPENDENCY_INVALID'
   );
+  for (const target of binariesTargets) {
+    const metadata = await json(resolve(directory, target.path, 'package.json'));
+    const [platform, architecture] = target.id.split('-');
+    check(
+      metadata.name === target.name &&
+        metadata.version === binaries.version &&
+        binaries.optionalDependencies?.[target.name] === binaries.version &&
+        JSON.stringify(metadata.os) === JSON.stringify([platform]) &&
+        JSON.stringify(metadata.cpu) === JSON.stringify([architecture]),
+      'RELEASE_BINARIES_PLATFORM_INVALID'
+    );
+  }
   const versioned = [
     ...common.map((pkg, index) => ({
       pkg,

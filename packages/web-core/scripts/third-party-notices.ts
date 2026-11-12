@@ -110,6 +110,20 @@ function licenseTexts(packageRoot: string): readonly string[] {
 
 function declaredLicenseText(packageInfo: ThirdPartyPackage): string {
   const texts = licenseTexts(packageInfo.root);
+  if (packageInfo.name === '@novnc/novnc') {
+    const mpl = readFileSync(resolve(packageInfo.root, 'docs/LICENSE.MPL-2.0'), 'utf8').trim();
+    const pako = readFileSync(resolve(packageInfo.root, 'vendor/pako/LICENSE'), 'utf8').trim();
+    const des = readFileSync(resolve(packageInfo.root, 'core/crypto/des.js'), 'utf8');
+    const desEnd = des.indexOf('*/');
+    if (!des.startsWith('/*') || desEnd < 0) throw new Error('noVNC DES attribution is missing.');
+    return [
+      ...texts,
+      mpl,
+      pako,
+      des.slice(0, desEnd + 2),
+      'Local modifications are in patches/@novnc__novnc@1.7.0.patch in the product source.'
+    ].join('\n\n');
+  }
   if (texts.length > 0) return texts.join('\n\n');
   if (packageInfo.license === 'MIT') return mitLicenseText;
   return 'License text is not included in this package distribution.';

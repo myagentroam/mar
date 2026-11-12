@@ -1,4 +1,8 @@
-import type { ComputerUseCapability, ConversationHostingCapability } from '@myagentroam/protocol';
+import type {
+  ComputerUseCapability,
+  ConversationHostingCapability,
+  RemoteDesktopCapability
+} from '@myagentroam/protocol';
 import type { RunnerUsage, RunnerUsageName } from './runner-usage.js';
 
 export interface NodeDetailsHostingState {
@@ -44,6 +48,7 @@ export interface NodeDetailsData {
         readonly openCode?: NodeDetailsRunnerCapability;
         readonly conversationHosting?: ConversationHostingCapability;
         readonly computerUse?: ComputerUseCapability;
+        readonly remoteDesktop?: RemoteDesktopCapability;
       }
     | undefined;
 }

@@ -1,6 +1,7 @@
 import { chmod } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
+import { managedBinariesPlatformDirectory } from './managed-binaries.js';
 
 export const BUNDLED_CTAGS_VERSION = '6.2.0-ab95af1';
 
@@ -28,7 +29,11 @@ export function bundledCtagsPath(
 ): string {
   const target = TARGETS[`${platform}-${architecture}` as keyof typeof TARGETS];
   if (target === undefined) throw new Error('CTAGS_PLATFORM_UNSUPPORTED');
-  return resolve(bundledCtagsDirectory(packageRoot), ...target);
+  const directory =
+    packageRoot === undefined
+      ? resolve(managedBinariesPlatformDirectory(platform, architecture), 'vendor/ctags')
+      : bundledCtagsDirectory(packageRoot);
+  return resolve(directory, ...target);
 }
 
 /**

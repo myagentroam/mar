@@ -61,6 +61,7 @@ export interface DirectTransferCoordinatorOptions {
     nodeId: string,
     workspaceId: string | undefined
   ) => boolean | Promise<boolean>;
+  readonly authorizeTransport?: (userId: number, nodeId: string) => boolean | Promise<boolean>;
   readonly sendNode: (nodeId: string, type: string, payload: unknown) => boolean;
   readonly sendBrowser: (
     connectionId: string,
@@ -264,6 +265,21 @@ export class DirectTransferCoordinator {
         readonly nodeFingerprint: string;
       }
     | undefined {
+    return this.authorizedTransport(identity, transportSessionId, nodeId, nodeGeneration);
+  }
+
+  /** Borrow only a ready transport owned by this page and Node generation. */
+  authorizedTransport(
+    identity: DirectTransferBrowserIdentity,
+    transportSessionId: string,
+    nodeId: string,
+    nodeGeneration: string
+  ):
+    | {
+        readonly browserFingerprint: string;
+        readonly nodeFingerprint: string;
+      }
+    | undefined {
     const session = this.sessionForBrowser(identity, transportSessionId);
     if (
       session?.purpose !== 'TRANSPORT' ||
@@ -286,7 +302,11 @@ export class DirectTransferCoordinator {
   ): Promise<void> {
     const workspaceId =
       request.purpose === 'TRANSFER' ? request.transfer.resource.workspaceId : undefined;
-    if (!(await this.options.authorize(identity.userId, request.nodeId, workspaceId))) {
+    const allowed =
+      request.purpose === 'TRANSPORT' && this.options.authorizeTransport
+        ? await this.options.authorizeTransport(identity.userId, request.nodeId)
+        : await this.options.authorize(identity.userId, request.nodeId, workspaceId);
+    if (!allowed) {
       await this.error(identity.workbenchConnectionId, {
         requestId: request.requestId,
         code: 'DIRECT_TRANSFER_NOT_AUTHORIZED',
@@ -541,6 +561,8 @@ export class DirectTransferCoordinator {
   }
 
   private async isAuthorized(session: DirectSession): Promise<boolean> {
+    if (session.purpose === 'TRANSPORT' && this.options.authorizeTransport)
+      return this.options.authorizeTransport(session.userId, session.nodeId);
     return this.options.authorize(
       session.userId,
       session.nodeId,

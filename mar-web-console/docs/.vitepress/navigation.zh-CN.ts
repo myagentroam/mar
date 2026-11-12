@@ -41,6 +41,7 @@ export const zhSidebar = [
       { text: '查看 Git Changes 与 Diff', link: '/workbench/git-changes' },
       { text: '查看 Git 历史', link: '/workbench/git-history' },
       { text: '使用 Workspace 终端', link: '/workbench/terminal' },
+      { text: '查看 Node 远程桌面', link: '/workbench/remote-desktop' },
       { text: '在移动端继续工作', link: '/workbench/mobile' }
     ]
   },

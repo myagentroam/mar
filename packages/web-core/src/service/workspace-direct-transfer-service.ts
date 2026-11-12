@@ -37,6 +37,15 @@ interface TransportSession {
   readonly peer: RTCPeerConnection;
   readonly bootstrapChannel: RTCDataChannel;
   readonly sentCandidateKeys: Set<string>;
+  readonly desktopChannels: Map<
+    string,
+    { channel: RTCDataChannel; timer: ReturnType<typeof setTimeout> }
+  >;
+  readonly desktopWaiters: Map<
+    string,
+    { resolve: (channel: RTCDataChannel) => void; reject: (error: Error) => void }
+  >;
+  readonly desktopTaken: Set<string>;
   serverOpened: boolean;
   peerConnected: boolean;
   heartbeat?: ReturnType<typeof setInterval>;
@@ -117,7 +126,7 @@ export function createWorkspaceDirectTransferService(
   const transfers = new Map<string, TransferSession>();
   const networkInfoByNode = new Map<string, DirectTransportNetworkInfo>();
   const deferredReleaseNodes = new Set<string>();
-  const terminalReferences = new Map<string, number>();
+  const channelReferences = new Map<string, number>();
   const retries = new Map<
     string,
     { generation: string; attempt: number; timer: ReturnType<typeof setTimeout> | undefined }
@@ -157,7 +166,7 @@ export function createWorkspaceDirectTransferService(
       !transportReady(transport)
     )
       return undefined;
-    terminalReferences.set(nodeId, (terminalReferences.get(nodeId) ?? 0) + 1);
+    channelReferences.set(nodeId, (channelReferences.get(nodeId) ?? 0) + 1);
     let released = false;
     return {
       transportSessionId: transport.directSessionId,
@@ -170,9 +179,87 @@ export function createWorkspaceDirectTransferService(
       release: () => {
         if (released) return;
         released = true;
-        const remaining = (terminalReferences.get(nodeId) ?? 1) - 1;
-        if (remaining > 0) terminalReferences.set(nodeId, remaining);
-        else terminalReferences.delete(nodeId);
+        const remaining = (channelReferences.get(nodeId) ?? 1) - 1;
+        if (remaining > 0) channelReferences.set(nodeId, remaining);
+        else channelReferences.delete(nodeId);
+        releaseDeferredTransport(nodeId);
+      }
+    };
+  }
+
+  function acquireDesktopTransport(nodeId: string, nodeGeneration: string) {
+    const transport = transportsByNode.get(nodeId);
+    if (
+      !transport ||
+      transport.request.nodeGeneration !== nodeGeneration ||
+      !transportReady(transport)
+    )
+      return undefined;
+    channelReferences.set(nodeId, (channelReferences.get(nodeId) ?? 0) + 1);
+    const pending = new Set<string>();
+    let released = false;
+    return {
+      transportSessionId: transport.directSessionId,
+      nodeGeneration,
+      maxMessageBytes: Math.min(16_384, transport.peer.sctp?.maxMessageSize || 16_384),
+      waitChannel(attachmentId: string, signal: AbortSignal): Promise<RTCDataChannel> {
+        if (
+          released ||
+          signal.aborted ||
+          transportsByNode.get(nodeId) !== transport ||
+          !transportReady(transport) ||
+          !/^[A-Za-z0-9_-]{8,128}$/u.test(attachmentId) ||
+          transport.desktopTaken.has(attachmentId) ||
+          transport.desktopWaiters.has(attachmentId) ||
+          transport.desktopWaiters.size >= 4
+        )
+          return Promise.reject(new Error('DESKTOP_TRANSPORT_ERROR'));
+        const cached = transport.desktopChannels.get(attachmentId);
+        if (cached) {
+          transport.desktopChannels.delete(attachmentId);
+          clearTimeout(cached.timer);
+          cached.channel.onmessage = null;
+          cached.channel.onclose = null;
+          if (cached.channel.readyState === 'closed' || cached.channel.readyState === 'closing')
+            return Promise.reject(new Error('DESKTOP_TRANSPORT_ERROR'));
+          rememberDesktopChannel(transport, attachmentId, cached.channel);
+          return Promise.resolve(cached.channel);
+        }
+        pending.add(attachmentId);
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => abort(), 15_000);
+          const finish = () => {
+            clearTimeout(timer);
+            pending.delete(attachmentId);
+            transport.desktopWaiters.delete(attachmentId);
+            signal.removeEventListener('abort', abort);
+          };
+          const abort = () => {
+            finish();
+            reject(new Error('DESKTOP_TRANSPORT_ERROR'));
+          };
+          transport.desktopWaiters.set(attachmentId, {
+            resolve: (channel) => {
+              finish();
+              resolve(channel);
+            },
+            reject: (error) => {
+              finish();
+              reject(error);
+            }
+          });
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) abort();
+        });
+      },
+      release(): void {
+        if (released) return;
+        released = true;
+        for (const id of pending)
+          transport.desktopWaiters.get(id)?.reject(new Error('DESKTOP_TRANSPORT_ERROR'));
+        const remaining = (channelReferences.get(nodeId) ?? 1) - 1;
+        if (remaining > 0) channelReferences.set(nodeId, remaining);
+        else channelReferences.delete(nodeId);
         releaseDeferredTransport(nodeId);
       }
     };
@@ -386,9 +473,13 @@ export function createWorkspaceDirectTransferService(
         peer,
         bootstrapChannel,
         sentCandidateKeys: new Set(),
+        desktopChannels: new Map(),
+        desktopWaiters: new Map(),
+        desktopTaken: new Set(),
         serverOpened: false,
         peerConnected: false
       };
+      peer.ondatachannel = (event) => receiveDesktopChannel(transport, event.channel);
       transportsBySession.set(directSessionId, transport);
       transportsByNode.set(request.nodeId, transport);
       configureTransport(transport);
@@ -703,12 +794,73 @@ export function createWorkspaceDirectTransferService(
     options.onProbeResultChange?.();
   }
 
+  function receiveDesktopChannel(transport: TransportSession, channel: RTCDataChannel): void {
+    const match = /^mar-desktop-([A-Za-z0-9_-]{8,128})$/u.exec(channel.label);
+    if (
+      !match ||
+      transportsBySession.get(transport.directSessionId) !== transport ||
+      !channel.ordered ||
+      channel.maxRetransmits !== null ||
+      channel.maxPacketLifeTime !== null
+    ) {
+      channel.close();
+      return;
+    }
+    const id = match[1]!;
+    if (transport.desktopTaken.has(id)) {
+      channel.close();
+      return;
+    }
+    const waiter = transport.desktopWaiters.get(id);
+    if (waiter) {
+      rememberDesktopChannel(transport, id, channel);
+      waiter.resolve(channel);
+      return;
+    }
+    if (transport.desktopChannels.has(id) || transport.desktopChannels.size >= 4) {
+      channel.close();
+      return;
+    }
+    const discard = () => {
+      const current = transport.desktopChannels.get(id);
+      if (current?.channel !== channel) return;
+      clearTimeout(current.timer);
+      transport.desktopChannels.delete(id);
+      channel.onmessage = null;
+      channel.onclose = null;
+      channel.close();
+    };
+    const timer = setTimeout(discard, 15_000);
+    transport.desktopChannels.set(id, { channel, timer });
+    channel.onmessage = discard;
+    channel.onclose = discard;
+  }
+
+  function rememberDesktopChannel(
+    transport: TransportSession,
+    id: string,
+    channel: RTCDataChannel
+  ): void {
+    transport.desktopTaken.add(id);
+    channel.addEventListener('close', () => transport.desktopTaken.delete(id), { once: true });
+  }
+
   function removeTransport(
     transport: TransportSession,
     code: string,
     notifyServer: boolean
   ): boolean {
     if (!transportsBySession.delete(transport.directSessionId)) return false;
+    for (const waiter of transport.desktopWaiters.values()) waiter.reject(new Error(code));
+    for (const { channel, timer } of transport.desktopChannels.values()) {
+      clearTimeout(timer);
+      channel.onmessage = null;
+      channel.onclose = null;
+      channel.close();
+    }
+    transport.desktopChannels.clear();
+    transport.desktopTaken.clear();
+    transport.peer.ondatachannel = null;
     if (transportsByNode.get(transport.request.nodeId) === transport)
       transportsByNode.delete(transport.request.nodeId);
     networkInfoByNode.delete(transport.request.nodeId);
@@ -797,7 +949,7 @@ export function createWorkspaceDirectTransferService(
     clearRetry(nodeId);
     if (
       [...transferRequests.values()].some((request) => request.nodeId === nodeId) ||
-      (terminalReferences.get(nodeId) ?? 0) > 0
+      (channelReferences.get(nodeId) ?? 0) > 0
     ) {
       deferredReleaseNodes.add(nodeId);
       return;
@@ -809,7 +961,7 @@ export function createWorkspaceDirectTransferService(
     if (
       !deferredReleaseNodes.has(nodeId) ||
       [...transferRequests.values()].some((request) => request.nodeId === nodeId) ||
-      (terminalReferences.get(nodeId) ?? 0) > 0
+      (channelReferences.get(nodeId) ?? 0) > 0
     )
       return;
     releaseTransportNow(nodeId);
@@ -866,6 +1018,7 @@ export function createWorkspaceDirectTransferService(
     transportNodeIds: (): string[] => [...transportsByNode.keys()],
     isConnected,
     acquireTerminalTransport,
+    acquireDesktopTransport,
     networkInfo,
     probe,
     ensureTransport,

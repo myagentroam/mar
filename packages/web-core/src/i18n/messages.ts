@@ -30,9 +30,12 @@ import { authenticationEnUS, authenticationZhCN } from './authentication.js';
 import { systemInformationEnUS, systemInformationZhCN } from './system-information.js';
 import { personalGitEnUS } from './personal-git.en-US.js';
 import { personalGitZhCN } from './personal-git.zh-CN.js';
+import { remoteDesktopEnUS } from './remote-desktop.en-US.js';
+import { remoteDesktopZhCN } from './remote-desktop.zh-CN.js';
 
 export const commonMessages = {
   'en-US': {
+    remoteDesktop: remoteDesktopEnUS,
     sessionGroups: workspaceEnUS.sessionGroups,
     sessionShare: sessionShareEnUS,
     personalGit: personalGitEnUS,
@@ -160,6 +163,7 @@ export const commonMessages = {
     }
   },
   'zh-CN': {
+    remoteDesktop: remoteDesktopZhCN,
     sessionGroups: workspaceZhCN.sessionGroups,
     sessionShare: sessionShareZhCN,
     personalGit: personalGitZhCN,

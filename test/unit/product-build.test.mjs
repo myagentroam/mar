@@ -25,6 +25,7 @@ import {
   verifyPreparedComputerUseRuntime
 } from '../../scripts/prepare-computer-use-runtime.mjs';
 import { computerRuntimeTargets } from '../../scripts/computer-runtime-packages.mjs';
+import { binariesTargets } from '../../scripts/binaries-packages.mjs';
 
 const ossRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -173,7 +174,20 @@ test('Node pins binaries while navigation and CLI remain private workspace modul
           }
         }
       ],
-      ['packages/binaries', { name: '@myagentroam/binaries', version: '0.9.7' }],
+      [
+        'packages/binaries',
+        {
+          name: '@myagentroam/binaries',
+          version: '0.9.7',
+          optionalDependencies: Object.fromEntries(
+            binariesTargets.map(({ name }) => [name, '0.9.7'])
+          )
+        }
+      ],
+      ...binariesTargets.map(({ path, name, id }) => {
+        const [platform, architecture] = id.split('-');
+        return [path, { name, version: '0.9.7', os: [platform], cpu: [architecture] }];
+      }),
       [
         'packages/code-navigation',
         { name: '@myagentroam/code-navigation', version: '0.9.7', private: true }
@@ -189,6 +203,13 @@ test('Node pins binaries while navigation and CLI remain private workspace modul
       commonVersion: '1.0.0',
       binariesVersion: '0.9.7'
     });
+    const targetFile = join(directory, binariesTargets[0].path, 'package.json');
+    const target = JSON.parse(await readFile(targetFile, 'utf8'));
+    target.version = '0.9.8';
+    await writeFile(targetFile, JSON.stringify(target));
+    await assert.rejects(readReleaseVersions(directory), /RELEASE_BINARIES_PLATFORM_INVALID/u);
+    target.version = '0.9.7';
+    await writeFile(targetFile, JSON.stringify(target));
     const nodePackage = join(directory, 'mar-node/package.json');
     const node = JSON.parse(await readFile(nodePackage, 'utf8'));
     node.dependencies['@myagentroam/binaries'] = 'workspace:1.0.0';

@@ -655,7 +655,8 @@ test('isolated GitHub entrypoint submits real tarball paths and persists a parti
   for (const file of [
     'npm-publication.mjs',
     'npm-publish-github.mjs',
-    'computer-runtime-packages.mjs'
+    'computer-runtime-packages.mjs',
+    'binaries-packages.mjs'
   ])
     await copyFile(
       new URL(`../../scripts/${file}`, import.meta.url),
