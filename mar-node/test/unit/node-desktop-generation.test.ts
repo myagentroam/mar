@@ -6,6 +6,17 @@ import { unavailableCapabilities } from '../../src/capabilities.js';
 import { NodeConnector } from '../../src/connector.js';
 import { DirectTransferService } from '../../src/connection/direct-transfer-service.js';
 
+// Generation ownership must not discover or start the host's actual GUI helpers.
+vi.mock('../../src/remote-desktop/linux-managed-binaries.js', () => ({
+  linuxManagedDesktopBinaries: async () => undefined
+}));
+vi.mock('../../src/remote-desktop/windows-managed-binaries.js', () => ({
+  windowsManagedDesktopBinaries: async () => undefined
+}));
+vi.mock('../../src/remote-desktop/macos-managed-binaries.js', () => ({
+  macosManagedDesktopBinaries: async () => undefined
+}));
+
 describe('Node desktop generation ownership', () => {
   it('retires the generation on resource restart and pins the old Direct owner', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-generation-'));
