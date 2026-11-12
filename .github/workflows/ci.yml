@@ -79,8 +79,8 @@ jobs:
           tar -xzf source.tar.gz
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-          $install = Start-Process -FilePath $installer -ArgumentList @('modify', '--installPath', ('"' + $vs + '"'), '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC', '--quiet', '--norestart', '--wait') -Wait -PassThru
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $install = Start-Process -FilePath $installer -ArgumentList @('modify', '--installPath', ('"' + $vs + '"'), '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC', '--quiet', '--norestart') -Wait -PassThru
           if ($install.ExitCode -notin @(0, 3010)) { throw "MFC installation failed: $($install.ExitCode)" }
           $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
           if (-not $msbuild) { throw 'MSBuild not found' }
@@ -105,6 +105,8 @@ jobs:
           if-no-files-found: error
 
   smoke:
+    # This temporary acceptance branch dedicates the extended dispatch to native desktop jobs.
+    if: ${{ !inputs.macos_validation }}
     name: Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
