@@ -151,11 +151,19 @@ jobs:
           "$RUNNER_TEMP/primary-window" >primary-window.log 2>&1 & primary=$!
           "$RUNNER_TEMP/virtual-screen" >virtual-screen.log 2>&1 & virtual=$!
           server=''
-          trap 'kill "$primary" "$virtual" ${server:+"$server"} 2>/dev/null || true; wait 2>/dev/null || true; cat primary-window.log virtual-screen.log; test ! -f multi-server.log || cat multi-server.log' EXIT
+          trap 'kill "$primary" "$virtual" ${server:+"$server"} 2>/dev/null || true; wait 2>/dev/null || true; cat primary-window.log virtual-screen.log; test ! -f multi-server.log || cat multi-server.log; test ! -f managed-multi.log || cat managed-multi.log' EXIT
           for _ in $(seq 1 100); do grep -q '^READY ' virtual-screen.log && break; kill -0 "$virtual"; sleep .1; done
           grep -q '^READY ' virtual-screen.log
           "$package/macVNC" -listen localhost -rfbport 15994 -rfbportv6 0 >multi-server.log 2>&1 & server=$!
           python3 mar-node/test/native/macos-multidisplay-rfb.py 15994 "$package/macos-topology"
+          kill "$server"
+          wait "$server" || true
+          rm -f "$MAR_MULTISCREEN_CLICK"
+          node mar-node/test/native/macos-runtime-multi-probe.mjs "$package/macVNC" "$package/macos-topology" 15995 >managed-multi.log 2>&1 & server=$!
+          python3 mar-node/test/native/macos-multidisplay-rfb.py 15995 "$package/macos-topology"
+          wait "$server"
+          cat managed-multi.log
+          grep -q CLOSED managed-multi.log
 
   remote-desktop-windows-native:
     name: Remote desktop Windows native acceptance
