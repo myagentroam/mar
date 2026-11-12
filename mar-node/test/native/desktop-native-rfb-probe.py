@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import socket
 import struct
+import subprocess
 import sys
 import time
 
@@ -13,6 +14,7 @@ mouse_receipt = Path(os.environ['MAR_DESKTOP_MOUSE_RECEIPT'])
 want_input = len(sys.argv) > 2 and sys.argv[2] == 'control'
 want_cleanup = len(sys.argv) > 2 and sys.argv[2] == 'cleanup'
 want_release = len(sys.argv) > 2 and sys.argv[2] == 'release'
+want_native_release = len(sys.argv) > 2 and sys.argv[2] == 'native-release'
 want_shift_cleanup = len(sys.argv) > 2 and sys.argv[2] == 'shift-cleanup'
 want_ctrl_shift = len(sys.argv) > 2 and sys.argv[2] == 'ctrl-shift'
 want_mac_modifiers = len(sys.argv) > 2 and sys.argv[2] == 'mac-modifiers'
@@ -66,7 +68,7 @@ with connection:
                    if pixels[offset + 2] > 200 and pixels[offset + 1] < 60 and pixels[offset] < 60)
     assert red > 100, f'Expected red fixture in captured framebuffer; found {red} pixels'
     print(f'Native RFB framebuffer {width}x{height}, red fixture pixels: {red}')
-    if want_input or want_cleanup or want_release:
+    if want_input or want_cleanup or want_release or want_native_release:
         connection.sendall(struct.pack('>BBHH', 5, 1, width // 2, height // 2))
         connection.sendall(struct.pack('>BBHI', 4, 1, 0, ord('a')))
         if want_input:
@@ -78,9 +80,12 @@ with connection:
         assert receipt.read_text().strip() == 'key-a', 'Native application did not receive key'
         assert mouse_receipt.read_text().strip() == 'mouse-down', 'Native application did not receive pointer click'
         print('Native application received RFB pointer click and key-a')
-        if want_release:
-            connection.sendall(struct.pack('>BBHI', 4, 0, 0, ord('a')))
-            connection.sendall(struct.pack('>BBHH', 5, 0, width // 2, height // 2))
+        if want_release or want_native_release:
+            if want_release:
+                connection.sendall(struct.pack('>BBHI', 4, 0, 0, ord('a')))
+                connection.sendall(struct.pack('>BBHH', 5, 0, width // 2, height // 2))
+            else:
+                subprocess.run(['powershell', '-NoProfile', '-File', 'mar-node/test/native/windows-input-release.ps1'], check=True)
             key_up = Path(os.environ['MAR_DESKTOP_KEY_UP_RECEIPT'])
             mouse_up = Path(os.environ['MAR_DESKTOP_MOUSE_UP_RECEIPT'])
             deadline = time.monotonic() + 8
@@ -88,7 +93,7 @@ with connection:
                 time.sleep(.05)
             assert key_up.read_text().strip() == 'key-up', 'Explicit RFB key-up was not received'
             assert mouse_up.read_text().strip() == 'mouse-up', 'Explicit RFB mouse-up was not received'
-            print('Native application received explicit RFB key-up and mouse-up before close')
+            print('Native application received key-up and mouse-up before close')
         if want_input and os.environ.get('MAR_DESKTOP_KEY_UP_RECEIPT'):
             key_up = Path(os.environ['MAR_DESKTOP_KEY_UP_RECEIPT'])
             mouse_up = Path(os.environ['MAR_DESKTOP_MOUSE_UP_RECEIPT'])

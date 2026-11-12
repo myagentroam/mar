@@ -172,6 +172,9 @@ jobs:
             python mar-node/test/native/desktop-native-rfb-probe.py $port release
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
+            python mar-node/test/native/desktop-native-rfb-probe.py $port native-release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
             python mar-node/test/native/desktop-native-rfb-probe.py $port cleanup
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
