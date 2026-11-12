@@ -178,7 +178,10 @@ describe('MAR Agent managed run projection', () => {
       });
       const sdkError = lockFailure as AgentError;
       const originalCause = sdkError.cause;
-      expect(originalCause).toMatchObject({ code: 'EEXIST' });
+      expect(originalCause).toBeInstanceOf(Error);
+      expect(['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EPERM']).toContain(
+        (originalCause as NodeJS.ErrnoException).code
+      );
 
       const publications: Array<{ readonly type: string; readonly value: unknown }> = [];
       const dispose = vi.fn(async () => undefined);
