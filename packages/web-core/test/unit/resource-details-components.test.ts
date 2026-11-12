@@ -103,8 +103,20 @@ describe('Public resource details', () => {
           commonMessages['en-US'].generated.nodeDetailsDialogs.computerUse
         );
         expect(textContent(view.root)).not.toContain('Remote Desktop');
+        const control = () =>
+          view.findAll('div').find((item) => item.props['class'] === 'node-feature-control')!;
+        expect(textContent(control())).toBe('Disabled');
+        expect(controls[0]!.props['aria-label']).toBe('Computer Use');
         await trigger(controls[0]!, 'onChange', true);
         await flushComponent();
+        expect(textContent(control())).toBe('Enabled');
+        expect(
+          textContent(
+            view.findAll('p').find((item) => item.props['class'] === 'node-feature-hint')!
+          )
+        ).toBe(
+          'When enabled, the node checks availability; see Tool Environment below for status.'
+        );
         expect(request).toHaveBeenCalledWith('/api/management/nodes/node-1/computer-use/enable', {
           method: 'POST',
           body: JSON.stringify({ enabled: true })

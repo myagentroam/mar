@@ -78,14 +78,19 @@ async function queryScreens(binary: string, signal: AbortSignal): Promise<MacScr
   return parsed.displays as MacScreen[];
 }
 
-/** Owns the current interactive macOS desktop layout and one shared macVNC backend. */
+/** Owns per-display capture identities and backend pools; selecting a display never changes another page. */
 export class MacosRemoteDesktopRuntime {
-  readonly #pool: TigerVncBackendPool;
-  readonly #generation = randomUUID();
-  #layout: ReturnType<typeof macosCombinedDesktopLayout> | undefined;
+  readonly #pools = new Set<TigerVncBackendPool>();
+  #entries = new Map<
+    string,
+    { layout: ReturnType<typeof macosCombinedDesktopLayout>; pool: TigerVncBackendPool }
+  >();
+  #screens: MacScreen[] = [];
   #signature = '';
   #revision = 0;
   #disposed = false;
+  #topologyAvailable = false;
+  #refreshTail: Promise<void> = Promise.resolve();
 
   private constructor(
     private readonly options: {
@@ -94,12 +99,43 @@ export class MacosRemoteDesktopRuntime {
       maxPixels: number;
       fence(code: string): void;
     }
-  ) {
-    this.#pool = new TigerVncBackendPool(
-      (signal, onUnexpectedExit) =>
-        MacVncManagedProcess.start({ binaryPath: options.binaryPath, onUnexpectedExit }, signal),
-      () => options.fence('DESKTOP_BACKEND_CLOSED')
+  ) {}
+
+  #createPool(displayId: number): TigerVncBackendPool {
+    const pool = new TigerVncBackendPool(
+      async (signal, onUnexpectedExit) => {
+        const signature = this.#signature;
+        const screens = await this.#probeTopology(signal);
+        if (JSON.stringify(screens) !== this.#signature) this.#invalidateTopology();
+        const displayIndex = screens.findIndex((screen) => screen.id === displayId);
+        if (
+          this.#disposed ||
+          !this.#topologyAvailable ||
+          displayIndex < 0 ||
+          this.#signature !== signature
+        )
+          throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+        const backend = await MacVncManagedProcess.start(
+          { binaryPath: this.options.binaryPath, displayIndex, onUnexpectedExit },
+          signal
+        );
+        // The pool owns cleanup before the post-launch check can fail. A failed stop
+        // must retain the backend/reference so its attachment can retry cleanup.
+        return {
+          stop: () => backend.stop(),
+          connect: async (maxPixels, connectSignal) => {
+            const current = await this.#probeTopology(connectSignal);
+            if (JSON.stringify(current) !== this.#signature) this.#invalidateTopology();
+            if (this.#disposed || !this.#topologyAvailable || this.#signature !== signature)
+              throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+            return backend.connect(maxPixels, connectSignal);
+          }
+        };
+      },
+      () => this.options.fence('DESKTOP_BACKEND_CLOSED')
     );
+    this.#pools.add(pool);
+    return pool;
   }
 
   static async start(
@@ -116,46 +152,110 @@ export class MacosRemoteDesktopRuntime {
     return runtime;
   }
 
-  async refresh(signal: AbortSignal): Promise<void> {
-    const screens = (await queryScreens(this.options.topologyBinary, signal)).sort(
-      (left, right) => left.id - right.id
-    );
-    const signature = JSON.stringify(screens);
-    if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
-    if (signature === this.#signature) return;
-    const layout = macosCombinedDesktopLayout(
-      screens.filter((screen) => screen.primary),
-      this.#generation,
-      this.#revision + 1
-    );
-    if (layout.framebuffer.width * layout.framebuffer.height > this.options.maxPixels)
-      throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
-    if (this.#layout) this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');
-    this.#signature = signature;
-    this.#revision++;
-    this.#layout = layout;
+  refresh(signal: AbortSignal): Promise<void> {
+    const result = this.#refreshTail.then(() => this.#refresh(signal));
+    this.#refreshTail = result.catch(() => {});
+    return result;
   }
 
-  describe() {
-    if (this.#disposed || !this.#layout || !this.#pool.isAvailable())
-      throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
-    return structuredClone(this.#layout);
+  #invalidateTopology(): void {
+    const wasAvailable = this.#topologyAvailable;
+    this.#topologyAvailable = false;
+    if (wasAvailable) this.options.fence('DESKTOP_TOPOLOGY_UNAVAILABLE');
+  }
+
+  async #probeTopology(signal: AbortSignal): Promise<MacScreen[]> {
+    if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
+    try {
+      return await queryScreens(this.options.topologyBinary, signal);
+    } catch (error) {
+      // Closing one page aborts its probe; it is not evidence of desktop loss.
+      if (!signal.aborted) this.#invalidateTopology();
+      throw error;
+    }
+  }
+
+  async #refresh(signal: AbortSignal): Promise<void> {
+    // Keep native enumeration order: macVNC's -display takes an index, not a display ID.
+    const screens = await this.#probeTopology(signal);
+    const signature = JSON.stringify(screens);
+    if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
+    if (signature === this.#signature && this.#topologyAvailable) return;
+    // Revoke old captures before validating new geometry. A failed probe/layout
+    // must not leave the previous grants current or revive them after recovery.
+    this.#invalidateTopology();
+    const selectableDisplays = screens.map((screen) => ({
+      displayId: `display_${screen.id}`,
+      name: `Display ${screen.id}`,
+      primary: screen.primary
+    }));
+    const layouts = screens.map((screen) => {
+      const displayId = `display_${screen.id}`;
+      const layout = remoteDesktopDescriptionSchema.parse({
+        ...macosCombinedDesktopLayout(
+          [{ ...screen, primary: true }],
+          this.#entries.get(displayId)?.layout.desktopGeneration ?? randomUUID(),
+          this.#revision + 1
+        ),
+        selectableDisplays
+      });
+      if (layout.framebuffer.width * layout.framebuffer.height > this.options.maxPixels)
+        throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+      return { screen, displayId, layout };
+    });
+    if (!layouts.length) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    this.#entries = new Map(
+      layouts.map(({ screen, displayId, layout }) => [
+        displayId,
+        { layout, pool: this.#entries.get(displayId)?.pool ?? this.#createPool(screen.id) }
+      ])
+    );
+    this.#screens = screens;
+    this.#signature = signature;
+    this.#revision++;
+    this.#topologyAvailable = true;
+  }
+
+  describe(
+    selection: { displayId?: string | undefined; desktopGeneration?: string | undefined } = {}
+  ) {
+    const entry =
+      selection.desktopGeneration !== undefined
+        ? [...this.#entries.values()].find(
+            (candidate) => candidate.layout.desktopGeneration === selection.desktopGeneration
+          )
+        : this.#entries.get(
+            selection.displayId ?? `display_${this.#screens.find((screen) => screen.primary)?.id}`
+          );
+    if (this.#disposed) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
+    if (!this.#topologyAvailable) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    if (!entry) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    if (!entry.pool.isAvailable()) throw new RemoteDesktopError('DESKTOP_BACKEND_CLOSED');
+    return structuredClone(entry.layout);
   }
 
   readonly isCurrent = (command: DesktopAttachmentBinding): boolean =>
     !this.#disposed &&
-    this.#pool.isAvailable() &&
-    !!this.#layout &&
-    this.#layout.desktopGeneration === command.desktopGeneration &&
-    this.#layout.topologyRevision === command.topologyRevision;
+    this.#topologyAvailable &&
+    [...this.#entries.values()].some(
+      (entry) =>
+        entry.pool.isAvailable() &&
+        entry.layout.desktopGeneration === command.desktopGeneration &&
+        entry.layout.topologyRevision === command.topologyRevision
+    );
 
   readonly createAttachment = (
     command: DesktopAttachmentBinding,
     frontend: Parameters<DirectDesktopOptions['createAttachment']>[1],
     callbacks: Parameters<DirectDesktopOptions['createAttachment']>[2]
-  ) =>
-    new PooledDesktopAttachment(
-      this.#pool,
+  ) => {
+    const entry = [...this.#entries.values()].find(
+      (candidate) => candidate.layout.desktopGeneration === command.desktopGeneration
+    );
+    if (!entry || !this.isCurrent(command))
+      throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+    return new PooledDesktopAttachment(
+      entry.pool,
       frontend,
       (backend) =>
         new RemoteDesktopAttachment({
@@ -166,18 +266,21 @@ export class MacosRemoteDesktopRuntime {
           maxPixels: this.options.maxPixels,
           isCurrentTopology: (width, height) =>
             this.isCurrent(command) &&
-            this.#layout?.framebuffer.width === width &&
-            this.#layout.framebuffer.height === height,
+            entry.layout.framebuffer.width === width &&
+            entry.layout.framebuffer.height === height,
           onAttached: callbacks.attached,
           onFailure: callbacks.failed
         })
     );
+  };
 
   async dispose(): Promise<void> {
     if (!this.#disposed) {
       this.#disposed = true;
       this.options.fence('DESKTOP_SESSION_UNAVAILABLE');
     }
-    await this.#pool.dispose();
+    const results = await Promise.allSettled([...this.#pools].map((pool) => pool.dispose()));
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
+    this.#pools.clear();
   }
 }

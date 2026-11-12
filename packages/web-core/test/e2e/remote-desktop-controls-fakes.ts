@@ -2,8 +2,9 @@
 import { createDesktopInputPeer } from './remote-desktop-input-peer.js';
 
 const modes: string[] = [];
+const displays: string[] = [];
 let inputPeer: ReturnType<typeof createDesktopInputPeer> | undefined;
-let current: RFB | undefined;
+const capture = { current: undefined as RFB | undefined };
 let activeChannel: ReturnType<typeof channel>;
 const settings = new URLSearchParams(location.search);
 function channel() {
@@ -17,7 +18,7 @@ export default class RFB extends EventTarget {
   qualityLevel = 6;
   constructor(target: HTMLElement) {
     super();
-    current = this;
+    capture.current = this;
     const canvas = document.createElement('canvas');
     canvas.width = 800;
     canvas.height = 600;
@@ -29,16 +30,25 @@ export default class RFB extends EventTarget {
 
 export function createStandaloneRemoteDesktopService() {
   return {
-    async discover() {
+    async discover(_signal?: AbortSignal, displayId = 'screen') {
+      displays.push(displayId);
       return {
         nodeName: 'Fixture Node',
         capability: { supportsControl: !settings.has('viewOnly'), supportsUnicodePaste: true },
         description: {
+          ...(settings.has('displaySelection')
+            ? {
+                selectableDisplays: [
+                  { displayId: 'screen', name: 'Display1', primary: true },
+                  { displayId: 'secondary', name: 'Display2', primary: false }
+                ]
+              }
+            : {}),
           framebuffer: { width: 800, height: 600 },
           displays: [
             {
-              displayId: 'screen',
-              name: '\\\\.\\DISPLAY1',
+              displayId,
+              name: displayId === 'secondary' ? 'Display2' : '\\\\.\\DISPLAY1',
               primary: true,
               framebufferBounds: { x: 0, y: 0, width: 800, height: 600 }
             }
@@ -72,6 +82,7 @@ declare global {
   interface Window {
     desktopControls: {
       modes: string[];
+      displays: string[];
       readonly rfbReady: boolean;
       readonly pointerMasks: readonly number[];
       paint(): void;
@@ -80,6 +91,7 @@ declare global {
 }
 window.desktopControls = {
   modes,
+  displays,
   get rfbReady() {
     return inputPeer?.ready ?? false;
   },
@@ -93,7 +105,7 @@ window.desktopControls = {
     }
     activeChannel.bytes.receivedBytes += 2048;
     activeChannel.bytes.sentBytes += 128;
-    current!.dispatchEvent(new Event('frame'));
-    current!.dispatchEvent(new Event('firstframe'));
+    capture.current!.dispatchEvent(new Event('frame'));
+    capture.current!.dispatchEvent(new Event('firstframe'));
   }
 };

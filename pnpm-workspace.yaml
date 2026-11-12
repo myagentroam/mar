@@ -36,9 +36,9 @@ patchedDependencies:
   '@novnc/novnc@1.7.0': patches/@novnc__novnc@1.7.0.patch
 
 overrides:
-  '@myagentroam/binaries-linux-x64': 'workspace:0.10.3'
-  '@myagentroam/binaries-linux-arm64': 'workspace:0.10.3'
-  '@myagentroam/binaries-darwin-x64': 'workspace:0.10.3'
-  '@myagentroam/binaries-darwin-arm64': 'workspace:0.10.3'
-  '@myagentroam/binaries-win32-x64': 'workspace:0.10.3'
-  '@myagentroam/binaries-win32-arm64': 'workspace:0.10.3'
+  '@myagentroam/binaries-linux-x64': 'workspace:0.10.4'
+  '@myagentroam/binaries-linux-arm64': 'workspace:0.10.4'
+  '@myagentroam/binaries-darwin-x64': 'workspace:0.10.4'
+  '@myagentroam/binaries-darwin-arm64': 'workspace:0.10.4'
+  '@myagentroam/binaries-win32-x64': 'workspace:0.10.4'
+  '@myagentroam/binaries-win32-arm64': 'workspace:0.10.4'

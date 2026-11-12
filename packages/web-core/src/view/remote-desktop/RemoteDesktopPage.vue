@@ -20,6 +20,10 @@ const discovery = shallowRef<StandaloneDesktopDiscovery>();
 const mode = ref<Mode>('VIEW');
 const quality = ref(6);
 const screenId = ref<string>();
+const displayOptions = computed(
+  () =>
+    discovery.value?.description.selectableDisplays ?? discovery.value?.description.displays ?? []
+);
 const state = ref<'connecting' | 'ready' | 'released' | 'hidden' | 'error'>('connecting');
 const errorCode = ref<string>();
 const pasteError = ref(false);
@@ -159,7 +163,7 @@ async function connect(nextMode: Mode): Promise<void> {
   }
 }
 
-async function discoverAndConnect(): Promise<void> {
+async function discoverAndConnect(displayId?: string): Promise<void> {
   if (!service || disposed || document.hidden) return;
   if (connectionClosed || errorCode.value === 'DESKTOP_CONTROL_UNAVAILABLE') {
     location.reload();
@@ -174,7 +178,7 @@ async function discoverAndConnect(): Promise<void> {
   errorCode.value = undefined;
   detachDisplay();
   try {
-    const snapshot = await service.discover(controller.signal);
+    const snapshot = await service.discover(controller.signal, displayId);
     if (disposed || token !== generation || controller.signal.aborted) return;
     discovery.value = snapshot;
     screenId.value = snapshot.description.displays.find((display) => display.primary)?.displayId;
@@ -184,6 +188,10 @@ async function discoverAndConnect(): Promise<void> {
   } finally {
     if (opening === controller) opening = undefined;
   }
+}
+
+function changeScreen(displayId: string): void {
+  if (discovery.value?.description.selectableDisplays) void discoverAndConnect(displayId);
 }
 
 function displayName(name: string): string {
@@ -322,9 +330,15 @@ onBeforeUnmount(() => {
           :aria-label="translate('remoteDesktop.screens')"
           class="remote-screen-select"
           data-testid="desktop-screen"
+          :disabled="
+            state === 'connecting' ||
+            state === 'hidden' ||
+            errorCode === 'DESKTOP_CONTROL_UNAVAILABLE'
+          "
+          @change="changeScreen"
         >
           <el-option
-            v-for="display in discovery.description.displays"
+            v-for="display in displayOptions"
             :key="display.displayId"
             :value="display.displayId"
             :label="
@@ -424,7 +438,7 @@ onBeforeUnmount(() => {
         </p>
         <el-button
           v-if="state === 'released' || state === 'hidden' || state === 'error'"
-          @click="discoverAndConnect"
+          @click="discoverAndConnect()"
           >{{ translate('remoteDesktop.retry') }}</el-button
         >
         <el-button v-if="errorCode === 'UNAUTHENTICATED'" tag="a" href="/console">{{

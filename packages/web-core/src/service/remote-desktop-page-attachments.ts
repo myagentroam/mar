@@ -133,17 +133,21 @@ export function createRemoteDesktopPageAttachments(options: {
       }
     });
   }
-  function close(): Promise<boolean> {
+  function release(): Promise<boolean> {
     ++sequence;
     opening?.abort();
     if (current) void fence(current);
+    return enqueue(async () => (current ? finish(current) : !unsafe));
+  }
+  function close(): Promise<boolean> {
+    const released = release();
     return enqueue(async () => {
-      const settled = current ? await finish(current) : !unsafe;
+      const settled = await released;
       disposed = true;
       options.direct.close();
       options.relay.close();
       return settled;
     });
   }
-  return { select, close };
+  return { select, release, close };
 }

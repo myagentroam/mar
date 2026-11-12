@@ -1,7 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
+import type { createRemoteDesktopDirectClient } from '../../src/service/remote-desktop-direct-client.js';
+import type { createRemoteDesktopRelayClient } from '../../src/service/remote-desktop-relay-client.js';
+
+type LiveOptions = Parameters<typeof createWorkbenchLiveService>[0];
+type DirectOptions = Parameters<typeof createRemoteDesktopDirectClient>[0];
+type RelayOptions = Parameters<typeof createRemoteDesktopRelayClient>[0];
 
 const mocks = vi.hoisted(() => {
-  const state: { liveOptions?: any; directOptions?: any; relayOptions?: any } = {};
+  const state = {} as {
+    liveOptions: LiveOptions;
+    directOptions: DirectOptions;
+    relayOptions: RelayOptions;
+  };
   const live = {
     connect: vi.fn(),
     close: vi.fn(),
@@ -21,7 +32,7 @@ const mocks = vi.hoisted(() => {
   return { state, live, transport, direct, relay };
 });
 vi.mock('../../src/service/workbench-live-service.js', () => ({
-  createWorkbenchLiveService: (options: unknown) => {
+  createWorkbenchLiveService: (options: LiveOptions) => {
     mocks.state.liveOptions = options;
     return mocks.live;
   }
@@ -30,13 +41,13 @@ vi.mock('../../src/service/workspace-direct-transfer-service.js', () => ({
   createWorkspaceDirectTransferService: () => mocks.transport
 }));
 vi.mock('../../src/service/remote-desktop-direct-client.js', () => ({
-  createRemoteDesktopDirectClient: (options: unknown) => {
+  createRemoteDesktopDirectClient: (options: DirectOptions) => {
     mocks.state.directOptions = options;
     return mocks.direct;
   }
 }));
 vi.mock('../../src/service/remote-desktop-relay-client.js', () => ({
-  createRemoteDesktopRelayClient: (options: unknown) => {
+  createRemoteDesktopRelayClient: (options: RelayOptions) => {
     mocks.state.relayOptions = options;
     return mocks.relay;
   }
@@ -80,7 +91,7 @@ function response(value: unknown) {
 function fixture() {
   const onDisconnected = vi.fn();
   const service = createStandaloneRemoteDesktopService({ nodeId: 'node 1', onDisconnected });
-  mocks.state.liveOptions.onReady('page-connection', false);
+  mocks.state.liveOptions.onReady!('page-connection', false);
   return { service, onDisconnected };
 }
 beforeEach(() => {
@@ -97,6 +108,71 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('standalone Remote Desktop page composition', () => {
+  it.each([true, false])(
+    'waits for capture settlement (%s) before requesting another display',
+    async (settled) => {
+      const selectableDisplays = [
+        { displayId: 'primary-1', name: 'Primary', primary: true },
+        { displayId: 'secondary-1', name: 'Other', primary: false }
+      ];
+      const initial = { ...description, selectableDisplays };
+      const other = {
+        ...initial,
+        desktopGeneration: 'other-generation',
+        displays: initial.displays.map((display) => ({ ...display, displayId: 'secondary-1' }))
+      };
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(response({ capability, description: initial }) as never)
+        .mockResolvedValueOnce(response({ capability, description: other }) as never);
+      const f = fixture();
+      const settlement = deferred<boolean>();
+      const old = { channel: {}, ready: vi.fn(), close: vi.fn(() => settlement.promise) };
+      try {
+        const snapshot = await f.service.discover(new AbortController().signal);
+        mocks.direct.attach.mockResolvedValueOnce(old);
+        await f.service.select({
+          discovery: snapshot,
+          mode: 'CONTROL',
+          signal: new AbortController().signal,
+          onDisconnected: vi.fn()
+        });
+        const switching = f.service.discover(new AbortController().signal, 'secondary-1');
+        const outcome = switching.then(
+          (value) => ({ value, error: undefined }),
+          (error: unknown) => ({ value: undefined, error })
+        );
+        expect(old.close).toHaveBeenCalledOnce();
+        await Promise.resolve();
+        expect(fetch).toHaveBeenCalledTimes(1);
+        settlement.resolve(settled);
+        const result = await outcome;
+        if (settled) {
+          expect(result.value?.description.desktopGeneration).toBe('other-generation');
+          expect(fetch).toHaveBeenLastCalledWith(
+            '/api/nodes/node%201/desktop?displayId=secondary-1',
+            expect.anything()
+          );
+          await expect(
+            f.service.select({
+              discovery: snapshot,
+              mode: 'CONTROL',
+              signal: new AbortController().signal,
+              onDisconnected: vi.fn()
+            })
+          ).rejects.toMatchObject({ code: 'DESKTOP_UNAVAILABLE' });
+          await expect(
+            f.service.discover(new AbortController().signal, 'unknown-display')
+          ).rejects.toMatchObject({ code: 'DESKTOP_TOPOLOGY_UNAVAILABLE' });
+        } else {
+          expect(result.error).toMatchObject({ code: 'DESKTOP_CONTROL_UNAVAILABLE' });
+          expect(fetch).toHaveBeenCalledTimes(1);
+        }
+      } finally {
+        settlement.resolve(settled);
+        await f.service.close();
+      }
+    }
+  );
   it('preserves the server-provided Node name without deriving it from the internal ID', async () => {
     const f = fixture();
     try {
@@ -193,7 +269,7 @@ describe('standalone Remote Desktop page composition', () => {
       signal: new AbortController().signal,
       onDisconnected: vi.fn()
     });
-    mocks.state.liveOptions.onDisconnected();
+    mocks.state.liveOptions.onDisconnected!();
     expect(handle.close).toHaveBeenCalledOnce();
     expect(f.onDisconnected).toHaveBeenCalledWith('DESKTOP_CONTROL_UNAVAILABLE');
     expect(mocks.live.close).not.toHaveBeenCalled();
@@ -217,7 +293,7 @@ describe('standalone Remote Desktop page composition', () => {
     vi.mocked(fetch).mockReturnValueOnce(pending.promise as never);
     const discovery = f.service.discover(new AbortController().signal);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    mocks.state.liveOptions.onNodeConnection('node 1', false);
+    mocks.state.liveOptions.onNodeConnection!('node 1', false);
     pending.resolve(response({ capability, description }));
     await expect(discovery).rejects.toMatchObject({ code: 'DESKTOP_CONTROL_UNAVAILABLE' });
     expect(mocks.transport.ensureTransport).not.toHaveBeenCalled();

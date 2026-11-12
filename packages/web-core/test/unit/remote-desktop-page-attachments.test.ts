@@ -36,6 +36,49 @@ function fixture() {
 }
 
 describe('remote desktop page attachment ownership', () => {
+  it('releases the current capture before discovery without disposing the page transports', async () => {
+    const f = fixture();
+    const old = attachment();
+    const next = attachment();
+    f.direct.attach.mockResolvedValueOnce(old).mockResolvedValueOnce(next);
+    const previous = await f.service.select(f.target);
+    const released = f.service.release();
+    expect(old.close).toHaveBeenCalledOnce();
+    previous.ready();
+    expect(old.ready).not.toHaveBeenCalled();
+    let settled = false;
+    void released.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    old.settlement.resolve(true);
+    expect(await released).toBe(true);
+    expect(f.direct.close).not.toHaveBeenCalled();
+    const replacement = await f.service.select({
+      ...f.target,
+      desktopGeneration: 'other-display',
+      mode: 'VIEW'
+    });
+    replacement.ready();
+    expect(next.ready).toHaveBeenCalledOnce();
+    next.settlement.resolve(true);
+    expect(await f.service.close()).toBe(true);
+  });
+  it('blocks display rediscovery after an unknown cleanup result', async () => {
+    const f = fixture();
+    const old = attachment();
+    f.direct.attach.mockResolvedValue(old);
+    await f.service.select(f.target);
+    const released = f.service.release();
+    old.settlement.resolve(false);
+    expect(await released).toBe(false);
+    await expect(
+      f.service.select({ ...f.target, desktopGeneration: 'other-display' })
+    ).rejects.toMatchObject({ code: 'DESKTOP_CONTROL_UNAVAILABLE' });
+    expect(f.direct.attach).toHaveBeenCalledOnce();
+    expect(await f.service.close()).toBe(false);
+  });
   it('fences immediately and waits for actual settlement before switching path or mode', async () => {
     const f = fixture();
     const old = attachment();

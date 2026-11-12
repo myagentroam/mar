@@ -18,6 +18,8 @@ describe('Node desktop discovery', () => {
     const owners = connector as unknown as {
       desktopRuntime?: MacosRemoteDesktopRuntime;
       operationRouter: { execute(operation: string, data: unknown): Promise<unknown> };
+      nodeRequests: { handle(envelope: ReturnType<typeof createEnvelope>): Promise<void> };
+      controlChannel: { send(type: string, payload: unknown, replyTo?: string): void };
     };
     const runtime = Object.create(MacosRemoteDesktopRuntime.prototype) as MacosRemoteDesktopRuntime;
     const layout = macosCombinedDesktopLayout(
@@ -46,6 +48,53 @@ describe('Node desktop discovery', () => {
       expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(runtime.describe).mock.invocationCallOrder[0]!
       );
+      const send = vi.spyOn(owners.controlChannel, 'send');
+      const request = createEnvelope('node.request', {});
+      const now = Date.now();
+      const authorization = {
+        userId: 1,
+        sessionHash: 'a'.repeat(43),
+        nodeId: 'node-a',
+        operation: 'desktop.describe',
+        requestId: request.id,
+        issuedAt: now,
+        expiresAt: now + 10_000
+      };
+      for (const selection of [
+        {},
+        { displayId: 'display_1' },
+        { desktopGeneration: layout.desktopGeneration }
+      ]) {
+        request.payload = {
+          operation: 'desktop.describe',
+          data: selection,
+          userAuthorization: authorization
+        };
+        await owners.nodeRequests.handle(request);
+        expect(send).toHaveBeenLastCalledWith('node.response', { result: layout }, request.id);
+        expect(runtime.describe).toHaveBeenLastCalledWith(selection);
+      }
+      for (const selection of [
+        [],
+        null,
+        'display_1',
+        { displayId: 'display_1', desktopGeneration: layout.desktopGeneration },
+        { displayId: '' },
+        { unexpected: true }
+      ]) {
+        request.payload = {
+          operation: 'desktop.describe',
+          data: selection,
+          userAuthorization: authorization
+        };
+        await owners.nodeRequests.handle(request);
+        expect(send).toHaveBeenLastCalledWith(
+          'node.response',
+          expect.objectContaining({ error: 'DESKTOP_TOPOLOGY_UNAVAILABLE' }),
+          request.id
+        );
+      }
+      expect(refresh).toHaveBeenCalledTimes(4);
       const projection = connector as unknown as {
         directTransferService: unknown;
         projectRemoteDesktopCapability(input: object): {

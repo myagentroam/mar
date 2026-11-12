@@ -134,6 +134,14 @@ describe('Remote Desktop server composition admission', () => {
       expect(await options.authorize(1, 'node', 'CONTROL')).toBe(true);
       await expect(preflight(path)).resolves.toBeUndefined();
       expect(f.request).toHaveBeenCalledOnce();
+      expect(f.request).toHaveBeenCalledWith(
+        'node',
+        'desktop.describe',
+        { desktopGeneration: request.desktopGeneration },
+        { userId: 1, sessionHash: 'session' },
+        15_000,
+        expect.any(AbortSignal)
+      );
       f.authorize.mockResolvedValue(false);
       expect(await options.authorize(1, 'node', 'VIEW')).toBe(false);
       expect(await captured.transport!.authorizeTransport!(1, 'node')).toBe(false);

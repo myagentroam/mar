@@ -83,18 +83,32 @@ export function createStandaloneRemoteDesktopService(options: {
     options.onDisconnected(code);
   }
 
-  async function discover(signal: AbortSignal): Promise<StandaloneDesktopDiscovery> {
+  async function discover(
+    signal: AbortSignal,
+    displayId?: string
+  ): Promise<StandaloneDesktopDiscovery> {
+    if (
+      displayId !== undefined &&
+      !discovery?.description.selectableDisplays?.some((display) => display.displayId === displayId)
+    )
+      throw new RemoteDesktopClientError('DESKTOP_TOPOLOGY_UNAVAILABLE');
     const revision = ++discoveryRevision;
     discovery = undefined;
     const combined = AbortSignal.any([signal, lifetime.signal, AbortSignal.timeout(15_000)]);
+    if (!(await waitFor(attachments.release(), combined)))
+      throw new RemoteDesktopClientError('DESKTOP_CONTROL_UNAVAILABLE');
     if (!(await waitFor(live.waitForReady(), combined)))
       throw new RemoteDesktopClientError('DESKTOP_CONTROL_UNAVAILABLE');
     const connection = connectionId;
-    const response = await fetch(`/api/nodes/${encodeURIComponent(options.nodeId)}/desktop`, {
-      credentials: 'same-origin',
-      cache: 'no-store',
-      signal: combined
-    });
+    const query = displayId === undefined ? '' : `?displayId=${encodeURIComponent(displayId)}`;
+    const response = await fetch(
+      `/api/nodes/${encodeURIComponent(options.nodeId)}/desktop${query}`,
+      {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: combined
+      }
+    );
     if (!response.ok) {
       const error = apiErrorFromResponse(await response.json().catch(() => ({})), response.status);
       if (error.code === 'UNAUTHENTICATED') terminate(error.code);
@@ -108,6 +122,11 @@ export function createStandaloneRemoteDesktopService(options: {
     const description = remoteDesktopDescriptionSchema.safeParse(data.description);
     if (!capability.success || !capability.data.available || !description.success)
       throw new RemoteDesktopClientError('DESKTOP_UNAVAILABLE');
+    if (
+      displayId !== undefined &&
+      !description.data.displays.some((display) => display.displayId === displayId)
+    )
+      throw new RemoteDesktopClientError('DESKTOP_TOPOLOGY_UNAVAILABLE');
     if (
       !running ||
       combined.aborted ||

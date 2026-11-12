@@ -17,6 +17,7 @@ import {
   createEnvelope,
   directNodeCommandSchema,
   remoteDesktopDescriptionSchema,
+  remoteDesktopDescribeInputSchema,
   type NodeCapabilities,
   type NodeEnvelope,
   type WorkbenchEventCategory
@@ -1871,7 +1872,18 @@ export class NodeConnector {
         observations: this.agentNetworkObservations
       })
     );
-    this.operationRouter.register('desktop.describe', async () => {
+    this.operationRouter.register('desktop.describe', async (data) => {
+      if (!isPlainRecord(data)) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+      const {
+        __workspaceWatchSessionHash: _sessionHash,
+        __requestUserId: _userId,
+        __usageGrant: _usageGrant,
+        __marctlCaller: _caller,
+        ...input
+      } = data;
+      const parsed = remoteDesktopDescribeInputSchema.safeParse(input);
+      if (!parsed.success) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+      const selection = parsed.data;
       const runtime = this.desktopRuntime;
       if (!runtime) throw new RemoteDesktopError('DESKTOP_UNAVAILABLE');
       if (
@@ -1879,8 +1891,19 @@ export class NodeConnector {
         runtime instanceof MacosRemoteDesktopRuntime
       )
         await runtime.refresh(AbortSignal.timeout(10_000));
-      const description = remoteDesktopDescriptionSchema.safeParse(runtime.describe());
+      const description = remoteDesktopDescriptionSchema.safeParse(
+        runtime instanceof MacosRemoteDesktopRuntime
+          ? runtime.describe(selection)
+          : runtime.describe()
+      );
       if (!description.success) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
+      if (
+        (selection.desktopGeneration !== undefined &&
+          selection.desktopGeneration !== description.data.desktopGeneration) ||
+        (selection.displayId !== undefined &&
+          !description.data.displays.some((display) => display.displayId === selection.displayId))
+      )
+        throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
       return description.data;
     });
     this.operationRouter.registerAll(this.promptCompletion.operations());

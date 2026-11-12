@@ -13,6 +13,11 @@ const grant = z.string().min(32).max(4096);
 const fingerprint = z.string().regex(/^sha-256(?: [A-F0-9]{2}(?::[A-F0-9]{2}){31})$/u);
 export const remoteDesktopModeSchema = z.enum(['VIEW', 'CONTROL']);
 
+export const remoteDesktopDescribeInputSchema = z
+  .object({ displayId: id.optional(), desktopGeneration: id.optional() })
+  .strict()
+  .refine((value) => value.displayId === undefined || value.desktopGeneration === undefined);
+
 const nativeCoordinate = z.number().finite().min(-0x80000000).max(0x7fffffff);
 const dimension = z.number().int().positive().max(65535);
 const nativeRectangle = z
@@ -41,6 +46,13 @@ export const remoteDesktopDescriptionSchema = z
   .object({
     desktopGeneration: id,
     topologyRevision: revision,
+    selectableDisplays: z
+      .array(
+        z.object({ displayId: id, name: z.string().min(1).max(256), primary: z.boolean() }).strict()
+      )
+      .min(1)
+      .max(64)
+      .optional(),
     framebuffer: z.object({ width: dimension, height: dimension }).strict(),
     displays: z
       .array(
@@ -119,6 +131,20 @@ export const remoteDesktopDescriptionSchema = z
         path: ['displays'],
         message: 'Exactly one primary display is required'
       });
+    if (description.selectableDisplays) {
+      const catalog = description.selectableDisplays;
+      if (
+        description.displays.length !== 1 ||
+        !catalog.some((display) => display.displayId === description.displays[0]?.displayId) ||
+        new Set(catalog.map((display) => display.displayId)).size !== catalog.length ||
+        catalog.filter((display) => display.primary).length !== 1
+      )
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['selectableDisplays'],
+          message: 'Invalid capture display catalog'
+        });
+    }
   });
 export type RemoteDesktopDescription = z.infer<typeof remoteDesktopDescriptionSchema>;
 
@@ -145,7 +171,7 @@ export const remoteDesktopCapabilitySchema = z.discriminatedUnion('available', [
         .array(z.enum(['DIRECT', 'RELAY']))
         .min(1)
         .max(2)
-        .refine((items) => new Set(items).size === items.length),
+        .refine((items) => new Set(items).size === items.length)
     })
     .strict()
 ]);
