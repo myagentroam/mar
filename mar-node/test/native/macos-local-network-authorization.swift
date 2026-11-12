@@ -10,6 +10,60 @@ func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
 }
 
 var observedConsentAlerts = Set<String>()
+let runnerNames = ["hosted-compute", "chromium", "chrome for testing", "runner.worker", "runner.listener", "node"]
+
+func descendants(_ element: AXUIElement) -> [AXUIElement] {
+    var pending = [element]
+    var result: [AXUIElement] = []
+    while let next = pending.popLast(), result.count < 512 {
+        result.append(next)
+        pending.append(contentsOf: attribute(next, kAXChildrenAttribute) as? [AXUIElement] ?? [])
+    }
+    return result
+}
+
+func labels(_ elements: [AXUIElement]) -> String {
+    elements.flatMap { item in
+        [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].compactMap {
+            attribute(item, $0) as? String
+        }
+    }.joined(separator: " ").lowercased()
+}
+
+// A previously denied runner has no new alert. Use only its visible per-app switch.
+func approveRunnerNetworkSettings() {
+    guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true", AXIsProcessTrusted(),
+          let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences").first
+    else { return }
+    let root = AXUIElementCreateApplication(app.processIdentifier)
+    for window in attribute(root, kAXWindowsAttribute) as? [AXUIElement] ?? [] {
+        let all = descendants(window)
+        guard labels(all).contains("local network") else { continue }
+        for row in all.reversed() {
+            let elements = descendants(row)
+            let text = labels(elements)
+            guard runnerNames.contains(where: { name in
+                elements.contains { item in
+                    [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].contains {
+                        (attribute(item, $0) as? String)?.lowercased() == name ||
+                        (attribute(item, $0) as? String)?.lowercased().hasPrefix("hosted-compute-") == true
+                    }
+                }
+            }) else { continue }
+            let switches = elements.filter {
+                ["AXCheckBox", "AXSwitch"].contains(attribute($0, kAXRoleAttribute) as? String ?? "")
+            }
+            guard switches.count == 1,
+                  (attribute(switches[0], kAXValueAttribute) as? NSNumber)?.intValue == 0,
+                  AXUIElementPerformAction(switches[0], kAXPressAction as CFString) == .success
+            else { continue }
+            print("CI_LOCAL_NETWORK_SETTINGS_GRANTED: \(text.prefix(160))")
+        }
+        if observedConsentAlerts.insert("settings").inserted {
+            print("CI_LOCAL_NETWORK_SETTINGS_VISIBLE: \(labels(all).prefix(2000))")
+        }
+    }
+}
 
 func approveRunnerNetworkAlert() -> Bool {
     guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
@@ -66,9 +120,20 @@ connection.stateUpdateHandler = { state in
 }
 connection.start(queue: .main)
 let deadline = Date().addingTimeInterval(30)
+var openedSettings = false
 while Date() < deadline, failure == nil {
     let approved = approveRunnerNetworkAlert()
+    if !ready, connection.currentPath?.unsatisfiedReason == .localNetworkDenied,
+       ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
+        if !openedSettings {
+            openedSettings = NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork")!)
+        }
+        approveRunnerNetworkSettings()
+    }
     if ready && !approved {
+        if openedSettings {
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences").first?.terminate()
+        }
         print("CI_LOCAL_NETWORK_ACCESS_READY")
         connection.cancel()
         exit(0)
