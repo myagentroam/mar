@@ -75,6 +75,32 @@ it('describes a single display at its native pixel scale and rejects an empty to
   );
 });
 
+it.each([
+  { width: 2560, height: 1440, pixelWidth: 3840, pixelHeight: 2160 },
+  { width: 853, height: 480, pixelWidth: 1280, pixelHeight: 720 }
+])('preserves actual primary framebuffer pixels for scaled bounds %j', (bounds) => {
+  const layout = macosCombinedDesktopLayout(
+    [{ id: 1, primary: true, x: 0, y: 0, ...bounds }],
+    'desktop-generation',
+    1
+  );
+  expect(layout.framebuffer).toEqual({ width: bounds.pixelWidth, height: bounds.pixelHeight });
+  expect(layout.displays[0]?.framebufferBounds).toEqual({
+    x: 0,
+    y: 0,
+    width: bounds.pixelWidth,
+    height: bounds.pixelHeight
+  });
+  expect(layout.displays[0]?.nativeToFramebuffer).toEqual([
+    bounds.pixelWidth / bounds.width,
+    0,
+    0,
+    bounds.pixelHeight / bounds.height,
+    0,
+    0
+  ]);
+});
+
 it('keeps the captured layout on the primary display when other monitors change', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mar-macos-layout-'));
   const topology = join(dir, 'topology.json');

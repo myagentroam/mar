@@ -23,7 +23,7 @@ interface MacScreen {
 
 const run = promisify(execFile);
 
-/** Maps the complete macVNC framebuffer using the same common display scale as its backend. */
+/** Maps native display bounds to macVNC pixels without rounding the display scale. */
 export function macosCombinedDesktopLayout(
   screens: readonly MacScreen[],
   generation: string,
@@ -34,21 +34,14 @@ export function macosCombinedDesktopLayout(
   const top = Math.min(...screens.map((screen) => screen.y));
   const right = Math.max(...screens.map((screen) => screen.x + screen.width));
   const bottom = Math.max(...screens.map((screen) => screen.y + screen.height));
-  const scale = Math.ceil(
-    Math.max(
-      1,
-      ...screens.flatMap((screen) => [
-        screen.pixelWidth / screen.width,
-        screen.pixelHeight / screen.height
-      ])
-    )
-  );
+  const scaleX = Math.max(...screens.map((screen) => screen.pixelWidth / screen.width));
+  const scaleY = Math.max(...screens.map((screen) => screen.pixelHeight / screen.height));
   const result = remoteDesktopDescriptionSchema.safeParse({
     desktopGeneration: generation,
     topologyRevision: revision,
     framebuffer: {
-      width: Math.round((right - left) * scale),
-      height: Math.round((bottom - top) * scale)
+      width: Math.round((right - left) * scaleX),
+      height: Math.round((bottom - top) * scaleY)
     },
     displays: screens.map((screen) => ({
       displayId: `display_${screen.id}`,
@@ -56,16 +49,16 @@ export function macosCombinedDesktopLayout(
       primary: screen.primary,
       nativeBounds: { x: screen.x, y: screen.y, width: screen.width, height: screen.height },
       framebufferBounds: {
-        x: Math.round((screen.x - left) * scale),
-        y: Math.round((screen.y - top) * scale),
+        x: Math.round((screen.x - left) * scaleX),
+        y: Math.round((screen.y - top) * scaleY),
         width:
-          Math.round((screen.x + screen.width - left) * scale) -
-          Math.round((screen.x - left) * scale),
+          Math.round((screen.x + screen.width - left) * scaleX) -
+          Math.round((screen.x - left) * scaleX),
         height:
-          Math.round((screen.y + screen.height - top) * scale) -
-          Math.round((screen.y - top) * scale)
+          Math.round((screen.y + screen.height - top) * scaleY) -
+          Math.round((screen.y - top) * scaleY)
       },
-      nativeToFramebuffer: [scale, 0, 0, scale, -left * scale || 0, -top * scale || 0]
+      nativeToFramebuffer: [scaleX, 0, 0, scaleY, -left * scaleX || 0, -top * scaleY || 0]
     }))
   });
   if (!result.success) throw new RemoteDesktopError('DESKTOP_TOPOLOGY_UNAVAILABLE');
