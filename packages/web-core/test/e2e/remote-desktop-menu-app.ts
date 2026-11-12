@@ -1,6 +1,7 @@
 import { createApp, defineComponent, h } from 'vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import type { RemoteDesktopCapability } from '@myagentroam/protocol';
+import type { NodeSummary, Workspace } from '../../src/model/workbench.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import '../../src/styles.css';
 
@@ -13,8 +14,7 @@ const capability: RemoteDesktopCapability = {
   supportsControl: true,
   supportsMultiDisplay: true,
   supportsUnicodePaste: true,
-  transports: ['RELAY'],
-
+  transports: ['RELAY']
 };
 const node = {
   id: 'node/test',
@@ -39,8 +39,8 @@ const fixture = defineComponent({
       visible: true,
       mobileViewport: false,
       loading: false,
-      nodeLabel: (value) => value.displayName ?? value.id,
-      workspaceLabel: (value) => value.id,
+      nodeLabel: (value: NodeSummary) => value.displayName ?? value.id,
+      workspaceLabel: (value: Workspace) => value.id,
       workspaces: () => []
     })
 });
