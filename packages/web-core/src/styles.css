@@ -500,7 +500,8 @@ html.console-ui
       .el-button--danger,
       .el-button--info,
       a[href],
-      .utility-control
+      .icon-action,
+      .text-action
     )
   ) {
   --el-button-hover-text-color: var(--mar-text-primary);
@@ -530,6 +531,22 @@ html.console-ui .el-button--primary.is-plain,
 html.console-ui .el-tag--primary:not(.el-tag--dark) {
   --el-button-text-color: var(--mar-control-link-text);
   --el-tag-text-color: var(--mar-control-link-text);
+}
+
+/* Follow the applied color scheme; custom body text may be dimmer than a semantic action. */
+html.console-ui
+  .el-button:is(
+    .el-button--success,
+    .el-button--warning,
+    .el-button--danger,
+    .el-button--info
+  ).is-link {
+  --el-button-hover-link-text-color: color-mix(
+    in srgb,
+    var(--el-button-text-color) 80%,
+    light-dark(black, white)
+  );
+  --el-button-active-color: var(--el-button-hover-link-text-color);
 }
 
 /* Tags should appear and disappear without the Element Plus zoom transition. */
@@ -951,11 +968,6 @@ html.console-ui .mar-message-close {
   cursor: pointer;
 }
 
-html.console-ui .mar-message-close:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
-}
-
 html.console-ui .el-empty {
   --el-empty-padding: 24px 0;
 }
@@ -1050,21 +1062,8 @@ pre {
 
 .icon-button {
   width: 25px;
-  border: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
   padding: 2px;
   text-align: center;
-  cursor: pointer;
-}
-.icon-button:hover:not(:disabled) {
-  background: var(--mar-fill-hover);
-  color: var(--mar-text-primary);
-}
-.icon-button:focus-visible {
-  border-radius: 4px;
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: -2px;
 }
 .icon-button:disabled {
   cursor: not-allowed;
@@ -1105,9 +1104,28 @@ pre {
   padding: 0 0.0625rem;
 }
 
-.utility-control {
+.icon-action,
+.text-action,
+html.console-ui .el-dialog__headerbtn,
+html.console-ui .el-message-box__headerbtn,
+html.console-ui .el-drawer__close-btn {
+  --mar-action-hover-bg: var(--mar-fill-row-hover);
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
+}
+
+.icon-action,
+html.console-ui .el-dialog__headerbtn,
+html.console-ui .el-message-box__headerbtn,
+html.console-ui .el-drawer__close-btn {
+  border: 0;
+  cursor: pointer;
+}
+
+.icon-action--inline,
+.text-action {
+  --mar-action-hover-bg: transparent;
 }
 
 .mar-icon-status-badge {
@@ -1120,12 +1138,12 @@ pre {
   pointer-events: none;
 }
 
-.utility-control.el-button {
+:is(.icon-action, .text-action).el-button {
   --el-button-bg-color: transparent;
   --el-button-border-color: transparent;
-  --el-button-hover-bg-color: transparent;
+  --el-button-hover-bg-color: var(--mar-action-hover-bg);
   --el-button-hover-border-color: transparent;
-  --el-button-active-bg-color: transparent;
+  --el-button-active-bg-color: var(--mar-action-hover-bg);
   --el-button-active-border-color: transparent;
   --el-button-disabled-bg-color: transparent;
   --el-button-disabled-border-color: transparent;
@@ -1135,33 +1153,80 @@ pre {
   --el-button-active-text-color: var(--mar-text-primary);
   --el-button-active-color: var(--mar-text-primary);
   --el-button-outline-color: var(--mar-color-brand);
-  --el-fill-color-light: transparent;
-  --el-fill-color: transparent;
-  --el-fill-color-dark: transparent;
-}
-
-.utility-control.el-button,
-.utility-control.el-button:hover:not(:disabled),
-.utility-control.el-button:active:not(:disabled),
-.utility-control.el-button.is-active,
-.utility-control.el-button:focus-visible,
-.utility-control.el-button[aria-expanded='true'] {
+  --el-fill-color-light: var(--mar-action-hover-bg);
+  --el-fill-color: var(--mar-action-hover-bg);
+  --el-fill-color-dark: var(--mar-action-hover-bg);
   background-color: transparent !important;
   border-color: transparent !important;
 }
 
-.utility-control:hover:not(:disabled),
-.utility-control:active:not(:disabled),
-.utility-control:focus-visible:not(:disabled),
-.utility-control.is-active:not(:disabled),
-.utility-control[aria-expanded='true']:not(:disabled) {
-  background: transparent;
-  color: var(--mar-text-primary);
+/* Preserve compact circle sizing without letting library corners override action surfaces. */
+.icon-action.el-button.is-circle {
+  border-radius: var(--mar-radius-control);
 }
 
-.utility-control:focus-visible {
+:is(.icon-action, .text-action):is(
+    :hover,
+    :active,
+    :focus-visible,
+    .is-active,
+    [aria-expanded='true']
+  ):not(:disabled, .is-disabled, [aria-disabled='true']),
+html.console-ui
+  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):is(
+    :hover,
+    :active,
+    :focus-visible
+  ):not(:disabled) {
+  background: var(--mar-action-hover-bg);
+  color: var(--mar-action-hover-color, var(--mar-text-primary));
+}
+
+:is(.icon-action, .text-action).el-button:is(
+    :hover,
+    :active,
+    :focus-visible,
+    .is-active,
+    [aria-expanded='true']
+  ):not(:disabled, .is-disabled, [aria-disabled='true']) {
+  background-color: var(--mar-action-hover-bg) !important;
+}
+
+:is(.icon-action, .text-action):focus-visible,
+html.console-ui .mar-message-close:focus-visible,
+html.console-ui
+  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
+}
+
+/* Built-in close controls share the action surface without replacing library behavior. */
+:is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn) > .el-icon {
+  color: inherit !important;
+}
+
+/* Flush header controls need an inset ring to avoid clipping at the surface edge. */
+html.console-ui
+  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):focus-visible {
+  outline-offset: -2px;
+}
+
+.mar-tab-close {
+  --mar-action-icon-size: 14px;
+  display: grid;
+  flex: none;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mar-tab-close:focus-visible {
+  outline-offset: 1px;
 }
 
 .node-tree,

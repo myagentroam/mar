@@ -5,6 +5,7 @@ import MarIcon from '../common/MarIcon.vue';
 import {
   computed,
   defineAsyncComponent,
+  inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -13,6 +14,12 @@ import {
 } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
+import {
+  AuthenticationContextChangedError,
+  WORKBENCH_HTTP_KEY
+} from '../../service/workbench-http-service.js';
+import { ApiError, errorCode } from '../../util/api-error.js';
+import { errorSummary } from '../../util/error-presentation.js';
 import type { createTerminalDirectClient } from '../../service/terminal-direct-client.js';
 import { translate } from '../../service/locale-preference-service.js';
 
@@ -75,10 +82,13 @@ let focusRequested = false;
 const terminals = ref<TerminalSummary[]>([]);
 const activeTerminalId = ref<string>();
 const terminalViews = new Map<string, { focus(): void }>();
-const http = createScopedHttpService({
-  csrfToken: () => props.csrfToken,
-  renewCsrfToken: props.renewCsrfToken
-});
+const workbenchHttp = inject(WORKBENCH_HTTP_KEY, undefined);
+const http =
+  workbenchHttp ??
+  createScopedHttpService({
+    csrfToken: () => props.csrfToken,
+    renewCsrfToken: props.renewCsrfToken
+  });
 
 const canUseTerminal = computed(
   () => props.enabled && props.nodeId !== undefined && props.capability?.available === true
@@ -113,9 +123,11 @@ const terminalActionTitle = computed(() => {
   if (canUseTerminal.value) return translate('generated.terminalDock.newTerminal');
   if (props.nodeId === undefined)
     return translate('generated.terminalDock.selectAnOnlineNodeFirst');
-  return (
-    props.capability?.reasonCode ?? translate('generated.terminalDock.theTargetNodeDoesNotProvideA')
-  );
+  if (props.capability?.available !== false) return translate('generated.terminalDock.newTerminal');
+  const fallback = translate('generated.terminalDock.theTargetNodeDoesNotProvideA');
+  return props.capability.reasonCode === null
+    ? fallback
+    : errorSummary(new ApiError(props.capability.reasonCode, fallback));
 });
 
 function selectTerminal(terminalId: string): void {
@@ -186,10 +198,8 @@ async function refreshContext(): Promise<void> {
       activeTerminalId.value = terminals.value[0]?.id;
   } catch (error) {
     if (revision !== refreshRevision) return;
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToLoadTerminals', { value0: message(error) }),
-      'error',
       error
     );
   } finally {
@@ -236,11 +246,10 @@ async function openTerminal(): Promise<void> {
     selectTerminal(result.terminal.id);
   } catch (error) {
     if (released || revision !== contextRevision || !props.active) return;
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToCreateATerminal', { value0: message(error) }),
-      'error',
-      error
+      error,
+      translate('generated.terminalDock.createResultUnknown', { value0: message(error) })
     );
   } finally {
     creating.value = false;
@@ -269,6 +278,7 @@ function collapseDock(): void {
 }
 async function closeTerminal(terminalId: string): Promise<void> {
   if (props.nodeId === undefined) return;
+  const revision = contextRevision;
   closingId.value = terminalId;
   try {
     await http.request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
@@ -283,11 +293,11 @@ async function closeTerminal(terminalId: string): Promise<void> {
     }
     if (terminals.value.length === 0) collapseDock();
   } catch (error) {
-    emit(
-      'notice',
+    if (released || revision !== contextRevision) return;
+    notifyFailure(
       translate('generated.terminalDock.unableToCloseTheTerminal', { value0: message(error) }),
-      'error',
-      error
+      error,
+      translate('generated.terminalDock.closeResultUnknown', { value0: message(error) })
     );
   } finally {
     closingId.value = undefined;
@@ -301,6 +311,18 @@ function handleTerminalExited(terminalId: string): void {
 }
 function message(error: unknown): string {
   return props.errorMessage(error);
+}
+
+function notifyFailure(message: string, error: unknown, unknownWriteMessage?: string): void {
+  if (errorCode(error) === 'NETWORK_UNAVAILABLE') {
+    // A later reachable response does not establish the outcome of an earlier write.
+    if (unknownWriteMessage !== undefined) {
+      emit('notice', unknownWriteMessage, 'warning', error);
+      return;
+    }
+    if (workbenchHttp?.networkUnavailable.value) return;
+  }
+  emit('notice', message, 'error', error);
 }
 
 watch(
@@ -372,15 +394,22 @@ async function releaseTerminals(
     )
   );
   const failed = results.filter((result) => result.status === 'rejected');
-  const firstFailure = failed[0];
+  // Keep obsolete identity causes suppressible before choosing an uncertain aggregate result.
+  const firstFailure =
+    failed.find((result) => result.reason instanceof AuthenticationContextChangedError) ??
+    failed.find((result) => errorCode(result.reason) === 'NETWORK_UNAVAILABLE') ??
+    failed[0];
   if (firstFailure !== undefined)
-    emit(
-      'notice',
+    notifyFailure(
       translate('generated.terminalDock.unableToReleaseTerminals', {
         value0: failed.length,
         value1: message(firstFailure.reason)
       }),
-      'error'
+      firstFailure.reason,
+      translate('generated.terminalDock.releaseResultsUnknown', {
+        value0: failed.length,
+        value1: message(firstFailure.reason)
+      })
     );
 }
 
@@ -445,7 +474,8 @@ defineExpose({ release, toggle: toggleTerminal });
             <span>Terminal {{ index + 1 }}</span>
           </button>
           <button
-            class="terminal-tab-close icon-button utility-control"
+            v-tooltip="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
+            class="terminal-tab-close icon-button icon-action icon-action--inline mar-tab-close"
             type="button"
             :aria-label="translate('generated.terminalDock.closeTerminal', { value0: index + 1 })"
             :disabled="closingId === item.id"
@@ -456,7 +486,7 @@ defineExpose({ release, toggle: toggleTerminal });
         </div>
         <button
           v-tooltip="terminalActionTitle"
-          class="terminal-tab terminal-tab-add"
+          class="terminal-tab terminal-tab-add icon-action"
           type="button"
           :aria-label="translate('generated.terminalDock.newTerminal2')"
           :disabled="!canUseTerminal || creating"
@@ -630,7 +660,7 @@ defineExpose({ release, toggle: toggleTerminal });
   color: var(--mar-text-primary);
 }
 
-.terminal-tab:not(.active):hover:not(:disabled) {
+.terminal-tab:not(.active, .terminal-tab-add):hover {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
@@ -640,6 +670,7 @@ defineExpose({ release, toggle: toggleTerminal });
   justify-content: center;
   padding: 0.3rem 0.55rem;
   border: 0;
+  color: var(--mar-text-secondary);
   cursor: pointer;
 }
 
@@ -649,13 +680,10 @@ defineExpose({ release, toggle: toggleTerminal });
 }
 
 .terminal-tab-close {
-  --mar-action-icon-size: 14px;
   position: absolute;
   right: 3px;
-  display: inline-grid;
   align-self: center;
   margin: 2px 0;
-  place-items: center;
 }
 
 .terminal-profile {

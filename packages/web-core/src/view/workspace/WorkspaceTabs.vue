@@ -321,7 +321,7 @@ function activate(tab: WorkspaceTab): void {
   >
     <button
       v-if="hasOverflow"
-      class="tab-strip-scroll"
+      class="tab-strip-scroll icon-action"
       :aria-label="translate('workspaceTabs.scrollPrevious')"
       :disabled="!canScrollLeft"
       type="button"
@@ -412,7 +412,7 @@ function activate(tab: WorkspaceTab): void {
         <button
           v-tooltip="translate('workspaceTabs.unpin')"
           v-if="tab.pinned === true"
-          class="tab-pin icon-button utility-control"
+          class="tab-pin icon-button icon-action icon-action--inline"
           :aria-label="translate('workspaceTabs.unpinLabel', { label: tab.label })"
           type="button"
           @click.stop="emit('pin', tab.id, false)"
@@ -421,7 +421,7 @@ function activate(tab: WorkspaceTab): void {
         </button>
         <button
           v-else
-          class="tab-close icon-button utility-control"
+          class="tab-close icon-button icon-action icon-action--inline"
           :aria-label="translate('generated.workspaceTabs.close', { value0: tab.label })"
           type="button"
           @click="emit('close', tab)"
@@ -432,7 +432,7 @@ function activate(tab: WorkspaceTab): void {
     </div>
     <div v-if="hasOverflow" class="workspace-tab-overflow-actions">
       <button
-        class="tab-strip-scroll"
+        class="tab-strip-scroll icon-action"
         :aria-label="translate('workspaceTabs.scrollNext')"
         :disabled="!canScrollRight"
         type="button"
@@ -442,7 +442,7 @@ function activate(tab: WorkspaceTab): void {
       </button>
       <el-dropdown trigger="click" @command="activateFromMenu">
         <button
-          class="workspace-tab-menu"
+          class="workspace-tab-menu icon-action"
           :aria-label="translate('workspaceTabs.allOpenWorkspaces')"
           type="button"
         >
@@ -584,8 +584,7 @@ function activate(tab: WorkspaceTab): void {
   height: 32px;
   align-self: center;
   border-left: 0;
-  border-radius: var(--el-border-radius-base);
-  background: transparent;
+  border-radius: var(--mar-radius-control);
 }
 
 .workspace-tabs {
@@ -615,15 +614,7 @@ function activate(tab: WorkspaceTab): void {
   place-items: center;
   border: 0;
   border-left: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-page);
-  color: var(--mar-text-secondary);
   cursor: pointer;
-}
-
-.tab-strip-scroll:hover:not(:disabled),
-.workspace-tab-menu:hover {
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
 }
 
 .tab-strip-scroll:disabled {

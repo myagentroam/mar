@@ -263,7 +263,7 @@ function openBlankMenu(event: MouseEvent): void {
       <el-link
         v-tooltip="$t('navigation.help')"
         v-if="documentationAvailable"
-        class="nav-menu-button documentation-link utility-control"
+        class="nav-menu-button documentation-link icon-action"
         :href="localizedDocsPath(locale, 'getting-started/overview')"
         underline="never"
         target="_blank"
@@ -272,7 +272,6 @@ function openBlankMenu(event: MouseEvent): void {
       >
         <span class="nav-item-content">
           <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
-          <span class="rail-label">{{ $t('navigation.help') }}</span>
         </span>
       </el-link>
     </nav>
@@ -525,13 +524,14 @@ function openBlankMenu(event: MouseEvent): void {
   z-index: 7;
   top: calc((var(--mar-workbench-header-height) - var(--mar-utility-control-size)) / 2);
   right: 8px;
-  display: flex;
+  display: grid;
+  width: var(--mar-utility-control-size);
   height: var(--mar-utility-control-size);
-  align-items: center;
-  border-radius: 4px;
+  place-items: center;
+  box-sizing: border-box;
   --el-link-text-color: var(--mar-text-secondary);
   --el-link-hover-text-color: var(--mar-text-primary);
-  padding: 0 8px;
+  padding: 2px;
   cursor: pointer;
   font-size: var(--mar-font-size-meta);
   text-decoration: none;
@@ -543,15 +543,10 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 .documentation-icon {
-  display: none;
-}
-
-.documentation-link .rail-label {
-  width: auto;
-  overflow-wrap: normal;
-  font-size: inherit;
-  line-height: inherit;
-  white-space: nowrap;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  font-size: 22px;
 }
 
 .activity-rail nav button.active:not(:disabled) {
@@ -838,14 +833,6 @@ function openBlankMenu(event: MouseEvent): void {
     cursor: pointer;
   }
 
-  .documentation-link .nav-item-content {
-    display: grid;
-  }
-
-  .documentation-icon {
-    display: inline-flex;
-  }
-
   .rail-label {
     width: auto;
     overflow-wrap: normal;
@@ -857,7 +844,7 @@ function openBlankMenu(event: MouseEvent): void {
   .activity-rail nav .documentation-link:hover,
   .activity-rail nav .documentation-link:active,
   .activity-rail nav .documentation-link:focus-visible {
-    background: transparent;
+    background: var(--mar-fill-row-hover);
     color: var(--mar-text-primary);
     text-decoration: none;
   }

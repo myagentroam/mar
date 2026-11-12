@@ -18,14 +18,13 @@ const actions = ref<HTMLElement>();
 const menu = ref<DropdownInstance>();
 const anchor = ref(new DOMRect());
 const virtualReference = computed(() => ({ getBoundingClientRect: () => anchor.value }));
-let selected:
-  | {
-      body: HTMLElement;
-      range: Range;
-      quote: ComposerQuoteDraft;
-      receive: ReturnType<ComposerQuoteTarget['capture']>;
-    }
-  | undefined;
+interface SelectedQuote {
+  readonly body: HTMLElement;
+  readonly range: Range;
+  readonly quote: ComposerQuoteDraft;
+  readonly receive: NonNullable<ReturnType<ComposerQuoteTarget['capture']>>;
+}
+let selected: SelectedQuote | undefined;
 let dragging = false;
 let dismissedRange: Range | undefined;
 
@@ -59,35 +58,29 @@ function sameRange(range: Range, previous: Range | undefined): boolean {
     range.endOffset === previous.endOffset
   );
 }
-function inspectSelection(): void {
-  if (dragging || actions.value?.contains(document.activeElement)) return;
+function readSelection(): SelectedQuote | undefined {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount !== 1 || selection.isCollapsed || !props.root)
-    return clear();
+    return undefined;
   const range = selection.getRangeAt(0);
-  if (
-    sameRange(range, dismissedRange) ||
-    (mode.value === 'menu' && sameRange(range, selected?.range))
-  )
-    return;
   const start =
     range.startContainer.nodeType === Node.ELEMENT_NODE
       ? (range.startContainer as Element)
       : range.startContainer.parentElement;
   const body = start?.closest<HTMLElement>('[data-quote-message-id]');
-  if (!body || !props.root.contains(body) || !body.contains(range.endContainer)) return clear();
+  if (!body || !props.root.contains(body) || !body.contains(range.endContainer)) return undefined;
   const text = selection.toString();
-  if (!text.trim()) return clear();
-  // Rendered controls, collapsed content and non-message records are not quotation text.
+  if (!text.trim()) return undefined;
+  // Links, images, rendered controls and collapsed content are not quotation text.
   if (
-    [...body.querySelectorAll('button,input,textarea,[hidden],summary')].some((element) =>
+    [...body.querySelectorAll('a,img,button,input,textarea,[hidden],summary')].some((element) =>
       range.intersectsNode(element)
     )
   )
-    return clear();
+    return undefined;
   const receive = props.target?.capture();
-  if (!receive) return clear();
-  selected = {
+  if (!receive) return undefined;
+  return {
     body,
     range: range.cloneRange(),
     receive,
@@ -101,7 +94,18 @@ function inspectSelection(): void {
       ...(body.dataset.quoteStreaming === 'true' ? { streaming: true } : {})
     }
   };
-  anchor.value = range.getClientRects()[0] ?? range.getBoundingClientRect();
+}
+function inspectSelection(): void {
+  if (dragging || actions.value?.contains(document.activeElement)) return;
+  const value = readSelection();
+  if (!value) return clear();
+  if (
+    sameRange(value.range, dismissedRange) ||
+    (mode.value === 'menu' && sameRange(value.range, selected?.range))
+  )
+    return;
+  selected = value;
+  anchor.value = value.range.getClientRects()[0] ?? value.range.getBoundingClientRect();
   mode.value = 'bubble';
 }
 function quote(): void {
@@ -118,27 +122,28 @@ function contextMenu(event: MouseEvent): void {
     !event.cancelable ||
     !(event.target instanceof Element) ||
     !props.root?.contains(event.target) ||
-    event.target.closest('a,img,button')
+    event.target.closest('a,img,button,input,textarea,select,summary')
   )
-    return;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return;
-  if (
-    ![...selection.getRangeAt(0).getClientRects()].some(
-      (rect) =>
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-    )
-  )
-    return;
+    return clear();
+  const value = readSelection();
+  if (!value?.body.contains(event.target)) return clear();
+  event.preventDefault();
+  event.stopPropagation();
   dragging = false;
   dismissedRange = undefined;
-  inspectSelection();
-  if (!selected?.body.contains(event.target)) return;
-  event.preventDefault();
-  anchor.value = new DOMRect(event.clientX, event.clientY, 0, 0);
+  selected = value;
+  const rects = [...value.range.getClientRects()];
+  // Selection-handle and keyboard events need not point inside painted text.
+  const atSelection = rects.some(
+    (rect) =>
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+  );
+  anchor.value = atSelection
+    ? new DOMRect(event.clientX, event.clientY, 0, 0)
+    : (rects[0] ?? value.range.getBoundingClientRect());
   mode.value = 'menu';
 }
 function pointerDown(event: PointerEvent): void {

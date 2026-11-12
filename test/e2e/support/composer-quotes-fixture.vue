@@ -83,7 +83,7 @@ const diff = {
   path: file.value.path,
   text: '@@ -2,2 +2,2 @@\n-old value\n+new value\n same value'
 };
-const workingDiff = { ...diff, afterText: 'first value\nnew value\nsame value' };
+const workingDiff = ref({ ...diff, afterText: 'first value\nnew value\nsame value' });
 const now = 1_700_000_000_000;
 function turn(
   id: string,
@@ -145,6 +145,9 @@ Object.assign(window, {
     },
     replaceFile(text: string) {
       file.value = { ...file.value, content: text };
+    },
+    replaceWorkingDiff(value: { text: string; afterText: string }) {
+      workingDiff.value = { ...workingDiff.value, ...value };
     },
     replaceReply(text: string) {
       turns.value = [turn('reply', 'assistant_message', text)];

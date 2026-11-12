@@ -1910,7 +1910,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(
-      html.match(/class="conversation-message-action icon-button utility-control\b/gu)
+      html.match(/class="conversation-message-action icon-button icon-action\b/gu)
     ).toHaveLength(2);
     expect(html.match(/class="conversation-item-heading"/gu)).toHaveLength(1);
     expect(html).toContain('Assistant text');
@@ -1939,7 +1939,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       performance: { runId: 'run', latencyMs: 420, tokensPerSecond: 42 }
     });
     expect(info).toContain('session-performance-info');
-    expect(info).toContain('icon-button utility-control');
+    expect(info).toContain('icon-button icon-action');
     expect(info).toContain('420 ms');
     expect(info).toContain('42.0 token/s');
     expect(info).toContain(

@@ -1758,6 +1758,7 @@ describe('shared Workbench state composition', () => {
       workspaceTarget: workspace.target,
       request: vi.fn(),
       notice: vi.fn(),
+      isNetworkUnavailable: () => false,
       errorMessage: String
     });
     capability.replaceWorkspaces([{ id: 'w1', path: '/w1', kind: 'DIRECTORY', label: 'custom' }]);

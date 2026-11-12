@@ -1105,7 +1105,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               "
               v-if="conversationItemCopyText(displayItem.item.kind, displayItem.item.payload)"
-              class="conversation-message-action icon-button utility-control"
+              class="conversation-message-action icon-button icon-action"
               type="button"
               :aria-label="
                 copiedMessage === `${turn.id}:${displayItem.item.id}`
@@ -1124,7 +1124,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
               "
               v-if="props.rewindEnabled && turn.rewind"
-              class="conversation-message-action icon-button utility-control"
+              class="conversation-message-action icon-button icon-action"
               type="button"
               :aria-label="
                 translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
@@ -1136,7 +1136,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             <button
               v-tooltip="translate('generated.conversationTimeline.rollbackConversation')"
               v-if="props.rollbackEnabled && turn.rewind && rollbackTarget(turn, displayItem.item)"
-              class="conversation-message-action icon-button utility-control"
+              class="conversation-message-action icon-button icon-action"
               type="button"
               :disabled="props.loading"
               :aria-label="
@@ -1195,7 +1195,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               "
               v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-              class="conversation-message-action icon-button utility-control"
+              class="conversation-message-action icon-button icon-action"
               type="button"
               :aria-label="
                 copiedMessage === `${turn.id}:${displayItem.item.id}`
@@ -1212,7 +1212,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             <button
               v-tooltip="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               v-if="props.rewindEnabled && turn.rewind"
-              class="conversation-message-action icon-button utility-control"
+              class="conversation-message-action icon-button icon-action"
               type="button"
               :aria-label="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               @click.stop="emit('rewind', turn, displayItem.item)"
@@ -2202,7 +2202,7 @@ details.conversation-record-group[open] > details:last-child {
   height: var(--mar-utility-control-size);
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   padding: 0;
 }
 

@@ -45,7 +45,7 @@ describe('Session generation read pins', () => {
     try {
       expect(await new Promise((resolve) => child.once('message', resolve))).toBe('selected');
       const clearing = store.clearSession(session.id);
-      await vi.waitFor(async () => expect((await stat(gatePath(root))).isFile()).toBe(true));
+      await vi.waitFor(async () => expect((await stat(gatePath(root))).isDirectory()).toBe(true));
       const reading = new Promise((resolve) => child.once('message', resolve));
       child.send('continue');
       expect(await reading).toBe('old history');
@@ -75,7 +75,7 @@ describe('Session generation read pins', () => {
     try {
       expect(await new Promise((resolve) => child.once('message', resolve))).toBe('selected');
       const deleting = store.delete(session.id);
-      await vi.waitFor(async () => expect((await stat(gatePath(root))).isFile()).toBe(true));
+      await vi.waitFor(async () => expect((await stat(gatePath(root))).isDirectory()).toBe(true));
       const reading = new Promise((resolve) => child.once('message', resolve));
       child.send('continue');
       expect(await reading).toContain('session.created');
@@ -114,7 +114,7 @@ describe('Session generation read pins', () => {
         retired = true;
       });
       await vi.waitFor(async () => {
-        expect((await stat(gatePath(root))).isFile()).toBe(true);
+        expect((await stat(gatePath(root))).isDirectory()).toBe(true);
       });
       expect(retired).toBe(false);
       expect(await readFile(old, 'utf8')).toBe('old history');
@@ -158,7 +158,7 @@ describe('Session generation read pins', () => {
       expect(await new Promise((resolve) => child.once('message', resolve))).toBe('starting');
       const result = new Promise((resolve) => child.once('message', resolve));
       await expect(stat(root)).rejects.toMatchObject({ code: 'ENOENT' });
-      expect((await stat(gatePath(root))).isFile()).toBe(true);
+      expect((await stat(gatePath(root))).isDirectory()).toBe(true);
       releaseDrain();
       await drain;
       expect(await result).toBe('MAR_AGENT_SESSION_NOT_FOUND');

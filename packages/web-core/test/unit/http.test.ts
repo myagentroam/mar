@@ -8,6 +8,94 @@ describe('Web Workbench Request Service', () => {
     vi.unstubAllGlobals();
   });
 
+  it('classifies fetch connection failures and clears offline state on an HTTP response', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response('{}', { status: 500 }))
+      .mockResolvedValueOnce(new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+    const service = createWorkbenchHttpService({
+      csrfToken: { value: 'token' } as never,
+      csrfStorageKey: 'csrf',
+      onUnauthenticated: vi.fn()
+    });
+    await expect(service.request('/api/nodes')).rejects.toMatchObject({
+      code: 'NETWORK_UNAVAILABLE'
+    });
+    expect(service.networkUnavailable.value).toBe(true);
+    await expect(service.request('/api/nodes')).rejects.toMatchObject({
+      code: 'REQUEST_FAILED_500'
+    });
+    expect(service.networkUnavailable.value).toBe(false);
+    await expect(service.request('/api/nodes')).resolves.toEqual({});
+  });
+
+  it('does not let an older connection failure overwrite a newer successful response', async () => {
+    let reject!: (error: unknown) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockImplementationOnce(() => new Promise((_resolve, fail) => (reject = fail)))
+        .mockResolvedValueOnce(new Response('{}'))
+    );
+    const service = createWorkbenchHttpService({
+      csrfToken: { value: 'token' } as never,
+      csrfStorageKey: 'csrf',
+      onUnauthenticated: vi.fn()
+    });
+    const first = service.request('/api/slow').catch((error: unknown) => error);
+    await service.request('/api/current');
+    reject(new TypeError('Failed to fetch'));
+    expect(await first).toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+    expect(service.networkUnavailable.value).toBe(false);
+  });
+
+  it('does not classify cancellation or unreadable JSON as an offline connection', async () => {
+    const cancelled = new DOMException('Cancelled', 'AbortError');
+    const cancellationReason = new TypeError('Cancelled by the caller');
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockRejectedValueOnce(cancelled)
+        .mockRejectedValueOnce(cancellationReason)
+        .mockResolvedValueOnce(new Response('not JSON'))
+    );
+    const service = createWorkbenchHttpService({
+      csrfToken: { value: 'token' } as never,
+      csrfStorageKey: 'csrf',
+      onUnauthenticated: vi.fn()
+    });
+    await expect(service.request('/api/nodes')).rejects.toBe(cancelled);
+    const controller = new AbortController();
+    controller.abort(cancellationReason);
+    await expect(service.request('/api/nodes', { signal: controller.signal })).rejects.toBe(
+      cancellationReason
+    );
+    await expect(service.request('/api/nodes')).rejects.toBeInstanceOf(SyntaxError);
+    expect(service.networkUnavailable.value).toBe(false);
+  });
+
+  it('ignores an obsolete authentication context when observing network failures', async () => {
+    let reject!: (error: unknown) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((_resolve, fail) => (reject = fail)))
+    );
+    const service = createWorkbenchHttpService({
+      csrfToken: { value: 'token' } as never,
+      csrfStorageKey: 'csrf',
+      onUnauthenticated: vi.fn()
+    });
+    const pending = service.request('/api/terminals').catch((error: unknown) => error);
+    service.invalidateAuthentication();
+    reject(new TypeError('Failed to fetch'));
+    expect(await pending).toMatchObject({ name: 'AbortError' });
+    expect(service.networkUnavailable.value).toBe(false);
+  });
+
   it('renews CSRF once after expiration and retries the write with the new token', async () => {
     const csrfToken = { value: 'expired' };
     const storage = new Map<string, string>();

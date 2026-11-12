@@ -120,6 +120,56 @@ for (const [width, height, theme, top] of [
   });
 }
 
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [1280, 'vscode-dark-2026'],
+  [390, 'daylight']
+] as const) {
+  test(`Short model names keep the two-column menu content-sized (${width}, ${theme})`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}composer-options.html?compact-names&short&theme=${theme}${width < 768 ? '&mobile' : ''}`
+    );
+    await page.locator('.composer-model-effort-select').click();
+    const menu = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
+    await expectMenuInsideViewport(menu);
+    const models = menu.locator('.el-select-group__wrap').first();
+    const sizes = await models.evaluate((element) => {
+      const options = Array.from(element.querySelectorAll('.el-select-dropdown__item'));
+      const contentWidths = options.map((option) => {
+        const label = option.querySelector('span')!;
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        const style = getComputedStyle(option);
+        return {
+          label: range.getBoundingClientRect().width,
+          padded:
+            range.getBoundingClientRect().width +
+            parseFloat(style.paddingLeft) +
+            parseFloat(style.paddingRight)
+        };
+      });
+      return {
+        column: element.getBoundingClientRect().width,
+        widestLabel: Math.max(...contentWidths.map((width) => width.label)),
+        widestOption: Math.max(...contentWidths.map((width) => width.padded))
+      };
+    });
+    expect(sizes.widestLabel).toBeGreaterThan(0);
+    expect(sizes.column).toBeGreaterThan(sizes.widestLabel);
+    expect(sizes.column).toBeLessThanOrEqual(sizes.widestOption + 1);
+    await page.screenshot({
+      path: info.outputPath('compact-model-menu.png'),
+      animations: 'disabled'
+    });
+    await menu.getByRole('option', { name: 'GPT-6.1-Sol Fast', exact: true }).click();
+    await expect(page.getByTestId('selected-model')).toHaveText('model-2');
+    await expect(page.getByTestId('selected-effort')).toHaveText('medium');
+  });
+}
+
 for (const kind of ['model', 'effort']) {
   test(`Composer keeps a single column when only ${kind} is available`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 600 });

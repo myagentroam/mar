@@ -998,7 +998,7 @@ onBeforeUnmount(() => {
           />
           <el-button
             v-tooltip="translate('hostedConversations.refreshHistory')"
-            class="history-refresh-button utility-control"
+            class="history-refresh-button icon-action"
             :aria-label="translate('hostedConversations.refreshHistory')"
             :disabled="loadingDirectory"
             :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
@@ -1098,7 +1098,7 @@ onBeforeUnmount(() => {
                   title: hostedConversationTitle(conversation)
                 })
               "
-              class="history-more-button utility-control"
+              class="history-more-button icon-action icon-action--inline"
               type="button"
               :disabled="mutatingConversationKey !== undefined"
               :aria-label="
@@ -1381,7 +1381,7 @@ onBeforeUnmount(() => {
                       name: row.node.file.displayName
                     })
                   "
-                  class="file-delete"
+                  class="file-delete icon-action icon-action--inline"
                   type="button"
                   :disabled="!filesWritable || deletingFileId !== undefined"
                   :aria-label="
@@ -1598,7 +1598,7 @@ onBeforeUnmount(() => {
   height: var(--mar-compact-control-size);
   min-height: var(--mar-compact-control-size);
   margin: 0;
-  border-radius: 6px;
+  border-radius: var(--mar-radius-control);
   color: var(--mar-text-secondary);
   padding: 0;
 }
@@ -1742,7 +1742,7 @@ onBeforeUnmount(() => {
   height: 24px;
   place-items: center;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   cursor: pointer;
@@ -1949,7 +1949,6 @@ onBeforeUnmount(() => {
 }
 
 .file-open:focus-visible,
-.file-delete:focus-visible,
 .file-directory:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--mar-color-brand-border);
@@ -2018,14 +2017,12 @@ onBeforeUnmount(() => {
   height: 26px;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mar-radius-control);
   background: transparent;
-  color: var(--mar-text-faint);
   cursor: pointer;
 }
 
 .file-delete:hover:not(:disabled) {
-  background: var(--mar-color-danger-bg);
   color: var(--mar-color-danger-text);
 }
 

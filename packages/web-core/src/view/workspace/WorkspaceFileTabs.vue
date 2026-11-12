@@ -321,7 +321,7 @@ defineExpose({
         />
         <button
           v-tooltip="translate('filePreviewDialog.closeFileWindow')"
-          class="icon-button utility-control workspace-file-window-close"
+          class="icon-button icon-action workspace-file-window-close"
           type="button"
           :disabled="closing"
           :aria-label="translate('filePreviewDialog.closeFileWindow')"
@@ -395,7 +395,7 @@ defineExpose({
   height: 24px;
   place-items: center;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--mar-radius-control);
   cursor: pointer;
   font-size: 13px;
 }

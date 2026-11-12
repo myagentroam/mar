@@ -21,22 +21,27 @@ export function filePreviewErrorSummary(error: unknown, path: string): string {
     return translate('errors.attachmentExpired');
   if (code === 'HOSTED_CONVERSATION_FILE_NOT_FOUND')
     return translate('hostedConversations.fileNotFound');
+  return localizedErrorSummary(error) ?? translate('filePreview.loadFailed');
+}
+
+function localizedErrorSummary(error: unknown): string | undefined {
+  const code = errorCode(error);
+  if (code === undefined) return undefined;
   const key = `errors.${code}`;
-  const summary = translate(key, error instanceof ApiError ? error.parameters : undefined);
-  return summary === key ? translate('filePreview.loadFailed') : summary;
+  const translated = translate(key, error instanceof ApiError ? error.parameters : undefined);
+  return translated === key ? undefined : translated;
+}
+
+/** Human summary for inline states; the original error retains all diagnostics. */
+export function errorSummary(error: unknown, fallback = translate('common.unknownError')): string {
+  return (
+    localizedErrorSummary(error) ??
+    (error instanceof Error && error.message.trim().length > 0 ? error.message : fallback)
+  );
 }
 
 export function errorMessage(error: unknown, summaryOverride?: string): string {
-  const code = errorCode(error);
-  let summary = summaryOverride;
-  if (summary === undefined && code !== undefined) {
-    const key = `errors.${code}`;
-    const translated = translate(key, error instanceof ApiError ? error.parameters : undefined);
-    if (translated !== key) summary = translated;
-  }
-  if (summary === undefined && error instanceof Error && error.message.trim().length > 0)
-    summary = error.message;
-  summary ??= translate('common.unknownError');
+  const summary = summaryOverride ?? errorSummary(error);
   if (!(error instanceof ApiError)) return summary;
   const diagnostics = [
     translate('errors.diagnosticCode', { value: error.code }),

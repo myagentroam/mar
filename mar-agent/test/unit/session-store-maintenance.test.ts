@@ -14,12 +14,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...fs,
-    rm: async (...args: Parameters<typeof fs.rm>) => {
-      await fs.rm(...args);
+    rmdir: async (...args: Parameters<typeof fs.rmdir>) => {
+      // Inject at the release attempt even when deletion already removed its parent.
       if (args[0] === releaseFault.path) {
         releaseFault.path = '';
         throw releaseFault.error;
       }
+      await fs.rmdir(...args);
     }
   };
 });

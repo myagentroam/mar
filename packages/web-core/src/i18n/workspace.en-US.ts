@@ -93,7 +93,7 @@ export const workspaceEnUS = {
     workbenchWorkspaceSelectionService: {
       thisWorkspaceIsNoLongerInThe:
         'This workspace is no longer in the target node snapshot and cannot be opened.',
-      unableToLoadNodeWorkspaces: 'Unable to load node workspaces: {value0}',
+      unableToLoadWorkspace: 'Unable to load the workspace: {value0}',
       thisWorkspaceIsNoLongerInThe2:
         'This workspace is no longer in the target node snapshot and cannot be opened.',
       unableToRefreshNodeWorkspaces: 'Unable to refresh node workspaces: {value0}',

@@ -63,7 +63,7 @@ const summary = computed(() => composerReferenceLabel(props.reference));
       </div>
     </el-popover>
     <button
-      class="quote-tag-remove"
+      class="quote-tag-remove icon-action icon-action--inline"
       type="button"
       :disabled="disabled"
       :aria-label="translate('composer.removeQuote', { name: summary })"
@@ -110,11 +110,12 @@ const summary = computed(() => composerReferenceLabel(props.reference));
   flex-shrink: 0;
 }
 .quote-tag-remove {
+  --mar-action-hover-color: var(--mar-color-brand-text);
+  border-radius: var(--mar-radius-control);
   padding-inline: 0.25rem;
   margin-right: 0.2rem;
 }
-.quote-tag-preview:hover,
-.quote-tag-remove:not(:disabled):hover {
+.quote-tag-preview:hover {
   background: var(--mar-fill-row-hover);
 }
 .quote-tag-content {

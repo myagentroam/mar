@@ -418,7 +418,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(historyRefreshButton).toBeEnabled();
   await expect(historyRefreshButton).toHaveAttribute('type', 'button');
   await expect(historyRefreshButton).toHaveClass(/file-explorer-utility-button/u);
-  await expect(historyRefreshButton).toHaveClass(/utility-control/u);
+  await expect(historyRefreshButton).toHaveClass(/icon-action/u);
   await expect(historyRefreshButton).not.toHaveClass(/el-button/u);
   holdHistoryRefresh = false;
   await expect(page.getByText('初始化 Git History')).toBeVisible();

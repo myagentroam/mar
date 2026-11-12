@@ -43,6 +43,7 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly profilesLoading: Readonly<Ref<boolean>>;
   readonly hasNode: (nodeId: string) => boolean;
   readonly isHostAvailable: (nodeId: string) => boolean;
+  readonly isNetworkUnavailable: () => boolean;
   readonly cachedWorkspaces: (nodeId: string) => readonly Workspace[];
   readonly cacheWorkspaces: (nodeId: string, values: readonly Workspace[]) => void;
   readonly rememberTarget: (target: WorkspaceTarget) => void;
@@ -185,7 +186,6 @@ export function createWorkbenchWorkspaceSelectionService(
     if (workspace !== undefined) void options.startWatch(target.workspaceId);
     if (restoreView || (!options.hasProfiles(target.nodeId) && !options.profilesLoading.value))
       void options.loadProfiles(target.nodeId);
-    void options.refreshManifest(target.nodeId);
     options.refreshTransport(target.nodeId);
     loading.value = true;
     void refresh(selected, current, workspace === undefined);
@@ -197,6 +197,12 @@ export function createWorkbenchWorkspaceSelectionService(
     current: () => boolean,
     startWatch: boolean
   ): Promise<void> {
+    // One activation owns feedback for both independent metadata reads.
+    const manifest = options.refreshManifest(target.nodeId).then(
+      () => undefined,
+      (error: unknown) => ({ error })
+    );
+    let workspaceConfirmed = false;
     try {
       const result = await options.request<{ workspaces: Workspace[] }>(
         `/api/workspaces?nodeId=${encodeURIComponent(target.nodeId)}`
@@ -213,12 +219,18 @@ export function createWorkbenchWorkspaceSelectionService(
         return;
       }
       options.replaceWorkspaces([...result.workspaces]);
+      workspaceConfirmed = true;
       options.rememberWorkspace(target.nodeId, workspace);
       if (startWatch) void options.startWatch(target.workspaceId);
+      const failure = await manifest;
+      if (!current()) return;
+      if (failure !== undefined) throw failure.error;
     } catch (error) {
       if (!current()) return;
+      if (errorCode(error) === 'NETWORK_UNAVAILABLE' && options.isNetworkUnavailable()) return;
       if (errorCode(error) === 'NODE_OFFLINE' && !options.isHostAvailable(target.nodeId)) return;
       if (
+        !workspaceConfirmed &&
         [
           'FORBIDDEN',
           'NODE_NOT_FOUND',
@@ -228,8 +240,10 @@ export function createWorkbenchWorkspaceSelectionService(
         ].includes(errorCode(error) ?? '')
       )
         options.invalidateWorkspace(target);
+      else if (!options.workspaces.value.some((workspace) => workspace.id === target.workspaceId))
+        return; // The existing Workspace recovery panel owns an uncached activation failure.
       options.notice(
-        translate('generated.workbenchWorkspaceSelectionService.unableToLoadNodeWorkspaces', {
+        translate('generated.workbenchWorkspaceSelectionService.unableToLoadWorkspace', {
           value0: options.errorMessage(error)
         }),
         'error',

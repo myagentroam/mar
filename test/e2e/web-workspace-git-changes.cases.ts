@@ -1274,7 +1274,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(refreshChangesButton).toBeVisible();
   await expect(refreshChangesButton).toHaveAttribute('type', 'button');
   await expect(refreshChangesButton).toHaveClass(/changes-refresh-button/u);
-  await expect(refreshChangesButton).toHaveClass(/utility-control/u);
+  await expect(refreshChangesButton).toHaveClass(/icon-action/u);
   await expect(refreshChangesButton).not.toHaveClass(/el-button/u);
   holdChangesRefresh = true;
   failChangesRefresh = true;

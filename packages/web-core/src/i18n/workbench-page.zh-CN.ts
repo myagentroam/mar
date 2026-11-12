@@ -54,12 +54,12 @@ export const workbenchPageZhCN = {
       retryWorkspace: '重试加载',
       registerWorkspace: '登记工作区',
       offlineWorkspace: '节点离线，等待重新连接。',
+      connectionOffline: '网络已离线，等待重新连接。',
       selectAWorkspace: '选择一个工作区',
       selectANodeInTheResourceExplorer: '从左侧资源管理器直接打开一个已登记的工作区。',
       noNodeConnectedYetCreateARegistration:
         '还没有绑定节点？前往节点管理创建注册密钥，并在目标机器启动节点后回到这里选择。',
       openNodeManagement: '前往节点管理',
-      nodeWorkbenchCapabilitiesAreUnavailable: '节点 Workbench 能力不可用。',
       openAWorkspace: '打开一个工作区',
       selectAWorkspaceOnTheCurrentNode: '从左侧资源管理器打开工作区，或切换已打开的标签。',
       agentConversation: 'Agent 对话',
@@ -74,8 +74,6 @@ export const workbenchPageZhCN = {
       noNodeSelected: '未选择节点',
       theNodeIsDisabledOnlyTheCurrent: '节点已禁用；当前内容仅供查看，无法继续同步。',
       theNodeIsOfflineLoadedContentIs: '节点离线，已读取的内容只读且不会发起控制操作。',
-      nodeWorkbenchCapabilitiesAreUnknownTheWorkspace:
-        '节点 Workbench 能力未知，已安全降级为只读。',
       nodeWorkbenchCapabilitiesAreUnavailable: '节点 Workbench 能力不可用：{value0}。',
       unableToOpenTheSessionLinkedTo: '无法打开通知关联会话：{value0}',
       aNewerInstanceWithTheSameIdentity:

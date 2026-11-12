@@ -44,6 +44,8 @@ const submittedIntents = ref<string[]>([]);
 const fixtureInput = ref(gestureFixture ? 'Follow up on mobile layout.' : '');
 const offlineFixture = new URL(location.href).searchParams.has('offline');
 const workspaceRecoveryFixture = new URL(location.href).searchParams.has('workspace-recovery');
+const networkOfflineFixture = new URL(location.href).searchParams.has('network-offline');
+const restrictionFixture = new URL(location.href).searchParams.has('restriction');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
 const managedSessionOnly = new URL(location.href).searchParams.has('managed-session-only');
 const gestureSessionId = ref('active');
@@ -316,6 +318,35 @@ const sessionProps = {
   request: async <T,>() => ({}) as T,
   hasUnread: () => unreadFixture
 };
+const initialTerminalCapability = {
+  available: true,
+  reasonCode: null as string | null,
+  profiles: [
+    { id: 'bash', label: 'Shell' },
+    ...(multipleTerminalProfiles ? [{ id: 'other-shell', label: 'Other shell' }] : [])
+  ],
+  supportsReplay: true,
+  supportsConPty: false,
+  supportsTakeover: false
+};
+const terminalCapability = shallowRef<typeof initialTerminalCapability | undefined>(
+  initialTerminalCapability
+);
+const terminalEnabled = ref(true);
+if (new URLSearchParams(location.search).has('terminal-capability'))
+  Object.assign(window, {
+    setFixtureTerminalAvailability(mode: 'unknown' | 'unsupported' | 'disabled') {
+      terminalEnabled.value = mode !== 'disabled';
+      terminalCapability.value =
+        mode === 'unknown'
+          ? undefined
+          : {
+              ...initialTerminalCapability,
+              available: mode !== 'unsupported',
+              reasonCode: mode === 'unsupported' ? 'PERMISSION_DENIED' : null
+            };
+    }
+  });
 const surfacePage = shallowReactive({
   view: 'nodes',
   setAsideSurfaceVisible() {},
@@ -356,6 +387,12 @@ const surfacePage = shallowReactive({
   },
   workspaceTarget: { nodeId: 'node', workspaceId: 'offline' },
   workspaceHost: { connected: false },
+  networkUnavailable: networkOfflineFixture,
+  nodeReady: false,
+  nodeManifestLoading: false,
+  selectedNodeStatus: restrictionFixture
+    ? translate('generated.workbenchPageController.theNodeIsDisabledOnlyTheCurrent')
+    : undefined,
   selectedWorkspace: undefined,
   workspaceSelectionLoading: false,
   retryWorkspaceSelection() {
@@ -374,7 +411,14 @@ const surfacePage = shallowReactive({
   },
   mobileWorkspaceSurface: 'conversation'
 });
-if (workspaceRecoveryFixture) surfacePage.workspaceHost = { connected: true };
+if (workspaceRecoveryFixture || networkOfflineFixture || restrictionFixture)
+  surfacePage.workspaceHost = { connected: true };
+if (networkOfflineFixture)
+  Object.assign(window, {
+    restoreWorkspaceConnection: () => {
+      surfacePage.networkUnavailable = false;
+    }
+  });
 const offlineSurfacePage = {
   application: surfacePage,
   aside: surfacePage,
@@ -387,9 +431,29 @@ const offlineSurfacePage = {
   resources: surfacePage,
   selection: surfacePage
 };
+let composerSurfacePage: ReturnType<typeof createWorkbenchPageController> | undefined;
 if (composerFixture) {
   const originalFetch = window.fetch;
   window.fetch = (input, init) => {
+    if (typeof input === 'string' && input === '/api/nodes') {
+      return Promise.resolve(Response.json({ nodes: [node] }));
+    }
+    if (typeof input === 'string' && input.startsWith('/api/workspaces?')) {
+      return Promise.resolve(Response.json({ workspaces }));
+    }
+    if (typeof input === 'string' && input.endsWith('/workbench-capabilities')) {
+      return Promise.resolve(
+        Response.json({
+          manifest: {
+            manifestVersion: 1,
+            observedAt: 1,
+            conversation: { available: true, reasonCode: null },
+            files: { available: true, reasonCode: null },
+            sessionAside: { apiVersion: 1 }
+          }
+        })
+      );
+    }
     if (typeof input === 'string' && input.startsWith('/api/runner-profiles?')) {
       return Promise.resolve(
         Response.json({
@@ -424,85 +488,17 @@ if (composerFixture) {
     nodeManagementSection: 'system',
     webVersion: 'fixture'
   });
-  panePage.nodes.value = [node];
-  panePage.workspaceTarget.value = { nodeId: node.id, workspaceId: workspaces[0]!.id };
-  panePage.workspaces.value = workspaces;
-  panePage.nodeManifest.value = {
-    manifestVersion: 1,
-    observedAt: 1,
-    conversation: { available: true, reasonCode: null },
-    files: { available: true, reasonCode: null },
-    sessionAside: { apiVersion: 1 }
-  } as never;
-  panePage.draftSessionOpen.value = true;
-  panePage.mobileViewport.value = mobile;
-  void panePage.mainPaneController.composer.loadProfiles();
-  Object.assign(surfacePage, {
-    mainPaneController: panePage.mainPaneController,
-    fileWorkbench: fixtureFileWorkbench,
-    setWorkspaceFilePage: registerFixtureFilePage,
-    adjacentWorkspaceDiff: toolGit.adjacentDiff,
-    loadWorkspaceDiff: toolGit.loadDiff,
-    openWorkspaceFileExternal: () => {},
-    workspaceHost: { connected: true },
-    selectedWorkspace: workspaces[0],
-    activeWorkspaceTabId: 'node:plain',
-    visibleWorkspaceSessions: [],
-    workspaceWatchTopicStatus: { sessions: 'ready', files: 'ready', changes: 'ready' },
-    workspaceKindLabel: () => 'Directory',
-    workspaceBranchLabel: () => undefined,
-    workspaceTabLabel: () => 'Workspace',
-    sessionTitle: () => 'Session',
-    runnerBrandIcon: () => '',
-    sessionActivity: () => 'IDLE',
-    sessionActivityLabel: () => 'Idle',
-    request: async <T,>() => ({}) as T,
-    composerSessionOpen: true,
-    composerRunner: 'mar',
-    draftSessionOpen: true,
-    conversationNextCursor: null,
-    conversationTurns: [],
-    conversationRuns: [],
-    displayedConversationTurns: [],
-    followConversation: true,
-    liveConnected: true,
-    selectedSessionId: idleComposer ? undefined : 'active',
-    activeComposerRun:
-      gestureFixture && !idleComposer && !managedSessionOnly
-        ? { id: 'run-a', sessionId: 'active', status: 'RUNNING', startedAt: Date.now() }
-        : undefined,
-    onComposerInput: () => undefined,
-    referenceSessionAvailable: () => false,
-    sendSessionMessage: (intent?: string) => {
-      submittedIntents.value.push(intent ?? 'SEND');
-      fixtureInput.value = '';
-    },
-    stopActiveRun: () => submittedIntents.value.push('STOP'),
-    workPromptCompletion: { enabled: false },
-    composerWorking: !idleComposer,
-    composerWorkingLabel: 'Running',
-    composerWorkingBusy: !idleComposer,
-    composerElapsedLabel: idleComposer ? '' : '7m 13s',
-    composerSkillTokens: [],
-    composerFileReferences: [],
-    activeCommandStates: [],
-    currentSessionQueue: { items: [], paused: false },
-    newSessionAttachments: [],
-    canUseComposer: true,
-    newSessionRunner: 'mar',
-    composerRunnerOptions: [],
-    composerRunnerLabel: 'MAR Agent',
-    composerModelEffortLabel: 'Model',
-    composerModels: [],
-    composerEfforts: [],
-    newSessionAccess: 'auto',
-    composerAccessLabel: 'Auto',
-    composerAccessOptions: [],
-    contextUsageLabel: '',
-    interruptVisible: !idleComposer,
-    canInterruptTurn: !idleComposer,
-    effortLabel: String
-  });
+  void (async () => {
+    await panePage.resources.refreshNodes();
+    await panePage.selection.activateWorkspaceTab({
+      id: 'node:plain',
+      nodeId: node.id,
+      workspaceId: workspaces[0]!.id,
+      label: 'Workspace',
+      lastActiveAt: 1
+    });
+  })();
+  composerSurfacePage = panePage;
 }
 </script>
 
@@ -567,7 +563,11 @@ if (composerFixture) {
   </section>
   <Surface
     v-else-if="composerFixture || offlineFixture || workspaceRecoveryFixture"
-    :page="(offlineFixture ? offlineSurfacePage : surfacePage) as never"
+    :page="
+      (offlineFixture || workspaceRecoveryFixture
+        ? offlineSurfacePage
+        : composerSurfacePage) as never
+    "
   />
   <main v-else>
     <section v-if="!inspectorFixture" aria-label="Offline workspace" class="surface-fixture">
@@ -588,6 +588,7 @@ if (composerFixture) {
     </section>
     <section aria-label="Workspace tree fixture">
       <WorkspaceTree
+        :visible="true"
         :nodes="listState === 'no-nodes' ? [] : [node]"
         :expanded-node-ids="['node']"
         :workspace-target="
@@ -645,11 +646,11 @@ if (composerFixture) {
           parentPath: '/',
           browseRoots: ['/'],
           selectable: true,
-          entries: [],
+          entries: [{ path: '/home/example', name: 'example', selectable: true }],
           truncated: false
         }"
         selected-path="/home"
-        pending-directory-name=""
+        pending-directory-name="new-workspace"
         :loading-directory="false"
         :loading="false"
         :node-ready="true"
@@ -692,6 +693,7 @@ if (composerFixture) {
             :mobile-viewport="mobile"
             :watch-status="overlappingWatchFixture ? 'loading' : 'idle'"
             @refresh="toolFiles.requestRefresh()"
+            @failure="(error) => (fileFeedback = { message: String(error), type: 'error' })"
             @notice="(message, type) => (fileFeedback = { message, type })"
           />
           <WorkspaceContentSearch
@@ -713,7 +715,7 @@ if (composerFixture) {
             @open="openFixtureHistory"
           />
           <p v-else-if="!inspectorFixture">
-            {{ translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot') }}
+            {{ translate('generated.workspaceInspector.filesUnsupported') }}
           </p>
         </template>
       </WorkbenchAside>
@@ -745,21 +747,12 @@ if (composerFixture) {
         workspace-id="workspace"
         csrf-token="fixture"
         :renew-csrf-token="async () => 'fixture'"
-        :enabled="true"
+        :enabled="terminalEnabled"
         :active="true"
         :visible="embeddedTerminal"
         :mobile-mode="embeddedTerminal && mobile"
         :node-os-release="undefined"
-        :capability="
-          {
-            available: true,
-            profiles: [
-              { id: 'bash', label: 'Shell' },
-              ...(multipleTerminalProfiles ? [{ id: 'other-shell', label: 'Other shell' }] : [])
-            ],
-            supportsConPty: false
-          } as never
-        "
+        :capability="terminalCapability"
         :direct="terminalDirect"
         :error-message="String"
       />

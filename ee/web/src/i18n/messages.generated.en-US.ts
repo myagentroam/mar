@@ -321,8 +321,8 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
       .copyFailedCheckTheBrowserClipboardPermission,
   'workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe':
     workspaceEnUS.generated.workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe,
-  'workbenchWorkspaceSelectionService.unableToLoadNodeWorkspaces':
-    workspaceEnUS.generated.workbenchWorkspaceSelectionService.unableToLoadNodeWorkspaces,
+  'workbenchWorkspaceSelectionService.unableToLoadWorkspace':
+    workspaceEnUS.generated.workbenchWorkspaceSelectionService.unableToLoadWorkspace,
   'workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe2':
     workspaceEnUS.generated.workbenchWorkspaceSelectionService.thisWorkspaceIsNoLongerInThe2,
   'workbenchWorkspaceSelectionService.unableToRefreshNodeWorkspaces':
@@ -1435,8 +1435,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     workbenchPageEnUS.generated.workbenchSurface.noNodeConnectedYetCreateARegistration,
   'workbenchSurface.openNodeManagement':
     workbenchPageEnUS.generated.workbenchSurface.openNodeManagement,
-  'workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable':
-    workbenchPageEnUS.generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable,
   'workbenchSurface.openAWorkspace': workbenchPageEnUS.generated.workbenchSurface.openAWorkspace,
   'workbenchSurface.selectAWorkspaceOnTheCurrentNode':
     workbenchPageEnUS.generated.workbenchSurface.selectAWorkspaceOnTheCurrentNode,

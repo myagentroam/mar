@@ -16,6 +16,7 @@ import { createScopedHttpService } from '../../src/service/scoped-http-service.j
 import MailTemplateManagement from '../../src/view/settings/MailTemplateManagement.vue';
 import UsageStatisticsSettings from '../../src/view/settings/UsageStatisticsSettings.vue';
 import TerminalDock from '../../src/view/terminal/TerminalDock.vue';
+import WorkbenchAside from '../../src/view/workbench/WorkbenchAside.vue';
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 import { createConversationScrollService } from '../../src/service/conversation-scroll-service.js';
 import ConversationWorkProcess from '../../src/view/conversation/ConversationWorkProcess.vue';
@@ -548,38 +549,63 @@ const app = createApp({
     }
     if (new URL(location.href).searchParams.has('terminal')) {
       const multipleProfiles = new URL(location.href).searchParams.has('multipleProfiles');
+      const compareTabs = new URL(location.href).searchParams.has('compare-tabs');
       return () =>
-        h(TerminalDock, {
-          errorMessage: String,
-          nodeId: 'host',
-          workspaceId: 'project',
-          csrfToken: 'fixture',
-          renewCsrfToken: async () => 'fixture',
-          enabled: true,
-          capability: {
-            available: true,
-            reasonCode: null,
-            supportsReplay: false,
-            supportsConPty: false,
-            supportsTakeover: false,
-            profiles: [
-              { id: 'shell', label: 'Shell', isDefault: true },
-              ...(multipleProfiles
-                ? [{ id: 'other-shell', label: 'Other shell', isDefault: false }]
-                : [])
-            ]
-          },
-          direct: {
-            attach: async ({ onAttached }: { onAttached: () => void }) => {
-              onAttached();
-              return { send() {}, dispose() {} };
-            }
-          },
-          nodeOsRelease: undefined,
-          visible: true,
-          mobileMode: true,
-          active: true
-        });
+        h('div', [
+          ...(compareTabs
+            ? [
+                h(WorkbenchAside, {
+                  workspace: { nodeId: 'host', workspaceId: 'project' },
+                  state: {
+                    tools: [],
+                    sessions: ['session'],
+                    active: { kind: 'session', sessionId: 'session' }
+                  },
+                  tools: [],
+                  sessions: [{ sessionId: 'session', title: 'Session', active: false }],
+                  browserLabel: 'Browser',
+                  tabLabel: 'Workspace tabs',
+                  closeLabel: (title: string) => `Close ${title}`,
+                  resizeLabel: 'Resize',
+                  width: 360,
+                  minWidth: 200,
+                  maxWidth: 600,
+                  mode: 'compact'
+                })
+              ]
+            : []),
+          h(TerminalDock, {
+            errorMessage: String,
+            nodeId: 'host',
+            workspaceId: 'project',
+            csrfToken: 'fixture',
+            renewCsrfToken: async () => 'fixture',
+            enabled: true,
+            capability: {
+              available: true,
+              reasonCode: null,
+              supportsReplay: false,
+              supportsConPty: false,
+              supportsTakeover: false,
+              profiles: [
+                { id: 'shell', label: 'Shell', isDefault: true },
+                ...(multipleProfiles
+                  ? [{ id: 'other-shell', label: 'Other shell', isDefault: false }]
+                  : [])
+              ]
+            },
+            direct: {
+              attach: async ({ onAttached }: { onAttached: () => void }) => {
+                onAttached();
+                return { send() {}, dispose() {} };
+              }
+            },
+            nodeOsRelease: undefined,
+            visible: true,
+            mobileMode: compareTabs ? window.innerWidth <= 767 : true,
+            active: true
+          })
+        ]);
     }
     if (new URL(location.href).searchParams.has('usage')) {
       const usageDetails = new URL(location.href).searchParams.has('touch-details');
@@ -626,6 +652,7 @@ const app = createApp({
             h('h2', {}, [h(MarIcon, { name: 'workspace', size: 20 }), ' Workspace']),
             h(WorkspaceTree, {
               nodes: [node],
+              visible: true,
               expandedNodeIds: ['host'],
               workspaceTarget: { nodeId: 'host', workspaceId: 'project' },
               draggingWorkspace: undefined,

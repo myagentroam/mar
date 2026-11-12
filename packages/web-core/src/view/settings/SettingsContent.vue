@@ -244,7 +244,7 @@ async function confirmLogout(): Promise<void> {
           </h3>
           <el-button
             v-tooltip="translate('generated.settingsContent.refreshSignInSessions')"
-            class="utility-control"
+            class="icon-action"
             :icon="marIcon('refresh')"
             :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
             text

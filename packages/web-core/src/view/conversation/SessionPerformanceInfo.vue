@@ -13,7 +13,7 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
   <button
     v-tooltip="{ content: details, placement: 'top', touch: true }"
     v-if="details"
-    class="session-performance-info icon-button utility-control"
+    class="session-performance-info icon-button icon-action"
     type="button"
     :aria-label="`${translate('generated.conversationTimeline.modelPerformanceDetails')}: ${details}`"
   >
@@ -29,7 +29,7 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   padding: 0;
 }
 

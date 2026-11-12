@@ -49,9 +49,7 @@ export const workspaceInspectorEnUS = {
       rootRepository5: 'Root Repository',
       files2: 'Files',
       filesChanges: 'Files & Changes',
-      capabilityUnavailable: 'Capability unavailable',
-      theNodeIsOfflineOrDoesNot:
-        'The node is offline or does not declare read-only Files capability.',
+      filesUnsupported: 'The target node does not support file access.',
       theTargetNodeDoesNotCurrentlySupport:
         'The target node does not currently support this read-only resource.',
       inspectorContent: 'Inspector content',

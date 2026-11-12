@@ -69,7 +69,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('queue mobile reorder menu', () => {
+describe('queue interactions', () => {
   function mountQueue() {
     type HostNode = { type: string; props: Record<string, unknown> };
     const renderer = createRenderer<HostNode, HostNode>({
@@ -168,6 +168,45 @@ describe('queue mobile reorder menu', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('scrolls to the end for new queue identities, including equal-sized snapshots', async () => {
+    const queue = mountQueue();
+    const list = { scrollTop: 10, scrollHeight: 400 };
+    queue.getState().workList = list;
+    try {
+      queue.props.items.push({ ...queue.props.items[0]!, queueItemId: 'q3' });
+      await nextTick();
+      expect(list.scrollTop).toBe(400);
+
+      list.scrollTop = 20;
+      queue.props.items = queue.props.items.map((item, index) =>
+        index === 0 ? { ...item, queueItemId: 'q4' } : item
+      );
+      await nextTick();
+      expect(list.scrollTop).toBe(400);
+    } finally {
+      queue.app.unmount();
+    }
+  });
+
+  it('keeps the scroll position when existing queue items are edited, reordered or removed', async () => {
+    const queue = mountQueue();
+    const list = { scrollTop: 20, scrollHeight: 400 };
+    queue.getState().workList = list;
+    try {
+      queue.props.items = queue.props.items.map((item) => ({ ...item, content: 'Updated' }));
+      await nextTick();
+      expect(list.scrollTop).toBe(20);
+      queue.props.items.reverse();
+      await nextTick();
+      expect(list.scrollTop).toBe(20);
+      queue.props.items.pop();
+      await nextTick();
+      expect(list.scrollTop).toBe(20);
+    } finally {
+      queue.app.unmount();
+    }
   });
 
   it.each(['touch', 'pen'])('opens the move menu after a %s long-press', async (pointerType) => {

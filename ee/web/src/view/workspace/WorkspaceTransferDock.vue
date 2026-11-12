@@ -32,6 +32,7 @@ const emit = defineEmits<{
       </button>
       <button
         v-if="activeCount === 0"
+        class="icon-button icon-action"
         type="button"
         :aria-label="translate('generated.workspaceTransferDock.closeFileTransfers')"
         @click="emit('closeDock')"

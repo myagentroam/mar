@@ -43,13 +43,16 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...fs,
-    rm: (async (...args: Parameters<typeof fs.rm>) => {
+    rmdir: (async (...args: Parameters<typeof fs.rmdir>) => {
       if (args[0] === join(dirname(io.indexPath), 'index.lock') && io.indexReleaseFailure) {
         const failure = io.indexReleaseFailure;
         io.indexReleaseFailure = undefined;
-        await fs.rm(...args);
+        await fs.rmdir(...args);
         throw failure;
       }
+      return fs.rmdir(...args);
+    }) as typeof fs.rmdir,
+    rm: (async (...args: Parameters<typeof fs.rm>) => {
       if (
         typeof args[0] === 'string' &&
         args[0].endsWith('/storage-transaction.json') &&

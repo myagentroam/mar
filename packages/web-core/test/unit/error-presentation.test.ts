@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError } from '../../src/util/api-error.js';
 import {
   errorMessage,
+  errorSummary,
   filePreviewErrorMessage,
   filePreviewErrorSummary
 } from '../../src/util/error-presentation.js';
@@ -52,6 +53,23 @@ it.each(['en-US', 'zh-CN'] as const)(
 );
 
 describe('Public Error Presentation', () => {
+  it.each(['en-US', 'zh-CN'] as const)(
+    'uses known capability reasons without exposing codes and retains unmapped fallbacks (%s)',
+    (locale) => {
+      localePreferenceService().setLocale(locale);
+      expect(errorSummary(new ApiError('PERMISSION_DENIED', 'Unsupported'))).toBe(
+        locale === 'zh-CN'
+          ? '没有访问此资源的权限。'
+          : 'You do not have permission to access this resource.'
+      );
+      expect(errorSummary(new ApiError('UNKNOWN_CAPABILITY_REASON', ''), 'Unsupported')).toBe(
+        'Unsupported'
+      );
+      expect(errorSummary(new ApiError('UNMAPPED_CODE', 'Readable upstream reason.'))).toBe(
+        'Readable upstream reason.'
+      );
+    }
+  );
   it.each(['en-US', 'zh-CN'] as const)(
     'localizes a missing workspace file while retaining its diagnostics (%s)',
     (locale) => {

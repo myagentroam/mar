@@ -374,6 +374,7 @@ for (const theme of ['dark', 'light']) {
     page
   }) => {
     await page.goto(`${fixture.url}icon-system.html?attachment-icons=1&theme=${theme}`);
+    await expect(page.locator('.composer-attachments .attachment-name')).toHaveText('notes.txt');
     for (const iconTheme of ['material', 'seti']) {
       await page.evaluate((value) => localStorage.setItem('mar.icon-theme', value), iconTheme);
       await page.reload();
@@ -1360,6 +1361,83 @@ test('Usage and quick-open disclosures replace browser markers without losing ke
     if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
   }
 });
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
+    test(`Terminal and workspace session close controls match in ${theme} at ${width}px`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.route('**/api/terminals**', (route) =>
+        route.fulfill({
+          json:
+            route.request().method() === 'POST'
+              ? {
+                  terminal: {
+                    id: 'fixture-terminal',
+                    workspaceId: 'project',
+                    profileId: 'shell',
+                    state: 'RUNNING',
+                    latestSequence: 0
+                  }
+                }
+              : { terminals: [] }
+        })
+      );
+      await page.goto(
+        `${fixture.url}icon-system.html?terminal=1&compare-tabs=1${theme === 'daylight' ? '&theme=light' : ''}`
+      );
+      if (width > 767) await page.getByRole('button', { name: 'Expand terminal' }).click();
+      const session = page.getByRole('button', { name: 'Close Session', exact: true });
+      const terminal = page.getByRole('button', { name: 'Close terminal 1', exact: true });
+      await expect(session).toBeVisible();
+      await expect(terminal).toBeVisible();
+      await expect(session).toHaveClass(/\bmar-tab-close\b/u);
+      await expect(terminal).toHaveClass(/\bmar-tab-close\b/u);
+      const metrics = (element: HTMLElement) => {
+        const style = getComputedStyle(element);
+        const icon = getComputedStyle(element.querySelector('svg')!);
+        return [
+          style.width,
+          style.height,
+          style.borderRadius,
+          style.color,
+          icon.width,
+          icon.height
+        ];
+      };
+      expect(await terminal.evaluate(metrics)).toEqual(await session.evaluate(metrics));
+      await session.hover();
+      const sessionHover = await session.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.color, style.backgroundColor];
+      });
+      await terminal.hover();
+      expect(
+        await terminal.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return [style.color, style.backgroundColor];
+        })
+      ).toEqual(sessionHover);
+      if (width > 767) await expect(page.getByRole('tooltip')).toHaveText('Close terminal 1');
+      await page.keyboard.press('Tab');
+      await session.focus();
+      await expect(session).toHaveCSS('outline-style', 'solid');
+      const sessionOutline = await session.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.outlineWidth, style.outlineColor, style.outlineOffset];
+      });
+      await terminal.focus();
+      await expect(terminal).toHaveCSS('outline-style', 'solid');
+      expect(
+        await terminal.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return [style.outlineWidth, style.outlineColor, style.outlineOffset];
+        })
+      ).toEqual(sessionOutline);
+    });
+  }
+}
 
 test('Terminal close icons preserve accessible names and close only the selected terminal', async ({
   page

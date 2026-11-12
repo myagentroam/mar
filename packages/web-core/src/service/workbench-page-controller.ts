@@ -12,7 +12,16 @@ import { createWorkbenchWatchRecovery } from './workbench-watch-coordinator.js';
 import type { WorkbenchShellView, WorkbenchSurfaceView } from '../view/workbench-contract.js';
 import { clearMessages, showMessage } from './message-feedback-service.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { computed, nextTick, onBeforeUnmount, proxyRefs, ref, shallowRef, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  provide,
+  proxyRefs,
+  ref,
+  shallowRef,
+  watch
+} from 'vue';
 import { createHostedConversationSelectionService } from '@myagentroam/web-core/hosted-selection';
 import { createAdminAuthService } from './admin-auth-service.js';
 import { createNodeRegistrationService } from './node-registration-service.js';
@@ -84,7 +93,7 @@ import {
 import { supportsSessionAside } from '../util/node-features.js';
 import { createWorkbenchSessionIdentity } from './workbench-session-identity.js';
 import { createWorkbenchSubmissionOwner } from './workbench-submission-service.js';
-import { createScopedHttpService } from './scoped-http-service.js';
+import { WORKBENCH_HTTP_KEY } from './workbench-http-service.js';
 import type { WorkspaceFileWorkbenchHandle } from '../model/workspace-file-workbench.js';
 
 import type { TerminalDockHandle } from './terminal-direct-client.js';
@@ -206,12 +215,10 @@ export function createWorkbenchPageController<
   } = adminState;
 
   const workbenchHttpService = baseState.http;
+  provide(WORKBENCH_HTTP_KEY, workbenchHttpService);
 
   const { request, renewCsrfToken } = workbenchHttpService;
-  const workspaceToolsHttp = createScopedHttpService({
-    csrfToken: () => csrfToken.value,
-    renewCsrfToken
-  });
+  const workspaceToolsHttp = workbenchHttpService;
 
   const notice = showMessage;
   onBeforeUnmount(clearMessages);
@@ -226,6 +233,7 @@ export function createWorkbenchPageController<
   const workbenchCapabilityService = createWorkbenchCapabilityService({
     workspaceTarget,
     onNodeConnected: (nodeId) => handleNodeConnected(nodeId, false),
+    isNetworkUnavailable: () => workbenchHttpService.networkUnavailable.value,
     request,
     notice,
     errorMessage: message
@@ -1262,6 +1270,7 @@ export function createWorkbenchPageController<
     },
     notice,
     workspacesByNode,
+    isNetworkUnavailable: () => workbenchHttpService.networkUnavailable.value,
     tabs: workspaceTabService,
     tree: workspaceTreeService,
     releaseTerminalDock: (tabId) => void terminalDocks.get(tabId)?.release(),
@@ -1454,6 +1463,7 @@ export function createWorkbenchPageController<
     hasNode: (nodeId) => nodes.value.some((node) => node.id === nodeId),
     isHostAvailable: (nodeId) =>
       nodes.value.some((node) => node.id === nodeId && node.connected && !node.disabled),
+    isNetworkUnavailable: () => workbenchHttpService.networkUnavailable.value,
     cachedWorkspaces: workspaceTreeService.workspacesForNode,
     cacheWorkspaces: workspaceTreeService.cacheWorkspaces,
     rememberTarget: (target) =>
@@ -1491,7 +1501,7 @@ export function createWorkbenchPageController<
     closeSidebar: closeMobileSidebar,
     restoreProfiles: runnerProfileService.restore,
     selectManifestNode: workbenchCapabilityService.selectNode,
-    refreshManifest: refreshNodeManifest,
+    refreshManifest: (nodeId) => refreshNodeManifest(nodeId, true),
     refreshTransport: (nodeId) => void directTransport.refresh(nodeId, true),
     request,
     notice,
@@ -2142,6 +2152,7 @@ export function createWorkbenchPageController<
       applyWebUpdate,
       retryWorkspaceWatch: () => workspaceWatchService.retryFailed(),
       liveConnected: workbenchLiveConnection.connected,
+      networkUnavailable: workbenchHttpService.networkUnavailable,
       codeNavigationReady,
       managementItems,
       managementSection,

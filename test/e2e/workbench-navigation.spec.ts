@@ -28,6 +28,8 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     await button.hover();
     await expect(close).toHaveCSS('opacity', '1');
     await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await close.hover();
+    await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     expect(await inactive.boundingBox()).toEqual(initial);
     await button.click({ button: 'right' });
     await page.mouse.move(1100, 700);
@@ -50,6 +52,8 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     await expect(button).toHaveCSS('outline-style', 'solid');
     await page.keyboard.press('Tab');
     await expect(close).toBeFocused();
+    await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(close).toHaveCSS('outline-style', 'solid');
     await page.keyboard.press('Enter');
     await expect(inactive).toHaveCount(0);
     await expect(active.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
@@ -97,12 +101,17 @@ test('Custom translucent selection and hover are painted once across the whole t
     'linear-gradient(rgba(152, 118, 84, 0.25), rgba(152, 118, 84, 0.25)), none'
   );
   await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const close = inactive.locator('.tab-close');
+  await close.hover();
+  await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await button.click();
   await expect(inactive).toHaveCSS(
     'background-image',
     'linear-gradient(rgba(52, 86, 120, 0.5), rgba(52, 86, 120, 0.5)), none'
   );
   await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await close.hover();
+  await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });
 
 test('Touch navigation keeps close controls available and long titles bounded', async ({

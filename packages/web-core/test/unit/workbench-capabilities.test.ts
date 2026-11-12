@@ -1,7 +1,10 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkbenchCapabilityService } from '../../src/service/workbench-capability-service.js';
+import {
+  createSelectedNodeStatus,
+  createWorkbenchCapabilityService
+} from '../../src/service/workbench-capability-service.js';
 import type { NodeSummary, NodeWorkbenchManifest } from '../../src/model/workbench.js';
 
 function state(
@@ -12,6 +15,7 @@ function state(
   const service = createWorkbenchCapabilityService({
     workspaceTarget: workspaceTargetRef(selectedNodeId),
     onNodeConnected,
+    isNetworkUnavailable: () => true,
     request: async <T>(path: string, init?: RequestInit) => (await request(path, init)) as T,
     notice: vi.fn(),
     errorMessage: String
@@ -28,6 +32,43 @@ function state(
 }
 
 describe('Public workbench capabilities', () => {
+  it('does not present an unread manifest as a persistent restriction', () => {
+    const host = ref<NodeSummary>({
+      id: 'node',
+      displayName: null,
+      registeredAddress: 'localhost',
+      platform: 'linux',
+      architecture: 'x64',
+      nodeAppVersion: '0.13.10',
+      nodeVersion: 'v24.0.0',
+      connected: true,
+      disabled: false,
+      capabilities: {}
+    });
+    const manifest = ref<NodeWorkbenchManifest>();
+    const status = createSelectedNodeStatus({
+      host,
+      manifest,
+      loading: ref(false)
+    });
+    expect(status.value).toBeUndefined();
+    manifest.value = {
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: false, reasonCode: 'INCOMPATIBLE_VERSION' }
+    };
+    expect(status.value).toContain('INCOMPATIBLE_VERSION');
+    host.value = { ...host.value, disabled: true };
+    expect(status.value).toContain('disabled');
+  });
+
+  it('returns manifest errors to the activation feedback owner without retaining stale capabilities', async () => {
+    const error = new Error('Manifest unavailable');
+    const current = state(vi.fn().mockRejectedValue(error));
+    await expect(current.service.refreshNodeManifest('node', true)).rejects.toBe(error);
+    expect(current.manifest.value).toBeUndefined();
+    expect(current.manifestLoading.value).toBe(false);
+  });
   it('reconciles a missed offline-to-online transition from the authoritative Node list', async () => {
     const node: NodeSummary = {
       id: 'node',

@@ -9,12 +9,14 @@ import type {
 import { computed, ref, type Ref } from 'vue';
 import type { NodeUpgradeProgress } from '../model/node-upgrade.js';
 import { translate } from './locale-preference-service.js';
+import { errorCode } from '../util/api-error.js';
 
 interface WorkbenchCapabilityServiceOptions {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly onNodeConnected?: (nodeId: string) => void;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly notice: MessageFeedback;
+  readonly isNetworkUnavailable: () => boolean;
   readonly errorMessage: (error: unknown) => string;
 }
 
@@ -100,6 +102,7 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
         if (node.connected && disconnected.has(node.id)) options.onNodeConnected?.(node.id);
     } catch (error) {
       if (requestId !== nodesRequest) return;
+      if (errorCode(error) === 'NETWORK_UNAVAILABLE' && options.isNetworkUnavailable()) return;
       options.notice(
         translate('generated.workbenchCapabilityService.unableToLoadNodes', {
           value0: options.errorMessage(error)
@@ -124,7 +127,7 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
     }
   }
 
-  async function refreshNodeManifest(nodeId: string): Promise<void> {
+  async function refreshNodeManifest(nodeId: string, throwOnError = false): Promise<void> {
     const requestId = ++manifestRequest;
     manifestRequestsByNode.set(nodeId, requestId);
     const current = () => manifestRequestsByNode.get(nodeId) === requestId;
@@ -138,8 +141,11 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
         manifestsByNode.set(nodeId, result.manifest);
         if (options.workspaceTarget.value?.nodeId === nodeId) manifest.value = result.manifest;
       }
-    } catch {
-      if (current()) clearNodeManifest(nodeId);
+    } catch (error) {
+      if (current()) {
+        clearNodeManifest(nodeId);
+        if (throwOnError) throw error;
+      }
     } finally {
       if (current() && options.workspaceTarget.value?.nodeId === nodeId)
         manifestLoading.value = false;
@@ -224,10 +230,7 @@ export function createSelectedNodeStatus(input: {
     if (!workspaceHost.value.connected)
       return translate('generated.workbenchPageController.theNodeIsOfflineLoadedContentIs');
     if (nodeManifestLoading.value) return undefined;
-    if (nodeManifest.value === undefined)
-      return translate(
-        'generated.workbenchPageController.nodeWorkbenchCapabilitiesAreUnknownTheWorkspace'
-      );
+    if (nodeManifest.value === undefined) return undefined;
     if (nodeManifest.value.manifestVersion !== 1 || !nodeManifest.value.conversation.available)
       return translate(
         'generated.workbenchPageController.nodeWorkbenchCapabilitiesAreUnavailable',

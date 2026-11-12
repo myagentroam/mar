@@ -9,6 +9,8 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { marIcon } from '../../util/mar-icons.js';
+import { errorSummary } from '../../util/error-presentation.js';
+import { ApiError } from '../../util/api-error.js';
 import MarIcon from '../common/MarIcon.vue';
 import LoadingPanel from '../common/LoadingPanel.vue';
 
@@ -97,13 +99,28 @@ const asideMode = computed(() =>
 const workspaceCapabilitiesLoading = computed(
   () => props.page.resources.nodeManifestLoading && props.page.resources.nodeManifest === undefined
 );
+const workspaceOffline = computed(
+  () =>
+    props.page.application.networkUnavailable ||
+    props.page.resources.workspaceHost?.connected === false
+);
+const workspaceFilesRestriction = computed(() => {
+  const host = props.page.resources.workspaceHost;
+  const capability = props.page.resources.nodeManifest?.files;
+  if (host?.connected !== true || host.disabled === true || capability?.available !== false)
+    return undefined;
+  const fallback = translate('generated.workspaceInspector.filesUnsupported');
+  return capability.reasonCode === null
+    ? fallback
+    : errorSummary(new ApiError(capability.reasonCode, fallback));
+});
 const asideWidth = computed(() =>
   props.page.layout.mobileViewport
     ? asideAvailableWidth.value
     : props.page.aside.asideWidth(asideMode.value, asideAvailableWidth.value, 360)
 );
 const treeStatus = computed(() =>
-  props.page.resources.workspaceHost?.connected === false
+  workspaceOffline.value
     ? 'failed'
     : props.page.application.workspaceWatchTopicStatus.sessionNavigation
 );
@@ -421,35 +438,35 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           @reorder="page.selection.moveWorkspaceTab"
           @pin="page.selection.pinWorkspaceTab"
         />
-        <el-alert
+        <section
           v-if="
-            page.resources.workspaceHost?.connected !== false &&
+            !workspaceOffline &&
             !page.resources.nodeReady &&
             page.resources.selectedNodeStatus !== undefined
           "
           class="readonly-banner"
-          :closable="false"
-          show-icon
-          :title="
-            page.resources.selectedNodeStatus ??
-            translate('generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable')
-          "
-          type="error"
-          ><template #icon><MarIcon name="error" /></template
-        ></el-alert>
-        <section
-          v-if="page.resources.workspaceHost?.connected === false"
-          class="workspace-offline-placeholder"
           role="status"
         >
+          <MarIcon name="info" aria-hidden="true" />
+          <span>{{ page.resources.selectedNodeStatus }}</span>
+        </section>
+        <section v-if="workspaceOffline" class="workspace-offline-placeholder" role="status">
           <div class="workspace-offline-message">
             <MarIcon name="connection-off" class="workspace-offline-icon" aria-hidden="true" />
-            <p>{{ translate('generated.workbenchSurface.offlineWorkspace') }}</p>
+            <p>
+              {{
+                translate(
+                  page.application.networkUnavailable
+                    ? 'generated.workbenchSurface.connectionOffline'
+                    : 'generated.workbenchSurface.offlineWorkspace'
+                )
+              }}
+            </p>
           </div>
         </section>
         <section
           v-if="
-            page.resources.workspaceHost?.connected !== false &&
+            !workspaceOffline &&
             page.selection.workspaceTarget !== undefined &&
             page.resources.selectedWorkspace === undefined
           "
@@ -475,7 +492,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         <div
           ref="workspaceGrid"
           v-else-if="page.resources.selectedWorkspace !== undefined"
-          v-show="page.resources.workspaceHost?.connected !== false"
+          v-show="!workspaceOffline"
           :class="['workspace-grid', `mobile-surface-${page.layout.mobileWorkspaceSurface}`]"
           :style="{ '--aside-width': `${asideWidth ?? 0}px` }"
         >
@@ -493,7 +510,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :load-more-error="page.sessionList.loadMoreWorkspaceSessionsError"
             :active="
               (!page.layout.mobileViewport || page.layout.mobileWorkspaceSurface === 'sessions') &&
-              page.resources.workspaceHost?.connected !== false
+              !workspaceOffline
             "
             :watch-status="page.application.workspaceWatchTopicStatus.sessions"
             :node-ready="page.resources.nodeReady"
@@ -586,7 +603,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :css="
               page.layout.mobileViewport &&
               page.selection.workspaceTarget !== undefined &&
-              page.resources.workspaceHost?.connected !== false
+              !workspaceOffline
             "
           >
             <div
@@ -690,7 +707,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                   <p
                     v-if="
                       (activeTool(tool) === 'files' || activeTool(tool) === 'search') &&
-                      !page.files.filesReady
+                      !page.files.filesReady &&
+                      (workspaceCapabilitiesLoading || workspaceFilesRestriction !== undefined)
                     "
                     class="workspace-tool-unavailable"
                     :class="{
@@ -702,10 +720,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     {{
                       workspaceCapabilitiesLoading
                         ? translate('generated.workspaceInspector.loading')
-                        : page.resources.workspaceHost?.connected === true &&
-                            page.resources.workspaceHost.disabled !== true
-                          ? translate('generated.workspaceInspector.capabilityUnavailable')
-                          : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+                        : workspaceFilesRestriction
                     }}
                   </p>
                   <section
@@ -719,7 +734,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     class="workspace-git-panel"
                   >
                     <p
-                      v-if="!page.files.filesReady"
+                      v-if="
+                        !page.files.filesReady &&
+                        (workspaceCapabilitiesLoading || workspaceFilesRestriction !== undefined)
+                      "
                       class="empty"
                       :class="{
                         'workspace-tool-loading': workspaceCapabilitiesLoading
@@ -730,13 +748,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                       {{
                         workspaceCapabilitiesLoading
                           ? translate('generated.workspaceInspector.loading')
-                          : page.resources.workspaceHost?.connected === true &&
-                              page.resources.workspaceHost.disabled !== true
-                            ? translate('generated.workspaceInspector.capabilityUnavailable')
-                            : translate('generated.workspaceInspector.theNodeIsOfflineOrDoesNot')
+                          : workspaceFilesRestriction
                       }}
                     </p>
-                    <template v-else>
+                    <template v-else-if="page.files.filesReady">
                       <WorkspaceGitChanges
                         v-if="activeTool(tool) === 'changes'"
                         :service="page.files.workspaceGit"
@@ -1009,10 +1024,22 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 .readonly-banner {
-  border-radius: 0;
-  margin: 0;
-  --el-alert-bg-color: var(--mar-color-danger-bg);
-  --el-color-error: var(--mar-color-danger-text);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0.75rem 0;
+  border: 1px solid var(--mar-border-subtle);
+  border-radius: var(--mar-radius-control);
+  padding: 0.5rem 0.625rem;
+  color: var(--mar-text-secondary);
+  background: var(--mar-bg-panel);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+}
+
+.readonly-banner .mar-icon {
+  flex: 0 0 auto;
+  margin-top: 0.1em;
 }
 
 .workspace-offline-placeholder {

@@ -21,7 +21,12 @@ test.beforeEach(({ page }) => {
 });
 test.afterEach(() => expect(pageErrors).toEqual([]));
 
-async function openWorkspace(page: Page, grouping = true, marOnly = false) {
+async function openWorkspace(
+  page: Page,
+  grouping = true,
+  marOnly = false,
+  options: { manifestFailure?: boolean } = {}
+) {
   await mockConsoleApi(page, 'MANAGED', ['turn.start'], [], 'DIRECTORY');
   if (marOnly)
     await page.route('**/api/runner-profiles?*', (route) =>
@@ -93,8 +98,15 @@ async function openWorkspace(page: Page, grouping = true, marOnly = false) {
       }
     })
   );
-  await page.route('**/api/nodes/node-1/workbench-capabilities', (route) =>
-    route.fulfill({
+  await page.route('**/api/nodes/node-1/workbench-capabilities', (route) => {
+    if (options.manifestFailure)
+      return route.fulfill({
+        status: 503,
+        json: {
+          error: { code: 'TEST_MANIFEST_FAILURE', message: 'Manifest could not be read.' }
+        }
+      });
+    return route.fulfill({
       json: {
         manifest: {
           manifestVersion: 1,
@@ -103,8 +115,8 @@ async function openWorkspace(page: Page, grouping = true, marOnly = false) {
           ...(grouping ? { sessionGroups: { apiVersion: 1 } } : {})
         }
       }
-    })
-  );
+    });
+  });
   await page.route('**/api/agent-sessions?*', (route) => {
     const group = new URL(route.request().url()).searchParams.get('sessionGroup');
     return route.fulfill({
@@ -146,6 +158,20 @@ async function openWorkspace(page: Page, grouping = true, marOnly = false) {
   await expect(page.locator('.composer-input')).toBeVisible();
   return { main, child };
 }
+
+test('A failed manifest read has one error and no unknown-capability placeholder', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openWorkspace(page, true, false, { manifestFailure: true });
+  await expect(page.locator('.el-message')).toHaveCount(1);
+  await expect(page.locator('.el-message')).toContainText('Manifest could not be read.');
+  const input = page.locator('.composer-input');
+  await expect(input).toHaveJSProperty('readOnly', true);
+  await expect(input).not.toHaveAttribute('placeholder', /capabilit|unknown|能力|只读/i);
+  await expect(input).toHaveAttribute('placeholder', /^(Type \/|输入 \/)/);
+  await expect(page.locator('.readonly-banner')).toHaveCount(0);
+});
 
 for (const entry of ['button', 'shortcut'] as const) {
   test(`explicit New via ${entry} restores Main and keeps the first sent session reachable`, async ({

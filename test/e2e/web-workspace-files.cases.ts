@@ -1436,7 +1436,7 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   const contentSearchButton = page.locator('.content-search-toolbar .content-search-button');
   await expect(contentSearchButton).toHaveAttribute('type', 'submit');
   await expect(contentSearchButton).toHaveClass(/file-explorer-utility-button/u);
-  await expect(contentSearchButton).toHaveClass(/utility-control/u);
+  await expect(contentSearchButton).toHaveClass(/icon-action/u);
   expect(
     await page
       .locator('.content-search-toolbar .el-input__wrapper')

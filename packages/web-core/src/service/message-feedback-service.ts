@@ -27,7 +27,7 @@ const renderMessage: MessageFeedback = (message, type, cause) => {
           'button',
           {
             type: 'button',
-            class: 'el-message__closeBtn mar-message-close',
+            class: 'el-message__closeBtn mar-message-close icon-action',
             title: translate('common.close'),
             'aria-label': translate('common.close'),
             onClick: () => handle?.close()

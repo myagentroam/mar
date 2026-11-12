@@ -799,9 +799,13 @@ describe('Workbench controller composition behavior', () => {
     }
   );
 
-  it.each(['files', 'changes', 'history'] as const)(
-    'keeps a %s capability failure in its owner and recovers without a Message',
-    async (area) => {
+  it.each(
+    (['files', 'changes', 'history'] as const).flatMap((area) =>
+      ['CAPABILITY_UNAVAILABLE', 'NETWORK_UNAVAILABLE'].map((code) => ({ area, code }))
+    )
+  )(
+    'keeps a $area $code failure in its owner and recovers without a Message',
+    async ({ area, code }) => {
       const show = vi.spyOn(feedback, 'showMessage').mockImplementation(() => {});
       const { page } = controller();
       const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
@@ -822,9 +826,10 @@ describe('Workbench controller composition behavior', () => {
         'fetch',
         vi.fn(async (request: string | URL | Request) => {
           const path = new URL(String(request), 'https://console.example.test').pathname;
+          if (fail && code === 'NETWORK_UNAVAILABLE') throw new TypeError('Failed to fetch');
           if (path.endsWith('/git/refs')) return new Response(JSON.stringify({ refs: [] }));
           if (fail)
-            return new Response(JSON.stringify({ error: 'CAPABILITY_UNAVAILABLE' }), {
+            return new Response(JSON.stringify({ error: code }), {
               status: 403
             });
           return new Response(
@@ -859,10 +864,12 @@ describe('Workbench controller composition behavior', () => {
           : area === 'changes'
             ? page.files.workspaceGit.changesFailureCause.value
             : page.files.workspaceGit.historyFailureCause.value;
-      expect(failure).toMatchObject({ code: 'CAPABILITY_UNAVAILABLE' });
+      expect(failure).toMatchObject({ code });
+      expect(page.application.networkUnavailable).toBe(code === 'NETWORK_UNAVAILABLE');
       expect(show).not.toHaveBeenCalled();
       fail = false;
       await read();
+      expect(page.application.networkUnavailable).toBe(false);
       if (area === 'files') {
         expect(page.files.workspaceFiles.tree.refreshError.value).toBeUndefined();
         expect(page.files.workspaceFiles.tree.root.value.children[0]?.path).toBe('recovered.ts');

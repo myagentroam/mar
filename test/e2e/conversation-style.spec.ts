@@ -1308,6 +1308,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           muted: color('--mar-conversation-muted'),
           primary: color('--mar-text-primary'),
           brand: color('--mar-color-brand-text'),
+          utilityHover: color('--mar-fill-row-hover'),
           canvas: color('--mar-conversation-canvas'),
           panel: color('--mar-bg-panel')
         };
@@ -1384,12 +1385,23 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(copy).toHaveCSS('cursor', 'pointer');
       await copy.hover();
       await expect(copy.locator('code')).toHaveCSS('color', tokens.primary);
+      await expect(copy).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const messageAction = page.locator('.conversation-message-action').first();
+      await messageAction.hover();
+      await expect(messageAction).toHaveCSS('background-color', tokens.utilityHover);
+      await expect(messageAction).toHaveCSS('border-radius', '6px');
+      await messageAction.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(messageAction).toBeFocused();
+      await expect(messageAction).not.toHaveCSS('outline-style', 'none');
+      await expect(messageAction).toHaveCSS('background-color', tokens.utilityHover);
       for (const control of [
         page.getByTestId('native-utility'),
         page.getByTestId('element-utility')
       ]) {
         await control.hover();
-        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('background-color', tokens.utilityHover);
         await expect(control).toHaveCSS('color', tokens.primary);
         await control.focus();
         await page.keyboard.press('Tab');
@@ -1397,13 +1409,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(control).toBeFocused();
         await expect(control).not.toHaveCSS('outline-style', 'none');
         await page.keyboard.down('Space');
-        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('background-color', tokens.utilityHover);
         await page.keyboard.up('Space');
         await control.evaluate((element) => element.setAttribute('aria-expanded', 'true'));
         await page.mouse.move(0, 0);
         await control.evaluate((element) => element.blur());
         await expect(control).toHaveCSS('color', tokens.primary);
-        await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(control).toHaveCSS('background-color', tokens.utilityHover);
       }
       await expect(page.getByTestId('disabled-utility')).toBeDisabled();
       const treeToggle = page.locator('.workbench-tree-toggle');

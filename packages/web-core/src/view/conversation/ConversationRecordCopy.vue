@@ -33,7 +33,7 @@ onBeforeUnmount(() => {
   <button
     v-tooltip="label"
     type="button"
-    class="tool-detail-copy icon-button utility-control"
+    class="tool-detail-copy icon-button icon-action"
     :aria-label="label"
     @click.stop="copy"
   >
@@ -51,7 +51,7 @@ onBeforeUnmount(() => {
   height: var(--mar-utility-control-size);
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--mar-radius-control);
   padding: 0;
 }
 </style>

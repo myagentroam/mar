@@ -195,12 +195,8 @@ onBeforeUnmount(() => {
             ? translate('generated.workbenchSurface.run', {
                 value0: runner.selectedCommand.id
               })
-            : controller.nodeManifest.value === undefined &&
-                presentation.workspaceHost?.connected === true &&
-                presentation.workspaceHost.disabled !== true
-              ? controller.status.manifestLoading.value
-                ? translate('generated.workspaceInspector.loading')
-                : translate('generated.workbenchSurface.nodeWorkbenchCapabilitiesAreUnavailable')
+            : controller.nodeManifest.value === undefined && controller.status.manifestLoading.value
+              ? translate('generated.workspaceInspector.loading')
               : translate('generated.workbenchSurface.typeForCommandsToReferenceWorkspaceFiles', {
                   value0: runnerLabel(configuration.activeRunner)
                 })

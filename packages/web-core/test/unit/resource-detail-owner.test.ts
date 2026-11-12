@@ -93,7 +93,7 @@ function fixture(kind: 'NODE' | 'WORKSPACE') {
   const usageButton = () =>
     view
       .findAll('ElButton')
-      .find((node) => node.props['class'] === 'runner-usage-link utility-control')!;
+      .find((node) => String(node.props['class']).split(/\s+/u).includes('runner-usage-link'))!;
   return { ...view, request, paths, statuses, usages, refreshes, open, dialog, usageButton };
 }
 

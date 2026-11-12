@@ -47,6 +47,7 @@ const goalEditing = ref(false);
 const goalObjective = ref('');
 const goalDetailsOpen = ref(false);
 const goalEditor = ref<HTMLElement>();
+const workList = ref<HTMLElement>();
 let queueEditor: HTMLElement | undefined;
 let editingQueueItem: HTMLElement | undefined;
 let unregisterShortcuts: (() => void)[] = [];
@@ -210,9 +211,14 @@ function contextCommand(command: string | number | object): void {
 
 watch(
   () => props.items.map((item) => item.queueItemId),
-  (itemIds) => {
+  (itemIds, previousItemIds) => {
     if (contextMenu.value && !itemIds.includes(contextMenu.value.queueItemId)) closeContextMenu();
-  }
+    const previousIds = new Set(previousItemIds);
+    if (workList.value && itemIds.some((id) => !previousIds.has(id))) {
+      workList.value.scrollTop = workList.value.scrollHeight;
+    }
+  },
+  { flush: 'post' }
 );
 watch(
   () => [props.loading, props.editingQueueItemId],
@@ -340,7 +346,7 @@ onMounted(() => {
         translate('generated.composerQueue.paused')
       }}</span>
     </div>
-    <div class="composer-work-list">
+    <div ref="workList" class="composer-work-list">
       <div v-if="goal?.goal" class="work-item goal-card">
         <span class="work-item-kind goal-kind">{{
           translate('generated.composerQueue.goalType')
@@ -358,14 +364,14 @@ onMounted(() => {
             {{ goal.goal.objective }}
           </p>
           <div class="work-item-actions goal-actions">
-            <button class="utility-control" type="button" @click="goalDetailsOpen = true">
+            <button class="text-action" type="button" @click="goalDetailsOpen = true">
               {{ translate('goal.view') }}
             </button>
-            <button class="utility-control" type="button" @click="startGoalEdit">
+            <button class="text-action" type="button" @click="startGoalEdit">
               {{ translate('goal.edit') }}
             </button>
             <button
-              class="utility-control work-item-danger-action"
+              class="text-action work-item-danger-action"
               type="button"
               :disabled="loading"
               @click="emit('clearGoal')"
@@ -385,16 +391,11 @@ onMounted(() => {
             :aria-label="translate('goal.objectiveLabel')"
           />
           <div class="work-item-actions goal-editor-actions">
-            <button
-              class="utility-control"
-              type="button"
-              :disabled="loading"
-              @click="cancelGoalEdit"
-            >
+            <button class="text-action" type="button" :disabled="loading" @click="cancelGoalEdit">
               {{ translate('goal.cancel') }}
             </button>
             <button
-              class="utility-control work-item-primary-action"
+              class="text-action work-item-primary-action"
               type="button"
               :disabled="loading || !goalObjective.trim()"
               @click="updateGoal"
@@ -487,7 +488,7 @@ onMounted(() => {
           </div>
           <div class="work-item-actions queue-item-actions">
             <button
-              class="utility-control"
+              class="text-action"
               v-tooltip="translate('generated.composerQueue.save')"
               v-if="editingQueueItemId === item.queueItemId"
               type="button"
@@ -499,7 +500,7 @@ onMounted(() => {
               }}</span>
             </button>
             <button
-              class="utility-control"
+              class="text-action"
               v-tooltip="translate('generated.composerQueue.edit')"
               v-else
               type="button"
@@ -512,7 +513,7 @@ onMounted(() => {
             </button>
             <button
               v-tooltip="translate('generated.composerQueue.runNow')"
-              class="utility-control work-item-primary-action"
+              class="text-action work-item-primary-action"
               type="button"
               :disabled="loading"
               :aria-label="translate('generated.composerQueue.runNow')"
@@ -524,7 +525,7 @@ onMounted(() => {
             </button>
             <button
               v-tooltip="translate('generated.composerQueue.delete')"
-              class="utility-control work-item-danger-action"
+              class="text-action work-item-danger-action"
               type="button"
               :aria-label="translate('generated.composerQueue.delete')"
               @click="emit('deleteItem', item.queueItemId)"
