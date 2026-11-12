@@ -145,6 +145,8 @@ jobs:
           $root = Join-Path $env:RUNNER_TEMP 'remote-desktop-native'
           $env:MAR_DESKTOP_KEY_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-key-receipt'
           $env:MAR_DESKTOP_MOUSE_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-mouse-receipt'
+          $env:MAR_DESKTOP_KEY_UP_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-key-up-receipt'
+          $env:MAR_DESKTOP_MOUSE_UP_RECEIPT = Join-Path $env:RUNNER_TEMP 'desktop-mouse-up-receipt'
           $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
           $listener.Start()
           $port = $listener.LocalEndpoint.Port
@@ -161,6 +163,9 @@ jobs:
             $listeners | Format-Table LocalAddress,LocalPort,OwningProcess
             if ($listeners.Count -ne 1 -or $listeners[0].LocalAddress -ne '127.0.0.1') { throw 'UltraVNC is not listening exclusively on IPv4 loopback' }
             python mar-node/test/native/desktop-native-rfb-probe.py $port control
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
+            python mar-node/test/native/desktop-native-rfb-probe.py $port cleanup
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id; $server.WaitForExit() }

@@ -76,6 +76,14 @@ with connection:
         assert receipt.read_text().strip() == 'key-a', 'Native application did not receive key'
         assert mouse_receipt.read_text().strip() == 'mouse-down', 'Native application did not receive pointer click'
         print('Native application received RFB pointer click and key-a')
+        if want_input and os.environ.get('MAR_DESKTOP_KEY_UP_RECEIPT'):
+            key_up = Path(os.environ['MAR_DESKTOP_KEY_UP_RECEIPT'])
+            mouse_up = Path(os.environ['MAR_DESKTOP_MOUSE_UP_RECEIPT'])
+            deadline = time.monotonic() + 8
+            while (not key_up.exists() or not mouse_up.exists()) and time.monotonic() < deadline:
+                time.sleep(.05)
+            assert key_up.read_text().strip() == 'key-up', 'Native application did not receive key-up'
+            assert mouse_up.read_text().strip() == 'mouse-up', 'Native application did not receive mouse-up'
         if want_cleanup:
             connection.close()
             key_up = Path(os.environ['MAR_DESKTOP_KEY_UP_RECEIPT'])

@@ -17,4 +17,13 @@ $form.Add_KeyDown({
 $form.Add_MouseDown({
     [System.IO.File]::WriteAllText($env:MAR_DESKTOP_MOUSE_RECEIPT, "mouse-down`n")
 })
+$form.Add_KeyUp({
+    param($sender, $event)
+    if ($event.KeyCode -eq [System.Windows.Forms.Keys]::A) {
+        [System.IO.File]::WriteAllText($env:MAR_DESKTOP_KEY_UP_RECEIPT, "key-up`n")
+    }
+})
+$form.Add_MouseUp({
+    [System.IO.File]::WriteAllText($env:MAR_DESKTOP_MOUSE_UP_RECEIPT, "mouse-up`n")
+})
 [System.Windows.Forms.Application]::Run($form)
