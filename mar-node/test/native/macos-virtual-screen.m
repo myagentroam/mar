@@ -32,7 +32,9 @@
 @end
 @implementation TestView
 - (void)drawRect:(NSRect)rect { [[NSColor greenColor] setFill]; NSRectFill(self.bounds); }
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 - (void)mouseDown:(NSEvent *)event {
+    fprintf(stderr, "SECONDARY_MOUSE %.1f %.1f\n", event.locationInWindow.x, event.locationInWindow.y);
     NSString *path = NSProcessInfo.processInfo.environment[@"MAR_MULTISCREEN_CLICK"];
     [@"clicked\n" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
@@ -85,6 +87,12 @@ int main(void) {
         window.contentView = [[TestView alloc] initWithFrame:window.contentView.bounds];
         [window makeKeyAndOrderFront:nil];
         [app activateIgnoringOtherApps:YES];
+        [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
+            CGEventRef event = CGEventCreate(NULL);
+            CGPoint point = CGEventGetLocation(event);
+            CFRelease(event);
+            fprintf(stderr, "CURSOR %.1f %.1f\n", point.x, point.y);
+        }];
         printf("READY %u\n", display.displayID);
         fflush(stdout);
         [app run];

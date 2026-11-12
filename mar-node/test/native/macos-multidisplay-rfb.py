@@ -75,11 +75,13 @@ with connection:
     assert red > 100 and green > 100, f'Missing display pixels: red={red} green={green}'
     x = round((other['x'] + other['width'] / 2 - left) * scale)
     y = round((other['y'] + other['height'] / 2 - top) * scale)
+    print(f'MULTIDISPLAY topology={json.dumps(displays)} scale={scale} framebuffer={width}x{height} '
+          f'red={red} green={green} pointer={x},{y}', flush=True)
     connection.sendall(struct.pack('>BBHH', 5, 1, x, y))
     connection.sendall(struct.pack('>BBHH', 5, 0, x, y))
     receipt = Path(os.environ['MAR_MULTISCREEN_CLICK'])
     deadline = time.monotonic() + 5
     while not receipt.exists() and time.monotonic() < deadline:
         time.sleep(.05)
-    assert receipt.read_text().strip() == 'clicked', 'Pointer did not reach secondary display'
+    assert receipt.exists() and receipt.read_text().strip() == 'clicked', 'Pointer did not reach secondary display'
     print(f'MULTIDISPLAY framebuffer={width}x{height} red={red} green={green} secondary-pointer=PASS')
