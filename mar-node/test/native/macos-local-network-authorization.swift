@@ -9,8 +9,11 @@ func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
 }
 
+var observedConsentAlerts = Set<String>()
+
 func approveRunnerNetworkAlert() -> Bool {
-    guard AXIsProcessTrusted() else { return false }
+    guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
+          AXIsProcessTrusted() else { return false }
     for application in NSWorkspace.shared.runningApplications {
         guard application.bundleIdentifier?.hasPrefix("com.apple.") == true else { continue }
         let element = AXUIElementCreateApplication(application.processIdentifier)
@@ -27,9 +30,12 @@ func approveRunnerNetworkAlert() -> Bool {
                     attribute(item, $0) as? String
                 }
             }.joined(separator: " ").lowercased()
-            guard text.contains("local network"), text.contains("find devices"),
-                  ["hosted-compute", "chromium", "chrome for testing"].contains(where: text.contains)
-            else { continue }
+            guard text.contains("local network"), text.contains("find devices") else { continue }
+            if observedConsentAlerts.insert(text).inserted {
+                print("CI_LOCAL_NETWORK_CONSENT_ALERT: \(text.prefix(240))")
+            }
+            guard ["hosted-compute", "chromium", "chrome for testing", "runner.worker", "runner.listener", "\"node\"", "“node”"]
+                .contains(where: text.contains) else { continue }
             let buttons = elements.filter {
                 attribute($0, kAXRoleAttribute) as? String == kAXButtonRole &&
                 attribute($0, kAXTitleAttribute) as? String == "Allow"
@@ -69,7 +75,7 @@ while Date() < deadline, failure == nil {
     }
     RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 }
+let reason = failure ?? "state=\(connection.state), path=\(String(describing: connection.currentPath?.unsatisfiedReason)), accessibility=\(AXIsProcessTrusted())"
 connection.cancel()
-let reason = failure ?? (AXIsProcessTrusted() ? "consent was not granted" : "CI accessibility approval is unavailable")
 FileHandle.standardError.write(Data("CI_LOCAL_NETWORK_NOT_AUTHORIZED: \(reason)\n".utf8))
 exit(1)

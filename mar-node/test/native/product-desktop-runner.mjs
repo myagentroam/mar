@@ -128,6 +128,12 @@ try {
     await once(consentLog, 'finish');
     const receipt = await readFile(join(report, 'local-network-authorization.log'), 'utf8');
     console.log(receipt);
+    if (code !== 0) {
+      await command('/usr/sbin/screencapture', [
+        '-x',
+        join(report, 'local-network-failure.png')
+      ]).catch(() => console.error('CI local-network failure screenshot is unavailable.'));
+    }
     assert.equal(code, 0, 'CI local-network consent must succeed before product tests.');
   }
   if (process.env.MAR_TEST_MYSQLD) {
