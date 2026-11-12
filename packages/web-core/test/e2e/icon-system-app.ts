@@ -652,6 +652,7 @@ const app = createApp({
             h('h2', {}, [h(MarIcon, { name: 'workspace', size: 20 }), ' Workspace']),
             h(WorkspaceTree, {
               nodes: [node],
+              visible: true,
               expandedNodeIds: ['host'],
               workspaceTarget: { nodeId: 'host', workspaceId: 'project' },
               draggingWorkspace: undefined,

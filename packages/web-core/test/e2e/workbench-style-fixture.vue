@@ -431,9 +431,29 @@ const offlineSurfacePage = {
   resources: surfacePage,
   selection: surfacePage
 };
+let composerSurfacePage: ReturnType<typeof createWorkbenchPageController> | undefined;
 if (composerFixture) {
   const originalFetch = window.fetch;
   window.fetch = (input, init) => {
+    if (typeof input === 'string' && input === '/api/nodes') {
+      return Promise.resolve(Response.json({ nodes: [node] }));
+    }
+    if (typeof input === 'string' && input.startsWith('/api/workspaces?')) {
+      return Promise.resolve(Response.json({ workspaces }));
+    }
+    if (typeof input === 'string' && input.endsWith('/workbench-capabilities')) {
+      return Promise.resolve(
+        Response.json({
+          manifest: {
+            manifestVersion: 1,
+            observedAt: 1,
+            conversation: { available: true, reasonCode: null },
+            files: { available: true, reasonCode: null },
+            sessionAside: { apiVersion: 1 }
+          }
+        })
+      );
+    }
     if (typeof input === 'string' && input.startsWith('/api/runner-profiles?')) {
       return Promise.resolve(
         Response.json({
@@ -468,85 +488,17 @@ if (composerFixture) {
     nodeManagementSection: 'system',
     webVersion: 'fixture'
   });
-  panePage.nodes.value = [node];
-  panePage.workspaceTarget.value = { nodeId: node.id, workspaceId: workspaces[0]!.id };
-  panePage.workspaces.value = workspaces;
-  panePage.nodeManifest.value = {
-    manifestVersion: 1,
-    observedAt: 1,
-    conversation: { available: true, reasonCode: null },
-    files: { available: true, reasonCode: null },
-    sessionAside: { apiVersion: 1 }
-  } as never;
-  panePage.draftSessionOpen.value = true;
-  panePage.mobileViewport.value = mobile;
-  void panePage.mainPaneController.composer.loadProfiles();
-  Object.assign(surfacePage, {
-    mainPaneController: panePage.mainPaneController,
-    fileWorkbench: fixtureFileWorkbench,
-    setWorkspaceFilePage: registerFixtureFilePage,
-    adjacentWorkspaceDiff: toolGit.adjacentDiff,
-    loadWorkspaceDiff: toolGit.loadDiff,
-    openWorkspaceFileExternal: () => {},
-    workspaceHost: { connected: true },
-    selectedWorkspace: workspaces[0],
-    activeWorkspaceTabId: 'node:plain',
-    visibleWorkspaceSessions: [],
-    workspaceWatchTopicStatus: { sessions: 'ready', files: 'ready', changes: 'ready' },
-    workspaceKindLabel: () => 'Directory',
-    workspaceBranchLabel: () => undefined,
-    workspaceTabLabel: () => 'Workspace',
-    sessionTitle: () => 'Session',
-    runnerBrandIcon: () => '',
-    sessionActivity: () => 'IDLE',
-    sessionActivityLabel: () => 'Idle',
-    request: async <T,>() => ({}) as T,
-    composerSessionOpen: true,
-    composerRunner: 'mar',
-    draftSessionOpen: true,
-    conversationNextCursor: null,
-    conversationTurns: [],
-    conversationRuns: [],
-    displayedConversationTurns: [],
-    followConversation: true,
-    liveConnected: true,
-    selectedSessionId: idleComposer ? undefined : 'active',
-    activeComposerRun:
-      gestureFixture && !idleComposer && !managedSessionOnly
-        ? { id: 'run-a', sessionId: 'active', status: 'RUNNING', startedAt: Date.now() }
-        : undefined,
-    onComposerInput: () => undefined,
-    referenceSessionAvailable: () => false,
-    sendSessionMessage: (intent?: string) => {
-      submittedIntents.value.push(intent ?? 'SEND');
-      fixtureInput.value = '';
-    },
-    stopActiveRun: () => submittedIntents.value.push('STOP'),
-    workPromptCompletion: { enabled: false },
-    composerWorking: !idleComposer,
-    composerWorkingLabel: 'Running',
-    composerWorkingBusy: !idleComposer,
-    composerElapsedLabel: idleComposer ? '' : '7m 13s',
-    composerSkillTokens: [],
-    composerFileReferences: [],
-    activeCommandStates: [],
-    currentSessionQueue: { items: [], paused: false },
-    newSessionAttachments: [],
-    canUseComposer: true,
-    newSessionRunner: 'mar',
-    composerRunnerOptions: [],
-    composerRunnerLabel: 'MAR Agent',
-    composerModelEffortLabel: 'Model',
-    composerModels: [],
-    composerEfforts: [],
-    newSessionAccess: 'auto',
-    composerAccessLabel: 'Auto',
-    composerAccessOptions: [],
-    contextUsageLabel: '',
-    interruptVisible: !idleComposer,
-    canInterruptTurn: !idleComposer,
-    effortLabel: String
-  });
+  void (async () => {
+    await panePage.resources.refreshNodes();
+    await panePage.selection.activateWorkspaceTab({
+      id: 'node:plain',
+      nodeId: node.id,
+      workspaceId: workspaces[0]!.id,
+      label: 'Workspace',
+      lastActiveAt: 1
+    });
+  })();
+  composerSurfacePage = panePage;
 }
 </script>
 
@@ -611,7 +563,11 @@ if (composerFixture) {
   </section>
   <Surface
     v-else-if="composerFixture || offlineFixture || workspaceRecoveryFixture"
-    :page="(offlineFixture || workspaceRecoveryFixture ? offlineSurfacePage : surfacePage) as never"
+    :page="
+      (offlineFixture || workspaceRecoveryFixture
+        ? offlineSurfacePage
+        : composerSurfacePage) as never
+    "
   />
   <main v-else>
     <section v-if="!inspectorFixture" aria-label="Offline workspace" class="surface-fixture">
@@ -737,6 +693,7 @@ if (composerFixture) {
             :mobile-viewport="mobile"
             :watch-status="overlappingWatchFixture ? 'loading' : 'idle'"
             @refresh="toolFiles.requestRefresh()"
+            @failure="(error) => (fileFeedback = { message: String(error), type: 'error' })"
             @notice="(message, type) => (fileFeedback = { message, type })"
           />
           <WorkspaceContentSearch
