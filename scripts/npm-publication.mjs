@@ -135,9 +135,16 @@ export async function verifyNpmPublication(directory, sourceRoot, expected) {
     );
     checkRepository(metadata, item.name);
     checkRepository(source, item.name);
+    const executableFiles = metadata.publishConfig?.executableFiles;
     publicationCheck(
       metadata.publishConfig?.access === 'public' &&
-        Object.keys(metadata.publishConfig).every((key) => key === 'access'),
+        Object.keys(metadata.publishConfig).every(
+          (key) => key === 'access' || key === 'executableFiles'
+        ) &&
+        (executableFiles === undefined ||
+          (Array.isArray(executableFiles) &&
+            executableFiles.every((file) => typeof file === 'string'))) &&
+        JSON.stringify(executableFiles) === JSON.stringify(source.publishConfig?.executableFiles),
       'NPM_PUBLICATION_PUBLISH_CONFIG_INVALID'
     );
   }
