@@ -5,7 +5,7 @@ lastUpdated: 2026-11-12
 
 # npm 快速开始
 
-Quick Start 一次准备固定社区版 Server、专用 MySQL 和本机 Node，并在支持受管搜索的平台准备 SearXNG。默认通过本机回环 HTTP 访问；远程访问的网络入口和安全配置由你自行管理。它不安装系统常驻服务，不要求主机 UUID，也不支持激活 License。另一种安装方式见 [Docker Compose 部署](server-installation.md)。
+Quick Start 一次准备默认社区版 Server、专用 MySQL 和本机 Node，并在支持受管搜索的平台准备 SearXNG。默认通过本机回环 HTTP 访问；远程访问的网络入口和安全配置由你自行管理。它不安装系统常驻服务。Linux 使用 `/etc/machine-id`，无需读取硬件 UUID 或提权；常规 Web 不显示升级操作，管理员可通过 [License API](../administration/license.md#linux-一键包的管理员-api)获取申请码和导入授权，npm 与 pnpm 安装行为相同。Windows 仍固定社区版，不提供激活。另一种安装方式见 [Docker Compose 部署](server-installation.md)。
 
 目前实际验证的安装目标是带 glibc 2.28 或更高版本、`tar` 和 `dpkg-deb` 的 Linux x64（例如受支持的 Debian 或 Ubuntu 系统），以及可使用 `tar` 的 Windows x64。需要 Node.js 24.12 或更高版本以及 npm。安装包时原生依赖可能要求系统已有可用的构建工具；安装和 setup 均不安装系统包，也不请求提权。浏览器和所选组件的准备需要网络。其他原生平台尚未完成此 Quick Start 的验证。
 
@@ -26,6 +26,8 @@ Server 以普通依赖使用同版本 Node；npm 安装会按 Node 原有生命�
 `--no-node` 会持久保存禁用选择，但不会从 Server 包移除 Node 依赖。之后如需启用本机 Node，先停止 run，在 `server.json` 中将 `node.enabled` 设为 `true`，保留身份，再运行 setup。
 
 run 在前台运行并打印本机浏览器地址。使用 Ctrl+C 停止并等待子进程退出；run 不会下载缺失组件。同一数据目录不能并发执行 setup 和 run。
+
+Linux 启动要求 `/etc/machine-id` 可读且包含有效的非全零 32 位十六进制身份；缺失或无效时报告 `LICENSE_HOST_UNAVAILABLE`，不会自动生成替代值。重装系统或变更该身份后，已有企业 License 需要重新签发。激活不替换一键包或重建已有数据。
 
 Windows 本机 Quick Start 的受管 Node 使用 IPv4 直连；如果只能通过 IPv6 连接，文件和终端流量会回退到 Server 中继。
 

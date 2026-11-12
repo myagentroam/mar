@@ -14,7 +14,7 @@ export async function createServerApp(
   return createApplication(options, false);
 }
 
-/** Entry for the local-only deployment; it never reads a host UUID or enables activation. */
+/** Owns local deployment resources; Linux host identity and API activation belong to product policy. */
 export async function createQuickStartServerApp(
   options: ServerAppOptions
 ): Promise<{ readonly app: ServerApplication; readonly quickStartNode: QuickStartNodeBootstrap }> {

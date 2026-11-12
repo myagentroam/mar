@@ -1,6 +1,6 @@
 ---
 title: Community and Enterprise Licenses
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-12
 ---
 
 # Community and Enterprise Licenses
@@ -9,11 +9,23 @@ Community Edition provides the default single-user experience without a limit on
 
 The fixed Community administrator can also manage deployment settings under **Admin → System Configuration** without an Enterprise license. Configuring audit retention does not grant access to audit queries or exports. A frozen Enterprise license still blocks system configuration changes.
 
-A System Administrator opens **Admin → System Information**, copies the request code, and sends it privately to the issuer. Paste the complete returned License document into **License Authorization**, import it, and verify enterprise name and expiry before creating enterprise resources.
+For formal deployments, a System Administrator opens **Admin → System Information**, copies the request code, and sends it privately to the issuer. Paste the complete returned License document into **License Authorization**, import it, and verify enterprise name and expiry before creating enterprise resources. Linux Quick Start uses the administrator APIs below instead of displaying activation controls.
 
 An expired or frozen license restricts enterprise management writes while preserving configured resources and normal work according to the displayed state. Import a valid replacement to restore management. Treat request codes and License documents as administrative data and do not publish them.
 
-Formal deployments use the same program and image set; activation does not replace the installation. Both formal license states require the real host UUID; containers must mount it read-only, and startup fails if it is unavailable or invalid. The [npm Quick Start](../getting-started/npm-quick-start.md) uses fixed Community capabilities without a UUID and cannot be activated; System Information does not generate request codes or show License import controls. License capabilities do not replace user and resource authorization.
+Formal deployments use the same program and image set; activation does not replace the installation. Both formal license states require the real host UUID; containers must mount it read-only, and startup fails if it is unavailable or invalid. License capabilities do not replace user and resource authorization.
+
+## Administrator APIs for Linux Quick Start
+
+On Linux, [npm Quick Start](../getting-started/npm-quick-start.md) defaults to Community and binds licenses to `/etc/machine-id`; npm and pnpm installations behave identically. System Information displays the actual license state without automatically requesting a code or showing import controls. After signing in as an administrator and completing the initial password confirmation, use these APIs on the same Server:
+
+- `GET /api/license` reads the state; Linux Quick Start returns `activationAvailable=true` and `activationVisible=false`.
+- `GET /api/license/request-code` returns `{ "requestCode": "MAR1.…" }`. Send that code privately to the issuer.
+- `POST /api/license/import` accepts `{ "document": "complete License document" }` with `Content-Type: application/json`. Include the administrator session Cookie, its `x-csrf-token`, and an Origin matching the public Server entry point. Import is not supported through an address-bar GET or URL query parameters.
+
+After a successful import, refresh the page and confirm that `/api/license` reports `ENTERPRISE_VALID`; neither the package nor existing data needs replacement. Expiry, invalid signatures and host mismatches retain Enterprise freeze behavior rather than reverting to Community through database edits. A missing, unreadable or invalid machine-id prevents startup with `LICENSE_HOST_UNAVAILABLE`. Reinstalling the OS or changing machine-id requires a replacement License. Do not publish machine-id, request codes, session credentials or License documents.
+
+Windows Quick Start remains fixed Community, reads no host identity and exposes neither request-code nor import APIs.
 
 ## Why does formal Community deployment require a host UUID?
 

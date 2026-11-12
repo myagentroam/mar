@@ -16,6 +16,24 @@ const status = {
 };
 
 describe('License activation availability', () => {
+  it('keeps API-enabled Linux Quick Start activation controls hidden', async () => {
+    const request = vi.fn(async (path: string) =>
+      path === '/api/license'
+        ? { ...status, activationAvailable: true, activationVisible: false }
+        : { requestCode: 'UNEXPECTED-CODE' }
+    );
+    const view = renderComponent(License, { request });
+    try {
+      await flushComponent();
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith('/api/license');
+      expect(view.findAll('ElInput')).toHaveLength(0);
+      expect(view.findAll('ElButton')).toHaveLength(0);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it('does not request or show activation controls for the local community deployment', async () => {
     const request = vi.fn(async (path: string) =>
       path === '/api/license'

@@ -2,7 +2,7 @@ import type { ResourceOwnership } from '@myagentroam/protocol';
 
 /** In-process, single-use bootstrap for the local deployment; no HTTP surface is registered. */
 export function createQuickStartNodeBootstrap(input: {
-  readonly isPersonalAdmin: (userId: number) => Promise<boolean>;
+  readonly isLocalAdmin: (userId: number) => Promise<boolean>;
   readonly assertOwnershipSelection: (
     userId: number,
     ownership: ResourceOwnership
@@ -26,7 +26,7 @@ export function createQuickStartNodeBootstrap(input: {
       if (attempted) throw new Error('QUICK_START_NODE_BOOTSTRAP_ALREADY_USED');
       attempted = true;
       const userId = 1;
-      if (!(await input.isPersonalAdmin(userId)))
+      if (!(await input.isLocalAdmin(userId)))
         throw new Error('QUICK_START_NODE_ADMIN_UNAVAILABLE');
       const ownership: ResourceOwnership = { ownerType: 'PERSONAL', ownerUserId: userId };
       await input.assertOwnershipSelection(userId, ownership);

@@ -1,9 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, request as playwrightRequest, test } from '@playwright/test';
-import { createServerApp } from '../../ee/server/src/app.js';
+import { createQuickStartServerApp, createServerApp } from '../../ee/server/src/app.js';
+import {
+  createLicenseDocument,
+  inspectLicenseRequestCode
+} from '../../ee/server/src/license/license-domain.js';
+import { readQuickStartHostFingerprint } from '../../ee/server/src/license/license-service.js';
 import { createTestServerApp } from '../support/create-test-server-app.js';
 import { openServerDatabase } from '../../ee/server/src/database.js';
 import { createMysqlPool } from '../../ee/server/src/mysql/connection.js';
@@ -122,6 +127,153 @@ test('Internal marctl removes deployment keys during MySQL upgrade and rejects e
     await pool.end();
     if (directory !== undefined) await rm(directory, { recursive: true, force: true });
     await dropPlaywrightTestDatabase(target);
+  }
+});
+
+test('Linux Quick Start activates through administrator URLs and retains authorization across restart', async () => {
+  test.skip(process.platform !== 'linux', 'Only Linux Quick Start supports machine-id activation');
+  const runId = process.env['MAR_TEST_RUN_ID'];
+  if (!runId) throw new Error('MAR_TEST_RUN_ID_REQUIRED');
+  const target = resolvePlaywrightTestDatabase(`${runId}-quick-start-license`);
+  await createPlaywrightTestDatabase(target);
+  let directory: string | undefined;
+  let app: Awaited<ReturnType<typeof createServerApp>>['app'] | undefined;
+  const previousKey = process.env['MAR_LICENSE_PUBLIC_KEY'];
+  const keys = generateKeyPairSync('ed25519');
+  let now = Date.now();
+  try {
+    directory = await mkdtemp(join(tmpdir(), 'quick-start-license-e2e-'));
+    process.env['MAR_LICENSE_PUBLIC_KEY'] = keys.publicKey
+      .export({ type: 'spki', format: 'pem' })
+      .toString();
+    const start = async () => {
+      const composition = await createQuickStartServerApp({
+        databaseUrl: target.databaseUrl,
+        dataDirectory: directory!,
+        now: () => now,
+        publicOrigin: 'http://localhost',
+        secureCookies: false,
+        logger: false
+      });
+      app = composition.app;
+      await app.ready();
+      return composition;
+    };
+    const first = await start();
+    const nodeRegistration = await first.quickStartNode.issue();
+    const login = await app!.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { origin: 'http://localhost' },
+      payload: { username: 'admin', password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(login.statusCode).toBe(200);
+    const changed = await app!.inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      headers: {
+        origin: 'http://localhost',
+        cookie: String(login.headers['set-cookie']).split(';')[0]!,
+        'x-csrf-token': login.json().csrfToken
+      },
+      payload: { currentPassword: INITIAL_ADMIN_PASSWORD, password: INITIAL_ADMIN_PASSWORD }
+    });
+    expect(changed.statusCode).toBe(200);
+    const headers = {
+      origin: 'http://localhost',
+      cookie: String(changed.headers['set-cookie']).split(';')[0]!,
+      'x-csrf-token': changed.json().csrfToken as string
+    };
+    const readStatus = async () => (await app!.inject({ url: '/api/license', headers })).json();
+    expect(await readStatus()).toMatchObject({
+      state: 'COMMUNITY',
+      activationAvailable: true,
+      activationVisible: false
+    });
+    const request = await app!.inject({ url: '/api/license/request-code', headers });
+    expect(request.statusCode).toBe(200);
+    const binding = inspectLicenseRequestCode(request.json().requestCode).hostFingerprint;
+    expect(binding).toBe(readQuickStartHostFingerprint());
+    const document = (hostFingerprint = binding) =>
+      createLicenseDocument(
+        {
+          formatVersion: 1,
+          licenseId: 'quick-start-enterprise',
+          enterpriseName: 'Quick Start Enterprise',
+          issuedAt: now - 1_000,
+          expiresAt: now + 60_000,
+          hostFingerprint,
+          features: ['ENTERPRISE']
+        },
+        keys.privateKey
+      );
+    const mismatched = await app!.inject({
+      method: 'POST',
+      url: '/api/license/import',
+      headers,
+      payload: { document: document('f'.repeat(64)) }
+    });
+    expect(mismatched.statusCode).toBe(400);
+    expect(mismatched.json()).toMatchObject({ error: { code: 'LICENSE_HOST_MISMATCH' } });
+    expect(await readStatus()).toMatchObject({ state: 'COMMUNITY' });
+    const imported = await app!.inject({
+      method: 'POST',
+      url: '/api/license/import',
+      headers,
+      payload: { document: document() }
+    });
+    expect(imported.statusCode).toBe(200);
+    expect(imported.json()).toMatchObject({ state: 'ENTERPRISE_VALID' });
+    await app!.close();
+    app = undefined;
+    const restarted = await start();
+    expect(await readStatus()).toMatchObject({
+      state: 'ENTERPRISE_VALID',
+      activationAvailable: true,
+      activationVisible: false
+    });
+    const identity = await app!.inject({ url: '/api/auth/me', headers });
+    expect(identity.json()).toMatchObject({
+      edition: 'ENTERPRISE',
+      role: 'ADMIN',
+      organizationId: 1
+    });
+    const recovered = await restarted.quickStartNode.issue(nodeRegistration.token);
+    expect(recovered.token).toBe(nodeRegistration.token);
+    now += 60_000;
+    await app!.close();
+    app = undefined;
+    const frozen = await start();
+    await expect(frozen.quickStartNode.issue(nodeRegistration.token)).rejects.toThrow(
+      'LICENSE_MANAGEMENT_FROZEN'
+    );
+    expect(await readStatus()).toMatchObject({
+      state: 'ENTERPRISE_FROZEN',
+      reason: 'LICENSE_EXPIRED'
+    });
+    const blocked = await app!.inject({
+      method: 'POST',
+      url: '/api/organizations',
+      headers,
+      payload: { name: 'Blocked' }
+    });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json()).toMatchObject({ error: { code: 'LICENSE_MANAGEMENT_FROZEN' } });
+    expect((await app!.inject({ url: '/api/license/request-code', headers })).statusCode).toBe(200);
+    const renewed = await app!.inject({
+      method: 'POST',
+      url: '/api/license/import',
+      headers,
+      payload: { document: document() }
+    });
+    expect(renewed.statusCode).toBe(200);
+    expect(await readStatus()).toMatchObject({ state: 'ENTERPRISE_VALID' });
+  } finally {
+    if (previousKey === undefined) delete process.env['MAR_LICENSE_PUBLIC_KEY'];
+    else process.env['MAR_LICENSE_PUBLIC_KEY'] = previousKey;
+    await app?.close();
+    await dropPlaywrightTestDatabase(target);
+    if (directory !== undefined) await rm(directory, { recursive: true, force: true });
   }
 });
 

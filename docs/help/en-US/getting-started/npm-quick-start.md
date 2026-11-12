@@ -5,7 +5,7 @@ lastUpdated: 2026-11-12
 
 # npm Quick Start
 
-Quick Start prepares a fixed Community Server, a private MySQL instance, a local Node and SearXNG where managed search is supported. Access uses loopback HTTP by default; you manage any remote entry point and its security configuration. It does not install an operating-system service, require a host UUID or support license activation. [Docker Compose](server-installation.md) is another installation option.
+Quick Start prepares a Server that defaults to Community, a private MySQL instance, a local Node and SearXNG where managed search is supported. Access uses loopback HTTP by default; you manage any remote entry point and its security configuration. It does not install an operating-system service. Linux uses `/etc/machine-id` without reading a hardware UUID or requesting elevation; the regular Web UI hides activation controls, while administrators can obtain a request code and import a License through the [License APIs](../administration/license.md#administrator-apis-for-linux-quick-start). npm and pnpm installations behave identically. Windows remains fixed Community without activation. [Docker Compose](server-installation.md) is another installation option.
 
 The verified installer targets are Linux x64 with glibc 2.28 or later, `tar` and `dpkg-deb` (such as a supported Debian or Ubuntu system), and Windows x64 with `tar` available. Use Node.js 24.12 or later and npm. Installing native dependencies may require an existing build toolchain; installation and setup never install system packages or request elevated privileges. Browser preparation and the selected components require network access. Other native platforms have not been verified for this Quick Start.
 
@@ -26,6 +26,8 @@ Server depends normally on the matching Node. npm installs its native dependenci
 `--no-node` persists the disabled choice but does not remove Node dependencies from the Server package. To enable the local Node later, stop run, set `node.enabled` to `true` in `server.json`, preserve its identity, and rerun setup.
 
 Run stays in the foreground and prints the local browser address. Stop it with Ctrl+C and wait for its children to exit. Run never downloads missing components. Setup and run for the same data directory cannot run concurrently.
+
+Linux startup requires a readable `/etc/machine-id` containing a valid, nonzero 32-digit hexadecimal identity. Missing or invalid identity reports `LICENSE_HOST_UNAVAILABLE`, without generating a replacement. Reinstalling the OS or changing this identity requires a replacement Enterprise License. Activation does not replace the Quick Start package or recreate existing data.
 
 The managed Node in Windows Quick Start uses IPv4 for direct connections. When only IPv6 connectivity is available, file and terminal traffic falls back to the Server relay.
 

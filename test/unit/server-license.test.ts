@@ -2,6 +2,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   computeHostFingerprint,
+  computeMachineIdFingerprint,
   createLicenseRequestCode,
   createLicenseDocument,
   evaluateLicense,
@@ -16,6 +17,18 @@ const privateKey = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toSt
 const fingerprint = computeHostFingerprint('EC2A8F9C-70D4-4A71-8B71-B5C98D871234\n');
 
 describe('Server License domain', () => {
+  it('derives a separate application fingerprint from a valid Linux machine ID', () => {
+    const machineId = 'ec2a8f9c70d44a718b71b5c98d871234';
+    const result = computeMachineIdFingerprint(machineId);
+    expect(result).toMatch(/^[a-f0-9]{64}$/u);
+    expect(computeMachineIdFingerprint(` ${machineId.toUpperCase()}\n`)).toBe(result);
+    expect(result).not.toBe(fingerprint);
+    expect(result).not.toContain(machineId);
+    for (const value of ['', 'uninitialized', '0'.repeat(32), 'abc', `${machineId}ff`]) {
+      expect(() => computeMachineIdFingerprint(value)).toThrow('LICENSE_MACHINE_ID_INVALID');
+    }
+  });
+
   it('normalizes a product UUID without exposing it in the fingerprint', () => {
     expect(fingerprint).toMatch(/^[a-f0-9]{64}$/u);
     expect(fingerprint).toBe(computeHostFingerprint('ec2a8f9c-70d4-4a71-8b71-b5c98d871234'));

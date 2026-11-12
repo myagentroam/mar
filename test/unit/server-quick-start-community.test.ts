@@ -1,12 +1,16 @@
 import Fastify from '../../ee/server/node_modules/fastify/fastify.js';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQuickStartServerProduct } from '../../ee/server/src/composition/enterprise-product.js';
 import { AuditService } from '../../ee/server/src/audit/audit-service.js';
 import { hashOpaque } from '../../ee/server/src/database.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import { registerSystemSettingsRoutes } from '../../ee/server/src/route/system-settings-routes.js';
 
-describe('Quick Start community product', () => {
+const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+beforeEach(() => Object.defineProperty(process, 'platform', { ...platform, value: 'win32' }));
+afterEach(() => Object.defineProperty(process, 'platform', platform));
+
+describe('Windows Quick Start community product', () => {
   it('reads and updates deployment settings without activating enterprise capabilities', async () => {
     const execute = vi.fn(async (sql: string) => [
       sql.includes('SELECT setting_value')

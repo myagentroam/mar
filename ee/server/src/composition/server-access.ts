@@ -23,7 +23,11 @@ export function composeServerAccess(input: {
 }) {
   const { database, now } = input;
   const product = input.quickStart
-    ? createQuickStartServerProduct({ database, now })
+    ? createQuickStartServerProduct({
+        database,
+        now,
+        ...(input.publicKey === undefined ? {} : { publicKey: input.publicKey })
+      })
     : createEnterpriseServerProduct({
         database,
         now,
@@ -35,6 +39,11 @@ export function composeServerAccess(input: {
     userId === 1 &&
     (await licenses.capability(userId)).edition === 'COMMUNITY' &&
     (await authorization.isPersonalAdmin(userId)) === true;
+  const localNodeBootstrapAdmission = async (userId: number): Promise<boolean> => {
+    if (userId !== 1) return false;
+    if (!(await licenses.status()).managementWritable) throw new Error('LICENSE_MANAGEMENT_FROZEN');
+    return (await authorization.authorize(userId, 'NODE_MANAGE', { ownerType: 'SYSTEM' })).allowed;
+  };
   const codexCredentials = new CodexCredentialService(database, {
     authorization,
     chatgptNodeRequest: input.chatgptNodeRequest,
@@ -58,6 +67,7 @@ export function composeServerAccess(input: {
     resources,
     directory,
     mutations,
+    localNodeBootstrapAdmission,
     personalHostingAdmission
   };
 }

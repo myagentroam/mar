@@ -18,6 +18,7 @@ interface LicenseStatus {
   expiresAt: number | null;
   managementWritable: boolean;
   activationAvailable?: boolean;
+  activationVisible?: boolean;
 }
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -30,6 +31,12 @@ const document = ref('');
 const loading = ref(false);
 const ready = ref(false);
 const requestCodeLoading = ref(true);
+const showActivation = computed(
+  () =>
+    status.value &&
+    status.value.activationAvailable !== false &&
+    status.value.activationVisible !== false
+);
 const editionLabel = computed(() =>
   status.value?.edition === 'ENTERPRISE'
     ? translate('generated.licenseManagementPage.enterprise')
@@ -48,7 +55,7 @@ async function load(): Promise<void> {
     const licenseStatus = await props.request<LicenseStatus>('/api/license');
     status.value = licenseStatus;
     ready.value = true;
-    if (licenseStatus.activationAvailable === false) {
+    if (!showActivation.value) {
       requestCode.value = '';
     } else {
       try {
@@ -155,7 +162,7 @@ void load();
         <span v-else class="empty-value">-</span>
       </div>
     </div>
-    <div v-if="status && status.activationAvailable !== false" class="license-request">
+    <div v-if="showActivation" class="license-request">
       <div class="section-label">
         {{ translate('generated.licenseManagementPage.licenseRequestCode') }}
       </div>
@@ -184,7 +191,7 @@ void load();
         {{ translate('generated.licenseManagementPage.sendThisCodeToTheLicenseIssuer') }}
       </p>
     </div>
-    <div v-if="status && status.activationAvailable !== false" class="license-import">
+    <div v-if="showActivation" class="license-import">
       <label class="section-label" for="license-document">{{
         translate('generated.licenseManagementPage.licenseDocument')
       }}</label>

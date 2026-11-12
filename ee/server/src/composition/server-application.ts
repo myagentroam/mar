@@ -170,6 +170,7 @@ export async function composeServerApplication(
       resources,
       directory,
       mutations,
+      localNodeBootstrapAdmission,
       personalHostingAdmission
     } = composeServerAccess({
       database,
@@ -846,7 +847,7 @@ export async function composeServerApplication(
       ...(quickStart
         ? {
             quickStartNode: createQuickStartNodeBootstrap({
-              isPersonalAdmin: (userId) => authorization.isPersonalAdmin(userId),
+              isLocalAdmin: localNodeBootstrapAdmission,
               assertOwnershipSelection: (userId, ownership) =>
                 resources.assertOwnershipSelection(userId, ownership),
               createNodeRegistrationToken: (userId, ttlMs, ownership, name) =>

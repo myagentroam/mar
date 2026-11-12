@@ -152,7 +152,7 @@ SDK、CLI 与工作台使用同一个 MAR Agent 内核。Smart Compaction 是**�
 
 ### npm 快速开始
 
-固定社区版 Quick Start 默认通过回环 HTTP 运行 Server、专用 MySQL，并可运行本机 Node 和搜索。Server 普通依赖匹配版本的 Node，其 npm 安装也会准备 Chromium；当 npm Registry 中已有 Server 和所需依赖后，在已验证的 Linux x64 或 Windows x64 系统使用 Node.js `>=24.12`：
+Quick Start 默认社区版，通过回环 HTTP 运行 Server、专用 MySQL，并可运行本机 Node 和搜索。Server 普通依赖匹配版本的 Node，其 npm 安装也会准备 Chromium；当 npm Registry 中已有 Server 和所需依赖后，在已验证的 Linux x64 或 Windows x64 系统使用 Node.js `>=24.12`：
 
 ```bash
 npm install @myagentroam/server
@@ -211,7 +211,7 @@ Server 负责身份、授权与受控中继，Node 负责执行和工作区存�
 | 组织、多用户管理、角色与共享资源授权  | 需要激活 | 在 License 范围内可用 |
 | 企业 SSO 与操作审计                   | 需要激活 | 在 License 范围内可用 |
 
-正式部署的两种状态都要求有效的真实主机 UUID；[npm 快速开始](docs/help/getting-started/npm-quick-start.md)固定为社区能力，无需 UUID，也不支持激活。企业 License 到期后沿用管理冻结行为，不删除用户数据，也不重置为全新的社区状态。[激活与 License 管理](docs/help/administration/license.md)。
+正式部署的两种状态都要求有效的真实主机 UUID；[npm 快速开始](docs/help/getting-started/npm-quick-start.md)默认社区版，Linux 使用 machine-id 并支持管理员 API 激活，Web 不显示升级操作，Windows 仍固定社区版。企业 License 到期后沿用管理冻结行为，不删除用户数据，也不重置为全新的社区状态。[激活与 License 管理](docs/help/administration/license.md)。
 
 ## 开发与贡献
 

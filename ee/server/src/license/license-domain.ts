@@ -1,4 +1,4 @@
-import { createHash, randomUUID, sign, verify, type KeyObject } from 'node:crypto';
+import { createHash, createHmac, randomUUID, sign, verify, type KeyObject } from 'node:crypto';
 import { z } from 'zod';
 
 const MAX_LICENSE_DOCUMENT_BYTES = 64 * 1024;
@@ -42,6 +42,16 @@ export function computeHostFingerprint(productUuid: string): string {
     throw new Error('LICENSE_HOST_UUID_INVALID');
   }
   return createHash('sha256').update(`myagentroam:enterprise-host:v1:${normalized}`).digest('hex');
+}
+
+export function computeMachineIdFingerprint(machineId: string): string {
+  const normalized = machineId.trim().toLowerCase();
+  if (!/^[a-f0-9]{32}$/u.test(normalized) || normalized === '0'.repeat(32)) {
+    throw new Error('LICENSE_MACHINE_ID_INVALID');
+  }
+  return createHmac('sha256', 'myagentroam:quick-start-machine:v1')
+    .update(normalized)
+    .digest('hex');
 }
 
 export function createLicenseRequestCode(hostFingerprint: string, requestedAt: number): string {
