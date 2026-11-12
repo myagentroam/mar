@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { extname, resolve } from 'node:path';
+import { extname, resolve, sep } from 'node:path';
 import { inspectHelpMarkdown, missingHelpTargets } from './help-anchors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -16,12 +16,17 @@ const errors = [];
 const documents = markdownFiles(helpRoot);
 const documentSet = new Set(documents);
 const englishRoot = resolve(helpRoot, 'en-US');
-const chineseDocuments = documents.filter((file) => !file.startsWith(`${englishRoot}/`));
-const englishDocuments = documents.filter((file) => file.startsWith(`${englishRoot}/`));
-const sources = new Map(documents.map((file) => [file, readFileSync(file, 'utf8')]));
+const chineseDocuments = documents.filter((file) => !file.startsWith(`${englishRoot}${sep}`));
+const englishDocuments = documents.filter((file) => file.startsWith(`${englishRoot}${sep}`));
+const sources = new Map(
+  documents.map((file) => [file, readFileSync(file, 'utf8').replaceAll('\r\n', '\n')])
+);
 const { pages, errors: anchorErrors } = await inspectHelpMarkdown(helpRoot, sources);
 for (const file of documents) {
-  const relative = file.slice(helpRoot.length + 1);
+  const relative = file
+    .slice(helpRoot.length + 1)
+    .split(sep)
+    .join('/');
   const source = sources.get(file);
   const frontmatter = /^---\n([\s\S]*?)\n---\n/u.exec(source)?.[1];
   if (frontmatter === undefined) {
