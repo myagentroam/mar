@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/binaries-linux-x64",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Managed native resources for MyAgentRoam (linux-x64).",
   "license": "(MIT OR Unlicense) AND GPL-2.0-or-later AND Apache-2.0",
   "os": [

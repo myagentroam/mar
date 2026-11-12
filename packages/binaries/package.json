@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/binaries",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/myagentroam/mar.git",
@@ -42,11 +42,11 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "@myagentroam/binaries-linux-x64": "0.10.2",
-    "@myagentroam/binaries-linux-arm64": "0.10.2",
-    "@myagentroam/binaries-darwin-x64": "0.10.2",
-    "@myagentroam/binaries-darwin-arm64": "0.10.2",
-    "@myagentroam/binaries-win32-x64": "0.10.2",
-    "@myagentroam/binaries-win32-arm64": "0.10.2"
+    "@myagentroam/binaries-linux-x64": "0.10.3",
+    "@myagentroam/binaries-linux-arm64": "0.10.3",
+    "@myagentroam/binaries-darwin-x64": "0.10.3",
+    "@myagentroam/binaries-darwin-arm64": "0.10.3",
+    "@myagentroam/binaries-win32-x64": "0.10.3",
+    "@myagentroam/binaries-win32-arm64": "0.10.3"
   }
 }
