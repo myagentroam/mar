@@ -142,7 +142,13 @@ jobs:
           path: ${{ runner.temp }}/remote-desktop-native/
           if-no-files-found: error
 
-      - name: Probe real Windows framebuffer and input
+      - name: Set up Node for managed runtime probe
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.12.0'
+          package-manager-cache: false
+
+      - name: Probe managed Windows runtime and RFB attachment
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -155,80 +161,26 @@ jobs:
           $listener.Start()
           $port = $listener.LocalEndpoint.Port
           $listener.Stop()
-          $config = Join-Path $root 'ultravnc.ini'
-          @('[admin]', 'LoopbackOnly=1', 'AllowLoopback=1', 'AuthRequired=1', 'SocketConnect=1', 'AutoPortSelect=0', "PortNumber=$port", 'InputsEnabled=1', 'QuerySetting=0') | Set-Content -Encoding Ascii $config
-          $env:MAR_RFB_PASSWORD = 'testvnc1'
-          $encrypted = node mar-node/test/native/windows-vnc-test-cipher.cjs store
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare test password' }
-          Add-Type @'
-          using System;
-          using System.Runtime.InteropServices;
-          public static class TestProfile {
-            [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
-            public static extern bool WritePrivateProfileStruct(string section, string key, byte[] data, uint size, string file);
-          }
-          '@
-          if (-not [TestProfile]::WritePrivateProfileStruct('UltraVNC', 'passwd', [Convert]::FromHexString($encrypted), 8, $config)) { throw 'Cannot write test password' }
-          $expectedProfile = node mar-node/test/native/windows-vnc-test-cipher.cjs profile
-          $profileLine = Get-Content $config | Where-Object { $_ -match '^passwd=' } | Select-Object -First 1
-          if (-not $profileLine -or $profileLine.Substring(7).ToLowerInvariant() -ne $expectedProfile) { throw 'Windows profile encoding did not match candidate implementation' }
+          $stdout = Join-Path $env:RUNNER_TEMP 'managed-runtime-stdout.txt'
+          $stderr = Join-Path $env:RUNNER_TEMP 'managed-runtime-stderr.txt'
           $window = Start-Process powershell -ArgumentList @('-NoProfile', '-STA', '-File', (Join-Path $env:GITHUB_WORKSPACE 'mar-node/test/native/windows-desktop-window.ps1')) -PassThru
-          $server = $null
+          $probe = $null
           try {
-            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
-            Start-Sleep -Seconds 3
-            if ($server.HasExited) { throw "UltraVNC exited with code $($server.ExitCode)" }
-            $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop)
-            $listeners | Format-Table LocalAddress,LocalPort,OwningProcess
-            if ($listeners.Count -ne 1 -or $listeners[0].LocalAddress -ne '127.0.0.1') { throw 'UltraVNC is not listening exclusively on IPv4 loopback' }
+            $fixture = Join-Path $env:GITHUB_WORKSPACE 'mar-node/test/native/windows-runtime-probe.mjs'
+            $binary = Join-Path $root 'winvnc.exe'
+            $probe = Start-Process node -ArgumentList @(('"' + $fixture + '"'), ('"' + $binary + '"'), $port) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
             python mar-node/test/native/desktop-native-rfb-probe.py $port control
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT -ErrorAction SilentlyContinue
-            $otherRoot = Join-Path $env:RUNNER_TEMP 'remote-desktop-native-other'
-            New-Item -ItemType Directory -Path $otherRoot | Out-Null
-            foreach ($name in @('winvnc.exe', 'vnchooks.dll', 'ddengine64.dll', 'ultravnc.portable')) {
-              Copy-Item (Join-Path $root $name) (Join-Path $otherRoot $name)
-            }
-            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-            $listener.Start()
-            $otherPort = $listener.LocalEndpoint.Port
-            $listener.Stop()
-            $otherConfig = Join-Path $otherRoot 'ultravnc.ini'
-            (Get-Content -Raw $config).Replace("PortNumber=$port", "PortNumber=$otherPort") | Set-Content -Encoding Ascii $otherConfig
-            $other = Start-Process (Join-Path $otherRoot 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $otherConfig + '"')) -WorkingDirectory $otherRoot -PassThru
-            try {
-              Start-Sleep -Seconds 3
-              if ($other.HasExited -or $server.HasExited) { throw 'A concurrent UltraVNC instance exited' }
-              $otherListeners = @(Get-NetTCPConnection -State Listen -LocalPort $otherPort -ErrorAction Stop)
-              if ($otherListeners.Count -ne 1 -or $otherListeners[0].LocalAddress -ne '127.0.0.1' -or $otherListeners[0].OwningProcess -ne $other.Id) { throw 'Second instance listener is not isolated' }
-              python mar-node/test/native/desktop-native-rfb-probe.py $otherPort
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-              Write-Output 'Two independent UltraVNC instances provide real framebuffer concurrently'
-            } finally {
-              if (-not $other.HasExited) { Stop-Process -Id $other.Id; $other.WaitForExit() }
-            }
-            if ($server.HasExited) { throw 'First instance exited when the second closed' }
-            python mar-node/test/native/desktop-native-rfb-probe.py $port control
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
-            python mar-node/test/native/desktop-native-rfb-probe.py $port release
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
-            python mar-node/test/native/desktop-native-rfb-probe.py $port native-release
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
-            $env:MAR_DESKTOP_SERVER_PID = $server.Id.ToString()
-            python mar-node/test/native/desktop-native-rfb-probe.py $port native-after-stop
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            Remove-Item $env:MAR_DESKTOP_KEY_RECEIPT, $env:MAR_DESKTOP_MOUSE_RECEIPT, $env:MAR_DESKTOP_KEY_UP_RECEIPT, $env:MAR_DESKTOP_MOUSE_UP_RECEIPT
-            $server = Start-Process (Join-Path $root 'winvnc.exe') -ArgumentList @('-run', '-multi', '-config', ('"' + $config + '"')) -WorkingDirectory $root -PassThru
-            Start-Sleep -Seconds 3
-            if ($server.HasExited) { throw "UltraVNC restart exited with code $($server.ExitCode)" }
-            python mar-node/test/native/desktop-native-rfb-probe.py $port cleanup
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($LASTEXITCODE -ne 0) { throw 'Managed RFB input or framebuffer probe failed' }
+            Wait-Process -Id $probe.Id -Timeout 30 -ErrorAction Stop
+            $probe.Refresh()
+            if ($probe.ExitCode -ne 0) { throw "Managed runtime exited with code $($probe.ExitCode)" }
+            if (-not (Select-String -Path $stdout -SimpleMatch 'CLOSED' -Quiet)) { throw 'Managed attachment did not close' }
           } finally {
-            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id; $server.WaitForExit() }
-            if ($window -and -not $window.HasExited) { Stop-Process -Id $window.Id; $window.WaitForExit() }
+            if (Test-Path $stdout) { Get-Content $stdout }
+            if (Test-Path $stderr) { Get-Content $stderr }
+            if ($probe -and -not $probe.HasExited) { Stop-Process -Id $probe.Id -ErrorAction SilentlyContinue }
+            Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq (Join-Path $root 'winvnc.exe') } | ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }
+            if ($window -and -not $window.HasExited) { Stop-Process -Id $window.Id -ErrorAction SilentlyContinue }
           }
 
   smoke:
