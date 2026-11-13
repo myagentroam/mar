@@ -1,6 +1,6 @@
 ---
 title: Browse, Search, and Manage Files
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-13
 ---
 
 # Browse, Search, and Manage Files
@@ -52,4 +52,4 @@ In ordinary Work mode, chat file and image links support absolute paths readable
 
 File operations act on the real Node directory. There is no hidden recycle bin. Check Git Changes or create a backup before renaming, moving, overwriting, or deleting. Next: [Git Changes and Diff](git-changes.md).
 
-After selecting file or Diff text, use that menu to [add a quote](file-reference-and-attachment.md#quote-a-selected-excerpt). Select all covers only the currently loaded document; it does not quote automatically or read other files. On mobile, open the same menu from the existing bottom action group.
+After selecting file or Diff text, use that menu to [add a quote](file-reference-and-attachment.md#quote-a-selected-excerpt). Select all covers only the currently loaded document; it does not quote automatically or read other files. The mobile bottom toolbar provides direct actions without a More button; text selection and content context menus are unchanged.

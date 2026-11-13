@@ -21,8 +21,8 @@ describe('Node hosted conversation runtime', () => {
     const conversation = await createConversation(fixture);
     await seedVersion(fixture, 'version-2', 2, {
       ...draft,
-      allowedModels: [{ modelId: 'model-two', name: 'Model Two' }],
-      defaultModelId: 'model-two'
+      allowedModels: [{ modelId: 'model-2', name: 'Model Two' }],
+      defaultModelId: 'model-2'
     });
     await expect(
       fixture.service.operations()['conversation.hosted.message']!({
@@ -75,8 +75,8 @@ describe('Node hosted conversation runtime', () => {
     await writeFile(join(paths.outputDirectory, 'result.txt'), 'result');
     await seedVersion(fixture, 'version-2', 2, {
       ...draft,
-      allowedModels: [{ modelId: 'model-two', name: 'Model Two' }],
-      defaultModelId: 'model-two'
+      allowedModels: [{ modelId: 'model-2', name: 'Model Two' }],
+      defaultModelId: 'model-2'
     });
     await fixture.service.operations()['conversation.hosted.message']!({
       conversationId: conversation.id,
@@ -271,8 +271,8 @@ describe('Node hosted conversation runtime', () => {
     const paths = fixture.store.pathsForConversation(7, conversation.id);
     await seedVersion(fixture, 'version-2', 2, {
       ...draft,
-      allowedModels: [{ modelId: 'model-two', name: 'Model Two' }],
-      defaultModelId: 'model-two'
+      allowedModels: [{ modelId: 'model-2', name: 'Model Two' }],
+      defaultModelId: 'model-2'
     });
     const retained = (await fixture.service.operations()['conversation.hosted.get']!({
       conversationId: conversation.id,

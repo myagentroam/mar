@@ -187,7 +187,14 @@ test(smokeTestTitles[1]!, async ({ page, smoke, baseURL }) => {
 
 test(smokeTestTitles[2]!, async ({ smoke, page }) => {
   await smoke.activateLicense();
-  const { nodeId, workspaceId, providerModelId, organizationId } = await smoke.connectNode();
+  const {
+    nodeId,
+    workspaceId,
+    modelId: modelConfigId,
+    providerModelId,
+    organizationId
+  } = await smoke.connectNode();
+  expect(modelConfigId).not.toBe(providerModelId);
   const { nodes } = await responseJson<{
     nodes: {
       id: string;
@@ -197,11 +204,7 @@ test(smokeTestTitles[2]!, async ({ smoke, page }) => {
   expect(nodes.find((node) => node.id === nodeId)?.capabilities.conversationHosting).toMatchObject({
     state: 'AVAILABLE'
   });
-  const draft = {
-    ...templateDraft(nodeId, workspaceId),
-    allowedModels: [{ modelId: providerModelId, name: 'Release smoke' }],
-    defaultModelId: providerModelId
-  };
+  const draft = templateDraft(nodeId, workspaceId, modelConfigId);
   const created = await smoke.write<{ template: { id: string }; draft: { revision: number } }>(
     '/api/admin/conversation-templates',
     draft,
@@ -253,7 +256,7 @@ test(smokeTestTitles[2]!, async ({ smoke, page }) => {
       clientMessageId: 'release-smoke-message',
       prompt: 'release-smoke-tool',
       attachmentIds: [],
-      modelId: providerModelId
+      modelId: modelConfigId
     },
     200
   );

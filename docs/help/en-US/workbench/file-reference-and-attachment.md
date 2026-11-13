@@ -1,6 +1,6 @@
 ---
 title: References, Folders, and Attachments
-lastUpdated: 2026-11-11
+lastUpdated: 2026-11-13
 ---
 
 # References, Folders, and Attachments
@@ -23,7 +23,7 @@ Sent image attachments appear as thumbnail cards without filename text or filena
 
 Unlike `@file`, a quote saves the text you see as a snapshot. It does not require the Agent to read the current file again.
 
-- Select text in a file or Diff, then choose **Quote** in its existing context menu. **Select all** selects only the loaded body of the current page, including text outside the viewport. It does not read other files, add a quote, or send a message. On mobile, open the same menu from the file's bottom action group.
+- Select text in a file or Diff, then choose **Quote** in its existing context menu. **Select all** selects only the loaded body of the current page, including text outside the viewport. It does not read other files, add a quote, or send a message. The mobile bottom toolbar has no separate More button; text selection and content context menus are unchanged.
 - Select text within one Agent reply in Chat. A floating **Quote** button appears near the selection on desktop and mobile. Browsers that emit a text-selection context-menu event show the standard Copy/Quote menu instead. The two surfaces are mutually exclusive; mobile does not depend on that event or place Quote in the message action area. Links, images, and non-body content keep their normal menus.
 - Adding a quote creates a compact first-line tag capped at 32 characters and a maximum width. Hover, focus, or click to preview the excerpt; a separate button removes it. Your opinion and existing references remain unchanged. A successful file or Diff quote closes the entire source preview window and returns to the originating conversation; a rejected quote leaves it open. Unsaved changes still require confirmation before closing; cancelling keeps both the edits and the added quote. Write feedback and send when ready; a quote-only message is also allowed.
 - Quotes go to the draft associated with the source surface, not an unrelated Main or Aside conversation. If the target changes while a menu is open, reopen it in the current target. A companion file window does not deliver quotes into another window.

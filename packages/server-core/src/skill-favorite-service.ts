@@ -21,7 +21,7 @@ import type {
   CatalogAuthorization,
   CatalogDatabase
 } from './catalog-policy.js';
-import { GithubSkillProvider } from './github-skill-provider.js';
+import type { GitSkillRepository } from './git-skill-repository.js';
 import type { ResolvedSkillBundle } from './skill-bundle.js';
 import type { SkillSourceService } from './skill-source-service.js';
 
@@ -58,7 +58,7 @@ export abstract class SkillFavoriteService {
     protected readonly database: CatalogDatabase,
     private readonly authorization: CatalogAuthorization,
     private readonly sources: SkillSourceService,
-    private readonly provider: Pick<GithubSkillProvider, 'resolve'>,
+    private readonly provider: Pick<GitSkillRepository, 'resolve'>,
     private readonly cacheDirectory: string,
     private readonly now: () => number = Date.now,
     private readonly maxCacheBytes = 10 * 1024 * 1024 * 1024,

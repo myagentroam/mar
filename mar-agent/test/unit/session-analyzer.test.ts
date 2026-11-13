@@ -890,6 +890,181 @@ describe('session analyzer', () => {
     expect(filtered.tools.completedByName.exec).toBe(1);
   });
 
+  it.each(['2026-11-12T14:00:00.000Z', '2026-11-12T14:00:01.000Z'])(
+    'does not let final usage at %s overwrite in-window partial snapshots',
+    async (finalTimestamp) => {
+      const directory = await createSessionDirectory();
+      const windowStart = '2026-11-12T13:00:00.000Z';
+      const windowEnd = '2026-11-12T14:00:00.000Z';
+      const during = '2026-11-12T13:30:00.000Z';
+      const executionInput = {
+        inputTokens: 20,
+        contextInputTokens: 100,
+        cacheReadTokens: 70,
+        cacheWriteTokens: 10
+      };
+      const compactInput = {
+        purpose: 'compact',
+        inputTokens: 30,
+        contextInputTokens: 200,
+        cacheReadTokens: 150,
+        cacheWriteTokens: 20
+      };
+      const correctedPrefix = {
+        inputTokens: 25,
+        contextInputTokens: 125,
+        cacheReadTokens: 90,
+        cacheWriteTokens: 15,
+        outputTokens: 4
+      };
+      const futureFinal = {
+        inputTokens: 999,
+        contextInputTokens: 1999,
+        cacheReadTokens: 888,
+        cacheWriteTokens: 111,
+        outputTokens: 99
+      };
+      const records = [
+        record(1, 'context.compacting', { compactionId: 'compact' }, 'exec-1'),
+        record(
+          2,
+          'compact.progress',
+          {
+            compactionId: 'compact',
+            extensionOutcome: 'HANDLED',
+            extension: { modelId: 'external-compact' }
+          },
+          'exec-1'
+        ),
+        record(3, 'usage.updated', { ...compactInput, inputTokens: 5 }, 'exec-1'),
+        record(4, 'usage.updated', { inputTokens: 3, contextInputTokens: 30 }, 'exec-2'),
+        record(5, 'usage.updated', executionInput, 'exec-1'),
+        record(6, 'usage.updated', compactInput, 'exec-1'),
+        record(7, 'usage.updated', correctedPrefix, 'exec-2'),
+        record(8, 'usage.updated', futureFinal, 'exec-1'),
+        record(9, 'usage.updated', { ...futureFinal, purpose: 'compact' }, 'exec-1'),
+        record(10, 'usage.updated', futureFinal, 'entirely-future')
+      ].map((entry) => ({
+        ...entry,
+        timestamp:
+          entry.sequence < 5
+            ? '2026-11-12T12:59:59.000Z'
+            : entry.sequence <= 7
+              ? during
+              : finalTimestamp
+      }));
+      await writeRecords(directory, 'events-000001.jsonl', records.slice(0, 7));
+      await writeRecords(directory, 'events-000002.jsonl', records.slice(7));
+
+      const report = await analyzeSessionDirectory(directory, { windowStart, windowEnd });
+      expect(report.range).toEqual({
+        recordCount: 3,
+        firstSequence: 5,
+        lastSequence: 7,
+        firstTimestamp: during,
+        lastTimestamp: during
+      });
+      expect(report.usage).toMatchObject({
+        requestCount: 3,
+        inputTokens: 75,
+        contextInputTokens: 425,
+        cacheReadTokens: 310,
+        cacheWriteTokens: 45,
+        outputTokens: 4,
+        executionUsage: {
+          requestCount: 2,
+          inputTokens: 45,
+          contextInputTokens: 225,
+          cacheReadTokens: 160,
+          cacheWriteTokens: 25,
+          outputTokens: 4
+        },
+        externalCompactUsage: {
+          requestCount: 1,
+          inputTokens: 30,
+          contextInputTokens: 200,
+          cacheReadTokens: 150,
+          cacheWriteTokens: 20,
+          outputTokens: 0
+        }
+      });
+      expect(report.executions.map((entry) => entry.executionId)).toEqual(['exec-1', 'exec-2']);
+      expect(report.executions[1].firstUsage).toMatchObject({
+        requestCount: 1,
+        ...correctedPrefix
+      });
+      const filtered = await analyzeSessionDirectory(directory, {
+        windowStart,
+        windowEnd,
+        sinceSequence: 6,
+        executionId: 'exec-1'
+      });
+      expect(filtered.range).toMatchObject({ recordCount: 1, firstSequence: 6, lastSequence: 6 });
+      expect(filtered.usage).toMatchObject({
+        requestCount: 1,
+        inputTokens: 30,
+        contextInputTokens: 200,
+        cacheReadTokens: 150,
+        cacheWriteTokens: 20,
+        outputTokens: 0
+      });
+      expect(filtered.usage.externalCompactUsage).toEqual(report.usage.externalCompactUsage);
+      const unbounded = await analyzeSessionDirectory(directory);
+      expect(unbounded.usage).toMatchObject({
+        requestCount: 5,
+        inputTokens: 3027,
+        contextInputTokens: 6322,
+        cacheReadTokens: 2904,
+        cacheWriteTokens: 368,
+        outputTokens: 301
+      });
+    }
+  );
+
+  it('does not assign in-window Compact usage to an extension handled after the window', async () => {
+    const directory = await createSessionDirectory();
+    const windowStart = '2026-11-12T13:00:00.000Z';
+    const windowEnd = '2026-11-12T14:00:00.000Z';
+    const input = { purpose: 'compact', inputTokens: 20, contextInputTokens: 100 };
+    await writeRecords(directory, 'events-000001.jsonl', [
+      {
+        ...record(1, 'context.compacting', { compactionId: 'compact' }, 'exec-1'),
+        timestamp: windowStart
+      },
+      { ...record(2, 'usage.updated', input, 'exec-1'), timestamp: windowStart },
+      {
+        ...record(
+          3,
+          'compact.progress',
+          {
+            compactionId: 'compact',
+            extensionOutcome: 'HANDLED',
+            extension: { modelId: 'future' }
+          },
+          'exec-1'
+        ),
+        timestamp: windowEnd
+      },
+      {
+        ...record(4, 'usage.updated', { ...input, outputTokens: 99 }, 'exec-1'),
+        timestamp: windowEnd
+      }
+    ]);
+    const report = await analyzeSessionDirectory(directory, { windowStart, windowEnd });
+    expect(report.usage).toMatchObject({
+      requestCount: 1,
+      inputTokens: 20,
+      contextInputTokens: 100,
+      outputTokens: 0
+    });
+    expect(report.usage.externalCompactUsage).toBeUndefined();
+    expect((await analyzeSessionDirectory(directory)).usage.externalCompactUsage).toMatchObject({
+      requestCount: 1,
+      inputTokens: 20,
+      outputTokens: 99
+    });
+  });
+
   it('validates an optional timestamp window before reading session records', async () => {
     await expect(
       analyzeSessionDirectory('/missing-session-directory', {

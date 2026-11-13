@@ -1998,21 +1998,50 @@ describe('MAR Agent model service', () => {
     expect(connection.commit).toHaveBeenCalledOnce();
   });
 
-  it('lists enabled template model options without merging distinct upstream model IDs', async () => {
+  it('lists every enabled configuration for template options without merging identical models', async () => {
+    const personalRows = [
+      modelServiceRow('personal-coding-primary', {
+        name: 'Coding',
+        model_id: 'coding',
+        normalized_name: 'coding',
+        owner_type: 'PERSONAL',
+        owner_user_id: 8
+      }),
+      modelServiceRow('personal-coding-secondary', {
+        name: 'Coding',
+        model_id: 'coding',
+        normalized_name: 'coding',
+        owner_type: 'PERSONAL',
+        owner_user_id: 8
+      })
+    ];
     const db = database([
       [
         [
-          { model_id: 'coding-primary', name: 'Coding', normalized_name: 'coding' },
-          { model_id: 'coding-secondary', name: 'ＣＯＤＩＮＧ', normalized_name: 'coding' },
-          { model_id: 'review', name: 'Review', normalized_name: 'review' }
+          { id: 'coding-primary', model_id: 'coding', name: 'Coding', normalized_name: 'coding' },
+          { id: 'coding-secondary', model_id: 'coding', name: 'Coding', normalized_name: 'coding' },
+          {
+            id: 'coding-variant',
+            model_id: 'coding-alt',
+            name: 'ＣＯＤＩＮＧ',
+            normalized_name: 'coding'
+          },
+          { id: 'review', model_id: 'review', name: 'Review', normalized_name: 'review' }
         ],
         []
       ],
-      [[{ model_id: 'coding', name: 'Coding Personal' }], []]
+      [personalRows, []],
+      [
+        [
+          { model_id: 'personal-coding-secondary', sort_order: 0 },
+          { model_id: 'personal-coding-primary', sort_order: 1 }
+        ],
+        []
+      ]
     ]);
     const access = {
       ...managementAccess(),
-      canUseModel: vi.fn(async () => false),
+      canUseModel: vi.fn(async () => true),
       nodeOwnership: vi.fn(async (nodeId: string) =>
         nodeId === 'organization-node'
           ? { ownerType: 'ORGANIZATION' as const, ownerOrganizationId: 4 }
@@ -2021,15 +2050,26 @@ describe('MAR Agent model service', () => {
             : undefined
       )
     };
-    const service = new MarAgentModelService(db, Date.now, undefined, access);
+    const personalHostingAdmission = vi.fn(async () => true);
+    const service = new MarAgentModelService(
+      db,
+      Date.now,
+      undefined,
+      access,
+      undefined,
+      personalHostingAdmission
+    );
 
     await expect(service.listTemplateOptionsForNode('organization-node')).resolves.toEqual([
       { modelId: 'coding-primary', name: 'Coding' },
-      { modelId: 'coding-secondary', name: 'ＣＯＤＩＮＧ' },
+      { modelId: 'coding-secondary', name: 'Coding' },
+      { modelId: 'coding-variant', name: 'ＣＯＤＩＮＧ' },
       { modelId: 'review', name: 'Review' }
     ]);
-    await expect(service.listTemplateOptionsForNode('personal-node')).resolves.toEqual([
-      { modelId: 'coding', name: 'Coding Personal' }
+    const personalOptions = await service.listTemplateOptionsForNode('personal-node');
+    expect(personalOptions).toEqual([
+      { modelId: 'personal-coding-secondary', name: 'Coding' },
+      { modelId: 'personal-coding-primary', name: 'Coding' }
     ]);
     await expect(service.listTemplateOptionsForNode('missing-node')).rejects.toThrow(
       'NODE_NOT_FOUND'
@@ -2043,7 +2083,16 @@ describe('MAR Agent model service', () => {
     expect(String(organizationSql)).toContain('model.enabled=1');
     expect(String(organizationSql)).toContain('ORDER BY model.sort_order,model.normalized_name');
     expect(organizationParams).toEqual([4, null, null]);
-    expect(db.raw.execute.mock.calls[1]![1]).toEqual([null, 8, 8]);
+    expect(personalHostingAdmission).toHaveBeenCalledWith(8);
+    expect(access.canUseModel.mock.calls).toEqual([
+      [8, 'personal-coding-primary'],
+      [8, 'personal-coding-secondary']
+    ]);
+    expect(db.raw.execute.mock.calls[2]![1]).toEqual([
+      'personal-coding-primary',
+      'personal-coding-secondary'
+    ]);
+    expect(db.raw.execute.mock.calls[4]![1]).toEqual([8]);
   });
 
   it('rejects a directly submitted model ID when the user lacks its resource grant', async () => {

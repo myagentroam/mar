@@ -904,17 +904,6 @@ defineExpose({
     </template>
     <template #mobile-actions>
       <el-button
-        v-if="codeEditorEnabled || fallbackTextEnabled"
-        class="file-toolbar-control"
-        circle
-        size="small"
-        :aria-label="translate('filePreviewContext.actions')"
-        @pointerdown.prevent
-        @click="openPreviewMenu"
-      >
-        <MarIcon name="more" />
-      </el-button>
-      <el-button
         class="file-toolbar-control"
         v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"

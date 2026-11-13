@@ -121,8 +121,10 @@ export async function analyzeSessionDirectory(
           timestamp < timestampWindow.end));
     checkpointRecords?.push(record);
     toolAnalysis.observe(record, selected);
-    // Retain response boundaries before a range filter without counting excluded snapshots.
-    usageCollector.observe(record, payload, selected);
+    // Retain prefix pairing context, but do not let future events correct selected usage
+    // or change its request ownership at or after the half-open window's upper bound.
+    const atOrAfterWindowEnd = timestampWindow && timestamp >= timestampWindow.end;
+    if (!atOrAfterWindowEnd) usageCollector.observe(record, payload, selected);
     if (!selected) continue;
 
     recordCount += 1;

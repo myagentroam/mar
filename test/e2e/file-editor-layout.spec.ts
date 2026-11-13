@@ -216,6 +216,7 @@ for (const theme of ['light', 'dark']) {
             exact: true
           });
           await expect(find).toBeVisible();
+          await expect(toolbar.locator('[data-mar-icon="more"]')).toHaveCount(0);
           const header = page.locator('.workspace-file-page-frame-header');
           const frameContent = page.locator('.workspace-file-page-frame-content');
           for (const side of ['top', 'right', 'bottom', 'left']) {

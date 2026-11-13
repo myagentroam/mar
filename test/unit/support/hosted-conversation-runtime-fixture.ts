@@ -74,8 +74,8 @@ export const draft: ConversationTemplateDraft = {
   revision: 1,
   name: 'Research',
   description: 'Research template',
-  allowedModels: [{ modelId: 'model-one', name: 'Model One' }],
-  defaultModelId: 'model-one',
+  allowedModels: [{ modelId: 'model-1', name: 'Model One' }],
+  defaultModelId: 'model-1',
   mcpIds: [],
   networkMode: 'NONE',
   quotas: {

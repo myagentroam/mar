@@ -49,6 +49,7 @@ export type TemplateDraftSnapshot = Omit<
 >;
 
 interface TemplateModelPolicy {
+  /** Configuration primary keys only, never upstream provider model IDs. */
   readonly allowedIds: readonly string[];
   readonly defaultId: string;
 }
@@ -251,7 +252,7 @@ export function allowedModels(
   models: readonly MarAgentRuntimeModelConfiguration[]
 ): readonly MarAgentRuntimeModelConfiguration[] {
   const allowed = new Set(version.modelPolicy.allowedIds);
-  return models.filter((model) => model.enabled && allowed.has(model.modelId));
+  return models.filter((model) => model.enabled && allowed.has(model.id));
 }
 
 export function selectModel(
@@ -271,11 +272,11 @@ export function selectModel(
   )
     throw new Error('HOSTED_CONVERSATION_MODEL_NOT_AVAILABLE');
   const defaultModel = available.find(
-    (candidate) => candidate.modelId === version.modelPolicy.defaultId
+    (candidate) => candidate.id === version.modelPolicy.defaultId
   );
   if (defaultModel !== undefined) return defaultModel;
   const model = version.modelPolicy.allowedIds
-    .map((allowedId) => available.find((candidate) => candidate.modelId === allowedId))
+    .map((allowedId) => available.find((candidate) => candidate.id === allowedId))
     .find((candidate) => candidate !== undefined);
   if (model === undefined) throw new Error('HOSTED_CONVERSATION_MODEL_NOT_AVAILABLE');
   return model;

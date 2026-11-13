@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { createWorkbenchPageController } from '../../src/service/workbench-page-controller.js';
 import * as directCoordinator from '../../src/service/workbench-direct-transport-coordinator.js';
+import * as snapshotRefresh from '../../src/service/session-snapshot-refresh-service.js';
 import * as directRead from '../../src/service/workspace-direct-file-read-service.js';
 import * as directObject from '../../src/service/workspace-direct-object-url-service.js';
 import * as directDownload from '../../src/service/workspace-direct-download-stream-service.js';
@@ -1259,6 +1260,95 @@ describe('Workbench controller composition behavior', () => {
     ]);
     captured.setDraft!(true);
     expect(visible()).toEqual([]);
+  });
+
+  it('binds reconnect readiness to Main without delaying an independent visible Aside confirmation', async () => {
+    let finishMain!: (completed: boolean) => void;
+    const mainReady = new Promise<boolean>((resolve) => (finishMain = resolve));
+    const createRefresh = snapshotRefresh.createSessionSnapshotRefreshService;
+    const settled = vi.fn(() => mainReady);
+    vi.spyOn(snapshotRefresh, 'createSessionSnapshotRefreshService').mockImplementation(
+      (options) => ({
+        ...createRefresh(options),
+        whenSettled: settled
+      })
+    );
+    const { page } = controller();
+    const workspace = { nodeId: 'node-a', workspaceId: 'workspace-a' };
+    await captured.seedNodes!([{ ...node, nodeAppVersion: '0.11.69' }]);
+    captured.setTarget!(workspace);
+    captured.setWorkspaces!([{ id: workspace.workspaceId, path: '/project', kind: 'DIRECTORY' }]);
+    await captured.seedManifest!({
+      manifestVersion: 1,
+      observedAt: 1,
+      conversation: { available: true, reasonCode: null },
+      files: { available: true, reasonCode: null },
+      sessionAside: { apiVersion: 1 }
+    });
+    captured.setDraft!(false);
+    captured.setSessions!(
+      ['main', 'aside'].map((id) => ({
+        id,
+        workspaceId: workspace.workspaceId,
+        runner: 'codex',
+        activity: 'IDLE'
+      }))
+    );
+    captured.setSession!('main');
+    page.aside.setAsideSurfaceVisible(true);
+    expect(page.aside.openAsideSession({ ...workspace, sessionId: 'aside' })).toBe(true);
+    page.mainPaneController.state.conversation.loadingInitial.value = false;
+    page.aside.asidePaneController.state.conversation.loadingInitial.value = false;
+    const notifications = ['main', 'aside'].map((sessionId) => ({
+      id: sessionId,
+      kind: 'run',
+      title: 'Completed',
+      message: '',
+      target: { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId },
+      read: false,
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000
+    }));
+    let confirmAside!: () => void;
+    const asideRead = new Promise<void>((resolve) => (confirmAside = resolve));
+    const readSessions: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === '/api/notifications') return new Response(JSON.stringify({ notifications }));
+      if (path === '/api/notifications/session/read') {
+        const { sessionId } = JSON.parse(String(init?.body));
+        readSessions.push(sessionId);
+        if (sessionId === 'aside') await asideRead;
+        notifications.find((entry) => entry.id === sessionId)!.read = true;
+        return new Response('{}');
+      }
+      return new Response(JSON.stringify({ nodes: [{ ...node, nodeAppVersion: '0.11.69' }] }));
+    });
+    try {
+      captured.live!.onConnectionRestored?.(true);
+      await vi.waitFor(() => expect(settled).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(readSessions).toEqual(['aside']));
+      expect(captured.notificationService!.unreadCount.value).toBe(2);
+      confirmAside();
+      await vi.waitFor(() =>
+        expect(
+          captured.notificationService!.notifications.value.find((item) => item.id === 'aside')
+            ?.read
+        ).toBe(true)
+      );
+      expect(
+        captured.notificationService!.notifications.value.find((item) => item.id === 'main')?.read
+      ).toBe(false);
+      expect(readSessions).toEqual(['aside']);
+      finishMain(true);
+      await vi.waitFor(() => expect(captured.notificationService!.unreadCount.value).toBe(0));
+      expect(readSessions).toEqual(['aside', 'main']);
+    } finally {
+      confirmAside();
+      finishMain(false);
+      captured.notificationService!.dispose();
+    }
   });
 
   it('marks the newly loaded recent session read only after it becomes visible', async () => {

@@ -1,3 +1,4 @@
+// @test-covers packages/server-core/src/skill-discovery-service.ts
 import { describe, expect, it, vi } from 'vitest';
 import { SkillDiscoveryService } from '../../ee/server/src/skill/skill-discovery-service.js';
 import type { GitSkillRepository } from '../../ee/server/src/skill/git-skill-repository.js';
@@ -124,108 +125,60 @@ describe('Server Skill discovery', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('Repository sources discover SKILL.md only in standard directories through Provider APIs', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ default_branch: 'main' }), { status: 200 })
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            tree: [
-              { type: 'blob', path: 'skills/review/SKILL.md' },
-              { type: 'blob', path: 'random/deep/rejected/SKILL.md' }
-            ]
-          }),
-          { status: 200 }
-        )
-      );
-    const result = await new SkillDiscoveryService(fetch as typeof globalThis.fetch).search(
-      {
-        id: 'repo',
-        kind: 'REPOSITORY',
-        locator: 'https://github.com/acme/skills',
-        enabled: true
-      },
-      'review'
-    );
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ skillPath: 'skills/review', name: 'review' });
-    expect(fetch.mock.calls[0]?.[0]).toBe('https://api.github.com/repos/acme/skills');
-  });
-
-  it('Rejects unsupported repository Providers', async () => {
-    await expect(
-      new SkillDiscoveryService().search(
+  it.each([
+    'https://github.com/acme/skills',
+    'https://git.example.com/acme/group/skills.git',
+    'git@git.example.com:acme/skills.git'
+  ])(
+    'discovers %s through the shared Git reader without Provider API requests',
+    async (locator) => {
+      const fetch = vi.fn(() => {
+        throw new Error('Provider APIs must not be used');
+      });
+      const discover = vi.fn(async () => [
         {
-          id: 'repo',
-          kind: 'REPOSITORY',
-          locator: 'https://example.com/skills',
-          enabled: true
-        },
-        ''
-      )
-    ).rejects.toThrow('SKILL_SOURCE_PROVIDER_UNSUPPORTED');
-  });
-
-  it('Discovers standard Skill directories through self-hosted GitLab APIs', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ default_branch: 'main' }), { status: 200 })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify([{ type: 'blob', path: '.agents/skills/review/SKILL.md' }]), {
-          status: 200
+          id: 'git.example.com/acme/skills/skills/review',
+          name: 'review',
+          description: 'Review changes before merge',
+          source: 'git.example.com/acme/skills',
+          skillPath: 'skills/review'
+        }
+      ]);
+      const result = await new SkillDiscoveryService(
+        fetch as unknown as typeof globalThis.fetch,
+        { discover } as unknown as GitSkillRepository
+      ).search({ id: 'repo', kind: 'REPOSITORY', locator, enabled: true }, 'review');
+      expect(discover).toHaveBeenCalledWith(locator, 'review', 40);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(result).toEqual([
+        expect.objectContaining({
+          name: 'review',
+          description: 'Review changes before merge',
+          repositoryUrl: locator,
+          skillPath: 'skills/review',
+          installs: null
         })
-      );
-    const result = await new SkillDiscoveryService(fetch as typeof globalThis.fetch).search(
-      {
-        id: 'gitlab',
-        kind: 'REPOSITORY',
-        locator: 'https://git.example.com/acme/skills',
-        enabled: true
-      },
-      'review'
-    );
-    expect(result).toEqual([
-      expect.objectContaining({
-        name: 'review',
-        repositoryUrl: 'https://git.example.com/acme/skills'
-      })
-    ]);
-    expect(fetch.mock.calls[0]?.[0]).toBe('https://git.example.com/api/v4/projects/acme%2Fskills');
-  });
+      ]);
+    }
+  );
 
-  it('git@ sources discover skills through local Git and SSH configuration', async () => {
-    const discover = vi.fn(async () => [
-      {
-        id: 'git.example.com/acme/skills/skills/review',
-        name: 'review',
-        description: 'Review changes before merge',
-        source: 'git.example.com/acme/skills',
-        skillPath: 'skills/review'
-      }
-    ]);
-    const result = await new SkillDiscoveryService(
-      vi.fn() as unknown as typeof globalThis.fetch,
-      { discover } as unknown as GitSkillRepository
-    ).search(
-      {
-        id: 'ssh',
-        kind: 'REPOSITORY',
-        locator: 'git@git.example.com:acme/skills.git',
-        enabled: true
-      },
-      'review'
-    );
-    expect(discover).toHaveBeenCalledWith('git@git.example.com:acme/skills.git', 'review', 40);
-    expect(result[0]).toMatchObject({
-      name: 'review',
-      description: 'Review changes before merge',
-      skillPath: 'skills/review'
-    });
+  it('does not cache failed clones and allows a later search to recover', async () => {
+    const discover = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('SKILL_SOURCE_UNAVAILABLE'))
+      .mockResolvedValueOnce([]);
+    const service = new SkillDiscoveryService(undefined, {
+      discover
+    } as unknown as GitSkillRepository);
+    const source = {
+      id: 'repo',
+      kind: 'REPOSITORY' as const,
+      locator: 'https://github.com/acme/skills',
+      enabled: true
+    };
+    await expect(service.search(source, '')).rejects.toThrow('SKILL_SOURCE_UNAVAILABLE');
+    await expect(service.search(source, '')).resolves.toEqual([]);
+    expect(discover).toHaveBeenCalledTimes(2);
   });
 
   it('Briefly caches identical searches and coalesces concurrent repository fetches', async () => {

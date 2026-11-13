@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import type { CodexCredentialSummary, CodexModelCatalog } from '@myagentroam/protocol';
 import SkillCenterPage from '../../src/view/skill/SkillCenterPage.vue';
 import SkillSourceManagementPage from '../../src/view/skill/SkillSourceManagementPage.vue';
+import McpSourceManagementPage from '../../src/view/skill/McpSourceManagementPage.vue';
 import McpCenterPanel from '../../src/view/skill/McpCenterPanel.vue';
 import MarAgentModelManagementPage from '../../src/view/settings/MarAgentModelManagementPage.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
@@ -11,6 +12,39 @@ import type { RecentRun } from '../../src/service/workbench-notification-service
 import type { Session } from '../../src/model/workbench.js';
 
 const view = new URLSearchParams(location.search).get('list-hierarchy');
+const scopeColumns = new URLSearchParams(location.search).has('scope-columns');
+const scopeLabels: Readonly<Record<string, string>> = {
+  ENTERPRISE: 'Enterprise',
+  ORGANIZATION: 'Organization',
+  PERSONAL: 'Personal'
+};
+const scopeLabel = (scope: string) => scopeLabels[scope] ?? scope;
+const scopeEntries = ['ENTERPRISE', 'ORGANIZATION', 'PERSONAL'].map((scope, index) => ({
+  id: `source-${index}`,
+  name: `Source ${index + 1}`,
+  scope,
+  locator: 'https://example.com/source',
+  enabled: true,
+  builtIn: false,
+  kind: 'REPOSITORY',
+  status: 'READY',
+  manageable: false,
+  sourceId: `source-${index}`,
+  normalizedName: `Skill ${index + 1}`,
+  serverName: `mcp-${index}`,
+  displayName: `MCP ${index + 1}`,
+  description: 'Catalog entry',
+  repositoryIdentity: 'https://example.com/source',
+  skillPath: 'skills/example',
+  commitSha: 'c'.repeat(40),
+  currentVersionId: 'version',
+  tlsVerified: true,
+  version: '1.0.0',
+  runtime: { transport: 'STDIO' },
+  featured: false,
+  tags: [],
+  updatedAt: 1
+}));
 const open = ref(true);
 const opened = ref('');
 const sessions: Session[] = ['Review first', 'Review second'].map((id) => ({
@@ -68,13 +102,17 @@ const catalog: CodexModelCatalog = {
 async function request<T>(path: string): Promise<T> {
   const pathname = new URL(path, location.origin).pathname;
   if (pathname === '/api/resources') return { nodes: [], workspaces: [] } as T;
-  if (pathname === '/api/skill-sources') return { sources: [] } as T;
+  if (pathname === '/api/skill-sources' || pathname === '/api/mcp-sources')
+    return { sources: scopeColumns ? scopeEntries : [] } as T;
+  if (scopeColumns && pathname.startsWith('/api/skill-sources/')) return { skills: [] } as T;
   if (pathname === '/api/skill-favorites' || pathname === '/api/mcp-catalog') {
     return {
-      [pathname.endsWith('skill-favorites') ? 'favorites' : 'entries']: [],
+      [pathname.endsWith('skill-favorites') ? 'favorites' : 'entries']: scopeColumns
+        ? scopeEntries
+        : [],
       page: 1,
       pageSize: 20,
-      total: 0,
+      total: scopeColumns ? scopeEntries.length : 0,
       hasMore: false,
       facets: { tags: ['Engineering', 'Writing'] }
     } as T;
@@ -94,7 +132,18 @@ async function request<T>(path: string): Promise<T> {
   <main class="list-hierarchy-fixture">
     <output data-testid="opened">{{ opened }}</output>
     <SkillCenterPage v-if="view === 'skills'" :request="request" :nodes="[]" />
-    <SkillSourceManagementPage v-if="view === 'sources'" :request="request" :writable="false" />
+    <SkillSourceManagementPage
+      v-if="view === 'sources'"
+      :request="request"
+      :writable="false"
+      v-bind="scopeColumns ? { scopeLabel } : {}"
+    />
+    <McpSourceManagementPage
+      v-if="view === 'mcp-sources'"
+      :request="request"
+      :writable="false"
+      :scope-label="scopeLabel"
+    />
     <McpCenterPanel v-if="view === 'mcp'" :request="request" :nodes="[]" />
     <MarAgentModelManagementPage
       v-if="view === 'models'"

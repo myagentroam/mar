@@ -4,6 +4,7 @@ import {
 } from '@myagentroam/protocol';
 import { prepareSessionExecutionContext } from '@myagentroam/server-core/session-execution-context';
 import type { NodeRequestAuthorization } from '@myagentroam/server-core/node-access-contracts';
+import type { MarctlServerUrlForNode } from '@myagentroam/server-core/marctl-user-credentials';
 import type { ModelUsageGrants } from '@myagentroam/server-core/model-usage-grant';
 import type {
   ExecutionPreparer,
@@ -21,6 +22,7 @@ export class BackgroundExecutionPreparationService {
     private readonly options: {
       readonly authorize: NodeRequestAuthorization;
       readonly serverUrl: string | undefined;
+      readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
       readonly searchBackendAvailable?: () => boolean;
       readonly secrets: Preparation['secrets'];
       readonly credentials: Preparation['credentials'];
@@ -72,7 +74,7 @@ export class BackgroundExecutionPreparationService {
       user: { userId },
       nodeId,
       workspaceId,
-      serverUrl: this.options.serverUrl,
+      serverUrl: (await this.options.marctlServerUrlForNode?.(nodeId)) ?? this.options.serverUrl,
       ...(this.options.searchBackendAvailable === undefined
         ? {}
         : { searchBackendAvailable: this.options.searchBackendAvailable() }),

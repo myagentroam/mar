@@ -328,9 +328,18 @@ export function createWorkbenchPageController<
     onConnectionRestored: () => {
       workbenchCapabilityService.clearUpgradeProgress();
       void refreshNodes();
+      const workspace = workspaceTarget.value;
+      const sessionId = selectedSessionId.value;
       void workbenchNotificationService
         // Ready and resumed callbacks schedule their refreshes in the same message dispatch.
-        .recover(Promise.resolve().then(() => sessionSnapshotRefreshService.whenSettled()))
+        .recover(
+          workspace === undefined || sessionId === undefined
+            ? undefined
+            : {
+                target: { targetType: 'WORKSPACE_SESSION', ...workspace, sessionId },
+                ready: Promise.resolve().then(() => sessionSnapshotRefreshService.whenSettled())
+              }
+        )
         .catch(() => undefined);
     },
     onDisconnected: () => {

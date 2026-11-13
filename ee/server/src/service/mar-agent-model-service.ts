@@ -5,7 +5,7 @@ import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { ResourceAccessService } from '../rbac/resource-access-service.js';
 import type { CodexCredentialScopeChecker } from './codex-credential-scope-service.js';
 
-/** Extends core model management with enterprise grants and Node-scoped template candidates. */
+/** Extends core model management with enterprise grants and configuration-bound template candidates. */
 export class MarAgentModelService extends CoreMarAgentModelService {
   constructor(
     database: MysqlServerDatabase,
@@ -65,12 +65,10 @@ export class MarAgentModelService extends CoreMarAgentModelService {
       ownership.ownerType === 'PERSONAL' &&
       (await this.personalHostingAdmission?.(ownership.ownerUserId)) === true
     ) {
-      return uniqueTemplateModelOptions(
-        (await this.listForUser(ownership.ownerUserId)).map((model) => ({
-          modelId: model.modelId,
-          name: model.name
-        }))
-      );
+      return (await this.listAuthorizedConversationModels(ownership.ownerUserId)).map((model) => ({
+        modelId: model.id,
+        name: model.name
+      }));
     }
     const ownerOrganizationId =
       ownership.ownerType === 'ORGANIZATION' ? ownership.ownerOrganizationId : null;
@@ -88,7 +86,7 @@ export class MarAgentModelService extends CoreMarAgentModelService {
          FROM organizations parent
          JOIN node_model_organizations child ON child.parent_organization_id=parent.id
        )
-       SELECT model.model_id,model.name
+       SELECT model.id,model.name
        FROM mar_agent_models model
        WHERE model.enabled=1 AND model.conversation_model=1
          AND EXISTS (
@@ -111,19 +109,6 @@ export class MarAgentModelService extends CoreMarAgentModelService {
        ORDER BY model.sort_order,model.normalized_name,model.id`,
       [ownerOrganizationId, ownerUserId, ownerUserId]
     );
-    return uniqueTemplateModelOptions(
-      rows.map((row) => ({ modelId: String(row['model_id']), name: String(row['name']) }))
-    );
+    return rows.map((row) => ({ modelId: String(row['id']), name: String(row['name']) }));
   }
-}
-
-function uniqueTemplateModelOptions(
-  models: readonly ConversationTemplateModelReference[]
-): readonly ConversationTemplateModelReference[] {
-  const seen = new Set<string>();
-  return models.filter(({ modelId }) => {
-    if (seen.has(modelId)) return false;
-    seen.add(modelId);
-    return true;
-  });
 }

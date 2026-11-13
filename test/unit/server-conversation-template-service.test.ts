@@ -15,8 +15,8 @@ const draftInput: Omit<ConversationTemplateDraft, 'templateId' | 'revision' | 'u
   name: 'Research',
   description: 'Research with a fixed corpus.',
   icon: 'search',
-  allowedModels: [{ modelId: 'coding', name: 'Client supplied name' }],
-  defaultModelId: 'coding',
+  allowedModels: [{ modelId: 'coding-config-id', name: 'Client supplied name' }],
+  defaultModelId: 'coding-config-id',
   mcpIds: ['mcp-local'],
   networkMode: 'NONE',
   quotas: {
@@ -258,7 +258,7 @@ describe('Server conversation template service', () => {
         templateId: 'template-1',
         revision: 1,
         updatedAt: 2_000,
-        allowedModels: [{ modelId: 'coding', name: 'Coding' }]
+        allowedModels: [{ modelId: 'coding-config-id', name: 'Coding' }]
       }),
       'VALIDATE'
     );
@@ -269,7 +269,7 @@ describe('Server conversation template service', () => {
     expect(created.draft).toMatchObject({
       templateId: 'template-1',
       revision: 1,
-      allowedModels: [{ modelId: 'coding', name: 'Coding' }]
+      allowedModels: [{ modelId: 'coding-config-id', name: 'Coding' }]
     });
     expect(fixture.database.audit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -418,7 +418,7 @@ describe('Server conversation template service', () => {
     expect(fixture.database.raw.execute).not.toHaveBeenCalled();
   });
 
-  it('rejects unavailable upstream models before source inspection', async () => {
+  it('rejects a legacy upstream model ID before source inspection', async () => {
     const fixture = serviceFixture();
     const inspect = vi.fn(async () => inspection);
     const service = new ConversationTemplateService(
@@ -434,8 +434,8 @@ describe('Server conversation template service', () => {
         1,
         {
           ...draftInput,
-          allowedModels: [{ modelId: 'missing', name: 'Forged name' }],
-          defaultModelId: 'missing'
+          allowedModels: [{ modelId: 'coding-upstream-id', name: 'Forged name' }],
+          defaultModelId: 'coding-upstream-id'
         },
         inspect
       )
@@ -461,7 +461,7 @@ describe('Server conversation template service', () => {
     expect(inspect).toHaveBeenCalledWith(
       expect.objectContaining({
         revision: 2,
-        allowedModels: [{ modelId: 'coding', name: 'Coding' }]
+        allowedModels: [{ modelId: 'coding-config-id', name: 'Coding' }]
       }),
       'DRAFT_TEST'
     );
@@ -600,7 +600,7 @@ describe('Server conversation template service', () => {
       expect.objectContaining({
         templateId: 'template-1',
         revision: 1,
-        allowedModels: [{ modelId: 'coding', name: 'Coding' }]
+        allowedModels: [{ modelId: 'coding-config-id', name: 'Coding' }]
       }),
       'request-1',
       1
@@ -1266,7 +1266,7 @@ function serviceFixture() {
   };
   const models = {
     listTemplateOptionsForNode: vi.fn(async () => [
-      { modelId: 'coding', name: 'Coding' },
+      { modelId: 'coding-config-id', name: 'Coding' },
       { modelId: 'review', name: 'Review' }
     ])
   } as unknown as MarAgentModelService & {

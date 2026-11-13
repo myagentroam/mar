@@ -5,7 +5,7 @@ import { runnerNameSchema } from '@myagentroam/protocol';
 import { isAllowedOrigin } from './auth.js';
 import { safeErrorCode, sendError } from './http-errors.js';
 import { databaseError } from './domain-errors.js';
-import type { MarctlUserCredentials } from './marctl-user-credentials.js';
+import type { MarctlServerUrlForNode, MarctlUserCredentials } from './marctl-user-credentials.js';
 import type { UserNodeAuthorization } from './node-access-contracts.js';
 import type {
   PersonalInstructionReader,
@@ -253,6 +253,7 @@ const commandSchema = z
   );
 
 export interface MarctlSessionDependencies {
+  readonly marctlServerUrlForNode?: MarctlServerUrlForNode;
   readonly audits?: ConversationAuditObserver;
   readonly personalInstructions?: PersonalInstructionReader;
   readonly marAgentModels?: MarAgentModelService;
@@ -459,7 +460,8 @@ export function registerMarctlSessionRoutes(
                   user: { ...user, scheduled, ...(channel === undefined ? {} : { channel }) },
                   nodeId: scope.nodeId,
                   workspaceId: scope.workspaceId,
-                  serverUrl: input.publicOrigin,
+                  serverUrl:
+                    (await input.marctlServerUrlForNode?.(scope.nodeId)) ?? input.publicOrigin,
                   ...(input.searchBackendAvailable === undefined
                     ? {}
                     : { searchBackendAvailable: input.searchBackendAvailable() }),

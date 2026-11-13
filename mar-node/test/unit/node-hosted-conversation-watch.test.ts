@@ -423,10 +423,10 @@ describe('Node hosted conversation watch', () => {
     const fixture = await watchFixture();
     await seedUpgradeVersion(fixture.database, fixture.store, {
       allowedModels: [
-        { modelId: 'model-one', name: 'Model One' },
-        { modelId: 'model-two', name: 'Model Two' }
+        { modelId: 'model-1', name: 'Model One' },
+        { modelId: 'model-2', name: 'Model Two' }
       ],
-      defaultModelId: 'model-one'
+      defaultModelId: 'model-1'
     });
     const template = {
       id: 'template-1',
@@ -483,10 +483,10 @@ describe('Node hosted conversation watch', () => {
     const conversationId = await createConversation(fixture);
     await seedUpgradeVersion(fixture.database, fixture.store, {
       allowedModels: [
-        { modelId: 'model-one', name: 'Model One' },
-        { modelId: 'model-two', name: 'Model Two' }
+        { modelId: 'model-1', name: 'Model One' },
+        { modelId: 'model-2', name: 'Model Two' }
       ],
-      defaultModelId: 'model-one'
+      defaultModelId: 'model-1'
     });
     const operations = fixture.service.operations();
 
@@ -512,8 +512,8 @@ describe('Node hosted conversation watch', () => {
     const fixture = await watchFixture();
     const conversationId = await createConversation(fixture);
     await seedUpgradeVersion(fixture.database, fixture.store, {
-      allowedModels: [{ modelId: 'model-two', name: 'Model Two' }],
-      defaultModelId: 'model-two'
+      allowedModels: [{ modelId: 'model-2', name: 'Model Two' }],
+      defaultModelId: 'model-2'
     });
     const operations = fixture.service.operations();
 
@@ -1486,8 +1486,8 @@ const draft: ConversationTemplateDraft = {
   revision: 1,
   name: 'Research',
   description: 'Research template',
-  allowedModels: [{ modelId: 'model-one', name: 'Model One' }],
-  defaultModelId: 'model-one',
+  allowedModels: [{ modelId: 'model-1', name: 'Model One' }],
+  defaultModelId: 'model-1',
   mcpIds: [],
   networkMode: 'NONE',
   quotas: {

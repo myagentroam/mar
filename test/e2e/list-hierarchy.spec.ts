@@ -33,6 +33,54 @@ async function colors(page: Page) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Source and catalog scope labels stay readable on one line in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const view of ['sources', 'mcp-sources']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?list-hierarchy=${view}&scope-columns&theme=${theme}`
+        );
+        for (const catalog of [false, true]) {
+          if (catalog) await page.getByRole('tab').last().click();
+          const table = catalog
+            ? '.catalog-skill-table, .catalog-mcp-table'
+            : '.skill-source-table, .mcp-source-table';
+          const labels = page
+            .locator(table)
+            .locator('.el-table__body-wrapper .cell')
+            .filter({ hasText: /^(Enterprise|Organization|Personal)$/u });
+          await expect(labels).toHaveCount(3);
+          for (const label of await labels.all()) {
+            await label.scrollIntoViewIfNeeded();
+            await expect(label).toBeInViewport();
+            const metrics = await label.evaluate((element) => {
+              const range = document.createRange();
+              range.selectNodeContents(element);
+              const bounds = element.getBoundingClientRect();
+              return {
+                textHeight: range.getBoundingClientRect().height,
+                lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+                fits: element.scrollWidth <= element.clientWidth,
+                left: bounds.left,
+                right: bounds.right,
+                viewportWidth: innerWidth
+              };
+            });
+            expect(metrics.textHeight).toBeLessThanOrEqual(metrics.lineHeight + 1);
+            expect(metrics.fits).toBe(true);
+            expect(metrics.left).toBeGreaterThanOrEqual(0);
+            expect(metrics.right).toBeLessThanOrEqual(metrics.viewportWidth);
+          }
+          await page.screenshot({
+            path: testInfo.outputPath(`${view}-${catalog ? 'catalog' : 'sources'}-${width}.png`)
+          });
+        }
+      }
+    }
+  });
+
   test(`Notification titles match recent session typography in ${theme}`, async ({ page }) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
