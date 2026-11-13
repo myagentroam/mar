@@ -39,7 +39,6 @@ import { registerOAuthRoutes } from '../route/oauth-routes.js';
 import { AuditService } from '../audit/audit-service.js';
 import { NodeUpgradeService } from '@myagentroam/server-core/node-upgrade-service';
 import { registerAuditRoutes } from '../route/audit-routes.js';
-import { SkillDiscoveryService } from '../skill/skill-discovery-service.js';
 import { registerSkillSourceRoutes } from '../route/skill-source-routes.js';
 import { registerSkillFavoriteRoutes } from '../route/skill-favorite-routes.js';
 import { registerSkillTargetRoutes } from '../route/skill-target-routes.js';
@@ -293,7 +292,7 @@ export async function composeServerApplication(
     });
     const oauth = new OAuthService(database, authorization, licenses, fetch, now);
     const audits = new AuditService(database, authorization, now);
-    const { skillSources, skillNetwork, skillFavorites, skillArtifacts, mcps } =
+    const { skillSources, skillNetwork, skillDiscovery, skillFavorites, skillArtifacts, mcps } =
       composeServerCatalog({
         database,
         authorization,
@@ -671,7 +670,7 @@ export async function composeServerApplication(
         app,
         database,
         sources: skillSources,
-        discovery: new SkillDiscoveryService(skillNetwork.fetch),
+        discovery: skillDiscovery,
         publicOrigin
       });
     }

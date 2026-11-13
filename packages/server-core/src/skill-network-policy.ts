@@ -130,8 +130,11 @@ export function isPublicAddress(address: string): boolean {
   );
 }
 
-export async function assertPublicSkillHost(hostname: string): Promise<void> {
+export async function assertPublicSkillHost(
+  hostname: string
+): Promise<{ readonly address: string; readonly family: number }> {
   const addresses = await lookup(hostname, { all: true, verbatim: true });
   if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry.address)))
     throw new Error('SKILL_SOURCE_ADDRESS_FORBIDDEN');
+  return addresses[0]!;
 }
