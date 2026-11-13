@@ -51,6 +51,65 @@ async function expectReadableState(button: Locator) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Git History refresh replaces its icon while busy: ${theme} ${width}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      let pending: Promise<void> | undefined;
+      let release: (() => void) | undefined;
+      let failed = false;
+      await page.route('**/api/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith('/git/history')) {
+          await pending;
+          await route.fulfill(
+            failed
+              ? { status: 503, json: { code: 'NODE_OFFLINE', message: 'Node offline' } }
+              : { json: { commits: [], nextCursor: null } }
+          );
+          return;
+        }
+        await route.fulfill({
+          json: path.endsWith('/git/refs')
+            ? { refs: [] }
+            : path.endsWith('/git/fetch')
+              ? { fetchFailed: false }
+              : {}
+        });
+      });
+      try {
+        await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}`);
+        const refresh = page.getByTestId('Git History').locator('.history-refresh');
+        await expect(refresh).toBeEnabled();
+        for (failed of [false, true]) {
+          pending = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          await refresh.click();
+          await expect(refresh).toBeDisabled();
+          await expect(refresh).toHaveAttribute('aria-busy', 'true');
+          await expect(refresh.locator('svg')).toHaveCount(1);
+          const spinner = refresh.locator('[data-mar-icon="loading-action"]');
+          await expect(spinner).toBeVisible();
+          await expect(spinner).not.toHaveCSS('animation-name', 'none');
+          await expect(refresh.locator('[data-mar-icon="refresh"]')).toHaveCount(0);
+          if (!failed)
+            await refresh.screenshot({ path: testInfo.outputPath('history-refresh-busy.png') });
+          release!();
+          await expect(refresh).toBeEnabled();
+          await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+          await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+        }
+      } finally {
+        release?.();
+      }
+    });
+  }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
     test(`Inspector read feedback keeps text, indentation and neutral actions: ${theme} ${width}`, async ({
       browser
     }, testInfo) => {
