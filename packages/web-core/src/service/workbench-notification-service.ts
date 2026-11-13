@@ -64,6 +64,11 @@ type ActiveNotificationTarget =
       'targetType' | 'nodeId' | 'conversationId'
     >;
 
+interface NotificationRecoveryReadiness {
+  readonly target: ActiveNotificationTarget;
+  readonly ready: Promise<boolean | void>;
+}
+
 export interface RecentRun {
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup;
   readonly nodeId: string;
@@ -118,8 +123,8 @@ export interface WorkbenchNotificationService {
   project(event: WorkbenchLiveEvent): boolean;
   projectServerMessage(message: unknown): boolean;
   load(): Promise<void>;
-  /** Optional snapshot readiness preserves the captured targets; false cancels their read. */
-  recover(targetsReady?: Promise<boolean | void>): Promise<void>;
+  /** Snapshot readiness belongs only to its captured target; failure cancels that target's read. */
+  recover(readiness?: NotificationRecoveryReadiness): Promise<void>;
   openNotification(notification: WorkbenchNotification | string): Promise<void>;
   openPendingSystemNotification(): Promise<boolean>;
   markAllRead(): void;
@@ -184,11 +189,19 @@ export function createWorkbenchNotificationService(
   let refreshRequested = false;
   let refreshPromise: Promise<void> | undefined;
   let recoveryPromise: Promise<void> | undefined;
+  let wakeRecovery: (() => void) | undefined;
+  const recoveryReadiness = new Map<
+    string,
+    {
+      readonly target: ActiveNotificationTarget;
+      readonly account: string | undefined;
+      readonly ready: Promise<boolean>;
+    }
+  >();
   let pendingRecovery:
     | {
         readonly targets: readonly ActiveNotificationTarget[];
         readonly account: string | undefined;
-        readonly targetsReady: Promise<boolean | void> | undefined;
       }
     | undefined;
   const pendingCreatedNotificationIds = new Map<string, number>();
@@ -495,49 +508,110 @@ export function createWorkbenchNotificationService(
     }
   }
 
-  function recover(targetsReady?: Promise<boolean | void>): Promise<void> {
+  function recover(readiness?: NotificationRecoveryReadiness): Promise<void> {
+    const account = username.value;
+    for (const [key, dependency] of recoveryReadiness) {
+      if (dependency.account !== account) recoveryReadiness.delete(key);
+    }
+    if (readiness !== undefined) {
+      const key = activeTargetKey(readiness.target);
+      const ready = readiness.ready.then(
+        (completed) => completed !== false,
+        () => false
+      );
+      const dependency = {
+        target: { ...readiness.target },
+        account,
+        // The snapshot owner already waits for scheduled, in-flight and queued refreshes.
+        ready
+      };
+      recoveryReadiness.set(key, dependency);
+      void dependency.ready.then(() => {
+        if (recoveryPromise === undefined && recoveryReadiness.get(key) === dependency)
+          recoveryReadiness.delete(key);
+      });
+    }
+    // Deferring reads must preserve a pending gate, but not retain an obsolete settled gate.
     if (openingNotificationCount > 0 || systemNotifications.hasPending()) return load();
     const targets = isWorkbenchForeground() ? (options.activeTargets?.() ?? []) : [];
-    const account = username.value;
-    const previous = pendingRecovery?.account === account ? pendingRecovery : undefined;
-    const inherited =
-      previous?.account === account && previous?.targetsReady !== undefined ? previous.targets : [];
+    const inherited = [...recoveryReadiness.values()]
+      .filter((entry) => entry.account === account)
+      .map((entry) => entry.target);
     pendingRecovery = {
-      // A focus recovery during refresh must not erase an already captured visible target.
+      // Focus recovery cannot erase or bypass a captured target's own snapshot dependency.
       targets: [
         ...new Map(
-          [...inherited, ...targets].map((target) => [JSON.stringify(target), { ...target }])
+          [...inherited, ...targets].map((target) => [activeTargetKey(target), { ...target }])
         ).values()
       ],
-      account,
-      targetsReady:
-        previous?.targetsReady === undefined
-          ? targetsReady
-          : targetsReady === undefined
-            ? previous.targetsReady
-            : Promise.all([previous.targetsReady, targetsReady]).then((results) =>
-                results.every((completed) => completed !== false)
-              )
+      account
     };
+    wakeRecovery?.();
     if (recoveryPromise !== undefined) return recoveryPromise;
     const generation = loadGeneration;
+    const consumedReadiness: typeof recoveryReadiness = new Map();
     const operation = (async () => {
-      while (generation === loadGeneration && pendingRecovery !== undefined) {
-        const { targets: active, account, targetsReady: ready } = pendingRecovery;
+      const reads = new Map<Promise<void>, string | undefined>();
+      let failure: unknown;
+      while (generation === loadGeneration) {
+        for (const [read, account] of reads) {
+          if (account !== username.value) reads.delete(read);
+        }
+        if (pendingRecovery === undefined) {
+          if (reads.size === 0) {
+            if (failure !== undefined) throw failure;
+            return;
+          }
+          // A new focus/reconnect request can start independent targets while another waits.
+          await Promise.race([
+            ...reads.keys(),
+            new Promise<void>((resolve) => {
+              wakeRecovery = resolve;
+            })
+          ]);
+          if (generation === loadGeneration) wakeRecovery = undefined;
+          continue;
+        }
+        const { targets: active, account } = pendingRecovery;
         pendingRecovery = undefined;
+        let snapshotLoaded = false;
         try {
-          const [, completed] = await Promise.all([load(), ready]);
-          if (completed === false) continue;
+          await load();
+          snapshotLoaded = true;
+          failure = undefined;
         } catch (error) {
           if (generation !== loadGeneration) return;
           if (pendingRecovery !== undefined) continue;
-          throw error;
+          // A failed list must not discard dependencies still held by another target.
+          failure = error;
         }
-        await readVisibleTargets(active, account, generation);
+        for (const target of active) {
+          const operation = (async () => {
+            const key = activeTargetKey(target);
+            let dependency: ReturnType<typeof recoveryReadiness.get>;
+            do {
+              if (generation !== loadGeneration || account !== username.value) return;
+              dependency = recoveryReadiness.get(key);
+              if (dependency !== undefined && dependency.account === account) {
+                consumedReadiness.set(key, dependency);
+                if (!(await dependency.ready)) return;
+              }
+            } while (dependency !== recoveryReadiness.get(key));
+            if (snapshotLoaded) await readVisibleTargets([target], account, generation);
+          })();
+          const reading = operation.finally(() => reads.delete(reading));
+          reads.set(reading, account);
+        }
       }
     })();
     const tracked = operation.finally(() => {
-      if (recoveryPromise === tracked) recoveryPromise = undefined;
+      if (recoveryPromise !== tracked) return;
+      recoveryPromise = undefined;
+      // Deferred navigation may register a newer gate that this recovery never consumed.
+      for (const [key, dependency] of consumedReadiness) {
+        if (recoveryReadiness.get(key) === dependency) recoveryReadiness.delete(key);
+      }
+      wakeRecovery = undefined;
     });
     recoveryPromise = tracked;
     return tracked;
@@ -649,6 +723,14 @@ export function createWorkbenchNotificationService(
     }
     refreshQuietly();
     return true;
+  }
+
+  function activeTargetKey(target: ActiveNotificationTarget): string {
+    return JSON.stringify(
+      target.targetType === 'WORKSPACE_SESSION'
+        ? [target.targetType, target.nodeId, target.workspaceId, target.sessionId]
+        : [target.targetType, target.nodeId, target.conversationId]
+    );
   }
 
   function isActiveTarget(target: WorkbenchNotificationTarget | ActiveNotificationTarget): boolean {
@@ -802,7 +884,7 @@ export function createWorkbenchNotificationService(
     const body = workspace
       ? { nodeId, workspaceId: target.workspaceId, sessionId: target.sessionId }
       : { nodeId, conversationId: target.conversationId };
-    const key = JSON.stringify([target.targetType, body]);
+    const key = activeTargetKey(target);
     const pending = pendingTargetReads.get(key);
     if (pending !== undefined) {
       if (retryOnFailure) pending.retry.isCurrent = isCurrent ?? (() => true);
@@ -904,6 +986,9 @@ export function createWorkbenchNotificationService(
     refreshPromise = undefined;
     recoveryPromise = undefined;
     pendingRecovery = undefined;
+    recoveryReadiness.clear();
+    wakeRecovery?.();
+    wakeRecovery = undefined;
     pendingTargetReads.clear();
     snapshotReadProjections = undefined;
     pendingCreatedNotificationIds.clear();

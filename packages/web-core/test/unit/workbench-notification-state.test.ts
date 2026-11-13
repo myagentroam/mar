@@ -128,7 +128,7 @@ function recoveryFixture(
     throw new Error(`Unexpected request: ${path}`);
   });
   const onWorkspaceRunCompleted = vi.fn();
-  const username = { value: 'admin' };
+  const username = { value: 'admin' as string | undefined };
   const state = createWorkbenchNotificationService(username as never, {
     request: request as never,
     activeTargets: () =>
@@ -148,13 +148,287 @@ function recoveryFixture(
 }
 
 describe('Workspace session unread queries', () => {
+  it.each(['complete', 'cancel', 'fail'] as const)(
+    'confirms an independent Aside while Main readiness stays pending, then %s',
+    async (outcome) => {
+      const main = notification('main');
+      const aside = notification('aside', 'session-2');
+      const f = recoveryFixture([main, aside]);
+      f.active.others = [aside.target];
+      let finishMain!: (completed: boolean) => void;
+      let failMain!: (error: Error) => void;
+      const ready = new Promise<boolean>((resolve, reject) => {
+        finishMain = resolve;
+        failMain = reject;
+      });
+      let confirmAside!: () => void;
+      const asideRead = new Promise<void>((resolve) => (confirmAside = resolve));
+      f.server.readGate = () => asideRead;
+      const recovering = f.state.recover({ target: main.target, ready });
+      try {
+        await vi.waitFor(() => expect(f.reads()).toHaveLength(1));
+        expect(JSON.parse(String(f.reads()[0]![1]?.body)).sessionId).toBe('session-2');
+        expect(f.state.unreadCount.value).toBe(2);
+        f.server.readGate = undefined;
+        confirmAside();
+        await vi.waitFor(() =>
+          expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+        );
+        expect(f.server.entries.find((entry) => entry.id === 'aside')?.read).toBe(true);
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+        // Repeated focus recovery must not bypass the still-pending Main dependency.
+        const focused = f.state.recover();
+        expect(focused).toBe(recovering);
+        expect(f.reads()).toHaveLength(1);
+        if (outcome === 'fail') failMain(new Error('Snapshot failed'));
+        else finishMain(outcome === 'complete');
+        await recovering;
+        expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual(
+          outcome === 'complete' ? ['session-2', 'session-1'] : ['session-2']
+        );
+        expect(f.state.unreadCount.value).toBe(outcome === 'complete' ? 0 : 1);
+      } finally {
+        f.server.readGate = undefined;
+        confirmAside?.();
+        finishMain(false);
+        await recovering;
+        f.state.dispose();
+      }
+    }
+  );
+
+  it('recovers a newly visible Aside on focus while the previous Main recovery is still waiting', async () => {
+    const main = notification('main');
+    const aside = notification('aside', 'session-2');
+    const f = recoveryFixture([main, aside]);
+    let finishMain!: () => void;
+    const ready = new Promise<void>((resolve) => (finishMain = resolve));
+    const recovering = f.state.recover({ target: main.target, ready });
+    try {
+      await vi.waitFor(() => expect(f.state.notifications.value).toHaveLength(2));
+      expect(f.reads()).toHaveLength(0);
+      f.active.others = [aside.target];
+      expect(f.state.recover()).toBe(recovering);
+      await vi.waitFor(() =>
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+      );
+      expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+        'session-2'
+      ]);
+      expect(f.server.entries.find((entry) => entry.id === 'aside')?.read).toBe(true);
+      expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+      finishMain();
+      await recovering;
+      expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+        'session-2',
+        'session-1'
+      ]);
+    } finally {
+      finishMain();
+      await recovering;
+      f.state.dispose();
+    }
+  });
+
+  it('shares Main readiness and one confirmed write when the same target is also visible in Aside', async () => {
+    const main = notification('main');
+    const f = recoveryFixture([main]);
+    f.active.others = [{ ...main.target, sessionName: 'Aside title' }];
+    let finishMain!: () => void;
+    const ready = new Promise<void>((resolve) => (finishMain = resolve));
+    const recovering = f.state.recover({ target: main.target, ready });
+    try {
+      await vi.waitFor(() => expect(f.state.notifications.value).toHaveLength(1));
+      expect(f.reads()).toHaveLength(0);
+      f.state.recover();
+      finishMain();
+      await recovering;
+      expect(f.reads()).toHaveLength(1);
+      expect(f.state.unreadCount.value).toBe(0);
+      expect(f.server.entries[0]?.read).toBe(true);
+    } finally {
+      finishMain();
+      await recovering;
+      f.state.dispose();
+    }
+  });
+
+  it('keeps a pending Main dependency after the first list fails, without blocking a later Aside recovery', async () => {
+    const main = notification('main');
+    const aside = notification('aside', 'session-2');
+    const f = recoveryFixture([main, aside]);
+    f.active.others = [aside.target];
+    let firstLoadFailed = false;
+    f.request.mockImplementationOnce(() =>
+      Promise.reject(new Error('list unavailable')).finally(() => {
+        firstLoadFailed = true;
+      })
+    );
+    let finishMain!: () => void;
+    const ready = new Promise<void>((resolve) => (finishMain = resolve));
+    const recovering = f.state.recover({ target: main.target, ready });
+    void recovering.catch(() => undefined);
+    let focusedRecovery: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() => expect(firstLoadFailed).toBe(true));
+      focusedRecovery = f.state.recover();
+      void focusedRecovery.catch(() => undefined);
+      await vi.waitFor(() => expect(f.reads()).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+      );
+      expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+        'session-2'
+      ]);
+      expect(f.server.entries.find((entry) => entry.id === 'aside')?.read).toBe(true);
+      expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+      finishMain();
+      await recovering;
+      expect(f.state.unreadCount.value).toBe(0);
+    } finally {
+      finishMain();
+      await recovering.catch(() => undefined);
+      await focusedRecovery?.catch(() => undefined);
+      f.state.dispose();
+    }
+  });
+
+  it('retains Main readiness across a failed focus list refresh and a later successful refresh', async () => {
+    const main = notification('main');
+    const aside = notification('aside', 'session-2');
+    const f = recoveryFixture([main, aside]);
+    f.active.others = [aside.target];
+    let finishMain!: () => void;
+    const ready = new Promise<void>((resolve) => (finishMain = resolve));
+    const recovering = f.state.recover({ target: main.target, ready });
+    try {
+      await vi.waitFor(() => expect(f.reads()).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+      );
+      f.request.mockRejectedValueOnce(new Error('list unavailable'));
+      expect(f.state.recover()).toBe(recovering);
+      await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(3));
+      f.state.recover();
+      await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(4));
+      expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+        'session-2'
+      ]);
+      expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-1')).toBe(true);
+      finishMain();
+      await recovering;
+      expect(f.state.unreadCount.value).toBe(0);
+    } finally {
+      finishMain();
+      await recovering;
+      f.state.dispose();
+    }
+  });
+
+  it('does not keep a new account recovery behind the previous account pending Main', async () => {
+    const main = notification('main');
+    const aside = notification('aside', 'session-2');
+    const f = recoveryFixture([main, aside]);
+    f.active.others = [aside.target];
+    let finishMain!: () => void;
+    const ready = new Promise<void>((resolve) => (finishMain = resolve));
+    const recovering = f.state.recover({ target: main.target, ready });
+    try {
+      await vi.waitFor(() => expect(f.reads()).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+      );
+      f.username.value = 'another-user';
+      f.server.entries = [];
+      expect(f.state.recover()).toBe(recovering);
+      await recovering;
+      expect(f.state.notifications.value).toEqual([]);
+      expect(f.reads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+        'session-2'
+      ]);
+    } finally {
+      finishMain();
+      await recovering;
+      f.state.dispose();
+    }
+  });
+
+  it.each([
+    'main-switch',
+    'main-close',
+    'aside-switch',
+    'aside-close',
+    'mobile-cover',
+    'focus',
+    'background',
+    'account',
+    'logout'
+  ] as const)(
+    'rechecks captured Main and Aside identities after %s during recovery',
+    async (changed) => {
+      let focused = true;
+      let visibilityState = 'visible';
+      vi.stubGlobal('document', {
+        get visibilityState() {
+          return visibilityState;
+        },
+        hasFocus: () => focused
+      });
+      const main = notification('main');
+      const aside = notification('aside', 'session-2');
+      const replacement = notification('replacement', 'session-3');
+      const f = recoveryFixture([main, aside, replacement]);
+      f.active.others = [aside.target];
+      let finishMain!: () => void;
+      const ready = new Promise<void>((resolve) => (finishMain = resolve));
+      let finishLoad!: () => void;
+      f.server.loadGate = () => new Promise<void>((resolve) => (finishLoad = resolve));
+      const recovering = f.state.recover({ target: main.target, ready });
+      try {
+        await vi.waitFor(() => expect(finishLoad).toBeDefined());
+        if (changed === 'main-switch') f.active.target = replacement.target;
+        if (changed === 'main-close' || changed === 'mobile-cover') f.active.target = undefined;
+        if (changed === 'aside-switch') f.active.others = [replacement.target];
+        if (changed === 'aside-close') f.active.others = [];
+        if (changed === 'focus') focused = false;
+        if (changed === 'background') visibilityState = 'hidden';
+        if (changed === 'account') f.username.value = 'another-user';
+        if (changed === 'logout') {
+          f.username.value = undefined;
+          f.state.dispose();
+        }
+        f.server.loadGate = undefined;
+        finishLoad();
+        finishMain();
+        await recovering;
+        const sessions = f
+          .reads()
+          .map(([, init]) => JSON.parse(String(init?.body)).sessionId)
+          .sort();
+        const expected = ['main-switch', 'main-close', 'mobile-cover'].includes(changed)
+          ? ['session-2']
+          : ['aside-switch', 'aside-close'].includes(changed)
+            ? ['session-1']
+            : [];
+        expect(sessions).toEqual(expected);
+        expect(f.server.entries.find((entry) => entry.id === 'replacement')?.read).toBe(false);
+      } finally {
+        f.server.loadGate = undefined;
+        finishLoad?.();
+        finishMain();
+        await recovering;
+        f.state.dispose();
+      }
+    }
+  );
+
   it('does not inherit a different account queued restoration barrier', async () => {
     const f = recoveryFixture([notification('current')]);
     let finishLoad!: () => void;
     try {
       f.server.loadGate = () => new Promise<void>((resolve) => (finishLoad = resolve));
       const recovering = f.state.recover();
-      f.state.recover(new Promise<void>(() => {}));
+      f.state.recover({ target: f.active.target!, ready: new Promise<void>(() => {}) });
       f.username.value = 'another-user';
       f.state.recover();
       await vi.waitFor(() => expect(finishLoad).toBeDefined());
@@ -173,7 +447,7 @@ describe('Workspace session unread queries', () => {
   it('does not read after its snapshot refresh generation was cancelled', async () => {
     const f = recoveryFixture([notification('current')]);
     try {
-      await f.state.recover(Promise.resolve(false));
+      await f.state.recover({ target: f.active.target!, ready: Promise.resolve(false) });
       expect(f.reads()).toHaveLength(0);
       expect(f.state.unreadCount.value).toBe(1);
     } finally {
@@ -187,7 +461,7 @@ describe('Workspace session unread queries', () => {
     let finish!: () => void;
     const ready = new Promise<void>((resolve) => (finish = resolve));
     try {
-      const recovering = f.state.recover(ready);
+      const recovering = f.state.recover({ target: f.active.target!, ready });
       f.active.target = undefined;
       await vi.waitFor(() => expect(f.request).toHaveBeenCalled());
       expect(f.reads()).toHaveLength(0);
@@ -216,7 +490,7 @@ describe('Workspace session unread queries', () => {
       let finish!: () => void;
       const ready = new Promise<void>((resolve) => (finish = resolve));
       try {
-        const recovering = f.state.recover(ready);
+        const recovering = f.state.recover({ target: f.active.target!, ready });
         await vi.waitFor(() => expect(f.request).toHaveBeenCalled());
         expect(f.reads()).toHaveLength(0);
         if (changed === 'target') f.active.target = notification('other', 'session-2').target;
@@ -243,7 +517,7 @@ describe('Workspace session unread queries', () => {
     const target = f.active.target;
     try {
       const recovering = f.state.recover();
-      f.state.recover(ready);
+      f.state.recover({ target: f.active.target!, ready });
       f.active.target = undefined;
       f.state.recover();
       await vi.waitFor(() => expect(finishLoad).toBeDefined());
@@ -559,6 +833,248 @@ describe('Web Workbench notification state', () => {
       f.state.dispose();
     }
   });
+
+  it.each([
+    { entry: 'notification navigation', sameTargetReplacement: false },
+    { entry: 'notification navigation', sameTargetReplacement: true },
+    { entry: 'pending system link', sameTargetReplacement: false },
+    { entry: 'pending system link', sameTargetReplacement: true }
+  ])(
+    'preserves a deferred Main gate after active recovery ends through $entry, same target=$sameTargetReplacement',
+    async ({ entry, sameTargetReplacement }) => {
+      const location = { href: 'https://example.test/console' };
+      const window = Object.assign(new EventTarget(), {
+        location,
+        history: {
+          state: null,
+          replaceState: (_state: unknown, _unused: string, url: string) => {
+            location.href = new URL(url, location.href).href;
+          }
+        }
+      });
+      vi.stubGlobal('window', window);
+      vi.stubGlobal('document', { visibilityState: 'visible', hasFocus: () => true });
+      vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
+      const oldMain = notification('old-main');
+      const main = sameTargetReplacement ? oldMain : notification('new-main', 'session-4');
+      const aside = notification('aside', 'session-2');
+      const clicked = notification('clicked', 'session-3');
+      let finishOpening!: () => void;
+      const f = recoveryFixture(
+        sameTargetReplacement ? [main, aside, clicked] : [oldMain, main, aside, clicked],
+        () => new Promise<void>((resolve) => (finishOpening = resolve))
+      );
+      f.active.others = [aside.target];
+      let finishOldMain!: (completed: boolean) => void;
+      const oldReady = new Promise<boolean>((resolve) => (finishOldMain = resolve));
+      let finishMain!: () => void;
+      const ready = new Promise<void>((resolve) => (finishMain = resolve));
+      const targetReads = () =>
+        f
+          .reads()
+          .filter(([path]) => path === '/api/notifications/session/read')
+          .map(([, init]) => JSON.parse(String(init?.body)).sessionId);
+      let recovering: Promise<void> | undefined;
+      let opening: Promise<unknown> | undefined;
+      let focused: Promise<void> | undefined;
+      try {
+        await f.state.start();
+        recovering = f.state.recover({ target: oldMain.target, ready: oldReady });
+        await vi.waitFor(() =>
+          expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+        );
+        expect(targetReads()).toEqual(['session-2']);
+        expect(f.server.entries.find((item) => item.id === oldMain.id)?.read).toBe(false);
+        if (entry === 'notification navigation') {
+          opening = f.state.openNotification({ ...clicked, source: 'server' });
+          await vi.waitFor(() => expect(finishOpening).toBeDefined());
+        } else {
+          location.href += '?notification=clicked&notificationAccount=admin';
+          expect(f.state.systemNotifications.hasPending()).toBe(true);
+        }
+        f.active.target = main.target;
+        await f.state.recover({ target: main.target, ready });
+        expect(targetReads()).toEqual(['session-2']);
+        finishOldMain(false);
+        await recovering;
+        // The old recovery has ended, but the replacement's own gate is still pending.
+        if (entry === 'pending system link') {
+          opening = f.state.openPendingSystemNotification();
+          await vi.waitFor(() => expect(finishOpening).toBeDefined());
+          expect(f.state.systemNotifications.hasPending()).toBe(false);
+        }
+        finishOpening();
+        await opening;
+        const freshAside = notification('aside-after-navigation', 'session-2');
+        f.server.entries.push(freshAside);
+        window.dispatchEvent(new Event('focus'));
+        focused = f.state.recover();
+        expect(f.state.recover()).toBe(focused);
+        await vi.waitFor(() =>
+          expect(f.server.entries.find((item) => item.id === freshAside.id)?.read).toBe(true)
+        );
+        await vi.waitFor(() =>
+          expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+        );
+        expect(targetReads()).toEqual(['session-2', 'session-2']);
+        expect(f.server.entries.find((item) => item.id === main.id)?.read).toBe(false);
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', main.target.sessionId)).toBe(true);
+        finishMain();
+        await focused;
+        expect(targetReads()).toEqual(['session-2', 'session-2', main.target.sessionId]);
+        expect(f.server.entries.find((item) => item.id === main.id)?.read).toBe(true);
+        expect(f.state.hasUnreadSession('node-1', 'workspace-1', main.target.sessionId)).toBe(
+          false
+        );
+      } finally {
+        finishOldMain(false);
+        finishMain();
+        finishOpening?.();
+        await opening;
+        await recovering;
+        await focused;
+        f.state.dispose();
+      }
+    }
+  );
+
+  it.each([
+    { entry: 'notification navigation', replaceCancelled: false },
+    { entry: 'notification navigation', replaceCancelled: true },
+    { entry: 'pending system link', replaceCancelled: false },
+    { entry: 'pending system link', replaceCancelled: true }
+  ])(
+    'retains deferred Main readiness through $entry with cancelled replacement=$replaceCancelled',
+    async ({ entry, replaceCancelled }) => {
+      const location = {
+        href: `https://example.test/console${entry === 'pending system link' ? '?notification=clicked&notificationAccount=admin' : ''}`
+      };
+      const window = Object.assign(new EventTarget(), {
+        location,
+        history: {
+          state: null,
+          replaceState: (_state: unknown, _unused: string, url: string) => {
+            location.href = new URL(url, location.href).href;
+          }
+        }
+      });
+      vi.stubGlobal('window', window);
+      vi.stubGlobal('document', { visibilityState: 'visible', hasFocus: () => true });
+      vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
+      const main = notification('main');
+      const aside = notification('aside', 'session-2');
+      const clicked = notification('clicked', 'session-3');
+      let finishOpening!: () => void;
+      const f = recoveryFixture(
+        [main, aside, clicked],
+        () => new Promise<void>((resolve) => (finishOpening = resolve))
+      );
+      f.active.others = [aside.target];
+      let finishMain!: (completed: boolean) => void;
+      const ready = new Promise<boolean>((resolve) => (finishMain = resolve));
+      let finishReplacement!: () => void;
+      const replacement = new Promise<void>((resolve) => (finishReplacement = resolve));
+      const targetReads = () =>
+        f.reads().filter(([path]) => path === '/api/notifications/session/read');
+      let opening: Promise<unknown> | undefined;
+      try {
+        await f.state.start();
+        if (entry === 'notification navigation') {
+          opening = f.state.openNotification({ ...clicked, source: 'server' });
+          await vi.waitFor(() => expect(finishOpening).toBeDefined());
+        } else expect(f.state.systemNotifications.hasPending()).toBe(true);
+        await f.state.recover({ target: main.target, ready });
+        expect(targetReads()).toHaveLength(0);
+        if (replaceCancelled) {
+          finishMain(false);
+          await f.state.recover();
+          await f.state.recover({ target: main.target, ready: replacement });
+        }
+        expect(targetReads()).toHaveLength(0);
+        if (entry === 'pending system link') {
+          opening = f.state.openPendingSystemNotification();
+          await vi.waitFor(() => expect(finishOpening).toBeDefined());
+          expect(f.state.systemNotifications.hasPending()).toBe(false);
+          await f.state.recover();
+          expect(targetReads()).toHaveLength(0);
+        }
+        finishOpening();
+        await opening;
+        window.dispatchEvent(new Event('focus'));
+        await vi.waitFor(() => expect(targetReads()).toHaveLength(1));
+        await vi.waitFor(() =>
+          expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(false)
+        );
+        expect(targetReads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+          'session-2'
+        ]);
+        expect(f.server.entries.find((item) => item.id === 'aside')?.read).toBe(true);
+        expect(f.server.entries.find((item) => item.id === 'main')?.read).toBe(false);
+        if (replaceCancelled) finishReplacement();
+        else finishMain(true);
+        await f.state.recover();
+        expect(targetReads().map(([, init]) => JSON.parse(String(init?.body)).sessionId)).toEqual([
+          'session-2',
+          'session-1'
+        ]);
+        expect(f.state.unreadCount.value).toBe(0);
+      } finally {
+        finishOpening?.();
+        await opening;
+        finishMain(true);
+        finishReplacement();
+        await f.state.recover();
+        f.state.dispose();
+      }
+    }
+  );
+
+  it.each(['target switch', 'account replacement', 'disposal'] as const)(
+    'clears obsolete deferred readiness after %s without waiting for the old Main',
+    async (changed) => {
+      const main = notification('main');
+      const clicked = notification('clicked', 'session-3');
+      let finishOpening!: () => void;
+      const f = recoveryFixture(
+        [main, clicked],
+        () => new Promise<void>((resolve) => (finishOpening = resolve))
+      );
+      let finishMain!: (completed: boolean) => void;
+      const ready = new Promise<boolean>((resolve) => (finishMain = resolve));
+      let opening: Promise<void> | undefined;
+      try {
+        await f.state.load();
+        opening = f.state.openNotification({ ...clicked, source: 'server' });
+        await vi.waitFor(() => expect(finishOpening).toBeDefined());
+        await f.state.recover({ target: main.target, ready });
+        const current = notification(
+          'current',
+          changed === 'target switch' ? 'session-4' : 'session-1'
+        );
+        f.active.target = current.target;
+        f.server.entries = [current];
+        if (changed === 'target switch') finishMain(false);
+        if (changed === 'account replacement') f.username.value = 'another-user';
+        if (changed === 'disposal') f.state.dispose();
+        finishOpening();
+        await opening;
+        await f.state.recover();
+        expect(
+          f
+            .reads()
+            .filter(([path]) => path === '/api/notifications/session/read')
+            .map(([, init]) => JSON.parse(String(init?.body)).sessionId)
+        ).toEqual([current.target.sessionId]);
+        expect(f.server.entries[0]?.read).toBe(true);
+        expect(f.state.unreadCount.value).toBe(0);
+      } finally {
+        finishOpening?.();
+        await opening;
+        finishMain(false);
+        f.state.dispose();
+      }
+    }
+  );
 
   it('releases notification navigation suppression after a failed navigation', async () => {
     const clicked = notification('clicked');
