@@ -133,6 +133,7 @@ for (const [width, theme, locale] of [
         const result = {
           running: color('--el-color-success'),
           track: color('--mar-bg-subtle'),
+          border: color('--mar-border-default'),
           selected: color('--mar-fill-selection'),
           hover: color('--mar-fill-row-hover'),
           primary: color('--mar-text-primary')
@@ -143,6 +144,10 @@ for (const [width, theme, locale] of [
       await expect(tabs.nth(0)).toHaveCSS('background-color', colors.selected);
       await expect(tabs.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(chats.getByRole('tablist')).toHaveCSS('background-color', colors.track);
+      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-width', '1px');
+      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-style', 'solid');
+      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-color', colors.border);
+      await expect(tabs.nth(0)).toHaveCSS('border-top-width', '0px');
       await tabs.nth(1).hover();
       await expect(tabs.nth(1)).toHaveCSS('background-color', colors.hover);
       for (const tab of await tabs.all()) {
@@ -202,6 +207,10 @@ for (const [width, theme, locale] of [
         .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions' })
         .click();
       const recent = page.locator('.recent-sessions-panel:visible');
+      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-width', '1px');
+      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-style', 'solid');
+      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-color', colors.border);
+      await expect(recent.getByRole('tab').first()).toHaveCSS('border-top-width', '0px');
       await expect(recent.locator('.session-state-badge')).toHaveCount(0);
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
       await recent.getByRole('tab').nth(1).click();

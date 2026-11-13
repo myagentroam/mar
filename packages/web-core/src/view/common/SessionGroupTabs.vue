@@ -65,6 +65,7 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   min-width: 0;
   gap: 2px;
   padding: 2px;
+  border: 1px solid var(--mar-border-default);
   border-radius: var(--mar-radius-control);
   background: var(--mar-bg-subtle);
 }
