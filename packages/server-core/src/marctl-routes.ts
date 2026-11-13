@@ -187,7 +187,10 @@ export function registerMarctlRoutes(
           ...(binary === true ? { binary: true } : {}),
           secretEnvironment: {
             ...(await input.secrets.resolve(user.userId, nodeId)),
-            ...(await userCredentials.environment(user, publicOrigin))
+            ...(await userCredentials.environment(
+              user,
+              (await input.marctlServerUrlForNode?.(nodeId)) ?? publicOrigin
+            ))
           }
         },
         user
