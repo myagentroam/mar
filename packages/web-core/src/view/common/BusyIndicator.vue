@@ -1,3 +1,3 @@
 <template>
-  <i class="busy-indicator" aria-hidden="true" />
+  <i class="mar-busy-indicator" aria-hidden="true" />
 </template>

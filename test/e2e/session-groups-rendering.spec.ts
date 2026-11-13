@@ -21,13 +21,13 @@ for (const [width, theme] of [
       const status = sidebar.getByRole('status', { name: 'Loading sessions…' });
       await expect(status).toBeVisible();
       await expect(status).toHaveText('');
-      await expect(status.locator('.busy-indicator')).toBeVisible();
-      const indicatorSize = await status.locator('.busy-indicator').evaluate((indicator) => ({
+      await expect(status.locator('.mar-busy-indicator')).toBeVisible();
+      const indicatorSize = await status.locator('.mar-busy-indicator').evaluate((indicator) => ({
         width: parseFloat(getComputedStyle(indicator).width),
         rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize)
       }));
       expect(indicatorSize.width).toBeCloseTo(indicatorSize.rootSize * 0.875, 1);
-      await expect(status.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await expect(status.locator('.mar-busy-indicator')).toHaveCSS('animation-name', 'none');
       await expect(sidebar.locator('.session-row')).toHaveCount(1);
 
       await page.goto(
@@ -156,8 +156,8 @@ for (const [width, theme, locale] of [
         expect(bounds.height).toBeLessThanOrEqual(28);
         expect(text.x + text.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
       }
-      const dots = page.locator('.session-activity.managed_active i');
-      await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
+      const dots = page.locator('.mar-session-activity.managed_active i');
+      await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
       await expect(dots).toHaveCount(2);
       for (const dot of await dots.all()) {
         await expect(dot).toHaveCSS('background-color', colors.running);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './conversation-detail.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
 import { marIcon } from '../../util/mar-icons.js';
@@ -687,9 +688,9 @@ function stepDuration(item: ConversationItem): string | undefined {
                 >{{ displayItem.preview.text }}</span
               >
             </summary>
-            <div v-if="reasoningDisclosure[displayItem.id]" class="conversation-detail-body">
+            <div v-if="reasoningDisclosure[displayItem.id]" class="mar-conversation-detail-body">
               <ConversationDetailPreview>
-                <p class="conversation-detail-text">{{ displayItem.text }}</p>
+                <p class="mar-conversation-detail-text">{{ displayItem.text }}</p>
               </ConversationDetailPreview>
             </div>
           </details>
@@ -707,7 +708,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               }}</span>
             </summary>
-            <div class="conversation-detail-body conversation-content-detail">
+            <div class="mar-conversation-detail-body conversation-content-detail">
               <p>{{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}</p>
             </div>
           </details>
@@ -935,23 +936,23 @@ function stepDuration(item: ConversationItem): string | undefined {
             </summary>
             <div
               v-if="groupedItemDisclosure[displayItem.id]"
-              class="conversation-detail-body conversation-content-detail conversation-list-detail"
+              class="mar-conversation-detail-body conversation-content-detail conversation-list-detail"
             >
               <ConversationRecordCopy
                 :record="displayItem.items"
                 @copy="(text, done) => emit('copy', text, done)"
               />
               <ul
-                class="conversation-file-change-list conversation-detail-list conversation-detail-list--with-meta"
+                class="conversation-file-change-list mar-conversation-detail-list mar-conversation-detail-list--with-meta"
               >
                 <li
                   v-for="(entry, index) in conversationFileChangeEntries(displayItem.items)"
                   :key="entry.sourceId ?? `${index}:${entry.status}:${entry.path}`"
-                  class="conversation-list-row"
+                  class="mar-conversation-list-row"
                 >
                   <span
                     v-if="entry.status"
-                    class="conversation-file-change-status conversation-list-marker"
+                    class="conversation-file-change-status mar-conversation-list-marker"
                     :class="`conversation-file-change-status--${entry.change.toLowerCase()}`"
                     >{{ entry.status }}</span
                   >
@@ -966,7 +967,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                         }
                       )
                     "
-                    class="conversation-file-change-button conversation-list-content"
+                    class="conversation-file-change-button mar-conversation-list-content"
                     type="button"
                     :aria-label="
                       translate(
@@ -1105,7 +1106,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               "
               v-if="conversationItemCopyText(displayItem.item.kind, displayItem.item.payload)"
-              class="conversation-message-action icon-button icon-action"
+              class="conversation-message-action mar-icon-button mar-icon-action"
               type="button"
               :aria-label="
                 copiedMessage === `${turn.id}:${displayItem.item.id}`
@@ -1124,7 +1125,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
               "
               v-if="props.rewindEnabled && turn.rewind"
-              class="conversation-message-action icon-button icon-action"
+              class="conversation-message-action mar-icon-button mar-icon-action"
               type="button"
               :aria-label="
                 translate('generated.conversationTimeline.createSessionBranchBeforeMessage')
@@ -1136,7 +1137,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             <button
               v-tooltip="translate('generated.conversationTimeline.rollbackConversation')"
               v-if="props.rollbackEnabled && turn.rewind && rollbackTarget(turn, displayItem.item)"
-              class="conversation-message-action icon-button icon-action"
+              class="conversation-message-action mar-icon-button mar-icon-action"
               type="button"
               :disabled="props.loading"
               :aria-label="
@@ -1195,7 +1196,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 )
               "
               v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
-              class="conversation-message-action icon-button icon-action"
+              class="conversation-message-action mar-icon-button mar-icon-action"
               type="button"
               :aria-label="
                 copiedMessage === `${turn.id}:${displayItem.item.id}`
@@ -1212,7 +1213,7 @@ function stepDuration(item: ConversationItem): string | undefined {
             <button
               v-tooltip="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               v-if="props.rewindEnabled && turn.rewind"
-              class="conversation-message-action icon-button icon-action"
+              class="conversation-message-action mar-icon-button mar-icon-action"
               type="button"
               :aria-label="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               @click.stop="emit('rewind', turn, displayItem.item)"
@@ -1391,26 +1392,26 @@ function stepDuration(item: ConversationItem): string | undefined {
             </summary>
             <div
               v-if="groupedItemDisclosure[displayItem.id] !== false"
-              class="conversation-detail-body conversation-content-detail conversation-list-detail"
+              class="mar-conversation-detail-body conversation-content-detail conversation-list-detail"
             >
               <ConversationRecordCopy
                 :key="displayItem.item.id"
                 :record="displayItem.item"
                 @copy="(text, done) => emit('copy', text, done)"
               />
-              <ul class="task-list-items conversation-detail-list">
+              <ul class="task-list-items mar-conversation-detail-list">
                 <li
                   v-for="(task, index) in taskListItems(displayItem.item.payload)"
                   :key="index"
-                  class="conversation-list-row"
+                  class="mar-conversation-list-row"
                 >
                   <span
-                    class="task-list-status conversation-list-marker"
+                    class="task-list-status mar-conversation-list-marker"
                     :class="`task-list-status--${task.tone}`"
                   >
                     {{ task.status }}
                   </span>
-                  <div class="task-list-content conversation-list-content">
+                  <div class="task-list-content mar-conversation-list-content">
                     <AgentMarkdown
                       :content="task.text"
                       v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"
@@ -1471,7 +1472,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                 {{ translate('generated.conversationTimeline.planItems') }}</span
               >
             </summary>
-            <div class="conversation-detail-body conversation-content-detail">
+            <div class="mar-conversation-detail-body conversation-content-detail">
               <AgentMarkdown
                 v-if="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
                 :content="conversationItemText(displayItem.item.kind, displayItem.item.payload)"
@@ -1552,7 +1553,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               :item="displayItem.item"
               @copy="(text, done) => emit('copy', text, done)"
             >
-              <p class="conversation-detail-text">
+              <p class="mar-conversation-detail-text">
                 {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
               </p>
             </ConversationToolDetail>
@@ -1578,14 +1579,17 @@ function stepDuration(item: ConversationItem): string | undefined {
               :item="displayItem.item"
               @copy="(text, done) => emit('copy', text, done)"
             />
-            <div v-else-if="displayItem.item.kind === 'reasoning'" class="conversation-detail-body">
-              <p class="conversation-detail-text">
+            <div
+              v-else-if="displayItem.item.kind === 'reasoning'"
+              class="mar-conversation-detail-body"
+            >
+              <p class="mar-conversation-detail-text">
                 {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
               </p>
             </div>
             <div
               v-else-if="conversationItemDetail(displayItem.item.kind, displayItem.item.payload)"
-              class="conversation-detail-body conversation-content-detail"
+              class="mar-conversation-detail-body conversation-content-detail"
             >
               <p>
                 {{ conversationItemDetail(displayItem.item.kind, displayItem.item.payload) }}
@@ -1638,6 +1642,15 @@ function stepDuration(item: ConversationItem): string | undefined {
 </template>
 
 <style scoped>
+.conversation-list-detail {
+  position: relative;
+  --mar-conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
+}
+
+.mar-conversation-detail-list--with-meta {
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+}
+
 .conversation-run-duration,
 .conversation-step-duration {
   color: var(--mar-conversation-muted);
@@ -1804,7 +1817,7 @@ function stepDuration(item: ConversationItem): string | undefined {
 
 .conversation-item:has(> details.conversation-tool-presentation)
   > details
-  > :not(summary):not(.conversation-detail-body),
+  > :not(summary):not(.mar-conversation-detail-body),
 .conversation-item:where(
     .reasoning-group,
     .tool-group,
@@ -1813,7 +1826,7 @@ function stepDuration(item: ConversationItem): string | undefined {
     .file-change-group
   )
   > details
-  > :not(summary):not(details):not(.conversation-detail-body) {
+  > :not(summary):not(details):not(.mar-conversation-detail-body) {
   margin: 0 var(--conversation-item-inset) 8px;
 }
 
@@ -1976,7 +1989,7 @@ details.conversation-record-group[open] > details:last-child {
   padding: 4px var(--conversation-item-inset);
 }
 
-.conversation-item .conversation-detail-body {
+.conversation-item .mar-conversation-detail-body {
   margin: 0.5rem var(--conversation-item-inset);
   margin-inline-start: calc(
     var(--conversation-item-inset) + var(--conversation-detail-start, calc(1em + 0.5rem)) - 0.75rem
@@ -1995,7 +2008,7 @@ details.conversation-record-group[open] > details:last-child {
   margin-bottom: 0;
 }
 
-.conversation-item .conversation-detail-body .conversation-detail-text {
+.conversation-item .mar-conversation-detail-body .mar-conversation-detail-text {
   margin: 0;
   font-size: inherit;
   line-height: inherit;

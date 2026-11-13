@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { recordWebm, silentWave } from './support/file-preview-media.js';
 import {
   fulfillMockWorkspaceWatch,
@@ -8,6 +8,16 @@ import {
 } from './support/web-console-api.js';
 
 // Git history, binary previews, uploads, notifications, and the resource tree
+
+async function openNotifications(page: Page) {
+  const trigger = page.getByRole('button', { name: '会话与通知', exact: true });
+  await trigger.click();
+  const activity = page.locator('.workbench-activity-panel:visible');
+  const notificationsTab = activity.getByRole('tab', { name: '通知', exact: true });
+  await notificationsTab.click();
+  await expect(notificationsTab).toHaveAttribute('aria-selected', 'true');
+  return activity.locator('.workbench-notification-content');
+}
 
 function onePagePdf(): Buffer {
   const stream = 'BT /F1 18 Tf 72 720 Td (MyAgentRoam PDF) Tj ET';
@@ -418,7 +428,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(historyRefreshButton).toBeEnabled();
   await expect(historyRefreshButton).toHaveAttribute('type', 'button');
   await expect(historyRefreshButton).toHaveClass(/file-explorer-utility-button/u);
-  await expect(historyRefreshButton).toHaveClass(/icon-action/u);
+  await expect(historyRefreshButton).toHaveClass(/mar-icon-action/u);
   await expect(historyRefreshButton).not.toHaveClass(/el-button/u);
   holdHistoryRefresh = false;
   await expect(page.getByText('初始化 Git History')).toBeVisible();
@@ -429,7 +439,7 @@ test('Git History filters all or selected branches, expands commit files, and op
   await page.getByText('初始化 Git History').click();
   const commitFilesLoading = page.locator('.history-files [role="status"]');
   await expect(commitFilesLoading.locator('[data-mar-icon="loading-action"]')).toBeVisible();
-  await expect(commitFilesLoading.locator('.busy-indicator')).toHaveCount(0);
+  await expect(commitFilesLoading.locator('.mar-busy-indicator')).toHaveCount(0);
   releaseCommitFiles();
   await expect(page.getByRole('button', { name: /README\.md/ })).toBeVisible();
   await expect(page.locator('.history-files .el-button').first()).toHaveCSS('border-radius', '6px');
@@ -986,7 +996,7 @@ test('Supported binary files render in bounded preview windows and unknown types
   await expect(spreadsheetPreview.locator('.x-spreadsheet')).toBeVisible();
   const [contentHeight, officeHeight, excelHeight] = await Promise.all([
     spreadsheetPreview
-      .locator('.file-preview-content')
+      .locator('.mar-file-preview-content')
       .evaluate((element) => element.getBoundingClientRect().height),
     spreadsheetPreview
       .locator('.file-office-preview')
@@ -1201,16 +1211,15 @@ test('Reload marks uploads interrupted in notifications, permits resume or delet
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  await expect(page.locator('.workbench-notification-center')).not.toHaveClass(/mobile-mode/);
-  await page.getByRole('button', { name: '打开通知中心' }).click();
-  const transfer = page.getByRole('complementary', { name: '通知中心' });
+  await expect(page.locator('.workbench-activity-center')).not.toHaveClass(/mobile-mode/);
+  const transfer = await openNotifications(page);
   const interruptedUploads = transfer.locator('.workbench-notification-upload');
   await expect(interruptedUploads).toHaveCount(2);
   await expect(interruptedUploads).toContainText(['已中断', '已中断']);
   await expect(transfer.getByRole('button', { name: '恢复', exact: true })).toHaveCount(2);
   await page.getByRole('heading', { name: '选择一个工作区' }).click();
   await expect(transfer).toBeHidden();
-  await page.getByRole('button', { name: '打开通知中心' }).click();
+  await openNotifications(page);
   await transfer.getByRole('button', { name: '删除 remove.txt' }).click();
   await expect(transfer.getByText('remove.txt', { exact: true })).toHaveCount(0);
 
@@ -1231,7 +1240,7 @@ test('Reload marks uploads interrupted in notifications, permits resume or delet
   });
   await expect(completedDelete).toBeVisible();
   await expect(completedDelete).toBeEnabled();
-  await expect(transfer).toBeHidden({ timeout: 9_000 });
+  await expect(transfer).toBeVisible();
   expect(writes).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ url: expect.stringContaining('/uploads/upload-delete/cancel') })
@@ -1262,7 +1271,13 @@ test('Notifications use full timestamps even within the same calendar day', asyn
           createdAt: today.valueOf(),
           updatedAt: today.valueOf(),
           expiresAt: Date.now() + 60_000,
-          read: true
+          read: true,
+          target: {
+            targetType: 'WORKSPACE_SESSION',
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            sessionId: 'session-today'
+          }
         },
         {
           id: 'run:node-1:yesterday',
@@ -1272,7 +1287,13 @@ test('Notifications use full timestamps even within the same calendar day', asyn
           createdAt: yesterday.valueOf(),
           updatedAt: yesterday.valueOf(),
           expiresAt: Date.now() + 60_000,
-          read: true
+          read: true,
+          target: {
+            targetType: 'WORKSPACE_SESSION',
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            sessionId: 'session-yesterday'
+          }
         }
       ],
       recentRuns: []
@@ -1281,8 +1302,7 @@ test('Notifications use full timestamps even within the same calendar day', asyn
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  await page.getByRole('button', { name: '打开通知中心' }).click();
-  const center = page.getByRole('complementary', { name: '通知中心' });
+  const center = await openNotifications(page);
   const notificationItems = center.locator('.workbench-notification-list > li');
   const expectedTimes = await page.evaluate(
     (values) =>
@@ -1323,7 +1343,7 @@ test('Recent sessions show their own count, status tags and cumulative duration'
           workspaceId: 'workspace-1',
           workspaceName: 'my-agent-roam',
           sessionId: 'session-1',
-          sessionTitle: '状态展示',
+          sessionTitle: '状态展示与长标题可读性覆盖',
           userMessage: '继续完成当前任务',
           runner: 'codex',
           status: 'RUNNING',
@@ -1340,25 +1360,43 @@ test('Recent sessions show their own count, status tags and cumulative duration'
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  await expect(page.locator('.recent-sessions-badge')).toHaveText('1');
+  const activity = page.getByRole('button', { name: '会话与通知', exact: true });
+  await expect(activity.locator('.activity-entry-running')).toBeVisible();
+  await expect(activity.locator('.activity-entry-count')).toHaveCount(0);
+  await expect(activity).toHaveAttribute('aria-description', '运行中 1, 0 条未读通知');
   const recentSessionsIcon = page
-    .getByRole('button', { name: '最近会话', exact: true })
+    .getByRole('button', { name: '会话与通知', exact: true })
     .locator('svg');
   await expect(recentSessionsIcon).toBeVisible();
-  await expect(recentSessionsIcon.locator('..')).toHaveAttribute('aria-hidden', 'true');
-  await page.getByRole('button', { name: '最近会话', exact: true }).click();
+  await expect(recentSessionsIcon).toHaveAttribute('aria-hidden', 'true');
+  await activity.click();
+  await page
+    .locator('.workbench-activity-panel:visible')
+    .getByRole('tab', { name: '最近会话', exact: true })
+    .click();
   const task = page
     .getByRole('region', { name: '最近会话', exact: true })
     .locator('.recent-sessions-list > li');
-  await expect(task).toContainText('my-agent-roam: 状态展示');
+  await expect(task).toContainText('my-agent-roam: 状态展示与长标题可读性覆盖');
   await expect(task).toContainText('继续完成当前任务');
-  const textWidths = await task.evaluate((element) => ({
-    row: element.getBoundingClientRect().width,
-    title: element.querySelector('.recent-session-title')!.getBoundingClientRect().width,
-    summary: element.querySelector('small')!.getBoundingClientRect().width
-  }));
-  expect(textWidths.title).toBeGreaterThan(textWidths.row / 2);
-  expect(textWidths.summary).toBeGreaterThan(textWidths.row * 0.75);
+  const textGeometry = await task.evaluate((element) => {
+    const row = element.getBoundingClientRect();
+    const title = element.querySelector('.recent-session-title')!.getBoundingClientRect();
+    const status = element.querySelector('.el-tag')!.getBoundingClientRect();
+    const summary = element.querySelector('small')!.getBoundingClientRect();
+    return {
+      rowWidth: row.width,
+      titleWidth: title.width,
+      titleRight: title.right,
+      statusLeft: status.left,
+      summaryWidth: summary.width
+    };
+  });
+  expect(textGeometry.titleWidth).toBeGreaterThan(textGeometry.rowWidth / 2);
+  expect(textGeometry.titleRight).toBeLessThanOrEqual(textGeometry.statusLeft);
+  expect(textGeometry.summaryWidth).toBeGreaterThan(textGeometry.rowWidth * 0.75);
+  await task.locator('.recent-session-title').hover();
+  await expect(page.getByRole('tooltip')).toHaveText('my-agent-roam: 状态展示与长标题可读性覆盖');
   await expect(task.locator('.el-tag')).toHaveText('运行中');
   await expect(task.locator('.el-tag')).toHaveClass(/el-tag--success/);
   const runningColors = await task.locator('.el-tag').evaluate((element) => {
@@ -1378,7 +1416,7 @@ test('Recent sessions show their own count, status tags and cumulative duration'
   );
   expect(
     await page
-      .locator('.recent-sessions-entry')
+      .locator('.workbench-activity-center')
       .evaluate((entry) => entry.previousElementSibling?.getAttribute('aria-label'))
   ).toBe('对话');
   await task.getByRole('button').click();
@@ -1436,31 +1474,48 @@ for (const mobile of [false, true]) {
       );
       await page.goto('/console');
       await page.getByRole('button', { name: '进入控制台' }).click();
-      const trigger = page.getByRole('button', { name: '最近会话', exact: true });
-      await expect(page.locator('.recent-sessions-badge')).toHaveText('1');
-      await expect(trigger).toHaveAttribute('aria-description', '1 个进行中的会话');
+      const trigger = page.getByRole('button', { name: '会话与通知', exact: true });
+      await expect(trigger.locator('.activity-entry-running')).toBeVisible();
+      await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
+      await expect(trigger).toHaveAttribute('aria-description', '运行中 1, 0 条未读通知');
       await trigger.click();
       const panel = page.getByRole('region', { name: '最近会话', exact: true });
       const tasks = panel.locator('.recent-sessions-list > li');
       await expect(tasks).toHaveCount(30);
       await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--success/);
-      await expect(tasks.nth(1).locator('.el-tag')).toHaveClass(/el-tag--primary/);
-      await expect(page.locator('.recent-sessions-popover')).toHaveCSS('opacity', '1');
+      await expect(tasks.nth(1).locator('.el-tag')).toHaveClass(/el-tag--info/);
+      if (mobile) await expect(page.locator('.workbench-activity-panel.mobile-mode')).toBeVisible();
+      else
+        await expect(page.locator('.workbench-activity-popover:visible')).toHaveCSS('opacity', '1');
       await expect(tasks.nth(0)).toContainText('Workspace: Task 29');
       await expect(tasks.nth(1)).toContainText('Workspace: Task 28');
       await expect(tasks.nth(29)).toContainText('Workspace: Task 0');
       const checkBounds = async () => {
         await expect
           .poll(() =>
-            panel.evaluate((element) => {
+            panel.evaluate((element, isMobile) => {
               const bounds = element.getBoundingClientRect();
+              if (isMobile) {
+                const drawer = element.closest('.workspace-tree')?.getBoundingClientRect();
+                return (
+                  drawer !== undefined &&
+                  bounds.top >= drawer.top &&
+                  bounds.bottom <= drawer.bottom &&
+                  bounds.left >= drawer.left &&
+                  bounds.right <= drawer.right &&
+                  bounds.top >= 0 &&
+                  bounds.bottom <= window.innerHeight &&
+                  bounds.left >= 0 &&
+                  bounds.right <= window.innerWidth
+                );
+              }
               return (
                 bounds.top >= 8 &&
                 bounds.bottom <= window.innerHeight - 8 &&
                 bounds.left >= 8 &&
                 bounds.right <= window.innerWidth - 8
               );
-            })
+            }, mobile)
           )
           .toBe(true);
       };
@@ -1480,9 +1535,10 @@ for (const mobile of [false, true]) {
       await tasks.last().scrollIntoViewIfNeeded();
       await expect(tasks.last()).toBeInViewport();
       await trigger.click();
-      await page.getByRole('button', { name: '打开通知中心' }).click();
-      const notificationsPanel = page.getByRole('complementary', { name: '通知中心' });
-      await expect(notificationsPanel.locator('.recent-sessions-list')).toHaveCount(0);
+      const notificationsPanel = await openNotifications(page);
+      const activityPanel = page.locator('.workbench-activity-panel:visible');
+      await expect(activityPanel.locator('.activity-recent-content[role="tabpanel"]')).toBeHidden();
+      await expect(activityPanel.locator('.recent-sessions-list')).toHaveCount(0);
       await expect(notificationsPanel.locator('.workbench-notification-list > li')).toHaveCount(
         notificationCount
       );
@@ -1491,14 +1547,15 @@ for (const mobile of [false, true]) {
         await notifications.last().scrollIntoViewIfNeeded();
         await expect(notifications.last()).toBeInViewport();
       }
-      await page.getByRole('button', { name: '打开通知中心' }).click();
+      await trigger.click();
       await expect(notificationsPanel).toBeHidden();
       await expect(panel).toBeHidden();
       taskCount = 1;
       await page.setViewportSize(viewport);
       await trigger.click();
       await expect(tasks).toHaveCount(1);
-      await expect(page.locator('.recent-sessions-badge')).toHaveText('1');
+      await expect(trigger.locator('.activity-entry-running')).toBeVisible();
+      await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
       expect(
         await panel.evaluate((element) => element.getBoundingClientRect().bottom)
       ).toBeLessThan(viewport.height - 50);
@@ -1519,12 +1576,13 @@ for (const mobile of [false, true]) {
         const active = status === 'STARTING' || status === 'CANCELLING';
         await expect(trigger).toHaveAttribute(
           'aria-description',
-          `${active ? 1 : 0} 个进行中的会话`
+          `运行中 ${active ? 1 : 0}, 0 条未读通知`
         );
-        await expect(page.locator('.recent-sessions-badge')).toHaveCount(active ? 1 : 0);
+        await expect(trigger.locator('.activity-entry-running')).toHaveCount(active ? 1 : 0);
+        await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
         if (status === 'SUCCEEDED') {
           await expect(tasks.first().locator('.el-tag')).toHaveText('已完成');
-          await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--primary/);
+          await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--info/);
         }
         await trigger.click();
         await expect(panel).toBeHidden();
@@ -1533,7 +1591,8 @@ for (const mobile of [false, true]) {
       await trigger.click();
       await expect(tasks).toHaveCount(0);
       await expect(panel).toContainText('暂无最近会话');
-      await expect(page.locator('.recent-sessions-badge')).toHaveCount(0);
+      await expect(trigger.locator('.activity-entry-running')).toHaveCount(0);
+      await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(panel).toBeHidden();
     });

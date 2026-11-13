@@ -544,7 +544,10 @@ describe('single shared Web implementation', () => {
     expect(bootstrap).toContain("from '@myagentroam/web-core/bootstrap'");
     expect(bootstrap).not.toMatch(/createApp|app\.mount|serviceWorker\.register/u);
     expectSharedEntry('ee/web/src/service/theme-preference-service.ts', 'theme');
-    expect(read('ee/web/src/styles.css')).not.toContain('--mar-bg-page');
+    expect(existsSync('ee/web/src/styles.css')).toBe(false);
+    const enterpriseSurface = read('ee/web/src/view/workbench/WorkbenchSurface.vue');
+    expect(enterpriseSurface).toContain('.enterprise-frozen-banner');
+    expect(enterpriseSurface).not.toContain('--mar-bg-page');
     expect(read(`${root}/src/styles.css`)).not.toContain('enterprise-frozen-banner');
     expect(read(`${root}/src/App.vue`)).not.toMatch(
       /MarketingHomePage|WorkbenchPage|StandaloneFilePreviewPage/u

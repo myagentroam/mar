@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
           aria-live="polite"
           :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
         >
-          <BusyIndicator class="history-busy-indicator read-loading-indicator" />
+          <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
         </div>
         <el-button
           v-if="initialLoadFailed || reloading"
@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
         >
           <BusyIndicator
             v-if="loadingInitial || reloading"
-            class="history-busy-indicator read-loading-indicator"
+            class="history-busy-indicator mar-read-loading-indicator"
           />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </el-button>
@@ -360,7 +360,7 @@ onBeforeUnmount(() => {
             role="status"
             :aria-label="translate('generated.conversationScroll.loadingEarlierMessages')"
           >
-            <BusyIndicator class="history-busy-indicator read-loading-indicator" />
+            <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
           </div>
           <el-button
             v-if="olderAction === 'retry' || (olderError && !loadingOlder)"
@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
           >
             <BusyIndicator
               v-if="loadingOlder || olderAction !== undefined"
-              class="history-busy-indicator read-loading-indicator"
+              class="history-busy-indicator mar-read-loading-indicator"
             />
             <template v-else>{{ translate('common.loadFailedRetry') }}</template>
           </el-button>
@@ -418,6 +418,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@media (min-width: 768px) {
+  .conversation-scroll-region.is-empty {
+    margin-top: auto;
+  }
+}
+
 .conversation-history-control {
   /* Keep loading and retry feedback from shifting the reading viewport. */
   min-height: calc(24px + 0.8rem);

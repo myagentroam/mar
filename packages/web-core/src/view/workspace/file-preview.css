@@ -1,0 +1,35 @@
+/* Shared file and diff preview content; document scroll locking stays in the global entry. */
+.mar-file-preview-eyebrow {
+  display: block;
+  margin-bottom: 0.12rem;
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.mar-file-preview-actions {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+.mar-file-preview-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+.mar-file-preview-content pre {
+  min-height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: var(--mar-bg-panel);
+  box-shadow: 0 0 0 1px var(--mar-border-default);
+  padding: 1rem 1.15rem;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  white-space: pre;
+  word-break: normal;
+}
+.mar-file-preview-content .mar-empty {
+  margin: 0.65rem 0 0;
+}

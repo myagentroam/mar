@@ -66,23 +66,29 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
   });
   try {
     const page = await context.newPage();
+    // This WebKit-specific property is absent in browsers that do not implement it.
+    const supportsTapHighlight = await page.evaluate(() =>
+      CSS.supports('-webkit-tap-highlight-color', 'transparent')
+    );
     for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
       const activity = page.getByRole('button', {
         name: 'Sessions & notifications',
         exact: true
       });
-      for (const control of [
-        page.locator('html'),
-        activity,
-        page.getByRole('link', { name: 'Help', exact: true })
-      ])
-        await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
+      if (supportsTapHighlight)
+        for (const control of [
+          page.locator('html'),
+          activity,
+          page.getByRole('link', { name: 'Help', exact: true })
+        ])
+          await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
       await activity.tap();
       const menu = page.locator('.workspace-tree.mobile-open');
       await expect(menu).toBeVisible();
       const scrim = page.locator('.sidebar-scrim');
-      await expect(scrim).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
+      if (supportsTapHighlight)
+        await expect(scrim).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
       await scrim.tap({ position: { x: 380, y: 10 } });
       await expect(menu).toHaveCount(0);
       await expect(page.getByLabel('Opened target')).toHaveText('');
@@ -97,10 +103,11 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
       await page.getByRole('button', { name: 'Open image preview', exact: true }).tap();
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
-      await expect(page.locator('.el-overlay').filter({ has: dialog })).toHaveCSS(
-        '-webkit-tap-highlight-color',
-        'rgba(0, 0, 0, 0)'
-      );
+      if (supportsTapHighlight)
+        await expect(page.locator('.el-overlay').filter({ has: dialog })).toHaveCSS(
+          '-webkit-tap-highlight-color',
+          'rgba(0, 0, 0, 0)'
+        );
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
     }

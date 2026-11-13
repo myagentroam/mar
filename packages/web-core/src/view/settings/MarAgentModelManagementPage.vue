@@ -1478,7 +1478,7 @@ onBeforeUnmount(() => {
   <section
     v-loading="initialLoading"
     element-loading-custom-class="mar-page-loading"
-    class="management-page mar-agent-model-management"
+    class="mar-management-page mar-agent-model-management"
   >
     <el-tabs v-model="activeTab" class="management-tabs">
       <el-tab-pane
@@ -1486,7 +1486,7 @@ onBeforeUnmount(() => {
         :label="translate('marAgentModels.modelsTab')"
         name="models"
       >
-        <div class="table-actions">
+        <div class="mar-table-actions">
           <el-button
             :icon="marIcon('refresh')"
             :loading="loading && modelsReady"
@@ -1603,7 +1603,7 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column v-if="!sorting" :label="translate('marAgentModels.actions')" width="450">
             <template #default="{ row }">
-              <div class="row-actions" @click.stop>
+              <div class="mar-row-actions" @click.stop>
                 <el-button v-if="writable" link :icon="marIcon('edit')" @click="openEdit(row)">{{
                   translate('marAgentModels.edit')
                 }}</el-button>
@@ -1638,7 +1638,7 @@ onBeforeUnmount(() => {
         </el-table>
       </el-tab-pane>
       <el-tab-pane :label="translate('marAgentModels.codexCredentialsTab')" name="codexCredentials">
-        <div class="table-actions">
+        <div class="mar-table-actions">
           <el-button
             :icon="marIcon('refresh')"
             :loading="credentialLoading && credentialsLoaded"
@@ -1698,7 +1698,7 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column :label="translate('marAgentModels.actions')" width="350">
             <template #default="{ row }">
-              <div class="row-actions" @click.stop>
+              <div class="mar-row-actions" @click.stop>
                 <el-button
                   v-if="writable"
                   link
@@ -1772,7 +1772,7 @@ onBeforeUnmount(() => {
       </el-tab-pane>
       <el-tab-pane :label="translate('marAgentModels.personalOrderTab')" name="modelOrder">
         <p class="selection-rule">{{ translate('marAgentModels.personalOrderHint') }}</p>
-        <div class="table-actions">
+        <div class="mar-table-actions">
           <el-button
             :icon="marIcon('refresh')"
             :loading="personalOrderLoading && personalOrderReady"
@@ -2793,10 +2793,10 @@ onBeforeUnmount(() => {
   font-size: var(--mar-font-size-body);
   margin: 0 0 12px;
 }
-.table-actions {
+.mar-table-actions {
   margin-bottom: 16px;
 }
-.row-actions {
+.mar-row-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

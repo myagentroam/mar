@@ -382,10 +382,10 @@ onMounted(() => {
   <section
     v-loading="loading && !ready"
     element-loading-custom-class="mar-page-loading"
-    class="management-page oauth-management"
+    class="mar-management-page oauth-management"
   >
-    <div class="filter-row">
-      <label class="filter-field"
+    <div class="mar-filter-row">
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.oAuthManagementPage.provider') }}</span
         ><el-input
           v-model="keyword"
@@ -394,7 +394,7 @@ onMounted(() => {
           :clear-icon="marIcon('clear-input')"
       /></label>
     </div>
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && ready"
@@ -439,7 +439,7 @@ onMounted(() => {
         ></el-table-column
       ><el-table-column :label="translate('generated.oAuthManagementPage.actions')" :width="320"
         ><template #default="{ row }"
-          ><div class="row-actions" @click.stop>
+          ><div class="mar-row-actions" @click.stop>
             <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="edit(row)">{{
               translate('generated.oAuthManagementPage.edit')
             }}</el-button
@@ -695,7 +695,7 @@ code {
 .clickable-rows :deep(.el-table__row) {
   cursor: pointer;
 }
-.row-actions {
+.mar-row-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

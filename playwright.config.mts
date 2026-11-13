@@ -68,7 +68,17 @@ export default defineConfig({
                 ...integrationTestFiles.map((file) => `**/${file}`),
                 '**/release-smoke.spec.ts'
               ],
-              use: { browserName: browserName as 'chromium' | 'firefox' }
+              use: {
+                browserName: browserName as 'chromium' | 'firefox',
+                ...(browserName === 'firefox'
+                  ? {
+                      launchOptions: {
+                        // Exercise the real clipboard without Chromium-only permission names.
+                        firefoxUserPrefs: { 'dom.events.testing.asyncClipboard': true }
+                      }
+                    }
+                  : {})
+              }
             }))
           : [])
       ],

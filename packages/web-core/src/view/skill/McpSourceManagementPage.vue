@@ -457,9 +457,9 @@ function scopeLabel(scope: string): string {
   <main
     v-loading="loading && !sourcesReady"
     element-loading-custom-class="mar-page-loading"
-    class="management-page mcp-source-page"
+    class="mar-management-page mcp-source-page"
   >
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         type="primary"
         :icon="marIcon('plus')"
@@ -504,7 +504,7 @@ function scopeLabel(scope: string): string {
       >
       <el-table-column :label="translate('generated.mcpSourceManagementPage.actions')" :width="180">
         <template #default="{ row }"
-          ><div class="row-actions" @click.stop>
+          ><div class="mar-row-actions" @click.stop>
             <el-button
               link
               :icon="marIcon('power')"
@@ -614,7 +614,7 @@ function scopeLabel(scope: string): string {
               :width="180"
             >
               <template #default="{ row }">
-                <div class="row-actions" @click.stop>
+                <div class="mar-row-actions" @click.stop>
                   <el-button
                     link
                     :icon="marIcon('plus')"
@@ -730,7 +730,7 @@ function scopeLabel(scope: string): string {
               min-width="360"
             >
               <template #default="{ row }">
-                <div class="row-actions" @click.stop>
+                <div class="mar-row-actions" @click.stop>
                   <el-button
                     link
                     :icon="marIcon('edit')"
@@ -979,7 +979,7 @@ p {
 .clickable-rows :deep(.el-table__row) {
   cursor: pointer;
 }
-.row-actions {
+.mar-row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;

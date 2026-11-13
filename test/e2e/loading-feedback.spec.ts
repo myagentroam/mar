@@ -43,6 +43,36 @@ async function expectNeutralRetry(button: Locator) {
   await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
 }
 
+test('Library loading has a single animated ring without mounting BusyIndicator', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}library-loading.html`);
+  await expect(page.locator('.mar-busy-indicator')).toHaveCount(0);
+  const spinner = page.locator('#library-loading .el-loading-spinner');
+  await expect(spinner).toBeVisible();
+  await expect(spinner.locator('.circular')).toBeHidden();
+  const ring = async () =>
+    spinner.evaluate((element) => {
+      const style = getComputedStyle(element, '::before');
+      const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      return {
+        width: parseFloat(style.width) / rootSize,
+        height: parseFloat(style.height) / rootSize,
+        border: style.borderTopWidth,
+        animation: style.animationName
+      };
+    });
+  expect(await ring()).toEqual({
+    width: 1.25,
+    height: 1.25,
+    border: '2px',
+    animation: 'mar-busy-indicator-spin'
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(async () => (await ring()).animation).toBe('none');
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Session cleanup uses button loading without a content mask: ${theme}`, async ({
     page
@@ -219,18 +249,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const previews = [preview, pagePreview];
       const history = page.getByTestId('history-older');
       const indicators = [
-        page.getByTestId('history-initial').locator('.busy-indicator'),
-        history.locator('.busy-indicator'),
-        page.getByTestId('management-append').locator('.busy-indicator')
+        page.getByTestId('history-initial').locator('.mar-busy-indicator'),
+        history.locator('.mar-busy-indicator'),
+        page.getByTestId('management-append').locator('.mar-busy-indicator')
       ];
       for (const loading of previews) {
         await expect(loading).toHaveText('');
         await expect(loading).toHaveAttribute('aria-busy', 'true');
         await expect(loading).toHaveAttribute('aria-label', /.+/);
-        await expectReadIndicator(loading.locator('.busy-indicator'), 1.25);
+        await expectReadIndicator(loading.locator('.mar-busy-indicator'), 1.25);
       }
       const surface = (await pagePreview.locator('..').boundingBox())!;
-      const spinner = (await pagePreview.locator('.busy-indicator').boundingBox())!;
+      const spinner = (await pagePreview.locator('.mar-busy-indicator').boundingBox())!;
       expect(Math.abs(spinner.x + spinner.width / 2 - surface.x - surface.width / 2)).toBeLessThan(
         1
       );
@@ -253,19 +283,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const star = tree.getByRole('status').locator('[data-mar-icon="loading-action"]');
       await expect(star).toBeVisible();
       await expect(star).not.toHaveCSS('animation-name', 'none');
-      await expect(tree.locator('.busy-indicator')).toHaveCount(0);
+      await expect(tree.locator('.mar-busy-indicator')).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath(`read-loading-${width}.png`) });
       await page
         .locator('html')
         .evaluate((element) => element.style.setProperty('--mar-color-brand-text', '#c084fc'));
       for (const loading of previews)
-        await expectReadIndicator(loading.locator('.busy-indicator'), 1.25);
+        await expectReadIndicator(loading.locator('.mar-busy-indicator'), 1.25);
       for (const indicator of indicators) await expectReadIndicator(indicator, 0.875);
       await expect(runtime).toHaveCSS('color', runtimeColor);
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(star).toHaveCSS('animation-name', 'none');
       for (const loading of previews)
-        await expect(loading.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+        await expect(loading.locator('.mar-busy-indicator')).toHaveCSS('animation-name', 'none');
       await page.getByRole('button', { name: 'Finish directory load' }).click();
       await expect(star).toHaveCount(0);
       expect((await row.boundingBox())!.height).toBe(rowHeight);
@@ -276,16 +306,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(boundary).toHaveAttribute('aria-busy', 'true');
       await expect(boundary.getByRole('button')).toHaveCount(0);
       await expect(boundary).toHaveText('');
-      await expectReadIndicator(boundary.locator('.busy-indicator'), 0.875);
-      await expect(history.locator('.busy-indicator')).toHaveCount(1);
+      await expectReadIndicator(boundary.locator('.mar-busy-indicator'), 0.875);
+      await expect(history.locator('.mar-busy-indicator')).toHaveCount(1);
       await expect(history.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
-      await expect(boundary.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await expect(boundary.locator('.mar-busy-indicator')).toHaveCSS('animation-name', 'none');
       await scroll.dispatchEvent('wheel', { deltaY: -100 });
       await expect(history).toHaveAttribute('data-request-count', '1');
       await expect(history.getByText('Existing message remains readable')).toBeVisible();
       await page.getByRole('button', { name: 'Finish history load' }).click();
       await expect(boundary).toHaveAttribute('aria-busy', 'false');
-      await expect(history.locator('.busy-indicator')).toHaveCount(0);
+      await expect(history.locator('.mar-busy-indicator')).toHaveCount(0);
       await page.getByRole('button', { name: 'Fail history load', exact: true }).click();
       const retry = history.locator('button[data-history-action="retry"]');
       await expect(retry).toHaveText('Failed to load. Retry');
@@ -298,8 +328,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(retry).toHaveText('');
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
       await expect(retry).toHaveAttribute('aria-busy', 'true');
-      await expectReadIndicator(retry.locator('.busy-indicator'), 0.875);
-      await expect(history.locator('.busy-indicator')).toHaveCount(1);
+      await expectReadIndicator(retry.locator('.mar-busy-indicator'), 0.875);
+      await expect(history.locator('.mar-busy-indicator')).toHaveCount(1);
       await retry.dispatchEvent('click');
       await expect(history).toHaveAttribute('data-request-count', '2');
       await page.getByRole('button', { name: 'Finish history load' }).click();
@@ -315,8 +345,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(reload).toBeFocused();
       await expect(reload).toHaveText('');
       await expect(reload).toHaveAttribute('aria-busy', 'true');
-      await expectReadIndicator(reload.locator('.busy-indicator'), 0.875);
-      await expect(initial.locator('.busy-indicator')).toHaveCount(1);
+      await expectReadIndicator(reload.locator('.mar-busy-indicator'), 0.875);
+      await expect(initial.locator('.mar-busy-indicator')).toHaveCount(1);
       await expect(initial.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
       await reload.dispatchEvent('click');
       await expect(initial).toHaveAttribute('data-request-count', '1');

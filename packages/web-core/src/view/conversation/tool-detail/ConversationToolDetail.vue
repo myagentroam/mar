@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { executionPresentationSchema, type ToolPresentation } from '@myagentroam/protocol';
 import type { ConversationItem } from '../../../model/workbench.js';
@@ -104,7 +105,7 @@ const detailText = computed(() => {
   <section
     class="tool-detail"
     :class="{
-      'conversation-detail-body':
+      'mar-conversation-detail-body':
         !copyOnly && (selection.kind !== 'fallback' || detailText || $slots.default)
     }"
     :aria-label="translate('toolPresentation.detail.output')"
@@ -217,11 +218,11 @@ const detailText = computed(() => {
         :error-message="stringField(payload, 'errorMessage')"
         :permission-reason="item.permissionStop?.reason"
       />
-      <pre v-else-if="selection.kind === 'text'" class="conversation-detail-text">{{
+      <pre v-else-if="selection.kind === 'text'" class="mar-conversation-detail-text">{{
         selection.value
       }}</pre>
       <slot v-else>
-        <pre v-if="detailText" class="conversation-detail-text">{{ detailText }}</pre>
+        <pre v-if="detailText" class="mar-conversation-detail-text">{{ detailText }}</pre>
       </slot>
     </ConversationDetailPreview>
   </section>
@@ -232,12 +233,12 @@ const detailText = computed(() => {
   min-width: 0;
   min-height: var(--mar-utility-control-size);
 }
-.tool-detail:not(.conversation-detail-body) {
+.tool-detail:not(.mar-conversation-detail-body) {
   --conversation-copy-end: 0px;
   padding: 0.5rem calc(var(--mar-utility-control-size) + 0.5rem) 0.5rem 0;
 }
-.tool-detail.conversation-detail-body {
+.tool-detail.mar-conversation-detail-body {
   --conversation-copy-end: 0.5rem;
-  --conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
+  --mar-conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
 }
 </style>

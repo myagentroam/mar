@@ -25,7 +25,7 @@ async function measureRows(page: Page) {
         titleClientWidth: title.clientWidth,
         parts: Array.from(
           row.querySelectorAll(
-            '.runner-brand-icon, .session-pin-indicator, .session-unread-label, .session-activity i, time, .session-more-button'
+            '.mar-runner-brand-icon, .session-pin-indicator, .session-unread-label, .mar-session-activity i, time, .session-more-button'
           )
         ).map((part) => ({
           className: part.getAttribute('class'),
@@ -164,7 +164,7 @@ for (const locale of ['zh-CN', 'en-US']) {
         await links.first().click();
         await expect(rows.first()).toHaveClass(/selected/);
         await expect(rows.nth(1).locator('.session-unread-label')).toBeVisible();
-        await expect(rows.first().locator('.session-activity.managed_active')).toBeVisible();
+        await expect(rows.first().locator('.mar-session-activity.managed_active')).toBeVisible();
         await expect(rows.nth(2).locator('.session-pin-indicator')).toBeVisible();
         await expect(links.first().locator('strong')).toHaveAttribute('title', longTitle);
         await expect(links.first().locator('strong')).toHaveCSS('text-overflow', 'ellipsis');
@@ -261,7 +261,7 @@ for (const locale of ['zh-CN', 'en-US']) {
               Math.abs(part.bounds.y + part.bounds.height / 2 - (row.row.y + row.row.height / 2))
             ).toBeLessThanOrEqual(1);
             if (part.className === 'session-relative-time') expect(part.fontSize).toBe('12px');
-            if (part.className?.includes('runner-brand-icon'))
+            if (part.className?.includes('mar-runner-brand-icon'))
               expect(part.bounds.height).toBeCloseTo(14.42, 1);
           }
           const time = row.parts.find((part) => part.className === 'session-relative-time')!;

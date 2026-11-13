@@ -3,7 +3,7 @@ import { getCurrentInstance, onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
-import { createRunnerInteractionService } from '../../src/service/runner-interaction-service.js';
+import { registerComposerShortcuts } from '../../src/service/composer-shortcut-service.js';
 import { createMobileSurfaceFocusService } from '../../src/service/mobile-surface-focus-service.js';
 
 const root: WorkspaceFileTreeNode = {
@@ -40,20 +40,16 @@ const mobileFocus = createMobileSurfaceFocusService({
 onBeforeUnmount(mobileFocus.dispose);
 const runStops = ref(0);
 const runInput = ref('');
-const runner = createRunnerInteractionService({
-  input: runInput,
-  draftSessionOpen: ref(false),
-  selectedSession: ref(undefined),
-  profile: ref(undefined)
+const runControl = ref<HTMLTextAreaElement>();
+const releaseRunShortcuts = registerComposerShortcuts({
+  owner: () => runControl.value,
+  canSend: () => false,
+  canReplace: () => false,
+  canStop: () => true,
+  send: () => undefined,
+  stop: () => runStops.value++
 });
-function onRunKeydown(event: KeyboardEvent): void {
-  runner.onKeydown(event, {
-    mobile: false,
-    canInterrupt: true,
-    stop: () => runStops.value++,
-    send: () => undefined
-  });
-}
+onBeforeUnmount(releaseRunShortcuts);
 getCurrentInstance()!.appContext.app.mixin({
   created() {
     if (this.$options.name === 'ElTooltip') {
@@ -89,7 +85,7 @@ getCurrentInstance()!.appContext.app.mixin({
     <button data-testid="grow" @click="count = 2000">Grow list</button>
     <button data-testid="open-escape-dialog" @click="dialogOpen = true">Open Escape dialog</button>
     <output data-testid="menu-actions">{{ menuActions }}</output>
-    <textarea v-model="runInput" aria-label="Running composer" @keydown="onRunKeydown" />
+    <textarea ref="runControl" v-model="runInput" aria-label="Running composer" />
     <button v-tooltip="'Run action details'">Run action hint</button>
     <output data-testid="run-stops">{{ runStops }}</output>
     <button data-testid="open-mobile-sidebar" @click="mobileSidebarOpen = true">

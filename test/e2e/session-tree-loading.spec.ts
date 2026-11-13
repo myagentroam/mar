@@ -41,7 +41,7 @@ async function expectUnmaskedLoading(
   const loading = tree.locator('.session-tree-loading');
   await expect(loading).toHaveAttribute('role', 'status');
   await expect(loading).toHaveAttribute('aria-label', /Loading/);
-  await expect(loading.locator('.busy-indicator.read-loading-indicator')).toBeVisible();
+  await expect(loading.locator('.mar-busy-indicator.mar-read-loading-indicator')).toBeVisible();
   await expect(tree.locator('.el-loading-mask')).toHaveCount(0);
   await expect(page.locator('.el-loading-mask, .el-overlay, [data-loading-overlay]')).toHaveCount(
     0
@@ -119,7 +119,7 @@ test('retries a failed tree read, reaches ready, and closes on Escape', async ({
   await retry.click();
   await expect(page.getByTestId('retry-count')).toHaveText('1');
   await expect(tree).toHaveAttribute('aria-busy', 'true');
-  await expect(tree.locator('.session-tree-loading .busy-indicator')).toBeVisible();
+  await expect(tree.locator('.session-tree-loading .mar-busy-indicator')).toBeVisible();
   await setFixtureState(page, 'ready');
   await expect(tree.locator('.session-tree-row')).toHaveCount(100);
 

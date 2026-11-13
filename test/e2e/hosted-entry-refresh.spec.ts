@@ -255,7 +255,7 @@ for (const [width, theme, cached] of [
     await retry.click();
     await expect(retry).toHaveAttribute('aria-busy', 'true');
     await expect(retry).toBeDisabled();
-    await expect(retry.locator('.busy-indicator')).toHaveCount(1);
+    await expect(retry.locator('.mar-busy-indicator')).toHaveCount(1);
     expect(initialRequests).toBe(2);
     releaseRetry();
     await expect(retry).toHaveCount(0);

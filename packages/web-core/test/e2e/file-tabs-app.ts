@@ -267,6 +267,22 @@ createTooltipApp({
           }
         })
       ]);
+    const formatFocusLauncher = query.get('format-focus-launcher');
+    if (formatFocusLauncher !== null)
+      return h(
+        'button',
+        {
+          id: 'open-format-focus-window',
+          type: 'button',
+          onClick: () => {
+            const destination = new URL(window.location.href);
+            destination.searchParams.delete('format-focus-launcher');
+            destination.searchParams.set('format-focus', formatFocusLauncher);
+            window.open(destination.toString(), '_blank');
+          }
+        },
+        'Open Git format preview window'
+      );
     if (query.has('diff-navigation') || query.has('format-focus')) {
       const view = fileView(query.has('format-focus'));
       if (!query.has('format-focus'))

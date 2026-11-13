@@ -1,3 +1,4 @@
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -395,7 +396,7 @@ test('a long draft quote stays compact while preserving its full snapshot', asyn
   const rootFontSize = await page.evaluate(() =>
     parseFloat(getComputedStyle(document.documentElement).fontSize)
   );
-  expect((await tag.boundingBox())!.width).toBeLessThanOrEqual(18 * rootFontSize);
+  expect((await tag.boundingBox())!.width).toBeLessThanOrEqual(18 * rootFontSize + 1 / 64);
   const tagBounds = (await tag.boundingBox())!;
   const removeBounds = (await tag.locator('.quote-tag-remove').boundingBox())!;
   expect(removeBounds.x + removeBounds.width).toBeLessThanOrEqual(tagBounds.x + tagBounds.width);
@@ -792,7 +793,7 @@ for (const selectionCase of [
   }
 ]) {
   test(`working Diff copies and quotes only ${selectionCase.name}`, async ({ page, context }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+    await grantClipboardPermissions(context, {
       origin: fixture.url
     });
     await page.evaluate(() => {

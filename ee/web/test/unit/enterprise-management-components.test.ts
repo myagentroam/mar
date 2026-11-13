@@ -108,7 +108,7 @@ describe('Enterprise management components', () => {
         await flushComponent();
         const actionRows = view
           .findAll('div')
-          .filter((node) => node.props['class'] === 'row-actions');
+          .filter((node) => node.props['class'] === 'mar-row-actions');
         expect(actionRows).toHaveLength(2);
         for (const [index, actionRow] of actionRows.entries()) {
           const actions = actionRow.children.filter((node) => node.type === 'ElButton');
@@ -670,7 +670,9 @@ describe('Enterprise management components', () => {
     try {
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research / Platform');
-      const actionCell = view.findAll('div').find((node) => node.props['class'] === 'row-actions');
+      const actionCell = view
+        .findAll('div')
+        .find((node) => node.props['class'] === 'mar-row-actions');
       expect(actionCell).toBeDefined();
       const stopSecretRowClick = vi.fn();
       await trigger(actionCell!, 'onClick', { stopPropagation: stopSecretRowClick });
@@ -743,7 +745,9 @@ describe('Enterprise management components', () => {
     try {
       await flushComponent();
       const table = view.findAll('ElTable')[0]!;
-      const actionCell = view.findAll('div').find((node) => node.props['class'] === 'row-actions');
+      const actionCell = view
+        .findAll('div')
+        .find((node) => node.props['class'] === 'mar-row-actions');
       expect(actionCell).toBeDefined();
       const stopProviderRowClick = vi.fn();
       await trigger(actionCell!, 'onClick', { stopPropagation: stopProviderRowClick });

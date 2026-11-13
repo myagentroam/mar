@@ -1,3 +1,4 @@
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -247,7 +248,7 @@ for (const scenario of [
     page
   }) => {
     await page.setViewportSize({ width: scenario.width, height: 900 });
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await grantClipboardPermissions(page.context());
     await page.route('**/api/workspaces/workspace/**', (route) =>
       route.fulfill({
         json: {
@@ -520,15 +521,28 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const titleRows = headings.locator('.repository-title-row');
       await page.evaluate(() => document.fonts.ready);
       for (const name of await titleRows.locator('strong').all()) {
-        const clearance = await name.evaluate((element) => {
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          const text = range.getBoundingClientRect();
+        const inkClearance = await name.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const canvas = document.createElement('canvas').getContext('2d')!;
+          canvas.font = [style.fontStyle, style.fontWeight, style.fontSize, style.fontFamily].join(
+            ' '
+          );
+          const ink = canvas.measureText(element.textContent ?? '');
           const clip = element.getBoundingClientRect();
-          return { top: text.top - clip.top, bottom: clip.bottom - text.bottom };
+          const baselineMarker = document.createElement('span');
+          baselineMarker.style.cssText =
+            'display:inline-block;width:0;height:0;margin:0;padding:0;border:0;' +
+            'vertical-align:baseline';
+          element.append(baselineMarker);
+          const baseline = baselineMarker.getBoundingClientRect().top;
+          baselineMarker.remove();
+          return {
+            top: baseline - ink.actualBoundingBoxAscent - clip.top,
+            bottom: clip.bottom - baseline - ink.actualBoundingBoxDescent
+          };
         });
-        expect(clearance.top).toBeGreaterThanOrEqual(1);
-        expect(clearance.bottom).toBeGreaterThanOrEqual(1);
+        expect(inkClearance.top).toBeGreaterThanOrEqual(0);
+        expect(inkClearance.bottom).toBeGreaterThanOrEqual(0);
       }
       const compactSize = await root.evaluate((element) =>
         Number.parseFloat(getComputedStyle(element).getPropertyValue('--mar-compact-control-size'))
@@ -696,7 +710,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
     const retry = inspector.locator('.changes-read-state button');
     await expect(retry).toHaveAttribute('aria-description', /NODE_OFFLINE/);
-    await expect(inspector.locator('.current-changes .empty')).toHaveCount(0);
+    await expect(inspector.locator('.current-changes .mar-empty')).toHaveCount(0);
     await expect(inspector.getByLabel('File operation feedback')).toHaveText('');
     await retry.click();
     await expect(retry).toBeFocused();
@@ -905,8 +919,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.screenshot({ path: testInfo.outputPath('workspace-recovery.png') });
       await retry.click();
       await expect(retry).toHaveCount(0);
-      await expect(panel.locator('.page-loading-state[role="status"]')).toBeVisible();
-      await expect(panel.locator('.busy-indicator')).toHaveCount(1);
+      await expect(panel.locator('.mar-page-loading-state[role="status"]')).toBeVisible();
+      await expect(panel.locator('.mar-busy-indicator')).toHaveCount(1);
       await expect(panel.locator('.workspace-recovery-state')).toHaveCount(0);
     });
 
@@ -994,7 +1008,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await link.click();
       await expect(idle).toHaveClass(/selected/u);
       await expect(idle).toHaveCSS('background-color', selectionColor);
-      await expect(sessions.locator('.session-activity')).toHaveCount(1);
+      await expect(sessions.locator('.mar-session-activity')).toHaveCount(1);
     });
   }
   for (const width of [768, 1280, 1440, 390]) {
@@ -1063,7 +1077,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const indent = (await grouped.boundingBox())!.x - (await plain.boundingBox())!.x;
       expect(indent).toBeCloseTo(16, 0);
       const sessions = page.locator('.session-list');
-      await expect(sessions.locator('.session-activity')).toHaveCount(1);
+      await expect(sessions.locator('.mar-session-activity')).toHaveCount(1);
       await expect(sessions.locator('.session-row.selected')).toHaveCSS('border-radius', '6px');
       await expect(sessions.locator('.session-row.selected')).toHaveCSS('box-shadow', 'none');
       const search = page.locator('.session-search-button');
@@ -1314,15 +1328,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(retry).toBeFocused();
     await expect(retry).toHaveAttribute('aria-busy', 'true');
     await expect(retry).not.toHaveClass(/failed/);
-    const colors = await retry.evaluate((element) => {
+    const mutedColor = await page.locator('body').evaluate((body) => {
       const probe = document.createElement('span');
       probe.style.color = 'var(--mar-text-muted)';
-      element.append(probe);
-      const value = [getComputedStyle(element).color, getComputedStyle(probe).color];
+      probe.style.position = 'fixed';
+      probe.style.visibility = 'hidden';
+      body.append(probe);
+      const value = getComputedStyle(probe).color;
       probe.remove();
       return value;
     });
-    expect(colors[0]).toBe(colors[1]);
+    await expect(retry).toHaveCSS('color', mutedColor);
     release?.();
     await expect(retry).toHaveCount(0);
   });

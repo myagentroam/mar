@@ -34,7 +34,7 @@ test('records a reproducible conversation detail performance sample', async ({ p
         document.querySelectorAll('.conversation-timeline *').length ||
         document.querySelectorAll('main *').length;
       const closedBodies = document.querySelectorAll(
-        '.conversation-detail-text, .conversation-tool-sources a'
+        '.mar-conversation-detail-text, .conversation-tool-sources a'
       ).length;
       const start = performance.now();
       click('[data-tool-presentation="READ"] > summary');

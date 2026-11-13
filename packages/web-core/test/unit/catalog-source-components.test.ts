@@ -61,7 +61,7 @@ describe('Public source discovery and catalog management', () => {
         app.provide(ID_INJECTION_KEY, { prefix: 923, current: 0 });
         app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);
-        expect(html).toContain('management-page');
+        expect(html).toContain('mar-management-page');
         expect(html).not.toMatch(/organization|enterprise|组织|企业/iu);
         expect(request).not.toHaveBeenCalled();
       }

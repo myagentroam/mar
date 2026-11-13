@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import type { ToolPresentation } from '@myagentroam/protocol';
@@ -46,7 +47,7 @@ const webOutput = computed(
 <template>
   <div class="tool-content web-detail">
     <p class="tool-detail-heading tool-detail-meta">{{ webHeading }}</p>
-    <p v-if="webDetail.title" class="conversation-detail-text web-page-title">
+    <p v-if="webDetail.title" class="mar-conversation-detail-text web-page-title">
       {{ webDetail.title }}
     </p>
     <p v-if="webPage" class="web-page-url tool-detail-meta">
@@ -68,7 +69,7 @@ const webOutput = computed(
       <p v-if="genericOutput?.truncation === 'HEAD'" class="tool-detail-meta">
         {{ translate('toolPresentation.detail.truncated') }}
       </p>
-      <p v-for="(block, index) in webOutput" :key="index" class="conversation-detail-text">
+      <p v-for="(block, index) in webOutput" :key="index" class="mar-conversation-detail-text">
         {{ block.text }}
       </p>
     </div>
@@ -82,14 +83,14 @@ const webOutput = computed(
     </p>
     <p
       v-if="typeof errorCode === 'string' && errorCode"
-      class="conversation-detail-text tool-content-section"
+      class="mar-conversation-detail-text tool-content-section"
     >
       {{ translate('toolPresentation.detail.error') }}: {{ errorCode }}
     </p>
-    <p v-if="typeof errorMessage === 'string' && errorMessage" class="conversation-detail-text">
+    <p v-if="typeof errorMessage === 'string' && errorMessage" class="mar-conversation-detail-text">
       {{ errorMessage }}
     </p>
-    <p v-if="permissionReason" class="conversation-detail-text tool-content-section">
+    <p v-if="permissionReason" class="mar-conversation-detail-text tool-content-section">
       {{ translate('toolPresentation.detail.permission') }}: {{ permissionReason }}
     </p>
   </div>

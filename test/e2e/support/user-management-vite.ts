@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 
 const productRoot = resolve(import.meta.dirname, '../../..');
@@ -11,8 +12,10 @@ export async function startUserManagementFixture() {
   ]);
   const server = await createServer({
     root: productRoot,
+    cacheDir: resolve(productRoot, `test/runs/user-management-vite-${process.pid}-${randomUUID()}`),
     configFile: false,
     plugins: [vue.default()],
+    optimizeDeps: { entries: ['test/e2e/support/user-management.html'] },
     resolve: {
       alias: {
         '@': resolve(productRoot, 'ee/web/src'),
@@ -24,7 +27,12 @@ export async function startUserManagementFixture() {
         )
       }
     },
-    server: { host: '127.0.0.1', port: 0, fs: { allow: [productRoot] } },
+    server: {
+      host: '127.0.0.1',
+      port: 0,
+      fs: { allow: [productRoot] },
+      watch: { ignored: [resolve(productRoot, 'test/runs/**')] }
+    },
     logLevel: 'error'
   });
   await server.listen();

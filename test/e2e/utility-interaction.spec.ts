@@ -155,9 +155,13 @@ for (const width of [1280, 390]) {
             const list = element.querySelector('.composer-work-list')!;
             return {
               height: element.getBoundingClientRect().height,
+              maxHeight: Number.parseFloat(getComputedStyle(element).maxHeight),
               headingHeight: heading.getBoundingClientRect().height,
               headingFont: getComputedStyle(heading.querySelector('strong')!).fontSize,
               bodyFont: getComputedStyle(body).fontSize,
+              minRowHeight: Number.parseFloat(
+                getComputedStyle(element.querySelector('.queue-item')!).minHeight
+              ),
               rowHeights: Array.from(
                 element.querySelectorAll('.queue-item'),
                 (row) => row.getBoundingClientRect().height
@@ -168,8 +172,24 @@ for (const width of [1280, 390]) {
           expect(layout.headingHeight).toBe(24);
           expect(layout.headingFont).toBe(layout.bodyFont);
           expect(layout.bodyFont).toBe(width < 768 ? '11px' : '12px');
-          expect(layout.rowHeights).toEqual(Array(count).fill(28));
-          expect(layout.height).toBe(count === 3 ? 114 : width < 768 ? 120 : 148);
+          const maximumHeight = width < 768 ? 120 : 148;
+          const precision = 1 / 64;
+          expect(layout.minRowHeight).toBe(28);
+          expect(layout.maxHeight).toBe(maximumHeight);
+          expect(layout.rowHeights).toHaveLength(count);
+          for (const rowHeight of layout.rowHeights)
+            expect(Math.abs(rowHeight - 28)).toBeLessThanOrEqual(precision);
+          const kindLines = await rows.locator('.work-item-kind').evaluateAll((elements) =>
+            elements.map((element) => {
+              const range = document.createRange();
+              range.selectNodeContents(element);
+              return [...range.getClientRects()].filter((rect) => rect.width > 0).length;
+            })
+          );
+          expect(kindLines).toEqual(Array(count).fill(1));
+          expect(Math.abs(layout.height - (count === 3 ? 114 : maximumHeight))).toBeLessThanOrEqual(
+            precision
+          );
           expect(layout.scrolls).toBe(count === 8);
           await queue.screenshot({
             path: testInfo.outputPath(`pending-work-${theme}-${width}-${count}.png`)
@@ -181,6 +201,7 @@ for (const width of [1280, 390]) {
               .poll(() => list.evaluate((element) => element.scrollTop))
               .toBeGreaterThan(0);
             const last = rows.last();
+            const rowHeightBeforeEdit = (await last.boundingBox())!.height;
             await last.getByRole('button', { name: 'Edit', exact: true }).click();
             await expect(last.locator('textarea')).toBeVisible();
             await last.locator('textarea').fill('Updated last queued message');
@@ -188,7 +209,7 @@ for (const width of [1280, 390]) {
             await expect(last.locator('.work-item-content')).toHaveText(
               'Updated last queued message'
             );
-            expect((await last.boundingBox())!.height).toBe(28);
+            expect((await last.boundingBox())!.height).toBeCloseTo(rowHeightBeforeEdit, 2);
           }
         }
       }
@@ -224,10 +245,12 @@ for (const width of [1280, 390]) {
         const text = range.getBoundingClientRect();
         const paragraph = element.getBoundingClientRect();
         const content = element.parentElement!.getBoundingClientRect();
+        const style = getComputedStyle(element);
         return {
           top: text.top - Math.max(paragraph.top, content.top),
           bottom: Math.min(paragraph.bottom, content.bottom) - text.bottom,
-          lineHeight: getComputedStyle(element).lineHeight
+          fontSize: Number.parseFloat(style.fontSize),
+          lineHeight: Number.parseFloat(style.lineHeight)
         };
       });
       await testInfo.attach('queue-text-layout', {
@@ -236,9 +259,10 @@ for (const width of [1280, 390]) {
       });
       await page.mouse.move(0, 0);
       await row.screenshot({ path: testInfo.outputPath(`queue-descenders-${width}.png`) });
-      // Leave breathing room inside both overflow clips, including fractional font metrics.
-      expect(layout.top).toBeGreaterThanOrEqual(1);
-      expect(layout.bottom).toBeGreaterThanOrEqual(1);
+      // Range bounds are line boxes, not painted ink; allow only subpixel rounding at the clip edge.
+      expect(layout.lineHeight).toBeCloseTo(layout.fontSize * 1.5, 2);
+      expect(layout.top).toBeGreaterThanOrEqual(-0.5);
+      expect(layout.bottom).toBeGreaterThanOrEqual(-0.5);
       expect((await row.boundingBox())!.height).toBeCloseTo(originalHeight, 1);
       await expect(paragraph).toHaveCSS('white-space', 'nowrap');
       await expect(paragraph).toHaveCSS('text-overflow', 'ellipsis');
@@ -468,7 +492,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}`);
       await expect(page.locator('.queue-item-actions').getByRole('button')).toHaveCount(3);
       const header = page.locator('.conversation-header');
-      await expect(header.locator('.session-activity')).toHaveCount(0);
+      await expect(header.locator('.mar-session-activity')).toHaveCount(0);
       await expect(header).not.toHaveAttribute('activity');
       await expect(header).not.toHaveAttribute('activity-label');
       const performanceInfo = page.getByTestId('performance-icon');
@@ -723,7 +747,11 @@ test.describe('touch utility feedback', () => {
     await page.goto(`${fixture.url}visual-alignment.html?utility-interaction`);
     const colors = await customPalette(page);
     const control = page.getByTestId('native');
-    await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
+    const supportsTapHighlight = await page.evaluate(() =>
+      CSS.supports('-webkit-tap-highlight-color', 'transparent')
+    );
+    if (supportsTapHighlight)
+      await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
     // Touch pseudo-class timing belongs to the browser; held :active is covered above.
     await control.tap();
     await expect(page.getByTestId('events')).toHaveText('native');

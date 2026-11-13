@@ -194,7 +194,7 @@ watch(
     <button
       v-if="hasOverflow"
       v-tooltip="translate('marTab.scrollPrevious')"
-      class="icon-button icon-action mar-tab-scroll"
+      class="mar-icon-button mar-icon-action mar-tab-scroll"
       type="button"
       :aria-label="translate('marTab.scrollPrevious')"
       :aria-controls="`${idPrefix}-tablist`"
@@ -242,7 +242,7 @@ watch(
           <button
             v-if="item.closeLabel"
             v-tooltip="item.closeLabel"
-            class="icon-button icon-action icon-action--inline mar-tab-close tab-strip-close"
+            class="mar-icon-button mar-icon-action mar-icon-action--inline mar-tab-close tab-strip-close"
             :class="closeClass"
             type="button"
             :disabled="item.closeDisabled"
@@ -257,7 +257,7 @@ watch(
     <button
       v-if="hasOverflow"
       v-tooltip="translate('marTab.scrollNext')"
-      class="icon-button icon-action mar-tab-scroll"
+      class="mar-icon-button mar-icon-action mar-tab-scroll"
       type="button"
       :aria-label="translate('marTab.scrollNext')"
       :aria-controls="`${idPrefix}-tablist`"

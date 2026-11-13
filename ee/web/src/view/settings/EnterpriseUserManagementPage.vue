@@ -427,10 +427,10 @@ onUnmounted(() => {
   <section
     v-loading="loading && !pageReady && !usersPage.failure.value"
     element-loading-custom-class="mar-page-loading"
-    class="management-page"
+    class="mar-management-page"
   >
-    <div class="filter-row">
-      <label class="filter-field"
+    <div class="mar-filter-row">
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.user') }}</span
         ><el-input
           v-model="keyword"
@@ -440,7 +440,7 @@ onUnmounted(() => {
           "
           :clear-icon="marIcon('clear-input')"
       /></label>
-      <label class="filter-field"
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.role') }}</span
         ><el-select
           v-model="roleFilter"
@@ -455,7 +455,7 @@ onUnmounted(() => {
             :label="roleLabel(role)"
             :value="role" /></el-select
       ></label>
-      <label class="filter-field"
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization2') }}</span
         ><el-cascader
           v-model="organizationFilter"
@@ -466,7 +466,7 @@ onUnmounted(() => {
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
       /></label>
-      <label class="filter-field"
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.status') }}</span
         ><el-select
           v-model="enabledFilter"
@@ -481,7 +481,7 @@ onUnmounted(() => {
             :value="false" /></el-select
       ></label>
     </div>
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
@@ -555,7 +555,7 @@ onUnmounted(() => {
         :label="translate('generated.organizationUserManagementPage.actions2')"
         :width="320"
         ><template #default="{ row }"
-          ><div class="row-actions" @click.stop>
+          ><div class="mar-row-actions" @click.stop>
             <el-button
               link
               :icon="marIcon('edit')"

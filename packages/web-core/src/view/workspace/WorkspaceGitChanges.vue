@@ -298,7 +298,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
     </p>
     <p
       v-if="visibleChangeRepositories.length === 0 && !changesLoading && !changesReadFailed"
-      class="empty"
+      class="mar-empty"
     >
       {{ translate('generated.workspaceInspector.theWorkspaceHasNoRepositoriesToDisplay') }}
     </p>
@@ -327,7 +327,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               <button
                 v-if="repository.source === 'ROOT'"
                 v-tooltip="translate('generated.workspaceInspector.refreshGitChanges2')"
-                class="changes-refresh-button file-explorer-utility-button icon-action"
+                class="changes-refresh-button file-explorer-utility-button mar-icon-action"
                 :disabled="changesLoading"
                 :aria-label="translate('generated.workspaceInspector.refreshGitChanges')"
                 :aria-busy="changesLoading || undefined"
@@ -454,7 +454,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 ? translate('generated.workspaceInspector.deleteUntrackedFile2')
                 : translate('generated.workspaceInspector.revertChanges2')
             "
-            class="change-restore icon-action icon-action--inline"
+            class="change-restore mar-icon-action mar-icon-action--inline"
             text
             :icon="marIcon('undo')"
             :loading-icon="marIcon('loading-action')"

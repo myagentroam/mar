@@ -54,7 +54,7 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
       await json(route, { authenticated: false, mustChangePassword: false });
     });
     await page.goto('/console');
-    const ring = page.locator('.console-shell > .page-loading-state > .busy-indicator');
+    const ring = page.locator('.console-shell > .mar-page-loading-state > .mar-busy-indicator');
     await expect(ring).toBeVisible();
     await expect(page.locator('#mar-bootstrap')).toHaveCount(0);
     const actual = await ring.evaluate((element) => {
@@ -74,7 +74,7 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     });
     expect(actual.color).toBe(actual.expected);
     expect(actual.width / actual.rootSize).toBeCloseTo(1.25);
-    expect(actual.animation).toBe('busy-indicator-spin');
+    expect(actual.animation).toBe('mar-busy-indicator-spin');
     await page.screenshot({ path: testInfo.outputPath(`page-loading-${theme}.png`) });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(ring).toHaveCSS('animation-name', 'none');
@@ -127,10 +127,10 @@ for (const mobile of [false, true]) {
       await list.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
-      const retry = list.locator('.list-append-state button');
+      const retry = list.locator('.mar-list-append-state button');
       await expect(retry).toBeVisible();
       await expect(retry).toHaveText('加载失败，点击重试');
-      await expect(list.locator('.list-append-state')).not.toContainText('Unable to read');
+      await expect(list.locator('.mar-list-append-state')).not.toContainText('Unable to read');
       await expect(input).toBeFocused();
       await expect(list.locator('.session-row')).toHaveCount(30);
       await list.evaluate((element) => {
@@ -143,29 +143,29 @@ for (const mobile of [false, true]) {
       await expect(retry).toHaveAttribute('aria-disabled', 'true');
       await expect(retry).toHaveText('');
       await expect(retry).toHaveAccessibleName('正在加载');
-      await expect(list.locator('.list-append-state .busy-indicator')).toHaveCount(1);
-      await expect(list.locator('.list-append-state .busy-indicator')).toBeVisible();
+      await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCount(1);
+      await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toBeVisible();
       expect(
         await list
-          .locator('.list-append-state .busy-indicator')
+          .locator('.mar-list-append-state .mar-busy-indicator')
           .evaluate(
             (element) =>
               parseFloat(getComputedStyle(element).width) /
               parseFloat(getComputedStyle(document.documentElement).fontSize)
           )
       ).toBeCloseTo(0.875);
-      await expect(list.locator('.list-append-state .busy-indicator')).toHaveCSS(
+      await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCSS(
         'color',
         'rgb(48, 147, 255)'
       );
       if (mobile && !search)
         await page.screenshot({ path: testInfo.outputPath('mobile-pagination-loading.png') });
-      await expect(list.locator('.list-append-state .is-loading')).toHaveCount(0);
+      await expect(list.locator('.mar-list-append-state .is-loading')).toHaveCount(0);
       await expect(list.locator('.session-row')).toHaveCount(30);
       retryResponse.release();
       await expect(list.locator('.session-row')).toHaveCount(60);
       await expect(retry).toHaveCount(0);
-      await expect(list.locator('.list-append-state')).toHaveCount(0);
+      await expect(list.locator('.mar-list-append-state')).toHaveCount(0);
       expect(attempts).toBe(2);
     });
   }
@@ -377,7 +377,7 @@ test('Unified loading: hosted history pauses for a local filter and retains retr
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  const retry = list.locator('.list-append-state button');
+  const retry = list.locator('.mar-list-append-state button');
   await expect(retry).toBeVisible();
   await expect(retry).toHaveText('加载失败，点击重试');
   expect(appends).toBe(1);
@@ -386,8 +386,8 @@ test('Unified loading: hosted history pauses for a local filter and retains retr
   await expect(retry).toHaveAttribute('aria-disabled', 'true');
   await expect(retry).toHaveText('');
   await expect(retry).toHaveAccessibleName('正在加载');
-  await expect(list.locator('.list-append-state .busy-indicator')).toHaveCount(1);
-  await expect(list.locator('.list-append-state .busy-indicator')).toBeVisible();
+  await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toHaveCount(1);
+  await expect(list.locator('.mar-list-append-state .mar-busy-indicator')).toBeVisible();
   retryResponse.release();
   await expect(list.locator('article')).toHaveCount(40);
   await expect(retry).toHaveCount(0);
@@ -459,7 +459,7 @@ test('Unified loading: shared access keeps the password form visible during subm
   await expect(submit).toHaveClass(/is-loading/);
   await expect(password).toBeVisible();
   await expect(password).toHaveValue('123456');
-  await expect(page.locator('.page-loading-state')).toHaveCount(0);
+  await expect(page.locator('.mar-page-loading-state')).toHaveCount(0);
   response.release();
   await expect(submit).not.toHaveClass(/is-loading/);
   await expect(password).toHaveValue('123456');

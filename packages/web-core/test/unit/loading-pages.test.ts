@@ -60,7 +60,7 @@ describe('shared loading presentation', () => {
 
   it('keeps the shared ring decorative rather than creating an interactive or duplicate status', async () => {
     const html = await render(BusyIndicator, {});
-    expect(html).toContain('class="busy-indicator"');
+    expect(html).toContain('class="mar-busy-indicator"');
     expect(html).toContain('aria-hidden="true"');
     expect(html).not.toMatch(/\b(?:tabindex|role)=/u);
   });
@@ -75,7 +75,7 @@ describe('shared loading presentation', () => {
       loadingMore: true,
       hasMore: true
     });
-    expect(html.match(/class="[^"]*\bbusy-indicator\b[^"]*"/gu)).toHaveLength(1);
+    expect(html.match(/class="[^"]*\bmar-busy-indicator\b[^"]*"/gu)).toHaveLength(1);
     expect(html).toContain('role="status"');
     expect(html).not.toContain('<button');
     expect(html).not.toMatch(/\bis-loading\b/u);
@@ -90,7 +90,7 @@ describe('shared loading presentation', () => {
       loading: true,
       hasMore: true
     });
-    expect(html).not.toContain('busy-indicator');
+    expect(html).not.toContain('mar-busy-indicator');
     expect(html).toContain('el-pagination');
     const controls = html.match(/<button\b[^>]*>/gu) ?? [];
     expect(controls).toHaveLength(2);
@@ -108,7 +108,7 @@ describe('shared loading presentation', () => {
       hasMore: true
     });
     expect(html).not.toContain('<button');
-    expect(html).not.toContain('busy-indicator');
+    expect(html).not.toContain('mar-busy-indicator');
     expect(html).not.toMatch(/\bis-loading\b/u);
   });
 
@@ -126,13 +126,13 @@ describe('shared loading presentation', () => {
     };
     const failed = await render(ManagementPagination, props);
     expect(failed).toContain('Failed to load. Retry');
-    expect(failed).not.toContain('busy-indicator');
+    expect(failed).not.toContain('mar-busy-indicator');
     const retrying = await render(ManagementPagination, {
       ...props,
       loading: true,
       loadingMore: true
     });
-    expect(retrying.match(/class="[^"]*\bbusy-indicator\b[^"]*"/gu)).toHaveLength(1);
+    expect(retrying.match(/class="[^"]*\bmar-busy-indicator\b[^"]*"/gu)).toHaveLength(1);
     expect(retrying).toContain('aria-label="Loading"');
     expect(retrying).toContain('aria-busy="true"');
     expect(retrying).not.toContain('Failed to load. Retry');

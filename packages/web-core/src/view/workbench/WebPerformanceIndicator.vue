@@ -85,7 +85,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   >
     <template #reference>
       <button
-        class="web-performance-indicator icon-button icon-action"
+        class="web-performance-indicator mar-icon-button mar-icon-action"
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
       >
@@ -99,7 +99,7 @@ onBeforeUnmount(props.diagnostics.dispose);
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
           <el-button
             v-tooltip="t('performanceDiagnostics.copy')"
-            class="icon-action"
+            class="mar-icon-action"
             text
             :aria-label="t('performanceDiagnostics.copy')"
             @click="copyDiagnostics"

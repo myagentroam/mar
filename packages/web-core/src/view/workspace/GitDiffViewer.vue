@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { selectedTextOffsets, unifiedDiffLines } from '../../util/quote-selection.js';
 import { showMessage } from '../../service/message-feedback-service.js';
@@ -843,7 +844,7 @@ defineExpose({
     </template>
     <template #primary-actions>
       <div
-        class="file-preview-actions diff-preview-toolbar"
+        class="mar-file-preview-actions diff-preview-toolbar"
         :aria-label="translate('generated.gitDiffViewer.diffToolbar')"
       >
         <el-button
@@ -937,7 +938,7 @@ defineExpose({
       @close="closeFind"
     />
     <main
-      class="file-preview-content unified-diff-content"
+      class="mar-file-preview-content unified-diff-content"
       @click="focus"
       @contextmenu="openPreviewMenu"
     >
@@ -1103,10 +1104,10 @@ defineExpose({
   padding: var(--diff-content-inset);
   background: var(--mar-bg-panel);
 }
-.unified-diff-content > .empty {
+.unified-diff-content > .mar-empty {
   margin: 1rem;
 }
-.file-preview-content pre.unified-history-diff {
+.mar-file-preview-content pre.unified-history-diff {
   min-width: 0;
   min-height: 0;
   margin: 0;
@@ -1159,7 +1160,7 @@ defineExpose({
   font-size: var(--mar-font-size-meta);
   font-weight: 500;
 }
-.file-preview-content pre.unified-diff-code {
+.mar-file-preview-content pre.unified-diff-code {
   min-width: 0;
   min-height: 0;
   margin: 0;
@@ -1313,7 +1314,7 @@ defineExpose({
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .file-preview-content pre.unified-diff-code {
+  .mar-file-preview-content pre.unified-diff-code {
     padding-right: 4rem;
     touch-action: pan-x pan-y;
     font-size: calc(0.76rem * var(--mar-preview-zoom, 1));

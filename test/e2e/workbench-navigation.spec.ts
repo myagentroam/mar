@@ -69,7 +69,7 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     const otherSession = page.locator('[data-session-id="session-2"]');
     await otherSession.locator('.session-link').click();
     await expect(otherSession).toHaveClass(/selected/);
-    await expect(page.locator('[data-session-id="session-1"] .session-activity')).toBeVisible();
+    await expect(page.locator('[data-session-id="session-1"] .mar-session-activity')).toBeVisible();
     await expect(page.locator('[data-session-id="session-3"] .session-unread-label')).toBeVisible();
     await expect(page.locator('[data-tab-id="docs"] .workspace-tab-unread')).toBeVisible();
     await expect(page.locator('[data-tab-id="workbench"] .workspace-tab-running')).toBeVisible();

@@ -98,7 +98,7 @@ describe('Public resource operation behavior', () => {
         await flushComponent();
         const actionRow = view
           .findAll('div')
-          .find((node) => node.props['class'] === 'row-actions')!;
+          .find((node) => node.props['class'] === 'mar-row-actions')!;
         expect(
           actionRow.children
             .filter((node) => node.type === 'ElButton')

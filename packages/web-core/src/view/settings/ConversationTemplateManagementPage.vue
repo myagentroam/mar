@@ -734,10 +734,10 @@ onMounted(() => {
   <section
     v-loading="pagination.loading.value && !pageReady && !pagination.failure.value"
     element-loading-custom-class="mar-page-loading"
-    class="management-page conversation-template-management"
+    class="mar-management-page conversation-template-management"
     :aria-busy="pagination.loading.value && !pageReady"
   >
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
@@ -807,7 +807,7 @@ onMounted(() => {
       </el-table-column>
       <el-table-column :label="translate('conversationTemplates.actions')" width="490">
         <template #default="{ row }">
-          <div class="row-actions" @click.stop>
+          <div class="mar-row-actions" @click.stop>
             <el-button
               v-if="writable && row.status !== 'DELETED'"
               link

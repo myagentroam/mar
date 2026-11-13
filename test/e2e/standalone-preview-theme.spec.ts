@@ -36,7 +36,7 @@ for (const width of [1280, 390]) {
     const preview = page.locator('.cm-content');
     await expect(preview).toContainText('// 中文');
     await expect(preview).toHaveAttribute('contenteditable', 'false');
-    await expect(page.locator('.file-preview-eyebrow')).toContainText('GB18030');
+    await expect(page.locator('.mar-file-preview-eyebrow')).toContainText('GB18030');
     await expect(page.getByRole('button', { name: /^(Edit file|编辑文件)$/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^(Save|保存)$/ })).toHaveCount(0);
   });

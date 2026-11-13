@@ -192,9 +192,9 @@ onUnmounted(() => usersPage.dispose());
   <section
     v-loading="usersPage.loading.value && !pageReady && !usersPage.failure.value"
     element-loading-custom-class="mar-page-loading"
-    class="management-page"
+    class="mar-management-page"
   >
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button type="primary" @click="createOpen = true">{{
         translate('generated.userManagementPage.createUser')
       }}</el-button>
@@ -234,7 +234,7 @@ onUnmounted(() => usersPage.dispose());
         }}</template></el-table-column
       ><el-table-column :label="translate('generated.userManagementPage.actions')" :width="180"
         ><template #default="{ row }"
-          ><div class="row-actions" @click.stop>
+          ><div class="mar-row-actions" @click.stop>
             <el-button v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
               translate('generated.userManagementPage.resetPassword3')
             }}</el-button
@@ -369,14 +369,14 @@ onUnmounted(() => usersPage.dispose());
   cursor: pointer;
 }
 
-.row-actions {
+.mar-row-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   white-space: nowrap;
 }
 
-.row-actions .el-button + .el-button {
+.mar-row-actions .el-button + .el-button {
   margin-left: 0;
 }
 

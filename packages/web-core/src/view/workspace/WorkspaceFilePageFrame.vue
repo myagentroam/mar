@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './file-preview.css';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
@@ -51,12 +52,14 @@ defineExpose({ root });
   >
     <header class="file-preview-header workspace-file-page-frame-header">
       <div class="workspace-file-page-frame-title">
-        <span v-if="props.sourceLabel" class="file-preview-eyebrow">{{ props.sourceLabel }}</span>
+        <span v-if="props.sourceLabel" class="mar-file-preview-eyebrow">{{
+          props.sourceLabel
+        }}</span>
         <h2 v-tooltip="props.path" :aria-description="props.path">{{ props.fileName }}</h2>
         <small v-tooltip="props.path" v-if="pathLabel">{{ pathLabel }}</small>
         <slot name="status" />
       </div>
-      <div class="file-preview-actions file-preview-desktop-actions">
+      <div class="mar-file-preview-actions file-preview-desktop-actions">
         <slot name="leading-actions" />
         <slot name="primary-actions" />
         <slot name="secondary-actions" />
@@ -95,7 +98,7 @@ defineExpose({ root });
         "
         class="mar-tooltip-control"
         ><button
-          class="workspace-file-mobile-actions-toggle icon-button icon-action"
+          class="workspace-file-mobile-actions-toggle mar-icon-button mar-icon-action"
           type="button"
           :aria-expanded="mobileActionsExpanded"
           :aria-label="
@@ -169,7 +172,7 @@ defineExpose({ root });
   white-space: nowrap;
 }
 
-.workspace-file-page-frame-title :deep(.file-preview-eyebrow) {
+.workspace-file-page-frame-title :deep(.mar-file-preview-eyebrow) {
   line-height: 1.2;
 }
 
@@ -188,7 +191,7 @@ defineExpose({ root });
   flex-direction: column;
 }
 
-.workspace-file-page-frame :deep(.file-preview-actions .el-button.is-circle),
+.workspace-file-page-frame :deep(.mar-file-preview-actions .el-button.is-circle),
 .workspace-file-mobile-actions :deep(.el-button),
 .workspace-file-mobile-actions-toggle {
   border-radius: var(--mar-radius-control);
@@ -226,7 +229,7 @@ defineExpose({ root });
     grid-column: 1;
   }
 
-  .workspace-file-page-frame-title :deep(.file-preview-eyebrow) {
+  .workspace-file-page-frame-title :deep(.mar-file-preview-eyebrow) {
     grid-area: 1 / 2 / 3 / 3;
     margin-bottom: 0;
     white-space: nowrap;
@@ -283,7 +286,7 @@ defineExpose({ root });
     align-items: flex-start;
   }
 
-  .workspace-file-page-frame .file-preview-actions {
+  .workspace-file-page-frame .mar-file-preview-actions {
     min-height: 36px;
   }
 

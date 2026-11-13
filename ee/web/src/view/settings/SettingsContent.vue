@@ -179,7 +179,7 @@ function createNodeToken(): void {
           <h3>{{ translate('generated.settingsContent.oAuthAccountBindings2') }}</h3>
           <el-button
             v-tooltip="translate('generated.settingsContent.refresh')"
-            class="icon-action"
+            class="mar-icon-action"
             :icon="marIcon('refresh')"
             :loading="oauthRefreshing"
             :loading-icon="marIcon('loading-action')"

@@ -321,7 +321,7 @@ defineExpose({
         />
         <button
           v-tooltip="translate('filePreviewDialog.closeFileWindow')"
-          class="icon-button icon-action workspace-file-window-close"
+          class="mar-icon-button mar-icon-action workspace-file-window-close"
           type="button"
           :disabled="closing"
           :aria-label="translate('filePreviewDialog.closeFileWindow')"

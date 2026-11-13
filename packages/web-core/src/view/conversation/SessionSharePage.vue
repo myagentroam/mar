@@ -114,7 +114,7 @@ onBeforeUnmount(() => {
       </p>
       <div
         v-else-if="restoring"
-        class="page-loading-state"
+        class="mar-page-loading-state"
         role="status"
         :aria-label="translate('sessionShare.loading')"
       >

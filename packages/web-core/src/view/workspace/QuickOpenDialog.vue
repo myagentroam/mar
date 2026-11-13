@@ -442,10 +442,10 @@ function onKeydown(event: KeyboardEvent): void {
         </button>
       </li>
     </ul>
-    <p v-else-if="loading" class="empty" role="status">
+    <p v-else-if="loading" class="mar-empty" role="status">
       <MarIcon name="loading-action" /> {{ translate('generated.quickOpenDialog.searching') }}
     </p>
-    <p v-else-if="statusNotices.length === 0" class="empty">
+    <p v-else-if="statusNotices.length === 0" class="mar-empty">
       {{ translate('generated.quickOpenDialog.noMatches') }}
     </p>
     <div class="quick-open-statuses" role="status" aria-live="polite">
@@ -676,7 +676,7 @@ function onKeydown(event: KeyboardEvent): void {
   text-decoration-color: color-mix(in srgb, var(--mar-color-brand) 55%, transparent);
   text-underline-offset: 0.14em;
 }
-.empty {
+.mar-empty {
   margin: 1rem 0 0;
   color: var(--mar-text-secondary);
   text-align: center;

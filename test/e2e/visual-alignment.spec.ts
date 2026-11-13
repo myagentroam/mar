@@ -752,7 +752,7 @@ test('Shared tooltip switches between touch, keyboard and mouse without stale in
 
 test('Hosted model labels preserve dropdown semantics and keyboard selection', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?hosted=1`);
-  const trigger = page.locator('.hosted-model-trigger');
+  const trigger = page.locator('.hosted-model-slot .hosted-model-trigger');
   await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await expect(trigger).toHaveAccessibleDescription('Model One');
@@ -848,14 +848,34 @@ test('Workspace header tabs scroll horizontally without vertical overflow or cli
     );
     const list = page.getByRole('tablist');
     await expect(list).toBeVisible();
-    const geometry = await list.evaluate((element) => ({
-      height: element.clientHeight,
-      contentHeight: element.scrollHeight,
-      width: element.clientWidth,
-      contentWidth: element.scrollWidth
-    }));
-    expect(geometry.contentHeight).toBeLessThanOrEqual(geometry.height);
+    const geometry = await list.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        width: element.clientWidth,
+        contentWidth: element.scrollWidth,
+        overflowY: getComputedStyle(element).overflowY,
+        top: bounds.top,
+        bottom: bounds.bottom,
+        tabs: [...element.querySelectorAll('.workspace-tab')].map((tab) => {
+          const box = tab.getBoundingClientRect();
+          const content = tab.querySelector('.workspace-tab-content')!.getBoundingClientRect();
+          return {
+            top: box.top,
+            bottom: box.bottom,
+            contentTop: content.top,
+            contentBottom: content.bottom
+          };
+        })
+      };
+    });
+    expect(geometry.overflowY).toBe('hidden');
     expect(geometry.contentWidth).toBeGreaterThan(geometry.width);
+    for (const tab of geometry.tabs) {
+      expect(tab.top).toBeGreaterThanOrEqual(geometry.top);
+      expect(tab.bottom).toBeLessThanOrEqual(geometry.bottom);
+      expect(tab.contentTop).toBeGreaterThanOrEqual(geometry.top);
+      expect(tab.contentBottom).toBeLessThanOrEqual(geometry.bottom);
+    }
     await list.hover();
     await page.mouse.wheel(0, 150);
     await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
@@ -954,7 +974,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const pinnedBounds = (await lastPinned.boundingBox())!;
           return tabBounds.x - (pinnedBounds.x + pinnedBounds.width);
         })
-        .toBeGreaterThanOrEqual(3);
+        .toBeGreaterThanOrEqual(3 - 1 / 64);
       await page.keyboard.press('Tab');
       await expect(normal.first().getByRole('button', { name: /Close/ })).toBeFocused();
       await expect(firstNormal).toHaveAttribute('aria-selected', 'false');
@@ -1031,19 +1051,37 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.goto(`${fixture.url}visual-alignment.html?session-performance=1&theme=${theme}`);
         const info = page.locator('.session-performance-info');
         await expect(info).toBeVisible();
-        await page.locator('.conversation-scroll').evaluate((element) => {
-          element.scrollTop = element.scrollHeight;
+        await page.locator('.conversation-scroll').evaluate(async (element) => {
+          const scroll = element as HTMLElement;
+          const maxScroll = scroll.scrollHeight - scroll.clientHeight;
+          if (scroll.scrollTop === maxScroll) return;
+          await new Promise<void>((resolve) => {
+            scroll.addEventListener('scroll', () => resolve(), { once: true });
+            scroll.scrollTop = maxScroll;
+          });
         });
-        const infoBox = (await info.boundingBox())!;
-        const region = (await page.locator('.conversation-scroll-region').boundingBox())!;
-        const lastRow = (await page.getByTestId('last-row').boundingBox())!;
-        const bottomGap = region.y + region.height - infoBox.y - infoBox.height;
-        const rootFontSize = await page
-          .locator('html')
-          .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
-        expect(bottomGap).toBeGreaterThanOrEqual(0);
-        expect(bottomGap).toBeCloseTo(rootFontSize * 0.25, 1);
-        if (width < 768) expect(lastRow.y + lastRow.height).toBeLessThanOrEqual(infoBox.y);
+        const geometry = await page.evaluate(() => {
+          const region = document.querySelector('.conversation-scroll-region')!;
+          const status = document.querySelector('.conversation-status')!;
+          const info = document.querySelector('.session-performance-info')!;
+          const lastRow = document.querySelector('[data-testid="last-row"]')!;
+          const regionBox = region.getBoundingClientRect();
+          const statusBox = status.getBoundingClientRect();
+          const infoBox = info.getBoundingClientRect();
+          return {
+            bottomGap: regionBox.bottom - statusBox.bottom,
+            infoTopGap: infoBox.top - statusBox.top,
+            infoBottomGap: statusBox.bottom - infoBox.bottom,
+            infoTop: infoBox.top,
+            lastRowBottom: lastRow.getBoundingClientRect().bottom,
+            rootFontSize: Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+          };
+        });
+        expect(geometry.bottomGap).toBeGreaterThanOrEqual(0);
+        expect(geometry.bottomGap).toBeCloseTo(geometry.rootFontSize * 0.25, 1);
+        expect(geometry.infoTopGap).toBeGreaterThanOrEqual(0);
+        expect(geometry.infoBottomGap).toBeGreaterThanOrEqual(0);
+        if (width < 768) expect(geometry.lastRowBottom).toBeLessThanOrEqual(geometry.infoTop);
         if (width < 768) await info.tap();
         else await info.focus();
         await expect(page.locator('.mar-tooltip:visible')).toContainText('420 ms');

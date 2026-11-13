@@ -884,12 +884,12 @@ function finish() {
         <ConversationToolDetail :item="localeItem" @copy="copy" />
       </div>
     </section>
-    <section v-if="previewProbe" data-testid="preview-probe" class="conversation-detail-body">
+    <section v-if="previewProbe" data-testid="preview-probe" class="mar-conversation-detail-body">
       <button data-testid="stretch-preview" @click="probeText = 'wrapped content '.repeat(800)">
         Stretch preview
       </button>
       <ConversationDetailPreview>
-        <pre class="conversation-detail-text">{{ probeText }}</pre>
+        <pre class="mar-conversation-detail-text">{{ probeText }}</pre>
         <a href="#fixture-source" data-testid="preview-link">Open fixture source</a>
       </ConversationDetailPreview>
     </section>

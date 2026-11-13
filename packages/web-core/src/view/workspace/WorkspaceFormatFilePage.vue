@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './file-preview.css';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -119,7 +120,7 @@ defineExpose({
     :aria-label="translate('generated.filePreviewDialog.filePreview', { value0: file.path })"
   >
     <template #status>
-      <span class="file-preview-eyebrow">
+      <span class="mar-file-preview-eyebrow">
         <span v-if="file.size !== undefined">{{ fileSizeLabel(file.size) }}</span>
       </span>
     </template>
@@ -171,7 +172,7 @@ defineExpose({
         <MarIcon name="close" />
       </el-button>
     </template>
-    <main class="file-preview-content">
+    <main class="mar-file-preview-content">
       <template v-if="!loading">
         <FilePreviewState
           v-if="rendererError"
@@ -271,7 +272,7 @@ defineExpose({
 </template>
 
 <style scoped>
-.file-preview-content {
+.mar-file-preview-content {
   display: flex;
   min-height: 0;
   flex: 1;

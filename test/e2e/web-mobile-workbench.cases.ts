@@ -766,7 +766,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       notificationCenter.evaluate((element) => {
         const drawer = document.querySelector<HTMLElement>('.workspace-tree');
         const headerHeight = Number.parseFloat(
-          getComputedStyle(document.documentElement).getPropertyValue('--sidebar-header-height')
+          getComputedStyle(document.documentElement).getPropertyValue('--mar-sidebar-header-height')
         );
         return (
           drawer?.contains(element) &&

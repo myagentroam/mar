@@ -334,7 +334,7 @@ onBeforeUnmount(() => {
   font-size: 22px;
 }
 .activity-preview {
-  max-height: min(24rem, calc(100dvh - var(--sidebar-header-height) - 1rem));
+  max-height: min(24rem, calc(100dvh - var(--mar-sidebar-header-height) - 1rem));
   border-radius: inherit;
   overflow: hidden;
 }

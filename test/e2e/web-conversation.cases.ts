@@ -1477,7 +1477,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   ).toBe('none');
   await expect(page.locator('.composer-working > i')).toHaveCSS(
     'animation-name',
-    /busy-indicator-spin/u
+    /mar-busy-indicator-spin/u
   );
   await expect(page.locator('.composer-working > i')).toHaveCSS('width', '10px');
   const stroke = await page
@@ -1489,7 +1489,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   const indicator = heading.locator('.process-activity-indicator');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(indicator).toBeVisible();
-  await expect(indicator).toHaveCSS('animation-name', /busy-indicator-spin/u);
+  await expect(indicator).toHaveCSS('animation-name', /mar-busy-indicator-spin/u);
   await expect(indicator).toHaveAttribute('aria-hidden', 'true');
   await expect(heading.locator('.process-activity-label')).toHaveCSS('font-weight', '600');
   expect(
@@ -3451,8 +3451,10 @@ for (const mobile of [false, true]) {
       await expect(retry).toBeFocused();
       await expect(retry).toHaveAttribute('aria-busy', 'true');
       await expect(retry).toHaveText('');
-      await expect(retry.locator('.busy-indicator')).toHaveCount(1);
-      await expect(page.locator('.conversation-loading-initial .busy-indicator')).toHaveCount(0);
+      await expect(retry.locator('.mar-busy-indicator')).toHaveCount(1);
+      await expect(page.locator('.conversation-loading-initial .mar-busy-indicator')).toHaveCount(
+        0
+      );
       await expect.poll(() => initialAttempts).toBe(2);
       await retry.press('Enter');
       expect(initialAttempts).toBe(2);
@@ -3499,14 +3501,14 @@ for (const mobile of [false, true]) {
       await expect(history).toHaveText('');
       await expect(scroll.getByRole('status', { name: 'Loading earlier messages…' })).toBeVisible();
       await expect(scroll).toBeFocused();
-      await expect(history.locator('.busy-indicator')).toHaveCount(1);
+      await expect(history.locator('.mar-busy-indicator')).toHaveCount(1);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
-      await expect(history.locator('.busy-indicator')).toHaveCSS(
+      await expect(history.locator('.mar-busy-indicator')).toHaveCSS(
         'animation-name',
-        'busy-indicator-spin'
+        'mar-busy-indicator-spin'
       );
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await expect(history.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await expect(history.locator('.mar-busy-indicator')).toHaveCSS('animation-name', 'none');
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await expect.poll(() => olderAttempts).toBe(2);
       await page.screenshot({ path: testInfo.outputPath('history-pending.png') });
@@ -3515,7 +3517,9 @@ for (const mobile of [false, true]) {
       releaseOlder();
       await expect(history).toHaveCount(0);
       await expect(page.locator('.conversation-history-start')).toHaveCount(0);
-      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(0);
+      await expect(page.locator('.conversation-history-control .mar-busy-indicator')).toHaveCount(
+        0
+      );
     });
   });
 }
@@ -3670,7 +3674,7 @@ test('Opening a session loads only the latest window without initial scroll back
   await expect(page.getByRole('button', { name: '加载更早记录' })).toHaveCount(0);
   await conversationScroll.focus();
   await conversationScroll.press('Home');
-  const historyLoading = page.locator('.conversation-history-control .busy-indicator');
+  const historyLoading = page.locator('.conversation-history-control .mar-busy-indicator');
   await expect(historyLoading).toBeVisible();
   await expect(page.locator('.conversation-history-control')).toHaveText('');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -3678,7 +3682,7 @@ test('Opening a session loads only the latest window without initial scroll back
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(historyLoading).toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
+  await expect(page.locator('.conversation-history-control .mar-busy-indicator')).toHaveCount(1);
   expect(
     await historyLoading.evaluate((element) => {
       const reference = document.createElement('span');

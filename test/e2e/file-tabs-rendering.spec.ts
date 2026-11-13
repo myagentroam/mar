@@ -331,13 +331,24 @@ for (const width of [1280, 390]) {
         element.style.setProperty('--mar-text-primary', '#d6dfc9');
         element.style.setProperty('--mar-color-brand-text', '#af79d0');
       });
-      for (const close of [
-        page.locator('.workspace-file-tab-close').first(),
-        page.locator('.workspace-file-window-close')
-      ]) {
+      for (const [close, inline] of [
+        [page.locator('.workspace-file-tab-close').first(), true],
+        [page.locator('.workspace-file-window-close'), false]
+      ] as const) {
+        const hoverBackground = inline
+          ? 'rgba(0, 0, 0, 0)'
+          : await close.evaluate((element) => {
+              const probe = document.createElement('span');
+              probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+              element.append(probe);
+              const color = getComputedStyle(probe).backgroundColor;
+              probe.remove();
+              return color;
+            });
         await close.hover();
         await expect(close).toHaveCSS('color', 'rgb(214, 223, 201)');
-        await expect(close).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(close).toHaveCSS('background-color', hoverBackground);
+        await page.keyboard.press('Tab');
         await close.focus();
         await expect(close).toHaveCSS('outline-style', 'solid');
         await expect(close).toHaveCSS('outline-width', '2px');
@@ -415,7 +426,10 @@ for (const [kind, label] of [
 }
 
 for (const width of [1280, 390]) {
-  test(`Git Diff keeps focus through repeated file navigation at ${width}px`, async ({ page }) => {
+  test(`Git Diff keeps focus through repeated file navigation at ${width}px`, async ({
+    page,
+    browserName
+  }) => {
     const fixture = await startCustomThemeFixture();
     try {
       await page.setViewportSize({ width, height: 800 });
@@ -462,7 +476,11 @@ for (const width of [1280, 390]) {
           };
         })
       ).toMatchObject({ inside: true, text: expect.stringContaining('src/first.ts') });
-      await page.keyboard.press('Shift+F10');
+      if (browserName === 'chromium') await page.keyboard.press('Shift+F10');
+      else {
+        // Firefox Playwright key input emits keydown but no DOM contextmenu event.
+        await frame.locator('.unified-history-diff').click({ button: 'right' });
+      }
       await expect(page.getByRole('menuitem', { name: 'Select all', exact: true })).toBeVisible();
       await page.keyboard.press('Escape');
       await frame.focus();
@@ -577,16 +595,21 @@ test('opening a file preview does not reclaim focus the user moved during the tr
 for (const kind of ['worktree', 'history']) {
   test(`Git format preview restores actual focus when reopening ${kind}`, async ({ page }) => {
     const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+    let popup: Page | undefined;
     try {
-      await page.route('**/api/workspaces/workspace/**/content?*', (route) =>
+      await page.context().route('**/api/workspaces/workspace/**/content?*', (route) =>
         route.fulfill({
           contentType: 'image/svg+xml',
           body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="2000"><rect width="1200" height="2000" fill="navy"/></svg>'
         })
       );
-      await page.goto(`${fixture.url}file-tabs.html?format-focus=${kind}`);
-      const source = page.locator('#git-format-source');
-      const frame = page.locator('.workspace-file-page-frame:visible');
+      await page.goto(`${fixture.url}file-tabs.html?format-focus-launcher=${kind}`);
+      const popupPromise = page.waitForEvent('popup');
+      await page.getByRole('button', { name: 'Open Git format preview window' }).click();
+      popup = await popupPromise;
+      await popup.waitForLoadState('domcontentloaded');
+      const source = popup.locator('#git-format-source');
+      const frame = popup.locator('.workspace-file-page-frame:visible');
       await source.click();
       await expect(source).toHaveAttribute('data-completed-opens', '1');
       await expect(frame).toBeFocused();
@@ -595,12 +618,12 @@ for (const kind of ['worktree', 'history']) {
         .poll(() => frame.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
         .toBe(1200);
       const originalFrame = await frame.elementHandle();
-      const tabs = page.getByRole('tablist', { name: 'File preview tabs' }).getByRole('tab');
+      const tabs = popup.getByRole('tablist', { name: 'File preview tabs' }).getByRole('tab');
       await expect(tabs).toHaveCount(1);
       const originalTab = await tabs.first().elementHandle();
       await source.focus();
       await expect(source).toBeFocused();
-      await page.keyboard.press('Enter');
+      await popup.keyboard.press('Enter');
       await expect(source).toHaveAttribute('data-completed-opens', '2');
       await expect(frame).toBeFocused();
       await expect(tabs).toHaveCount(1);
@@ -612,9 +635,18 @@ for (const kind of ['worktree', 'history']) {
         true
       );
       await expect(frame.locator('img')).toBeVisible();
-      await page.keyboard.press('Alt+w');
-      await expect(frame).toHaveCount(0);
+      expect(popup.isClosed()).toBe(false);
+      const popupClosed = popup.waitForEvent('close');
+      const closeShortcut = popup.keyboard.press('Alt+w').then(
+        () => undefined,
+        (error: unknown) => error
+      );
+      await popupClosed;
+      const closeError = await closeShortcut;
+      if (closeError !== undefined && !popup.isClosed()) throw closeError;
+      expect(popup.isClosed()).toBe(true);
     } finally {
+      if (popup && !popup.isClosed()) await popup.close();
       await fixture.close();
     }
   });
@@ -791,7 +823,27 @@ for (const [width, action] of [
       await expect
         .poll(() => overlay.evaluate((element) => element.getAnimations().length))
         .toBe(0);
+      if (action === 'back') {
+        const baseHistoryLength = Number(
+          await page.locator('html').getAttribute('data-file-tabs-base-history-length')
+        );
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              Object.hasOwn(
+                (window.history.state as Record<string, unknown> | null) ?? {},
+                '__marTemporaryLayer'
+              )
+            )
+          )
+          .toBe(true);
+        await expect
+          .poll(() => page.evaluate(() => window.history.length))
+          .toBe(baseHistoryLength + 1);
+      }
       await overlay.evaluate((element) => {
+        let exitAnimation: Animation | undefined;
+        let exitStartedAt: number | null = null;
         element.addEventListener('animationstart', (event) => {
           if (event.target !== element) return;
           const state = document.documentElement.dataset;
@@ -799,6 +851,48 @@ for (const [width, action] of [
           state.fileTabsExitInert = String(
             element.querySelector('.workspace-file-tabs')?.hasAttribute('inert')
           );
+          exitAnimation = element
+            .getAnimations()
+            .find((animation) => animation.effect?.target === element);
+          const now = document.timeline.currentTime;
+          exitStartedAt = now;
+          state.fileTabsExitAnimationName = event.animationName;
+          state.fileTabsExitStartElapsedTime = String(event.elapsedTime);
+          state.fileTabsExitStartTimelineTime = String(now);
+          state.fileTabsExitAnimationStartTime = String(exitAnimation?.startTime ?? null);
+          state.fileTabsExitAnimationDuration = String(
+            exitAnimation?.effect?.getComputedTiming().duration ?? null
+          );
+          state.fileTabsExitAnimationDelay = String(
+            exitAnimation?.effect?.getTiming().delay ?? null
+          );
+          state.fileTabsExitAnimationCurrentTime = String(exitAnimation?.currentTime ?? null);
+          void exitAnimation?.finished.then(
+            () => {
+              state.fileTabsExitEnded = 'true';
+            },
+            () => {
+              state.fileTabsExitCancelled = 'true';
+            }
+          );
+        });
+        element.addEventListener('animationcancel', (event) => {
+          if (event.target !== element) return;
+          const state = document.documentElement.dataset;
+          const now = document.timeline.currentTime;
+          state.fileTabsExitCancelled = 'true';
+          state.fileTabsExitCancelName = event.animationName;
+          state.fileTabsExitCancelElapsedTime = String(event.elapsedTime);
+          state.fileTabsExitCancelTimelineTime = String(now);
+          state.fileTabsExitCancelTimelineDelta = String(
+            now !== null && exitStartedAt !== null ? now - exitStartedAt : null
+          );
+          state.fileTabsExitCancelAnimationStartTime = String(exitAnimation?.startTime ?? null);
+          state.fileTabsExitCancelAnimationCurrentTime = String(exitAnimation?.currentTime ?? null);
+          state.fileTabsExitCancelAnimationDuration = String(
+            exitAnimation?.effect?.getComputedTiming().duration ?? null
+          );
+          state.fileTabsExitCancelTarget = 'overlay';
         });
         element.addEventListener('animationend', (event) => {
           if (event.target === element) document.documentElement.dataset.fileTabsExitEnded = 'true';
@@ -816,7 +910,7 @@ for (const [width, action] of [
         });
         await page.locator('.el-overlay-dialog').click({ position: { x: 4, y: 4 } });
       } else if (action === 'Escape') await page.keyboard.press('Escape');
-      else if (action === 'back') await page.goBack();
+      else if (action === 'back') await page.evaluate(() => window.history.back());
       else if (action === 'last-tab') await page.locator('.workspace-file-tab-close').click();
       else await page.locator('.workspace-file-window-close').click();
       await expect(page.getByText('Files closed')).toBeVisible();
@@ -848,6 +942,8 @@ test('Window presentation remains full-screen without a Dialog', async ({ page }
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('html')).toHaveClass(/file-preview-open/);
     await expect(page.locator('body')).toHaveClass(/file-preview-open/);
+    await expect(page.locator('html')).toHaveCSS('overflow', 'hidden');
+    await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
 
     const expectWindowBounds = async (width: number, height: number) => {
       const bounds = await windowSurface.boundingBox();
@@ -868,6 +964,27 @@ test('Window presentation remains full-screen without a Dialog', async ({ page }
     await expect(windowSurface).toHaveCount(0);
     await expect(page.locator('html')).not.toHaveClass(/file-preview-open/);
     await expect(page.locator('body')).not.toHaveClass(/file-preview-open/);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Empty window locks document scrolling until it is unmounted', async ({ page }) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/empty-file-window.html');
+  try {
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    await page.goto(`${fixture.url}empty-file-window.html`);
+    for (const target of ['html', 'body']) {
+      await expect(page.locator(target)).toHaveClass(/file-preview-open/);
+      await expect(page.locator(target)).toHaveCSS('overflow', 'hidden');
+    }
+    await page.locator('#unmount-empty-window').evaluate((button: HTMLElement) => button.click());
+    for (const target of ['html', 'body']) {
+      await expect(page.locator(target)).not.toHaveClass(/file-preview-open/);
+      await expect(page.locator(target)).not.toHaveCSS('overflow', 'hidden');
+    }
+    expect(requests.some((url) => url.includes('file-preview.css'))).toBe(false);
   } finally {
     await fixture.close();
   }

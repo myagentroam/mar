@@ -476,7 +476,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
           <button
             v-if="!filterActive"
             :class="[
-              'node-expand-button icon-action icon-action--inline',
+              'node-expand-button mar-icon-action mar-icon-action--inline',
               { expanded: expandedNodeIds.includes(result.node.id) }
             ]"
             :aria-expanded="nodeExpanded(result.node.id)"
@@ -523,7 +523,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
             @visible-change="openNodeActionsId = $event ? result.node.id : undefined"
           >
             <button
-              class="tree-more-button icon-action icon-action--inline"
+              class="tree-more-button mar-icon-action mar-icon-action--inline"
               :aria-label="translate('generated.workspaceTree.nodeActions')"
               type="button"
               @click.stop
@@ -650,7 +650,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     "
                   >
                     <button
-                      class="tree-more-button icon-action icon-action--inline"
+                      class="tree-more-button mar-icon-action mar-icon-action--inline"
                       :aria-label="translate('generated.workspaceTree.workspaceActions')"
                       type="button"
                       @click.stop
@@ -820,7 +820,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                         "
                       >
                         <button
-                          class="tree-more-button icon-action icon-action--inline"
+                          class="tree-more-button mar-icon-action mar-icon-action--inline"
                           :aria-label="translate('generated.workspaceTree.workspaceActions')"
                           type="button"
                           @click.stop
@@ -938,6 +938,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 </template>
 
 <style scoped>
+.node-tree,
+.workspace-branches {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .node-tree {
   --workspace-tree-row-height: 30px;
   --workspace-tree-row-margin: 2px;
@@ -1429,7 +1436,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 </style>
 
 <style scoped>
-.node-tree-actions :deep(.icon-button) {
+.node-tree-actions :deep(.mar-icon-button) {
   width: 23px;
   height: 23px;
   border-radius: 4px;

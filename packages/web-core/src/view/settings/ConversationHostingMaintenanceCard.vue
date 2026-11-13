@@ -367,7 +367,7 @@ onBeforeUnmount(() => {
       </div>
       <el-button
         :icon="marIcon('refresh')"
-        class="icon-action"
+        class="mar-icon-action"
         text
         :loading="loading"
         :disabled="!available || previewing || executing"

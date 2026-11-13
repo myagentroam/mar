@@ -49,7 +49,7 @@ const blocked = computed(
       </div>
       <div class="notification-channel-actions">
         <el-button
-          class="text-action"
+          class="mar-text-action"
           link
           :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
           :loading="service.requesting.value"
@@ -75,7 +75,7 @@ const blocked = computed(
             service.enabled.value &&
             ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
           "
-          class="text-action"
+          class="mar-text-action"
           link
           :icon="marIcon('notification')"
           @click="service.enablePush()"

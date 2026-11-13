@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import type { ToolPresentation } from '@myagentroam/protocol';
@@ -40,11 +41,11 @@ const detailDuration = (ms: number) =>
         · {{ detailDuration(compactDetail.durationMs) }}</template
       >
     </p>
-    <p v-if="compactDetail.elapsedMs !== undefined" class="conversation-detail-text">
+    <p v-if="compactDetail.elapsedMs !== undefined" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.elapsedDuration') }}:</span>
       {{ detailDuration(compactDetail.elapsedMs) }}
     </p>
-    <p v-if="compactDetail.wakeReason" class="conversation-detail-text">
+    <p v-if="compactDetail.wakeReason" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.wakeReason') }}:</span>
       {{ translate(`toolPresentation.wake.${compactDetail.wakeReason}`) }}
     </p>
@@ -55,7 +56,7 @@ const detailDuration = (ms: number) =>
     <p v-if="genericOutput?.truncation === 'HEAD'" class="tool-detail-meta">
       {{ translate('toolPresentation.detail.truncated') }}
     </p>
-    <pre v-if="compactShowsOutput && outputText" class="conversation-detail-text">{{
+    <pre v-if="compactShowsOutput && outputText" class="mar-conversation-detail-text">{{
       outputText
     }}</pre>
     <p
@@ -64,14 +65,14 @@ const detailDuration = (ms: number) =>
     >
       {{ translate('toolPresentation.detail.truncated') }}
     </p>
-    <p v-if="typeof errorCode === 'string' && errorCode" class="conversation-detail-text">
+    <p v-if="typeof errorCode === 'string' && errorCode" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.error') }}:</span>
       {{ errorCode }}
     </p>
-    <p v-if="typeof errorMessage === 'string' && errorMessage" class="conversation-detail-text">
+    <p v-if="typeof errorMessage === 'string' && errorMessage" class="mar-conversation-detail-text">
       {{ errorMessage }}
     </p>
-    <p v-if="permissionReason" class="conversation-detail-text">
+    <p v-if="permissionReason" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.permission') }}:</span>
       {{ permissionReason }}
     </p>

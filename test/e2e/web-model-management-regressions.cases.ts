@@ -271,7 +271,7 @@ for (const english of [false, true]) {
     await expect(modelRows).toHaveCount(21);
     await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
     await expect(modelRows.last()).toContainText('Model 21');
-    const actionsBounds = await modelPanel.locator('.table-actions').boundingBox();
+    const actionsBounds = await modelPanel.locator('.mar-table-actions').boundingBox();
     const tableBounds = await modelPanel.locator('.el-table').boundingBox();
     expect(actionsBounds).not.toBeNull();
     expect(tableBounds).not.toBeNull();

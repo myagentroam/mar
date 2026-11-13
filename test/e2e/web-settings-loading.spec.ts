@@ -9,6 +9,7 @@ for (const viewport of [
   for (const entry of [
     {
       name: 'quick prompts',
+      variant: 'page',
       navigation: 'Settings',
       label: 'Quick Prompts',
       createLabel: 'Add prompt',
@@ -19,6 +20,7 @@ for (const viewport of [
     },
     {
       name: 'personal Git',
+      variant: 'page',
       navigation: 'Settings',
       label: 'Git configuration',
       createLabel: 'Add credential',
@@ -29,6 +31,7 @@ for (const viewport of [
     },
     {
       name: 'environment secrets',
+      variant: 'region',
       navigation: 'Admin',
       label: 'Environment Secrets',
       createLabel: 'Add Environment Secret',
@@ -89,10 +92,52 @@ for (const viewport of [
         expect(box).not.toBeNull();
         for (const key of ['x', 'y', 'width', 'height'] as const)
           expect(Math.abs(box![key] - available[key])).toBeLessThanOrEqual(1);
-        const spinner = await mask.locator('.circular').boundingBox();
-        expect(spinner).not.toBeNull();
+        const spinner = mask.locator('.el-loading-spinner');
+        await expect(spinner).toBeVisible();
+        let spinnerBox;
+        if (entry.variant === 'page') {
+          await expect(mask).toHaveClass(/mar-page-loading/);
+          await expect(mask.locator('.circular')).toBeHidden();
+          const ring = await spinner.evaluate((element) => {
+            const style = getComputedStyle(element, '::before');
+            return {
+              content: style.content,
+              display: style.display,
+              width: parseFloat(style.width),
+              height: parseFloat(style.height),
+              rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+              borderStyle: style.borderTopStyle
+            };
+          });
+          expect(['none', 'normal']).not.toContain(ring.content);
+          expect(ring.display).toBe('inline-block');
+          expect(ring.width).toBeCloseTo(ring.rootSize * 1.25, 1);
+          expect(ring.height).toBeCloseTo(ring.rootSize * 1.25, 1);
+          expect(ring.borderStyle).toBe('solid');
+          spinnerBox = await spinner.boundingBox();
+          expect(spinnerBox!.height).toBeCloseTo(ring.height, 1);
+        } else {
+          // Region loading retains the standard Element Plus indicator, not the page ring.
+          await expect(mask).not.toHaveClass(/mar-page-loading/);
+          const circular = mask.locator('.circular');
+          await expect(circular).toBeVisible();
+          await expect(circular).toHaveCSS('width', '42px');
+          await expect(circular).toHaveCSS('height', '42px');
+          await expect(circular).not.toHaveCSS('animation-name', 'none');
+          const color = await spinner.evaluate((element) => {
+            const probe = document.createElement('span');
+            probe.style.color = 'var(--mar-color-brand)';
+            element.append(probe);
+            const result = getComputedStyle(probe).color;
+            probe.remove();
+            return result;
+          });
+          await expect(circular.locator('.path')).toHaveCSS('stroke', color);
+          spinnerBox = await circular.boundingBox();
+        }
+        expect(spinnerBox).not.toBeNull();
         expect(
-          Math.abs(spinner!.y + spinner!.height / 2 - (available.y + available.height / 2))
+          Math.abs(spinnerBox!.y + spinnerBox!.height / 2 - (available.y + available.height / 2))
         ).toBeLessThanOrEqual(2);
         const navigationButton = page.getByRole('button', { name: entry.navigation, exact: true });
         await expect

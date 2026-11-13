@@ -288,7 +288,7 @@ onBeforeUnmount(() => {
       </el-select>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshGitHistory2')"
-        class="history-refresh file-explorer-utility-button icon-action"
+        class="history-refresh file-explorer-utility-button mar-icon-action"
         :disabled="historyLoading"
         :aria-label="translate('generated.workspaceInspector.refreshGitHistory')"
         :aria-busy="historyLoading || undefined"
@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
     <p v-if="service.historyFetchFailed.value" class="git-fetch-notice" role="status">
       {{ translate('gitSync.fetchFailed') }}
     </p>
-    <p v-if="!historyLoading && !historyError && historyCommits.length === 0" class="empty">
+    <p v-if="!historyLoading && !historyError && historyCommits.length === 0" class="mar-empty">
       {{ translate('generated.workspaceInspector.noGitCommitHistory') }}
     </p>
     <ul v-else class="history-list">
@@ -380,13 +380,13 @@ onBeforeUnmount(() => {
                 historyFilesLoading.includes(commit.hash) &&
                 !historyFilesErrors.includes(commit.hash)
               "
-              class="empty"
+              class="mar-empty"
               role="status"
             >
               <MarIcon name="loading-action" />
               {{ translate('generated.workspaceInspector.loading') }}
             </li>
-            <li v-if="historyFilesErrors.includes(commit.hash)" class="empty">
+            <li v-if="historyFilesErrors.includes(commit.hash)" class="mar-empty">
               <el-button
                 link
                 v-tooltip="
@@ -785,7 +785,7 @@ button.history-refresh {
   margin: 0;
 }
 
-.history-files > .empty {
+.history-files > .mar-empty {
   padding: 1px 2px;
   font-size: var(--mar-font-size-meta);
   line-height: 18px;

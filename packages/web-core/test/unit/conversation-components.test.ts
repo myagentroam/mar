@@ -1421,7 +1421,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
 
     expect(html).toContain('Original session title');
     expect(html).toMatch(/<code(?:\s[^>]*)?>session-1<\/code>/u);
-    expect(html).not.toContain('session-activity');
+    expect(html).not.toContain('mar-session-activity');
     expect(html).toContain(
       `aria-label="${i18n.global.t('generated.conversationHeader.copySessionId', {
         sessionId: 'session-1'
@@ -1569,8 +1569,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
 
     expect(managed).toContain('Session title');
     expect(managed).toContain('conversation-session-id');
-    expect(managed).not.toContain('session-activity');
-    expect(idle).not.toContain('session-activity');
+    expect(managed).not.toContain('mar-session-activity');
+    expect(idle).not.toContain('mar-session-activity');
   });
 
   it.each(['workspace', 'hosted'] as const)(
@@ -1639,7 +1639,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(loading).toContain(
       i18n.global.t('generated.conversationScroll.loadingConversationHistory')
     );
-    expect(loading).toContain('read-loading-indicator');
+    expect(loading).toContain('mar-read-loading-indicator');
     expect(loading).not.toContain(
       i18n.global.t('generated.conversationScroll.loadEarlierMessages')
     );
@@ -1671,8 +1671,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(loadingOlder).toContain(
       i18n.global.t('generated.conversationScroll.loadingEarlierMessages')
     );
-    expect(loadingOlder).toContain('busy-indicator');
-    expect(loadingOlder).toContain('read-loading-indicator');
+    expect(loadingOlder).toContain('mar-busy-indicator');
+    expect(loadingOlder).toContain('mar-read-loading-indicator');
     expect(loadingOlder).not.toContain('data-mar-icon="loading-action"');
     expect(loadingOlder).not.toMatch(
       /<button(?=[^>]*class="[^"]*\bconversation-load-older\b)[^>]*>/u
@@ -1717,7 +1717,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).not.toContain(i18n.global.t('generated.conversationScroll.loadEarlierMessages'));
     expect(html).not.toContain(i18n.global.t('common.loadFailedRetry'));
     expect(html).not.toContain(i18n.global.t('conversationActivity.historyStart'));
-    expect(html).not.toContain('busy-indicator');
+    expect(html).not.toContain('mar-busy-indicator');
   });
 
   it('renders the same completed round duration with and without runtime Run metadata', async () => {
@@ -1910,7 +1910,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(
-      html.match(/class="conversation-message-action icon-button icon-action\b/gu)
+      html.match(/class="conversation-message-action mar-icon-button mar-icon-action\b/gu)
     ).toHaveLength(2);
     expect(html.match(/class="conversation-item-heading"/gu)).toHaveLength(1);
     expect(html).toContain('Assistant text');
@@ -1939,7 +1939,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       performance: { runId: 'run', latencyMs: 420, tokensPerSecond: 42 }
     });
     expect(info).toContain('session-performance-info');
-    expect(info).toContain('icon-button icon-action');
+    expect(info).toContain('mar-icon-button mar-icon-action');
     expect(info).toContain('420 ms');
     expect(info).toContain('42.0 token/s');
     expect(info).toContain(
@@ -2343,7 +2343,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       })
     );
     expect(activeHtml).toContain('process-activity-indicator');
-    expect(activeHtml).toContain('busy-indicator');
+    expect(activeHtml).toContain('mar-busy-indicator');
     expect(activeHtml).not.toContain(i18n.global.t('conversationProcess.warning'));
 
     const disconnectedHtml = await render(ConversationWorkProcess, {

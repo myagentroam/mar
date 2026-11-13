@@ -44,8 +44,8 @@ it.each(['page', 'region'] as const)(
     expect(html).toContain(
       `aria-label="${translate('generated.filePreviewDialog.loadingPreview')}"`
     );
-    expect(html).toContain('busy-indicator');
-    expect(html.includes('page-loading-state')).toBe(variant === 'page');
+    expect(html).toContain('mar-busy-indicator');
+    expect(html.includes('mar-page-loading-state')).toBe(variant === 'page');
     expect(html.replace(/<[^>]*>/gu, '').trim()).toBe('');
   }
 );

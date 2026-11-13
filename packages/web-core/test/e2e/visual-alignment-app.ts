@@ -32,7 +32,6 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 
 const mobile = new URLSearchParams(location.search).has('mobile');
-document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 const mobileNotificationsOpen = ref(false);
 const mobileNotificationPanelTarget = ref<HTMLElement>();
 localePreferenceService().setLocale(
@@ -507,3 +506,6 @@ const resourceDetailsFixture = {
   .use(i18n)
   .use(ElementPlus)
   .mount('#app');
+
+// Match App.vue: mount the Tooltip host before connecting the document shortcut dispatcher.
+document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });

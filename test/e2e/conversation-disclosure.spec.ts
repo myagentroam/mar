@@ -92,7 +92,9 @@ for (const [width, reducedMotion] of [
         await expect(child.locator('.tool-detail')).toHaveCount(1);
       }
       await process.locator('.reasoning-group > details > summary').click();
-      await expect(process.locator('.reasoning-group .conversation-detail-body')).toHaveCount(1);
+      await expect(process.locator('.reasoning-group .mar-conversation-detail-body')).toHaveCount(
+        1
+      );
       await process.locator('.conversation-file-change-details > summary').click();
       await expect(process.locator('.conversation-file-change-list')).toHaveCount(1);
     }
@@ -115,7 +117,7 @@ for (const [width, reducedMotion] of [
     await first.locator(':scope > .process-heading').click();
     await expect(first.locator('.conversation-record-group')).toHaveCount(4);
     await expect(first.locator('details[open]')).toHaveCount(0);
-    await expect(first.locator('.tool-detail, .conversation-detail-body')).toHaveCount(0);
+    await expect(first.locator('.tool-detail, .mar-conversation-detail-body')).toHaveCount(0);
     await expect(first.locator('.conversation-file-change-list')).toHaveCount(0);
     for (const group of await first.locator('.conversation-record-group').all()) {
       await group.locator(':scope > summary').click();
@@ -137,13 +139,13 @@ test('automatic process collapse also releases its reasoning disclosure state', 
     'true'
   );
   await process.locator('.reasoning-group > details > summary').click();
-  await expect(process.locator('.reasoning-group .conversation-detail-body')).toHaveCount(1);
+  await expect(process.locator('.reasoning-group .mar-conversation-detail-body')).toHaveCount(1);
   await page.getByTestId('finish-reasoning-process').click();
   await expect(process.locator('.process-content')).toHaveCount(0);
   await process.locator(':scope > .process-heading').click();
   await expect(process.locator('.reasoning-group > details')).toHaveCount(1);
   await expect(process.locator('details[open]')).toHaveCount(0);
-  await expect(process.locator('.reasoning-group .conversation-detail-body')).toHaveCount(0);
+  await expect(process.locator('.reasoning-group .mar-conversation-detail-body')).toHaveCount(0);
 });
 
 for (const [width, theme] of [
@@ -177,7 +179,7 @@ for (const [width, theme] of [
     });
     await expect(tasks.locator('.task-list-items > li')).toHaveCount(3);
     await tasks.locator(':scope > summary').click();
-    await expect(tasks.locator('.conversation-detail-body')).toHaveCount(0);
+    await expect(tasks.locator('.mar-conversation-detail-body')).toHaveCount(0);
     await expect(taskIcon).toHaveCount(1);
     await expect(taskIcon).toBeVisible();
     await tasks.locator(':scope > summary').click();
@@ -200,7 +202,7 @@ for (const [width, theme] of [
     expect(
       await image
         .locator('img')
-        .evaluate((element) => element.closest('.conversation-detail-body') === null)
+        .evaluate((element) => element.closest('.mar-conversation-detail-body') === null)
     ).toBe(true);
 
     const fallback = page.locator('[data-entry-key$=":fallback-detail"]');

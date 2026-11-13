@@ -357,7 +357,7 @@ function submitSessionSearch(): void {
     class="conversation-sidebar"
     :aria-label="translate('generated.workspaceSessionList.workspaceSessions')"
   >
-    <div class="sidebar-heading session-heading">
+    <div class="mar-sidebar-heading session-heading">
       <div class="session-heading-meta">
         <h2>{{ translate('generated.workspaceSessionList.sessions') }}</h2>
         <el-tag
@@ -402,7 +402,7 @@ function submitSessionSearch(): void {
               : 'generated.workspaceSessionList.refreshWorkspaceSessions'
           )
         "
-        class="session-search-button icon-action"
+        class="session-search-button mar-icon-action"
         :aria-label="
           translate(
             searchInput.trim()
@@ -431,7 +431,7 @@ function submitSessionSearch(): void {
       </el-button>
       <el-dropdown trigger="click" popper-class="workspace-tool-menu">
         <button
-          class="workspace-more-button icon-action"
+          class="workspace-more-button mar-icon-action"
           :aria-label="translate('generated.workspaceSessionList.moreWorkspaceActions')"
           :disabled="!nodeReady"
           type="button"
@@ -474,7 +474,7 @@ function submitSessionSearch(): void {
       role="status"
       :aria-label="translate('workspaceWatch.loadingSessions')"
     >
-      <BusyIndicator class="read-loading-indicator" />
+      <BusyIndicator class="mar-read-loading-indicator" />
     </div>
     <p v-else-if="watchStatus === 'failed'" class="watch-status failed">
       {{ translate('workspaceWatch.sessionsFailed') }}
@@ -529,7 +529,7 @@ function submitSessionSearch(): void {
                   :data-runner="session.runner"
                   alt=""
                   aria-hidden="true"
-                  class="runner-brand-icon session-title-runner-icon"
+                  class="mar-runner-brand-icon session-title-runner-icon"
                 />
                 <MarIcon
                   v-tooltip="
@@ -571,7 +571,7 @@ function submitSessionSearch(): void {
                 <span
                   v-tooltip="activityLabel(session)"
                   v-if="nodeReady && activity(session) === 'MANAGED_ACTIVE'"
-                  :class="['session-activity', activity(session).toLocaleLowerCase()]"
+                  :class="['mar-session-activity', activity(session).toLocaleLowerCase()]"
                   :aria-label="activityLabel(session)"
                   role="img"
                   ><i aria-hidden="true"
@@ -596,7 +596,7 @@ function submitSessionSearch(): void {
           >
             <button
               v-tooltip="translate('generated.workspaceSessionList.moreSessionActions2')"
-              class="session-more-button icon-action icon-action--inline"
+              class="session-more-button mar-icon-action mar-icon-action--inline"
               :disabled="loading"
               :aria-label="
                 translate('generated.workspaceSessionList.moreSessionActions', {
@@ -693,14 +693,14 @@ function submitSessionSearch(): void {
       <li
         v-if="canLoadMore || loadMoreError !== undefined"
         ref="appendMarker"
-        class="list-append-state"
+        class="mar-list-append-state"
         :aria-busy="loadingMore"
       >
         <span
           v-if="loadingMore && !retryingAppend"
           role="status"
           :aria-label="translate('generated.workspaceSessionList.loading')"
-          ><BusyIndicator class="read-loading-indicator"
+          ><BusyIndicator class="mar-read-loading-indicator"
         /></span>
         <el-button
           v-if="retryingAppend || (loadMoreError !== undefined && !loadingMore)"
@@ -710,14 +710,14 @@ function submitSessionSearch(): void {
           :aria-label="loadingMore ? translate('common.loading') : undefined"
           @click="retryAppend"
         >
-          <BusyIndicator v-if="loadingMore" class="read-loading-indicator" />
+          <BusyIndicator v-if="loadingMore" class="mar-read-loading-indicator" />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
         </el-button>
       </li>
     </ul>
     <p
       v-else-if="watchStatus !== 'loading' && watchStatus !== 'failed'"
-      class="empty sidebar-empty"
+      class="mar-empty sidebar-empty"
     >
       {{
         translate(
@@ -884,11 +884,11 @@ function submitSessionSearch(): void {
   padding: 0.7rem;
 }
 
-.sidebar-heading {
+.mar-sidebar-heading {
   margin-bottom: 0.65rem;
 }
 
-.sidebar-heading.session-heading {
+.mar-sidebar-heading.session-heading {
   margin-bottom: 0.45rem;
 }
 

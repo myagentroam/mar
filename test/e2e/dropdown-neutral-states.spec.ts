@@ -69,7 +69,15 @@ for (const scheme of ['Light', 'Dark']) {
         await expect(disabled).toHaveAttribute('aria-disabled', 'true');
         await expect(disabled).toHaveCSS('color', palette.disabled);
         await expect(disabled).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await trigger.click();
+        await expect(copy).toBeHidden();
         await page.mouse.move(0, 0);
+        await trigger.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(trigger).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(copy).toBeVisible();
         await rename.focus();
         await page.keyboard.press('ArrowDown');
         await expect(copy).toBeFocused();

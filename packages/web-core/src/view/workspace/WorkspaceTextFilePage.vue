@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import {
   mountMobileDialogReturn,
@@ -779,7 +780,7 @@ defineExpose({
     :aria-label="translate('generated.filePreviewDialog.filePreview', { value0: file.path })"
   >
     <template #status>
-      <span class="file-preview-eyebrow"
+      <span class="mar-file-preview-eyebrow"
         >{{ editing ? translate('fileEditor.editing') : translate('fileEditor.readOnly') }}
         <span
           v-if="file.previewEncoding !== undefined"
@@ -1163,7 +1164,7 @@ defineExpose({
       @close="closeFallbackFind"
     />
     <main
-      class="file-preview-content"
+      class="mar-file-preview-content"
       :class="{
         'file-preview-content-code':
           codeEditorEnabled && !(markdown && renderMarkdown && markdownResourceUrl && !editing),
@@ -1210,7 +1211,7 @@ defineExpose({
           spellcheck="false"
           @contextmenu="openPreviewMenu"
         />
-        <p v-if="!codeEditorEnabled" class="empty">
+        <p v-if="!codeEditorEnabled" class="mar-empty">
           {{ translate('generated.filePreviewDialog.onlyTheFirst512KiBIsShown') }}
         </p>
       </template>
@@ -1273,7 +1274,12 @@ defineExpose({
 </template>
 
 <style scoped>
-.file-preview-content {
+.file-preview-size {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+}
+
+.mar-file-preview-content {
   flex: 1;
 }
 
@@ -1289,7 +1295,7 @@ defineExpose({
   padding: 0;
 }
 
-.file-preview-content-fallback > .empty {
+.file-preview-content-fallback > .mar-empty {
   margin: 0;
   padding: 0.65rem 0.75rem;
 }

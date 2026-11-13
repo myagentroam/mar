@@ -365,10 +365,10 @@ onBeforeUnmount(closeDetail);
   <section
     v-loading="loading && !pageReady && !pagination.failure.value"
     element-loading-custom-class="mar-page-loading"
-    class="management-page audit-management"
+    class="mar-management-page audit-management"
   >
-    <div class="filter-row">
-      <label class="filter-field"
+    <div class="mar-filter-row">
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.auditManagementPage.timeRange') }}</span
         ><el-date-picker
           v-model="range"
@@ -387,7 +387,7 @@ onBeforeUnmount(closeDetail);
           ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
       ></label>
     </div>
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
@@ -531,7 +531,7 @@ onBeforeUnmount(closeDetail);
 </template>
 
 <style scoped>
-.filter-row {
+.mar-filter-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -539,7 +539,7 @@ onBeforeUnmount(closeDetail);
   padding: 8px 0;
   border-block: 1px solid var(--mar-border-subtle);
 }
-.management-page .filter-field > .audit-range-picker {
+.mar-management-page .mar-filter-field > .audit-range-picker {
   width: min(430px, 100%);
 }
 .clickable-rows :deep(.el-table__row) {
@@ -555,7 +555,7 @@ pre {
 }
 
 @media (max-width: 767px) {
-  .management-page .filter-field > .audit-range-picker {
+  .mar-management-page .mar-filter-field > .audit-range-picker {
     width: 100%;
   }
 }

@@ -75,7 +75,7 @@ const app = createApp({
         h('div', { 'data-testid': 'icon-theme-preview' }, [
           h(FileTypeIcon, { name: 'example.ts' })
         ]),
-        h(ThemeControlsFixture)
+        !new URLSearchParams(location.search).has('appearance-only') && h(ThemeControlsFixture)
       ]);
   }
 });

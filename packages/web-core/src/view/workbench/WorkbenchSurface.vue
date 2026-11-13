@@ -474,7 +474,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         >
           <div
             v-if="page.selection.workspaceSelectionLoading"
-            class="page-loading-state"
+            class="mar-page-loading-state"
             role="status"
             :aria-label="translate('common.loading')"
           >
@@ -738,7 +738,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                         !page.files.filesReady &&
                         (workspaceCapabilitiesLoading || workspaceFilesRestriction !== undefined)
                       "
-                      class="empty"
+                      class="mar-empty"
                       :class="{
                         'workspace-tool-loading': workspaceCapabilitiesLoading
                       }"
@@ -1322,7 +1322,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   .inspector-column {
     position: fixed;
     z-index: 12;
-    inset: var(--sidebar-header-height) auto 0 0;
+    inset: var(--mar-sidebar-header-height) auto 0 0;
     width: min(300px, calc(100vw - 48px));
     border: 0;
     border-right: 1px solid var(--mar-border-strong);
@@ -1367,7 +1367,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   .workspace-aside {
     position: fixed;
     z-index: 12;
-    inset: var(--sidebar-header-height) 0 0;
+    inset: var(--mar-sidebar-header-height) 0 0;
     width: 100% !important;
     min-width: 0;
   }

@@ -127,13 +127,19 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               const range = document.createRange();
               range.selectNodeContents(label);
               const text = range.getBoundingClientRect();
-              const box = label.getBoundingClientRect();
+              const labelBox = label.getBoundingClientRect();
               const row = label.closest('.file-tree-row-shell')!;
+              const rowBox = row.getBoundingClientRect();
+              const style = getComputedStyle(label);
               return {
                 name: label.textContent,
-                above: text.top - box.top,
-                below: box.bottom - text.bottom,
-                rowHeight: row.getBoundingClientRect().height,
+                above: text.top - rowBox.top,
+                below: rowBox.bottom - text.bottom,
+                labelClipAbove: text.top - labelBox.top,
+                labelClipBelow: labelBox.bottom - text.bottom,
+                fontSize: Number.parseFloat(style.fontSize),
+                lineHeight: Number.parseFloat(style.lineHeight),
+                rowHeight: rowBox.height,
                 expectedRowHeight: Number.parseFloat(
                   getComputedStyle(row).getPropertyValue('--mar-compact-row-size')
                 )
@@ -144,7 +150,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           for (const bounds of textBounds) {
             expect(bounds.above, `${bounds.name}: glyph space above`).toBeGreaterThanOrEqual(1);
             expect(bounds.below, `${bounds.name}: glyph space below`).toBeGreaterThanOrEqual(1);
-            expect(bounds.rowHeight).toBe(bounds.expectedRowHeight);
+            // Range returns line boxes, not ink; allow only subpixel offset at the label clip.
+            expect(
+              bounds.labelClipAbove,
+              `${bounds.name}: label clip above`
+            ).toBeGreaterThanOrEqual(-0.5);
+            expect(
+              bounds.labelClipBelow,
+              `${bounds.name}: label clip below`
+            ).toBeGreaterThanOrEqual(-0.5);
+            expect(bounds.lineHeight).toBeCloseTo(bounds.fontSize * 1.5, 2);
+            expect(bounds.rowHeight).toBeCloseTo(bounds.expectedRowHeight, 2);
           }
           const rootRow = files.locator('[data-file-path="."]');
           await rootRow.click();
@@ -192,7 +208,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const history = page.getByTestId('Git History').locator('button.history-load-more');
           const commitFiles = page.getByTestId('Commit files');
           await commitFiles.locator('.history-commit-row').click();
-          const commitRetry = commitFiles.locator('.history-files .empty button');
+          const commitRetry = commitFiles.locator('.history-files .mar-empty button');
           for (const button of [search, changes, history, commitRetry])
             await expectReadableState(button);
           await page.screenshot({

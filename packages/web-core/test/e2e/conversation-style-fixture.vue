@@ -558,20 +558,20 @@ function finishPreview() {
     />
     <section aria-label="Utility controls">
       <button
-        class="icon-button icon-action"
+        class="mar-icon-button mar-icon-action"
         data-testid="native-utility"
         aria-label="Native icon action"
       >
         <MarIcon name="copy" />
       </button>
       <el-button
-        class="icon-action"
+        class="mar-icon-action"
         data-testid="element-utility"
         text
         aria-label="Element icon action"
         ><MarIcon name="copy"
       /></el-button>
-      <el-button class="icon-action" disabled data-testid="disabled-utility"
+      <el-button class="mar-icon-action" disabled data-testid="disabled-utility"
         >Disabled utility</el-button
       >
     </section>

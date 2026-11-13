@@ -321,7 +321,7 @@ function activate(tab: WorkspaceTab): void {
   >
     <button
       v-if="hasOverflow"
-      class="tab-strip-scroll icon-action"
+      class="tab-strip-scroll mar-icon-action"
       :aria-label="translate('workspaceTabs.scrollPrevious')"
       :disabled="!canScrollLeft"
       type="button"
@@ -394,7 +394,7 @@ function activate(tab: WorkspaceTab): void {
               <span
                 v-tooltip="translate('generated.sessionPresentation.managed')"
                 v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                class="workspace-tab-running session-activity managed_active"
+                class="workspace-tab-running mar-session-activity managed_active"
                 role="img"
                 :aria-label="translate('workspaceTabs.running')"
                 ><i aria-hidden="true"
@@ -412,7 +412,7 @@ function activate(tab: WorkspaceTab): void {
         <button
           v-tooltip="translate('workspaceTabs.unpin')"
           v-if="tab.pinned === true"
-          class="tab-pin icon-button icon-action icon-action--inline"
+          class="tab-pin mar-icon-button mar-icon-action mar-icon-action--inline"
           :aria-label="translate('workspaceTabs.unpinLabel', { label: tab.label })"
           type="button"
           @click.stop="emit('pin', tab.id, false)"
@@ -421,7 +421,7 @@ function activate(tab: WorkspaceTab): void {
         </button>
         <button
           v-else
-          class="tab-close icon-button icon-action icon-action--inline"
+          class="tab-close mar-icon-button mar-icon-action mar-icon-action--inline"
           :aria-label="translate('generated.workspaceTabs.close', { value0: tab.label })"
           type="button"
           @click="emit('close', tab)"
@@ -432,7 +432,7 @@ function activate(tab: WorkspaceTab): void {
     </div>
     <div v-if="hasOverflow" class="workspace-tab-overflow-actions">
       <button
-        class="tab-strip-scroll icon-action"
+        class="tab-strip-scroll mar-icon-action"
         :aria-label="translate('workspaceTabs.scrollNext')"
         :disabled="!canScrollRight"
         type="button"
@@ -442,7 +442,7 @@ function activate(tab: WorkspaceTab): void {
       </button>
       <el-dropdown trigger="click" @command="activateFromMenu">
         <button
-          class="workspace-tab-menu icon-action"
+          class="workspace-tab-menu mar-icon-action"
           :aria-label="translate('workspaceTabs.allOpenWorkspaces')"
           type="button"
         >
@@ -471,7 +471,7 @@ function activate(tab: WorkspaceTab): void {
                 <span
                   v-tooltip="translate('generated.sessionPresentation.managed')"
                   v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                  class="workspace-tab-running session-activity managed_active"
+                  class="workspace-tab-running mar-session-activity managed_active"
                   role="img"
                   :aria-label="translate('workspaceTabs.running')"
                   ><i aria-hidden="true"

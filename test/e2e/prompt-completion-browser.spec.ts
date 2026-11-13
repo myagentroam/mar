@@ -114,8 +114,14 @@ for (const mode of ['workspace'] as const) {
             await page.mouse.move(0, 0);
             await page.mouse.up();
           }
-          await page.keyboard.press('Shift');
-          await button.focus();
+          const cancel = page.locator('[data-completion-cancel]');
+          const keyboardStart =
+            (await button.evaluate((element) => element.matches('[data-completion-action]'))) &&
+            (await cancel.isVisible())
+              ? cancel
+              : page.getByTestId('send-message');
+          await keyboardStart.focus();
+          await page.keyboard.press('Shift+Tab');
           await expect(button).toBeFocused();
           await expect(button).toHaveCSS('outline-style', 'solid');
           await expect(button).toHaveCSS('outline-width', '2px');
@@ -151,7 +157,7 @@ for (const mode of ['workspace'] as const) {
         );
         await expect(status).toHaveText(language === 'en-US' ? 'Composer Prediction' : '输入预测');
         const indicator = page.locator(
-          '.completion-status > .completion-indicator, .completion-status > .busy-indicator'
+          '.completion-status > .completion-indicator, .completion-status > .mar-busy-indicator'
         );
         await expect(indicator).toHaveCSS('width', '5px');
         await expect(indicator).toHaveCSS('height', '5px');
@@ -165,7 +171,7 @@ for (const mode of ['workspace'] as const) {
         const bar = page.locator('.completion-actions');
         await expect(page.locator('.completion-hint')).toBeHidden();
         await expect.poll(async () => (await bar.boundingBox())!.height).toBeLessThanOrEqual(28);
-        await expect(indicator).toHaveCSS('animation-name', /^busy-indicator-spin/);
+        await expect(indicator).toHaveCSS('animation-name', /^mar-busy-indicator-spin/);
         await page.emulateMedia({ reducedMotion: 'reduce' });
         await expect(indicator).toHaveCSS('animation-name', 'none');
         await resolveRequest(page, 0, 'Check the recent changes.');

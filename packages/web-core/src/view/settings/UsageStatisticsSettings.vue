@@ -427,7 +427,7 @@ onUnmounted(() => {
         <p class="metadata">
           {{ t('usageStatistics.timeZone', { zone: timeZone }) }}
         </p>
-        <p v-if="state.overview.selected.requests === '0'" class="empty">
+        <p v-if="state.overview.selected.requests === '0'" class="mar-empty">
           {{ t('usageStatistics.empty') }}
         </p>
         <div v-else class="trend">
@@ -582,7 +582,9 @@ onUnmounted(() => {
         <div class="distributions">
           <section v-for="distribution in distributions" :key="distribution.kind">
             <h4>{{ t(`usageStatistics.${distribution.kind}`) }}</h4>
-            <p v-if="!distribution.groups.length" class="empty">{{ t('usageStatistics.empty') }}</p>
+            <p v-if="!distribution.groups.length" class="mar-empty">
+              {{ t('usageStatistics.empty') }}
+            </p>
             <ol v-else>
               <li v-for="group in distribution.groups" :key="group.key">
                 <div>
@@ -795,6 +797,14 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+:where(.usage) :deep(.section-heading span) {
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
+}
+:where(.usage) :deep(.section-heading h2) {
+  font-weight: 500;
+}
+
 .usage-purposes {
   display: flex;
   flex-wrap: wrap;
@@ -854,7 +864,7 @@ p {
   margin: 0.5rem 0;
 }
 .metadata,
-.empty {
+.mar-empty {
   color: var(--mar-text-muted);
   font-size: var(--mar-font-size-meta);
   line-height: 1.6;

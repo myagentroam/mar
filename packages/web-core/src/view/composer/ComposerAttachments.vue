@@ -77,7 +77,7 @@ const emit = defineEmits<{
           })
         "
         type="button"
-        class="composer-attachment-remove icon-action"
+        class="composer-attachment-remove mar-icon-action"
         :aria-label="
           translate('generated.composerAttachments.removeAttachment', {
             value0: attachment.file.name

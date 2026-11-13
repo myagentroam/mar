@@ -41,7 +41,7 @@ async function copySessionId(sessionId: string): Promise<void> {
           :data-runner="session?.runner ?? runner"
           alt=""
           aria-hidden="true"
-          class="runner-brand-icon conversation-title-runner-icon"
+          class="mar-runner-brand-icon conversation-title-runner-icon"
         />
         <h2
           v-tooltip="{
@@ -60,7 +60,7 @@ async function copySessionId(sessionId: string): Promise<void> {
       </div>
       <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
         <button
-          class="text-action conversation-session-id-copy"
+          class="mar-text-action conversation-session-id-copy"
           v-tooltip="
             translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
           "
@@ -80,7 +80,7 @@ async function copySessionId(sessionId: string): Promise<void> {
       :aria-label="translate('generated.conversationHeader.workspaceTools')"
     >
       <button
-        class="text-action"
+        class="mar-text-action"
         type="button"
         :aria-label="translate('generated.conversationHeader.openSessionList')"
         @click="emit('openSurface', 'sessions')"
@@ -88,7 +88,7 @@ async function copySessionId(sessionId: string): Promise<void> {
         {{ translate('generated.conversationHeader.sessions') }}
       </button>
       <button
-        class="text-action"
+        class="mar-text-action"
         v-if="asideReady || filesReady || terminalReady"
         type="button"
         :aria-label="translate('generated.conversationHeader.openAside')"

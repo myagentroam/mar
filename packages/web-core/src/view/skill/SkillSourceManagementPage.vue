@@ -452,9 +452,9 @@ function scopeLabel(scope: string): string {
   <section
     v-loading="initialLoading"
     element-loading-custom-class="mar-page-loading"
-    class="management-page"
+    class="mar-management-page"
   >
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         type="primary"
         :icon="marIcon('plus')"
@@ -504,7 +504,7 @@ function scopeLabel(scope: string): string {
         :label="translate('generated.skillSourceManagementPage.actions')"
         :width="180"
         ><template #default="{ row }">
-          <div class="row-actions" @click.stop>
+          <div class="mar-row-actions" @click.stop>
             <el-button
               link
               :icon="marIcon('power')"
@@ -615,7 +615,7 @@ function scopeLabel(scope: string): string {
               :width="180"
             >
               <template #default="{ row }">
-                <div class="row-actions" @click.stop>
+                <div class="mar-row-actions" @click.stop>
                   <el-button
                     link
                     :icon="marIcon('plus')"
@@ -754,7 +754,7 @@ function scopeLabel(scope: string): string {
               min-width="360"
             >
               <template #default="{ row }">
-                <div class="row-actions" @click.stop>
+                <div class="mar-row-actions" @click.stop>
                   <el-button
                     link
                     :icon="marIcon('edit')"
@@ -994,7 +994,7 @@ function scopeLabel(scope: string): string {
 </template>
 
 <style scoped>
-.management-page > * {
+.mar-management-page > * {
   flex-shrink: 0;
   min-width: 0;
 }
@@ -1110,7 +1110,7 @@ function scopeLabel(scope: string): string {
 .clickable-rows :deep(.el-table__row) {
   cursor: pointer;
 }
-.row-actions {
+.mar-row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
