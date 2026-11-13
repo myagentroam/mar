@@ -148,6 +148,121 @@ function recoveryFixture(
 }
 
 describe('Workspace session unread queries', () => {
+  it('does not inherit a different account queued restoration barrier', async () => {
+    const f = recoveryFixture([notification('current')]);
+    let finishLoad!: () => void;
+    try {
+      f.server.loadGate = () => new Promise<void>((resolve) => (finishLoad = resolve));
+      const recovering = f.state.recover();
+      f.state.recover(new Promise<void>(() => {}));
+      f.username.value = 'another-user';
+      f.state.recover();
+      await vi.waitFor(() => expect(finishLoad).toBeDefined());
+      f.server.loadGate = undefined;
+      finishLoad();
+      await recovering;
+      expect(f.reads()).toHaveLength(1);
+      expect(f.state.unreadCount.value).toBe(0);
+    } finally {
+      f.server.loadGate = undefined;
+      finishLoad?.();
+      f.state.dispose();
+    }
+  });
+
+  it('does not read after its snapshot refresh generation was cancelled', async () => {
+    const f = recoveryFixture([notification('current')]);
+    try {
+      await f.state.recover(Promise.resolve(false));
+      expect(f.reads()).toHaveLength(0);
+      expect(f.state.unreadCount.value).toBe(1);
+    } finally {
+      f.state.dispose();
+    }
+  });
+
+  it('waits for the captured visible session to finish its recovery refresh before reading', async () => {
+    const f = recoveryFixture([notification('current'), notification('other', 'session-2')]);
+    const target = f.active.target;
+    let finish!: () => void;
+    const ready = new Promise<void>((resolve) => (finish = resolve));
+    try {
+      const recovering = f.state.recover(ready);
+      f.active.target = undefined;
+      await vi.waitFor(() => expect(f.request).toHaveBeenCalled());
+      expect(f.reads()).toHaveLength(0);
+      f.active.target = target;
+      finish();
+      await recovering;
+      expect(f.reads()).toHaveLength(1);
+      expect(JSON.parse(String(f.reads()[0]?.[1]?.body))).toEqual({
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1'
+      });
+      expect(f.state.hasUnreadSession('node-1', 'workspace-1', 'session-2')).toBe(true);
+    } finally {
+      finish();
+      f.state.dispose();
+    }
+  });
+
+  it.each(['target', 'account', 'focus'] as const)(
+    'rechecks %s after the session recovery refresh settles',
+    async (changed) => {
+      let focused = true;
+      vi.stubGlobal('document', { visibilityState: 'visible', hasFocus: () => focused });
+      const f = recoveryFixture([notification('current'), notification('other', 'session-2')]);
+      let finish!: () => void;
+      const ready = new Promise<void>((resolve) => (finish = resolve));
+      try {
+        const recovering = f.state.recover(ready);
+        await vi.waitFor(() => expect(f.request).toHaveBeenCalled());
+        expect(f.reads()).toHaveLength(0);
+        if (changed === 'target') f.active.target = notification('other', 'session-2').target;
+        if (changed === 'account') f.username.value = 'another-user';
+        if (changed === 'focus') focused = false;
+        finish();
+        await recovering;
+        expect(f.reads()).toHaveLength(0);
+        expect(f.state.unreadCount.value).toBe(2);
+      } finally {
+        finish();
+        vi.restoreAllMocks();
+        f.state.dispose();
+      }
+    }
+  );
+
+  it('preserves a queued refresh barrier and captured target across a focus recovery', async () => {
+    const f = recoveryFixture([notification('current')]);
+    let finishLoad!: () => void;
+    f.server.loadGate = () => new Promise<void>((resolve) => (finishLoad = resolve));
+    let finishRefresh!: () => void;
+    const ready = new Promise<void>((resolve) => (finishRefresh = resolve));
+    const target = f.active.target;
+    try {
+      const recovering = f.state.recover();
+      f.state.recover(ready);
+      f.active.target = undefined;
+      f.state.recover();
+      await vi.waitFor(() => expect(finishLoad).toBeDefined());
+      f.server.loadGate = undefined;
+      finishLoad();
+      await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
+      expect(f.reads()).toHaveLength(0);
+      f.active.target = target;
+      finishRefresh();
+      await recovering;
+      expect(f.reads()).toHaveLength(1);
+      expect(f.state.unreadCount.value).toBe(0);
+    } finally {
+      finishLoad?.();
+      finishRefresh();
+      f.state.dispose();
+    }
+  });
+
   it('reads both visible targets on reconnect without reading targets hidden during the load', async () => {
     const first = notification('first', 'session-1');
     const second = notification('second', 'session-2');
