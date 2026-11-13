@@ -18,7 +18,10 @@ interface ActiveTooltip extends TooltipOptions {
 
 export const TOOLTIP_SERVICE_KEY: InjectionKey<TooltipService> = Symbol('tooltip');
 
-// One coordinator per application. Registered targets carry no reactive effects or listeners.
+const targetSwitchDelay = 100;
+
+// Owns delegated input, pending/visible target handoff and dismissal for one application.
+// Registered targets carry no reactive effects or listeners; the Host owns only rendering.
 export class TooltipService {
   readonly active = shallowRef<ActiveTooltip>();
   private readonly targets = new WeakMap<Element, TooltipOptions>();
@@ -28,7 +31,8 @@ export class TooltipService {
   private observer: MutationObserver | undefined;
   private descriptionId = '';
   private pointerWithin = false;
-  private touchInput = false;
+  private keyboardFocus = false;
+  private input: 'keyboard' | 'pointer' | 'touch' = 'keyboard';
   private readonly dismissedEscapes = new WeakMap<KeyboardEvent, 'control' | 'menu'>();
 
   constructor(private readonly document: Document) {}
@@ -43,7 +47,8 @@ export class TooltipService {
     const active = this.active.value;
     if (active?.target === target) {
       if (!this.available(target)) {
-        this.close();
+        if (this.pending) this.clearActive();
+        else this.close();
         return;
       }
       if (
@@ -58,7 +63,11 @@ export class TooltipService {
 
   remove(target: Element): void {
     this.targets.delete(target);
-    if (this.pending === target || this.active.value?.target === target) this.close();
+    if (this.pending === target) this.close();
+    else if (this.active.value?.target === target) {
+      if (this.pending) this.clearActive();
+      else this.close();
+    }
   }
 
   close = (): void => {
@@ -68,6 +77,10 @@ export class TooltipService {
     this.pointerWithin = false;
     this.observer?.disconnect();
     this.observer = undefined;
+    this.clearActive();
+  };
+
+  private clearActive(): void {
     const target = this.active.value?.target;
     if (target) {
       const ids = (target.getAttribute('aria-describedby') ?? '')
@@ -77,7 +90,7 @@ export class TooltipService {
       else target.removeAttribute('aria-describedby');
     }
     this.active.value = undefined;
-  };
+  }
 
   connect(descriptionId: string): () => void {
     this.descriptionId = descriptionId;
@@ -143,34 +156,61 @@ export class TooltipService {
   private request(target: Element, input: 'pointer' | 'focus' | 'touch'): void {
     clearTimeout(this.hideTimer);
     if (this.active.value?.target === target || this.pending === target) {
+      if (this.pending && this.pending !== target) {
+        clearTimeout(this.showTimer);
+        this.pending = undefined;
+        this.pointerWithin = false;
+        this.observeTargets();
+      }
       if (input === 'pointer') this.pointerWithin = true;
       return;
     }
-    this.close();
-    if (!this.available(target)) return;
+    if (!this.available(target)) {
+      this.close();
+      return;
+    }
+    clearTimeout(this.showTimer);
     this.pointerWithin = input === 'pointer';
     this.pending = target;
-    // Observe only the active target's ancestor chain, including while the delay is pending.
-    // No document-wide subtree observer, per-row observer, or polling is needed.
+    this.observeTargets();
+    this.showTimer = setTimeout(
+      () => {
+        const options = this.targets.get(target);
+        if (this.pending !== target || !options || !this.available(target)) {
+          this.close();
+          return;
+        }
+        this.pending = undefined;
+        this.clearActive();
+        this.active.value = { ...options, target };
+        this.describe(target);
+        this.observeTargets();
+      },
+      this.active.value ? targetSwitchDelay : tableTooltipOptions.showAfter
+    );
+  }
+
+  private observeTargets(): void {
+    this.observer?.disconnect();
+    // At most two ancestor chains are observed during a handoff, never the document subtree.
     this.observer = new MutationObserver(() => {
-      if (!this.available(target)) this.close();
-    });
-    for (let ancestor: Element | null = target; ancestor; ancestor = ancestor.parentElement)
-      this.observer.observe(ancestor, {
-        childList: true,
-        attributes: true,
-        attributeFilter: ['class', 'style', 'hidden', 'inert']
-      });
-    this.showTimer = setTimeout(() => {
-      const options = this.targets.get(target);
-      if (this.pending !== target || !options || !this.available(target)) {
+      if (this.pending && !this.available(this.pending)) {
         this.close();
         return;
       }
-      this.pending = undefined;
-      this.active.value = { ...options, target };
-      this.describe(target);
-    }, tableTooltipOptions.showAfter);
+      const active = this.active.value;
+      if (active && !this.available(active.target)) {
+        if (this.pending) this.clearActive();
+        else this.close();
+      }
+    });
+    for (const target of [this.pending, this.active.value?.target])
+      for (let ancestor = target; ancestor; ancestor = ancestor.parentElement ?? undefined)
+        this.observer.observe(ancestor, {
+          childList: true,
+          attributes: true,
+          attributeFilter: ['class', 'style', 'hidden', 'inert']
+        });
   }
 
   private leave(target: Element | undefined): void {
@@ -184,7 +224,6 @@ export class TooltipService {
 
   private onPointerOver = (event: PointerEvent): void => {
     if (event.pointerType === 'touch' || event.buttons) return;
-    this.touchInput = false;
     const target = this.find(event.target);
     if (target && target !== this.find(event.relatedTarget)) this.request(target, 'pointer');
   };
@@ -193,39 +232,46 @@ export class TooltipService {
     if (event.pointerType === 'touch') return;
     const target = this.find(event.target);
     if (target === this.find(event.relatedTarget)) return;
-    if (!target || (target !== this.pending && target !== this.active.value?.target)) return;
+    if (!target || target !== (this.pending ?? this.active.value?.target)) return;
     this.pointerWithin = false;
-    if (target?.contains(this.document.activeElement)) return;
+    if (this.keyboardFocus && target.contains(this.document.activeElement)) return;
     this.leave(target);
   };
 
   private onPointerDown = (event: PointerEvent): void => {
-    this.touchInput = event.pointerType === 'touch';
+    this.input = event.pointerType === 'touch' ? 'touch' : 'pointer';
+    this.keyboardFocus = false;
     this.close();
   };
 
   private onClick = (event: MouseEvent): void => {
     const pointerType = 'pointerType' in event ? event.pointerType : undefined;
-    if (pointerType ? pointerType !== 'touch' : !this.touchInput || event.detail === 0) return;
+    if (pointerType ? pointerType !== 'touch' : this.input !== 'touch' || event.detail === 0)
+      return;
     const target = this.find(event.target);
     // Only explicit detail entries opt in. Never consume the underlying action or long press.
     if (target && this.targets.get(target)?.touch) this.request(target, 'touch');
   };
 
   private onFocusIn = (event: FocusEvent): void => {
-    if (this.touchInput) return;
+    this.keyboardFocus = this.input === 'keyboard';
+    if (!this.keyboardFocus) return;
     const target = this.find(event.target);
     if (target) this.request(target, 'focus');
     else if (!this.pointerWithin) this.close();
   };
 
   private onFocusOut = (event: FocusEvent): void => {
+    this.keyboardFocus = false;
     const target = this.find(event.target);
-    if (target !== this.find(event.relatedTarget) && !this.pointerWithin) this.leave(target);
+    if (!target || target !== (this.pending ?? this.active.value?.target)) return;
+    if (target !== this.find(event.relatedTarget)) {
+      if (!this.pointerWithin) this.leave(target);
+    }
   };
 
   private onKeyDown = (event: KeyboardEvent): void => {
-    this.touchInput = false;
+    if (!event.isComposing) this.input = 'keyboard';
     if (event.key !== 'Escape' || event.isComposing) return;
     const active = this.active.value;
     this.close();
