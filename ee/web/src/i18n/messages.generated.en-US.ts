@@ -1846,9 +1846,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     systemConfigurationEnUS.generated.systemConfigurationPage.actions,
   'systemConfigurationPage.edit': systemConfigurationEnUS.generated.systemConfigurationPage.edit,
   'systemConfigurationPage.save': systemConfigurationEnUS.generated.systemConfigurationPage.save,
-  'systemConfigurationPage.skillSourceTLSCertificateVerificationIsDisabled':
-    systemConfigurationEnUS.generated.systemConfigurationPage
-      .skillSourceTLSCertificateVerificationIsDisabled,
   'systemConfigurationPage.disableSkillSourceTLSVerification':
     systemConfigurationEnUS.generated.systemConfigurationPage.disableSkillSourceTLSVerification,
   'systemConfigurationPage.keepThisOffByDefaultUseIt':

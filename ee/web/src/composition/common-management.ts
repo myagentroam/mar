@@ -1,7 +1,6 @@
 import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
 import { translate } from '@myagentroam/web-core/locale';
 import { defineAsyncComponent, h, type Component } from 'vue';
-import type { AdminState } from '../service/admin-auth-service.js';
 import type { ManagementPageDefinition } from '../service/management-composition.js';
 import {
   createCommonManagementPages as createSharedPages,
@@ -13,10 +12,6 @@ const loadingComponent = {
   render: () =>
     h(LoadingPanel, { loading: true, variant: 'page', 'aria-label': translate('common.loading') })
 };
-
-function resourceManagementVisible(admin: AdminState): boolean {
-  return admin.edition !== 'ENTERPRISE' || admin.role === 'ADMIN' || admin.role === 'ORG_ADMIN';
-}
 
 export function createCommonManagementPages(
   systemInformationExtension?: Component
@@ -45,7 +40,7 @@ export function createCommonManagementPages(
         loadingComponent,
         delay: 0
       }),
-      visible: resourceManagementVisible,
+      visible: () => true,
       props: ({ request, admin, nodes, nodeUpgradeProgress }) => ({
         request,
         nodes,
@@ -61,7 +56,7 @@ export function createCommonManagementPages(
         loadingComponent,
         delay: 0
       }),
-      visible: resourceManagementVisible,
+      visible: () => true,
       props: ({ request, admin }) => ({
         request,
         writable: admin.managementWritable === true,
