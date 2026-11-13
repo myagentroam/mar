@@ -791,17 +791,6 @@ defineExpose({
       <div class="diff-mobile-action-row diff-mobile-utilities">
         <el-button
           class="file-toolbar-control"
-          circle
-          size="small"
-          :disabled="!findAvailable"
-          :aria-label="translate('filePreviewContext.actions')"
-          @pointerdown.prevent
-          @click="openPreviewMenu"
-        >
-          <MarIcon name="more" />
-        </el-button>
-        <el-button
-          class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
           size="small"
