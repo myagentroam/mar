@@ -18,6 +18,8 @@
       import MarTab from '/packages/web-core/src/view/common/MarTab.vue';
       import { tabStripIdentity } from '/packages/web-core/src/util/tab-strip-identity.ts';
       import { createWorkbenchAsideService } from '/packages/web-core/src/service/workbench-aside-service.ts';
+      import { consoleKeyboardShortcutService } from '/packages/web-core/src/service/console-keyboard-shortcut-service.ts';
+      import { workspaceKeys } from '/packages/web-core/src/service/console-shortcut-keys.ts';
       import { themePreferenceService } from '/packages/web-core/src/service/theme-preference-service.ts';
       import { chineseLongTitle, chineseToolLabels } from './workbench-aside-fixture-data.ts';
 
@@ -50,6 +52,35 @@
       if (!new URLSearchParams(location.search).has('active-child'))
         aside.selectTool(workspace, 'files');
       const terminalMounts = ref(0);
+      const workspaceCloses = ref(0);
+      const asideDraft = ref('Unsent Aside draft');
+      const shortcutFixture = new URLSearchParams(location.search).has('shortcuts');
+      if (shortcutFixture) {
+        consoleKeyboardShortcutService.register({
+          command: 'fixture.workspace.closeTab',
+          priority: 10,
+          scope: 'workspace',
+          keys: workspaceKeys.close,
+          when: () => true,
+          execute: () => {
+            workspaceCloses.value++;
+            return 'HANDLED';
+          }
+        });
+        document.addEventListener('keydown', (event) =>
+          consoleKeyboardShortcutService.handle(event)
+        );
+        consoleKeyboardShortcutService.registerRegion({
+          scope: 'pane',
+          root: () => document.querySelector('#session textarea') ?? undefined,
+          blocksOtherScopes: false
+        });
+        consoleKeyboardShortcutService.registerRegion({
+          scope: 'terminal',
+          root: () => document.querySelector('#terminal') ?? undefined,
+          blocksOtherScopes: true
+        });
+      }
       const Inspector = defineComponent({
         props: { tool: String },
         setup(props) {
@@ -81,6 +112,7 @@
               'div',
               {
                 id: 'terminal',
+                tabindex: 0,
                 style: { display: props.visible ? '' : 'none' },
                 'data-mounts': terminalMounts.value
               },
@@ -100,6 +132,17 @@
           const closed = ref('');
           const activations = ref(0);
           return () => [
+            ...(shortcutFixture
+              ? [
+                  h('button', { id: 'main-focus' }, 'Main content'),
+                  h('output', { id: 'workspace-closes' }, workspaceCloses.value),
+                  h(
+                    'button',
+                    { onClick: () => aside.openSession({ ...workspace, sessionId: 'child' }) },
+                    'Open Aside session'
+                  )
+                ]
+              : []),
             h(
               'button',
               {
@@ -153,7 +196,16 @@
                       })
                     : undefined,
                 terminal: ({ visible }) => h(Terminal, { visible }),
-                session: ({ target }) => h('div', { id: 'session' }, `Session ${target.sessionId}`)
+                session: ({ target }) =>
+                  h('div', { id: 'session' }, [
+                    `Session ${target.sessionId}`,
+                    shortcutFixture &&
+                      h('textarea', {
+                        'aria-label': 'Aside draft',
+                        value: asideDraft.value,
+                        onInput: (event) => (asideDraft.value = event.target.value)
+                      })
+                  ])
               }
             ),
             h('div', { style: { width: '160px' } }, [

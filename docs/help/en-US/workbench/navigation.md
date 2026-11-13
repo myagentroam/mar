@@ -1,9 +1,11 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-13
 ---
 
 # Work Mode, Nodes, and Workspaces
+
+With focus in the Aside tab strip, content, or Composer, use `Ctrl+W` / `Alt+W` to close the active session or Browser without closing the Workspace, clearing the session draft, or stopping its running task. Fixed tools remain open. See [Keyboard Shortcuts](../reference/keyboard-shortcuts.md) for input boundaries and cross-origin preview limitations.
 
 Console provides two parallel modes: **Work** and **Conversation**. Work is the new name for the former **Nodes** top-level entry and opens the same Node → Workspace resource tree. Node management, Workspace tabs, Agent sessions, files, Git, and terminals work exactly as before. Conversation mode starts and continues conversations from published templates.
 

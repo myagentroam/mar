@@ -1,6 +1,192 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('Aside close shortcuts stay in the focused layer and preserve the session draft', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  try {
+    await page.goto(`${fixture.url}workbench-aside.html?active-child&shortcuts`);
+    const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+    const child = tabs.getByRole('tab', { name: 'Child', exact: true });
+    const draft = page.getByRole('textbox', { name: 'Aside draft' });
+    const workspaceCloses = page.locator('#workspace-closes');
+    await draft.fill('Keep this draft when closing Aside');
+    await draft.focus();
+    await page.keyboard.press('Alt+w');
+    await expect(child).toHaveCount(0);
+    await expect(tabs.getByRole('tab', { name: 'Files', exact: true })).toBeFocused();
+    await page.keyboard.press('Alt+w');
+    await expect(workspaceCloses).toHaveText('0');
+    await page.getByRole('button', { name: 'Open Aside session', exact: true }).click();
+    await expect(draft).toHaveValue('Keep this draft when closing Aside');
+
+    // Dispatch Control+W explicitly: real browser-reserved keys need not reach the page.
+    await draft.dispatchEvent('keydown', { key: 'w', code: 'KeyW', ctrlKey: true, repeat: true });
+    await expect(child).toHaveCount(1);
+    await draft.dispatchEvent('keydown', {
+      key: 'w',
+      code: 'KeyW',
+      ctrlKey: true,
+      isComposing: true
+    });
+    await expect(child).toHaveCount(1);
+    await page.evaluate(() => {
+      const dialog = document.createElement('div');
+      dialog.id = 'modal';
+      dialog.setAttribute('role', 'dialog');
+      dialog.setAttribute('aria-modal', 'true');
+      dialog.innerHTML = '<button>Modal action</button>';
+      document.body.append(dialog);
+    });
+    await draft.dispatchEvent('keydown', { key: 'w', code: 'KeyW', ctrlKey: true });
+    await expect(child).toHaveCount(1);
+    await page.getByRole('button', { name: 'Modal action', exact: true }).focus();
+    await page.keyboard.press('Alt+w');
+    await expect(workspaceCloses).toHaveText('0');
+    await page.locator('#modal').evaluate((dialog) => dialog.remove());
+    await draft.focus();
+    await page.keyboard.press('Alt+Shift+w');
+    await expect(child).toHaveCount(1);
+    await expect(workspaceCloses).toHaveText('0');
+    await draft.dispatchEvent('keydown', { key: 'w', code: 'KeyW', ctrlKey: true });
+    await expect(child).toHaveCount(0);
+
+    await tabs.getByRole('tab', { name: 'Files', exact: true }).focus();
+    await page.keyboard.press('Alt+w');
+    await page.keyboard.press('Alt+Shift+w');
+    await expect(tabs.getByRole('tab', { name: 'Files', exact: true })).toHaveCount(1);
+    await expect(workspaceCloses).toHaveText('0');
+
+    await tabs.getByRole('tab', { name: 'Terminal', exact: true }).click();
+    await page.locator('#terminal').focus();
+    expect(
+      await page.locator('#terminal').evaluate((element) => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'w',
+          code: 'KeyW',
+          altKey: true,
+          bubbles: true,
+          cancelable: true
+        });
+        element.dispatchEvent(event);
+        return event.defaultPrevented;
+      })
+    ).toBe(false);
+    await expect(workspaceCloses).toHaveText('0');
+
+    await page.locator('#main-focus').focus();
+    await page.keyboard.press('Alt+w');
+    await expect(workspaceCloses).toHaveText('1');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Browser close shortcuts work in its toolbar and same-origin frame without closing Workspace', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  try {
+    await page.route('**/api/html-preview/grants', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ url: new URL('/shortcut-preview', fixture.url).href })
+      })
+    );
+    await page.route('**/shortcut-preview', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<input aria-label="Preview input">' })
+    );
+    await page.goto(`${fixture.url}workbench-aside.html?shortcuts`);
+    const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+    const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
+    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+    const input = page.frameLocator('iframe').getByRole('textbox', { name: 'Preview input' });
+    await input.fill('Preview draft');
+    // Refreshing metadata for the same target must keep the current frame binding.
+    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+    await expect(input).toHaveValue('Preview draft');
+    await input.press('Alt+w');
+    await expect(browser).toHaveCount(0);
+    await expect(page.locator('iframe')).toHaveCount(0);
+    await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(tabs.getByRole('tab', { name: 'Child', exact: true })).toBeFocused();
+    await expect(page.locator('#workspace-closes')).toHaveText('0');
+
+    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+    await expect(input).toBeVisible();
+    // Reload replaces the frame document and must rebind the shortcut.
+    await page.getByRole('button', { name: '重新加载', exact: true }).click();
+    await expect(input).toBeVisible();
+    expect(
+      await page.locator('iframe').evaluate((frame: HTMLIFrameElement) => {
+        const input = frame.contentDocument!.querySelector('input')!;
+        return input.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'w',
+            code: 'KeyW',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true
+          })
+        );
+      })
+    ).toBe(false);
+    await expect(browser).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+    const reload = page.getByRole('button', { name: '重新加载', exact: true });
+    await expect(reload).toBeEnabled();
+    await reload.focus();
+    await expect(reload).toBeFocused();
+    await page.keyboard.press('Alt+w');
+    await expect(browser).toHaveCount(0);
+    await expect(page.locator('#workspace-closes')).toHaveText('0');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Cross-origin Browser previews retain isolation and close from the Aside toolbar', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  try {
+    const previewUrl = new URL('/cross-origin-preview', fixture.url);
+    previewUrl.hostname = 'localhost';
+    await page.route('**/api/html-preview/grants', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ url: previewUrl.href })
+      })
+    );
+    await page.route('**/cross-origin-preview', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<input aria-label="Isolated preview">' })
+    );
+    await page.goto(`${fixture.url}workbench-aside.html?shortcuts`);
+    const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+    const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
+    await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+    const input = page.frameLocator('iframe').getByRole('textbox', { name: 'Isolated preview' });
+    await input.fill('Isolated content');
+    expect(
+      await page.locator('iframe').evaluate((frame: HTMLIFrameElement) => frame.contentDocument)
+    ).toBeNull();
+    await input.dispatchEvent('keydown', { key: 'w', code: 'KeyW', ctrlKey: true });
+    await expect(browser).toHaveCount(1);
+    await expect(page.locator('#workspace-closes')).toHaveText('0');
+    await page.getByRole('button', { name: '重新加载', exact: true }).focus();
+    await page.keyboard.press('Alt+w');
+    await expect(browser).toHaveCount(0);
+    await expect(page.locator('#workspace-closes')).toHaveText('0');
+  } finally {
+    await fixture.close();
+  }
+});
+
 test.describe('HTML Browser content', () => {
   test.use({ locale: 'en-US' });
   for (const width of [1280, 390]) {

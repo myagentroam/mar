@@ -105,9 +105,9 @@ export const personalSettingsEnUS = {
     selectWorkspaceTab: 'Workspace: Select a tab by number (0 selects the tenth)',
     openNewSession: 'Workspace: Create a new session',
     closeWorkspaceTab:
-      'Workspace: Close the active unpinned tab (also in Composer; other inputs, terminal, and dialogs excluded)',
+      'Tabs: Close the focused Aside session/Browser, otherwise the active unpinned Workspace (also in Composer; other inputs, terminal, and dialogs excluded)',
     closeAllWorkspaceTabs:
-      'Workspace: Close all unpinned tabs (also in Composer; other inputs, terminal, and dialogs excluded)',
+      'Workspace: Close all unpinned tabs (not from Aside; also in Main Composer; other inputs, terminal, and dialogs excluded)',
     openMarkdownPreview: 'Markdown/HTML file preview: Open rendered preview in a separate window',
     quickOpenWorkspaceFile: 'Workspace: Quick Open',
     openGitChanges: 'Workspace: Switch the Inspector to Git Changes',

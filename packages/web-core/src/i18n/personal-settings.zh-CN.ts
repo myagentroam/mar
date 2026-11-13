@@ -105,9 +105,9 @@ export const personalSettingsZhCN = {
     selectWorkspaceTab: '工作区：按序号切换标签（0 表示第十个）',
     openNewSession: '工作区：新建会话',
     closeWorkspaceTab:
-      '工作区：关闭当前非固定标签（Composer 内也生效；其他输入框、终端或弹窗除外）',
+      '标签：优先关闭焦点所在 Aside 的会话/Browser，否则关闭当前非固定工作区（Composer 内也生效；其他输入框、终端或弹窗除外）',
     closeAllWorkspaceTabs:
-      '工作区：关闭全部非固定标签（Composer 内也生效；其他输入框、终端或弹窗除外）',
+      '工作区：关闭全部非固定标签（Aside 内不执行；Main Composer 内也生效；其他输入框、终端或弹窗除外）',
     openMarkdownPreview: 'Markdown/HTML 文件预览：在独立窗口打开渲染预览',
     quickOpenWorkspaceFile: '工作区：快速打开',
     openGitChanges: '工作区：切换检查器至 Git 变更',

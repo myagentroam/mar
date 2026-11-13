@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-13
 ---
 
 # Keyboard Shortcuts
@@ -8,6 +8,8 @@ lastUpdated: 2026-11-06
 Session shortcuts apply to the focused Main or Aside conversation. An open dialog prevents background commands from taking focus. Terminals and text editors retain their native input and shortcuts, except for the Terminal toggle. Shortcuts do not take over while an IME is composing.
 
 With an Aside or file tab focused, use the arrow keys or Home/End to move focus, then press Enter or Space to activate it. Moving focus alone does not switch the content.
+
+With focus in the Aside tab strip, content, or Composer, `Ctrl+W` / `Alt+W` (`Control+W` / `Option+W` on macOS) closes only the active session or Browser, not the Workspace. Fixed tools stay open, and the Shift variants do not close background Workspaces. Closing a session preserves its draft and running task. Native inputs, editors, terminals, and dialogs retain their own key handling. Single-tab close also works inside same-origin HTML previews; for cross-origin previews, focus the preview toolbar first.
 
 | Scope                         | Windows/Linux                                               | macOS                                                             | Action                                                                         | Available when                                                                                              |
 | ----------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
