@@ -193,21 +193,20 @@ function parseLocator(locator: string): {
 } {
   if (locator.startsWith('https://')) {
     const url = new URL(locator);
-    const parts = url.pathname.replace(/^\/+|\/+$/gu, '').split('/');
+    const repositoryPath = url.pathname.replace(/^\/+|\/+$/gu, '').replace(/\.git$/u, '');
     if (
       url.username !== '' ||
       url.password !== '' ||
       url.search !== '' ||
       url.hash !== '' ||
-      parts.some((part) => !/^[A-Za-z0-9_.-]+$/u.test(part) || part === '.' || part === '..')
+      repositoryPath === ''
     )
       throw new Error('SKILL_SOURCE_PROVIDER_UNSUPPORTED');
-    const repositoryPath = parts.join('/').replace(/\.git$/u, '');
     return {
       hostname: url.hostname,
       port: url.port || '443',
       repositoryPath,
-      locator,
+      locator: url.href,
       https: true
     };
   }

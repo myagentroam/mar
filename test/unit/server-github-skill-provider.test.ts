@@ -60,6 +60,9 @@ describe('Git Skill repository snapshots', () => {
   it.each([
     ['https://github.com/acme/skills', 'github.com/acme/skills'],
     ['https://git.example.com/skills.git', 'git.example.com/skills'],
+    ['https://git.example.com/~acme/skills.git', 'git.example.com/~acme/skills'],
+    ['https://git.example.com/acme/skill%20repo.git', 'git.example.com/acme/skill%20repo'],
+    ['https://git.example.com/acme/skill repo.git', 'git.example.com/acme/skill%20repo'],
     ['https://git.example.com/acme/group/skills.git', 'git.example.com/acme/group/skills'],
     ['git@git.example.com:acme/skills.git', 'git.example.com/acme/skills']
   ])('clones %s once and reads a pinned Skill bundle locally', async (repositoryUrl, identity) => {
@@ -69,6 +72,7 @@ describe('Git Skill repository snapshots', () => {
     });
     expect(bundle).toMatchObject({
       repositoryIdentity: identity,
+      repositoryUrl,
       commitSha,
       name: 'review',
       contentBytes: skill.length + script.length
@@ -80,7 +84,13 @@ describe('Git Skill repository snapshots', () => {
     const clones = runGit.mock.calls.filter(([, args]) => args.includes('clone'));
     expect(clones).toHaveLength(1);
     expect(clones[0]?.[1]).toEqual(
-      expect.arrayContaining(['--depth=1', '--no-checkout', '--no-tags', '--', repositoryUrl])
+      expect.arrayContaining([
+        '--depth=1',
+        '--no-checkout',
+        '--no-tags',
+        '--',
+        repositoryUrl.startsWith('https://') ? new URL(repositoryUrl).href : repositoryUrl
+      ])
     );
     expect(clones[0]?.[1].some((arg: string) => arg.startsWith('--filter'))).toBe(false);
     expect(
@@ -158,7 +168,8 @@ describe('Git Skill repository snapshots', () => {
     'http://example.com/acme/skills',
     'https://user:secret@example.com/acme/skills',
     'https://example.com/acme/skills?token=secret',
-    'https://example.com/'
+    'https://example.com/',
+    'https://example.com/.git'
   ])('rejects invalid locator %s before cloning', async (repositoryUrl) => {
     await expect(
       new GithubSkillProvider().resolve({ repositoryUrl, skillPath: '.' })
@@ -322,7 +333,7 @@ describe('Git Skill repository snapshots', () => {
       await vi.importActual<typeof import('node:child_process')>('node:child_process');
     const exec = promisify(childProcess.execFile);
     const root = await mkdtemp(path.join(tmpdir(), 'mar-skill-source-'));
-    const source = path.join(root, 'acme/skills.git');
+    const source = path.join(root, '~acme/skill repo.git');
     let server: ReturnType<typeof createServer> | undefined;
     try {
       await mkdir(path.join(source, 'skills/review'), { recursive: true });
@@ -377,7 +388,7 @@ describe('Git Skill repository snapshots', () => {
                 ...process.env,
                 GIT_PROJECT_ROOT: root,
                 GIT_HTTP_EXPORT_ALL: '1',
-                PATH_INFO: url.pathname,
+                PATH_INFO: decodeURIComponent(url.pathname),
                 QUERY_STRING: url.search.slice(1),
                 REQUEST_METHOD: request.method,
                 CONTENT_TYPE: request.headers['content-type'] ?? '',
@@ -402,7 +413,7 @@ describe('Git Skill repository snapshots', () => {
         }
       );
       await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
-      const repositoryUrl = `https://git.example.com:${(server.address() as AddressInfo).port}/acme/skills.git`;
+      const repositoryUrl = `https://git.example.com:${(server.address() as AddressInfo).port}/~acme/skill%20repo.git`;
       // Only public-DNS admission is replaced; TLS and Git transport remain real.
       vi.spyOn(networkPolicy, 'assertPublicSkillHost').mockResolvedValue({
         address: '127.0.0.1',
@@ -428,8 +439,8 @@ describe('Git Skill repository snapshots', () => {
       });
       expect(bundle.commitSha).toBe(revision);
       expect(bundle.tlsVerified).toBe(false);
-      expect(requests).toContain('/acme/skills.git/info/refs');
-      expect(requests).toContain('/acme/skills.git/git-upload-pack');
+      expect(requests).toContain('/~acme/skill%20repo.git/info/refs');
+      expect(requests).toContain('/~acme/skill%20repo.git/git-upload-pack');
       expect(bundle.files).toEqual(
         expect.arrayContaining([
           { path: 'SKILL.md', contentBase64: skill.toString('base64') },
