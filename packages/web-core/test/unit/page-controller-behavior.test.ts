@@ -458,6 +458,204 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it.each(
+    (['node', 'workspace'] as const).flatMap((resource) =>
+      (['success', 'failure', 'cancel'] as const).flatMap((outcome) =>
+        (['message', 'queue'] as const).flatMap((submission) =>
+          [false, true].map((closed) => ({ resource, outcome, submission, closed }))
+        )
+      )
+    )
+  )(
+    'settles pending $submission only while its owner survives actual $resource removal: $outcome, closed $closed',
+    async ({ resource, outcome, submission, closed }) => {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: vi.fn((key: string) => values.get(key) ?? null),
+        setItem: vi.fn((key: string, value: string) => void values.set(key, value)),
+        removeItem: vi.fn((key: string) => void values.delete(key)),
+        get length() {
+          return values.size;
+        },
+        key: (index: number) => [...values.keys()][index] ?? null
+      };
+      vi.stubGlobal('sessionStorage', storage);
+      const created = vi.spyOn(draftOwner, 'createSessionDraftService');
+      const { page } = controller();
+      const drafts = created.mock.results[0]!.value as ReturnType<
+        typeof draftOwner.createSessionDraftService
+      >;
+      const workspace: Workspace = {
+        id: 'workspace-a',
+        path: '/project',
+        kind: 'DIRECTORY',
+        manageable: true
+      };
+      const session: Session = {
+        id: 'session-a',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        externalSessionId: 'native-a',
+        nativeControl: 'MAR_MANAGED',
+        activity: 'IDLE'
+      };
+      const target = {
+        kind: 'session' as const,
+        nodeId: node.id,
+        workspaceId: workspace.id,
+        sessionId: session.id
+      };
+      await captured.seedNodes!([node]);
+      captured.setTarget!(target);
+      captured.setWorkspaces!([workspace]);
+      captured.tree!.cacheWorkspaces(node.id, [workspace]);
+      captured.tabs!.remember(node.id, node, workspace);
+      await captured.seedManifest!({
+        manifestVersion: 1,
+        observedAt: 1,
+        conversation: { available: true, reasonCode: null }
+      });
+      captured.setSessions!([session]);
+      captured.setSession!(session.id);
+      await flushComponent();
+      const isolated = [
+        { ...target, workspaceId: 'other-workspace' },
+        { ...target, nodeId: 'other-node' }
+      ].map((target) => {
+        const slot = drafts.forTarget(target);
+        slot.input.value = 'Other pending input';
+        slot.persist();
+        return { target, slot, settlement: slot.retain() };
+      });
+      const slot = drafts.forTarget(target);
+      slot.input.value = 'Pending input';
+      if (submission === 'queue') {
+        page.mainPaneController.state.queue.startEditing({
+          queueItemId: 'item',
+          content: 'Before edit'
+        });
+        page.mainPaneController.state.queue.editingContent.value = 'Pending queue edit';
+      }
+      slot.persist();
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      let writes = 0;
+      let deletions = 0;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        const path = new URL(String(input), location.href).pathname;
+        if (init?.method === 'DELETE') {
+          deletions += 1;
+          if (outcome === 'failure')
+            return new Response(
+              JSON.stringify({ code: 'REJECTED', message: 'Deletion rejected' }),
+              { status: 409 }
+            );
+        }
+        if (
+          path.endsWith('/messages') ||
+          (path === '/api/queue-items/item' && init?.method === 'PATCH')
+        ) {
+          writes += 1;
+          await pending;
+          return new Response(
+            JSON.stringify(
+              submission === 'message'
+                ? {
+                    session,
+                    run: {
+                      id: 'late-run',
+                      sessionId: session.id,
+                      workspaceId: workspace.id,
+                      status: 'COMPLETED',
+                      startedAt: 1,
+                      completedAt: 2
+                    },
+                    delivery: 'STARTED'
+                  }
+                : {}
+            )
+          );
+        }
+        return new Response(JSON.stringify({ csrfToken: 'fixture', nodes: [], profiles: [] }));
+      });
+      vi.spyOn(ElMessageBox, 'confirm').mockImplementation(async () => {
+        if (outcome === 'cancel') throw new Error('cancel');
+        return 'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
+      });
+      const submitting =
+        submission === 'message'
+          ? page.mainPaneController.sendMessage()
+          : page.mainPaneController.queueActions.save('item');
+      try {
+        await vi.waitFor(() => expect(writes).toBe(1));
+        if (closed) {
+          page.selection.closeWorkspaceTab(
+            page.selection.workspaceTabs.find((tab) => tab.workspaceId === workspace.id)!
+          );
+          await flushComponent();
+        }
+        if (resource === 'node') await captured.entities!.deleteNode(node);
+        else await page.tree.removeWorkspace(node.id, workspace);
+        expect(deletions).toBe(outcome === 'cancel' ? 0 : 1);
+        if (outcome !== 'success' && !closed) {
+          expect(page.selection.workspaceTabs.some((tab) => tab.workspaceId === workspace.id)).toBe(
+            true
+          );
+          page.selection.closeWorkspaceTab(
+            page.selection.workspaceTabs.find((tab) => tab.workspaceId === workspace.id)!
+          );
+        }
+        await flushComponent();
+        storage.setItem.mockClear();
+        storage.removeItem.mockClear();
+        finish();
+        await submitting;
+        await flushComponent();
+        if (outcome === 'success') {
+          const draftWriteKeys = [...storage.setItem.mock.calls, ...storage.removeItem.mock.calls]
+            .map(([key]) => key)
+            .filter(
+              (key) =>
+                key.startsWith('mar.workbench.draft.') ||
+                key.startsWith('mar.workbench.aside-draft.') ||
+                key.startsWith('mar.workbench.queue-edit.')
+            );
+          expect(draftWriteKeys).toEqual([]);
+          expect(slot.input.value).toBe('Pending input');
+          if (submission === 'queue')
+            expect(slot.queueEdit.value?.content).toBe('Pending queue edit');
+          // A removed owner must not have recreated its slot or its Composer in the cache.
+          storage.getItem.mockClear();
+          drafts.forTarget(target);
+          expect(storage.getItem).toHaveBeenCalledWith(
+            `mar.workbench.draft.${node.id}.${workspace.id}`
+          );
+        } else {
+          const restored = draftOwner.createSessionDraftService({ target: ref(target), storage });
+          expect(restored.input.value).toBe(submission === 'message' ? '' : 'Pending input');
+          expect(restored.queueEdit.value).toBeUndefined();
+        }
+        for (const other of isolated) {
+          other.settlement.settle(() => {
+            other.slot.input.value = '';
+          });
+          other.settlement.release();
+          const invalidated =
+            resource === 'node' && outcome === 'success' && other.target.nodeId === node.id;
+          expect(
+            draftOwner.createSessionDraftService({ target: ref(other.target), storage }).input.value
+          ).toBe(invalidated ? 'Other pending input' : '');
+        }
+      } finally {
+        finish();
+        await submitting;
+        for (const other of isolated) other.settlement.release();
+      }
+    }
+  );
+
   it('releases draft cache owners on actual tab close and account sign-out', async () => {
     const created = vi.spyOn(draftOwner, 'createSessionDraftService');
     const { page } = controller();

@@ -35,6 +35,7 @@ export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly request: <T = unknown>(path: string, init?: RequestInit) => Promise<T>;
   readonly saveCurrent: () => void;
   readonly discardCache: (nodeId: string, workspaceId: string) => void;
+  readonly releaseRemovedWorkspaceDrafts: (nodeId: string, workspaceId: string) => void;
   readonly activateWorkspace: (
     target: WorkspaceTarget,
     restoreSession?: boolean
@@ -404,6 +405,7 @@ export function createWorkbenchWorkspaceTreeController(
         `/api/workspaces/${encodeURIComponent(workspace.id)}?nodeId=${encodeURIComponent(nodeId)}`,
         { method: 'DELETE' }
       );
+      options.releaseRemovedWorkspaceDrafts(nodeId, workspace.id);
       const remaining = workspacesForNode(nodeId).filter((item) => item.id !== workspace.id);
       cacheNodeWorkspaces(nodeId, remaining);
       if (options.workspaceTarget.value?.nodeId === nodeId) {

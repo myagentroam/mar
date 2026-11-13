@@ -1303,6 +1303,9 @@ export function createWorkbenchPageController<
       drafts.releaseWorkspace(nodeId, workspaceId);
       workbenchAsideService.removeWorkspace({ nodeId, workspaceId });
     },
+    releaseRemovedWorkspaceDrafts: (nodeId, workspaceId) => {
+      drafts.releaseWorkspace(nodeId, workspaceId, { invalidateSubmissions: true });
+    },
     activateWorkspace: (target, restoreSession) => selectWorkspace(target, restoreSession),
     workspaceTabSession: workbenchNotificationService.workspaceTabSession,
     openWorkspaceTabSession: (sessionId) => openNavigatedSession(sessionId, true),
@@ -1665,7 +1668,7 @@ export function createWorkbenchPageController<
       releaseSessionDraft: drafts.releaseSession,
       discardNodeCaches: (nodeId) => {
         discardNodeViewCaches(nodeId);
-        drafts.releaseNode(nodeId);
+        drafts.releaseNode(nodeId, { invalidateSubmissions: true });
         workbenchAsideService.removeNode(nodeId);
       },
       openDraft: () => openDraftSessionComposer(),

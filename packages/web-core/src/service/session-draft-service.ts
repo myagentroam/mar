@@ -50,9 +50,14 @@ interface DraftEntry {
   readonly slot: DraftSlot;
 }
 
+interface DraftReleaseOptions {
+  readonly invalidateSubmissions?: boolean;
+}
+
 /** Owns tab-local Pane drafts and in-flight settlements, independently of the bounded slot LRU.
  * Ordinary release persists drafts; only retained submissions may settle after release.
- * Deletion and sign-out invalidate those submissions before discarding their ownership.
+ * Confirmed resource removals opt into submission invalidation; ordinary closes do not.
+ * Session deletion and sign-out also invalidate submissions before releasing ownership.
  */
 export function createSessionDraftService(options: {
   readonly target: Readonly<Ref<DraftTarget | undefined>>;
@@ -104,7 +109,12 @@ export function createSessionDraftService(options: {
     for (const key of queueEdits.keys()) if (!queueKeys.has(key)) queueEdits.delete(key);
   }
 
-  function releaseWhere(matches: (target: DraftTarget, pane: DraftPane) => boolean): boolean {
+  function releaseWhere(
+    matches: (target: DraftTarget, pane: DraftPane) => boolean,
+    invalidateSubmissions = false
+  ): boolean {
+    if (invalidateSubmissions)
+      for (const lease of retained) if (matches(lease.target, lease.pane)) retained.delete(lease);
     let saved = true;
     for (const [id, entry] of slots) {
       if (!matches(entry.target, entry.pane)) continue;
@@ -378,9 +388,13 @@ export function createSessionDraftService(options: {
     },
     bindTarget,
     forTarget,
-    releaseWorkspace: (nodeId: string, workspaceId: string) =>
-      releaseWhere((target) => target.nodeId === nodeId && target.workspaceId === workspaceId),
-    releaseNode: (nodeId: string) => releaseWhere((target) => target.nodeId === nodeId),
+    releaseWorkspace: (nodeId: string, workspaceId: string, options?: DraftReleaseOptions) =>
+      releaseWhere(
+        (target) => target.nodeId === nodeId && target.workspaceId === workspaceId,
+        options?.invalidateSubmissions
+      ),
+    releaseNode: (nodeId: string, options?: DraftReleaseOptions) =>
+      releaseWhere((target) => target.nodeId === nodeId, options?.invalidateSubmissions),
     releaseSession: (nodeId: string, workspaceId: string, sessionId: string) => {
       const target = { kind: 'session' as const, nodeId, workspaceId, sessionId };
       for (const lease of retained)
