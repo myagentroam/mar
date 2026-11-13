@@ -198,6 +198,8 @@ const emit = defineEmits<{
         @drop.prevent="emit('drop', $event)"
         @paste="emit('paste', $event)"
       >
+        <slot name="queue" />
+        <slot name="attachments" />
         <div
           v-if="commandStates.length || skillTokens.length || fileReferences.length"
           class="composer-command-states"
@@ -268,8 +270,6 @@ const emit = defineEmits<{
             </button>
           </template>
         </div>
-        <slot name="queue" />
-        <slot name="attachments" />
         <PromptCompletionEditor
           ref="completionEditor"
           :enabled="completion?.enabled === true"

@@ -338,105 +338,98 @@ onMounted(() => {
   <section
     v-if="items.length || goal?.goal"
     class="composer-queue"
+    :class="{ 'editing-goal': goalEditing }"
     :aria-label="translate('generated.composerQueue.pendingWork')"
   >
-    <div class="composer-queue-heading">
-      <strong>{{ translate('generated.composerQueue.pendingWork') }}</strong>
-      <span v-if="paused" class="composer-queue-paused">{{
-        translate('generated.composerQueue.paused')
+    <div v-if="goal?.goal" class="work-item goal-card">
+      <span class="work-item-kind goal-kind">{{
+        translate('generated.composerQueue.goalType')
       }}</span>
-    </div>
-    <div ref="workList" class="composer-work-list">
-      <div v-if="goal?.goal" class="work-item goal-card">
-        <span class="work-item-kind goal-kind">{{
-          translate('generated.composerQueue.goalType')
-        }}</span>
-        <div v-if="!goalEditing" class="goal-content-row">
-          <p
-            v-tooltip="{
-              content: goal.goal.objective,
-              placement: 'top-start',
-              popperClass: 'goal-objective-tooltip'
-            }"
-            class="work-item-content goal-objective"
-            tabindex="0"
-          >
-            {{ goal.goal.objective }}
-          </p>
-          <div class="work-item-actions goal-actions">
-            <button class="mar-text-action" type="button" @click="goalDetailsOpen = true">
-              {{ translate('goal.view') }}
-            </button>
-            <button class="mar-text-action" type="button" @click="startGoalEdit">
-              {{ translate('goal.edit') }}
-            </button>
-            <button
-              class="mar-text-action work-item-danger-action"
-              type="button"
-              :disabled="loading"
-              @click="emit('clearGoal')"
-            >
-              {{ translate('goal.clear') }}
-            </button>
-          </div>
-        </div>
-        <div v-if="goalEditing" ref="goalEditor" class="goal-editor">
-          <el-input
-            v-model="goalObjective"
-            class="goal-objective-input"
-            type="textarea"
-            :rows="3"
-            resize="vertical"
-            maxlength="20000"
-            :aria-label="translate('goal.objectiveLabel')"
-          />
-          <div class="work-item-actions goal-editor-actions">
-            <button
-              class="mar-text-action"
-              type="button"
-              :disabled="loading"
-              @click="cancelGoalEdit"
-            >
-              {{ translate('goal.cancel') }}
-            </button>
-            <button
-              class="mar-text-action work-item-primary-action"
-              type="button"
-              :disabled="loading || !goalObjective.trim()"
-              @click="updateGoal"
-            >
-              {{ translate('goal.update') }}
-            </button>
-          </div>
-        </div>
-        <el-dialog
-          @vue:mounted="mountMobileDialogReturn"
-          @vue:before-unmount="unmountMobileDialogReturn"
-          v-if="goalDetailsOpen"
-          v-model="goalDetailsOpen"
-          class="goal-details-dialog"
-          :title="translate('goal.detailsTitle')"
-          width="min(560px, calc(100vw - 32px))"
-          append-to-body
-          :close-icon="marIcon('close')"
+      <div v-if="!goalEditing" class="goal-content-row">
+        <p
+          v-tooltip="{
+            content: goal.goal.objective,
+            placement: 'top-start',
+            popperClass: 'goal-objective-tooltip'
+          }"
+          class="work-item-content goal-objective"
+          tabindex="0"
         >
-          <dl class="goal-details">
-            <div>
-              <dt>{{ translate('goal.objectiveLabel') }}</dt>
-              <dd class="goal-details-objective">{{ goal.goal.objective }}</dd>
-            </div>
-            <div>
-              <dt>{{ translate('goal.turnsLabel') }}</dt>
-              <dd>{{ goal.goal.turns ?? 0 }}</dd>
-            </div>
-            <div>
-              <dt>{{ translate('goal.revisionLabel') }}</dt>
-              <dd>{{ goal.goal.revision }}</dd>
-            </div>
-          </dl>
-        </el-dialog>
+          {{ goal.goal.objective }}
+        </p>
+        <div class="work-item-actions goal-actions">
+          <button class="mar-text-action" type="button" @click="goalDetailsOpen = true">
+            {{ translate('goal.view') }}
+          </button>
+          <button class="mar-text-action" type="button" @click="startGoalEdit">
+            {{ translate('goal.edit') }}
+          </button>
+          <button
+            class="mar-text-action work-item-danger-action"
+            type="button"
+            :disabled="loading"
+            @click="emit('clearGoal')"
+          >
+            {{ translate('goal.clear') }}
+          </button>
+        </div>
       </div>
-      <ol v-if="items.length">
+      <div v-if="goalEditing" ref="goalEditor" class="goal-editor">
+        <el-input
+          v-model="goalObjective"
+          class="goal-objective-input"
+          type="textarea"
+          :rows="3"
+          resize="vertical"
+          maxlength="20000"
+          :aria-label="translate('goal.objectiveLabel')"
+        />
+        <div class="work-item-actions goal-editor-actions">
+          <button class="mar-text-action" type="button" :disabled="loading" @click="cancelGoalEdit">
+            {{ translate('goal.cancel') }}
+          </button>
+          <button
+            class="mar-text-action work-item-primary-action"
+            type="button"
+            :disabled="loading || !goalObjective.trim()"
+            @click="updateGoal"
+          >
+            {{ translate('goal.update') }}
+          </button>
+        </div>
+      </div>
+      <el-dialog
+        @vue:mounted="mountMobileDialogReturn"
+        @vue:before-unmount="unmountMobileDialogReturn"
+        v-if="goalDetailsOpen"
+        v-model="goalDetailsOpen"
+        class="goal-details-dialog"
+        :title="translate('goal.detailsTitle')"
+        width="min(560px, calc(100vw - 32px))"
+        append-to-body
+        :close-icon="marIcon('close')"
+      >
+        <dl class="goal-details">
+          <div>
+            <dt>{{ translate('goal.objectiveLabel') }}</dt>
+            <dd class="goal-details-objective">{{ goal.goal.objective }}</dd>
+          </div>
+          <div>
+            <dt>{{ translate('goal.turnsLabel') }}</dt>
+            <dd>{{ goal.goal.turns ?? 0 }}</dd>
+          </div>
+          <div>
+            <dt>{{ translate('goal.revisionLabel') }}</dt>
+            <dd>{{ goal.goal.revision }}</dd>
+          </div>
+        </dl>
+      </el-dialog>
+    </div>
+    <span v-if="paused" class="composer-queue-paused" role="status">{{
+      translate('generated.composerQueue.paused')
+    }}</span>
+    <div v-if="items.length" ref="workList" class="composer-work-list">
+      <ol>
         <li
           v-for="(item, index) in items"
           :key="item.queueItemId"
@@ -579,9 +572,10 @@ onMounted(() => {
 </template>
 <style scoped>
 .composer-queue {
+  --composer-work-max-height: 148px;
   display: flex;
   flex-direction: column;
-  max-height: 148px;
+  max-height: var(--composer-work-max-height);
   overflow: hidden;
   border-bottom: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
@@ -592,29 +586,22 @@ onMounted(() => {
   border-radius: 0;
 }
 
-.composer-queue-heading {
-  display: flex;
-  align-items: center;
-  min-height: 24px;
-  gap: 8px;
-  padding: 0 4px 4px;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-}
-
-.composer-queue-heading strong {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 500;
+.composer-queue.editing-goal {
+  max-height: none;
 }
 
 .composer-queue-paused {
-  margin-left: auto;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  padding: 0 4px 4px;
+  font-size: var(--mar-font-size-meta);
   color: var(--mar-color-warning-text);
 }
 
 .composer-work-list {
+  flex: 1 1 auto;
   min-height: 0;
+  max-height: var(--composer-work-max-height);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -629,6 +616,7 @@ onMounted(() => {
 }
 
 .goal-card {
+  flex: 0 0 auto;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
 }
 
@@ -778,7 +766,6 @@ onMounted(() => {
   min-height: 0;
   margin: 0;
   padding: 0;
-  border-top: 1px solid var(--mar-border-subtle);
   list-style: none;
 }
 
@@ -793,12 +780,17 @@ onMounted(() => {
 
 .goal-card {
   display: grid;
+  border-top: 0;
   align-items: center;
   gap: 8px;
 }
 
 .composer-queue ol .work-item:first-child {
   border-top: 0;
+}
+
+.goal-card ~ .composer-work-list .queue-item:first-child {
+  border-top: 1px solid var(--mar-border-subtle);
 }
 
 .queue-item {
@@ -916,7 +908,7 @@ onMounted(() => {
 <style scoped>
 @media (max-width: 767px) {
   .composer-queue {
-    max-height: 120px;
+    --composer-work-max-height: 120px;
   }
 
   .composer-queue-input :deep(.el-textarea__inner) {
