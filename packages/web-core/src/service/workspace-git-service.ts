@@ -594,6 +594,12 @@ export function createWorkspaceGitService(input: {
       input.workspacePath?.()
     );
   }
+  async function resolveRepositoryPathForOpen(repositoryPath: string, worktreePath?: string) {
+    // A standalone window can open before its Changes Watch snapshot arrives.
+    if (worktreePath === undefined && (!matchesChangesTarget() || changes.value === undefined))
+      await loadChanges();
+    return resolveRepositoryPath(repositoryPath, worktreePath);
+  }
   async function comparison(path: string) {
     if (!input.gitEnabled()) return undefined;
     await loadChanges();
@@ -617,6 +623,7 @@ export function createWorkspaceGitService(input: {
     changeLocation,
     historyIntent,
     resolveRepositoryPath,
+    resolveRepositoryPathForOpen,
     comparison,
     adjacentDiff,
     repositories,

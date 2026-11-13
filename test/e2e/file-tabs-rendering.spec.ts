@@ -552,6 +552,336 @@ for (const width of [1280, 390]) {
   });
 }
 
+for (const source of ['workspace', 'parent', 'unknown'] as const) {
+  test(`submodule Ctrl+E uses ordinary editing only for a confirmed ${source} target`, async ({
+    page
+  }) => {
+    const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+    try {
+      const reads: URL[] = [];
+      const writes: unknown[] = [];
+      await page.route('**/api/workspaces/workspace/changes?*', (route) =>
+        route.fulfill({
+          json: {
+            ...(source === 'unknown'
+              ? {}
+              : { repositoryRoot: source === 'workspace' ? '/workspace' : '/parent' }),
+            repositories: [
+              {
+                repositoryPath: 'packages/child',
+                repositoryName: 'child',
+                source: 'SUBMODULE',
+                changes: [
+                  {
+                    path: 'src/main.ts',
+                    state: 'UNSTAGED',
+                    change: 'MODIFIED',
+                    diffAvailable: true
+                  }
+                ]
+              }
+            ]
+          }
+        })
+      );
+      await page.route('**/api/workspaces/workspace/changes/diff?*', (route) => {
+        const url = new URL(route.request().url());
+        expect(url.searchParams.get('repositoryPath')).toBe('packages/child');
+        expect(url.searchParams.get('path')).toBe('src/main.ts');
+        return route.fulfill({
+          json: { diff: { binary: false, text: '@@ -1 +1 @@\n-before\n+export const value = 1;' } }
+        });
+      });
+      await page.route('**/api/workspaces/workspace/files/read?*', (route) => {
+        reads.push(new URL(route.request().url()));
+        return route.fulfill({
+          json: {
+            file: {
+              encoding: 'utf-8',
+              content: 'export const value = 1;',
+              size: 23,
+              nextOffset: null,
+              revision: 'r1'
+            }
+          }
+        });
+      });
+      await page.route('**/api/workspaces/workspace/files/write', (route) => {
+        writes.push(route.request().postDataJSON());
+        return route.fulfill({ json: { file: { revision: 'r2', size: 23 } } });
+      });
+      await page.goto(`${fixture.url}file-tabs.html?diff-navigation=1&submodule-source=1`);
+      await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+      await page
+        .getByRole('button', { name: 'View diff for packages/child/src/main.ts', exact: true })
+        .click();
+      const frame = page.locator('.workspace-file-page-frame:visible');
+      await expect(frame.locator('.unified-history-diff')).toBeVisible();
+      await expect(frame).toBeFocused();
+      await page.keyboard.press('Control+e');
+      const editor = frame.locator('.cm-content');
+      await expect(editor).toBeVisible();
+      await expect(frame).toBeFocused();
+      await expect(page.locator('.workspace-file-tab-activate')).toHaveCount(2);
+      expect(reads).toHaveLength(1);
+      if (source !== 'workspace') {
+        expect(reads[0]!.searchParams.get('path')).toBe('src/main.ts');
+        expect(reads[0]!.searchParams.get('repositoryPath')).toBe('packages/child');
+        await expect(frame.getByRole('button', { name: 'Edit file', exact: true })).toHaveCount(0);
+        await expect(frame.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+        await expect(editor).not.toBeEditable();
+        expect(writes).toHaveLength(0);
+        return;
+      }
+      expect(reads[0]!.searchParams.get('path')).toBe('packages/child/src/main.ts');
+      expect(reads[0]!.searchParams.has('repositoryPath')).toBe(false);
+      if (!(await editor.isEditable()))
+        await frame.getByRole('button', { name: 'Edit file', exact: true }).click();
+      await expect(editor).toBeEditable();
+      await editor.fill('export const value = 2;');
+      await page
+        .locator('#open-workspace-source')
+        .evaluate((button: HTMLButtonElement) => button.click());
+      await expect(page.locator('.workspace-file-tab-activate')).toHaveCount(2);
+      await expect(editor).toContainText('value = 2');
+      await page.locator('.workspace-file-tab-activate').first().click();
+      await expect(frame.locator('.unified-history-diff')).toBeVisible();
+      await page.keyboard.press('Control+e');
+      await expect(editor).toContainText('value = 2');
+      expect(reads).toHaveLength(1);
+      await frame.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(frame.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+      expect(writes).toEqual([
+        {
+          nodeId: 'node',
+          path: 'packages/child/src/main.ts',
+          content: 'export const value = 2;',
+          expectedRevision: 'r1'
+        }
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+}
+
+for (const source of ['workspace', 'parent'] as const) {
+  for (const path of ['src/main.ts', 'image.png']) {
+    test(`standalone submodule ${path} waits for ${source} metadata and focuses its source`, async ({
+      page
+    }) => {
+      const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+      let allowChanges!: () => void;
+      const metadata = new Promise<void>((resolve) => (allowChanges = resolve));
+      try {
+        let changesRequests = 0;
+        const fileRequests: URL[] = [];
+        await page.route('**/api/workspaces/workspace/changes?*', async (route) => {
+          changesRequests += 1;
+          await metadata;
+          await route.fulfill({
+            json: {
+              repositoryRoot: source === 'workspace' ? '/workspace' : '/parent',
+              repositories: []
+            }
+          });
+        });
+        await page.route('**/api/workspaces/workspace/changes/diff?*', (route) =>
+          route.fulfill({
+            json: { diff: { text: '@@ -1 +1 @@\n-before\n+export const value = 1;' } }
+          })
+        );
+        await page.route('**/api/workspaces/workspace/files/**', (route) => {
+          fileRequests.push(new URL(route.request().url()));
+          return path.endsWith('.png')
+            ? route.fulfill({
+                contentType: 'image/svg+xml',
+                body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"/>'
+              })
+            : route.fulfill({
+                json: {
+                  file: {
+                    encoding: 'utf-8',
+                    content: 'export const value = 1;',
+                    size: 23,
+                    nextOffset: null,
+                    revision: 'r1'
+                  }
+                }
+              });
+        });
+        const parameters = new URLSearchParams({
+          'submodule-source': '1',
+          'standalone-submodule': '1',
+          standaloneFile: '1',
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          fileTabKind: 'WORKTREE_DIFF',
+          repositoryPath: 'packages/child',
+          path
+        });
+        await page.goto(`${fixture.url}file-tabs.html?${parameters}`);
+        await page.locator('#open-standalone-submodule').click();
+        const frame = page.locator('.workspace-file-page-frame:visible');
+        if (!path.endsWith('.png')) {
+          await expect(frame.locator('.unified-history-diff')).toBeVisible();
+          await expect(frame).toBeFocused();
+          await page.keyboard.press('Control+e');
+        }
+        await expect.poll(() => changesRequests).toBe(1);
+        expect(fileRequests).toHaveLength(0);
+        allowChanges();
+        if (path.endsWith('.png')) {
+          await expect(frame.locator('img')).toBeVisible();
+          await expect(frame).toBeFocused();
+        } else {
+          await expect(frame.locator('.cm-content')).toBeVisible();
+          await expect(frame).toBeFocused();
+          await expect(frame.getByRole('button', { name: 'Save', exact: true })).toHaveCount(
+            source === 'workspace' ? 1 : 0
+          );
+        }
+        expect(fileRequests).toHaveLength(1);
+        expect(fileRequests[0]!.searchParams.get('path')).toBe(
+          source === 'workspace' ? `packages/child/${path}` : path
+        );
+        expect(fileRequests[0]!.searchParams.get('repositoryPath')).toBe(
+          source === 'workspace' ? null : 'packages/child'
+        );
+      } finally {
+        allowChanges();
+        await fixture.close();
+      }
+    });
+  }
+}
+
+for (const kind of ['symbol', 'file'] as const) {
+  for (const cancelled of [false, true]) {
+    test(`submodule Diff ${kind} navigation keeps its source identity (cancelled=${cancelled})`, async ({
+      page
+    }) => {
+      const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+      let allowChanges!: () => void;
+      const metadata = new Promise<void>((resolve) => (allowChanges = resolve));
+      try {
+        let changesRequests = 0;
+        const navigationPaths: string[] = [];
+        const afterText = kind === 'symbol' ? 'export const value = 1;' : 'import "./target";';
+        const needle = kind === 'symbol' ? 'value' : './target';
+        await page.route('**/api/workspaces/workspace/changes?*', async (route) => {
+          changesRequests += 1;
+          await metadata;
+          await route.fulfill({ json: { repositoryRoot: '/workspace', repositories: [] } });
+        });
+        await page.route('**/api/workspaces/workspace/changes/diff?*', (route) =>
+          route.fulfill({
+            json: {
+              diff: { binary: false, text: `@@ -1 +1 @@\n-before\n+${afterText}`, afterText }
+            }
+          })
+        );
+        await page.route('**/api/workspaces/workspace/files/read?*', (route) =>
+          route.fulfill({
+            json: {
+              file: {
+                encoding: 'utf-8',
+                content: afterText,
+                size: afterText.length,
+                revision: 'r1',
+                nextOffset: null
+              }
+            }
+          })
+        );
+        await page.route('**/api/workspaces/workspace/symbols/definition*', (route) => {
+          const request = route.request();
+          navigationPaths.push(
+            request.method() === 'POST'
+              ? (request.postDataJSON() as { path: string }).path
+              : new URL(request.url()).searchParams.get('path')!
+          );
+          return route.fulfill({
+            json: {
+              definition: {
+                state: 'READY',
+                targets: [],
+                references: [],
+                paths: [],
+                truncated: false
+              }
+            }
+          });
+        });
+        const parameters = new URLSearchParams({
+          'submodule-source': '1',
+          'submodule-navigation': '1',
+          'standalone-submodule': '1',
+          standaloneFile: '1',
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          fileTabKind: 'WORKTREE_DIFF',
+          repositoryPath: 'packages/child',
+          path: 'src/main.ts'
+        });
+        await page.goto(`${fixture.url}file-tabs.html?${parameters}`);
+        if (cancelled) {
+          await page.locator('#open-other-source').click();
+          await expect(page.locator('.cm-content')).toBeVisible();
+        }
+        await page
+          .locator('#open-standalone-submodule')
+          .evaluate((button: HTMLButtonElement) => button.click());
+        const frame = page.locator('.workspace-file-page-frame:visible');
+        const line = frame.locator('[data-diff-line-content]').filter({ hasText: afterText });
+        await expect(line).toBeVisible();
+        const point = await line.evaluate((element, text) => {
+          const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+            const offset = node.textContent!.indexOf(text);
+            if (offset < 0) continue;
+            const range = document.createRange();
+            range.setStart(node, offset);
+            range.setEnd(node, offset + text.length);
+            const rectangle = range.getBoundingClientRect();
+            return { x: rectangle.x + rectangle.width / 2, y: rectangle.y + rectangle.height / 2 };
+          }
+          throw new Error('Navigation token was not found');
+        }, needle);
+        await page.keyboard.down('Control');
+        await page.mouse.click(point.x, point.y);
+        await page.keyboard.up('Control');
+        await expect.poll(() => changesRequests).toBe(1);
+        if (cancelled) {
+          await page.getByRole('tab', { name: 'other.ts', exact: true }).click();
+          await expect(frame.locator('.cm-content')).toBeVisible();
+          await expect(
+            page.locator('.workspace-file-tab-activate[aria-selected="true"]')
+          ).toContainText('other.ts');
+        }
+        const metadataResponse = page.waitForResponse('**/api/workspaces/workspace/changes?*');
+        allowChanges();
+        await (await metadataResponse).finished();
+        if (cancelled) {
+          await page.evaluate(
+            () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          );
+          expect(navigationPaths).toEqual([]);
+          await expect(
+            page.locator('.workspace-file-tab-activate[aria-selected="true"]')
+          ).toContainText('other.ts');
+        } else {
+          await expect.poll(() => navigationPaths.length).toBeGreaterThan(0);
+          expect(navigationPaths.every((path) => path === 'packages/child/src/main.ts')).toBe(true);
+        }
+      } finally {
+        allowChanges();
+        await fixture.close();
+      }
+    });
+  }
+}
+
 test('opening a file preview does not reclaim focus the user moved during the transition', async ({
   page
 }) => {

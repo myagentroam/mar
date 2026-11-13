@@ -61,9 +61,10 @@ it('derives file intents and locations from the live Git owner and workspace met
   );
   expect(service.changeIntent(entry)).toMatchObject({
     kind: 'WORKTREE_DIFF',
-    gitFile: true,
     paths: ['a.ts']
   });
+  expect(service.changeIntent(entry)?.gitFile).toBeUndefined();
+  expect(service.changeLocation(entry)).toEqual({ path: 'nested/a.ts' });
   expect(service.changeLocation(linked)).toMatchObject({ path: 'b.ts', worktreePath: '/linked' });
   expect(service.resolveRepositoryPath('', undefined)).toBeUndefined();
   workspacePath = '/another-root';
@@ -83,13 +84,12 @@ it('preserves repository and worktree identity in change intents', () => {
   };
   const linked = { ...entry, source: 'WORKTREE' as const, worktreePath: '/linked', path: 'b.ts' };
   expect(gitFileRepositoryPath('', undefined, '/root', '/root')).toBeUndefined();
-  expect(gitFileRepositoryPath('nested', undefined, '/root', '/root')).toBe('nested');
+  expect(gitFileRepositoryPath('nested', undefined, '/root', '/root')).toBeUndefined();
   expect(gitFileRepositoryPath('nested', '/linked', '/root', '/root')).toBeUndefined();
   expect(
     changeDiffIntent(entry, [entry, linked], { nodeId: 'n', workspaceId: 'w' }, '/root', '/root')
   ).toMatchObject({
     kind: 'WORKTREE_DIFF',
-    gitFile: true,
     repositoryPath: 'nested',
     worktreePath: '',
     paths: ['a.ts']

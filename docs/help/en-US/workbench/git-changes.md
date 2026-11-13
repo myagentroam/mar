@@ -1,9 +1,11 @@
 ---
 title: Git Changes and Diff
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-13
 ---
 
 # Git Changes and Diff
+
+When the Git root matches the current Workspace, Ctrl/Cmd+E in a submodule Diff opens the source through the same ordinary file flow as Files, with the same tools and editing capabilities. It reuses an existing file tab and preserves unsaved content. Format previews and separate windows also use the corresponding Workspace-relative path; editing still requires file-write permission. Source files remain read-only until the Git root is confirmed. Historical commit versions always remain read-only.
 
 When the Workspace is a repository subdirectory, Git uses the containing repository by default. Paths are relative to each repository root and may include files outside the Workspace. Git current-file previews and downloads use that repository target and remain read-only; they never save a same-named Workspace file. Revert affects the file in the listed repository. For ordinary editing, open files inside the Workspace through Files. Disable **Use parent Git repository** in Workspace details when unnecessary; ordinary Files and sessions remain available.
 

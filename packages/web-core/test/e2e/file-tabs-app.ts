@@ -7,7 +7,8 @@ import Frame from '../../src/view/workspace/WorkspaceFilePageFrame.vue';
 import WorkspaceFileWorkbench from '../../src/view/workspace/WorkspaceFileWorkbench.vue';
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue';
 import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
-import { adjacentChange, changeDiffIntent } from '../../src/util/workspace-git.js';
+import { standaloneFileOpenIntent } from '../../src/service/standalone-file-window-service.js';
+import { adjacentChange } from '../../src/util/workspace-git.js';
 import type { ChangeEntry } from '../../src/model/workspace-git.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
 import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
@@ -90,6 +91,7 @@ const git = createWorkspaceGitService({
   target: () => workspaceTarget,
   gitEnabled: () => true,
   historyEnabled: () => false,
+  workspacePath: () => '/workspace',
   onFailure: () => {},
   onWorkspace: () => {},
   onBranch: () => {}
@@ -97,11 +99,11 @@ const git = createWorkspaceGitService({
 const changesOpen = ref(false);
 const fileWorkbench = createWorkspaceFileWorkbenchController({
   externalTarget: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
-  fileWriteEnabled: () => false,
+  fileWriteEnabled: () => query.has('submodule-source'),
   onPopupBlocked: () => {},
   target: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
   prewarmEnabled: () => false,
-  resolveRepositoryPath: () => undefined,
+  resolveRepositoryPath: git.resolveRepositoryPathForOpen,
   reveal: async () => {},
   onOpenFailure: () => {},
   onRevealFailure: () => {},
@@ -121,9 +123,7 @@ function fileView(standaloneFileMode = false) {
     adjacentDiff: (tab: WorkspaceFileTab, direction: -1 | 1) => {
       const entries = git.visibleChanges.value.filter((entry) => entry.diffAvailable);
       const entry = adjacentChange(entries, tab, direction);
-      return entry === undefined
-        ? undefined
-        : changeDiffIntent(entry, entries, workspaceTarget, undefined, '/workspace');
+      return entry === undefined ? undefined : git.changeIntent(entry);
     },
     loadDiff: git.loadDiff,
     openExternal: () => {},
@@ -131,7 +131,7 @@ function fileView(standaloneFileMode = false) {
     workspaceId: 'workspace',
     enabled: true,
     mobileViewport: window.innerWidth < 768,
-    codeNavigationEnabled: false,
+    codeNavigationEnabled: query.has('submodule-navigation'),
     fileWriteEnabled: true,
     onNotice: (message: string) => {
       document.documentElement.dataset['fileNotice'] = message;
@@ -151,6 +151,27 @@ const toolbarDownload = ref<string>();
 let finishToolbarSave: (() => void) | undefined;
 createTooltipApp({
   render: () => {
+    if (query.has('standalone-submodule'))
+      return h('div', [
+        h(
+          'button',
+          {
+            id: 'open-standalone-submodule',
+            onClick: () => {
+              const intent = standaloneFileOpenIntent(window.location.href);
+              if (intent) void fileWorkbench.openStandalone(intent);
+            }
+          },
+          'Open standalone submodule source'
+        ),
+        query.has('submodule-navigation') &&
+          h(
+            'button',
+            { id: 'open-other-source', onClick: () => void fileWorkbench.openFile('other.ts') },
+            'Open another source file'
+          ),
+        fileView(true)
+      ]);
     if (query.has('toolbar-loading'))
       return h('div', [
         h(
@@ -298,17 +319,22 @@ createTooltipApp({
             },
             'Git Changes'
           ),
+          query.has('submodule-source') &&
+            h(
+              'button',
+              {
+                id: 'open-workspace-source',
+                onClick: () => void fileWorkbench.openFile('packages/child/src/main.ts')
+              },
+              'Open source through Files'
+            ),
           changesOpen.value &&
             h(WorkspaceGitChanges, {
               service: git,
               target: workspaceTarget,
               onOpen: (entry: ChangeEntry) => {
-                const entries = git.visibleChanges.value.filter(
-                  (candidate) => candidate.diffAvailable
-                );
-                void fileWorkbench.openTab(
-                  changeDiffIntent(entry, entries, workspaceTarget, undefined, '/workspace')
-                );
+                const intent = git.changeIntent(entry);
+                if (intent) void fileWorkbench.openTab(intent);
               }
             }),
           view

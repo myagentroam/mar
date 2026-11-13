@@ -644,7 +644,7 @@ export function createWorkbenchPageController<
           'error'
         ),
       resolveRepositoryPath: (repositoryPath, worktreePath) =>
-        fileTools.git.resolveRepositoryPath(repositoryPath, worktreePath),
+        fileTools.git.resolveRepositoryPathForOpen(repositoryPath, worktreePath),
       reveal: (path, current) => fileTools.revealFileTree(path, current),
       comparison: (path) => fileTools.git.comparison(path),
       onOpenFailure: (error, path) => notice(filePreviewErrorMessage(error, path), 'error', error),
