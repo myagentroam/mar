@@ -240,7 +240,7 @@ describe('Message feedback service', () => {
     expect(close.type).toBe('button');
     expect(close.props).toMatchObject({
       type: 'button',
-      class: 'el-message__closeBtn mar-message-close icon-action',
+      class: 'el-message__closeBtn mar-message-close mar-icon-action',
       title: translate('common.close'),
       'aria-label': translate('common.close')
     });

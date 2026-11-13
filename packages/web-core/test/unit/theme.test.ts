@@ -8,8 +8,19 @@ import {
   THEME_STORAGE_KEY
 } from '../../src/service/theme-preference-service';
 
+function sharedStyles(): string {
+  return [
+    'styles.css',
+    'styles/theme.css',
+    'styles/element-plus-theme.css',
+    'styles/mar-controls.css'
+  ]
+    .map((path) => readFileSync(new URL(`../../src/${path}`, import.meta.url), 'utf8'))
+    .join('\n');
+}
+
 it('defines every shared font role and Element Plus status shade consumed by components', () => {
-  const css = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+  const css = sharedStyles();
   const defined = new Set([...css.matchAll(/(--mar-font-[\w-]+)\s*:/gu)].map((match) => match[1]));
   const root = fileURLToPath(new URL('../../src/view/', import.meta.url));
   for (const file of readdirSync(root, {
@@ -75,7 +86,7 @@ describe('Web theme preference', () => {
   });
 
   it('keeps private headers and file actions in their owning components', () => {
-    const global = readFileSync(new URL('../../src/styles.css', import.meta.url), 'utf8');
+    const global = sharedStyles();
     for (const selector of [
       '.file-preview-header',
       '.mobile-preview-actions',

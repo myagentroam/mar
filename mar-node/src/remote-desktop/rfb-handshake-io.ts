@@ -20,13 +20,20 @@ export class RfbHandshakeIo {
 
   async read(size: number): Promise<Buffer> {
     if (size === 0) return Buffer.alloc(0);
-    while (true) {
+    const result = Buffer.allocUnsafe(size);
+    let offset = 0;
+    while (offset < size) {
       this.#check();
-      const value = this.stream.read(size) as Buffer | null;
+      const remaining = size - offset;
+      const value = this.stream.read(
+        Math.min(remaining, this.stream.readableLength || remaining)
+      ) as Buffer | null;
       if (value !== null) {
-        if (!Buffer.isBuffer(value) || value.length !== size)
+        if (!Buffer.isBuffer(value) || value.length === 0 || value.length > remaining)
           throw new RemoteDesktopError('DESKTOP_RFB_INVALID');
-        return value;
+        value.copy(result, offset);
+        offset += value.length;
+        continue;
       }
       await new Promise<void>((resolve, reject) => {
         const readable = () => finish();
@@ -40,6 +47,7 @@ export class RfbHandshakeIo {
         this.stream.once('readable', readable);
       });
     }
+    return result;
   }
 
   async write(value: Buffer): Promise<void> {

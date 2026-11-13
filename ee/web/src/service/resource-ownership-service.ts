@@ -89,7 +89,8 @@ export function createResourceOwnershipService(
   }
 
   async function load() {
-    if (context().edition !== 'ENTERPRISE') {
+    const { edition, role } = context();
+    if (edition !== 'ENTERPRISE' || (role !== 'ADMIN' && role !== 'ORG_ADMIN')) {
       organizations.value = [];
       users.value = [];
       return;

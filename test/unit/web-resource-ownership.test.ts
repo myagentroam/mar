@@ -31,12 +31,17 @@ afterEach(() => {
   scope.stop();
   vi.unstubAllGlobals();
 });
-function create(request = vi.fn(), edition: 'COMMUNITY' | 'ENTERPRISE' = 'ENTERPRISE') {
+function create(
+  request = vi.fn(),
+  edition: 'COMMUNITY' | 'ENTERPRISE' = 'ENTERPRISE',
+  role: 'ADMIN' | 'ORG_ADMIN' | 'MEMBER' = 'ADMIN',
+  resourceType: 'NODE' | 'WORKSPACE' = 'NODE'
+) {
   return scope.run(() =>
     createResourceOwnershipService(request, () => ({
       edition,
-      role: 'ADMIN',
-      resourceType: 'NODE'
+      role,
+      resourceType
     }))
   )!;
 }
@@ -48,6 +53,23 @@ describe('Enterprise resource ownership extension', () => {
     expect(request).not.toHaveBeenCalled();
     expect(service.registrationBody('Node')).toEqual({ displayName: 'Node' });
   });
+  it.each(['NODE', 'WORKSPACE'] as const)(
+    'keeps member %s ownership personal without requesting protected directories',
+    async (resourceType) => {
+      const request = vi.fn().mockRejectedValue(new Error('Directory access forbidden'));
+      const service = create(request, 'ENTERPRISE', 'MEMBER', resourceType);
+      await service.load();
+      expect(request).not.toHaveBeenCalled();
+      expect(service.organizations.value).toEqual([]);
+      expect(service.users.value).toEqual([]);
+      expect(service.registrationOwnerOptions.value.map((item) => item.value)).toEqual([
+        'PERSONAL'
+      ]);
+      expect(service.registrationBody('Personal resource')).toEqual({
+        displayName: 'Personal resource'
+      });
+    }
+  );
   it('loads organization and user directories and tolerates unavailable directories', async () => {
     const request = vi.fn(async (path: string) => {
       if (path === '/api/organizations')

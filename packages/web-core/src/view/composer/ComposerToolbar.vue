@@ -242,7 +242,7 @@ function selectFiles(event: Event): void {
     <div :class="['composer-configuration', { 'has-runner-select': draftSessionOpen }]">
       <button
         v-tooltip="translate('generated.composerToolbar.addAttachment2')"
-        class="composer-icon-button composer-attachment-button icon-action"
+        class="composer-icon-button composer-attachment-button mar-icon-action"
         type="button"
         :aria-label="translate('generated.composerToolbar.addAttachment')"
         @click="fileInput?.click()"
@@ -360,7 +360,7 @@ function selectFiles(event: Event): void {
     <button
       v-tooltip="{ content: contextHint, placement: 'top', touch: !canCompactContext }"
       v-if="!hideContextUsage"
-      class="composer-context-button text-action"
+      class="composer-context-button mar-text-action"
       type="button"
       :aria-label="contextUsageLabel"
       :aria-description="contextHint"

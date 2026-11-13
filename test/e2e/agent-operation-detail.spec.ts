@@ -1,3 +1,4 @@
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -50,7 +51,7 @@ for (const [width, theme] of [
   [390, 'dark']
 ] as const) {
   test(`Agent operation cards at ${width}px ${theme}`, async ({ page, context }, testInfo) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await grantClipboardPermissions(context);
     await page.setViewportSize({ width, height: 900 });
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&agent-cards=1&theme=${theme}`

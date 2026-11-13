@@ -101,7 +101,7 @@ watch(
         <el-button
           v-if="resized && !original"
           v-tooltip="translate('generated.imagePreview.viewOriginal')"
-          class="icon-action"
+          class="mar-icon-action"
           size="small"
           text
           :icon="marIcon('image')"

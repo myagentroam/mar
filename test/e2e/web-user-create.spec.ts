@@ -58,7 +58,7 @@ async function prepare(page: Page, locale = 'en-US') {
     });
   });
   await page.goto(`${fixture.url}?locale=${locale}`);
-  const create = page.locator('.table-actions').getByRole('button', {
+  const create = page.locator('.mar-table-actions').getByRole('button', {
     name: locale === 'en-US' ? 'Create user' : '创建用户',
     exact: true
   });
@@ -370,7 +370,7 @@ async function preparePersonalCredentials(
   const createTitle = locale === 'en-US' ? 'Create User' : '创建用户';
   const createdTitle = locale === 'en-US' ? 'User Created' : '创建成功';
   const usernameLabel = locale === 'en-US' ? 'Username' : '用户名';
-  const createTrigger = page.locator('.table-actions').getByRole('button', {
+  const createTrigger = page.locator('.mar-table-actions').getByRole('button', {
     name: create,
     exact: true
   });
@@ -481,7 +481,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await ui.credentials.locator('.el-dialog__headerbtn').click();
     await expect(ui.credentials).toHaveCount(0);
     await page
-      .locator('.table-actions')
+      .locator('.mar-table-actions')
       .getByRole('button', { name: locale === 'en-US' ? 'Create user' : '创建用户', exact: true })
       .click();
     await expect(

@@ -117,7 +117,7 @@ const request = async <T,>(): Promise<T> => ({}) as T;
     <output data-testid="events">{{ events.join('|') }}</output>
     <section>
       <button
-        class="icon-button icon-action"
+        class="mar-icon-button mar-icon-action"
         data-testid="native"
         aria-label="Native icon action"
         :disabled="disabled"
@@ -125,11 +125,11 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       >
         <MarIcon name="copy" />
       </button>
-      <el-button class="text-action" data-testid="element" link :disabled="disabled"
+      <el-button class="mar-text-action" data-testid="element" link :disabled="disabled"
         >Utility</el-button
       >
       <el-button
-        class="icon-action"
+        class="mar-icon-action"
         data-testid="element-icon"
         text
         circle
@@ -139,7 +139,7 @@ const request = async <T,>(): Promise<T> => ({}) as T;
         <MarIcon name="copy" />
       </el-button>
       <button
-        class="icon-button icon-action"
+        class="mar-icon-button mar-icon-action"
         data-testid="aria-disabled-icon"
         aria-disabled="true"
         aria-label="Unavailable icon action"

@@ -11,7 +11,7 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
 <template>
   <div
     class="file-preview-loading"
-    :class="{ 'is-overlay': overlay, 'page-loading-state': variant === 'page' }"
+    :class="{ 'is-overlay': overlay, 'mar-page-loading-state': variant === 'page' }"
     role="status"
     aria-live="polite"
     aria-busy="true"
@@ -31,7 +31,7 @@ withDefaults(defineProps<{ readonly overlay?: boolean; readonly variant?: 'page'
   color: var(--mar-color-brand-text);
 }
 
-.file-preview-loading :deep(.busy-indicator) {
+.file-preview-loading :deep(.mar-busy-indicator) {
   width: 1.25rem;
   height: 1.25rem;
 }

@@ -534,7 +534,7 @@ test('Resumed external Claude history is not duplicated by managed projections',
   await expect
     .poll(() => writes.filter((entry) => entry.url.includes('/external-claude-history/messages')))
     .toHaveLength(1);
-  const managedActivity = page.locator('.session-list .session-activity.managed_active');
+  const managedActivity = page.locator('.session-list .mar-session-activity.managed_active');
   await expect(managedActivity).toHaveCount(1);
   await expect(managedActivity.locator('i')).toHaveCSS('animation-name', 'mar-run-glow');
   await page.emulateMedia({ reducedMotion: 'reduce' });

@@ -21,13 +21,13 @@ for (const [width, theme] of [
       const status = sidebar.getByRole('status', { name: 'Loading sessions…' });
       await expect(status).toBeVisible();
       await expect(status).toHaveText('');
-      await expect(status.locator('.busy-indicator')).toBeVisible();
-      const indicatorSize = await status.locator('.busy-indicator').evaluate((indicator) => ({
+      await expect(status.locator('.mar-busy-indicator')).toBeVisible();
+      const indicatorSize = await status.locator('.mar-busy-indicator').evaluate((indicator) => ({
         width: parseFloat(getComputedStyle(indicator).width),
         rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize)
       }));
       expect(indicatorSize.width).toBeCloseTo(indicatorSize.rootSize * 0.875, 1);
-      await expect(status.locator('.busy-indicator')).toHaveCSS('animation-name', 'none');
+      await expect(status.locator('.mar-busy-indicator')).toHaveCSS('animation-name', 'none');
       await expect(sidebar.locator('.session-row')).toHaveCount(1);
 
       await page.goto(
@@ -133,6 +133,7 @@ for (const [width, theme, locale] of [
         const result = {
           running: color('--el-color-success'),
           track: color('--mar-bg-subtle'),
+          border: color('--mar-border-default'),
           selected: color('--mar-fill-selection'),
           hover: color('--mar-fill-row-hover'),
           primary: color('--mar-text-primary')
@@ -143,6 +144,10 @@ for (const [width, theme, locale] of [
       await expect(tabs.nth(0)).toHaveCSS('background-color', colors.selected);
       await expect(tabs.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(chats.getByRole('tablist')).toHaveCSS('background-color', colors.track);
+      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-width', '1px');
+      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-style', 'solid');
+      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-color', colors.border);
+      await expect(tabs.nth(0)).toHaveCSS('border-top-width', '0px');
       await tabs.nth(1).hover();
       await expect(tabs.nth(1)).toHaveCSS('background-color', colors.hover);
       for (const tab of await tabs.all()) {
@@ -151,8 +156,8 @@ for (const [width, theme, locale] of [
         expect(bounds.height).toBeLessThanOrEqual(28);
         expect(text.x + text.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
       }
-      const dots = page.locator('.session-activity.managed_active i');
-      await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
+      const dots = page.locator('.mar-session-activity.managed_active i');
+      await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
       await expect(dots).toHaveCount(2);
       for (const dot of await dots.all()) {
         await expect(dot).toHaveCSS('background-color', colors.running);
@@ -202,6 +207,10 @@ for (const [width, theme, locale] of [
         .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions' })
         .click();
       const recent = page.locator('.recent-sessions-panel:visible');
+      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-width', '1px');
+      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-style', 'solid');
+      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-color', colors.border);
+      await expect(recent.getByRole('tab').first()).toHaveCSS('border-top-width', '0px');
       await expect(recent.locator('.session-state-badge')).toHaveCount(0);
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
       await recent.getByRole('tab').nth(1).click();

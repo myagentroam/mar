@@ -409,7 +409,7 @@ test('First messages immediately mark new sessions as managed runs and merge rea
   const input = page.getByRole('textbox', { name: '输入消息' });
   await input.fill('请开始');
   await input.press('Control+Enter');
-  await expect(page.locator('.session-list .session-activity.managed_active')).toHaveCount(1);
+  await expect(page.locator('.session-list .mar-session-activity.managed_active')).toHaveCount(1);
   await expect(page.locator('.conversation-item.user_message')).toContainText('请开始');
   await expect.poll(() => createdWatchId).toBeTruthy();
   await page.evaluate(

@@ -401,7 +401,7 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
         .locator('.hosted-conversation-history article', { hasText: second.title })
         .locator('.history-open');
       await expect.poll(() => starts.a).toBe(1);
-      await expect(page.locator('.page-loading-state')).toBeVisible();
+      await expect(page.locator('.mar-page-loading-state')).toBeVisible();
       await rowA.click();
       expect(starts.a).toBe(1);
       await rowB.click();
@@ -431,11 +431,11 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
         await aCompleted;
       }
       await expect(rowB).toHaveAttribute('aria-current', 'page');
-      await expect(page.locator('.page-loading-state')).toBeVisible();
+      await expect(page.locator('.mar-page-loading-state')).toBeVisible();
       await rowB.click();
       expect(starts.b).toBe(1);
       releaseB();
-      await expect(page.locator('.page-loading-state')).toHaveCount(0);
+      await expect(page.locator('.mar-page-loading-state')).toHaveCount(0);
       await expect(page.locator('.hosted-workspace .hosted-timeline-scroll')).toBeVisible();
       await expect(rowB).toHaveAttribute('aria-current', 'page');
       await expect(page.locator('.el-message--error')).toHaveCount(0);
@@ -1468,7 +1468,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     (historyCreateButtonBox?.y ?? 0) - ((historyTitleBox?.y ?? 0) + (historyTitleBox?.height ?? 0));
   expect(Math.abs(historyTitleTopSpace - historyTitleToCreateButtonSpace)).toBeLessThanOrEqual(1);
   expect((historyTitleBox?.x ?? 0) - (historyHeaderBox?.x ?? 0)).toBeCloseTo(20, 0);
-  await expect(historyHeader).toHaveClass(/sidebar-heading.*session-heading.*history-header/);
+  await expect(historyHeader).toHaveClass(/mar-sidebar-heading.*session-heading.*history-header/);
   await expect(historyHeader).toHaveCSS('padding-top', '12px');
   await expect(historyHeader).toHaveCSS('padding-bottom', '12px');
   await expect(page.locator('.history-controls')).toHaveCSS('padding-top', '0px');

@@ -110,6 +110,8 @@ test('Editing a matching tree filter does not scroll away from the input', async
   await remote.scrollIntoViewIfNeeded();
   await expect(remote).toBeInViewport();
   const filter = page.getByRole('textbox', { name: 'Filter Nodes and Workspaces' });
+  await filter.click();
+  await expect(filter).toBeInViewport();
   await filter.fill('/');
   await expect(filter).toBeFocused();
   await expect(filter).toBeInViewport();

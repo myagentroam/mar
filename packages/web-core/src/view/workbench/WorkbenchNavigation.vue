@@ -263,7 +263,7 @@ function openBlankMenu(event: MouseEvent): void {
       <el-link
         v-tooltip="$t('navigation.help')"
         v-if="documentationAvailable"
-        class="nav-menu-button documentation-link icon-action"
+        class="nav-menu-button documentation-link mar-icon-action"
         :href="localizedDocsPath(locale, 'getting-started/overview')"
         underline="never"
         target="_blank"
@@ -405,7 +405,7 @@ function openBlankMenu(event: MouseEvent): void {
 .activity-rail {
   position: fixed;
   z-index: 4;
-  inset: var(--sidebar-header-height) auto 0 0;
+  inset: var(--mar-sidebar-header-height) auto 0 0;
   display: flex;
   width: var(--mar-activity-rail-width);
   flex-direction: column;
@@ -419,7 +419,7 @@ function openBlankMenu(event: MouseEvent): void {
   inset: 0 auto auto 0;
   display: flex;
   width: var(--mar-workbench-sidebar-total-width);
-  height: var(--sidebar-header-height);
+  height: var(--mar-sidebar-header-height);
   align-items: center;
   gap: 10px;
   background: var(--mar-bg-chrome);
@@ -584,7 +584,7 @@ function openBlankMenu(event: MouseEvent): void {
 .workspace-tree {
   position: fixed;
   z-index: 3;
-  inset: var(--sidebar-header-height) auto 0 var(--mar-activity-rail-width);
+  inset: var(--mar-sidebar-header-height) auto 0 var(--mar-activity-rail-width);
   width: var(--mar-workbench-sidebar-width);
   overflow: auto;
   border-right: 1px solid var(--mar-border-subtle);
@@ -728,8 +728,8 @@ function openBlankMenu(event: MouseEvent): void {
   .workbench-brand {
     position: static;
     width: 100%;
-    height: var(--sidebar-header-height);
-    flex: 0 0 var(--sidebar-header-height);
+    height: var(--mar-sidebar-header-height);
+    flex: 0 0 var(--mar-sidebar-header-height);
     border-top: 0;
     border-bottom: 1px solid var(--mar-border-default);
     border-right: 0;
@@ -760,7 +760,7 @@ function openBlankMenu(event: MouseEvent): void {
     bottom: auto;
     left: calc(12px + var(--mar-brand-logo-size) + 8px);
     width: auto;
-    height: var(--sidebar-header-height);
+    height: var(--mar-sidebar-header-height);
     flex-direction: row;
     border: 0;
     background: transparent;
@@ -867,7 +867,7 @@ function openBlankMenu(event: MouseEvent): void {
   .workspace-tree {
     position: fixed;
     z-index: 8;
-    inset: var(--sidebar-header-height) auto 0 0;
+    inset: var(--mar-sidebar-header-height) auto 0 0;
     width: min(300px, calc(100vw - 48px));
     max-height: none;
     border-right: 1px solid var(--mar-border-subtle);
@@ -896,7 +896,7 @@ function openBlankMenu(event: MouseEvent): void {
   }
   .sidebar-scrim {
     position: fixed;
-    inset: var(--sidebar-header-height) 0 0;
+    inset: var(--mar-sidebar-header-height) 0 0;
     z-index: 7;
     border: 0;
     padding: 0;

@@ -9,7 +9,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="management-page">
+  <section class="mar-management-page">
     <slot>
       <EnvironmentSecretManager
         :request="request"

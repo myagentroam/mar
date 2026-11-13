@@ -49,7 +49,7 @@ const visibleNotifications = computed(() => {
       }}</span>
       <el-button
         v-if="service.unreadCount.value > 0"
-        class="workbench-notification-mark-all text-action"
+        class="workbench-notification-mark-all mar-text-action"
         link
         @click="service.markAllRead()"
       >
@@ -82,7 +82,7 @@ const visibleNotifications = computed(() => {
           <div class="workbench-notification-upload-actions">
             <el-button
               v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
-              class="text-action"
+              class="mar-text-action"
               link
               @click="emit('retryUpload', task)"
             >
@@ -95,7 +95,7 @@ const visibleNotifications = computed(() => {
             <button
               v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
               type="button"
-              class="icon-button icon-action workbench-notification-delete"
+              class="mar-icon-button mar-icon-action workbench-notification-delete"
               :aria-label="
                 translate('generated.workbenchNotificationCenter.delete', {
                   value0: task.name
@@ -105,7 +105,7 @@ const visibleNotifications = computed(() => {
             >
               <MarIcon name="delete" />
             </button>
-            <el-button v-else class="text-action" link @click="emit('cancelUpload', task)">
+            <el-button v-else class="mar-text-action" link @click="emit('cancelUpload', task)">
               {{ translate('generated.workbenchNotificationCenter.cancel') }}
             </el-button>
           </div>
@@ -136,7 +136,7 @@ const visibleNotifications = computed(() => {
             }}</time>
           </button>
           <button
-            class="icon-button icon-action workbench-notification-delete"
+            class="mar-icon-button mar-icon-action workbench-notification-delete"
             :aria-label="
               translate('generated.workbenchNotificationCenter.deleteNotification', {
                 value0: notification.title
@@ -182,7 +182,7 @@ const visibleNotifications = computed(() => {
 .workbench-notification-content button:not(.el-button) {
   font: inherit;
 }
-.workbench-notification-content button:not(.icon-button, .icon-action, .el-button) {
+.workbench-notification-content button:not(.mar-icon-button, .mar-icon-action, .el-button) {
   border: 0;
   background: transparent;
   color: var(--mar-text-primary);

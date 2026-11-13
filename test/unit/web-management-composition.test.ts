@@ -122,7 +122,16 @@ describe('Workbench management composition', () => {
     ],
     [
       'MEMBER',
-      ['skill-config', 'skill-sources', 'mcp-sources', 'secrets', 'mar-agent-models', 'system']
+      [
+        'resource-nodes',
+        'resource-workspaces',
+        'skill-config',
+        'skill-sources',
+        'mcp-sources',
+        'secrets',
+        'mar-agent-models',
+        'system'
+      ]
     ]
   ] as const)('keeps the %s navigation order without mounting hidden pages', (role, ids) => {
     const composition = createEnterpriseManagementComposition();
@@ -131,6 +140,37 @@ describe('Workbench management composition', () => {
     if (role !== 'ADMIN') expect(composition.resolve('oauth', admin).id).toBe('system');
     if (role === 'MEMBER') expect(composition.resolve('users', admin).id).toBe('system');
   });
+
+  it.each([true, false])(
+    'keeps member resource pages reachable while preserving management writability (%s)',
+    (writable) => {
+      const composition = createEnterpriseManagementComposition();
+      const admin = {
+        ...enterprise('MEMBER'),
+        isAdmin: false,
+        managementWritable: writable,
+        licenseState: writable ? ('ENTERPRISE_VALID' as const) : ('ENTERPRISE_FROZEN' as const)
+      };
+      const context = {
+        admin,
+        request: async <T>() => undefined as T,
+        nodes: [],
+        onlineNodeCount: 0,
+        serverVersion: undefined
+      };
+      for (const section of ['resource-nodes', 'resource-workspaces'] as const) {
+        const page = composition.resolve(section, admin);
+        expect(page.id).toBe(section);
+        expect(page.props(context)).toMatchObject({
+          role: 'MEMBER',
+          edition: 'ENTERPRISE',
+          writable
+        });
+      }
+      for (const section of ['organizations', 'users', 'oauth', 'audit', 'configuration'] as const)
+        expect(composition.resolve(section, admin).id).toBe('system');
+    }
+  );
 
   it('re-evaluates visibility when a user or product state changes', () => {
     const composition = createEnterpriseManagementComposition();

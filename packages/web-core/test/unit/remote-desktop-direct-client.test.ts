@@ -57,6 +57,23 @@ function fixture() {
 }
 
 describe('remote desktop Direct authorization and handoff', () => {
+  it('updates an adopted connection with the confirmed replacement reason after data closes', async () => {
+    const f = fixture();
+    const pending = f.client.attach(f.input);
+    f.client.handle(f.prepared);
+    await vi.waitFor(() => expect(f.raw.sent).toHaveLength(1));
+    f.raw.receive(JSON.stringify({ type: 'ATTACHED', attachmentId: f.prepared.attachmentId }));
+    await pending;
+    f.raw.close();
+    expect(f.disconnected).toHaveBeenLastCalledWith('DESKTOP_TRANSPORT_ERROR');
+    f.client.handle({
+      type: 'desktop.direct.settled',
+      attachmentId: f.prepared.attachmentId,
+      code: 'DESKTOP_CONNECTION_REPLACED'
+    });
+    expect(f.disconnected).toHaveBeenLastCalledWith('DESKTOP_CONNECTION_REPLACED');
+    f.client.close();
+  });
   it('hands ATTACHED to noVNC without dropping the next frame, and ready is explicit and once', async () => {
     const f = fixture();
     const attaching = f.client.attach(f.input);

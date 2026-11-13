@@ -29,6 +29,11 @@ export function ultraVncConfig(port: number, password: Uint8Array): string {
     'QuerySetting=0',
     'FileTransferEnabled=0',
     'secondary=1',
+    // Use self-contained GDI capture rather than optional drivers or injected hooks.
+    '[poll]',
+    'EnableDriver=0',
+    'EnableHook=0',
+    'PollFullScreen=1',
     '[UltraVNC]',
     `passwd=${ultraVncProfilePassword(password)}`,
     ''

@@ -598,7 +598,7 @@ test('Realtime idle updates only session state without refreshing Git Changes', 
       control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
     }
   });
-  await expect(page.locator('.session-activity.managed_active').first()).toBeVisible();
+  await expect(page.locator('.mar-session-activity.managed_active').first()).toBeVisible();
   await emitMockSessionEvent(page, 'session', {
     session: {
       id: 'session-1',
@@ -610,7 +610,7 @@ test('Realtime idle updates only session state without refreshing Git Changes', 
     }
   });
 
-  await expect(page.locator('.session-activity.managed_active')).toHaveCount(0);
+  await expect(page.locator('.mar-session-activity.managed_active')).toHaveCount(0);
   await expect(
     page.getByText(`after-run-${changesReadsBeforeIdle}.txt`, { exact: true })
   ).toBeVisible();
@@ -809,9 +809,9 @@ test('Realtime and duplicate idle events do not refresh visible Files', async ({
     }
   });
   await emitMockSessionEvent(page, 'session', session('MANAGED_ACTIVE'));
-  await expect(page.locator('.session-activity.managed_active').first()).toBeVisible();
+  await expect(page.locator('.mar-session-activity.managed_active').first()).toBeVisible();
   await emitMockSessionEvent(page, 'session', session('IDLE'));
-  await expect(page.locator('.session-activity.managed_active')).toHaveCount(0);
+  await expect(page.locator('.mar-session-activity.managed_active')).toHaveCount(0);
   await emitMockSessionEvent(page, 'session', session('IDLE'));
   await page.evaluate(
     () =>
@@ -1274,7 +1274,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(refreshChangesButton).toBeVisible();
   await expect(refreshChangesButton).toHaveAttribute('type', 'button');
   await expect(refreshChangesButton).toHaveClass(/changes-refresh-button/u);
-  await expect(refreshChangesButton).toHaveClass(/icon-action/u);
+  await expect(refreshChangesButton).toHaveClass(/mar-icon-action/u);
   await expect(refreshChangesButton).not.toHaveClass(/el-button/u);
   holdChangesRefresh = true;
   failChangesRefresh = true;
@@ -1414,7 +1414,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
       })
     )
     .toBe(true);
-  await expect(diff.locator('.file-preview-content')).toHaveCSS('overflow', 'hidden');
+  await expect(diff.locator('.mar-file-preview-content')).toHaveCSS('overflow', 'hidden');
   await expect(diff.getByLabel('工作树文件全文')).toHaveCSS('scrollbar-width', /^(none|thin)$/);
   const expectedMinimapColor = await diff.evaluate((surface) => {
     const probe = document.createElement('span');

@@ -84,7 +84,7 @@ onBeforeUnmount(() => {
         >{{ current }} / {{ total }}{{ truncated ? '+' : '' }}</span
       >
       <el-button
-        class="icon-action"
+        class="mar-icon-action"
         v-tooltip="translate('inlineFind.previous')"
         text
         :disabled="total === 0"
@@ -93,7 +93,7 @@ onBeforeUnmount(() => {
         ><MarIcon name="chevron-up"
       /></el-button>
       <el-button
-        class="icon-action"
+        class="mar-icon-action"
         v-tooltip="translate('inlineFind.next')"
         text
         :disabled="total === 0"
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
         ><MarIcon name="chevron-down"
       /></el-button>
       <el-button
-        class="icon-action"
+        class="mar-icon-action"
         v-tooltip="translate('inlineFind.close')"
         text
         :aria-label="translate('inlineFind.close')"

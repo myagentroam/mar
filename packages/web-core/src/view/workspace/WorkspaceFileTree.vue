@@ -489,7 +489,7 @@ defineExpose({ reveal });
               @visible-change="setActionMenuVisible($event, row.node.path)"
             >
               <button
-                class="file-tree-more icon-action icon-action--inline"
+                class="file-tree-more mar-icon-action mar-icon-action--inline"
                 :class="{ 'is-visible': nodeActionsVisible(row.node.path) }"
                 type="button"
                 :aria-label="
@@ -580,7 +580,7 @@ defineExpose({ reveal });
           <div v-else class="file-tree-load-more" :style="{ '--tree-depth': row.depth }">
             <el-button
               v-if="row.node.failedAppend !== undefined"
-              class="text-action"
+              class="mar-text-action"
               link
               v-tooltip="!row.node.loading ? errorMessage(row.node.failure) : ''"
               :aria-description="!row.node.loading ? errorMessage(row.node.failure) : undefined"

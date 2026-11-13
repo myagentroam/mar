@@ -255,9 +255,9 @@ onMounted(() => {
   <section
     v-loading="loading && !initialized"
     element-loading-custom-class="mar-page-loading"
-    class="management-page"
+    class="mar-management-page"
   >
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="loading && initialized"

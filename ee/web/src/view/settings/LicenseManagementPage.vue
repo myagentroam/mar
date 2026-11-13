@@ -122,7 +122,7 @@ void load();
 
 <template>
   <section
-    class="management-page license-management"
+    class="mar-management-page license-management"
     v-loading="loading && !ready"
     element-loading-custom-class="mar-page-loading"
   >

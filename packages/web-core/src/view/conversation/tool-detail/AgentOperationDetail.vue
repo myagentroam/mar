@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import { runStatusLabel } from '../../../util/session-presentation.js';
@@ -18,19 +19,19 @@ const agentWaitText = computed(() => {
 <template>
   <div class="agent-detail">
     <template v-if="agentDetail.action === 'LIST'">
-      <ul v-if="agentDetail.targets.length" class="conversation-detail-list">
+      <ul v-if="agentDetail.targets.length" class="mar-conversation-detail-list">
         <li
           v-for="(target, index) in agentDetail.targets"
           :key="index"
-          class="conversation-list-row"
+          class="mar-conversation-list-row"
         >
           <span
             v-if="target.status"
-            class="conversation-list-marker"
+            class="mar-conversation-list-marker"
             :class="{ 'agent-list-status--running': target.status === 'RUNNING' }"
             >{{ agentTargetStatus(target.status) }}</span
           >
-          <span class="conversation-list-content">{{ target.title }}</span>
+          <span class="mar-conversation-list-content">{{ target.title }}</span>
         </li>
       </ul>
       <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">

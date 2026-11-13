@@ -100,3 +100,15 @@ defineProps<{ page: CoreSurfaceProps['page'] }>();
     </template>
   </CoreSurface>
 </template>
+
+<style scoped>
+.enterprise-frozen-banner {
+  margin: 8px 16px 0;
+}
+
+@media (max-width: 767px) {
+  .enterprise-frozen-banner {
+    margin: 8px 12px 0;
+  }
+}
+</style>

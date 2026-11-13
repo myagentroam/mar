@@ -1639,9 +1639,9 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.getByRole('button', { name: '用户管理' })).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: '创建用户' })).toBeDisabled();
   await expect(page.locator('.el-table').getByText('成员', { exact: true })).toBeVisible();
-  await expect(page.locator('.management-page .el-table')).toHaveCSS('font-size', '14px');
-  await expect(page.locator('.management-page .el-table')).not.toHaveClass(/el-table--small/);
-  await expect(page.locator('.row-actions').first()).toHaveCSS('white-space', 'nowrap');
+  await expect(page.locator('.mar-management-page .el-table')).toHaveCSS('font-size', '14px');
+  await expect(page.locator('.mar-management-page .el-table')).not.toHaveClass(/el-table--small/);
+  await expect(page.locator('.mar-row-actions').first()).toHaveCSS('white-space', 'nowrap');
   await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '14px');
   await expect(page.getByRole('combobox')).toHaveCount(2);
   await expect(page.getByPlaceholder('请输入用户、邮箱或显示名称')).not.toHaveClass(
@@ -1653,7 +1653,7 @@ test('Enterprise management exposes role-based sections and disables writes when
 
   await page.getByRole('button', { name: '节点管理' }).click();
   await expect(page.getByPlaceholder('请输入名称或 ID')).toBeVisible();
-  await expect(page.locator('.resource-filters').getByRole('combobox')).toHaveCount(2);
+  await expect(page.locator('.mar-resource-filters').getByRole('combobox')).toHaveCount(2);
   await expect(page.getByRole('combobox', { name: /状态/ })).toBeVisible();
   await expect(page.getByText('暂无数据', { exact: true })).toBeVisible();
 
@@ -2048,10 +2048,10 @@ test('Resource filters align left on desktop and keep actions accessible after m
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('button', { name: '节点管理' }).click();
 
-  const filters = page.locator('.resource-filters');
+  const filters = page.locator('.mar-resource-filters');
   await expect(filters).toBeVisible();
   const nodeDesktopLayout = await filters
-    .locator(':scope > .filter-field')
+    .locator(':scope > .mar-filter-field')
     .evaluateAll((fields) => {
       const container = fields[0]?.parentElement?.getBoundingClientRect();
       const rects = fields.map((field) => field.getBoundingClientRect());
@@ -2077,9 +2077,9 @@ test('Resource filters align left on desktop and keep actions accessible after m
 
   await page.getByRole('button', { name: '工作区管理' }).click();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('工作区管理');
-  await expect(filters.locator(':scope > .filter-field')).toHaveCount(2);
+  await expect(filters.locator(':scope > .mar-filter-field')).toHaveCount(2);
   const workspaceDesktopLayout = await filters
-    .locator(':scope > .filter-field')
+    .locator(':scope > .mar-filter-field')
     .evaluateAll((fields) => {
       const container = fields[0]?.parentElement?.getBoundingClientRect();
       const rects = fields.map((field) => field.getBoundingClientRect());
@@ -2103,7 +2103,7 @@ test('Resource filters align left on desktop and keep actions accessible after m
 
   await page.getByRole('button', { name: '节点管理' }).click();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('节点管理');
-  await expect(filters.locator(':scope > .filter-field')).toHaveCount(3);
+  await expect(filters.locator(':scope > .mar-filter-field')).toHaveCount(3);
   await page.setViewportSize({ width: 390, height: 844 });
   const layout = await filters.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -2120,8 +2120,10 @@ test('Resource filters align left on desktop and keep actions accessible after m
   expect(layout.filterRight).toBeLessThanOrEqual(layout.viewportWidth);
   expect(layout.filterScrollWidth).toBeLessThanOrEqual(layout.filterClientWidth);
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  await expect(page.locator('.management-page .el-table__fixed-right')).toHaveCount(0);
-  const tableScroll = page.locator('.management-page .el-table__body-wrapper .el-scrollbar__wrap');
+  await expect(page.locator('.mar-management-page .el-table__fixed-right')).toHaveCount(0);
+  const tableScroll = page.locator(
+    '.mar-management-page .el-table__body-wrapper .el-scrollbar__wrap'
+  );
   const tableLayout = await tableScroll.evaluate((element) => {
     element.scrollLeft = element.scrollWidth;
     return {
@@ -2133,7 +2135,7 @@ test('Resource filters align left on desktop and keep actions accessible after m
   expect(tableLayout.scrollWidth).toBeGreaterThan(tableLayout.clientWidth);
   expect(tableLayout.scrollLeft).toBeGreaterThan(0);
   await expect(page.getByRole('columnheader', { name: '操作', exact: true })).toBeInViewport();
-  const rowActions = page.locator('.management-page .row-actions').first();
+  const rowActions = page.locator('.mar-management-page .mar-row-actions').first();
   const actionLayout = await rowActions.evaluate((element) => {
     const actions = element.getBoundingClientRect();
     const scrollViewport = element.closest('.el-scrollbar__wrap')?.getBoundingClientRect();

@@ -1,0 +1,292 @@
+/* Shared MAR visual primitives without page-specific behavior. */
+.mar-tooltip-control {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.mar-empty {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.6;
+}
+
+.mar-icon-button {
+  width: 25px;
+  padding: 2px;
+  text-align: center;
+}
+.mar-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mar-activity-count-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: var(--mar-radius-marker);
+  background: var(--mar-color-brand);
+  color: var(--mar-color-on-accent);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.mar-unread-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--mar-text-secondary) 45%, var(--mar-bg-panel));
+  border-radius: var(--mar-radius-marker);
+  background: color-mix(in srgb, var(--mar-text-secondary) 14%, var(--mar-bg-panel));
+  color: var(--mar-text-primary);
+  font-size: var(--mar-font-size-nano);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  padding: 0 0.0625rem;
+}
+
+.mar-icon-action,
+.mar-text-action {
+  --mar-action-hover-bg: var(--mar-fill-row-hover);
+  border-radius: var(--mar-radius-control);
+  background: transparent;
+  color: var(--mar-text-secondary);
+}
+
+.mar-icon-action {
+  border: 0;
+  cursor: pointer;
+}
+
+.mar-icon-action--inline,
+.mar-text-action {
+  --mar-action-hover-bg: transparent;
+}
+
+.mar-icon-status-badge {
+  position: absolute;
+  width: var(--mar-icon-status-size, 6px);
+  height: var(--mar-icon-status-size, 6px);
+  border-radius: 50%;
+  background: var(--el-color-success);
+  box-shadow: 0 0 0 1.5px var(--mar-icon-status-surface);
+  pointer-events: none;
+}
+
+:is(.mar-icon-action, .mar-text-action):is(
+    :hover,
+    :active,
+    :focus-visible,
+    .is-active,
+    [aria-expanded='true']
+  ):not(:disabled, .is-disabled, [aria-disabled='true']) {
+  background: var(--mar-action-hover-bg);
+  color: var(--mar-action-hover-color, var(--mar-text-primary));
+}
+
+:is(.mar-icon-action, .mar-text-action):focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: 2px;
+}
+
+.mar-tab-close {
+  --mar-action-icon-size: 14px;
+  display: grid;
+  flex: none;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mar-tab-close:focus-visible {
+  outline-offset: 1px;
+}
+.mar-detail-descriptions {
+  width: 100%;
+}
+.mar-detail-descriptions .el-descriptions__table {
+  width: 100%;
+  table-layout: fixed;
+}
+.mar-detail-descriptions .el-descriptions__label {
+  width: 132px;
+  max-width: 30%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mar-detail-descriptions .el-descriptions__content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.mar-detail-descriptions pre,
+.mar-detail-descriptions code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.mar-detail-descriptions pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 767px) {
+  .mar-detail-descriptions .el-descriptions__label {
+    width: 92px;
+    max-width: 28%;
+  }
+}
+.mar-runner-brand-icon {
+  width: 0.82rem;
+  height: 0.82rem;
+  flex: none;
+  object-fit: contain;
+}
+.mar-session-activity {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 0.5rem;
+  height: 0.5rem;
+}
+.mar-session-activity i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--mar-text-faint);
+}
+.mar-icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.125em;
+}
+
+@media (max-width: 767px) {
+  :where(button, [role='button'], a[href], .el-dropdown-menu__item) .mar-icon {
+    font-size: var(--mar-action-icon-size, 18px);
+  }
+}
+
+.mar-disclosure-summary {
+  list-style: none;
+}
+
+.mar-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mar-disclosure-icon {
+  margin-inline-end: 0.5em;
+  transition: transform var(--el-transition-duration-fast);
+}
+
+details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-disclosure-icon {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mar-disclosure-icon {
+    transition: none;
+  }
+}
+
+.mar-busy-indicator,
+.mar-page-loading .el-loading-spinner::before {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: none;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+}
+
+.mar-read-loading-indicator {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--mar-color-brand-text);
+}
+
+.mar-page-loading .el-loading-spinner::before,
+.mar-page-loading-state > .mar-busy-indicator {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.mar-page-loading-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  align-self: stretch;
+  color: var(--mar-color-brand-text);
+}
+
+.mar-list-append-state {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  padding: 0.25rem;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mar-busy-indicator,
+  .mar-page-loading .el-loading-spinner::before {
+    animation: mar-busy-indicator-spin 1.2s linear infinite;
+  }
+}
+
+@keyframes mar-busy-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mar-session-activity.managed_active i {
+  background: var(--el-color-success);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--el-color-success) 11%, transparent),
+    0 0 4px 0 color-mix(in srgb, var(--el-color-success) 20%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mar-session-activity.managed_active i {
+    animation: mar-run-glow 1.8s ease-in-out infinite;
+  }
+}
+@keyframes mar-run-glow {
+  0%,
+  100% {
+    opacity: 0.86;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.mar-session-activity.node-offline i {
+  background: var(--mar-text-faint);
+}

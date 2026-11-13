@@ -285,7 +285,7 @@ describe('Shared personal settings components', () => {
       }
       const account = await render('account');
       expect(account.html).not.toContain('oauth-bindings');
-      expect(account.html).toContain('icon-action');
+      expect(account.html).toContain('mar-icon-action');
       expect(account.html).toContain('account-actions');
       expect(account.request).not.toHaveBeenCalled();
     }

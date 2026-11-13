@@ -236,7 +236,7 @@ function usagePercentageLabel(value: number): string {
                 disabled: usageDisabledReason(entry.runner) === ''
               }"
               v-if="entry.runner !== 'opencode'"
-              class="runner-usage-link text-action"
+              class="runner-usage-link mar-text-action"
               link
               :icon="marIcon('refresh')"
               :loading="usageLoading === entry.runner"
@@ -425,6 +425,21 @@ function usagePercentageLabel(value: number): string {
 </template>
 
 <style scoped>
+.supported-agent-list > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+.supported-agent-label {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .runner-usage-link {
   margin-left: 0.45rem;
   vertical-align: baseline;

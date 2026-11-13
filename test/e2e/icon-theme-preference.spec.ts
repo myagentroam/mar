@@ -21,7 +21,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     page.on('request', (request) => {
       if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url());
     });
-    await page.goto(`${fixture.url}custom-theme.html?locale=${locale}`);
+    await page.goto(`${fixture.url}custom-theme.html?locale=${locale}&appearance-only`);
     const openAppearance = () =>
       page.getByRole('button', { name: messages.settings.appearance, exact: true }).click();
     const select = page

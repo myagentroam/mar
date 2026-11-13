@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import type { ToolPresentation } from '@myagentroam/protocol';
@@ -33,7 +34,7 @@ const compactShowsOutput = computed(
     </p>
     <p
       v-if="compactDetail.mimeType || (compactDetail.width && compactDetail.height)"
-      class="conversation-detail-text"
+      class="mar-conversation-detail-text"
     >
       {{
         [
@@ -53,12 +54,12 @@ const compactShowsOutput = computed(
         (compactDetail.sourceWidth !== compactDetail.width ||
           compactDetail.sourceHeight !== compactDetail.height)
       "
-      class="conversation-detail-text"
+      class="mar-conversation-detail-text"
     >
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.sourceSize') }}:</span>
       {{ compactDetail.sourceWidth }} × {{ compactDetail.sourceHeight }}
     </p>
-    <p v-if="compactDetail.region" class="conversation-detail-text">
+    <p v-if="compactDetail.region" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.region') }}:</span>
       {{ compactDetail.region.x }}, {{ compactDetail.region.y }} ·
       {{ compactDetail.region.width }} ×
@@ -69,7 +70,7 @@ const compactShowsOutput = computed(
         compactDetail.resize?.maxWidth !== undefined ||
         compactDetail.resize?.maxHeight !== undefined
       "
-      class="conversation-detail-text"
+      class="mar-conversation-detail-text"
     >
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.resize') }}:</span>
       <template v-if="compactDetail.resize?.maxWidth !== undefined">
@@ -90,7 +91,7 @@ const compactShowsOutput = computed(
     <p v-if="genericOutput?.truncation === 'HEAD'" class="tool-detail-meta">
       {{ translate('toolPresentation.detail.truncated') }}
     </p>
-    <pre v-if="compactShowsOutput && outputText" class="conversation-detail-text">{{
+    <pre v-if="compactShowsOutput && outputText" class="mar-conversation-detail-text">{{
       outputText
     }}</pre>
     <p
@@ -99,14 +100,14 @@ const compactShowsOutput = computed(
     >
       {{ translate('toolPresentation.detail.truncated') }}
     </p>
-    <p v-if="typeof errorCode === 'string' && errorCode" class="conversation-detail-text">
+    <p v-if="typeof errorCode === 'string' && errorCode" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.error') }}:</span>
       {{ errorCode }}
     </p>
-    <p v-if="typeof errorMessage === 'string' && errorMessage" class="conversation-detail-text">
+    <p v-if="typeof errorMessage === 'string' && errorMessage" class="mar-conversation-detail-text">
       {{ errorMessage }}
     </p>
-    <p v-if="permissionReason" class="conversation-detail-text">
+    <p v-if="permissionReason" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.permission') }}:</span>
       {{ permissionReason }}
     </p>

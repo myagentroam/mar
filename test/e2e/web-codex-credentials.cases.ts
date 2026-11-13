@@ -1399,7 +1399,7 @@ for (const english of [false, true]) {
     await page
       .getByRole('tab', { name: english ? 'Image generation' : '图片生成', exact: true })
       .click();
-    const toolbar = page.locator('.image-generation-management .table-actions');
+    const toolbar = page.locator('.image-generation-management .mar-table-actions');
     await expect(toolbar.getByRole('button')).toHaveText(
       english
         ? ['Refresh', 'Adjust order', 'Add image model']

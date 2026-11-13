@@ -1,3 +1,4 @@
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test, type Locator } from '@playwright/test';
 import {
   emitMockSessionEvent,
@@ -675,7 +676,7 @@ test('File navigation uses rounded selection and the editor fills its surface wi
       await expect(preview.locator('.file-preview-desktop-actions')).toBeHidden();
       await expect(preview.locator('.workspace-file-mobile-actions')).toBeVisible();
     }
-    await expect(preview.locator('.file-preview-content')).toHaveCSS('padding', '0px');
+    await expect(preview.locator('.mar-file-preview-content')).toHaveCSS('padding', '0px');
     const edges = await preview.locator('.code-file-editor').evaluate((element) => {
       const editorBounds = element.getBoundingClientRect();
       const parentBounds = element.parentElement!.getBoundingClientRect();
@@ -1436,7 +1437,7 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   const contentSearchButton = page.locator('.content-search-toolbar .content-search-button');
   await expect(contentSearchButton).toHaveAttribute('type', 'submit');
   await expect(contentSearchButton).toHaveClass(/file-explorer-utility-button/u);
-  await expect(contentSearchButton).toHaveClass(/icon-action/u);
+  await expect(contentSearchButton).toHaveClass(/mar-icon-action/u);
   expect(
     await page
       .locator('.content-search-toolbar .el-input__wrapper')
@@ -1543,7 +1544,7 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await page.getByRole('treeitem', { name: 'src/main.ts', exact: true }).click();
 
   const preview = page.getByRole('dialog', { name: 'src/main.ts 文件预览' });
-  await expect(preview.locator('.file-preview-eyebrow')).toContainText('正在编辑');
+  await expect(preview.locator('.mar-file-preview-eyebrow')).toContainText('正在编辑');
   const editor = preview.locator('.cm-content');
   await page.evaluate(() =>
     document.documentElement.setAttribute('data-theme', 'vscode-light-2026')
@@ -1619,8 +1620,7 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await expect(preview.locator('.cm-activeLine')).toContainText('answer1()');
   await editor.press('Alt+ArrowRight');
   await expect(preview.locator('.cm-activeLine')).toHaveText(targetLineText);
-  if (browserName === 'chromium')
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  if (browserName === 'chromium') await grantClipboardPermissions(page.context());
   await editor.press('Control+a');
   await editor.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '复制' }).click();
@@ -1683,9 +1683,9 @@ test('Large text previews disable expensive syntax trees and symbol scans', asyn
   await expect(preview.getByPlaceholder('搜索符号')).toHaveCount(0);
   for (const width of [1365, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    const contentArea = preview.locator('.file-preview-content');
+    const contentArea = preview.locator('.mar-file-preview-content');
     await expect(contentArea).toHaveCSS('overflow-y', 'auto');
-    const notice = contentArea.locator('.empty');
+    const notice = contentArea.locator('.mar-empty');
     await notice.scrollIntoViewIfNeeded();
     const bounds = await notice.evaluate((element) => {
       const notice = element.getBoundingClientRect();

@@ -1,3 +1,4 @@
+import { grantClipboardPermissions, clipboardPermissions } from './support/clipboard.js';
 import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
@@ -11,7 +12,29 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('standalone tool detail loads its own shared presentation', async ({ page }) => {
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await page.goto(`${fixture.url}isolated-tool-detail.html`);
+  const detail = page.locator('.tool-detail.mar-conversation-detail-body');
+  await expect(detail).toContainText('Inspection output');
+  const [padding, rootSize] = await detail.evaluate((element) => [
+    parseFloat(getComputedStyle(element).paddingTop),
+    parseFloat(getComputedStyle(document.documentElement).fontSize)
+  ]);
+  expect(padding).toBeCloseTo(rootSize! * 0.625, 1);
+  expect(requests.some((url) => url.includes('ConversationTimeline.vue'))).toBe(false);
+});
+
 async function expectUnclippedDetail(content: Locator) {
+  await content.evaluate(async (element) => {
+    const animations = new Set<Animation>();
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement)
+      for (const animation of ancestor.getAnimations()) animations.add(animation);
+    await Promise.all([...animations].map((animation) => animation.finished));
+  });
+  // Reveal the final geometry, not an ancestor temporarily clipped by its disclosure animation.
+  await content.scrollIntoViewIfNeeded();
   await expect
     .poll(() =>
       content.evaluate((element) => {
@@ -32,7 +55,7 @@ async function expectUnclippedDetail(content: Locator) {
 test('replaces only the current process task snapshot and keeps other processes after reopening', async ({
   page
 }) => {
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await grantClipboardPermissions(page.context());
   await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&task-snapshots`);
   const first = page.locator('[data-process-id="process"]');
   const second = page.locator('[data-process-id="other-process"]');
@@ -98,7 +121,7 @@ for (const [width, theme, locale] of [
     await agentGroup.locator('.conversation-tool-detail > summary').click();
     const tasks = process.locator('.task-list-items');
     const files = process.locator('.conversation-file-change-list');
-    const agents = process.locator('.agent-detail .conversation-detail-list');
+    const agents = process.locator('.agent-detail .mar-conversation-detail-list');
     await expect(agents.locator('li')).toHaveCount(3);
     await expect(agents).toContainText('Review native tool details');
     await expect(agents.locator('a, button')).toHaveCount(0);
@@ -138,9 +161,9 @@ for (const [width, theme, locale] of [
     await expect(tasks.locator('.task-list-status')).toHaveText(
       locale === 'en-US' ? ['To-do', 'In progress', 'Done'] : ['待办', '进行中', '已完成']
     );
-    const runningStatus = agents.locator('li').first().locator('.conversation-list-marker');
-    const idleStatus = agents.locator('li').nth(1).locator('.conversation-list-marker');
-    const completedStatus = agents.locator('li').nth(2).locator('.conversation-list-marker');
+    const runningStatus = agents.locator('li').first().locator('.mar-conversation-list-marker');
+    const idleStatus = agents.locator('li').nth(1).locator('.mar-conversation-list-marker');
+    const completedStatus = agents.locator('li').nth(2).locator('.mar-conversation-list-marker');
     const green = await tasks
       .locator('.task-list-status--done')
       .evaluate((element) => getComputedStyle(element).color);
@@ -165,7 +188,7 @@ for (const [width, theme, locale] of [
     for (const list of [tasks, files, agents]) {
       await expect(list).toHaveCSS('font-size', '12px');
       await expect(list).toHaveCSS('font-weight', '400');
-      const markers = list.locator('.conversation-list-marker');
+      const markers = list.locator('.mar-conversation-list-marker');
       const sizes = await markers.evaluateAll((elements) =>
         elements.map((element) => ({
           width: element.getBoundingClientRect().width,
@@ -194,7 +217,7 @@ for (const [width, theme, locale] of [
 test('copies loaded file-change records without flattening their public fields', async ({
   page
 }) => {
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await grantClipboardPermissions(page.context());
   await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&list-layout`);
   const process = page.locator('[data-process-id="process"]');
   await process.locator('.process-heading').click();
@@ -223,7 +246,7 @@ for (const [width, theme] of [
     const agents = process.locator('.subagent-group');
     await agents.locator('.conversation-record-group > summary').click();
     await agents.locator('.conversation-tool-detail > summary').click();
-    await expect(process.locator('.conversation-detail-list')).toHaveCount(3);
+    await expect(process.locator('.mar-conversation-detail-list')).toHaveCount(3);
     await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
     await process.screenshot({ path: testInfo.outputPath(`unified-lists-${width}-${theme}.png`) });
   });
@@ -319,12 +342,12 @@ test('updates a conditional fallback slot and does not schedule copy feedback af
   await page.goto(`${fixture.url}conversation-tool-detail.html?lifecycle-probe&locale=en-US`);
   const probe = page.getByTestId('lifecycle-probe');
   const detail = probe.getByTestId('lifecycle-detail').locator('.tool-detail');
-  await expect(detail).not.toHaveClass(/conversation-detail-body/);
+  await expect(detail).not.toHaveClass(/mar-conversation-detail-body/);
   await probe.getByTestId('toggle-slot').click();
-  await expect(detail).toHaveClass(/conversation-detail-body/);
+  await expect(detail).toHaveClass(/mar-conversation-detail-body/);
   await expect(probe.getByTestId('lifecycle-slot')).toHaveText('Slot content');
   await probe.getByTestId('toggle-slot').click();
-  await expect(detail).not.toHaveClass(/conversation-detail-body/);
+  await expect(detail).not.toHaveClass(/mar-conversation-detail-body/);
   await expect(probe.getByTestId('lifecycle-slot')).toHaveCount(0);
 
   await detail.getByRole('button', { name: 'Copy public record' }).click();
@@ -398,7 +421,7 @@ for (const { width, theme, locale } of [
     page
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await grantClipboardPermissions(page.context());
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline&unified&compact-tools&theme=${theme}&locale=${locale}`
     );
@@ -417,7 +440,7 @@ for (const { width, theme, locale } of [
     await expect(sleepBody).not.toContainText('raw input for copying');
     await sleepBody.scrollIntoViewIfNeeded();
     await expectUnclippedDetail(sleepBody);
-    const sleepBounds = await sleep.locator('.conversation-detail-body').boundingBox();
+    const sleepBounds = await sleep.locator('.mar-conversation-detail-body').boundingBox();
     for (const [name, expected] of [
       ['tool_search', 'tools <query>'],
       ['view_image', '/fixture/example.png'],
@@ -429,7 +452,7 @@ for (const { width, theme, locale } of [
         .first();
       await row.locator('> summary').click();
       const body = row.locator('.compact-detail');
-      const bounds = await row.locator('.conversation-detail-body').boundingBox();
+      const bounds = await row.locator('.mar-conversation-detail-body').boundingBox();
       expect(Math.abs(bounds!.x - sleepBounds!.x)).toBeLessThan(1);
       await expect(body).toContainText(expected);
       await expect(body).not.toContainText('raw input for copying');
@@ -499,7 +522,7 @@ for (const variant of [
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.setViewportSize({ width: variant.width, height: 900 });
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await grantClipboardPermissions(page.context());
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1&read-association=1&preview=1&theme=${variant.theme}&locale=${variant.locale}`
     );
@@ -606,7 +629,7 @@ test('remeasures on resize and reveals a keyboard-focused link below the preview
 test('mounts independent details only while open and releases them with the process', async ({
   page
 }) => {
-  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1`);
+  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&web-layout`);
   const process = page.locator('.process-heading').first();
   if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
   const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
@@ -614,17 +637,19 @@ test('mounts independent details only while open and releases them with the proc
   await expect(search.locator('.tool-detail, .conversation-tool-sources a')).toHaveCount(0);
   await expect(fetch.locator('.tool-detail')).toHaveCount(0);
   await search.locator('> summary').click();
+  await expect(search).toHaveJSProperty('open', true);
   await fetch.locator('> summary').click();
-  await expect(search.locator('.conversation-tool-sources a')).toHaveCount(1);
-  await expect(search.locator('.conversation-tool-sources a')).toHaveAttribute(
+  await expect(fetch).toHaveJSProperty('open', true);
+  await expect(search.locator('.conversation-tool-sources a')).toHaveCount(7);
+  await expect(search.locator('.conversation-tool-sources a').first()).toHaveAttribute(
     'href',
     'https://example.com/docs'
   );
-  await expect(search.locator('.conversation-tool-sources a')).toHaveAttribute(
+  await expect(search.locator('.conversation-tool-sources a').first()).toHaveAttribute(
     'rel',
     'noopener noreferrer'
   );
-  await expect(search.locator('.conversation-tool-source-host')).toHaveText(
+  await expect(search.locator('.conversation-tool-source-host').first()).toHaveText(
     'https://example.com/docs'
   );
   await expect(search.locator('.conversation-tool-sources')).toContainText(
@@ -635,25 +660,28 @@ test('mounts independent details only while open and releases them with the proc
   expect(await search.locator('.conversation-tool-sources').innerHTML()).toContain(
     '&lt;plain summary&gt;'
   );
-  await expect(search.locator('.web-query')).toHaveText('documentation');
+  await expect(search.locator('.web-query')).toHaveText('Documentation and release notes');
   await expect(search.locator('.tool-detail')).not.toContainText('Input:');
   await expect(search.locator('.web-output')).toHaveCount(0);
-  await expect(search.locator('.tool-detail')).not.toContainText('Relevant documentation found.');
+  await expect(search.locator('.tool-detail')).not.toContainText(
+    'Redundant source output is preserved in the copied public record.'
+  );
   await expect(fetch.locator('.web-page-url a')).toHaveAttribute(
     'href',
     'https://example.com/docs'
   );
-  await expect(fetch.locator('.web-output')).toContainText('The requested page content.');
+  await expect(fetch.locator('.web-page-url a')).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(fetch.locator('.web-output')).toContainText('Returned page paragraph 1.');
   await expect(fetch.locator('.tool-detail')).not.toContainText('Input:');
   await search.locator('> summary').click();
   await expect(search.locator('.tool-detail, .conversation-tool-sources a')).toHaveCount(0);
   await process.click();
   await expect(
-    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text')
+    page.locator('[data-tool-presentation="WEB_FETCH"] .mar-conversation-detail-text')
   ).toHaveCount(0);
   await process.click();
   await expect(
-    page.locator('[data-tool-presentation="WEB_FETCH"] .conversation-detail-text')
+    page.locator('[data-tool-presentation="WEB_FETCH"] .mar-conversation-detail-text')
   ).toHaveCount(0);
 });
 
@@ -668,7 +696,7 @@ test('read file details separate their path and range from the associated raw fi
   const read = page.locator('[data-tool-presentation="READ"]');
   await read.locator('> summary').click();
   await read.locator('.conversation-tool-detail > summary').click();
-  const detail = read.locator('.conversation-detail-text');
+  const detail = read.locator('.mar-conversation-detail-text');
   await expect(read.locator('.conversation-tool-detail > summary')).toContainText('3–4');
   await expect(read.locator('.tool-detail-heading')).toHaveText('/fixture/example.ts · 3–4');
   await expect(detail).toHaveText('  first file\r\nsecond line\r\n', { useInnerText: false });
@@ -685,7 +713,7 @@ for (const [width, theme, locale] of [
     page
   }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await grantClipboardPermissions(page.context());
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline&unified&read-association&detail-layout&theme=${theme}&locale=${locale}`
     );
@@ -698,10 +726,10 @@ for (const [width, theme, locale] of [
     const skill = page.locator('[data-tool-presentation="SKILL"]');
     await skill.locator('> summary').click();
     await expect(skill.locator('.tool-detail-heading')).toHaveText('mar-web-spec');
-    const readBounds = await read.locator('.conversation-detail-body').boundingBox();
-    const skillBounds = await skill.locator('.conversation-detail-body').boundingBox();
+    const readBounds = await read.locator('.mar-conversation-detail-body').boundingBox();
+    const skillBounds = await skill.locator('.mar-conversation-detail-body').boundingBox();
     expect(Math.abs(skillBounds!.x - readBounds!.x)).toBeLessThan(1);
-    const description = skill.locator('.conversation-detail-text');
+    const description = skill.locator('.mar-conversation-detail-text');
     await expect(description).toHaveText(
       'Design <plain> interfaces.\nKeep the original description and its line breaks.'
     );
@@ -744,13 +772,13 @@ for (const [width, theme, locale] of [
       const heading = body.locator('.tool-detail-heading');
       await expect(heading).toHaveCSS('font-size', '12px');
       await expect(heading).toHaveCSS('font-weight', '400');
-      for (const content of await body.locator('.conversation-detail-text').all()) {
+      for (const content of await body.locator('.mar-conversation-detail-text').all()) {
         await expect(content).toHaveCSS('font-size', '12px');
         await expect(content).toHaveCSS('font-weight', '400');
       }
       expect(await heading.evaluate((element) => getComputedStyle(element).color)).not.toBe(
         await body
-          .locator('.conversation-detail-text')
+          .locator('.mar-conversation-detail-text')
           .first()
           .evaluate((element) => getComputedStyle(element).color)
       );
@@ -772,7 +800,7 @@ for (const [width, theme, locale] of [
 for (const width of [1280, 390]) {
   test(`wait rows use explicit commands, code or resource IDs at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await grantClipboardPermissions(page.context());
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline&unified&wait-titles&locale=${width === 390 ? 'zh-CN' : 'en-US'}&theme=${width === 390 ? 'dark' : 'daylight'}`
     );
@@ -852,12 +880,12 @@ for (const width of [1280, 390]) {
     );
     const height = (await heading.boundingBox())!.height;
     await heading.click();
-    await expect(read.locator('.conversation-detail-text')).toHaveText(
+    await expect(read.locator('.mar-conversation-detail-text')).toHaveText(
       '  first file\r\nsecond line\r\n'
     );
     expect((await heading.boundingBox())!.height).toBe(height);
     await heading.click();
-    await expect(read.locator('.conversation-detail-text')).toHaveCount(0);
+    await expect(read.locator('.mar-conversation-detail-text')).toHaveCount(0);
   });
 }
 
@@ -870,8 +898,11 @@ for (const truncation of ['HEAD', 'SOURCE']) {
     if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
     const read = page.locator('[data-tool-presentation="READ"]');
     await read.locator('> summary').click();
+    await expect(read).toHaveJSProperty('open', true);
     await read.locator('.conversation-tool-detail > summary').click();
-    const text = await read.locator('.conversation-detail-text').textContent();
+    const detail = read.locator('.mar-conversation-detail-text');
+    await expect(detail).toContainText('[Truncated]');
+    const text = await detail.textContent();
     expect(text?.match(/\[Truncated\]/gu)).toHaveLength(1);
     if (truncation === 'HEAD') expect(text).toMatch(/^\[Truncated\][\s\S]+second line\s*$/u);
     else expect(text).toMatch(/^ {2}first file[\s\S]+\[Truncated\]$/u);
@@ -889,7 +920,7 @@ test('READ replaces body and association together, then falls back when a snapsh
   const read = page.locator('[data-tool-presentation="READ"]');
   await read.locator('> summary').click();
   await read.locator('.conversation-tool-detail > summary').click();
-  const detail = read.locator('.conversation-detail-text');
+  const detail = read.locator('.mar-conversation-detail-text');
   await expect(detail).toContainText('first file');
   await page.getByTestId('stream-details').click();
   await expect.poll(() => detail.textContent()).toContain('  live output\n\n  next line\n');
@@ -912,7 +943,7 @@ for (const [width, theme] of [
     const context = await browser.newContext({
       viewport: { width, height: 1100 },
       reducedMotion: 'reduce',
-      permissions: ['clipboard-read', 'clipboard-write']
+      permissions: clipboardPermissions(browser)
     });
     try {
       const page = await context.newPage();
@@ -1033,7 +1064,7 @@ test('renders image, search and compact details within the ordinary tool group',
     const row = page.locator('details.conversation-tool-detail').filter({ hasText: name }).first();
     await row.locator(':scope > summary').click();
     await expect(row.locator('.tool-detail')).toContainText(expected);
-    await expect(row.locator('.tool-detail')).toHaveClass(/conversation-detail-body/);
+    await expect(row.locator('.tool-detail')).toHaveClass(/mar-conversation-detail-body/);
   }
 });
 
@@ -1085,21 +1116,28 @@ for (const [width, theme] of [
 test('specialized tool details replace live output with the authoritative result', async ({
   page
 }) => {
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1`);
+  await grantClipboardPermissions(page.context());
+  await page.goto(
+    `${fixture.url}conversation-tool-detail.html?timeline=1&unified=1&updates=1&read-association=1`
+  );
   const process = page.locator('.process-heading').first();
   if ((await process.getAttribute('aria-expanded')) === 'false') await process.click();
   const read = page.locator('[data-tool-presentation="READ"]');
   await read.locator(':scope > summary').click();
+  await expect(read).toHaveJSProperty('open', true);
   await read.locator('.conversation-tool-detail > summary').click();
+  await expect(read.locator('.mar-conversation-detail-text')).toHaveText(
+    '  first file\r\nsecond line\r\n',
+    { useInnerText: false }
+  );
   for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
     await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
   const child = page.locator('.subagent-group');
   await child.locator('.conversation-record-group > summary').click();
   await child.locator('.conversation-tool-detail > summary').click();
   const bodies = [
-    read.locator('.conversation-detail-text'),
-    child.locator('.conversation-detail-text')
+    read.locator('.mar-conversation-detail-text'),
+    child.locator('.mar-conversation-detail-text')
   ];
   const webRegions = ['WEB_SEARCH', 'WEB_FETCH'].map((kind) => ({
     kind,
@@ -1109,7 +1147,9 @@ test('specialized tool details replace live output with the authoritative result
   for (const [index, body] of bodies.entries()) {
     await expect
       .poll(() => body.textContent(), { message: `live detail ${index}` })
-      .toContain(':\n  live output\n\n  next line\n');
+      .toContain(
+        index === 0 ? '  live output\n\n  next line\n' : ':\n  live output\n\n  next line\n'
+      );
     await expect(body).not.toContainText('Truncated');
   }
   for (const { kind, region } of webRegions) {
@@ -1118,13 +1158,23 @@ test('specialized tool details replace live output with the authoritative result
       await expect(region).not.toContainText('live output');
     } else
       await expect
-        .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
+        .poll(() => region.locator('.web-output .mar-conversation-detail-text').textContent())
         .toBe('  live output\n\n  next line\n');
     await expect(region).not.toContainText('[Truncated]');
   }
   await page.getByTestId('finish-details').click();
-  for (const body of bodies) {
-    await expect.poll(() => body.textContent()).toContain(':\n  authoritative tail\n\n[Truncated]');
+  for (const [index, body] of bodies.entries()) {
+    if (index === 0) {
+      await expect.poll(() => body.textContent()).toContain('  authoritative tail\n');
+      const readText = (await body.textContent()) ?? '';
+      expect(readText.indexOf('[Truncated]')).toBeGreaterThan(
+        readText.indexOf('authoritative tail')
+      );
+    } else {
+      await expect
+        .poll(() => body.textContent())
+        .toContain(':\n  authoritative tail\n\n[Truncated]');
+    }
     await expect(body).not.toContainText('live output');
     await expect(body).not.toContainText('export const result');
     await expect(body).not.toContainText('The requested page content.');
@@ -1137,7 +1187,7 @@ test('specialized tool details replace live output with the authoritative result
       await expect(region).toContainText('[Truncated]');
     } else {
       await expect
-        .poll(() => region.locator('.web-output .conversation-detail-text').textContent())
+        .poll(() => region.locator('.web-output .mar-conversation-detail-text').textContent())
         .toBe('  authoritative tail\n');
       const text = await region.textContent();
       expect(text!.indexOf('[Truncated]')).toBeGreaterThan(text!.indexOf('authoritative tail'));
@@ -1179,7 +1229,7 @@ for (const width of [1280, 390]) {
   }, testInfo) => {
     const context = await browser.newContext({
       viewport: { width, height: 900 },
-      permissions: ['clipboard-read', 'clipboard-write']
+      permissions: clipboardPermissions(browser)
     });
     try {
       const page = await context.newPage();
@@ -1333,7 +1383,7 @@ for (const width of [1280, 390]) {
         );
         const reasoning = page.locator('.reasoning-group');
         await reasoning.locator('summary').click();
-        const thinking = reasoning.locator('.conversation-detail-text');
+        const thinking = reasoning.locator('.mar-conversation-detail-text');
         await expect(thinking).toContainText('Keep the changes focused.');
         if (reasoningQuery) await expect(thinking).toContainText('Check the shared reading start.');
         const thinkingBounds = await thinking.boundingBox();
@@ -1343,7 +1393,7 @@ for (const width of [1280, 390]) {
           lineHeight: getComputedStyle(element).lineHeight,
           color: getComputedStyle(element).color,
           expectedColor: getComputedStyle(element.closest('.conversation-item')!).color,
-          background: getComputedStyle(element.closest('.conversation-detail-body')!)
+          background: getComputedStyle(element.closest('.mar-conversation-detail-body')!)
             .backgroundColor
         }));
         expect(thinkingStyle.fontSize).toBe('12px');
@@ -1354,7 +1404,7 @@ for (const width of [1280, 390]) {
         for (const kind of ['WEB_SEARCH', 'WEB_FETCH'])
           await page.locator(`[data-tool-presentation="${kind}"] > summary`).click();
         await expect(
-          page.locator('.conversation-tool-sources .conversation-detail-text')
+          page.locator('.conversation-tool-sources .mar-conversation-detail-text')
         ).toHaveCSS('font-size', thinkingStyle.fontSize);
         await expect(page.locator('.conversation-tool-sources a')).toHaveCSS(
           'font-size',
@@ -1367,15 +1417,15 @@ for (const width of [1280, 390]) {
         await generic.locator('.conversation-record-group > summary').click();
         await generic.locator('.conversation-tool-detail > summary').click();
         await expectGenericDetail(generic.locator('.generic-detail'));
-        const surfaces = page.locator('.conversation-detail-body');
+        const surfaces = page.locator('.mar-conversation-detail-body');
         const search = page.locator('[data-tool-presentation="WEB_SEARCH"]');
         await expect(search.locator('.web-detail')).toBeVisible();
         await expect(search.locator('.web-output')).toHaveCount(0);
-        await expect(search.locator('.conversation-detail-body')).toHaveCount(1);
+        await expect(search.locator('.mar-conversation-detail-body')).toHaveCount(1);
         await expect(surfaces).toHaveCount(7);
         for (const surface of await surfaces.all()) {
           const spacing = await surface.evaluate((element) => {
-            const text = element.querySelector('.conversation-detail-text')!;
+            const text = element.querySelector('.mar-conversation-detail-text')!;
             const heading = element.parentElement!.querySelector(':scope > summary')!;
             const title = heading.querySelector(
               ':scope > strong, :scope > span:not(.mar-disclosure-icon):not(.conversation-record-icon)'
@@ -1398,7 +1448,7 @@ for (const width of [1280, 390]) {
             getComputedStyle(element).getPropertyValue('--mar-radius-surface').trim()
           );
           await expect(surface).toHaveCSS('border-radius', radius);
-          const contents = surface.locator('.conversation-detail-text');
+          const contents = surface.locator('.mar-conversation-detail-text');
           expect(await contents.count()).toBeGreaterThan(0);
           for (const content of await contents.all()) {
             await expect(content).toHaveCSS('font-size', thinkingStyle.fontSize);

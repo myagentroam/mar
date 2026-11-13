@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import type { ExecutionPresentation } from '@myagentroam/protocol';
@@ -73,7 +74,7 @@ const visibleOutputs = computed(
     </p>
     <pre
       v-if="executionSource?.text"
-      class="conversation-detail-text tool-source-text"
+      class="mar-conversation-detail-text tool-source-text"
     ><span class="tool-detail-meta">{{ executionSource.kind === 'CODE' ? translate('toolPresentation.detail.code') : translate('toolPresentation.detail.command') }}:</span> {{ executionSource.text }}</pre>
     <p v-if="executionSource?.truncated || execution.truncation?.input" class="tool-detail-meta">
       {{ translate('toolPresentation.detail.truncated') }}
@@ -82,11 +83,11 @@ const visibleOutputs = computed(
       {{ translate('toolPresentation.detail.cwd') }}:
       <span class="tool-cwd-value">{{ executionSource.cwd }}</span>
     </p>
-    <p v-if="execution.error" class="conversation-detail-text tool-content-section">
+    <p v-if="execution.error" class="mar-conversation-detail-text tool-content-section">
       {{ translate('toolPresentation.detail.error') }}:
       {{ [execution.error.code, execution.error.message].filter(Boolean).join(': ') }}
     </p>
-    <p v-if="permissionReason" class="conversation-detail-text tool-content-section">
+    <p v-if="permissionReason" class="mar-conversation-detail-text tool-content-section">
       {{ translate('toolPresentation.detail.permission') }}: {{ permissionReason }}
     </p>
     <div
@@ -101,7 +102,7 @@ const visibleOutputs = computed(
             : translate('toolPresentation.detail.output')
         }}:
       </p>
-      <pre class="conversation-detail-text tool-output-text">{{
+      <pre class="mar-conversation-detail-text tool-output-text">{{
         (index === 0 && outputTruncation === 'HEAD'
           ? translate('toolPresentation.detail.truncated') + '\n'
           : '') + block.text

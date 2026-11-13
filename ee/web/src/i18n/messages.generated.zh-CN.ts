@@ -1830,9 +1830,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     systemConfigurationZhCN.generated.systemConfigurationPage.actions,
   'systemConfigurationPage.edit': systemConfigurationZhCN.generated.systemConfigurationPage.edit,
   'systemConfigurationPage.save': systemConfigurationZhCN.generated.systemConfigurationPage.save,
-  'systemConfigurationPage.skillSourceTLSCertificateVerificationIsDisabled':
-    systemConfigurationZhCN.generated.systemConfigurationPage
-      .skillSourceTLSCertificateVerificationIsDisabled,
   'systemConfigurationPage.disableSkillSourceTLSVerification':
     systemConfigurationZhCN.generated.systemConfigurationPage.disableSkillSourceTLSVerification,
   'systemConfigurationPage.keepThisOffByDefaultUseIt':

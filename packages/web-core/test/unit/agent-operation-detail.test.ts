@@ -26,7 +26,7 @@ describe('Agent operation card projection', () => {
     expect(html).toContain('Review &lt;layout&gt;');
     expect(html).toContain('Unknown status');
     expect(html).not.toContain('<a');
-    expect(html.match(/conversation-list-marker/gu)).toHaveLength(2);
+    expect(html.match(/mar-conversation-list-marker/gu)).toHaveLength(2);
     expect(html.match(/agent-list-status--running/gu)).toHaveLength(1);
   });
 

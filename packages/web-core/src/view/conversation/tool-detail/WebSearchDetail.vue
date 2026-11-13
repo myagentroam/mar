@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import type { ToolPresentation } from '@myagentroam/protocol';
@@ -22,7 +23,7 @@ const webHeading = computed(() =>
     <p class="tool-detail-heading tool-detail-meta">{{ webHeading }}</p>
     <div v-if="webDetail.query" class="tool-content-section">
       <p class="tool-detail-meta">{{ translate('toolPresentation.detail.query') }}:</p>
-      <p class="conversation-detail-text web-query">{{ webDetail.query }}</p>
+      <p class="mar-conversation-detail-text web-query">{{ webDetail.query }}</p>
     </div>
     <div v-if="webSources.length" class="tool-content-section">
       <p class="tool-detail-meta">{{ translate('toolPresentation.detail.sources') }}:</p>
@@ -35,13 +36,13 @@ const webHeading = computed(() =>
           <p v-if="source.title" class="conversation-tool-source-host tool-detail-meta">
             {{ source.url }}
           </p>
-          <p v-if="source.snippet" class="conversation-detail-text">{{ source.snippet }}</p>
+          <p v-if="source.snippet" class="mar-conversation-detail-text">{{ source.snippet }}</p>
         </li>
       </ul>
     </div>
     <p
       v-else-if="webDetail.sourcesOnly && webDetail.sources?.length === 0"
-      class="conversation-detail-text tool-content-section"
+      class="mar-conversation-detail-text tool-content-section"
     >
       {{ translate('toolPresentation.noResults') }}
     </p>
@@ -50,14 +51,14 @@ const webHeading = computed(() =>
     </p>
     <p
       v-if="typeof errorCode === 'string' && errorCode"
-      class="conversation-detail-text tool-content-section"
+      class="mar-conversation-detail-text tool-content-section"
     >
       {{ translate('toolPresentation.detail.error') }}: {{ errorCode }}
     </p>
-    <p v-if="typeof errorMessage === 'string' && errorMessage" class="conversation-detail-text">
+    <p v-if="typeof errorMessage === 'string' && errorMessage" class="mar-conversation-detail-text">
       {{ errorMessage }}
     </p>
-    <p v-if="permissionReason" class="conversation-detail-text tool-content-section">
+    <p v-if="permissionReason" class="mar-conversation-detail-text tool-content-section">
       {{ translate('toolPresentation.detail.permission') }}: {{ permissionReason }}
     </p>
   </div>

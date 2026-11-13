@@ -169,7 +169,7 @@ for (const [language, theme, width] of [
         });
       });
       expect(seams.length).toBeGreaterThan(0);
-      for (const overlap of seams) expect(overlap).toBeCloseTo(width < 768 ? -4 : 1, 1);
+      for (const overlap of seams) expect(overlap).toBeCloseTo(1, 1);
       const borders = await tabs.evaluate((element) => ({
         strip: getComputedStyle(element).borderBottomWidth,
         header: getComputedStyle(element.closest('header')!).borderBottomWidth

@@ -1998,7 +1998,7 @@ describe('MAR Agent model service', () => {
     expect(connection.commit).toHaveBeenCalledOnce();
   });
 
-  it('lists enabled template model options and keeps the first normalized model name', async () => {
+  it('lists enabled template model options without merging distinct upstream model IDs', async () => {
     const db = database([
       [
         [
@@ -2025,6 +2025,7 @@ describe('MAR Agent model service', () => {
 
     await expect(service.listTemplateOptionsForNode('organization-node')).resolves.toEqual([
       { modelId: 'coding-primary', name: 'Coding' },
+      { modelId: 'coding-secondary', name: 'ＣＯＤＩＮＧ' },
       { modelId: 'review', name: 'Review' }
     ]);
     await expect(service.listTemplateOptionsForNode('personal-node')).resolves.toEqual([

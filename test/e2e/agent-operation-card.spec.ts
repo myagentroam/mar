@@ -30,9 +30,9 @@ for (const theme of ['light', 'dark']) {
       const controls = groups.first().locator('.conversation-tool-detail');
       await expect(controls).toHaveCount(7);
       await expect(controls.nth(0).locator(':scope > summary')).toContainText(
-        'agent_start Review the implementation'
+        'start Review the implementation'
       );
-      await expect(controls.nth(1).locator(':scope > summary')).toContainText('agent_send');
+      await expect(controls.nth(1).locator(':scope > summary')).toContainText('send');
       await expect(controls.nth(1).locator(':scope > summary')).not.toContainText('peer');
       await expect(controls.nth(1).locator('.conversation-record-meta')).toHaveText('Failed');
       await controls.nth(1).locator(':scope > summary').click();
@@ -44,7 +44,7 @@ for (const theme of ['light', 'dark']) {
       await expect(page.getByTestId('copied-record')).toContainText('"id": "mar-send"');
       const wait = controls.nth(5);
       await expect(wait.locator(':scope > summary')).toContainText(
-        'agent_wait Review the implementation, Check the final result'
+        'wait Review the implementation, Check the final result'
       );
       const preview = wait.locator(':scope > summary .conversation-tool-preview');
       expect(
@@ -63,11 +63,10 @@ for (const theme of ['light', 'dark']) {
       await expect(wait).toContainText('Agent ID: other');
       await expect(wait).toContainText('Task: Review the implementation');
       await expect(wait).toContainText('Task: Check the final result');
-      await expect(wait.locator('.conversation-detail-text')).toContainText('END');
+      await expect(wait.locator('.mar-conversation-detail-text')).toContainText('END');
       await expect(wait).toContainText('Timeout. Both targets are still running.');
-      await expect(wait.locator('.conversation-detail-text')).toBeVisible();
-      await expect(controls.nth(6).locator(':scope > summary')).toContainText('agent_list');
-      await expect(controls.nth(6).locator(':scope > summary')).not.toContainText('profile');
+      await expect(wait.locator('.mar-conversation-detail-text')).toBeVisible();
+      await expect(controls.nth(6).locator(':scope > summary')).toContainText('list profile');
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
       ).toBe(true);

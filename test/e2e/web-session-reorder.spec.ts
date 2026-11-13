@@ -243,7 +243,7 @@ test('Workspace snapshots and repeated searches keep loaded rows mounted and pre
     expect(await retainedRow!.evaluate((element) => element.isConnected)).toBe(true);
     expect(await list.evaluate((element) => element.scrollTop)).toBe(scrollTop);
     releaseRebase();
-    await expect(page.locator('.session-list .list-append-state')).toHaveCount(0);
+    await expect(page.locator('.session-list .mar-list-append-state')).toHaveCount(0);
     await expect(rows).toHaveCount(45);
     expect(await retainedRow!.evaluate((element) => element.isConnected)).toBe(true);
 

@@ -4,7 +4,7 @@ import { CUSTOM_THEME_TOKENS, type BuiltinTheme } from '../model/custom-theme.js
 // a second set of built-in colors. The isolated probe cannot inherit active custom overrides.
 export function readBuiltinThemeColors(theme: BuiltinTheme): Record<string, string> {
   const probe = document.createElement('div');
-  probe.className = 'theme-preview';
+  probe.className = 'mar-theme-preview';
   probe.dataset.theme = theme;
   probe.style.cssText =
     'position:fixed;visibility:hidden;pointer-events:none;contain:strict;width:0;height:0;overflow:hidden';

@@ -94,8 +94,8 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
     'Idle leaf',
     'Idle leaf two'
   ]);
-  await expect(tree.locator('.session-activity.managed_active')).toHaveCount(2);
-  await expect(tree.locator('.session-activity.tree-sleeping')).toHaveCount(1);
+  await expect(tree.locator('.mar-session-activity.managed_active')).toHaveCount(2);
+  await expect(tree.locator('.mar-session-activity.tree-sleeping')).toHaveCount(1);
   await expect(tree.locator('.session-tree-time')).toHaveText(Array(6).fill('—'));
   await expect(tree.getByRole('button', { name: 'Running branch, Running' })).toBeVisible();
   await expect(tree.getByRole('button', { name: 'Sleeping branch, Sleeping' })).toBeVisible();
@@ -426,8 +426,17 @@ for (const width of [390, 1280]) {
         .screenshot({ path: testInfo.outputPath(`session-header-${width}-${theme}.png`) });
       await trigger.screenshot({ path: testInfo.outputPath(`tree-trigger-${width}-${theme}.png`) });
       await expect(trigger).toHaveCSS('border-top-width', '0px');
+      const triggerHoverBackground = await trigger.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        element.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+      });
       await trigger.hover();
-      await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(trigger).toHaveCSS('background-color', triggerHoverBackground);
+      await page.keyboard.press('Tab');
       await trigger.focus();
       await expect(trigger).toHaveCSS('outline-width', '2px');
       await trigger.press('Enter');
@@ -436,7 +445,7 @@ for (const width of [390, 1280]) {
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
       await expect(rows.locator('.session-tree-status')).toHaveCount(0);
-      await expect(dialog.locator('.session-activity.managed_active')).toHaveCount(1);
+      await expect(dialog.locator('.mar-session-activity.managed_active')).toHaveCount(1);
       await expect(rows.locator('.session-tree-time')).toHaveText(['>12m', '>5m', '<1m', '>2h']);
       await expect(rows.first().locator('.session-tree-time')).toHaveAttribute(
         'datetime',
@@ -538,7 +547,7 @@ for (const width of [390, 1280]) {
       await page.mouse.move(0, 0);
       await expect(current.locator('.session-tree-title')).toHaveCSS('color', 'rgb(215, 221, 229)');
       await expect(items.nth(1)).toHaveCSS('background-color', 'rgb(49, 63, 81)');
-      await expect(current.locator('.session-activity')).toBeVisible();
+      await expect(current.locator('.mar-session-activity')).toBeVisible();
       await rows.first().press('Enter');
       await expect(dialog).toHaveCount(0);
       await expect(page.getByTestId('selected')).toHaveText('parent');

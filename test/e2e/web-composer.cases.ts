@@ -1,3 +1,4 @@
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test } from '@playwright/test';
 import { fulfillMockSessionWatch, mockConsoleApi, json, write } from './support/web-console-api.js';
 
@@ -117,7 +118,7 @@ test('Native Composer text paste can be undone', async ({ page, context, browser
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
 
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await grantClipboardPermissions(context);
   await page.evaluate(() => navigator.clipboard.writeText('纯文本'));
   const composer = page.getByRole('textbox', { name: '输入消息' });
   await composer.click();
@@ -1186,7 +1187,7 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
   await expect(page.locator('.composer-runner-select')).toContainText('Codex');
   await expect(page.locator('.composer-model-effort-select')).toContainText('GPT-5.6 Terra High');
   await expect(page.locator('.composer-access-select')).toContainText('工作区写入');
-  await expect(page.locator('.conversation-title-row .runner-brand-icon')).toHaveAttribute(
+  await expect(page.locator('.conversation-title-row .mar-runner-brand-icon')).toHaveAttribute(
     'data-runner',
     'codex'
   );

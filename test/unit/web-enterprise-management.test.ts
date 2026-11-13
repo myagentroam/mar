@@ -169,13 +169,13 @@ describe('Web enterprise management domain', () => {
     for (const admin of managementStates) {
       const ids = composition.items(admin).map((item) => item.id);
       const orderedItems = [
-        ...(admin.role === 'MEMBER' ? [] : ['resource-workspaces']),
+        'resource-workspaces',
         'skill-config',
         'skill-sources',
         'mcp-sources',
         'secrets'
       ];
-      const start = ids.indexOf(admin.role === 'MEMBER' ? 'skill-config' : 'resource-workspaces');
+      const start = ids.indexOf('resource-workspaces');
       expect(start).toBeGreaterThanOrEqual(0);
       expect(ids.slice(start, start + orderedItems.length)).toEqual(orderedItems);
       expect(ids).not.toContain('skill-center');
@@ -417,7 +417,6 @@ describe('Web enterprise management domain', () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
     const service = createWorkspaceRegistrationService({
       targetNodeId: { value: 'node-a' } as never,
-      globalLoading: { value: false } as never,
       request: async (path, init) => {
         requests.push({ path, ...(init === undefined ? {} : { init }) });
         return { workspace: { id: 'workspace-created' } } as never;
@@ -429,6 +428,7 @@ describe('Web enterprise management domain', () => {
     });
     service.path.value = '/workspace';
     await service.register({ ownerType: 'ORGANIZATION', ownerOrganizationId: 2 });
+    expect(service.loading.value).toBe(false);
     expect(JSON.parse(String(requests[0]!.init?.body))).toEqual({
       nodeId: 'node-a',
       path: '/workspace',
@@ -479,7 +479,6 @@ describe('Web enterprise management domain', () => {
     const resolvers: Array<(value: Result) => void> = [];
     const service = createWorkspaceRegistrationService({
       targetNodeId: { value: 'node-a' } as never,
-      globalLoading: { value: false } as never,
       request: () => new Promise<Result>((resolve) => resolvers.push(resolve)) as never,
       onRegistered: async () => undefined,
       notice: () => undefined,

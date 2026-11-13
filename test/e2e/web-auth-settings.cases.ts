@@ -802,7 +802,8 @@ test('Appearance switches UI and file icon themes independently in local browser
   await expect(page.getByRole('heading', { name: '外观' })).toBeVisible();
 
   const root = page.locator('html');
-  await expect(root).not.toHaveAttribute('data-theme', /.*/);
+  await expect(root).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(root).toHaveClass(/dark/);
   await selectAppearanceOption(page, '主题', '暗色');
   await expect(root).toHaveAttribute('data-theme', 'vscode-dark-2026');
   await expect(root).toHaveClass(/dark/);
@@ -818,6 +819,11 @@ test('Appearance switches UI and file icon themes independently in local browser
   await expect(root).not.toHaveAttribute('data-theme', /.*/);
   await expect(root).not.toHaveClass(/dark/);
 
+  // Choose a non-default value first so the Select emits an actual preference change.
+  await selectAppearanceOption(page, '图标主题', 'Seti');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('seti');
+  await expect(root).not.toHaveAttribute('data-theme', /.*/);
+  await expect(root).not.toHaveClass(/dark/);
   await selectAppearanceOption(page, '图标主题', 'Material');
   await selectAppearanceOption(page, '文件默认打开方式', '只读');
   await expect
@@ -1261,7 +1267,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await expect(nodeDetails.getByText('可升级到 0.1.7', { exact: true })).toBeVisible();
   await nodeDetails.getByRole('button', { name: '关闭', exact: true }).click();
   const nodeStatusTrigger = page
-    .locator('.resource-filters .filter-field')
+    .locator('.mar-resource-filters .mar-filter-field')
     .filter({ hasText: '状态：' })
     .locator('.el-select__wrapper');
   await nodeStatusTrigger.click();
@@ -1272,7 +1278,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('节点管理');
   await expect(
     page
-      .locator('.resource-filters .filter-field')
+      .locator('.mar-resource-filters .mar-filter-field')
       .filter({ hasText: '状态：' })
       .locator('.el-select__placeholder')
   ).toContainText('离线');

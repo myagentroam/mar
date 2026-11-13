@@ -819,7 +819,7 @@ onUnmounted(() => {
   <section
     v-loading="loading && !pageReady && !pagination.failure.value"
     element-loading-custom-class="mar-page-loading"
-    class="management-page resource-management-panel"
+    class="mar-management-page resource-management-panel"
   >
     <slot
       name="filters"
@@ -834,7 +834,7 @@ onUnmounted(() => {
         :resource-type="resourceType"
       />
     </slot>
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
@@ -938,7 +938,7 @@ onUnmounted(() => {
       >
       <el-table-column :label="translate('generated.resourceSharingPage.actions')" :width="290"
         ><template #default="{ row }"
-          ><div class="row-actions" @click.stop>
+          ><div class="mar-row-actions" @click.stop>
             <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
               translate('generated.resourceSharingPage.edit')
             }}</el-button>

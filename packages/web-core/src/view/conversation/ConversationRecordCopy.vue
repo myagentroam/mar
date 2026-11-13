@@ -33,7 +33,7 @@ onBeforeUnmount(() => {
   <button
     v-tooltip="label"
     type="button"
-    class="tool-detail-copy icon-button icon-action"
+    class="tool-detail-copy mar-icon-button mar-icon-action"
     :aria-label="label"
     @click.stop="copy"
   >

@@ -45,9 +45,11 @@ for (const device of ['desktop', 'mobile'] as const) {
         available: false,
         publicKey: null
       };
-      await page.route('**/api/notifications/push', (route) =>
-        json(route, { ...capability, account: 'admin' })
-      );
+      let capabilityReads = 0;
+      await page.route('**/api/notifications/push', (route) => {
+        capabilityReads++;
+        return json(route, { ...capability, account: 'admin' });
+      });
       let registrations = 0;
       await page.route('**/api/notifications/push/clients', (route) => {
         registrations++;
@@ -60,6 +62,9 @@ for (const device of ['desktop', 'mobile'] as const) {
               configurable: true,
               get: () => 'Mozilla/5.0 iPhone'
             });
+          // This capability scenario starts without an existing Push subscription.
+          if (device === 'mobile' && typeof PushManager !== 'undefined')
+            PushManager.prototype.getSubscription = async () => null;
           // Headless Chromium has no OS notification permission integration.
           Object.defineProperty(Notification, 'permission', {
             configurable: true,
@@ -93,8 +98,11 @@ for (const device of ['desktop', 'mobile'] as const) {
       await expect(online.getByRole('status').first().locator('.el-tag')).toHaveClass(
         /el-tag--success/
       );
-      await expect(online.getByRole('button').first()).toHaveClass(/el-button--primary/);
-      await online.getByRole('button').first().hover();
+      const action = online.getByRole('button').first();
+      await expect(action).toHaveClass(/(?:^|\s)mar-text-action(?:\s|$)/);
+      await expect(action).toHaveClass(/(?:^|\s)is-link(?:\s|$)/);
+      await expect(action).toBeEnabled();
+      await action.hover();
       await expect(online.getByRole('button').first()).toHaveCSS(
         'background-color',
         'rgba(0, 0, 0, 0)'
@@ -106,7 +114,10 @@ for (const device of ['desktop', 'mobile'] as const) {
         await expect(panel.getByRole('heading', { name: language.push, exact: true })).toHaveCount(
           0
         );
-      } else await expect(push.getByRole('status').last()).toHaveText(language.serverUnavailable);
+      } else {
+        await expect(push.getByRole('status').last()).toHaveText(language.serverUnavailable);
+        expect(capabilityReads).toBeGreaterThan(0);
+      }
       const assertLayout = async () => {
         const first = await online.boundingBox();
         const rootFontSize = await page.evaluate(() =>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 const props = defineProps<{ path: string; range?: string | undefined; text: string }>();
 </script>
 
@@ -7,7 +8,7 @@ const props = defineProps<{ path: string; range?: string | undefined; text: stri
     <p class="tool-detail-heading tool-detail-meta">
       {{ [props.path, props.range].filter(Boolean).join(' · ') }}
     </p>
-    <pre class="conversation-detail-text">{{ props.text }}</pre>
+    <pre class="mar-conversation-detail-text">{{ props.text }}</pre>
   </div>
 </template>
 

@@ -254,7 +254,7 @@ for (const width of [1280, 390]) {
           row.getBoundingClientRect().right - row.nextElementSibling!.getBoundingClientRect().left
         );
       });
-      expect(overlap).toBeCloseTo(width < 768 ? -4 : 1, 1);
+      expect(overlap).toBeCloseTo(1, 1);
       await notifications.focus();
       for (const key of ['ArrowLeft', 'End', 'Home', 'ArrowRight']) {
         const target = key === 'ArrowLeft' || key === 'Home' ? recent : notifications;
@@ -447,10 +447,14 @@ for (const width of [1280, 390]) {
       await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
       const trigger = page.locator('.activity-center-trigger');
       const input = page.getByRole('textbox', { name: 'Background input' });
+      const previewButton = page.getByRole('button', { name: 'Preview notification' });
+      const announcePreview = () =>
+        previewButton.evaluate((button: HTMLButtonElement) => {
+          // Deliver the fixture notification without simulating a click outside an open menu.
+          button.dispatchEvent(new MouseEvent('click', { bubbles: false }));
+        });
       await input.focus();
-      await page
-        .getByRole('button', { name: 'Preview notification' })
-        .evaluate((button: HTMLButtonElement) => button.click());
+      await announcePreview();
       const preview = page.locator('.activity-preview:visible');
       await expect(preview).toContainText('New version');
       await expect(input).toBeFocused();
@@ -484,10 +488,9 @@ for (const width of [1280, 390]) {
       await expect(preview).toHaveCount(0);
       const panel = page.locator('.workbench-activity-panel:visible');
       await panel.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
-      await page
-        .getByRole('button', { name: 'Preview notification' })
-        .evaluate((button: HTMLButtonElement) => button.click());
+      await announcePreview();
       await expect(preview).toHaveCount(0);
+      await expect(panel).toBeVisible();
       await expect(
         panel.getByRole('tab', { name: 'Recent Sessions', exact: true })
       ).toHaveAttribute('aria-selected', 'true');
@@ -495,11 +498,11 @@ for (const width of [1280, 390]) {
       await expect(panel).toHaveCount(0);
       if (width < 768) {
         await page.locator('.nav-menu-button:has([data-mar-icon="workspace"])').tap();
-        await expect(page.locator('.workspace-tree.mobile-open')).toBeVisible();
-        await page
-          .getByRole('button', { name: 'Preview notification' })
-          .evaluate((button: HTMLButtonElement) => button.click());
+        const workspaceMenu = page.locator('.workspace-tree.mobile-open');
+        await expect(workspaceMenu).toBeVisible();
+        await announcePreview();
         await expect(preview).toHaveCount(0);
+        await expect(workspaceMenu).toBeVisible();
       }
     });
   }

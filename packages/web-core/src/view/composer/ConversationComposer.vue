@@ -303,6 +303,18 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+@media (min-width: 768px) {
+  :global(.conversation-scroll-region.is-empty + .composer-host) {
+    box-sizing: border-box;
+    width: min(calc(100% - 2rem), 45rem);
+    align-self: center;
+    margin-bottom: auto;
+  }
+  :global(.conversation-scroll-region.is-empty + .composer-host > .composer) {
+    background: transparent;
+  }
+}
+
 .composer-host {
   flex: 0 0 auto;
   min-height: 0;

@@ -12,6 +12,7 @@ it('writes the Win32 profile password and an authenticated loopback-only configu
   expect(config).toContain('LoopbackOnly=1\r\n');
   expect(config).toContain('AuthRequired=1\r\n');
   expect(config).toContain('FileTransferEnabled=0\r\n');
+  expect(config).toContain('[poll]\r\nEnableDriver=0\r\nEnableHook=0\r\nPollFullScreen=1\r\n');
   expect(config).toContain('[UltraVNC]\r\npasswd=5d3c33ea7d927e77ba\r\n');
   expect(config).not.toContain('testvnc1');
   expect(() => ultraVncConfig(0, password)).toThrow('DESKTOP_BACKEND_CONFIG_INVALID');

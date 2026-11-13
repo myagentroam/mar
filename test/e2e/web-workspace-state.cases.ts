@@ -495,7 +495,9 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await expect(tree).toBeVisible();
   await expect(tree.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
   await expect(page.locator('.session-tree-popover .el-popper__arrow')).toHaveCount(0);
-  await expect(tree.getByRole('button', { name: '会话操作' }).first()).toHaveClass(/icon-action/);
+  await expect(tree.getByRole('button', { name: '会话操作' }).first()).toHaveClass(
+    /mar-icon-action/
+  );
   await expect(tree.locator('.session-tree-list .session-tree-title')).toHaveText([
     '树会话 2',
     '树会话 3'
@@ -1989,8 +1991,8 @@ for (const language of [
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
       const runningDots = [
         first.locator('.workspace-tab-running'),
-        page.locator('.session-list .session-activity').first(),
-        page.locator('.conversation-header .session-activity')
+        page.locator('.session-list .mar-session-activity').first(),
+        page.locator('.conversation-header .mar-session-activity')
       ];
       const runningColor = await runningDots[0]!
         .locator('i')

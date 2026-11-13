@@ -110,7 +110,7 @@ onUnmounted(() => observer?.disconnect());
         :aria-busy="loading || undefined"
         @click="!loading && emit('retry')"
       >
-        <BusyIndicator v-if="loading" class="read-loading-indicator" />
+        <BusyIndicator v-if="loading" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
       </el-button>
       <span
@@ -119,7 +119,7 @@ onUnmounted(() => observer?.disconnect());
         role="status"
         :aria-label="translate('common.loading')"
       >
-        <BusyIndicator class="read-loading-indicator" />
+        <BusyIndicator class="mar-read-loading-indicator" />
       </span>
     </div>
   </div>

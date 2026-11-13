@@ -333,7 +333,7 @@ function message(error: unknown): string {
     :aria-label="translate('generated.environmentSecretManager.environmentSecrets')"
   >
     <div class="secret-heading">
-      <label class="filter-field"
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.environmentSecretManager.secretName') }}</span
         ><el-input
           v-model="keyword"
@@ -419,7 +419,7 @@ function message(error: unknown): string {
         :width="180"
       >
         <template #default="{ row }">
-          <div class="row-actions" @click.stop>
+          <div class="mar-row-actions" @click.stop>
             <el-button
               link
               :icon="marIcon('edit')"
@@ -606,7 +606,7 @@ function message(error: unknown): string {
 .clickable-rows :deep(.el-table__row) {
   cursor: pointer;
 }
-.row-actions {
+.mar-row-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

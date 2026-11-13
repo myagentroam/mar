@@ -580,7 +580,13 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
           createdAt: notificationNow,
           updatedAt: notificationNow,
           expiresAt: notificationNow + 60_000,
-          read: false
+          read: false,
+          target: {
+            targetType: 'WORKSPACE_SESSION',
+            nodeId: 'node-1',
+            workspaceId: 'workspace-1',
+            sessionId: 'session-1'
+          }
         }
       ]
     })
@@ -588,11 +594,11 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  const notificationButton = page.getByRole('button', { name: '打开通知中心' });
-  await expect(notificationButton.locator('.workbench-notification-badge')).toHaveText('1');
+  const notificationButton = page.getByRole('button', { name: '会话与通知', exact: true });
+  await expect(notificationButton.locator('.activity-entry-count')).toHaveText('1');
   const badgePosition = await notificationButton.evaluate((button) => {
-    const icon = button.querySelector('.el-icon')!.getBoundingClientRect();
-    const badge = button.querySelector('.workbench-notification-badge')!.getBoundingClientRect();
+    const icon = button.querySelector('.mar-icon')!.getBoundingClientRect();
+    const badge = button.querySelector('.activity-entry-count')!.getBoundingClientRect();
     return {
       horizontalOverlap: icon.right - badge.left,
       verticalOverlap: badge.bottom - icon.top
@@ -631,12 +637,20 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   await expect(page.locator('.workspace-tree')).toHaveCSS('width', '244px');
   await expect(page.locator('.workbench-header')).toHaveCSS('height', '44px');
   const helpLink = page.getByRole('link', { name: '帮助' });
-  const helpStyle = await helpLink.evaluate((element) => ({
-    background: getComputedStyle(element).backgroundColor,
-    color: getComputedStyle(element).color
-  }));
+  await expect(helpLink).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const helpStyle = await helpLink.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+    document.body.append(probe);
+    const result = {
+      hoverBackground: getComputedStyle(probe).backgroundColor,
+      color: getComputedStyle(element).color
+    };
+    probe.remove();
+    return result;
+  });
   await helpLink.hover();
-  await expect(helpLink).toHaveCSS('background-color', helpStyle.background);
+  await expect(helpLink).toHaveCSS('background-color', helpStyle.hoverBackground);
   await expect
     .poll(() => helpLink.evaluate((element) => getComputedStyle(element).color))
     .not.toBe(helpStyle.color);
@@ -648,20 +662,23 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
       .querySelector<HTMLElement>('.documentation-link')!
       .getBoundingClientRect();
     const notification = document
-      .querySelector<HTMLElement>('.global-notification-center')!
+      .querySelector<HTMLElement>('.activity-center-trigger')!
       .getBoundingClientRect();
     const treeToggle = document
       .querySelector<HTMLElement>('.workbench-tree-toggle')!
       .getBoundingClientRect();
+    const rail = document.querySelector<HTMLElement>('.activity-rail')!.getBoundingClientRect();
     const headerCenter = header.top + header.height / 2;
     return {
       helpCenterOffset: Math.abs(help.top + help.height / 2 - headerCenter),
-      notificationCenterOffset: Math.abs(notification.top + notification.height / 2 - headerCenter),
+      activityRailCenterOffset: Math.abs(
+        notification.left + notification.width / 2 - (rail.left + rail.width / 2)
+      ),
       treeToggleCenterOffset: Math.abs(treeToggle.top + treeToggle.height / 2 - headerCenter)
     };
   });
   expect(headerUtilityGeometry.helpCenterOffset).toBeLessThanOrEqual(1);
-  expect(headerUtilityGeometry.notificationCenterOffset).toBeLessThanOrEqual(1);
+  expect(headerUtilityGeometry.activityRailCenterOffset).toBeLessThanOrEqual(1);
   expect(headerUtilityGeometry.treeToggleCenterOffset).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: '展开工作区' }).click();
   await page.locator('.workspace-branch-button').first().click();
@@ -928,10 +945,10 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   const searchSessionsButton = page.getByRole('button', { name: '刷新当前工作区会话' });
   await expect(searchSessionsButton).toHaveCSS('height', '26px');
   await expect(searchSessionsButton).toHaveAttribute('type', 'submit');
-  await expect(searchSessionsButton).toHaveClass(/icon-action/u);
+  await expect(searchSessionsButton).toHaveClass(/mar-icon-action/u);
   const workspaceMoreButton = page.locator('.new-session-form .workspace-more-button');
   await expect(workspaceMoreButton).toHaveAttribute('type', 'button');
-  await expect(workspaceMoreButton).toHaveClass(/icon-action/u);
+  await expect(workspaceMoreButton).toHaveClass(/mar-icon-action/u);
   const workspaceGridGeometry = await page.locator('.session-layout').evaluate((layout) => {
     const grid = layout.querySelector<HTMLElement>('.workspace-grid');
     if (grid === null) throw new Error('workspace grid is missing');
@@ -973,7 +990,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.getByRole('button', { name: '上传文件' })).toBeVisible();
   await expect(refreshFilesButton).toHaveAttribute('type', 'button');
   await expect(refreshFilesButton).toHaveClass(/file-explorer-utility-button/u);
-  await expect(refreshFilesButton).toHaveClass(/icon-action/u);
+  await expect(refreshFilesButton).toHaveClass(/mar-icon-action/u);
   await expect(refreshFilesButton).not.toHaveClass(/el-button/u);
   await expect(page.getByRole('button', { name: '.. 返回上级目录' })).toHaveCount(0);
   await expect(page.getByRole('treeitem', { name: 'project' })).toHaveAttribute(
@@ -1014,7 +1031,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     });
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
-  const managedStatus = page.locator('.session-activity.managed_active');
+  const managedStatus = page.locator('.mar-session-activity.managed_active');
   await expect(managedStatus).toHaveCount(1);
   await expect(managedStatus.first()).toHaveAttribute('role', 'img');
   await expect(managedStatus.first()).toHaveAttribute('aria-label', '运行中');
@@ -1054,11 +1071,11 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     'title',
     existingSessionTitle
   );
-  await expect(page.locator('.session-title-row .runner-brand-icon')).toHaveAttribute(
+  await expect(page.locator('.session-title-row .mar-runner-brand-icon')).toHaveAttribute(
     'data-runner',
     'codex'
   );
-  await expect(page.locator('.conversation-title-row .runner-brand-icon')).toHaveAttribute(
+  await expect(page.locator('.conversation-title-row .mar-runner-brand-icon')).toHaveAttribute(
     'data-runner',
     'codex'
   );

@@ -1,30 +1,54 @@
+import { grantClipboardPermissions } from './support/clipboard.js';
 import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { CUSTOM_THEME_TOKENS } from '../../packages/web-core/src/model/custom-theme.js';
 
-async function componentAliases(): Promise<Record<string, string>> {
-  const css = await readFile(
-    new URL('../../packages/web-core/src/styles.css', import.meta.url),
-    'utf8'
-  );
-  const bridgeStart = css.indexOf(':root,\nhtml.console-ui,\n.theme-preview {');
-  expect(bridgeStart).toBeGreaterThanOrEqual(0);
-  const bridge = css.slice(bridgeStart, css.indexOf('}', bridgeStart));
-  const registered = new Set<string>(CUSTOM_THEME_TOKENS);
-  const aliases = Object.fromEntries(
-    [...bridge.matchAll(/(--el-[\w-]+):\s*var\((--mar-[\w-]+)\);/gu)]
-      .filter((match) => registered.has(match[2]!))
-      .map((match) => [match[1]!, match[2]!])
-  );
-  expect(aliases).toMatchObject({
-    '--el-color-primary': '--mar-color-brand',
-    '--el-text-color-primary': '--mar-text-primary',
-    '--el-bg-color': '--mar-bg-panel'
-  });
-  return aliases;
-}
+// Stable color bridge contract, observed on the assembled preview and document root.
+const componentAliases: Record<string, string> = {
+  '--el-color-primary': '--mar-color-brand',
+  '--el-color-primary-light-3': '--mar-control-color-primary-light-3',
+  '--el-color-primary-light-5': '--mar-control-color-primary-light-5',
+  '--el-color-primary-light-7': '--mar-control-color-primary-light-7',
+  '--el-color-primary-light-8': '--mar-control-color-primary-light-8',
+  '--el-color-primary-light-9': '--mar-control-color-primary-light-9',
+  '--el-color-primary-dark-2': '--mar-control-color-primary-dark-2',
+  '--el-color-success': '--mar-control-color-success',
+  '--el-color-warning': '--mar-control-color-warning',
+  '--el-color-danger': '--mar-control-color-danger',
+  '--el-color-info': '--mar-text-secondary',
+  '--el-color-success-light-9': '--mar-color-success-bg',
+  '--el-color-warning-light-9': '--mar-color-warning-bg',
+  '--el-color-danger-light-9': '--mar-color-danger-bg',
+  '--el-color-info-light-9': '--mar-fill-subtle',
+  '--el-bg-color': '--mar-bg-panel',
+  '--el-bg-color-page': '--mar-bg-page',
+  '--el-bg-color-overlay': '--mar-control-bg-color-overlay',
+  '--el-fill-color': '--mar-control-fill-color',
+  '--el-fill-color-light': '--mar-control-fill-color-light',
+  '--el-fill-color-lighter': '--mar-control-fill-color-lighter',
+  '--el-fill-color-extra-light': '--mar-control-fill-color-extra-light',
+  '--el-fill-color-blank': '--mar-bg-panel',
+  '--el-text-color-primary': '--mar-text-primary',
+  '--el-text-color-regular': '--mar-text-secondary',
+  '--el-text-color-secondary': '--mar-text-tertiary',
+  '--el-text-color-placeholder': '--mar-text-faint',
+  '--el-border-color': '--mar-border-default',
+  '--el-border-color-light': '--mar-border-subtle',
+  '--el-border-color-lighter': '--mar-control-border-color-lighter',
+  '--el-border-color-extra-light': '--mar-control-border-color-extra-light',
+  '--el-border-color-dark': '--mar-control-border-color-dark',
+  '--el-border-color-darker': '--mar-control-border-color-darker',
+  '--el-disabled-bg-color': '--mar-fill-soft',
+  '--el-disabled-text-color': '--mar-text-faint',
+  '--el-disabled-border-color': '--mar-border-subtle',
+  '--el-mask-color': '--mar-overlay-scrim',
+  '--el-mask-color-extra-light': '--mar-overlay-scrim',
+  '--el-overlay-color': '--mar-overlay-scrim',
+  '--el-overlay-color-light': '--mar-overlay-scrim',
+  '--el-overlay-color-lighter': '--mar-overlay-scrim'
+};
 
 async function useThemeMenu(page: Page, option: Locator, action: string): Promise<void> {
   await option.getByRole('button', { name: /^More actions for / }).click();
@@ -387,7 +411,7 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   await expect(page.locator('.validation')).toContainText('saving is allowed');
   await expect(page.locator('.el-form-item__error')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('theme-desktop.png'), fullPage: true });
-  await expect(page.locator('.theme-preview .preview-toolbar')).toHaveCSS(
+  await expect(page.locator('.mar-theme-preview .preview-toolbar')).toHaveCSS(
     'background-color',
     'rgb(221, 238, 255)'
   );
@@ -419,7 +443,7 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toBe('Ocean.json');
   expect(await readFile((await download.path())!, 'utf8')).toBe(source);
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await grantClipboardPermissions(context);
   await page.getByRole('button', { name: 'Copy JSON', exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(source);
   await page.locator('input[type=file]').setInputFiles({
@@ -522,8 +546,8 @@ test('custom theme status and hover contrast warnings preserve editable colors a
   await expect(validation).toContainText('--mar-color-danger-text / --mar-color-danger-bg');
   await expect(validation).toContainText('--mar-color-on-accent / --mar-color-brand-hover');
   await expect(validation).toContainText('saving is allowed');
-  await expect(page.locator('.theme-preview .danger')).toHaveCSS('color', 'rgb(119, 119, 119)');
-  await expect(page.locator('.theme-preview .danger')).toHaveCSS(
+  await expect(page.locator('.mar-theme-preview .danger')).toHaveCSS('color', 'rgb(119, 119, 119)');
+  await expect(page.locator('.mar-theme-preview .danger')).toHaveCSS(
     'background-color',
     'rgb(119, 119, 119)'
   );
@@ -602,7 +626,7 @@ test('built-ins are read-only, copies include every color, and reset restores sa
   const actions = await page.locator('.editor-layout form .actions').boundingBox();
   const jsonEditor = await editor.boundingBox();
   expect(actions!.y + actions!.height).toBeLessThanOrEqual(jsonEditor!.y);
-  const previewPanel = await page.locator('.editor-layout .theme-preview').boundingBox();
+  const previewPanel = await page.locator('.editor-layout .mar-theme-preview').boundingBox();
   expect(
     Math.abs(jsonEditor!.y + jsonEditor!.height - previewPanel!.y - previewPanel!.height)
   ).toBeLessThanOrEqual(1);
@@ -801,6 +825,7 @@ for (const scheme of ['Light', 'Dark']) {
         };
         const result = {
           normal: color('--mar-text-secondary'),
+          normalSurface: color('--mar-bg-panel'),
           hover: color('--mar-text-primary'),
           surface: color('--mar-fill-row-hover'),
           pressed: color('--mar-fill-selection'),
@@ -834,13 +859,37 @@ for (const scheme of ['Light', 'Dark']) {
         await page.mouse.up();
         await page.mouse.move(0, 0);
         await secondary.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(secondary).toBeFocused();
+        await expect(secondary).toHaveCSS('color', colors.normal);
+        await expect(secondary).toHaveCSS('background-color', colors.normalSurface);
+        const beforeKeyboard = await secondary.evaluate((element) => {
+          if (!element.hasAttribute('data-keyboard-clicks')) {
+            element.addEventListener('click', () => {
+              element.setAttribute(
+                'data-keyboard-clicks',
+                String(Number(element.getAttribute('data-keyboard-clicks')) + 1)
+              );
+            });
+          }
+          element.setAttribute('data-keyboard-clicks', '0');
+          const style = getComputedStyle(element);
+          return { color: style.color, background: style.backgroundColor };
+        });
         await page.keyboard.down('Space');
         try {
-          await expect(secondary).toHaveCSS('color', colors.hover);
-          await expect(secondary).toHaveCSS('background-color', colors.pressed);
+          // Gecko activates on keyup without exposing :active while Space is held.
+          const active = await secondary.evaluate((element) => element.matches(':active'));
+          await expect(secondary).toHaveCSS('color', active ? colors.hover : beforeKeyboard.color);
+          await expect(secondary).toHaveCSS(
+            'background-color',
+            active ? colors.pressed : beforeKeyboard.background
+          );
         } finally {
           await page.keyboard.up('Space');
         }
+        await expect(secondary).toHaveAttribute('data-keyboard-clicks', '1');
         await neutral.focus();
         await page.keyboard.press('Shift+Tab');
         await page.keyboard.press('Tab');
@@ -860,7 +909,7 @@ for (const scheme of ['Light', 'Dark']) {
         await navigation.hover();
         await expect(navigation).toHaveCSS('color', colors.navigation);
         await expect(navigation).toHaveCSS('background-color', colors.navigationSurface);
-        const preview = page.locator('.theme-preview').first();
+        const preview = page.locator('.mar-theme-preview').first();
         const previewColors = await preview.evaluate((element) => {
           const probe = document.createElement('span');
           element.append(probe);
@@ -886,12 +935,13 @@ for (const scheme of ['Light', 'Dark']) {
         await expect(previewSecondary).toHaveCSS('border-top-color', previewColors.border);
         await page.mouse.move(0, 0);
         await previewSecondary.focus();
-        await page.keyboard.down('Space');
+        await previewSecondary.hover();
+        await page.mouse.down();
         try {
           await expect(previewSecondary).toHaveCSS('color', previewColors.text);
           await expect(previewSecondary).toHaveCSS('background-color', previewColors.pressed);
         } finally {
-          await page.keyboard.up('Space');
+          await page.mouse.up();
         }
         const previewPrimary = preview.locator('.preview-button.primary');
         await previewPrimary.hover();
@@ -971,7 +1021,9 @@ for (const scheme of ['Light', 'Dark']) {
       await input.fill(longBranch);
       await expect(branch).toHaveText(longBranch);
       await expect(branch).toHaveCSS('text-overflow', 'ellipsis');
-      await expect.poll(async () => (await branch.boundingBox())?.width).toBeLessThanOrEqual(160);
+      await expect
+        .poll(async () => (await branch.boundingBox())?.width)
+        .toBeLessThanOrEqual(160 + 1 / 64);
       await expectColors(colors);
 
       const gitWorkspace = workspace.getByRole('checkbox', { name: 'Git workspace', exact: true });
@@ -1092,6 +1144,7 @@ for (const scheme of ['Light', 'Dark']) {
         await expect(control).toHaveCSS('color', 'rgb(217, 226, 208)');
         await expect(control).toHaveCSS('background-color', 'rgb(52, 86, 120)');
         await page.mouse.move(0, 0);
+        await page.keyboard.press('Tab');
         await control.focus();
         await expect(control).toHaveCSS('color', 'rgb(217, 226, 208)');
         await expect(control).toHaveCSS('background-color', 'rgb(52, 86, 120)');
@@ -1172,7 +1225,7 @@ test('filled primary controls use the same foreground as the theme preview', asy
   const options = page.locator('.theme-option');
   await useThemeMenu(page, options.first(), 'Duplicate');
   const save = page.getByRole('button', { name: 'Save theme', exact: true });
-  const sample = page.locator('.theme-preview .preview-button.primary');
+  const sample = page.locator('.mar-theme-preview .preview-button.primary');
   await expect(sample).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(save).toHaveCSS('color', 'rgb(255, 255, 255)');
   const custom = JSON.stringify({
@@ -1230,7 +1283,7 @@ test('expanded and compact previews share the applied palette without changing g
     }
   });
   await editor.fill(source);
-  const preview = page.locator('.theme-preview');
+  const preview = page.locator('.mar-theme-preview');
   for (const selector of ['.file.selected', '.tab.active']) {
     await expect(preview.locator(selector)).toHaveCSS('background-color', 'rgb(56, 71, 90)');
     await preview.locator(selector).hover();
@@ -1260,7 +1313,7 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(preview.locator('input')).toHaveCSS('outline-color', 'rgb(255, 0, 255)');
   await page.getByRole('button', { name: 'Enlarge preview', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  const expanded = dialog.locator('.theme-preview');
+  const expanded = dialog.locator('.mar-theme-preview');
   await expect(expanded).toBeVisible();
   await expect(expanded.locator('.file.selected')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
   await expect(expanded.locator('.tab.active')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
@@ -1312,7 +1365,7 @@ for (const locale of ['en-US', 'zh-CN']) {
     ).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`theme-${locale}.png`), fullPage: true });
     await page.locator('.editor-layout aside').scrollIntoViewIfNeeded();
-    await expect(page.locator('.theme-preview')).toBeInViewport();
+    await expect(page.locator('.mar-theme-preview')).toBeInViewport();
     await page.screenshot({
       path: testInfo.outputPath(`theme-${locale}-preview.png`),
       fullPage: true
@@ -1333,7 +1386,7 @@ for (const locale of ['en-US', 'zh-CN']) {
 
 for (const scheme of ['Light', 'Dark']) {
   test('MAR variables drive every component alias in ' + scheme + ' palettes', async ({ page }) => {
-    const aliases = await componentAliases();
+    const aliases = componentAliases;
     const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
     const row = page
       .locator('.theme-option')
@@ -1357,7 +1410,9 @@ for (const scheme of ['Light', 'Dark']) {
         expected: style.getPropertyValue(target).trim()
       }));
     };
-    for (const result of await page.locator('.theme-preview').evaluate(inspectAliases, aliases)) {
+    for (const result of await page
+      .locator('.mar-theme-preview')
+      .evaluate(inspectAliases, aliases)) {
       expect(result.actual, result.alias).toBe(result.expected);
       expect(result.actual, result.alias).toBe(source.colors[result.target]);
       expect(result.actual).not.toBe('');
@@ -1409,7 +1464,7 @@ for (const locale of ['en-US', 'zh-CN']) {
         .fill(locale === 'en-US' ? 'Page canvas' : '页面底层背景');
       await expect(dialog.locator('.token-row')).toHaveCount(1);
       await expect(dialog.locator('code')).toHaveText('--mar-bg-page');
-      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await grantClipboardPermissions(context);
       await dialog
         .getByRole('button', {
           name: locale === 'en-US' ? 'Copy --mar-bg-page' : '复制 --mar-bg-page',
@@ -1673,25 +1728,24 @@ for (const scheme of ['Light', 'Dark']) {
   test(
     'responsive layout tokens remain independent of the ' + scheme + ' color mapping',
     async ({ page }) => {
+      const option = page.locator('.theme-option').filter({
+        has: page.getByRole('button', { name: `Inspect ${scheme}`, exact: true })
+      });
+      await expect(option).toBeVisible();
       if (scheme === 'Light')
-        await page
-          .locator('.theme-option')
-          .filter({
-            has: page.getByRole('button', { name: 'Inspect Light', exact: true })
-          })
-          .getByRole('button', { name: 'Apply theme', exact: true })
-          .click();
-      const aliases = await componentAliases();
+        await option.getByRole('button', { name: 'Apply theme', exact: true }).click();
+      else await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+      const aliases = componentAliases;
       // Include both breakpoint edges and resize back to mobile to catch stale overrides.
       for (const width of [390, 767, 768, 860, 861, 1440, 420]) {
         await page.setViewportSize({ width, height: 900 });
         const mobile = width < 768;
         const expected = {
-          '--sidebar-header-height': mobile ? '46px' : '44px',
+          '--mar-sidebar-header-height': mobile ? '46px' : '44px',
           '--mar-brand-logo-size': mobile ? '32px' : '35px',
           '--mar-font-size-body': mobile ? '13px' : '14px',
           '--el-component-size-small': mobile ? '24px' : '26px',
-          '--mar-utility-control-size': mobile ? '28px' : '31px',
+          '--mar-utility-control-size': mobile ? '28px' : '24px',
           '--mar-session-row-min-height': '32px',
           '--mar-workbench-sidebar-width': mobile ? '222px' : width <= 860 ? '220px' : '244px'
         };

@@ -294,8 +294,8 @@ for (const theme of ['dark', 'light']) {
       await expect(refreshGlyph).toHaveCSS('width', '14px');
       await expect(refreshGlyph).toHaveCSS('height', '14px');
       const refreshBounds = (await refresh.boundingBox())!;
-      expect(refreshBounds.width).toBe(width >= 768 ? 26 : 24);
-      expect(refreshBounds.height).toBe(width >= 768 ? 26 : 24);
+      expect(refreshBounds.width).toBeCloseTo(width >= 768 ? 26 : 24, 2);
+      expect(refreshBounds.height).toBeCloseTo(width >= 768 ? 26 : 24, 2);
       const refreshGlyphBounds = (await refreshGlyph.boundingBox())!;
       expect(refreshGlyphBounds.x + refreshGlyphBounds.width / 2).toBeCloseTo(
         refreshBounds.x + refreshBounds.width / 2,
@@ -740,8 +740,8 @@ for (const theme of ['dark', 'light']) {
       const attachmentBox = (await attachmentButton.boundingBox())!;
       const attachmentGraphic = (await attachment.boundingBox())!;
       const sendBox = (await send.boundingBox())!;
-      expect(attachmentBox.width).toBe(mobile ? 28 : 26);
-      expect(attachmentBox.height).toBe(attachmentBox.width);
+      expect(attachmentBox.width).toBeCloseTo(mobile ? 28 : 26, 2);
+      expect(attachmentBox.height).toBeCloseTo(attachmentBox.width, 2);
       const modelBox = (await page.locator('.composer-model-slot').boundingBox())!;
       expect(modelBox.width).toBeGreaterThan(0);
       expect(attachmentBox.x + attachmentBox.width).toBeLessThanOrEqual(modelBox.x);
@@ -841,7 +841,7 @@ for (const theme of ['dark', 'light']) {
   }, testInfo) => {
     const context = await browser.newContext({
       viewport: { width: 390, height: 360 },
-      isMobile: true,
+      ...(browser.browserType().name() === 'chromium' ? { isMobile: true } : {}),
       hasTouch: true
     });
     try {

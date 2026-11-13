@@ -250,7 +250,7 @@ async function clear(): Promise<void> {
           v-else
           :src="item.logo"
           :data-runner="item.id === 'CODEX' ? 'codex' : undefined"
-          class="runner-brand-icon"
+          class="mar-runner-brand-icon"
           aria-hidden="true"
         />
         <span>{{ translate(item.label) }}</span>

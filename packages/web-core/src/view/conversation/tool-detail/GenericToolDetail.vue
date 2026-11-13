@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../conversation-detail.css';
 import { computed } from 'vue';
 import { translate } from '../../../service/locale-preference-service.js';
 import type { readToolOutput } from '../../../util/tool-presentation.js';
@@ -24,7 +25,7 @@ const outputText = computed(() =>
 
 <template>
   <div class="tool-content generic-detail">
-    <p v-if="title && title !== toolName" class="conversation-detail-text">
+    <p v-if="title && title !== toolName" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('presentation.detail') }}:</span>
       {{ title }}
     </p>
@@ -33,7 +34,7 @@ const outputText = computed(() =>
       class="tool-content-section"
     >
       <p class="tool-detail-meta">{{ translate('presentation.input') }}:</p>
-      <pre class="conversation-detail-text">{{ inputSummary }}</pre>
+      <pre class="mar-conversation-detail-text">{{ inputSummary }}</pre>
     </div>
     <p v-if="inputTruncated === true" class="tool-detail-meta">
       <template v-if="typeof inputSummary !== 'string' || !inputSummary.length"
@@ -46,7 +47,7 @@ const outputText = computed(() =>
       <p v-if="genericOutput?.truncation === 'HEAD'" class="tool-detail-meta">
         {{ translate('toolPresentation.detail.truncated') }}
       </p>
-      <pre v-if="outputText" class="conversation-detail-text">{{ outputText }}</pre>
+      <pre v-if="outputText" class="mar-conversation-detail-text">{{ outputText }}</pre>
       <p
         v-if="genericOutput?.truncation && genericOutput.truncation !== 'HEAD'"
         class="tool-detail-meta"
@@ -54,18 +55,18 @@ const outputText = computed(() =>
         {{ translate('toolPresentation.detail.truncated') }}
       </p>
     </div>
-    <p v-if="progressLabel" class="conversation-detail-text">
+    <p v-if="progressLabel" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('presentation.progress') }}:</span>
       {{ progressLabel }}
     </p>
-    <p v-if="errorCode" class="conversation-detail-text">
+    <p v-if="errorCode" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.error') }}:</span>
       {{ errorCode }}
     </p>
-    <p v-if="errorMessage" class="conversation-detail-text">
+    <p v-if="errorMessage" class="mar-conversation-detail-text">
       {{ errorMessage }}
     </p>
-    <p v-if="permissionReason" class="conversation-detail-text">
+    <p v-if="permissionReason" class="mar-conversation-detail-text">
       <span class="tool-detail-meta">{{ translate('toolPresentation.detail.permission') }}:</span>
       {{ permissionReason }}
     </p>

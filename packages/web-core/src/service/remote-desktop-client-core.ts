@@ -63,6 +63,7 @@ interface Active {
   settlementTimer?: ReturnType<typeof setTimeout>;
   failure?: RemoteDesktopClientError;
   finalCode?: string;
+  disconnectedCode?: string;
 }
 
 /** Owns desktop authorization and OPEN/ATTACHED only; noVNC takes over RFB and channel I/O. */
@@ -102,7 +103,10 @@ export function createRemoteDesktopClientCore(options: {
       attachmentId: id
     });
     session.transport.release();
-    if (code) session.onDisconnected(code);
+    if (code) {
+      session.disconnectedCode = code;
+      session.onDisconnected(code);
+    }
   }
 
   function finishSettlement(id: string, session: Active, settled: boolean, code?: string): void {
@@ -114,6 +118,10 @@ export function createRemoteDesktopClientCore(options: {
       session.finalCode = code;
       if (session.failure) {
         session.failure.confirmedCode = code;
+      }
+      if (session.disconnectedCode !== undefined && session.disconnectedCode !== code) {
+        session.disconnectedCode = code;
+        session.onDisconnected(code);
       }
     }
     session.finishSettlement(settled);

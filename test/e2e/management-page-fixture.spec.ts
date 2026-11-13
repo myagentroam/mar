@@ -93,6 +93,63 @@ test('Usage details retain rows and retry a failed automatic page in place', asy
   expect(new URL(calls[3]!, 'http://fixture').searchParams.get('page')).toBe('2');
 });
 
+test('Usage distribution radio labels preserve section typography in both states', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}management-page.html?area=usage`);
+  await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
+  await page.evaluate(() =>
+    Promise.all([
+      window.managementPageFixture.settle(0, true),
+      window.managementPageFixture.settle(1, true)
+    ])
+  );
+  const labels = page.getByTestId('usage-statistics').locator('.section-heading .el-radio-button');
+  await expect(labels).toHaveCount(2);
+  await page.evaluate(() => {
+    const sentinel = document.createElement('div');
+    sentinel.className = 'section-heading';
+    sentinel.dataset.testid = 'outside-usage-heading';
+    sentinel.innerHTML = '<span>Outside usage</span>';
+    document.body.append(sentinel);
+  });
+  for (const theme of ['daylight', 'vscode-dark-2026']) {
+    await page.locator('html').evaluate((root, value) => (root.dataset.theme = value), theme);
+    const outside = await page
+      .getByTestId('outside-usage-heading')
+      .locator('span')
+      .evaluate((span) => {
+        const actual = getComputedStyle(span);
+        const body = getComputedStyle(document.body);
+        return [actual.color, actual.fontSize, body.color, body.fontSize];
+      });
+    expect(outside.slice(0, 2)).toEqual(outside.slice(2));
+    for (const selected of [0, 1]) {
+      await labels.nth(selected).click();
+      await expect(labels.nth(selected)).toHaveClass(/is-active/);
+      for (const label of await labels.all()) {
+        await expect
+          .poll(() =>
+            label.locator('.el-radio-button__inner').evaluate((span) => {
+              const style = getComputedStyle(span);
+              const probe = document.createElement('span');
+              probe.style.color = span.closest('.el-radio-button.is-active')
+                ? 'var(--el-radio-button-checked-text-color, var(--el-color-white))'
+                : 'var(--mar-text-tertiary)';
+              probe.style.fontSize = 'var(--mar-font-size-meta)';
+              span.append(probe);
+              const expected = getComputedStyle(probe);
+              const result = [style.color, style.fontSize, expected.color, expected.fontSize];
+              probe.remove();
+              return result.slice(0, 2).join('/') === result.slice(2).join('/');
+            })
+          )
+          .toBe(true);
+      }
+    }
+  }
+});
+
 test('Resource append failure stops, refresh uses one indicator, and a new context rearms once', async ({
   page
 }) => {
@@ -118,7 +175,7 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   await expect(section.locator('.el-loading-mask')).toBeHidden();
   await page.evaluate(() => window.managementPageFixture.settle(2, true));
   await expect(rows).toHaveCount(20);
-  const input = section.locator('.resource-filters input').first();
+  const input = section.locator('.mar-resource-filters input').first();
   await input.fill('Node');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(4);
   await page.evaluate(() => window.managementPageFixture.settle(3, true));
@@ -215,7 +272,7 @@ test('A continuously visible boundary loads only once per new query context', as
   await drainObservers();
   expect(await count()).toBe(2);
 
-  await section.locator('.resource-filters input').first().fill('Node');
+  await section.locator('.mar-resource-filters input').first().fill('Node');
   await expect.poll(count).toBe(3);
   await settle(2);
   await expect(boundary).toBeInViewport();

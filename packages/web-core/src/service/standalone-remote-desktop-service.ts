@@ -120,8 +120,9 @@ export function createStandaloneRemoteDesktopService(options: {
     const data = value as { capability?: unknown; description?: unknown; nodeName?: unknown };
     const capability = remoteDesktopCapabilitySchema.safeParse(data.capability);
     const description = remoteDesktopDescriptionSchema.safeParse(data.description);
-    if (!capability.success || !capability.data.available || !description.success)
-      throw new RemoteDesktopClientError('DESKTOP_UNAVAILABLE');
+    if (!capability.success) throw new RemoteDesktopClientError('DESKTOP_UNAVAILABLE');
+    if (!capability.data.available) throw new RemoteDesktopClientError(capability.data.reasonCode);
+    if (!description.success) throw new RemoteDesktopClientError('DESKTOP_UNAVAILABLE');
     if (
       displayId !== undefined &&
       !description.data.displays.some((display) => display.displayId === displayId)

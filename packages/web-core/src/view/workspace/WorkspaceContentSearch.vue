@@ -77,7 +77,7 @@ defineExpose({
       />
       <button
         v-tooltip="translate('generated.workspaceInspector.runContentSearch2')"
-        class="content-search-button file-explorer-utility-button icon-action"
+        class="content-search-button file-explorer-utility-button mar-icon-action"
         :disabled="contentSearchLoading"
         :aria-label="translate('generated.workspaceInspector.runContentSearch')"
         :aria-busy="contentSearchLoading || undefined"

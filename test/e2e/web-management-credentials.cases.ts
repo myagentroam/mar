@@ -208,7 +208,7 @@ test('Secret and OAuth management show read-only row details and organization se
   const secretRow = page.locator('.secret-table .el-table__row').filter({ hasText: 'API_TOKEN' });
   await expect(page.locator('.secret-table')).toHaveClass(/clickable-rows/);
   await expect(secretRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(secretRow.locator('.row-actions .el-icon').first()).toBeVisible();
+  await expect(secretRow.locator('.mar-row-actions .el-icon').first()).toBeVisible();
   await secretRow.click();
   const secretDetails = page.getByRole('dialog', { name: 'API_TOKEN' });
   await expect(secretDetails).toContainText('企业根 / 研发 / 平台');
@@ -243,7 +243,7 @@ test('Secret and OAuth management show read-only row details and organization se
     .filter({ hasText: '飞书' });
   await expect(page.locator('.oauth-provider-table')).toHaveClass(/clickable-rows/);
   await expect(providerRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(providerRow.locator('.row-actions .el-icon').first()).toBeVisible();
+  await expect(providerRow.locator('.mar-row-actions .el-icon').first()).toBeVisible();
   await expect(providerRow.locator('.el-tag')).toHaveText('启用');
   await expect(providerRow).toContainText('新用户将加入根组织并成为普通成员');
   await providerRow.click();

@@ -9,6 +9,21 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('standalone Git Diff loads its shared preview actions', async ({ page }) => {
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await page.goto(`${fixture.url}isolated-git-diff.html`);
+  const actions = page.locator('.diff-preview-toolbar');
+  await expect(actions).toBeVisible();
+  await expect(actions).toHaveCSS('display', 'flex');
+  const [gap, rootSize] = await actions.evaluate((element) => [
+    parseFloat(getComputedStyle(element).columnGap),
+    parseFloat(getComputedStyle(document.documentElement).fontSize)
+  ]);
+  expect(gap).toBeCloseTo(rootSize! * 0.4, 1);
+  expect(requests.some((url) => /Workspace(?:Text|Format)FilePage\.vue/u.test(url))).toBe(false);
+});
+
 for (const shape of ['small', 'landscape', 'portrait']) {
   test(`File image previews fit their stable surface without upscaling: ${shape}`, async ({
     page
@@ -171,14 +186,15 @@ for (const theme of ['light', 'dark']) {
   });
 
   test(`File toolbars share button shapes and states across viewports in ${theme} theme`, async ({
-    browser
+    browser,
+    browserName
   }, testInfo) => {
     for (const mode of ['text=code&draft=1', 'diff=HISTORY&shortcuts=1', 'image=small']) {
       let desktopStyle: unknown;
       for (const width of [1280, 390]) {
         const context = await browser.newContext({
           viewport: { width, height: 844 },
-          isMobile: width < 768,
+          ...(browserName === 'chromium' ? { isMobile: width < 768 } : {}),
           hasTouch: width < 768
         });
         try {
@@ -216,13 +232,13 @@ for (const theme of ['light', 'dark']) {
               await expect(content).toHaveCSS(`padding-${side}`, `${inset}px`);
             }
           }
-          const metadata = header.locator('.file-preview-eyebrow');
+          const metadata = header.locator('.mar-file-preview-eyebrow');
           await expect(metadata).toBeVisible();
           // Measure in one frame so the preview's entrance transition cannot skew the comparison.
           const alignment = await header.evaluate(
             (element, button) => {
               const metadataBox = element
-                .querySelector('.file-preview-eyebrow')!
+                .querySelector('.mar-file-preview-eyebrow')!
                 .getBoundingClientRect();
               const buttonBox = button!.getBoundingClientRect();
               const headerBox = element.getBoundingClientRect();
@@ -300,11 +316,8 @@ for (const theme of ['light', 'dark']) {
             const save = toolbar.getByRole('button', { name: 'Save', exact: true });
             await expect(save).toBeEnabled();
             await expect(save).toHaveCSS('border-radius', radius);
-            const enabled = await save.evaluate(
-              (element) => getComputedStyle(element).backgroundColor
-            );
-            expect(enabled).toBe(tokens.background);
             await page.mouse.move(0, 0);
+            await expect(save).toHaveCSS('background-color', tokens.background);
             await toolbar.screenshot({
               path: testInfo.outputPath(`file-tools-${theme}-${width}-normal.png`)
             });
@@ -323,10 +336,21 @@ for (const theme of ['light', 'dark']) {
             await expect(save).toBeFocused();
             await expect(save).toHaveCSS('outline-color', tokens.focus);
             await expect(save).toHaveCSS('outline-width', '2px');
+            const enabled = await save.evaluate(
+              (element) => getComputedStyle(element).backgroundColor
+            );
             await page.keyboard.down('Space');
-            await expect(save).toHaveCSS('background-color', tokens.pressedBackground);
-            await expect(save).toHaveCSS('color', tokens.hoverText);
-            await page.keyboard.up('Space');
+            try {
+              // Gecko activates on keyup without exposing :active while Space is held.
+              const active = await save.evaluate((element) => element.matches(':active'));
+              await expect(save).toHaveCSS(
+                'background-color',
+                active ? tokens.pressedBackground : enabled
+              );
+              await expect(save).toHaveCSS('color', tokens.hoverText);
+            } finally {
+              await page.keyboard.up('Space');
+            }
             await expect(save).toBeDisabled();
             await expect(save).toHaveCSS('background-color', tokens.background);
             await expect(save).toHaveCSS('border-color', tokens.disabledBorder);
@@ -349,14 +373,22 @@ for (const theme of ['light', 'dark']) {
             await expect(search.getByRole('button', { name: 'Previous match' })).toBeDisabled();
             await search.getByPlaceholder('Find', { exact: true }).fill('new');
             await expect(search.getByRole('button', { name: 'Next match' })).toBeEnabled();
-            for (const button of await search.locator('.el-button').all()) {
+            const rowHoverBackground = await search.evaluate((element) => {
+              const probe = document.createElement('span');
+              probe.style.color = 'var(--mar-fill-row-hover)';
+              element.append(probe);
+              const color = getComputedStyle(probe).color;
+              probe.remove();
+              return color;
+            });
+            const searchButtons = await search.locator('.el-button').all();
+            for (const [index, button] of searchButtons.entries()) {
               await button.hover();
               await expect(button).toHaveCSS('color', tokens.hoverText);
-              await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+              await expect(button).toHaveCSS('background-color', rowHoverBackground);
               await expect(button).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
-              await button.focus();
-              await page.keyboard.press('Tab');
-              await page.keyboard.press('Shift+Tab');
+              await search.getByRole('textbox').focus();
+              for (let step = 0; step <= index; step += 1) await page.keyboard.press('Tab');
               await expect(button).toBeFocused();
               await expect(button).toHaveCSS('outline-width', '2px');
             }
@@ -382,9 +414,23 @@ for (const theme of ['light', 'dark']) {
               'inert',
               ''
             );
-            await page.keyboard.press('Tab');
+            await toggle.click();
+            await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            // Enter keyboard navigation before collapsing the other in-document tab stops.
             await toggle.focus();
+            await page.keyboard.press('Shift+Tab');
+            await expect(toggle).not.toBeFocused();
+            await page.keyboard.press('Tab');
+            await expect(toggle).toBeFocused();
             await expect(toggle).toHaveCSS('border-radius', radius);
+            await expect(toggle).toHaveCSS('outline-style', 'solid');
+            await expect(toggle).toHaveCSS('outline-width', '2px');
+            await page.keyboard.press('Enter');
+            await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            await expect(toolbar.locator('.workspace-file-mobile-actions-body')).toHaveAttribute(
+              'inert',
+              ''
+            );
             await expect(toggle).toHaveCSS('outline-style', 'solid');
             await expect(toggle).toHaveCSS('outline-width', '2px');
             await page.keyboard.press('Enter');
@@ -514,21 +560,28 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
       await page.goto(
         `${fixture.url}file-editor-layout.html?diff=HISTORY&load-failed=1&theme=${theme}`
       );
+      await page.mouse.move(0, 0);
       const retry = page.locator('.file-preview-state').getByRole('button', { name: 'Retry' });
-      await expect(retry).toHaveClass(/is-link/);
-      await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(retry).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+      await expect(retry).not.toHaveClass(/is-link|is-text|el-button--(?:primary|danger)/);
+      await expect(retry).toHaveCSS('border-top-width', '1px');
+      await expect(retry).toHaveCSS('border-top-style', 'solid');
       const color = await retry.evaluate((element) => {
         const probe = document.createElement('span');
         probe.style.color = 'var(--el-text-color-regular)';
         element.append(probe);
         const action = getComputedStyle(probe).color;
+        probe.style.color = 'var(--el-button-bg-color)';
+        const background = getComputedStyle(probe).color;
+        probe.style.color = 'var(--el-button-border-color)';
+        const border = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-text-secondary)';
         const message = getComputedStyle(probe).color;
         probe.remove();
-        return { action, message };
+        return { action, background, border, message };
       });
       await expect(retry).toHaveCSS('color', color.action);
+      await expect(retry).toHaveCSS('background-color', color.background);
+      await expect(retry).toHaveCSS('border-top-color', color.border);
       await expect(page.locator('.file-preview-state p')).toHaveCSS('color', color.message);
       await retry.click();
       await expect(page.locator('html')).toHaveAttribute('data-diff-retries', '1');
@@ -537,7 +590,7 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
   }
 });
 
-test('Unified Diff fills its content surface without an inset frame', async ({
+test('Unified Diff keeps only its responsive content inset without an outer frame', async ({
   page
 }, testInfo) => {
   for (const width of [390, 1280]) {
@@ -555,7 +608,12 @@ test('Unified Diff fills its content surface without an inset frame', async ({
         const rect = element.getBoundingClientRect();
         return [rect.left - content.left, rect.top - content.top, content.right - rect.right];
       });
-      for (const inset of bounds) expect(Math.abs(inset)).toBeLessThan(1);
+      const expectedInset = await page.evaluate(() =>
+        window.innerWidth < 768
+          ? 0
+          : 0.5 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+      );
+      for (const inset of bounds) expect(Math.abs(inset - expectedInset)).toBeLessThan(1);
       await expect(diff.getByText('+new', { exact: true })).toHaveClass('is-added');
       await expect(diff.getByText('-old', { exact: true })).toHaveClass('is-deleted');
       await page.screenshot({ path: testInfo.outputPath(`diff-${source}-${width}.png`) });
@@ -568,7 +626,7 @@ test('Text editors and large-file previews have no outer inset', async ({ page }
     await page.setViewportSize({ width, height: 844 });
     for (const mode of ['code', 'fallback']) {
       await page.goto(`${fixture.url}file-editor-layout.html?text=${mode}`);
-      const content = page.locator('.file-preview-content');
+      const content = page.locator('.mar-file-preview-content');
       const editor = page.locator(mode === 'code' ? '.code-file-editor' : '.file-text-preview');
       await expect(editor).toBeVisible();
       await expect(content).toHaveCSS('padding', '0px');
@@ -586,7 +644,7 @@ test('Text editors and large-file previews have no outer inset', async ({ page }
       for (const inset of Object.values(bounds)) expect(Math.abs(inset)).toBeLessThan(1);
       if (mode === 'fallback') {
         await expect(editor).toHaveValue('Original content');
-        await expect(content.locator('.empty')).toBeVisible();
+        await expect(content.locator('.mar-empty')).toBeVisible();
       }
     }
   }
@@ -615,7 +673,7 @@ test('Long Diff and fallback text scroll inside the preview without moving the h
     }));
     expect(overflow).toEqual({ x: 0, y: 0 });
     if (mode === 'text=fallback') {
-      const notice = page.locator('.file-preview-content > .empty');
+      const notice = page.locator('.mar-file-preview-content > .mar-empty');
       await expect(notice).toBeInViewport();
     }
   }

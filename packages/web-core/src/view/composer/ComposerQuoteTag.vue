@@ -63,7 +63,7 @@ const summary = computed(() => composerReferenceLabel(props.reference));
       </div>
     </el-popover>
     <button
-      class="quote-tag-remove icon-action icon-action--inline"
+      class="quote-tag-remove mar-icon-action mar-icon-action--inline"
       type="button"
       :disabled="disabled"
       :aria-label="translate('composer.removeQuote', { name: summary })"

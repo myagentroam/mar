@@ -625,7 +625,7 @@ test('Skill source management discovers external entries and adds them to the pe
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('navigation', { name: '管理菜单' }).getByText('技能源管理').click();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('技能源管理');
-  await expect(page.locator('.management-page')).toHaveCSS('overflow-y', 'auto');
+  await expect(page.locator('.mar-management-page')).toHaveCSS('overflow-y', 'auto');
   await expect(page.getByRole('button', { name: '浏览技能' })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: '源内技能' })).toHaveAttribute(
     'aria-selected',
@@ -707,7 +707,7 @@ test('Skill source management discovers external entries and adds them to the pe
     'true'
   );
   await expect(page.locator('.catalog-skill-table')).toBeVisible();
-  const catalogLayout = await page.locator('.management-page').evaluate((element) => ({
+  const catalogLayout = await page.locator('.mar-management-page').evaluate((element) => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth
   }));

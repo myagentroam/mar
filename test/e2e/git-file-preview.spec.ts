@@ -132,7 +132,10 @@ for (const width of [1280, 390]) {
         const path = url.pathname;
         if (path.endsWith('/files/content')) {
           if (url.searchParams.get('path') === 'deleted.svg') {
-            await route.fulfill({ status: 404, body: 'FILE_NOT_FOUND' });
+            await route.fulfill({
+              status: 404,
+              json: { error: { code: 'FILE_NOT_FOUND', message: 'File was not found.' } }
+            });
             return;
           }
           const content = path.includes('/git/commits/')
@@ -240,7 +243,13 @@ for (const width of [1280, 390]) {
         .getByRole('button')
         .filter({ hasText: 'deleted.svg' })
         .click();
-      await expect(page.locator('.file-preview-content > .empty')).toContainText('download');
+      const failure = page
+        .getByRole('dialog', { name: 'deleted.svg file preview', exact: true })
+        .getByRole('status');
+      await expect(failure).toContainText('Unable to preview this file.');
+      await expect(
+        failure.getByRole('button', { name: 'Download file', exact: true })
+      ).toBeVisible();
       await expect(preview).toHaveCount(0);
       const deletedReads = requests.filter((url) => url.searchParams.get('path') === 'deleted.svg');
       expect(deletedReads.length).toBeGreaterThan(0);

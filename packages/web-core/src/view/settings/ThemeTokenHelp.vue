@@ -46,7 +46,7 @@ async function copy(token: string): Promise<void> {
 <template>
   <el-button
     v-tooltip="t('customThemes.tokenHelp')"
-    class="icon-action"
+    class="mar-icon-action"
     text
     :icon="marIcon('help')"
     :aria-label="t('customThemes.tokenHelp')"
@@ -86,7 +86,7 @@ async function copy(token: string): Promise<void> {
               <code>{{ item.token }}</code>
               <el-button
                 v-tooltip="t('customThemes.tokenCopy', { token: item.token })"
-                class="icon-action"
+                class="mar-icon-action"
                 text
                 :icon="marIcon('copy')"
                 :aria-label="t('customThemes.tokenCopy', { token: item.token })"

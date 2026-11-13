@@ -7,7 +7,7 @@ const { t } = useI18n();
 
 <template>
   <div
-    class="theme-preview"
+    class="mar-theme-preview"
     :class="{ expanded }"
     :data-theme="themeColorScheme(colors)"
     :style="colors"
@@ -81,7 +81,7 @@ const { t } = useI18n();
 </template>
 
 <style scoped>
-.theme-preview {
+.mar-theme-preview {
   border: 1px solid var(--mar-border-default);
   border-radius: var(--mar-radius-surface);
   overflow: hidden;
@@ -329,7 +329,7 @@ input:focus-visible {
 .preview-controls > .caption {
   margin: 0.5rem 0 0;
 }
-.theme-preview.expanded {
+.mar-theme-preview.expanded {
   font-size: var(--mar-font-size-body);
 }
 .expanded .preview-workbench {

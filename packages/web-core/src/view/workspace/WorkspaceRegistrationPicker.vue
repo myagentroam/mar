@@ -201,7 +201,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           <div class="workspace-picker-toolbar-actions">
             <el-button
               v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
-              class="icon-action"
+              class="mar-icon-action"
               :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
               :icon="marIcon('refresh')"
               :disabled="loadingDirectory"
@@ -253,7 +253,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             </button>
             <button
               v-tooltip="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
-              class="icon-action"
+              class="mar-icon-action"
               :aria-label="translate('generated.workspaceRegistrationPicker.cancelNewDirectory')"
               type="button"
               @click="emit('discard-pending')"
@@ -279,7 +279,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
               v-tooltip="
                 translate('generated.workspaceRegistrationPicker.open2', { value0: entry.name })
               "
-              class="icon-action"
+              class="mar-icon-action"
               :aria-label="
                 translate('generated.workspaceRegistrationPicker.open', { value0: entry.name })
               "

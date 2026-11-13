@@ -11,8 +11,8 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
 </script>
 
 <template>
-  <div class="resource-filters">
-    <label class="filter-field">
+  <div class="mar-resource-filters">
+    <label class="mar-filter-field">
       <span>{{
         resourceType === 'NODE'
           ? translate('generated.resourceSharingPage.node5')
@@ -26,7 +26,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
         :clear-icon="marIcon('clear-input')"
       />
     </label>
-    <label v-if="resourceType === 'NODE'" class="filter-field">
+    <label v-if="resourceType === 'NODE'" class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.status') }}</span>
       <el-select
         v-model="status"
@@ -45,7 +45,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
 </template>
 
 <style scoped>
-.resource-filters {
+.mar-resource-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -54,20 +54,20 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
   border-block: 1px solid var(--mar-border-subtle);
 }
 
-.resource-filters > .filter-field {
+.mar-resource-filters > .mar-filter-field {
   width: 260px;
   min-width: 0;
   flex: 0 0 260px;
 }
 
-.resource-filters > .filter-field > :last-child {
+.mar-resource-filters > .mar-filter-field > :last-child {
   min-width: 0;
   width: auto;
   flex: 1 1 auto;
 }
 
 @media (max-width: 767px) {
-  .resource-filters > .filter-field {
+  .mar-resource-filters > .mar-filter-field {
     width: 100%;
     flex-basis: 100%;
   }

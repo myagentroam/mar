@@ -364,14 +364,14 @@ onMounted(() => {
             {{ goal.goal.objective }}
           </p>
           <div class="work-item-actions goal-actions">
-            <button class="text-action" type="button" @click="goalDetailsOpen = true">
+            <button class="mar-text-action" type="button" @click="goalDetailsOpen = true">
               {{ translate('goal.view') }}
             </button>
-            <button class="text-action" type="button" @click="startGoalEdit">
+            <button class="mar-text-action" type="button" @click="startGoalEdit">
               {{ translate('goal.edit') }}
             </button>
             <button
-              class="text-action work-item-danger-action"
+              class="mar-text-action work-item-danger-action"
               type="button"
               :disabled="loading"
               @click="emit('clearGoal')"
@@ -391,11 +391,16 @@ onMounted(() => {
             :aria-label="translate('goal.objectiveLabel')"
           />
           <div class="work-item-actions goal-editor-actions">
-            <button class="text-action" type="button" :disabled="loading" @click="cancelGoalEdit">
+            <button
+              class="mar-text-action"
+              type="button"
+              :disabled="loading"
+              @click="cancelGoalEdit"
+            >
               {{ translate('goal.cancel') }}
             </button>
             <button
-              class="text-action work-item-primary-action"
+              class="mar-text-action work-item-primary-action"
               type="button"
               :disabled="loading || !goalObjective.trim()"
               @click="updateGoal"
@@ -488,7 +493,7 @@ onMounted(() => {
           </div>
           <div class="work-item-actions queue-item-actions">
             <button
-              class="text-action"
+              class="mar-text-action"
               v-tooltip="translate('generated.composerQueue.save')"
               v-if="editingQueueItemId === item.queueItemId"
               type="button"
@@ -500,7 +505,7 @@ onMounted(() => {
               }}</span>
             </button>
             <button
-              class="text-action"
+              class="mar-text-action"
               v-tooltip="translate('generated.composerQueue.edit')"
               v-else
               type="button"
@@ -513,7 +518,7 @@ onMounted(() => {
             </button>
             <button
               v-tooltip="translate('generated.composerQueue.runNow')"
-              class="text-action work-item-primary-action"
+              class="mar-text-action work-item-primary-action"
               type="button"
               :disabled="loading"
               :aria-label="translate('generated.composerQueue.runNow')"
@@ -525,7 +530,7 @@ onMounted(() => {
             </button>
             <button
               v-tooltip="translate('generated.composerQueue.delete')"
-              class="text-action work-item-danger-action"
+              class="mar-text-action work-item-danger-action"
               type="button"
               :aria-label="translate('generated.composerQueue.delete')"
               @click="emit('deleteItem', item.queueItemId)"
@@ -814,7 +819,7 @@ onMounted(() => {
 
 .queue-item .work-item-kind {
   max-width: 9rem;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .work-item:hover,

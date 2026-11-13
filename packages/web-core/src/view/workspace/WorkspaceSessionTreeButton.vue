@@ -15,7 +15,7 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
 <template>
   <button
     type="button"
-    class="icon-button icon-action conversation-tree-button"
+    class="mar-icon-button mar-icon-action conversation-tree-button"
     :aria-description="
       status === 'failed'
         ? translate('sessionGroups.treeSyncUnavailable')

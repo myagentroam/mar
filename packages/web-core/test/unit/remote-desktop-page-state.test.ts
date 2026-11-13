@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RemoteDesktopPage from '../../src/view/remote-desktop/RemoteDesktopPage.vue?unit-render';
-import { flushComponent, renderComponent } from './support/component-renderer.js';
+import { localePreferenceService } from '../../src/service/locale-preference-service.js';
+import { ApiError } from '../../src/util/api-error.js';
+import { flushComponent, renderComponent, textContent } from './support/component-renderer.js';
 
 const mocks = vi.hoisted(() => ({
   discover: vi.fn(),
@@ -33,7 +35,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.clients.length = 0;
   vi.stubGlobal('window', new EventTarget());
-  vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false }));
+  vi.stubGlobal(
+    'document',
+    Object.assign(new EventTarget(), { hidden: false, documentElement: { lang: 'en-US' } })
+  );
+  localePreferenceService().setLocale('en-US');
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -56,7 +62,10 @@ beforeEach(() => {
     }
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  localePreferenceService().setLocale('en-US');
+  vi.unstubAllGlobals();
+});
 
 describe('Remote Desktop first-frame state', () => {
   it.each([
@@ -263,4 +272,161 @@ describe('Remote Desktop first-frame state', () => {
       view.unmount();
     }
   });
+});
+
+function remoteDesktopStatusText(view: ReturnType<typeof renderComponent>): string {
+  const status = view
+    .findAll('p')
+    .find((node) => node.props['class'] === 'remote-desktop-status-line');
+  if (!status) throw new Error('Remote Desktop status line is not rendered');
+  return textContent(status);
+}
+
+describe('Remote Desktop error presentation', () => {
+  it.each([
+    ['en-US', 'DESKTOP_TRANSPORT_ERROR', 'The remote desktop data transport failed.'],
+    ['zh-CN', 'DESKTOP_TRANSPORT_ERROR', '远程桌面数据传输失败。'],
+    ['en-US', 'DESKTOP_BACKEND_START_FAILED', 'The desktop backend could not start.'],
+    ['zh-CN', 'DESKTOP_BACKEND_START_FAILED', '无法启动桌面后端。']
+  ] as const)('shows the localized %s reason for %s', async (locale, code, summary) => {
+    localePreferenceService().setLocale(locale);
+    if (code === 'DESKTOP_BACKEND_START_FAILED')
+      mocks.discover.mockRejectedValueOnce(new ApiError(code, 'Upstream desktop error.'));
+    const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+    try {
+      if (code === 'DESKTOP_TRANSPORT_ERROR') {
+        mocks.select.mockResolvedValue({
+          channel,
+          path: 'relay',
+          ready() {},
+          close: mocks.close
+        });
+        await flushComponent();
+        mocks.select.mock.calls[0]![0].onDisconnected(code);
+      }
+      await flushComponent();
+      const text = remoteDesktopStatusText(view);
+      expect(text).toContain(summary);
+      expect(text).toContain(locale === 'zh-CN' ? `错误码：${code}` : `Code: ${code}`);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it('retains ApiError details and both request identifiers in the page status', async () => {
+    mocks.discover.mockRejectedValueOnce(
+      new ApiError(
+        'DESKTOP_TRANSPORT_ERROR',
+        'Untrusted upstream summary.',
+        {},
+        'Relay stream closed before the first frame.',
+        'request-123',
+        'node-request-456'
+      )
+    );
+    const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+    try {
+      await flushComponent();
+      const text = remoteDesktopStatusText(view);
+      expect(text).toContain('The remote desktop data transport failed.');
+      expect(text).not.toContain('Untrusted upstream summary.');
+      for (const diagnostic of [
+        'Code: DESKTOP_TRANSPORT_ERROR',
+        'Details: Relay stream closed before the first frame.',
+        'Request ID: request-123',
+        'Node request ID: node-request-456'
+      ])
+        expect(text).toContain(diagnostic);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it.each([
+    ['en-US', 'This desktop connection was replaced by a new remote desktop connection.'],
+    ['zh-CN', '此桌面连接已被新的远程桌面连接接管。']
+  ] as const)(
+    'shows the %s replacement reason without automatically reconnecting',
+    async (locale, summary) => {
+      localePreferenceService().setLocale(locale);
+      mocks.select.mockResolvedValue({ channel, path: 'relay', ready() {}, close: mocks.close });
+      const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+      try {
+        await flushComponent();
+        mocks.select.mock.calls[0]![0].onDisconnected('DESKTOP_CONNECTION_REPLACED');
+        await flushComponent();
+        expect(remoteDesktopStatusText(view)).toContain(summary);
+        expect(mocks.select).toHaveBeenCalledOnce();
+        expect(
+          view
+            .findAll('ElButton')
+            .some((node) =>
+              textContent(node).includes(locale === 'zh-CN' ? '重新连接' : 'Reconnect')
+            )
+        ).toBe(true);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
+  it('falls back to the original message for an unmapped ApiError code', async () => {
+    mocks.discover.mockRejectedValueOnce(
+      new ApiError('DESKTOP_FUTURE_FAILURE', 'The relay peer rejected the stream.')
+    );
+    const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+    try {
+      await flushComponent();
+      const text = remoteDesktopStatusText(view);
+      expect(text).toContain('The relay peer rejected the stream.');
+      expect(text).toContain('Code: DESKTOP_FUTURE_FAILURE');
+      expect(text).not.toContain('The desktop is unavailable.');
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it.each([
+    ['en-US', 'UNAUTHENTICATED', 'Sign in to the workbench to use this desktop.'],
+    ['zh-CN', 'UNAUTHENTICATED', '请先登录工作台，再使用此桌面。'],
+    ['en-US', 'NODE_ACCESS_DENIED', 'You do not have permission to use this Node.'],
+    ['zh-CN', 'NODE_ACCESS_DENIED', '你没有使用此 Node 的权限。'],
+    [
+      'en-US',
+      'DESKTOP_CONTROL_UNAVAILABLE',
+      'The previous control session could not be confirmed closed. Reload this tab before reconnecting.'
+    ],
+    [
+      'zh-CN',
+      'DESKTOP_CONTROL_UNAVAILABLE',
+      '无法确认上一控制会话已关闭。请重新加载此标签页后再连接。'
+    ]
+  ] as const)(
+    'keeps the %s special summary and appends diagnostics for %s',
+    async (locale, code, summary) => {
+      localePreferenceService().setLocale(locale);
+      mocks.discover.mockRejectedValueOnce(
+        new ApiError(
+          code,
+          'Upstream summary.',
+          {},
+          'Original diagnostic detail.',
+          'request-1',
+          'node-1'
+        )
+      );
+      const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
+      try {
+        await flushComponent();
+        const text = remoteDesktopStatusText(view);
+        expect(text).toContain(summary);
+        expect(text).toContain('Original diagnostic detail.');
+        expect(text).toContain(code);
+        expect(text).toContain('request-1');
+        expect(text).toContain('node-1');
+      } finally {
+        view.unmount();
+      }
+    }
+  );
 });

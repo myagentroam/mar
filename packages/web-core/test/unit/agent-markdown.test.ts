@@ -218,7 +218,7 @@ describe('AgentMarkdown code block copy button', () => {
     expect(html).toContain('class="agent-markdown-code"');
     expect(html).toContain('data-code-block');
     expect(html).toContain('data-code-copy');
-    expect(html).toContain('agent-markdown-code-copy icon-button icon-action');
+    expect(html).toContain('agent-markdown-code-copy mar-icon-button mar-icon-action');
     expect(html).toContain('agent-markdown-code-icon--check');
     expect(html).toContain('aria-label="复制代码"');
     expect(html).not.toContain(' title=');

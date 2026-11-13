@@ -978,7 +978,7 @@ onBeforeUnmount(() => {
       :inert="mobileViewport ? !mobileHistoryOpen : sidebarCollapsed"
       :aria-label="translate('hostedConversations.historyTitle')"
     >
-      <header class="sidebar-heading session-heading history-header">
+      <header class="mar-sidebar-heading session-heading history-header">
         <div class="session-heading-meta">
           <h2>{{ translate('hostedConversations.historyTitle') }}</h2>
         </div>
@@ -999,7 +999,7 @@ onBeforeUnmount(() => {
           />
           <el-button
             v-tooltip="translate('hostedConversations.refreshHistory')"
-            class="history-refresh-button icon-action"
+            class="history-refresh-button mar-icon-action"
             :aria-label="translate('hostedConversations.refreshHistory')"
             :disabled="loadingDirectory"
             :loading="workspace.loadingConversations.value && workspace.conversationsLoaded.value"
@@ -1099,7 +1099,7 @@ onBeforeUnmount(() => {
                   title: hostedConversationTitle(conversation)
                 })
               "
-              class="history-more-button icon-action icon-action--inline"
+              class="history-more-button mar-icon-action mar-icon-action--inline"
               type="button"
               :disabled="mutatingConversationKey !== undefined"
               :aria-label="
@@ -1142,14 +1142,14 @@ onBeforeUnmount(() => {
         <div
           v-if="workspace.hasMoreConversations.value"
           ref="historyAppendMarker"
-          class="list-append-state"
+          class="mar-list-append-state"
           :aria-busy="workspace.loadingMoreConversations.value"
         >
           <span
             v-if="workspace.loadingMoreConversations.value && !retryingDirectory"
             role="status"
             :aria-label="translate('common.loading')"
-            ><BusyIndicator class="read-loading-indicator"
+            ><BusyIndicator class="mar-read-loading-indicator"
           /></span>
           <el-button
             v-if="
@@ -1167,7 +1167,7 @@ onBeforeUnmount(() => {
           >
             <BusyIndicator
               v-if="workspace.loadingMoreConversations.value"
-              class="read-loading-indicator"
+              class="mar-read-loading-indicator"
             />
             <template v-else>{{ translate('common.loadFailedRetry') }}</template>
           </el-button>
@@ -1382,7 +1382,7 @@ onBeforeUnmount(() => {
                       name: row.node.file.displayName
                     })
                   "
-                  class="file-delete icon-action icon-action--inline"
+                  class="file-delete mar-icon-action mar-icon-action--inline"
                   type="button"
                   :disabled="!filesWritable || deletingFileId !== undefined"
                   :aria-label="
@@ -2041,7 +2041,7 @@ onBeforeUnmount(() => {
   .hosted-conversation-history {
     position: fixed;
     z-index: 3;
-    inset: var(--sidebar-header-height) auto 0 var(--mar-activity-rail-width);
+    inset: var(--mar-sidebar-header-height) auto 0 var(--mar-activity-rail-width);
     width: var(--mar-workbench-sidebar-width);
     background: var(--mar-bg-subtle);
     transition:
@@ -2076,7 +2076,7 @@ onBeforeUnmount(() => {
   .hosted-conversation-scrim {
     position: fixed;
     z-index: 11;
-    inset: var(--sidebar-header-height) 0 0;
+    inset: var(--mar-sidebar-header-height) 0 0;
     display: block;
     border: 0;
     background: var(--mar-overlay-scrim);
@@ -2110,7 +2110,7 @@ onBeforeUnmount(() => {
   .hosted-conversation-files {
     position: fixed;
     z-index: 12;
-    inset: var(--sidebar-header-height) auto 0 0;
+    inset: var(--mar-sidebar-header-height) auto 0 0;
     width: min(300px, calc(100vw - 48px));
     flex: none;
     border: 0;

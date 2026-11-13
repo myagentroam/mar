@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
 .sidebar-scrim {
   position: fixed;
   z-index: 7;
-  inset: var(--sidebar-header-height) 0 0;
+  inset: var(--mar-sidebar-header-height) 0 0;
   border: 0;
   background: var(--mar-overlay-backdrop);
 }

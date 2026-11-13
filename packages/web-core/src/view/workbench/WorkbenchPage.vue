@@ -93,7 +93,7 @@ function closeStandaloneFileWindow(): void {
   >
     <div
       v-if="!page.identity.adminLoaded"
-      class="page-loading-state"
+      class="mar-page-loading-state"
       role="status"
       aria-busy="true"
       :aria-label="t('common.loading')"
@@ -279,6 +279,25 @@ function closeStandaloneFileWindow(): void {
 
 <style scoped>
 .console-shell {
+  --mar-sidebar-available-width: max(
+    220px,
+    calc(
+      100vw - var(--mar-activity-rail-width) - var(--mar-session-sidebar-width) - 360px -
+        var(--mar-inspector-min-width)
+    )
+  );
+}
+
+@media (max-width: 1180px) {
+  .console-shell {
+    --mar-sidebar-available-width: max(
+      220px,
+      calc(100vw - var(--mar-activity-rail-width) - 242px - 340px)
+    );
+  }
+}
+
+.console-shell {
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--mar-bg-page);
@@ -342,7 +361,7 @@ function closeStandaloneFileWindow(): void {
   .sidebar-scrim {
     position: fixed;
     z-index: 7;
-    inset: var(--sidebar-header-height) 0 0;
+    inset: var(--mar-sidebar-header-height) 0 0;
     border: 0;
     background: var(--mar-overlay-scrim);
     cursor: pointer;
@@ -351,7 +370,7 @@ function closeStandaloneFileWindow(): void {
   .workspace-surface-scrim {
     position: fixed;
     z-index: 11;
-    inset: var(--sidebar-header-height) 0 0;
+    inset: var(--mar-sidebar-header-height) 0 0;
     border: 0;
     background: var(--mar-overlay-scrim);
     cursor: pointer;

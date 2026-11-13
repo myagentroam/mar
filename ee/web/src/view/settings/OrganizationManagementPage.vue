@@ -202,10 +202,10 @@ onMounted(() => {
   <section
     v-loading="loading && !ready"
     element-loading-custom-class="mar-page-loading"
-    class="management-page organization-management"
+    class="mar-management-page organization-management"
   >
-    <div class="filter-row">
-      <label class="filter-field"
+    <div class="mar-filter-row">
+      <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization') }}</span
         ><el-input
           v-model="keyword"
@@ -216,7 +216,7 @@ onMounted(() => {
           :clear-icon="marIcon('clear-input')"
       /></label>
     </div>
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && ready"

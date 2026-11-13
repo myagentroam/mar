@@ -91,7 +91,7 @@ test('Desktop management requests backend pages and push-all ignores the current
   await expect(table.getByText('Fixture Node 44', { exact: true })).toBeVisible();
   expect(queries.at(-1)?.get('sortBy')).toBe('label');
   expect(queries.at(-1)?.get('sortOrder')).toBe('desc');
-  await page.locator('.resource-filters input').first().fill('Fixture Node 44');
+  await page.locator('.mar-resource-filters input').first().fill('Fixture Node 44');
   await expect(table.locator('tbody tr.el-table__row')).toHaveCount(1);
   const upgraded: string[] = [];
   await page.route('**/api/nodes/*/upgrade', (route) => {

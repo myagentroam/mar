@@ -101,7 +101,7 @@ function openContext(event: MouseEvent): void {
       role="status"
       :aria-label="translate('common.loading')"
     >
-      <BusyIndicator class="read-loading-indicator" />
+      <BusyIndicator class="mar-read-loading-indicator" />
     </div>
     <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
       {{ translate('sessionGroups.treeUnavailable') }}
@@ -122,7 +122,7 @@ function openContext(event: MouseEvent): void {
           }}</span>
           <span
             v-if="tree.parent.status !== 'IDLE'"
-            class="session-activity"
+            class="mar-session-activity"
             :class="tree.parent.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
             aria-hidden="true"
             ><i
@@ -152,7 +152,7 @@ function openContext(event: MouseEvent): void {
         >
           <button
             type="button"
-            class="icon-button icon-action icon-action--inline session-tree-actions"
+            class="mar-icon-button mar-icon-action mar-icon-action--inline session-tree-actions"
             v-tooltip="translate('sessionGroups.actions')"
             :aria-label="translate('sessionGroups.actions')"
           >
@@ -230,7 +230,7 @@ function openContext(event: MouseEvent): void {
             }}</span>
             <span
               v-if="row.node.status !== 'IDLE'"
-              class="session-activity"
+              class="mar-session-activity"
               :class="row.node.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
               aria-hidden="true"
               ><i />
@@ -251,7 +251,7 @@ function openContext(event: MouseEvent): void {
           >
             <button
               type="button"
-              class="icon-button icon-action icon-action--inline session-tree-actions"
+              class="mar-icon-button mar-icon-action mar-icon-action--inline session-tree-actions"
               v-tooltip="translate('sessionGroups.actions')"
               :aria-label="translate('sessionGroups.actions')"
               @click.stop

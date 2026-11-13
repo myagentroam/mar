@@ -239,7 +239,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 
 <template>
   <LoadingPanel class="personal-git-settings" :loading="loading && !ready" variant="page">
-    <div class="management-page">
+    <div class="mar-management-page">
       <header>
         <div>
           <h2>{{ t('personalGit.title') }}</h2>
@@ -248,7 +248,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       <el-button v-if="failed" @click="load">{{ t('personalGit.reload') }}</el-button>
       <template v-else>
         <p class="git-page-hint">{{ t('personalGit.summary') }}</p>
-        <div class="table-actions">
+        <div class="mar-table-actions">
           <el-button
             type="primary"
             :icon="marIcon('plus')"
@@ -282,7 +282,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
           >
           <el-table-column :label="t('personalGit.actions')" width="180"
             ><template #default="{ row }"
-              ><div class="row-actions">
+              ><div class="mar-row-actions">
                 <el-button
                   link
                   :icon="marIcon('edit')"

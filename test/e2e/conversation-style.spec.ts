@@ -9,6 +9,48 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Empty workspace and hosted prompts alone center the adjacent composer on desktop', async ({
+  page
+}) => {
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const [kind, state, empty] of [
+      ['workspace', 'empty', true],
+      ['hosted', 'empty', true],
+      ['workspace', 'loading', false],
+      ['workspace', 'failed', false],
+      ['workspace', 'nonempty', false],
+      ['share', 'empty', false]
+    ] as const) {
+      await page.goto(
+        `${fixture.url}conversation-style.html?empty-layout&kind=${kind}&state=${state}`
+      );
+      const scroll = page.locator('.conversation-scroll-region');
+      const host = page.locator('.composer-host');
+      const composer = host.locator(':scope > .composer');
+      if (empty) await expect(scroll).toHaveClass(/\bis-empty\b/);
+      else await expect(scroll).not.toHaveClass(/\bis-empty\b/);
+      const sizes = await host.evaluate((element) => ({
+        width: element.getBoundingClientRect().width,
+        parentWidth: element.parentElement!.getBoundingClientRect().width,
+        rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        align: getComputedStyle(element).alignSelf
+      }));
+      if (empty && width >= 768) {
+        expect(sizes.width).toBeCloseTo(
+          Math.min(sizes.parentWidth - 2 * sizes.rootSize, 45 * sizes.rootSize),
+          0
+        );
+        expect(sizes.align).toBe('center');
+        await expect(composer).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      } else {
+        expect(sizes.width).toBeCloseTo(sizes.parentWidth, 0);
+        await expect(composer).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      }
+    }
+  }
+});
+
 for (const [width, columnWidth] of [
   [390, undefined],
   [1280, undefined],
@@ -91,7 +133,7 @@ for (const width of [1280, 390]) {
       await expect(retained).toBeInViewport();
       const before = (await retained.boundingBox())!.y;
       await page.getByTestId('finish-older').click();
-      await expect(region.locator('.busy-indicator')).toHaveCount(0);
+      await expect(region.locator('.mar-busy-indicator')).toHaveCount(0);
       await expect(region.locator('.conversation-item')).toHaveCount(3 + pageNumber * 72);
       await expect(page.getByText(`earlier-${pageNumber}-0-item-0`, { exact: true })).toBeVisible();
       await expect(retained).toBeInViewport();
@@ -155,10 +197,10 @@ for (const width of [1280, 390]) {
         return y;
       });
       await expect(requests).toHaveText('1');
-      await expect(region.locator('.busy-indicator')).toHaveCount(1);
+      await expect(region.locator('.mar-busy-indicator')).toHaveCount(1);
       expect((await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
       await page.getByTestId('finish-older').click();
-      await expect(region.locator('.busy-indicator')).toHaveCount(0);
+      await expect(region.locator('.mar-busy-indicator')).toHaveCount(0);
       await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(before, 0);
       await expect(page.getByTestId('earlier-1-0')).not.toBeInViewport();
       await expect(region.locator('.prepended-page')).toHaveCount(3);
@@ -435,7 +477,7 @@ test('History arriving after the reader leaves the top preserves their reading p
     element.scrollTop = 700;
   });
   await page.getByTestId('finish-older').click();
-  await expect(region.locator('.busy-indicator')).toHaveCount(0);
+  await expect(region.locator('.mar-busy-indicator')).toHaveCount(0);
   expect(await region.evaluate((element) => element.scrollTop)).toBeGreaterThan(1800);
   await expect(page.getByTestId('earlier-1-0')).not.toBeInViewport();
 });
@@ -471,7 +513,9 @@ for (const width of [1280, 390]) {
       await expect(requests).toHaveText('2');
       await page.getByRole('button', { name: 'Failed to load. Retry' }).click();
       await expect(page.locator('.conversation-history-control')).toHaveText('');
-      await expect(page.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
+      await expect(page.locator('.conversation-history-control .mar-busy-indicator')).toHaveCount(
+        1
+      );
       await expect(requests).toHaveText('3');
       await page.getByTestId('finish-older').click();
       await page.evaluate(() => new Promise(requestAnimationFrame));
@@ -549,7 +593,9 @@ for (const input of ['wheel', 'touch', 'keyboard']) {
       await scrollUp();
       await expect(requests).toHaveText('2');
       await expect(region.locator('.conversation-history-control')).toHaveText('');
-      await expect(region.locator('.conversation-history-control .busy-indicator')).toHaveCount(1);
+      await expect(region.locator('.conversation-history-control .mar-busy-indicator')).toHaveCount(
+        1
+      );
       await scrollUp();
       await expect(requests).toHaveText('2');
     } finally {
@@ -616,7 +662,7 @@ test('Retrying initial history keeps focus and shows one ring without action tex
   await retry.click();
   await expect(retry).toBeFocused();
   await expect(retry).toHaveText('');
-  await expect(retry.locator('.busy-indicator')).toHaveCount(1);
+  await expect(retry.locator('.mar-busy-indicator')).toHaveCount(1);
   await expect(page.locator('.conversation-loading-initial')).toHaveCount(0);
   await retry.press('Enter');
   await expect(page.getByTestId('initial-requests')).toHaveText('1');
@@ -789,29 +835,29 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(group).not.toContainText('more files');
         const first = rows.nth(0);
         await first.locator(':scope > summary').click();
-        await expect(first.locator('.conversation-detail-text')).toContainText(
+        await expect(first.locator('.mar-conversation-detail-text')).toContainText(
           'Original batch ranges: offset 2, limit 8'
         );
-        await expect(first.locator('.conversation-detail-text')).toContainText(
+        await expect(first.locator('.mar-conversation-detail-text')).toContainText(
           'Original batch output'
         );
-        await expect(rows.nth(1).locator('.conversation-detail-text')).toHaveCount(0);
+        await expect(rows.nth(1).locator('.mar-conversation-detail-text')).toHaveCount(0);
         await rows.nth(1).locator(':scope > summary').click();
-        await expect(rows.nth(1).locator('.conversation-detail-text')).toContainText(
+        await expect(rows.nth(1).locator('.mar-conversation-detail-text')).toContainText(
           'Original batch output'
         );
         await rows.nth(1).locator(':scope > summary').click();
-        await expect(rows.nth(1).locator('.conversation-detail-text')).toHaveCount(0);
+        await expect(rows.nth(1).locator('.mar-conversation-detail-text')).toHaveCount(0);
         await expect(rows.nth(4).locator(':scope > summary')).toContainText('Failed');
         await rows.nth(5).locator(':scope > summary').click();
-        await expect(rows.nth(5).locator('.conversation-detail-text')).toContainText(
+        await expect(rows.nth(5).locator('.mar-conversation-detail-text')).toContainText(
           'Original pathless read failure'
         );
         await page.getByTestId('append-read-file').click();
         await expect(heading).toContainText('6 files');
         await expect(rows).toHaveCount(7);
         await expect(first).toHaveAttribute('open', '');
-        await expect(first.locator('.conversation-detail-text')).toContainText(
+        await expect(first.locator('.mar-conversation-detail-text')).toContainText(
           'Original batch output'
         );
         await page.getByTestId('read-files-chinese').click();
@@ -838,12 +884,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await heading.click();
         await expect(rows).toHaveCount(7);
         await expect(group.locator(':scope > details[open]')).toHaveCount(0);
-        await expect(group.locator('.conversation-detail-text')).toHaveCount(0);
+        await expect(group.locator('.mar-conversation-detail-text')).toHaveCount(0);
         await first.locator(':scope > summary').click();
-        await expect(first.locator('.conversation-detail-text')).toContainText(
+        await expect(first.locator('.mar-conversation-detail-text')).toContainText(
           'Original batch output'
         );
-        await expect(first.locator('.conversation-detail-text')).toBeVisible();
+        await expect(first.locator('.mar-conversation-detail-text')).toBeVisible();
         await expect
           .poll(() =>
             group.evaluate(
@@ -1164,7 +1210,7 @@ test('Touch conversation details reveal titles and unavailable change reasons', 
     const hint = page.locator('[role="tooltip"]:visible');
     await page.locator('.conversation-header h2').tap();
     await expect(hint).toHaveText('Review session');
-    await expect(page.locator('.conversation-header .session-activity')).toHaveCount(0);
+    await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
     await page.getByText('File changes', { exact: true }).tap();
     await expect(page.locator('.conversation-file-change-note')).toBeVisible();
     // Reading starts after expansion; scrolling during the height animation dismisses hints.
@@ -1277,9 +1323,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         }
         const child = group.locator(':scope > details').first();
         await child.locator(':scope > summary').click();
-        await expect(child.locator('.conversation-detail-body')).toBeVisible();
+        await expect(child.locator('.mar-conversation-detail-body')).toBeVisible();
         await child.locator(':scope > summary').click();
-        await expect(child.locator('.conversation-detail-body')).toHaveCount(0);
+        await expect(child.locator('.mar-conversation-detail-body')).toHaveCount(0);
       }
       await page.locator('.conversation-timeline').screenshot({
         path: testInfo.outputPath(`group-spacing-${width}.png`)
@@ -1326,7 +1372,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(strokeWidth).toBeGreaterThan(0);
       expect(strokeWidth).toBeLessThan(2);
       await expect(processIndicator).toHaveCSS('animation-duration', '1.2s');
-      await expect(processIndicator).toHaveCSS('animation-name', 'busy-indicator-spin');
+      await expect(processIndicator).toHaveCSS('animation-name', 'mar-busy-indicator-spin');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(processIndicator).toHaveCSS('animation-name', 'none');
       await page
@@ -1459,7 +1505,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       ])
         await expect(page.locator(marker).first()).toHaveCSS('border-radius', '4px');
       for (const selector of ['.user-message', '.assistant-message', '.process'])
-        await expect(page.locator('.theme-preview').locator(selector)).toHaveCSS(
+        await expect(page.locator('.mar-theme-preview').locator(selector)).toHaveCSS(
           'border-radius',
           '12px'
         );
@@ -1469,7 +1515,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           (element, name) => getComputedStyle(element).getPropertyValue(name),
           property
         );
-        await expect(page.locator('.theme-preview .user-message')).toHaveCSS(property, actual);
+        await expect(page.locator('.mar-theme-preview .user-message')).toHaveCSS(property, actual);
       }
       for (const [selector, edge, size] of [
         ['.task-list-items', 'border-top-width', '0px'],

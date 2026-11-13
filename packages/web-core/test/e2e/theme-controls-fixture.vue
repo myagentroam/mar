@@ -158,7 +158,7 @@ function saveFeedbackDialog(): void {
   </section>
   <section aria-label="Dropdown state samples">
     <el-dropdown trigger="click" @command="menuAction = $event">
-      <button type="button" class="icon-action">Sample menu</button>
+      <button type="button" class="mar-icon-action">Sample menu</button>
       <template #dropdown>
         <el-dropdown-menu>
           <el-dropdown-item command="rename"><MarIcon name="edit" />Rename</el-dropdown-item>

@@ -221,7 +221,7 @@ onMounted(load);
     class="image-generation-management"
   >
     <p class="selection-rule">{{ translate('marAgentModels.imageGenerationPriorityHint') }}</p>
-    <div class="table-actions">
+    <div class="mar-table-actions">
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshing && ready"
@@ -326,7 +326,7 @@ onMounted(load);
         width="200"
       >
         <template #default="{ row }">
-          <div class="row-actions" @click.stop>
+          <div class="mar-row-actions" @click.stop>
             <el-button link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
               translate('marAgentModels.edit')
             }}</el-button>
@@ -483,17 +483,17 @@ onMounted(load);
   </section>
 </template>
 <style scoped>
-.table-actions {
+.mar-table-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
 }
-.table-actions .el-button + .el-button {
+.mar-table-actions .el-button + .el-button {
   margin-left: 0;
 }
-.row-actions {
+.mar-row-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
