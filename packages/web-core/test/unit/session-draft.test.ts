@@ -15,6 +15,208 @@ function workspaceDraftTarget(
 }
 
 describe('Web Workspace Draft State', () => {
+  it('releases closed Workspace drafts after persisting them and bounds inactive slots', () => {
+    const values = new Map<string, string>();
+    const owner = createSessionDraftService({
+      target: ref(undefined),
+      storage: {
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => void values.set(key, value),
+        removeItem: (key) => void values.delete(key)
+      }
+    });
+    const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+    const first = owner.forTarget(target);
+    first.input.value = 'unsent';
+    first.queueEdit.value = { queueItemId: 'q', content: 'edit', tags: '', origin: '' };
+    owner.releaseWorkspace('n', 'w');
+    const restored = owner.forTarget(target);
+    expect(restored).not.toBe(first);
+    expect(restored.input.value).toBe('unsent');
+    expect(restored.queueEdit.value?.content).toBe('edit');
+    first.input.value = 'late mutation from a released slot';
+    first.persist();
+    restored.restore();
+    expect(restored.input.value).toBe('unsent');
+    for (let i = 0; i < 100; i++) owner.forTarget({ ...target, workspaceId: `other-${i}` });
+    expect(owner.forTarget(target)).not.toBe(restored);
+    expect(owner.forTarget(target).input.value).toBe('unsent');
+  });
+
+  it.each([false, true])(
+    'discards deleted session edits without clearing shared Pane input (evicted: %s)',
+    (evicted) => {
+      const values = new Map<string, string>();
+      const owner = createSessionDraftService({
+        target: ref(undefined),
+        storage: {
+          getItem: (key) => values.get(key) ?? null,
+          setItem: (key, value) => void values.set(key, value),
+          removeItem: (key) => void values.delete(key)
+        }
+      });
+      const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+      const deleted = owner.forTarget(target);
+      deleted.input.value = 'Main draft';
+      owner.forTarget(target, 'aside').input.value = 'Aside draft';
+      deleted.queueEdit.value = {
+        queueItemId: 'deleted',
+        content: 'private',
+        tags: '',
+        origin: ''
+      };
+      const survivorTarget = { ...target, sessionId: 'survivor' };
+      owner.forTarget(survivorTarget).queueEdit.value = {
+        queueItemId: 'keep',
+        content: 'keep editing',
+        tags: '',
+        origin: ''
+      };
+      const legacyKey = `mar.workbench.session-draft.${JSON.stringify(['n', 'w', 's'])}`;
+      const queueKey = `mar.workbench.queue-edit.${JSON.stringify(['n', 'w', 'session', 's'])}`;
+      values.set(legacyKey, JSON.stringify({ queueEdit: deleted.queueEdit.value }));
+      deleted.persist();
+      if (evicted) owner.releaseWorkspace('n', 'w');
+
+      owner.releaseSession('n', 'w', 's');
+      deleted.persist();
+      expect(values.has(queueKey)).toBe(false);
+      expect(values.has(legacyKey)).toBe(false);
+      expect(owner.forTarget(survivorTarget).input.value).toBe('Main draft');
+      expect(owner.forTarget(survivorTarget, 'aside').input.value).toBe('Aside draft');
+      expect(owner.forTarget(survivorTarget).queueEdit.value?.content).toBe('keep editing');
+      expect(owner.forTarget(target).queueEdit.value).toBeUndefined();
+    }
+  );
+
+  it('keeps unsaved drafts in memory when release cannot persist them', () => {
+    const target = { kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' };
+    const owner = createSessionDraftService({
+      target: ref(target),
+      storage: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error('quota');
+        },
+        removeItem: () => {
+          throw new Error('quota');
+        }
+      }
+    });
+    const first = owner.forTarget(target);
+    first.input.value = 'must not disappear';
+    owner.releaseWorkspace('n', 'w');
+    expect(owner.forTarget(target)).toBe(first);
+    expect(first.input.value).toBe('must not disappear');
+  });
+
+  it('retains unsaved Pane input but discards a deleted session edit when storage fails', () => {
+    const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+    const owner = createSessionDraftService({
+      target: ref(target),
+      storage: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error('quota');
+        },
+        removeItem: () => {
+          throw new Error('unavailable');
+        }
+      }
+    });
+    const main = owner.forTarget(target);
+    const aside = owner.forTarget(target, 'aside');
+    main.input.value = 'Main unsaved input';
+    aside.input.value = 'Aside unsaved input';
+    main.queueEdit.value = { queueItemId: 'q', content: 'deleted edit', tags: '', origin: '' };
+
+    owner.releaseSession('n', 'w', 's');
+    expect(owner.forTarget(target).input.value).toBe('Main unsaved input');
+    expect(owner.forTarget(target, 'aside').input.value).toBe('Aside unsaved input');
+    expect(main.queueEdit.value).toBeUndefined();
+    expect(aside.queueEdit.value).toBeUndefined();
+  });
+
+  it.each([false, true])(
+    'keeps the durable legacy input if its Workspace migration fails (all writes fail: %s)',
+    (allWritesFail) => {
+      const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+      const legacyKey = `mar.workbench.session-draft.${JSON.stringify(['n', 'w', 's'])}`;
+      const values = new Map([
+        [
+          legacyKey,
+          JSON.stringify({
+            input: 'durable legacy input',
+            queueEdit: { queueItemId: 'q', content: 'deleted edit', tags: '', origin: '' }
+          })
+        ]
+      ]);
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          if (allWritesFail || key.startsWith('mar.workbench.draft.')) throw new Error('quota');
+          values.set(key, value);
+        },
+        removeItem: (key: string) => void values.delete(key)
+      };
+      const owner = createSessionDraftService({ target: ref(target), storage });
+      expect(owner.input.value).toBe('durable legacy input');
+      owner.releaseSession('n', 'w', 's');
+      expect(JSON.parse(values.get(legacyKey)!).input).toBe('durable legacy input');
+      const restored = createSessionDraftService({ target: ref(target), storage });
+      expect(restored.input.value).toBe('durable legacy input');
+      if (!allWritesFail) expect(restored.queueEdit.value).toBeUndefined();
+    }
+  );
+
+  it('protects both active Panes when they bind the same target Ref', () => {
+    const target = { kind: 'workspace' as const, nodeId: 'n', workspaceId: 'active' };
+    const current = ref(target);
+    const owner = createSessionDraftService({
+      target: current,
+      storage: { getItem: () => null, setItem() {}, removeItem() {} }
+    });
+    owner.bindTarget(current, 'aside');
+    const main = owner.forTarget(target);
+    const aside = owner.forTarget(target, 'aside');
+    main.input.value = 'main';
+    aside.input.value = 'aside';
+    for (let i = 0; i < 100; i++) owner.forTarget({ ...target, workspaceId: String(i) });
+    expect(owner.forTarget(target)).toBe(main);
+    expect(owner.forTarget(target, 'aside')).toBe(aside);
+    expect(main.input.value).toBe('main');
+    expect(aside.input.value).toBe('aside');
+  });
+
+  it('clears persisted and evicted drafts on sign-out without deleting other preferences', () => {
+    const values = new Map<string, string>([
+      ['mar.workbench.session-draft.legacy', 'legacy'],
+      ['mar.locale', 'en-US']
+    ]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+      get length() {
+        return values.size;
+      },
+      key: (index: number) => [...values.keys()][index] ?? null
+    };
+    const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+    const owner = createSessionDraftService({ target: ref(undefined), storage });
+    const first = owner.forTarget(target);
+    first.input.value = 'previous account';
+    first.queueEdit.value = { queueItemId: 'q', content: 'private edit', tags: '', origin: '' };
+    owner.releaseWorkspace('n', 'w');
+    expect(values.size).toBeGreaterThan(2);
+    owner.clear();
+    expect([...values]).toEqual([['mar.locale', 'en-US']]);
+    first.persist();
+    const next = createSessionDraftService({ target: ref(target), storage });
+    expect(next.input.value).toBe('');
+    expect(next.queueEdit.value).toBeUndefined();
+  });
+
   it('persists and restores a queue edit with its hidden source metadata for only its target', () => {
     const values = new Map<string, string>();
     const storage = {

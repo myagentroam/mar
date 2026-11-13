@@ -79,6 +79,7 @@ interface WorkspaceViewCache {
   readonly sessionDetails: Map<string, CachedSessionDetail>;
 }
 
+/** Owns immutable Workspace snapshots; queue and detail retention are bounded independently. */
 export function createWorkspaceViewCacheService(
   tabId: (nodeId: string, workspaceId: string) => string
 ) {
@@ -223,6 +224,19 @@ export function createWorkspaceViewCacheService(
       sessionId,
       reconcileWorkspaceQueueSnapshot(cache.queues.get(sessionId), queue, source)
     );
+    trimQueues(cache, sessionId);
+  }
+
+  function trimQueues(cache: WorkspaceViewCache, newestSessionId?: string): void {
+    for (const sessionId of cache.queues.keys()) {
+      if (cache.queues.size <= 32) break;
+      if (
+        sessionId !== newestSessionId &&
+        sessionId !== cache.selectedSessionId &&
+        !cache.sessionDetails.has(sessionId)
+      )
+        cache.queues.delete(sessionId);
+    }
   }
 
   function saveDetail(
@@ -309,6 +323,7 @@ export function createWorkspaceViewCacheService(
         ),
         input.detailHistoryAlreadyBounded === true
       );
+    trimQueues(cache, selected.id);
   }
 
   /** Save another visible session without changing the Workspace's main selection. */
@@ -332,6 +347,7 @@ export function createWorkspaceViewCacheService(
     const protectedIds = new Set([session.id]);
     if (cache.selectedSessionId !== undefined) protectedIds.add(cache.selectedSessionId);
     saveDetail(cache, detail, maximumDetails, protectedIds, true);
+    trimQueues(cache, session.id);
   }
 
   function captureActive(
@@ -490,6 +506,10 @@ export function createWorkspaceViewCacheService(
     cacheRun,
     cacheTurn,
     cacheQueue,
-    replaceTurns
+    replaceTurns,
+    clear: () => {
+      active.value = undefined;
+      caches.clear();
+    }
   };
 }

@@ -141,6 +141,7 @@ function runnerProfileDescription(
   return key === undefined ? fallback : translate(key);
 }
 
+/** Owns Node profiles/defaults for the page's retained Workspace targets. */
 export function createRunnerProfileService(options: RunnerProfileServiceOptions) {
   const profiles = ref<readonly RunnerProfile[]>([]);
   const loading = ref(false);
@@ -153,6 +154,18 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
   const defaultsVersionByNode = new Map<string, number>();
   let requestVersion = 0;
   let defaultsSave = Promise.resolve();
+
+  function retainNodes(nodeIds: ReadonlySet<string>): void {
+    for (const cache of [profilesByNode, defaultsByNode, defaultsVersionByNode])
+      for (const nodeId of cache.keys()) if (!nodeIds.has(nodeId)) cache.delete(nodeId);
+    const selected = options.workspaceTarget.value?.nodeId;
+    if (selected === undefined || !nodeIds.has(selected)) {
+      requestVersion += 1;
+      profiles.value = [];
+      loading.value = false;
+      failed.value = false;
+    }
+  }
 
   function has(nodeId: string): boolean {
     return profilesByNode.has(nodeId);
@@ -285,7 +298,8 @@ export function createRunnerProfileService(options: RunnerProfileServiceOptions)
     restore,
     load,
     defaultFor,
-    save
+    save,
+    retainNodes
   };
 }
 

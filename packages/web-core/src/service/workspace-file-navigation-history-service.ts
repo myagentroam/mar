@@ -4,6 +4,7 @@ export interface FileNavigationPosition {
   readonly column?: number;
 }
 
+/** Owns a bounded jump history for the current file workbench. */
 export function createWorkspaceFileNavigationHistoryService() {
   let entries: FileNavigationPosition[] = [];
   let index = -1;
@@ -18,7 +19,8 @@ export function createWorkspaceFileNavigationHistoryService() {
     }
     if (from.tabId === to.tabId && from.line === to.line && from.column === to.column) return;
     entries = [...entries.slice(0, index + 1), to];
-    index += 1;
+    if (entries.length > 256) entries = entries.slice(-256);
+    index = entries.length - 1;
   }
 
   function travel(direction: -1 | 1, current: FileNavigationPosition | undefined) {

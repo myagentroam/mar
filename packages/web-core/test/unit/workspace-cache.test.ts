@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';
 
 describe('Web Workspace View Cache', () => {
+  it('bounds background queue snapshots while retaining the visible session', () => {
+    const state = createWorkspaceViewCacheService((node, workspace) => `${node}:${workspace}`);
+    const main = { id: 'main', workspaceId: 'w', runner: 'codex' as const, externalSessionId: 'm' };
+    const queue = { version: 1, paused: false, items: [] };
+    state.activate('n', 'w');
+    state.captureActive({ sessions: [main], selectedSessionId: 'main', queue }, 5);
+    for (let i = 0; i < 100; i++) state.cacheQueue('n', 'w', `s${i}`, queue, 'initial');
+    expect(state.queueFor('n', 'w', 'main')).toEqual(queue);
+    expect(state.queueFor('n', 'w', 's0')).toBeUndefined();
+    expect(state.queueFor('n', 'w', 's99')).toEqual(queue);
+    expect(
+      Array.from({ length: 100 }, (_, i) => state.queueFor('n', 'w', `s${i}`)).filter(Boolean)
+    ).toHaveLength(31);
+  });
+
   it('captures an Aside detail without changing Main selection or evicting either visible session', () => {
     const state = createWorkspaceViewCacheService(
       (nodeId, workspaceId) => `${nodeId}:${workspaceId}`

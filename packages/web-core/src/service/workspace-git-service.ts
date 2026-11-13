@@ -68,7 +68,7 @@ export function createWorkspaceGitService(input: {
   const changesFetchFailed = ref(false);
   const historyFetchFailed = ref(false);
   let changesFetchRequested = false;
-  // This service belongs to the current page user; target resets retain its fetch interval.
+  // Target resets retain fetch intervals; account clear invalidates their owner and pending results.
   const changesFetches = new Map<
     string,
     {
@@ -225,7 +225,14 @@ export function createWorkspaceGitService(input: {
       if (result.updated) return loadChanges();
     });
   }
+  function pruneChangesFetches(): void {
+    const now = performance.now();
+    for (const [key, state] of changesFetches)
+      if (state.pending === undefined && now - state.startedAt >= CHANGES_FETCH_INTERVAL_MS)
+        changesFetches.delete(key);
+  }
   function loadChanges(fetch = false): Promise<void> {
+    pruneChangesFetches();
     if (!matchesChangesTarget()) reset();
     const target = input.target();
     if (fetch && target !== undefined && input.gitEnabled()) {
@@ -505,6 +512,7 @@ export function createWorkspaceGitService(input: {
     };
   }
   function reset(preserveWatchRevision = false): void {
+    pruneChangesFetches();
     epoch += 1;
     historyGeneration += 1;
     if (!preserveWatchRevision || !matchesChangesTarget()) appliedWatchRevision = -1;
@@ -640,7 +648,11 @@ export function createWorkspaceGitService(input: {
     restoreChange,
     snapshot,
     restore,
-    reset
+    reset,
+    clear: () => {
+      changesFetches.clear();
+      reset();
+    }
   };
 }
 

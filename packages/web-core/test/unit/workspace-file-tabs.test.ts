@@ -18,6 +18,7 @@ import {
 } from '../../src/service/standalone-file-window-service.js';
 import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
 import { createWorkspaceFileNavigationHistoryService } from '../../src/service/workspace-file-navigation-history-service.js';
+
 import { i18n } from '../../src/service/locale-preference-service.js';
 import WorkspaceFileTabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import { navigationTargetAtTextPosition } from '../../src/util/code-navigation-target.js';
@@ -210,6 +211,22 @@ describe('Workspace file tab service', () => {
 });
 
 describe('Workspace file navigation history', () => {
+  it('bounds file jump history without breaking branching or the current position', () => {
+    const history = createWorkspaceFileNavigationHistoryService();
+    for (let i = 0; i < 1000; i++) history.record({ tabId: 1, line: i }, { tabId: 1, line: i + 1 });
+    let steps = 0;
+    while (history.canTravel(-1)) {
+      history.travel(-1, undefined);
+      steps++;
+    }
+    expect(steps).toBe(255);
+    expect(history.travel(1, undefined)).toEqual({ tabId: 1, line: 746 });
+    history.record({ tabId: 1, line: 746 }, { tabId: 2, line: 4 });
+    expect(history.canTravel(1)).toBe(false);
+    expect(history.travel(-1, undefined)).toEqual({ tabId: 1, line: 746 });
+    history.remove(1);
+    expect(history.canTravel(-1)).toBe(false);
+  });
   it('replays positions across tabs and within one file, preserving edits to the current cursor', () => {
     const history = createWorkspaceFileNavigationHistoryService();
     history.record({ tabId: 1, line: 4, column: 7 }, { tabId: 2, line: 9, column: 2 });

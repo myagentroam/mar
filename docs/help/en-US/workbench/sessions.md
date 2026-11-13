@@ -1,6 +1,6 @@
 ---
 title: Create and Manage Sessions
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-13
 ---
 
 # Create and Manage Sessions
@@ -10,6 +10,8 @@ On Nodes that advertise grouping, **Main Sessions / Child Sessions** separates t
 Group tabs show only their names and selected state, without running counts or unread badges. Clicking a tab only switches the list; it does not open a session. Individual session rows retain their running and unread indicators. Notifications, recent-session items, and Workspace tabs synchronize Main / Child Sessions when they open a target session. Open the session tree from a session's More menu or title shortcut by clicking or tapping; hover does not open it. The tree shows the direct parent and recursive descendants, updates running, sleeping, and idle states from the Workspace while open, and puts active branches first. Sibling sessions are ordered by active branches first, then by most recent activity, with unknown times last. Loading shows only a spinner without darkening the background. When there are more than 100 descendants, this order is applied before selecting up to 100 sessions, including the ancestors needed to connect them. Truncation is indicated, and activity summaries still cover all descendants. Selecting a node opens it in Aside by default; its menu can open it in the main work area instead. Use the close button, an outside click, Esc, or mobile Back to close the tree.
 
 A session can be open in both the main work area and Aside. Opening either side does not close the other, and reopening the same location does not refresh its conversation. Each Workspace keeps independent Main and Aside drafts for message text, skill tags, and references. Switching sessions or starting a new session on one side preserves its input; switching Workspaces restores that Workspace's draft for each side. Even the same session has independent input on both sides, while concurrent duplicate submissions are still prevented. Queued-message edits remain bound to their original session. Closing an Aside session tab stops displaying the conversation there; it does not end the Agent's task, delete the session, or close the main work area.
+
+In work mode, closing a Workspace preserves its drafts in the current browser tab for reopening. Signing out or losing authentication clears that tab’s saved input drafts and queued-message edits so another account cannot restore them. Save important unsent content elsewhere first. This does not delete messages already sent or queued.
 
 Aside keeps at most one session tab per Workspace. Opening another session replaces the previous session tab while preserving Aside's current input and leaving the previous session's task running. Tool tabs such as Files and Terminal are unaffected.
 

@@ -42,6 +42,7 @@ export interface WorkspaceDirectObjectUrlSink {
 }
 
 const entriesByUrl = new Map<string, () => Promise<void>>();
+const previewLockName = (name: string) => `mar-direct-preview:${name}`;
 
 export function revokeWorkspaceDirectObjectUrl(url: string): void {
   URL.revokeObjectURL(url);
@@ -61,23 +62,66 @@ export function triggerBrowserFileDownload(url: string, fileName: string): void 
   anchor.remove();
 }
 
+/** Owns streamed previews and cross-window locks until URL revocation or page destruction. */
 export async function createWorkspaceDirectObjectUrlSink(
   fileName: string
 ): Promise<WorkspaceDirectObjectUrlSink> {
   const storage = navigator.storage as StorageManager & {
     getDirectory?: () => Promise<FileSystemDirectoryHandle>;
   };
-  if (storage.getDirectory === undefined) throw new Error('DIRECT_OPFS_UNAVAILABLE');
+  const locks = navigator.locks;
+  if (storage.getDirectory === undefined || locks?.request === undefined)
+    throw new Error('DIRECT_OPFS_UNAVAILABLE');
   const root = await storage.getDirectory();
-  const directory = await root.getDirectoryHandle('mar-direct-preview', { create: true });
+  const previews = await root.getDirectoryHandle('mar-direct-preview', { create: true });
+  // Flat legacy entries lack ownership locks and may belong to another live, older page.
+  const directory = await previews.getDirectoryHandle('managed-v1', { create: true });
   const entryName = `${createUuid()}-${safeFileName(fileName)}`;
-  const handle = await directory.getFileHandle(entryName, { create: true });
-  const writable = await handle.createWritable();
+  let releaseOwnership!: () => void;
+  await new Promise<void>((resolve, reject) => {
+    void locks
+      .request(
+        previewLockName(entryName),
+        () =>
+          new Promise<void>((release) => {
+            releaseOwnership = release;
+            resolve();
+          })
+      )
+      .catch(reject);
+  });
+  let removed = false;
   let closed = false;
+  let aborted = false;
   let createdUrl: string | undefined;
 
   async function remove(): Promise<void> {
-    await directory.removeEntry(entryName).catch(() => undefined);
+    if (removed) return;
+    removed = true;
+    try {
+      await directory.removeEntry(entryName).catch(() => undefined);
+    } finally {
+      releaseOwnership();
+    }
+  }
+
+  let handle: FileSystemFileHandle;
+  let writable: FileSystemWritableFileStream;
+  try {
+    const entries = directory as FileSystemDirectoryHandle & {
+      entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+    };
+    for await (const [name, entry] of entries.entries()) {
+      if (name === entryName || entry.kind !== 'file') continue;
+      await locks.request(previewLockName(name), { ifAvailable: true }, async (lock) => {
+        if (lock !== null) await directory.removeEntry(name).catch(() => undefined);
+      });
+    }
+    handle = await directory.getFileHandle(entryName, { create: true });
+    writable = await handle.createWritable();
+  } catch (error) {
+    await remove();
+    throw error;
   }
 
   return {
@@ -90,9 +134,16 @@ export async function createWorkspaceDirectObjectUrlSink(
       async close() {
         if (closed) return;
         closed = true;
-        await writable.close();
+        try {
+          await writable.close();
+        } catch (error) {
+          await remove();
+          throw error;
+        }
       },
       async abort() {
+        aborted = true;
+        if (createdUrl !== undefined) revokeWorkspaceDirectObjectUrl(createdUrl);
         if (!closed) {
           closed = true;
           await writable.abort().catch(() => undefined);
@@ -101,10 +152,12 @@ export async function createWorkspaceDirectObjectUrlSink(
       }
     },
     async objectUrl() {
+      if (aborted) throw new DOMException('Preview was aborted', 'AbortError');
       if (!closed) throw new Error('DIRECT_OBJECT_URL_NOT_READY');
       if (createdUrl !== undefined) return createdUrl;
       try {
         const file = await handle.getFile();
+        if (aborted) throw new DOMException('Preview was aborted', 'AbortError');
         const url = URL.createObjectURL(file);
         createdUrl = url;
         entriesByUrl.set(url, remove);

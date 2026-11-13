@@ -450,6 +450,56 @@ describe('Workspace Git service', () => {
     expect(service.changesFetchFailed.value).toBe(true);
   });
 
+  it.each(['completed', 'pending'])(
+    'clears an account-owned Changes fetch before the next account (%s)',
+    async (phase) => {
+      vi.spyOn(performance, 'now').mockReturnValue(0);
+      const previous = deferred<{ fetchFailed: boolean; updated: boolean }>();
+      const current = deferred<{ fetchFailed: boolean; updated: boolean }>();
+      let fetches = 0;
+      const { service } = createGitHarness(async (path) =>
+        path.includes('/git/fetch')
+          ? ++fetches === 1
+            ? previous.promise
+            : current.promise
+          : { changes: [] }
+      );
+      await service.loadChanges(true);
+      if (phase === 'completed') {
+        previous.resolve({ fetchFailed: true, updated: false });
+        await vi.waitFor(() => expect(service.changesFetchFailed.value).toBe(true));
+      }
+
+      service.clear();
+      await service.loadChanges(true);
+      expect(fetches).toBe(2);
+      previous.resolve({ fetchFailed: true, updated: false });
+      await previous.promise;
+      await service.loadChanges();
+      expect(service.changesFetchFailed.value).toBe(false);
+      current.resolve({ fetchFailed: false, updated: false });
+      await current.promise;
+    }
+  );
+
+  it('prunes expired Changes fetch bookkeeping without removing an in-flight attempt', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const deletes = vi.spyOn(Map.prototype, 'delete');
+    const pending = deferred<{ fetchFailed: boolean }>();
+    const { service, setTarget } = createGitHarness(async (path) =>
+      path.includes('/git/fetch') ? pending.promise : { changes: [] }
+    );
+    await service.loadChanges(true);
+    clock.mockReturnValue(31_000);
+    setTarget({ nodeId: 'node-2', workspaceId: 'workspace-2' });
+    service.reset();
+    expect(deletes).not.toHaveBeenCalledWith(JSON.stringify(['node-1', 'workspace-1']));
+    pending.resolve({ fetchFailed: false });
+    await vi.waitFor(() => expect(pending.promise).resolves.toEqual({ fetchFailed: false }));
+    await service.loadChanges();
+    expect(deletes).toHaveBeenCalledWith(JSON.stringify(['node-1', 'workspace-1']));
+  });
+
   it('rejoins an in-flight Changes fetch after leaving and returning to its target', async () => {
     const pending = deferred<{ fetchFailed: boolean }>();
     let reads = 0;

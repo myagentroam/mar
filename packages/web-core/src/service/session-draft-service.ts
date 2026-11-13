@@ -31,14 +31,16 @@ export interface DraftSlot {
   readonly references: Ref<readonly ComposerReference[]>;
   readonly queueEdit: Ref<QueueEditDraft | undefined>;
   readonly restore: () => void;
-  readonly persist: () => void;
+  readonly persist: () => boolean | void;
 }
 
 type ComposerDraft = Pick<DraftSlot, 'input' | 'skillTokens' | 'references'>;
 
+/** Owns tab-local Pane drafts; inactive slots are persisted before they are released. */
 export function createSessionDraftService(options: {
   readonly target: Readonly<Ref<DraftTarget | undefined>>;
-  readonly storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+  readonly storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> &
+    Partial<Pick<Storage, 'length' | 'key'>>;
 }) {
   const storage = options.storage ?? sessionStorage;
 
@@ -54,12 +56,69 @@ export function createSessionDraftService(options: {
     target.kind === 'session'
       ? `mar.workbench.session-draft.${JSON.stringify([target.nodeId, target.workspaceId, target.sessionId])}`
       : keyFor(target)!;
+  const queueKeyFor = (target: DraftTarget) =>
+    `mar.workbench.queue-edit.${JSON.stringify([
+      target.nodeId,
+      target.workspaceId,
+      target.kind,
+      target.kind === 'session' ? target.sessionId : null
+    ])}`;
 
   const composers = new Map<string, ComposerDraft>();
   const migratedComposers = new Set<string>();
   const queueEdits = new Map<string, Ref<QueueEditDraft | undefined>>();
-  const slots = new Map<string, DraftSlot>();
+  const slots = new Map<
+    string,
+    {
+      readonly target: DraftTarget;
+      readonly pane: DraftPane;
+      readonly storageKey: string;
+      readonly queueKey: string;
+      readonly slot: DraftSlot;
+    }
+  >();
+  const boundTargets: {
+    readonly target: Readonly<Ref<DraftTarget | undefined>>;
+    readonly pane: DraftPane;
+  }[] = [];
   const empty = new Map<DraftPane, DraftSlot>();
+
+  function releaseWhere(matches: (target: DraftTarget, pane: DraftPane) => boolean): boolean {
+    let saved = true;
+    for (const [id, entry] of slots) {
+      if (!matches(entry.target, entry.pane)) continue;
+      if (entry.slot.persist() === false) saved = false;
+      else slots.delete(id);
+    }
+    const composerKeys = new Set([...slots.values()].map((entry) => entry.storageKey));
+    const queueKeys = new Set([...slots.values()].map((entry) => entry.queueKey));
+    for (const key of composers.keys())
+      if (!composerKeys.has(key)) {
+        composers.delete(key);
+        migratedComposers.delete(key);
+      }
+    for (const key of queueEdits.keys()) if (!queueKeys.has(key)) queueEdits.delete(key);
+    return saved;
+  }
+
+  function trim(): void {
+    if (slots.size <= 64) return;
+    releaseWhere(
+      (target, pane) =>
+        slots.size > 64 &&
+        !boundTargets.some((binding) => {
+          const current = binding.target.value;
+          return (
+            binding.pane === pane &&
+            current?.nodeId === target.nodeId &&
+            current.workspaceId === target.workspaceId &&
+            current.kind === target.kind &&
+            (current.kind !== 'session' ||
+              (target.kind === 'session' && current.sessionId === target.sessionId))
+          );
+        })
+    );
+  }
 
   function createComposer(): ComposerDraft {
     return { input: ref(''), skillTokens: ref([]), references: ref([]) };
@@ -67,14 +126,9 @@ export function createSessionDraftService(options: {
 
   function forTarget(target: DraftTarget, pane: DraftPane = 'main'): DraftSlot {
     const storageKey = keyFor(target, pane)!;
-    const queueKey = `mar.workbench.queue-edit.${JSON.stringify([
-      target.nodeId,
-      target.workspaceId,
-      target.kind,
-      target.kind === 'session' ? target.sessionId : null
-    ])}`;
+    const queueKey = queueKeyFor(target);
     const slotKey = `${queueKey}.${pane}`;
-    let slot = slots.get(slotKey);
+    let slot = slots.get(slotKey)?.slot;
     if (slot === undefined) {
       let composer = composers.get(storageKey);
       if (composer === undefined) {
@@ -118,26 +172,34 @@ export function createSessionDraftService(options: {
         ...composer,
         queueEdit,
         restore: () => {
+          if (slots.get(slotKey)?.slot !== slot) return;
           restoreInto(storageKey, composer);
           restoreQueue();
         },
         persist: () => {
-          persistSlot(storageKey, composer);
+          if (slots.get(slotKey)?.slot !== slot) return false;
+          const saved = persistSlot(storageKey, composer);
           try {
             if (queueEdit.value !== undefined)
               storage.setItem(queueKey, JSON.stringify(queueEdit.value));
             else if (storage.getItem(queueKey) !== null) storage.setItem(queueKey, 'null');
+            return saved;
           } catch {
             // Queue editing remains available in memory when storage is unavailable.
+            return false;
           }
         }
       };
-      slots.set(slotKey, slot);
     }
+    slots.delete(slotKey);
+    slots.set(slotKey, { target, pane, storageKey, queueKey, slot });
+    trim();
     return slot;
   }
 
   function bindTarget(target: Readonly<Ref<DraftTarget | undefined>>, pane: DraftPane = 'main') {
+    if (!boundTargets.some((binding) => binding.target === target && binding.pane === pane))
+      boundTargets.push({ target, pane });
     const current = () => {
       if (target.value !== undefined) return forTarget(target.value, pane);
       let slot = empty.get(pane);
@@ -238,7 +300,7 @@ export function createSessionDraftService(options: {
     }
   }
 
-  function persistSlot(storageKey: string, slot: ComposerDraft): void {
+  function persistSlot(storageKey: string, slot: ComposerDraft): boolean {
     const { input, skillTokens, references } = slot;
     try {
       if (
@@ -258,8 +320,10 @@ export function createSessionDraftService(options: {
             ...(migratedComposers.has(storageKey) ? { sessionDraftsMigrated: true } : {})
           })
         );
+      return true;
     } catch {
       // Drafts are a local convenience only.
+      return false;
     }
   }
 
@@ -273,7 +337,84 @@ export function createSessionDraftService(options: {
       if (target !== undefined) forTarget(target).persist();
     },
     bindTarget,
-    forTarget
+    forTarget,
+    releaseWorkspace: (nodeId: string, workspaceId: string) =>
+      releaseWhere((target) => target.nodeId === nodeId && target.workspaceId === workspaceId),
+    releaseNode: (nodeId: string) => releaseWhere((target) => target.nodeId === nodeId),
+    releaseSession: (nodeId: string, workspaceId: string, sessionId: string) => {
+      const target = { kind: 'session' as const, nodeId, workspaceId, sessionId };
+      const queueKey = queueKeyFor(target);
+      // Resolve Main first so a legacy Composer is migrated before its old key is removed.
+      forTarget(target).queueEdit.value = undefined;
+      const saved = releaseWhere(
+        (target) =>
+          target.kind === 'session' &&
+          target.nodeId === nodeId &&
+          target.workspaceId === workspaceId &&
+          target.sessionId === sessionId
+      );
+      // Deleted sessions cannot resume an edit, including entries already evicted from memory.
+      // The shared Workspace Pane composers still use the ordinary recoverable release path.
+      try {
+        storage.removeItem(queueKey);
+      } catch {
+        // The deleted edit is already cleared in memory when storage is unavailable.
+      }
+      const legacyKey = legacyKeyFor(target);
+      try {
+        if (saved) storage.removeItem(legacyKey);
+        else {
+          // A failed migration must not destroy the only durable copy of the Pane input.
+          const legacy = JSON.parse(storage.getItem(legacyKey) ?? 'null') as unknown;
+          if (typeof legacy === 'object' && legacy !== null && 'queueEdit' in legacy) {
+            delete legacy.queueEdit;
+            storage.setItem(legacyKey, JSON.stringify(legacy));
+          }
+        }
+      } catch {
+        // Preserve the original legacy entry if its queue metadata cannot be rewritten safely.
+      }
+    },
+    clear: () => {
+      // Sign-out discards this tab's drafts, unlike ordinary Workspace release.
+      // Include evicted and legacy entries so another account cannot restore them.
+      const keys = new Set<string>();
+      for (const entry of slots.values()) {
+        keys.add(entry.storageKey);
+        keys.add(entry.queueKey);
+        keys.add(legacyKeyFor(entry.target));
+      }
+      try {
+        if (storage.key !== undefined && storage.length !== undefined)
+          for (let index = 0; index < storage.length; index++) {
+            const key = storage.key(index);
+            if (
+              key !== null &&
+              [
+                'mar.workbench.draft.',
+                'mar.workbench.aside-draft.',
+                'mar.workbench.session-draft.',
+                'mar.workbench.queue-edit.'
+              ].some((prefix) => key.startsWith(prefix))
+            )
+              keys.add(key);
+          }
+      } catch {
+        // Still attempt known keys when storage enumeration is unavailable.
+      }
+      for (const key of keys) {
+        try {
+          storage.removeItem(key);
+        } catch {
+          // Never retain the previous account in memory when storage is unavailable.
+        }
+      }
+      slots.clear();
+      composers.clear();
+      migratedComposers.clear();
+      queueEdits.clear();
+      empty.clear();
+    }
   };
 }
 

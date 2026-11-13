@@ -66,6 +66,34 @@ function ref<T>(value: T): { value: T } {
 }
 
 describe('Runner Profile Domain Service', () => {
+  it('prunes Node caches and rejects an in-flight read after its owner is released', async () => {
+    const target = vueRef({ nodeId: 'node-a', workspaceId: 'w' });
+    let resolve!: (value: unknown) => void;
+    const request = vi.fn().mockResolvedValue({ profiles: [codexProfile], defaults: [] });
+    const service = createRunnerProfileService({
+      workspaceTarget: target,
+      request,
+      notice: vi.fn(),
+      errorMessage: String
+    });
+    await service.load('node-a');
+    target.value = { nodeId: 'node-b', workspaceId: 'w' };
+    request.mockImplementationOnce(
+      () =>
+        new Promise((accept) => {
+          resolve = accept;
+        })
+    );
+    const pending = service.load('node-b');
+    service.retainNodes(new Set());
+    resolve({ profiles: [openCodeProfile], defaults: [] });
+    await pending;
+    expect(service.has('node-a')).toBe(false);
+    expect(service.has('node-b')).toBe(false);
+    expect(service.profiles.value).toEqual([]);
+    expect(service.loading.value).toBe(false);
+  });
+
   it('retains Auto exactly when the Node profile provides it', async () => {
     for (const hasAuto of [true, false]) {
       const profiles = shallowRef<readonly RunnerProfile[]>([]);

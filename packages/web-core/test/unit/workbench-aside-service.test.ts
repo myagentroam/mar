@@ -5,6 +5,26 @@ import {
 } from '../../src/service/workbench-aside-service.js';
 
 describe('Workspace Aside metadata', () => {
+  it('releases the complete Workspace, Node and page scope independently', () => {
+    const service = createWorkbenchAsideService();
+    const a = { nodeId: 'node-a', workspaceId: 'a' };
+    const b = { nodeId: 'node-a', workspaceId: 'b' };
+    const c = { nodeId: 'node-b', workspaceId: 'c' };
+    for (const target of [a, b, c]) {
+      service.ensure(target, ['files']);
+      service.openSession({ ...target, sessionId: 'session' });
+      service.openHtml(target, 'index.html');
+    }
+    service.removeWorkspace(a);
+    expect(service.current(a)).toEqual({ tools: [], sessions: [] });
+    expect(service.current(b).htmlPath).toBe('index.html');
+    service.removeNode('node-a');
+    expect(service.current(b)).toEqual({ tools: [], sessions: [] });
+    expect(service.current(c).sessions).toEqual(['session']);
+    service.clear();
+    expect(service.current(c)).toEqual({ tools: [], sessions: [] });
+  });
+
   it('owns one browser target per workspace and clears it with its scope', () => {
     const service = createWorkbenchAsideService();
     const a = { nodeId: 'node', workspaceId: 'a' };

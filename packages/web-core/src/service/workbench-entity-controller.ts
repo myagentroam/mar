@@ -28,6 +28,7 @@ export function createWorkbenchEntityController(options: {
   readonly replaceSession: (previousId: string, session: Session) => void;
   readonly refreshSessions: () => Promise<unknown>;
   readonly discardNodeCaches: (nodeId: string) => void;
+  readonly releaseSessionDraft: (nodeId: string, workspaceId: string, sessionId: string) => void;
   readonly openDraft: () => void;
   readonly replaceUrl: () => void;
   readonly clearNodeDetails: () => void;
@@ -73,7 +74,10 @@ export function createWorkbenchEntityController(options: {
   async function deleteSession(session: Session): Promise<void> {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (!(await options.actions.deleteSession(session))) return;
-    if (nodeId !== undefined) options.caches.removeSession(nodeId, session.workspaceId, session.id);
+    if (nodeId !== undefined) {
+      options.caches.removeSession(nodeId, session.workspaceId, session.id);
+      options.releaseSessionDraft(nodeId, session.workspaceId, session.id);
+    }
     if (options.workspaceTarget.value?.nodeId !== nodeId) return;
     const wasSelected = options.selectedSessionId.value === session.id;
     options.removeSessionId(session.id);
