@@ -1510,7 +1510,7 @@ export function createWorkbenchPageController<
         watchCoordinator.current?.stopSession();
       }
       discardWorkspaceViewCache(target.nodeId, target.workspaceId);
-      drafts.releaseWorkspace(target.nodeId, target.workspaceId);
+      drafts.releaseWorkspace(target.nodeId, target.workspaceId, { invalidateSubmissions: true });
       workbenchAsideService.removeWorkspace(target);
       if (tab !== undefined) closeWorkspaceTab(tab, true);
       else if (

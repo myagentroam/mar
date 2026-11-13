@@ -58,6 +58,11 @@ const captured = vi.hoisted(() => ({
   setDraft: undefined as ((open: boolean) => void) | undefined,
   setSessions: undefined as ((sessions: readonly Session[]) => void) | undefined,
   setWorkspaces: undefined as ((workspaces: readonly Workspace[]) => void) | undefined,
+  workspaceSelection: undefined as
+    | ReturnType<
+        typeof import('../../src/service/workbench-workspace-selection-service.js').createWorkbenchWorkspaceSelectionService
+      >
+    | undefined,
   capability: undefined as
     | ReturnType<
         typeof import('../../src/service/workbench-capability-service.js').createWorkbenchCapabilityService
@@ -257,14 +262,14 @@ vi.mock('../../src/service/workbench-workspace-selection-service.js', async (ori
         target: state.target,
         currentSelectionRevision: state.currentSelectionRevision,
         connect: (options: Parameters<typeof module.createWorkbenchWorkspaceSelectionService>[0]) =>
-          module.createWorkbenchWorkspaceSelectionService(
+          (captured.workspaceSelection = module.createWorkbenchWorkspaceSelectionService(
             {
               ...options,
               workspaceTarget: state.target,
               setWorkspaceTarget: state.setTarget
             },
             state
-          )
+          ))
       };
     }
   };
@@ -458,6 +463,216 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it.each(
+    (
+      [
+        'node-missing',
+        'workspace-missing',
+        'FORBIDDEN',
+        'NODE_NOT_FOUND',
+        'WORKSPACE_NOT_FOUND',
+        '403',
+        '404',
+        'NODE_OFFLINE',
+        'disconnected',
+        'network',
+        '500'
+      ] as const
+    ).flatMap((reason) =>
+      (['message', 'queue'] as const).map((submission) => ({ reason, submission }))
+    )
+  )(
+    'settles pending $submission according to actual Workspace selection invalidation: $reason',
+    async ({ reason, submission }) => {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: vi.fn((key: string) => values.get(key) ?? null),
+        setItem: vi.fn((key: string, value: string) => void values.set(key, value)),
+        removeItem: vi.fn((key: string) => void values.delete(key)),
+        get length() {
+          return values.size;
+        },
+        key: (index: number) => [...values.keys()][index] ?? null
+      };
+      vi.stubGlobal('sessionStorage', storage);
+      const created = vi.spyOn(draftOwner, 'createSessionDraftService');
+      const { page } = controller();
+      const drafts = created.mock.results[0]!.value as ReturnType<
+        typeof draftOwner.createSessionDraftService
+      >;
+      const workspace: Workspace = { id: 'workspace-a', path: '/project', kind: 'DIRECTORY' };
+      const session: Session = {
+        id: 'session-a',
+        workspaceId: workspace.id,
+        runner: 'codex',
+        externalSessionId: 'native-a',
+        nativeControl: 'MAR_MANAGED',
+        activity: 'IDLE'
+      };
+      const target = {
+        kind: 'session' as const,
+        nodeId: node.id,
+        workspaceId: workspace.id,
+        sessionId: session.id
+      };
+      const manifest: NodeWorkbenchManifest = {
+        manifestVersion: 1,
+        observedAt: 1,
+        conversation: { available: true, reasonCode: null }
+      };
+      let invalidate = false;
+      let catalogReads = 0;
+      let writes = 0;
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        const path = new URL(String(input), location.href).pathname;
+        if (
+          path.endsWith('/messages') ||
+          (path === '/api/queue-items/item' && init?.method === 'PATCH')
+        ) {
+          writes += 1;
+          await pending;
+          return new Response(
+            JSON.stringify(
+              submission === 'message'
+                ? {
+                    session,
+                    run: {
+                      id: 'late-run',
+                      sessionId: session.id,
+                      workspaceId: workspace.id,
+                      status: 'COMPLETED',
+                      startedAt: 1,
+                      completedAt: 2
+                    },
+                    delivery: 'STARTED'
+                  }
+                : {}
+            )
+          );
+        }
+        if (path === '/api/workspaces') {
+          catalogReads += 1;
+          if (invalidate) {
+            if (reason === 'network') throw new TypeError('Failed to fetch');
+            if (reason === 'workspace-missing')
+              return new Response(JSON.stringify({ workspaces: [] }));
+            if (['403', '404', '500'].includes(reason))
+              return new Response('{}', { status: Number(reason) });
+            return new Response(JSON.stringify({ error: reason }), {
+              status: reason === 'NODE_OFFLINE' ? 503 : 403
+            });
+          }
+        }
+        return new Response(
+          JSON.stringify({
+            manifest,
+            workspaces: [workspace],
+            sessions: [session],
+            profiles: [],
+            csrfToken: 'fixture'
+          })
+        );
+      });
+      await captured.seedNodes!([node]);
+      captured.tree!.cacheWorkspaces(node.id, [workspace]);
+      await captured.workspaceSelection!.select(target);
+      await vi.waitFor(() => expect(captured.workspaceSelection!.loading.value).toBe(false));
+      captured.setSessions!([session]);
+      captured.setSession!(session.id);
+      captured.setDraft!(false);
+      await flushComponent();
+      const slot = drafts.forTarget(target);
+      slot.input.value = 'Pending input';
+      if (submission === 'queue') {
+        page.mainPaneController.state.queue.startEditing({
+          queueItemId: 'item',
+          content: 'Before edit'
+        });
+        page.mainPaneController.state.queue.editingContent.value = 'Pending queue edit';
+      }
+      slot.persist();
+      const isolated = [
+        { ...target, workspaceId: 'other-workspace' },
+        { ...target, nodeId: 'other-node' }
+      ].map((target) => {
+        const slot = drafts.forTarget(target);
+        slot.input.value = 'Other pending input';
+        slot.persist();
+        return { target, slot, settlement: slot.retain() };
+      });
+      const submitting =
+        submission === 'message'
+          ? page.mainPaneController.sendMessage()
+          : page.mainPaneController.queueActions.save('item');
+      try {
+        await vi.waitFor(() => expect(writes).toBe(1));
+        const revoked = !['NODE_OFFLINE', 'disconnected', 'network', '500'].includes(reason);
+        const previousReads = catalogReads;
+        invalidate = true;
+        if (reason === 'node-missing') await captured.seedNodes!([]);
+        if (reason === 'disconnected') await captured.seedNodes!([{ ...node, connected: false }]);
+        await captured.workspaceSelection!.select(target);
+        if (!['node-missing', 'disconnected'].includes(reason))
+          await vi.waitFor(() => expect(catalogReads).toBeGreaterThan(previousReads));
+        await vi.waitFor(() => expect(captured.workspaceSelection!.loading.value).toBe(false));
+        await flushComponent();
+        if (revoked) {
+          expect(page.selection.workspaceTarget).toBeUndefined();
+          expect(page.selection.workspaceTabs).toHaveLength(0);
+        } else {
+          expect(page.selection.workspaceTabs).toHaveLength(1);
+          page.selection.closeWorkspaceTab(page.selection.workspaceTabs[0]!);
+          await flushComponent();
+        }
+        storage.setItem.mockClear();
+        storage.removeItem.mockClear();
+        finish();
+        await submitting;
+        await flushComponent();
+        if (revoked) {
+          const draftWrites = [...storage.setItem.mock.calls, ...storage.removeItem.mock.calls]
+            .map(([key]) => key)
+            .filter(
+              (key) =>
+                key.startsWith('mar.workbench.draft.') ||
+                key.startsWith('mar.workbench.aside-draft.') ||
+                key.startsWith('mar.workbench.queue-edit.')
+            );
+          expect(draftWrites).toEqual([]);
+          expect(slot.input.value).toBe('Pending input');
+          if (submission === 'queue')
+            expect(slot.queueEdit.value?.content).toBe('Pending queue edit');
+          storage.getItem.mockClear();
+          drafts.forTarget(target);
+          expect(storage.getItem).toHaveBeenCalledWith(
+            `mar.workbench.draft.${node.id}.${workspace.id}`
+          );
+        } else {
+          const restored = draftOwner.createSessionDraftService({ target: ref(target), storage });
+          expect(restored.input.value).toBe(submission === 'message' ? '' : 'Pending input');
+          expect(restored.queueEdit.value).toBeUndefined();
+        }
+        for (const other of isolated) {
+          other.settlement.settle(() => {
+            other.slot.input.value = '';
+          });
+          other.settlement.release();
+          expect(
+            draftOwner.createSessionDraftService({ target: ref(other.target), storage }).input.value
+          ).toBe('');
+        }
+      } finally {
+        finish();
+        await submitting;
+        for (const other of isolated) other.settlement.release();
+      }
+    }
+  );
+
   it.each(
     (['node', 'workspace'] as const).flatMap((resource) =>
       (['success', 'failure', 'cancel'] as const).flatMap((outcome) =>
