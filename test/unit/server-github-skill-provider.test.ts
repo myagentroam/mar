@@ -1,6 +1,9 @@
 // @test-covers packages/server-core/src/git-skill-repository.ts
 import { mkdtemp, mkdir, readFile, stat, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:https';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
+import type { ResolvedSkillBundle } from '../../packages/server-core/src/skill-bundle.js';
 import type { AddressInfo } from 'node:net';
 import { devNull, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,11 +11,15 @@ import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GithubSkillProvider } from '../../ee/server/src/skill/github-skill-provider.js';
 import { GitSkillRepository } from '../../ee/server/src/skill/git-skill-repository.js';
-import * as networkPolicy from '../../packages/server-core/src/skill-network-policy.js';
 
-const { runGit, lookup } = vi.hoisted(() => ({ runGit: vi.fn(), lookup: vi.fn() }));
+const { runGit, spawnGit, lookup } = vi.hoisted(() => ({
+  runGit: vi.fn(),
+  spawnGit: vi.fn(),
+  lookup: vi.fn()
+}));
 vi.mock('node:child_process', () => ({
-  execFile: Object.assign(vi.fn(), { [Symbol.for('nodejs.util.promisify.custom')]: runGit })
+  execFile: Object.assign(vi.fn(), { [Symbol.for('nodejs.util.promisify.custom')]: runGit }),
+  spawn: spawnGit
 }));
 vi.mock('node:dns/promises', () => ({ lookup }));
 
@@ -21,14 +28,26 @@ const skill = Buffer.from('---\nname: review\ndescription: Review code\n---\n');
 const script = Buffer.from('echo review\n');
 let entries: { path: string; content: Buffer }[];
 const directories = new Set<string>();
+const bundles: ResolvedSkillBundle[] = [];
+const resolveBundle = GitSkillRepository.prototype.resolve;
+async function bundleFiles(
+  bundle: ResolvedSkillBundle
+): Promise<{ path: string; contentBase64: string }[]> {
+  return JSON.parse((await bundle.archive().toArray()).join('')).files;
+}
 
 beforeEach(() => {
-  lookup.mockReset().mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+  lookup.mockReset().mockRejectedValue(new Error('Manual DNS lookup must not run'));
+  vi.spyOn(GitSkillRepository.prototype, 'resolve').mockImplementation(async function (input) {
+    const bundle = await resolveBundle.call(this, input);
+    bundles.push(bundle);
+    return bundle;
+  });
   entries = [
     { path: 'skills/review/script.sh', content: script },
     { path: 'skills/review/SKILL.md', content: skill }
   ];
-  runGit.mockReset().mockImplementation(async (_file, args, options) => {
+  runGit.mockReset().mockImplementation(async (_file, args) => {
     if (args.includes('clone')) {
       directories.add(args.at(-1));
       return { stdout: '' };
@@ -40,13 +59,31 @@ beforeEach(() => {
           entries.map((entry) => `100644 blob ${'b'.repeat(40)}\t${entry.path}\0`).join('')
         )
       };
+    throw new Error('Unexpected buffered Git read');
+  });
+  spawnGit.mockReset().mockImplementation((_file, args) => {
     const entry = entries.find((entry) => `HEAD:${entry.path}` === args[1]);
-    if (entry === undefined) throw new Error('Unexpected Git read');
-    return { stdout: options.encoding === 'utf8' ? entry.content.toString() : entry.content };
+    if (entry === undefined) throw new Error('Unexpected Git blob');
+    const stdout = Readable.from(
+      (function* () {
+        for (let offset = 0; offset < entry.content.length; offset += 64 * 1024)
+          yield entry.content.subarray(offset, offset + 64 * 1024);
+      })()
+    );
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      kill: vi.fn(() => {
+        stdout.destroy();
+        return true;
+      })
+    });
+    stdout.once('close', () => child.emit('close', 0));
+    return child;
   });
 });
 
 afterEach(async () => {
+  await Promise.all(bundles.splice(0).map((bundle) => bundle.dispose()));
   for (const directory of directories) {
     await expect(stat(directory)).rejects.toMatchObject({ code: 'ENOENT' });
     await rm(directory, { recursive: true, force: true });
@@ -78,7 +115,7 @@ describe('Git Skill repository snapshots', () => {
       contentBytes: skill.length + script.length
     });
     expect(bundle.contentHash).toMatch(/^[0-9a-f]{64}$/u);
-    expect(bundle.files.map((file) => file.path)).toEqual(
+    expect((await bundleFiles(bundle)).map((file) => file.path)).toEqual(
       ['script.sh', 'SKILL.md'].sort((a, b) => a.localeCompare(b))
     );
     const clones = runGit.mock.calls.filter(([, args]) => args.includes('clone'));
@@ -111,7 +148,7 @@ describe('Git Skill repository snapshots', () => {
       repositoryUrl: 'https://git.example.com/acme/skills',
       skillPath: 'skills/review'
     });
-    expect(github.files).toEqual(gitlab.files);
+    expect(await bundleFiles(github)).toEqual(await bundleFiles(gitlab));
     expect(github.contentHash).toBe(gitlab.contentHash);
     expect(github.archiveHash).toBe(gitlab.archiveHash);
   });
@@ -146,7 +183,7 @@ describe('Git Skill repository snapshots', () => {
         description: 'Review code'
       }
     ]);
-    expect(runGit.mock.calls.filter(([, args]) => args[0] === 'show')).toHaveLength(1);
+    expect(spawnGit).toHaveBeenCalledOnce();
   });
 
   it.each(['../review', '/review', 'skills/../review', 'skills\\review'])(
@@ -177,50 +214,31 @@ describe('Git Skill repository snapshots', () => {
     expect(runGit).not.toHaveBeenCalled();
   });
 
-  it('rejects any private DNS answer before cloning', async () => {
-    lookup.mockResolvedValue([
-      { address: '8.8.8.8', family: 4 },
-      { address: '127.0.0.1', family: 4 }
-    ]);
-    await expect(
-      new GithubSkillProvider().resolve({
-        repositoryUrl: 'https://example.com/acme/skills',
-        skillPath: '.'
-      })
-    ).rejects.toThrow('SKILL_SOURCE_ADDRESS_FORBIDDEN');
-    expect(runGit).not.toHaveBeenCalled();
-  });
+  it.each(['https://127.0.0.1/acme/skills', 'git@internal.example:acme/skills.git'])(
+    'clones %s without manual DNS or public-address validation',
+    async (repositoryUrl) => {
+      await expect(
+        new GithubSkillProvider().resolve({ repositoryUrl, skillPath: 'skills/review' })
+      ).resolves.toMatchObject({ name: 'review' });
+      expect(lookup).not.toHaveBeenCalled();
+      expect(runGit.mock.calls[0]?.[1]).toContain('clone');
+    }
+  );
 
-  it('does not leave metadata readers running after discovery fails and removes its snapshot', async () => {
+  it('joins the failed metadata reader before removing its snapshot without starting later reads', async () => {
     entries = [
       { path: 'skills/broken/SKILL.md', content: Buffer.from('invalid frontmatter') },
       { path: 'skills/review/SKILL.md', content: skill }
     ];
-    const execute = runGit.getMockImplementation()!;
-    let pendingReads = 0;
-    let finishRead: (() => void) | undefined;
-    runGit.mockImplementation(async (file, args, options) => {
-      if (args[0] === 'show' && args[1] === 'HEAD:skills/review/SKILL.md') {
-        pendingReads += 1;
-        await new Promise<void>((resolve) => {
-          finishRead = resolve;
-        });
-        pendingReads -= 1;
-      }
-      return execute(file, args, options);
-    });
-    try {
-      await expect(
-        new GitSkillRepository().discover('https://git.example.com/skills.git', '', 40)
-      ).rejects.toThrow('SKILL_CONTENT_INVALID');
-      expect(pendingReads).toBe(0);
-    } finally {
-      finishRead?.();
-    }
+    await expect(
+      new GitSkillRepository().discover('https://git.example.com/skills.git', '', 40)
+    ).rejects.toThrow('SKILL_CONTENT_INVALID');
+    expect(spawnGit).toHaveBeenCalledOnce();
+    expect(spawnGit.mock.results[0]?.value.stdout.destroyed).toBe(true);
   });
 
   it.each([false, true])(
-    'pins HTTPS DNS and applies the TLS policy (%s) without inherited overrides',
+    'applies the TLS policy (%s) without manual DNS or inherited overrides',
     async (disabled) => {
       vi.stubEnv('GIT_SSL_NO_VERIFY', 'true');
       vi.stubEnv('GIT_CONFIG_COUNT', '1');
@@ -233,7 +251,6 @@ describe('Git Skill repository snapshots', () => {
       const clone = runGit.mock.calls.find(([, args]) => args.includes('clone'))!;
       expect(clone[1]).toEqual(
         expect.arrayContaining([
-          'http.curloptResolve=github.com:443:8.8.8.8',
           'http.followRedirects=false',
           'http.proxy=',
           'protocol.allow=never',
@@ -249,6 +266,8 @@ describe('Git Skill repository snapshots', () => {
       expect(clone[2].env.GIT_CONFIG_PARAMETERS).toBeUndefined();
       expect(clone[2].env.GIT_SSL_NO_VERIFY).toBe(disabled ? 'true' : undefined);
       expect(clone[1]).toContain(`http.sslVerify=${!disabled}`);
+      expect(clone[1].some((arg: string) => arg.startsWith('http.curloptResolve='))).toBe(false);
+      expect(lookup).not.toHaveBeenCalled();
     }
   );
 
@@ -290,7 +309,7 @@ describe('Git Skill repository snapshots', () => {
     expect(bundle.contentBytes).toBe(entries[0]!.content.length + skill.length);
     expect(
       Buffer.from(
-        bundle.files.find((file) => file.path === 'script.sh')!.contentBase64,
+        (await bundleFiles(bundle)).find((file) => file.path === 'script.sh')!.contentBase64,
         'base64'
       ).equals(entries[0]!.content)
     ).toBe(true);
@@ -311,8 +330,8 @@ describe('Git Skill repository snapshots', () => {
       repositoryUrl: 'https://git.example.com/skills.git',
       skillPath: 'skills/review'
     });
-    expect(bundle.files).toHaveLength(1003);
-    expect(bundle.files.some((file) => file.path.startsWith('other/'))).toBe(false);
+    expect(bundle.fileCount).toBe(1003);
+    expect((await bundleFiles(bundle)).some((file) => file.path.startsWith('other/'))).toBe(false);
   });
 
   it('reports clone failure without leaking remote diagnostics and removes the temporary directory', async () => {
@@ -332,6 +351,7 @@ describe('Git Skill repository snapshots', () => {
     const childProcess =
       await vi.importActual<typeof import('node:child_process')>('node:child_process');
     const exec = promisify(childProcess.execFile);
+    spawnGit.mockImplementation(childProcess.spawn);
     const root = await mkdtemp(path.join(tmpdir(), 'mar-skill-source-'));
     const source = path.join(root, '~acme/skill repo.git');
     let server: ReturnType<typeof createServer> | undefined;
@@ -413,12 +433,7 @@ describe('Git Skill repository snapshots', () => {
         }
       );
       await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
-      const repositoryUrl = `https://git.example.com:${(server.address() as AddressInfo).port}/~acme/skill%20repo.git`;
-      // Only public-DNS admission is replaced; TLS and Git transport remain real.
-      vi.spyOn(networkPolicy, 'assertPublicSkillHost').mockResolvedValue({
-        address: '127.0.0.1',
-        family: 4
-      });
+      const repositoryUrl = `https://127.0.0.1:${(server.address() as AddressInfo).port}/~acme/skill%20repo.git`;
       runGit.mockImplementation(async (_file, args, options) => {
         if (args.includes('clone')) {
           const directory = args.at(-1);
@@ -441,7 +456,7 @@ describe('Git Skill repository snapshots', () => {
       expect(bundle.tlsVerified).toBe(false);
       expect(requests).toContain('/~acme/skill%20repo.git/info/refs');
       expect(requests).toContain('/~acme/skill%20repo.git/git-upload-pack');
-      expect(bundle.files).toEqual(
+      expect(await bundleFiles(bundle)).toEqual(
         expect.arrayContaining([
           { path: 'SKILL.md', contentBase64: skill.toString('base64') },
           { path: 'script.sh', contentBase64: script.toString('base64') }

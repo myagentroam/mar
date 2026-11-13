@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { prepareMysqlDatabase } from '../../ee/server/src/mysql/connection.js';
 import { SkillSourceService } from '../../ee/server/src/skill/skill-source-service.js';
 import { SkillFavoriteService } from '../../ee/server/src/skill/skill-favorite-service.js';
@@ -99,13 +100,17 @@ async function withFixture(kind: Kind, run: (fixture: Fixture) => Promise<void>)
           // Different candidates must not serialize on the independent cache-key coordinator.
           contentHash: createHash('sha256').update(request.skillPath!).digest('hex'),
           archiveHash: 'c'.repeat(64),
-          archiveJson: JSON.stringify({
-            schemaVersion: 1,
-            files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
-          }),
           contentBytes: 1,
           tlsVerified: true,
-          files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+          fileCount: 1,
+          archive: () =>
+            Readable.from([
+              JSON.stringify({
+                schemaVersion: 1,
+                files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+              })
+            ]),
+          dispose: async () => {}
         })
       };
       const favoriteService = new SkillFavoriteService(

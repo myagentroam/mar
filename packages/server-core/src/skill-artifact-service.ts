@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
+import type { ReadStream } from 'node:fs';
 import path from 'node:path';
 import type { SkillFavoriteSummary } from './skill-favorite-service.js';
 
@@ -27,14 +28,14 @@ export class SkillArtifactService {
     return token;
   }
 
-  async consume(token: string, nodeId: string): Promise<Buffer> {
+  async consume(token: string, nodeId: string): Promise<ReadStream> {
     const ticket = this.tickets.get(token);
     this.tickets.delete(token);
     if (ticket === undefined || ticket.nodeId !== nodeId || ticket.expiresAt < this.now())
       throw new Error('SKILL_ARTIFACT_TICKET_INVALID');
     const file = path.join(this.cacheDirectory, `${ticket.contentHash}.json`);
-    if ((await stat(file)).size > 40 * 1024 * 1024) throw new Error('SKILL_CONTENT_INVALID');
-    return readFile(file);
+    const handle = await open(file, 'r');
+    return handle.createReadStream();
   }
 
   private cleanup(): void {

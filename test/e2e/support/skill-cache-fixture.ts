@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import mysql from 'mysql2/promise';
 import type { Pool, PoolConnection } from 'mysql2/promise';
 import type { ExecuteValues } from 'mysql2';
@@ -26,6 +27,10 @@ export const input = {
 };
 
 export function bundle(character = 'a'): ResolvedSkillBundle {
+  const archive = JSON.stringify({
+    schemaVersion: 1,
+    files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+  });
   return {
     repositoryIdentity: 'github.com/acme/skills',
     repositoryUrl: 'https://github.com/acme/skills',
@@ -35,13 +40,11 @@ export function bundle(character = 'a'): ResolvedSkillBundle {
     commitSha: character.repeat(40),
     contentHash: character.repeat(64),
     archiveHash: 'f'.repeat(64),
-    archiveJson: JSON.stringify({
-      schemaVersion: 1,
-      files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
-    }),
     contentBytes: 10,
     tlsVerified: true,
-    files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+    fileCount: 1,
+    archive: () => Readable.from([archive]),
+    dispose: async () => {}
   };
 }
 

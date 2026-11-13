@@ -1,6 +1,40 @@
+import { readFile } from 'node:fs/promises';
+import { createServer as createHttpsServer } from 'node:https';
+import type { AddressInfo } from 'node:net';
 import { describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'mysql2/promise';
-import { isPublicAddress, SkillNetworkPolicy } from '../../src/skill-network-policy.js';
+import { SkillNetworkPolicy } from '../../src/skill-network-policy.js';
+
+const { lookup } = vi.hoisted(() => ({ lookup: vi.fn() }));
+vi.mock('node:dns/promises', () => ({ lookup }));
+
+async function startLocalHttpsServer() {
+  const fixtureDirectory = new URL('../../../../mar-agent/test/fixtures/', import.meta.url);
+  const [key, cert] = await Promise.all([
+    readFile(new URL('localhost-test-key.pem', fixtureDirectory)),
+    readFile(new URL('localhost-test-cert.pem', fixtureDirectory))
+  ]);
+  const requests: string[] = [];
+  const server = createHttpsServer({ key, cert }, (request, response) => {
+    requests.push(request.url ?? '');
+    response.writeHead(200, { 'content-type': 'text/plain' }).end('local response');
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address() as AddressInfo;
+  return {
+    requests,
+    url: `https://127.0.0.1:${address.port}/skill`,
+    async close() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error === undefined ? resolve() : reject(error)));
+        server.closeAllConnections();
+      });
+    }
+  };
+}
 
 describe('Server Skill TLS policy', () => {
   it('keeps certificate verification enabled by default and explicitly persists the high-risk opt-out', async () => {
@@ -21,22 +55,27 @@ describe('Server Skill TLS policy', () => {
     ]);
   });
 
-  it('rejects loopback, private, link-local, and documentation-reserved addresses', () => {
-    for (const address of [
-      '127.0.0.1',
-      '10.0.0.1',
-      '169.254.169.254',
-      '172.16.0.1',
-      '192.168.1.1',
-      '192.0.2.1',
-      '::1',
-      'fc00::1',
-      'fe80::1',
-      '2001:db8::1',
-      '::ffff:127.0.0.1'
-    ])
-      expect(isPublicAddress(address), address).toBe(false);
-    expect(isPublicAddress('8.8.8.8')).toBe(true);
-    expect(isPublicAddress('2606:4700:4700::1111')).toBe(true);
+  it('requests a loopback HTTPS URL without pre-resolving and retains the TLS opt-out', async () => {
+    const server = await startLocalHttpsServer();
+    lookup.mockReset().mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([[{ setting_value: 'false' }], []])
+      .mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+    const policy = new SkillNetworkPolicy({ raw: { execute } } as unknown as { raw: Pool });
+    try {
+      await expect(policy.fetch(server.url)).rejects.toThrow();
+      await policy.setDisabled(true);
+      const response = await policy.fetch(server.url);
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe('local response');
+      await expect(policy.fetch(server.url.replace('https:', 'http:'))).rejects.toThrow(
+        'SKILL_SOURCE_TLS_FAILED'
+      );
+      expect(server.requests).toEqual(['/skill']);
+      expect(lookup).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
   });
 });

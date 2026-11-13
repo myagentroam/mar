@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import {
   lstat,
   mkdir,
@@ -23,7 +25,7 @@ import {
 
 export interface SkillBundleFile {
   readonly path: string;
-  readonly contentBase64: string;
+  readonly open: () => AsyncIterable<Uint8Array>;
 }
 
 export interface InstallableSkillBundle {
@@ -407,7 +409,7 @@ async function prepare(
   }
   await mkdir(staging, { recursive: false });
   try {
-    if (bundle.schemaVersion !== 1 || bundle.files.length === 0 || bundle.files.length > 1_000)
+    if (bundle.schemaVersion !== 1 || bundle.files.length === 0)
       throw new Error('SKILL_CONTENT_INVALID');
     const paths = new Set<string>();
     for (const file of bundle.files) {
@@ -416,7 +418,7 @@ async function prepare(
       paths.add(file.path);
       const destination = path.join(staging, ...file.path.split('/'));
       await mkdir(path.dirname(destination), { recursive: true });
-      await writeFile(destination, Buffer.from(file.contentBase64, 'base64'), { flag: 'wx' });
+      await pipeline(file.open(), createWriteStream(destination, { flags: 'wx' }));
     }
     await writeFile(path.join(staging, '.mar-skill-install.json'), JSON.stringify(metadata), {
       flag: 'wx'

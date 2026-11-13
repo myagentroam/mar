@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
@@ -86,6 +87,11 @@ describe('Server Skill favorite', () => {
       ),
       getConnection: vi.fn(async () => connection)
     };
+    const archiveJson = JSON.stringify({
+      schemaVersion: 1,
+      files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+    });
+    const dispose = vi.fn(async () => {});
     const bundle = {
       repositoryIdentity: 'github.com/acme/skills',
       repositoryUrl: 'https://github.com/acme/skills',
@@ -95,13 +101,11 @@ describe('Server Skill favorite', () => {
       commitSha: 'a'.repeat(40),
       contentHash: 'b'.repeat(64),
       archiveHash: 'c'.repeat(64),
-      archiveJson: JSON.stringify({
-        schemaVersion: 1,
-        files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
-      }),
       contentBytes: 10,
       tlsVerified: false,
-      files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+      fileCount: 1,
+      archive: () => Readable.from([archiveJson]),
+      dispose
     };
     const warnCacheUsage = vi.fn();
     const service = new SkillFavoriteService(
@@ -142,8 +146,13 @@ describe('Server Skill favorite', () => {
       'SKILL.md'
     );
     await expect(readFile(path.join(cache, `${'b'.repeat(64)}.json`), 'utf8')).resolves.toBe(
-      bundle.archiveJson
+      archiveJson
     );
+    expect(dispose).toHaveBeenCalledOnce();
+    const insertedVersion = connection.execute.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO skill_versions')
+    );
+    expect(insertedVersion?.[1]?.[6]).toBe(bundle.fileCount);
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(warnCacheUsage).toHaveBeenCalledWith(10, 12);
     expect(
@@ -175,6 +184,7 @@ describe('Server Skill favorite', () => {
         scope: 'PERSONAL'
       })
     ).rejects.toThrow('SKILL_SOURCE_LIMIT_EXCEEDED');
+    expect(dispose).toHaveBeenCalledTimes(2);
     expect(connection.rollback).toHaveBeenCalledOnce();
     expect(connection.commit).toHaveBeenCalledOnce();
     expect(connection.release).toHaveBeenCalledTimes(2);
@@ -201,24 +211,33 @@ describe('Server Skill favorite', () => {
       if (sql.includes('FROM skill_versions')) return [[{ commit_sha: 'a'.repeat(40) }], []];
       return [[], []];
     });
+    const bundle = {
+      repositoryIdentity: 'github.com/acme/skills',
+      repositoryUrl: 'https://github.com/acme/skills',
+      skillPath: 'skills/review',
+      name: 'review',
+      description: 'Review code',
+      commitSha: 'b'.repeat(40),
+      contentHash: 'c'.repeat(64),
+      archiveHash: 'd'.repeat(64),
+      contentBytes: 10,
+      tlsVerified: true,
+      fileCount: 1,
+      archive: () =>
+        Readable.from([
+          JSON.stringify({
+            schemaVersion: 1,
+            files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
+          })
+        ]),
+      dispose: vi.fn(async () => {})
+    };
     const service = new SkillFavoriteService(
       { raw: { execute } } as unknown as MysqlServerDatabase,
       { authorize: vi.fn(async () => ({ allowed: true })) } as unknown as AuthorizationService,
       {} as SkillSourceService,
       {
-        resolve: vi.fn(async () => ({
-          repositoryIdentity: 'github.com/acme/skills',
-          repositoryUrl: 'https://github.com/acme/skills',
-          skillPath: 'skills/review',
-          name: 'review',
-          description: 'Review code',
-          commitSha: 'b'.repeat(40),
-          contentHash: 'c'.repeat(64),
-          archiveHash: 'd'.repeat(64),
-          contentBytes: 10,
-          tlsVerified: true,
-          files: [{ path: 'SKILL.md', contentBase64: 'YQ==' }]
-        }))
+        resolve: vi.fn(async () => bundle)
       } as unknown as GithubSkillProvider,
       '/unused'
     );
@@ -227,7 +246,11 @@ describe('Server Skill favorite', () => {
       updateAvailable: true,
       latestCommitSha: 'b'.repeat(40)
     });
+    expect(bundle.dispose).toHaveBeenCalledOnce();
     expect(execute.mock.calls.every(([sql]) => !String(sql).includes('UPDATE'))).toBe(true);
+    bundle.name = 'changed';
+    await expect(service.checkUpdate(7, 'favorite-1')).rejects.toThrow('SKILL_NAME_CONFLICT');
+    expect(bundle.dispose).toHaveBeenCalledTimes(2);
   });
 
   it('Catalog star and tag edits preserve the pinned version', async () => {

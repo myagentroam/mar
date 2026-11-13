@@ -32,7 +32,8 @@ describe('Server Skill artifact ticket', () => {
     );
 
     const valid = service.issue('node-a', { contentHash } as never);
-    await expect(service.consume(valid, 'node-a')).resolves.toEqual(expect.any(Buffer));
+    const stream = await service.consume(valid, 'node-a');
+    expect((await stream.toArray()).join('')).toBe('{"schemaVersion":1,"files":[]}');
     await expect(service.consume(valid, 'node-a')).rejects.toThrow('SKILL_ARTIFACT_TICKET_INVALID');
   });
 
