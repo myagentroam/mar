@@ -72,11 +72,14 @@
   --mar-action-hover-bg: transparent;
 }
 
-.mar-icon-status-badge {
-  position: absolute;
+.mar-icon-status-badge,
+.mar-session-activity i {
   width: var(--mar-icon-status-size, 6px);
   height: var(--mar-icon-status-size, 6px);
   border-radius: 50%;
+}
+.mar-icon-status-badge {
+  position: absolute;
   background: var(--el-color-success);
   box-shadow: 0 0 0 1.5px var(--mar-icon-status-surface);
   pointer-events: none;
@@ -166,9 +169,6 @@
 }
 .mar-session-activity i {
   display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
   background: var(--mar-text-faint);
 }
 .mar-icon {
@@ -269,23 +269,6 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 
 .mar-session-activity.managed_active i {
   background: var(--el-color-success);
-  box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--el-color-success) 11%, transparent),
-    0 0 4px 0 color-mix(in srgb, var(--el-color-success) 20%, transparent);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .mar-session-activity.managed_active i {
-    animation: mar-run-glow 1.8s ease-in-out infinite;
-  }
-}
-@keyframes mar-run-glow {
-  0%,
-  100% {
-    opacity: 0.86;
-  }
-  50% {
-    opacity: 1;
-  }
 }
 .mar-session-activity.node-offline i {
   background: var(--mar-text-faint);
