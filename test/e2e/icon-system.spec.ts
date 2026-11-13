@@ -1647,6 +1647,70 @@ test('Session search clear and busy guards preserve their behavior', async ({ pa
 });
 
 for (const theme of ['dark', 'light']) {
+  for (const width of [390, 1280]) {
+    test(`Node and remote desktop icons keep distinct monitor semantics in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      const url = `${fixture.url}icon-system.html?remote-desktop-icons=1&theme=${theme}`;
+      await page.goto(url);
+      const tree = page.getByTestId('resource-tree');
+      const node = tree.locator('.tree-node-icon [data-mar-icon="node"]');
+      await expect(node.locator('rect')).toHaveCount(1);
+      await expect(node.locator('path')).toHaveCount(1);
+      await expect(node).toHaveCSS('width', '16px');
+      await expect(tree.locator('.tree-node-icon .state-dot.ready')).toBeVisible();
+      await tree.screenshot({ path: testInfo.outputPath('node-monitor.png') });
+
+      await tree.locator('.tree-node').focus();
+      await tree.locator('.node-tree-actions .tree-more-button').click();
+      const remote = page.getByRole('menuitem', { name: 'Remote Desktop', exact: true });
+      await expect(remote).toBeVisible();
+      await expect(remote).not.toHaveAttribute('aria-disabled', 'true');
+      const icon = remote.locator('[data-mar-icon="desktop"]');
+      await expect(icon.locator('rect')).toHaveCount(1);
+      await expect(icon.locator('path')).toHaveCount(2);
+      const geometry = await icon.evaluate((svg) => {
+        const frame = svg.querySelector('rect')!;
+        const pointer = svg.querySelectorAll('path')[1]!;
+        const f = frame.getBBox();
+        const p = pointer.getBBox();
+        const style = getComputedStyle(pointer);
+        return {
+          frame: [f.x, f.y, f.width, f.height],
+          pointer: [p.x, p.y, p.width, p.height],
+          frameStroke: Number.parseFloat(getComputedStyle(frame).strokeWidth),
+          pointerStroke: Number.parseFloat(style.strokeWidth),
+          stroke: style.stroke,
+          color: getComputedStyle(svg).color
+        };
+      });
+      const [fx, fy, fw, fh] = geometry.frame as [number, number, number, number];
+      const [px, py, pw, ph] = geometry.pointer as [number, number, number, number];
+      expect(geometry.pointerStroke).toBe(1);
+      expect(geometry.pointerStroke).toBeLessThan(geometry.frameStroke);
+      expect(geometry.stroke).toBe(geometry.color);
+      const clearance = (geometry.frameStroke + geometry.pointerStroke) / 2;
+      expect(px - fx).toBeGreaterThan(clearance);
+      expect(py - fy).toBeGreaterThan(clearance);
+      expect(fx + fw - px - pw).toBeGreaterThan(clearance);
+      expect(fy + fh - py - ph).toBeGreaterThan(clearance);
+      expect(px + pw / 2).toBeLessThan(fx + fw / 2);
+      expect(py + ph / 2).toBeLessThan(fy + fh / 2);
+      await remote
+        .locator('..')
+        .screenshot({ path: testInfo.outputPath('remote-desktop-menu.png') });
+
+      await page.goto(`${url}&desktop-unavailable=1`);
+      await tree.locator('.tree-node').focus();
+      await tree.locator('.node-tree-actions .tree-more-button').click();
+      await expect(remote).toHaveAttribute('aria-disabled', 'true');
+      await expect(remote.locator('[data-mar-icon="desktop"]')).toBeVisible();
+    });
+  }
+}
+
+for (const theme of ['dark', 'light']) {
   for (const width of [390, 767, 768, 1280]) {
     test(`Resource tree density preserves navigation in ${theme} at ${width}px`, async ({
       page
