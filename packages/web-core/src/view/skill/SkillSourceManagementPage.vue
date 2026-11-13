@@ -477,7 +477,8 @@ function scopeLabel(scope: string): string {
       />
       <el-table-column
         :label="translate('generated.skillSourceManagementPage.scope')"
-        width="100"
+        width="144"
+        show-overflow-tooltip
         sortable
         :sort-method="
           (a: SkillSourceCard, b: SkillSourceCard) =>
@@ -703,7 +704,8 @@ function scopeLabel(scope: string): string {
             />
             <el-table-column
               :label="translate('generated.skillSourceManagementPage.scope')"
-              width="100"
+              width="144"
+              show-overflow-tooltip
             >
               <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
             </el-table-column>
