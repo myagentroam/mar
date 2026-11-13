@@ -328,7 +328,10 @@ export function createWorkbenchPageController<
     onConnectionRestored: () => {
       workbenchCapabilityService.clearUpgradeProgress();
       void refreshNodes();
-      void workbenchNotificationService.recover().catch(() => undefined);
+      void workbenchNotificationService
+        // Ready and resumed callbacks schedule their refreshes in the same message dispatch.
+        .recover(Promise.resolve().then(() => sessionSnapshotRefreshService.whenSettled()))
+        .catch(() => undefined);
     },
     onDisconnected: () => {
       watchCoordinator.current?.pause();

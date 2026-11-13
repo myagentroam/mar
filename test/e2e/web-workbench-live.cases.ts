@@ -1,5 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { emitMockSessionEvent, mockConsoleApi, json, write } from './support/web-console-api.js';
+import { createWorkbenchNotificationProxy } from './support/workbench-notification-proxy.js';
+
+const systemNotificationTest = test.extend<{
+  notificationProxy: Awaited<ReturnType<typeof createWorkbenchNotificationProxy>>;
+}>({
+  notificationProxy: async ({ baseURL }, use) => {
+    if (baseURL === undefined) throw new Error('PLAYWRIGHT_BASE_URL_REQUIRED');
+    const proxy = await createWorkbenchNotificationProxy(baseURL);
+    try {
+      await use(proxy);
+    } finally {
+      await proxy.close();
+    }
+  }
+});
 
 for (const language of [
   {
@@ -13,7 +28,8 @@ for (const language of [
     disabled: '未开启',
     summary: '切换到其他页面或应用时，仍可收到通知。关闭工作台后不再提醒。',
     work: '工作',
-    center: '打开通知中心'
+    center: '会话与通知',
+    notifications: '通知'
   },
   {
     locale: 'en-US',
@@ -27,247 +43,276 @@ for (const language of [
     summary:
       'Receive notifications when you switch to another page or app. Notifications stop when you close the workbench.',
     work: 'Work',
-    center: 'Open notification center'
+    center: 'Sessions & notifications',
+    notifications: 'Notifications'
   }
 ]) {
-  test(`System notifications opt in from settings and remind a visible unfocused window: ${language.locale}`, async ({
-    page
-  }) => {
-    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-    await page.context().route('**/service-worker.js*', async (route) => {
-      const response = await route.fetch();
-      await route.fulfill({
-        response,
-        body:
-          "self.registration.showNotification = async (title, options = {}) => {\n  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });\n  for (const client of windows) client.postMessage({ type: 'test.system-notification.shown', record: { title, options } });\n};\nself.registration.getNotifications = async () => [];\n" +
-          (await response.text())
-      });
-    });
-    const initializeNotifications = (locale: string) => {
-      localStorage.setItem('mar.locale.v2', locale);
-      const state = {
-        focused: true,
-        permission: (localStorage.getItem('mar.workbench.system-notifications.v1.admin') === 'true'
-          ? 'granted'
-          : 'default') as NotificationPermission,
-        permissionRequests: 0,
-        records: [] as { title: string; options: NotificationOptions }[]
+  systemNotificationTest(
+    `System notifications opt in from settings and remind a visible unfocused window: ${language.locale}`,
+    async ({ page, notificationProxy }) => {
+      await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+      const initializeNotifications = (locale: string) => {
+        localStorage.setItem('mar.locale.v2', locale);
+        const state = {
+          focused: true,
+          permission: (localStorage.getItem('mar.workbench.system-notifications.v1.admin') ===
+          'true'
+            ? 'granted'
+            : 'default') as NotificationPermission,
+          permissionRequests: 0,
+          records: [] as { title: string; options: NotificationOptions }[]
+        };
+        Object.assign(window, { __systemNotificationTest: state });
+        Object.defineProperty(document, 'hasFocus', {
+          configurable: true,
+          value: () => state.focused
+        });
+        // Mock the permission boundary; the headless shell has no OS notifier.
+        Object.defineProperty(Notification, 'permission', {
+          configurable: true,
+          get: () => state.permission
+        });
+        Object.defineProperty(Notification, 'requestPermission', {
+          configurable: true,
+          value: () => {
+            state.permissionRequests += 1;
+            state.permission = 'granted';
+            return Promise.resolve(state.permission);
+          }
+        });
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data?.type === 'test.system-notification.shown')
+            state.records.push(event.data.record);
+        });
       };
-      Object.assign(window, { __systemNotificationTest: state });
-      Object.defineProperty(document, 'hasFocus', {
-        configurable: true,
-        value: () => state.focused
-      });
-      // Mock the permission boundary; the headless shell has no OS notifier.
-      Object.defineProperty(Notification, 'permission', {
-        configurable: true,
-        get: () => state.permission
-      });
-      Object.defineProperty(Notification, 'requestPermission', {
-        configurable: true,
-        value: () => {
-          state.permissionRequests += 1;
-          state.permission = 'granted';
-          return Promise.resolve(state.permission);
+      await page.addInitScript(initializeNotifications, language.locale);
+      const now = Date.now();
+      const entry = (id: string) => ({
+        id,
+        kind: 'run',
+        title: `Completed ${id}`,
+        message: 'Run completed',
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: now + 60_000,
+        read: false,
+        target: {
+          targetType: 'WORKSPACE_SESSION',
+          nodeId: 'node-1',
+          workspaceId: 'workspace-1',
+          sessionId: 'session-1'
         }
       });
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data?.type === 'test.system-notification.shown')
-          state.records.push(event.data.record);
+      let notifications: ReturnType<typeof entry>[] = [entry('initial-unread')];
+      const reads: string[] = [];
+      const sessionReadTargets: { nodeId: string; workspaceId: string; sessionId: string }[] = [];
+      await page.route('**/api/notifications', (route) => json(route, { notifications }));
+      await page.route(/\/api\/notifications\/[^/]+\/read$/, (route) => {
+        const path = new URL(route.request().url()).pathname;
+        reads.push(path);
+        const id = path.split('/')[3];
+        notifications = notifications.map((value) =>
+          value.id === id ? { ...value, read: true } : value
+        );
+        return json(route, {});
       });
-    };
-    await page.addInitScript(initializeNotifications, language.locale);
-    const now = Date.now();
-    const entry = (id: string) => ({
-      id,
-      kind: 'run',
-      title: `Completed ${id}`,
-      message: 'Run completed',
-      createdAt: now,
-      updatedAt: now,
-      expiresAt: now + 60_000,
-      read: false,
-      target: {
-        targetType: 'WORKSPACE_SESSION',
-        nodeId: 'node-1',
-        workspaceId: 'workspace-1',
-        sessionId: 'session-1'
-      }
-    });
-    let notifications: ReturnType<typeof entry>[] = [];
-    const reads: string[] = [];
-    await page.route('**/api/notifications', (route) => json(route, { notifications }));
-    await page.route(/\/api\/notifications\/[^/]+\/read$/, (route) => {
-      const path = new URL(route.request().url()).pathname;
-      reads.push(path);
-      const id = path.split('/')[3];
-      notifications = notifications.map((value) =>
-        value.id === id ? { ...value, read: true } : value
-      );
-      return json(route, {});
-    });
-    await page.route('**/api/notifications/session/read', (route) => {
-      reads.push('/api/notifications/session/read');
-      notifications = notifications.map((value) => ({ ...value, read: true }));
-      return json(route, {});
-    });
-    await page.goto('/console');
-    await page.getByRole('button', { name: language.login, exact: true }).click();
-    await page.getByRole('button', { name: language.settings, exact: true }).click();
-    await page.getByRole('button', { name: language.title, exact: true }).click();
-    await expect(
-      page.getByRole('heading', { name: language.title, level: 2, exact: true })
-    ).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          async () => !!(await navigator.serviceWorker.getRegistration('/console'))?.active
+      await page.route('**/api/notifications/session/read', (route) => {
+        reads.push('/api/notifications/session/read');
+        const target = route.request().postDataJSON() as (typeof sessionReadTargets)[number];
+        sessionReadTargets.push(target);
+        notifications = notifications.map((value) => ({
+          ...value,
+          read:
+            value.read ||
+            (value.target.targetType === 'WORKSPACE_SESSION' &&
+              value.target.nodeId === target.nodeId &&
+              value.target.workspaceId === target.workspaceId &&
+              value.target.sessionId === target.sessionId)
+        }));
+        return json(route, {});
+      });
+      await page.goto(`${notificationProxy.origin}/console`);
+      await page.getByRole('button', { name: language.login, exact: true }).click();
+      await page.getByRole('button', { name: language.settings, exact: true }).click();
+      await page.getByRole('button', { name: language.title, exact: true }).click();
+      await expect(
+        page.getByRole('heading', { name: language.title, level: 2, exact: true })
+      ).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(
+            async () => !!(await navigator.serviceWorker.getRegistration('/console'))?.active
+          )
         )
-      )
-      .toBe(true);
-    const testState = () =>
-      page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __systemNotificationTest: {
-                focused: boolean;
-                permissionRequests: number;
-                records: { title: string; options: NotificationOptions }[];
-              };
-            }
-          ).__systemNotificationTest
+        .toBe(true);
+      const testState = () =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __systemNotificationTest: {
+                  focused: boolean;
+                  permissionRequests: number;
+                  records: { title: string; options: NotificationOptions }[];
+                };
+              }
+            ).__systemNotificationTest
+        );
+      expect((await testState()).permissionRequests).toBe(0);
+      const settingsPanel = page.locator('.settings-panel').filter({
+        has: page.getByRole('heading', { name: language.title, exact: true })
+      });
+      await expect(settingsPanel.locator('p.account-summary')).toHaveText([language.summary]);
+      await expect(settingsPanel.getByRole('status').first()).toHaveText(language.disabled);
+      await expect(settingsPanel.getByRole('status').first().locator('.el-tag')).toHaveClass(
+        /el-tag--info/
       );
-    expect((await testState()).permissionRequests).toBe(0);
-    const settingsPanel = page.locator('.settings-panel').filter({
-      has: page.getByRole('heading', { name: language.title, exact: true })
-    });
-    await expect(settingsPanel.locator('p.account-summary')).toHaveText([language.summary]);
-    await expect(settingsPanel.getByRole('status').first()).toHaveText(language.disabled);
-    await expect(settingsPanel.getByRole('status').first().locator('.el-tag')).toHaveClass(
-      /el-tag--info/
-    );
-    const enable = page.getByRole('button', { name: language.enable, exact: true });
-    await enable.click();
-    await expect(page.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
-    await expect(settingsPanel.getByRole('status').first()).toHaveText(language.enabled);
-    expect((await testState()).permissionRequests).toBe(1);
-    expect(
-      await page.evaluate(() => localStorage.getItem('mar.workbench.system-notifications.v1.admin'))
-    ).toBe('true');
-    await page.setViewportSize({ width: 390, height: 844 });
-    const bounds = await page
-      .getByRole('button', { name: language.disable, exact: true })
-      .boundingBox();
-    expect(bounds?.x).toBeGreaterThanOrEqual(0);
-    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.getByRole('button', { name: language.work, exact: true }).click();
-    await page
-      .locator('.workspace-tree')
-      .getByRole('button', { name: /node-1/ })
-      .click();
-    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-    await page.locator('.session-list button').first().click();
-    await expect.poll(() => reads.includes('/api/notifications/session/read')).toBe(true);
-    notifications = [entry('unfocused'), entry('same-session')];
-    await page.evaluate((value) => {
-      const w = window as unknown as {
-        __systemNotificationTest: { focused: boolean };
-        __consoleMockWorkbenchWebSocket: {
-          instances: { url: string; readyState: number; dispatchEvent(event: Event): void }[];
-        };
-      };
-      w.__systemNotificationTest.focused = false;
-      const socket = w.__consoleMockWorkbenchWebSocket.instances.find(
-        (item) => item.url.includes('/api/workbench/live') && item.readyState === 1
-      );
-      if (socket === undefined) throw new Error('Mock workbench connection is not ready');
-      socket.dispatchEvent(
-        new MessageEvent('message', {
-          data: JSON.stringify({ type: 'notification.created', notification: value })
-        })
-      );
-    }, notifications[0]);
-    await expect.poll(async () => (await testState()).records.length).toBe(1);
-    expect(await page.evaluate(() => document.visibilityState)).toBe('visible');
-    expect((await testState()).records[0]?.title).toBe('Completed unfocused');
-    const sibling = await page.context().newPage();
-    await mockConsoleApi(sibling, 'MANAGED', ['history.read', 'turn.start'], []);
-    await sibling.addInitScript(initializeNotifications, language.locale);
-    await sibling.route('**/api/notifications', (route) => json(route, { notifications }));
-    await sibling.goto('/console');
-    await sibling.getByRole('button', { name: language.login, exact: true }).click();
-    await sibling.getByRole('button', { name: language.settings, exact: true }).click();
-    await sibling.getByRole('button', { name: language.title, exact: true }).click();
-    await expect(
-      sibling.getByRole('button', { name: language.disable, exact: true })
-    ).toBeVisible();
-    const duplicate = entry('two-background-tabs');
-    notifications = [duplicate, ...notifications];
-    await Promise.all(
-      [page, sibling].map((target) =>
-        target.evaluate((value) => {
-          const w = window as unknown as {
-            __systemNotificationTest: { focused: boolean };
-            __consoleMockWorkbenchWebSocket: {
-              instances: { url: string; readyState: number; dispatchEvent(event: Event): void }[];
-            };
+      const enable = page.getByRole('button', { name: language.enable, exact: true });
+      await enable.click();
+      await expect(page.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
+      await expect(settingsPanel.getByRole('status').first()).toHaveText(language.enabled);
+      expect((await testState()).permissionRequests).toBe(1);
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem('mar.workbench.system-notifications.v1.admin')
+        )
+      ).toBe('true');
+      await page.setViewportSize({ width: 390, height: 844 });
+      const bounds = await page
+        .getByRole('button', { name: language.disable, exact: true })
+        .boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.getByRole('button', { name: language.work, exact: true }).click();
+      await page
+        .locator('.workspace-tree')
+        .getByRole('button', { name: /node-1/ })
+        .click();
+      await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+      const initialSession = page.locator('.session-row[data-session-id="session-1"]');
+      await expect(initialSession.locator('.session-unread-label')).toBeVisible();
+      await initialSession.locator('.session-link').click();
+      await expect.poll(() => reads.includes('/api/notifications/session/read')).toBe(true);
+      expect(sessionReadTargets).toEqual([
+        { nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'session-1' }
+      ]);
+      expect(notifications.find((value) => value.id === 'initial-unread')?.read).toBe(true);
+      notifications = [entry('unfocused'), entry('same-session')];
+      await page.evaluate((value) => {
+        const w = window as unknown as {
+          __systemNotificationTest: { focused: boolean };
+          __consoleMockWorkbenchWebSocket: {
+            instances: { url: string; readyState: number; dispatchEvent(event: Event): void }[];
           };
-          w.__systemNotificationTest.focused = false;
-          const socket = w.__consoleMockWorkbenchWebSocket.instances.find(
-            (item) => item.url.includes('/api/workbench/live') && item.readyState === 1
-          );
-          if (socket === undefined) throw new Error('Mock workbench connection is not ready');
-          socket.dispatchEvent(
-            new MessageEvent('message', {
-              data: JSON.stringify({ type: 'notification.created', notification: value })
-            })
-          );
-        }, duplicate)
-      )
-    );
-    await expect.poll(async () => (await testState()).records.length).toBe(2);
-    expect(
-      (await testState()).records.filter((record) => record.title === duplicate.title)
-    ).toHaveLength(1);
-    await sibling.close();
-    const readsBeforeClick = reads.length;
-    await page.evaluate(() => {
-      const w = window as unknown as {
-        __systemNotificationTest: { focused: boolean };
-        __consoleMockWorkbenchWebSocket: { dispatch(frame: unknown): void };
-      };
-      w.__systemNotificationTest.focused = true;
-      navigator.serviceWorker.dispatchEvent(
-        new MessageEvent('message', {
-          data: { type: 'mar.workbench.notification.click', account: 'admin', id: 'unfocused' }
-        })
+        };
+        w.__systemNotificationTest.focused = false;
+        const socket = w.__consoleMockWorkbenchWebSocket.instances.find(
+          (item) => item.url.includes('/api/workbench/live') && item.readyState === 1
+        );
+        if (socket === undefined) throw new Error('Mock workbench connection is not ready');
+        socket.dispatchEvent(
+          new MessageEvent('message', {
+            data: JSON.stringify({ type: 'notification.created', notification: value })
+          })
+        );
+      }, notifications[0]);
+      await expect.poll(async () => (await testState()).records.length).toBe(1);
+      expect(await page.evaluate(() => document.visibilityState)).toBe('visible');
+      expect((await testState()).records[0]?.title).toBe('Completed unfocused');
+      const sibling = await page.context().newPage();
+      await mockConsoleApi(sibling, 'MANAGED', ['history.read', 'turn.start'], []);
+      await sibling.addInitScript(initializeNotifications, language.locale);
+      await sibling.route('**/api/notifications', (route) => json(route, { notifications }));
+      await sibling.goto(page.url());
+      await sibling.getByRole('button', { name: language.login, exact: true }).click();
+      await sibling.getByRole('button', { name: language.settings, exact: true }).click();
+      await sibling.getByRole('button', { name: language.title, exact: true }).click();
+      await expect(
+        sibling.getByRole('button', { name: language.disable, exact: true })
+      ).toBeVisible();
+      const duplicate = entry('two-background-tabs');
+      notifications = [duplicate, ...notifications];
+      // Both windows must be backgrounded before either can ask the Worker to show this event.
+      await Promise.all(
+        [page, sibling].map((target) =>
+          target.evaluate(() => {
+            const state = window as unknown as { __systemNotificationTest: { focused: boolean } };
+            state.__systemNotificationTest.focused = false;
+          })
+        )
       );
-    });
-    await expect
-      .poll(() => reads.slice(readsBeforeClick))
-      .toEqual(['/api/notifications/unfocused/read']);
-    expect(notifications.find((value) => value.id === 'same-session')?.read).toBe(false);
-    await page.getByRole('button', { name: language.center, exact: true }).click();
-    const notificationPanel = page.locator('.workbench-notification-panel');
-    await expect(notificationPanel).toBeVisible();
-    await expect(
-      notificationPanel.getByRole('button', { name: language.disable, exact: true })
-    ).toHaveCount(0);
-    await expect(
-      notificationPanel.getByRole('button', { name: language.enable, exact: true })
-    ).toHaveCount(0);
-    await expect(notificationPanel.getByRole('status')).toHaveCount(0);
-    await page.getByRole('button', { name: language.settings, exact: true }).click();
-    await page.getByRole('button', { name: language.title, exact: true }).click();
-    await expect(page.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: language.disable, exact: true }).click();
-    await expect(page.getByRole('button', { name: language.enable, exact: true })).toBeVisible();
-    expect(
-      await page.evaluate(() => localStorage.getItem('mar.workbench.system-notifications.v1.admin'))
-    ).toBe('false');
-  });
+      await Promise.all(
+        [page, sibling].map((target) =>
+          target.evaluate((value) => {
+            const w = window as unknown as {
+              __systemNotificationTest: { focused: boolean };
+              __consoleMockWorkbenchWebSocket: {
+                instances: { url: string; readyState: number; dispatchEvent(event: Event): void }[];
+              };
+            };
+            const socket = w.__consoleMockWorkbenchWebSocket.instances.find(
+              (item) => item.url.includes('/api/workbench/live') && item.readyState === 1
+            );
+            if (socket === undefined) throw new Error('Mock workbench connection is not ready');
+            socket.dispatchEvent(
+              new MessageEvent('message', {
+                data: JSON.stringify({ type: 'notification.created', notification: value })
+              })
+            );
+          }, duplicate)
+        )
+      );
+      await expect.poll(async () => (await testState()).records.length).toBe(2);
+      expect(
+        (await testState()).records.filter((record) => record.title === duplicate.title)
+      ).toHaveLength(1);
+      await sibling.close();
+      const readsBeforeClick = reads.length;
+      await page.evaluate(() => {
+        const w = window as unknown as {
+          __systemNotificationTest: { focused: boolean };
+          __consoleMockWorkbenchWebSocket: { dispatch(frame: unknown): void };
+        };
+        w.__systemNotificationTest.focused = true;
+        navigator.serviceWorker.dispatchEvent(
+          new MessageEvent('message', {
+            data: { type: 'mar.workbench.notification.click', account: 'admin', id: 'unfocused' }
+          })
+        );
+      });
+      await expect
+        .poll(() => reads.slice(readsBeforeClick))
+        .toEqual(['/api/notifications/unfocused/read']);
+      expect(notifications.find((value) => value.id === 'same-session')?.read).toBe(false);
+      await page.getByRole('button', { name: language.center, exact: true }).click();
+      const notificationPanel = page.locator('.workbench-activity-panel:visible');
+      await expect(notificationPanel).toBeVisible();
+      await notificationPanel
+        .getByRole('tab', { name: language.notifications, exact: true })
+        .click();
+      await expect(
+        notificationPanel.getByRole('tab', { name: language.notifications, exact: true })
+      ).toHaveAttribute('aria-selected', 'true');
+      await expect(
+        notificationPanel.getByRole('button', { name: language.disable, exact: true })
+      ).toHaveCount(0);
+      await expect(
+        notificationPanel.getByRole('button', { name: language.enable, exact: true })
+      ).toHaveCount(0);
+      await expect(notificationPanel.getByRole('status')).toHaveCount(0);
+      await page.getByRole('button', { name: language.settings, exact: true }).click();
+      await page.getByRole('button', { name: language.title, exact: true }).click();
+      await expect(page.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
+      await page.getByRole('button', { name: language.disable, exact: true }).click();
+      await expect(page.getByRole('button', { name: language.enable, exact: true })).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem('mar.workbench.system-notifications.v1.admin')
+        )
+      ).toBe('false');
+    }
+  );
 }
 
 // Workbench Live and the capability baseline
@@ -414,6 +459,9 @@ for (const recovery of [
     page
   }) => {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await page.addInitScript(() => {
+      Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
+    });
     const now = Date.now();
     const target = (sessionId: string) => ({
       targetType: 'WORKSPACE_SESSION',
@@ -470,7 +518,7 @@ for (const recovery of [
       .getByRole('button', { name: /node-1/ })
       .click();
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-    const selectedSession = page.locator('.session-list button').first();
+    const selectedSession = page.locator('.session-row[data-session-id="session-1"] .session-link');
     const listsBeforeSelection = listReads;
     await selectedSession.click();
     await expect(selectedSession).toHaveClass(/selected/);
@@ -488,9 +536,15 @@ for (const recovery of [
       );
     }
     notifications = entries;
-    const center = page.getByRole('button', { name: '打开通知中心' });
+    const center = page.getByRole('button', { name: '会话与通知', exact: true });
     await center.click();
-    await expect(center.locator('.workbench-notification-badge')).toHaveText('3');
+    const activity = page.locator('.workbench-activity-panel:visible');
+    await activity.getByRole('tab', { name: '通知', exact: true }).click();
+    await expect(activity.getByRole('tab', { name: '通知', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(center.locator('.activity-entry-count')).toHaveText('3');
     await expect(selectedSession.locator('.session-unread-label')).toBeVisible();
     const readsBeforeRecovery = readTargets.length;
     const connectionCount = () =>
@@ -536,7 +590,7 @@ for (const recovery of [
         } else mock.closeActive();
       }, recovery);
       if (recovery.action === 'late-focus') {
-        await expect(center.locator('.workbench-notification-badge')).toHaveText('4');
+        await expect(center.locator('.activity-entry-count')).toHaveText('4');
         expect(readTargets).toHaveLength(readsBeforeRecovery);
         await page.evaluate(() => {
           Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => true });
@@ -545,9 +599,8 @@ for (const recovery of [
       }
     }
     const singleItem = recovery.action === 'notification';
-    await expect(center.locator('.workbench-notification-badge')).toHaveText(
-      singleItem || recovery.action === 'late-focus' ? '2' : '1'
-    );
+    const expectedUnreadCount = singleItem || recovery.action === 'late-focus' ? '2' : '1';
+    await expect(center.locator('.activity-entry-count')).toHaveText(expectedUnreadCount);
     await expect(selectedSession.locator('.session-unread-label')).toHaveCount(singleItem ? 1 : 0);
     expect(readTargets.slice(readsBeforeRecovery)).toEqual(
       singleItem ? [] : [{ nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'session-1' }]

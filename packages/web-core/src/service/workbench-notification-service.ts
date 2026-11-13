@@ -118,7 +118,8 @@ export interface WorkbenchNotificationService {
   project(event: WorkbenchLiveEvent): boolean;
   projectServerMessage(message: unknown): boolean;
   load(): Promise<void>;
-  recover(): Promise<void>;
+  /** Optional snapshot readiness preserves the captured targets; false cancels their read. */
+  recover(targetsReady?: Promise<boolean | void>): Promise<void>;
   openNotification(notification: WorkbenchNotification | string): Promise<void>;
   openPendingSystemNotification(): Promise<boolean>;
   markAllRead(): void;
@@ -187,6 +188,7 @@ export function createWorkbenchNotificationService(
     | {
         readonly targets: readonly ActiveNotificationTarget[];
         readonly account: string | undefined;
+        readonly targetsReady: Promise<boolean | void> | undefined;
       }
     | undefined;
   const pendingCreatedNotificationIds = new Map<string, number>();
@@ -493,21 +495,39 @@ export function createWorkbenchNotificationService(
     }
   }
 
-  function recover(): Promise<void> {
+  function recover(targetsReady?: Promise<boolean | void>): Promise<void> {
     if (openingNotificationCount > 0 || systemNotifications.hasPending()) return load();
     const targets = isWorkbenchForeground() ? (options.activeTargets?.() ?? []) : [];
+    const account = username.value;
+    const previous = pendingRecovery?.account === account ? pendingRecovery : undefined;
+    const inherited =
+      previous?.account === account && previous?.targetsReady !== undefined ? previous.targets : [];
     pendingRecovery = {
-      targets: targets.map((target) => ({ ...target })),
-      account: username.value
+      // A focus recovery during refresh must not erase an already captured visible target.
+      targets: [
+        ...new Map(
+          [...inherited, ...targets].map((target) => [JSON.stringify(target), { ...target }])
+        ).values()
+      ],
+      account,
+      targetsReady:
+        previous?.targetsReady === undefined
+          ? targetsReady
+          : targetsReady === undefined
+            ? previous.targetsReady
+            : Promise.all([previous.targetsReady, targetsReady]).then((results) =>
+                results.every((completed) => completed !== false)
+              )
     };
     if (recoveryPromise !== undefined) return recoveryPromise;
     const generation = loadGeneration;
     const operation = (async () => {
       while (generation === loadGeneration && pendingRecovery !== undefined) {
-        const { targets: active, account } = pendingRecovery;
+        const { targets: active, account, targetsReady: ready } = pendingRecovery;
         pendingRecovery = undefined;
         try {
-          await load();
+          const [, completed] = await Promise.all([load(), ready]);
+          if (completed === false) continue;
         } catch (error) {
           if (generation !== loadGeneration) return;
           if (pendingRecovery !== undefined) continue;

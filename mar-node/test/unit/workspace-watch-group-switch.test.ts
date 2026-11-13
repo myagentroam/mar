@@ -300,6 +300,62 @@ describe('Workspace Watch session group switching', () => {
     }
   });
 
+  it.each(['files', 'changes', 'sessions', 'navigation'] as const)(
+    'does not reschedule the current view because an obsolete %s read is still pending',
+    async (resource) => {
+      const f = fixture();
+      let release!: (value: never) => void;
+      const pending = new Promise<never>((resolve) => {
+        release = resolve;
+      });
+      const topic = resource === 'navigation' ? 'sessionNavigation' : resource;
+      const navigation = (anchor: string) => ({
+        sessionIds: [anchor],
+        summaryAnchors: [],
+        treeAnchor: anchor,
+        limit: 20
+      });
+      try {
+        f[resource].mockImplementationOnce(() => pending);
+        const previous = await f.select(
+          'MAIN',
+          {},
+          resource === 'navigation' ? { sessionNavigation: navigation('one') } : {}
+        );
+        if (resource === 'changes') f.markChangesStale();
+        const current = await f.select(
+          'CHILD',
+          {},
+          resource === 'files'
+            ? { files: { path: 'src' } }
+            : resource === 'navigation'
+              ? { sessionNavigation: navigation('two') }
+              : {}
+        );
+        await vi.waitFor(() =>
+          expect(f.events.filter((event) => event.watchId === current)).toHaveLength(
+            resource === 'navigation' ? 4 : 3
+          )
+        );
+
+        await f.snapshots.invalidate('workspace-1', topic);
+        const reads = f[resource].mock.calls.length;
+        // An unresolved obsolete view must not keep scheduling the settled current view.
+        for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+
+        expect(f[resource]).toHaveBeenCalledTimes(reads);
+        expect(f[resource]).toHaveBeenCalledTimes(3);
+        expect(
+          f.events.filter((event) => event.watchId === previous && event.topic === topic)
+        ).toEqual([]);
+      } finally {
+        release({} as never);
+        f.close();
+        await f.snapshots.ensureSnapshot('workspace-1', topic);
+      }
+    }
+  );
+
   it('does not reread this page directory when another page is loading a different directory', async () => {
     const f = fixture();
     let release!: (value: { entries: { name: string }[]; nextCursor: null }) => void;

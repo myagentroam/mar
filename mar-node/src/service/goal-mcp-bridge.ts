@@ -86,12 +86,19 @@ export class GoalMcpBridge {
   private handle(socket: Socket): void {
     this.sockets.add(socket);
     socket.once('close', () => this.sockets.delete(socket));
+    socket.on('error', () => socket.destroy());
     let body = '';
+    let received = false;
     socket.setEncoding('utf8');
     socket.on('data', (chunk) => {
+      if (received) return;
       body += chunk;
-      if (body.length > 64_000) socket.destroy();
+      if (body.length > 64_000) {
+        socket.destroy();
+        return;
+      }
       if (!body.includes('\n')) return;
+      received = true;
       void this.respond(socket, body.slice(0, body.indexOf('\n')));
     });
   }

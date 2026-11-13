@@ -505,6 +505,99 @@ describe('Node Workspace watch', () => {
     }
   );
 
+  it.each([
+    ['removed', 'success'],
+    ['removed', 'failure'],
+    ['expired', 'success'],
+    ['expired', 'failure'],
+    ['topic-replaced', 'success'],
+    ['topic-replaced', 'failure']
+  ] as const)(
+    'stops refreshing Changes after its lease is %s while a pending read ends in %s',
+    async (leaseState, outcome) => {
+      const database = new NodeDatabase(':memory:', 'node-watch-pending-release');
+      const workspace = database.saveWorkspace({
+        path: '/workspace',
+        kind: 'GIT_WORKSPACE',
+        gitSummary: { repositoryRoot: '/workspace' }
+      });
+      const pending = deferred<unknown>();
+      const changes = new WorkspaceChangeService();
+      const current = vi
+        .spyOn(changes, 'current')
+        .mockImplementationOnce(() => pending.promise)
+        .mockResolvedValue({ marker: 'fresh-changes' });
+      const watches = new WorkspaceWatchService(vi.fn(), vi.fn(), vi.fn());
+      const activeWatches = vi.spyOn(watches, 'activeWatches');
+      const createWatch = (changes: boolean) =>
+        watches.create(
+          workspace.id,
+          changes ? 'changes-watch' : 'sessions-watch',
+          'session-hash',
+          'connection-1',
+          'generation-1',
+          { sessions: !changes, changes, files: undefined }
+        );
+      const watch = createWatch(true);
+      const requireWorkspace = vi.fn((workspaceId: unknown) =>
+        database.getWorkspace(String(workspaceId))!
+      );
+      const emitted = vi.fn();
+      const snapshots = new WorkspaceWatchSnapshotService({
+        requireWorkspace,
+        watch: watches,
+        files: {} as never,
+        changes,
+        listSessions: vi.fn().mockResolvedValue({ sessions: [] }),
+        nodeId: () => 'node-1',
+        emitWatchEvent: emitted
+      });
+      let initial: Promise<void> | undefined;
+      let refresh: Promise<void> | undefined;
+
+      try {
+        initial = snapshots.initial(workspace, watch);
+        expect(current).toHaveBeenCalledOnce();
+        if (leaseState === 'removed') watches.remove(workspace.id, 'session-hash:connection-1');
+        else if (leaseState === 'expired') watch.expiresAt = Date.now() - 1;
+        else createWatch(false);
+
+        refresh = snapshots.invalidate(workspace.id, 'changes');
+        await refresh;
+        const subscriberChecks = activeWatches.mock.calls.length;
+        // Bound observation in microtasks; cleanup always settles the read even on regression.
+        for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+
+        expect(activeWatches).toHaveBeenCalledTimes(subscriberChecks);
+        expect(requireWorkspace).not.toHaveBeenCalled();
+        expect(current).toHaveBeenCalledOnce();
+        expect(emitted).not.toHaveBeenCalled();
+
+        if (outcome === 'success') pending.resolve({ marker: 'stale-changes' });
+        else pending.reject(new Error('STALE_CHANGES_READ_FAILED'));
+        await Promise.all([initial, refresh]);
+        expect(emitted).not.toHaveBeenCalled();
+
+        await snapshots.initial(workspace, createWatch(true));
+        expect(current).toHaveBeenCalledTimes(2);
+        expect(emitted).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            type: 'watch.workspace.snapshot',
+            topic: 'changes',
+            payload: { marker: 'fresh-changes' }
+          })
+        );
+      } finally {
+        watches.clearAll();
+        snapshots.clearAll();
+        pending.resolve({ marker: 'cleanup' });
+        await Promise.allSettled([initial, refresh]);
+        await snapshots.ensureSnapshot(workspace.id, 'changes');
+        database.close();
+      }
+    }
+  );
+
   it('coalesces in-flight reads for one topic and merges repeated invalidations into one trailing refresh', async () => {
     let activeReads = 0;
     let maxActiveReads = 0;
