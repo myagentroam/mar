@@ -6,6 +6,7 @@ import { translate } from '../../service/locale-preference-service.js';
 import type { createWorkspaceContentSearchService } from '../../service/workspace-content-search-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { changeFileName } from '../../util/workspace-git.js';
+import { marIcon } from '../../util/mar-icons.js';
 
 const props = defineProps<{
   service: ReturnType<typeof createWorkspaceContentSearchService>;
@@ -73,6 +74,7 @@ defineExpose({
         :aria-label="translate('generated.workspaceInspector.searchFileContents')"
         maxlength="256"
         :placeholder="translate('generated.workspaceInspector.searchFileContents2')"
+        :prefix-icon="marIcon('search')"
         size="small"
       />
       <button
@@ -83,7 +85,7 @@ defineExpose({
         :aria-busy="contentSearchLoading || undefined"
         type="submit"
       >
-        <MarIcon name="search" />
+        <MarIcon :name="contentSearchLoading ? 'loading-action' : 'refresh'" />
       </button>
     </form>
     <el-button

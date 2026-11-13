@@ -323,7 +323,7 @@ defineExpose({
         type="button"
         @click="emit('refresh')"
       >
-        <MarIcon name="refresh" />
+        <MarIcon :name="filesBusy ? 'loading-action' : 'refresh'" />
       </button>
       <button
         v-tooltip="translate('generated.workspaceInspector.uploadFiles2')"

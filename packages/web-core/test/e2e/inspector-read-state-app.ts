@@ -111,7 +111,7 @@ createTooltipApp({
           visible: true,
           mobileViewport: innerWidth < 768,
           watchStatus: watchStatus.value,
-          onRefresh: files.refresh,
+          onRefresh: files.requestRefresh,
           onRetryWatch: () => {
             watchStatus.value = 'ready';
           }
