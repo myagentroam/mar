@@ -28,8 +28,8 @@ const draftInput: Omit<ConversationTemplateDraft, 'templateId' | 'revision' | 'u
   workspaceId: 'workspace-1',
   name: 'Research',
   description: '',
-  allowedModels: [{ modelId: 'coding', name: 'Coding' }],
-  defaultModelId: 'coding',
+  allowedModels: [{ modelId: 'coding-config-id', name: 'Coding' }],
+  defaultModelId: 'coding-config-id',
   mcpIds: ['mcp-local'],
   networkMode: 'NONE',
   quotas: {
@@ -64,7 +64,7 @@ describe('Server conversation template routes', () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      models: [{ modelId: 'coding', name: 'Coding' }]
+      models: [{ modelId: 'coding-config-id', name: 'Coding' }]
     });
     expect(fixture.templates.listModelOptions).toHaveBeenCalledWith('node-1');
 
@@ -415,7 +415,7 @@ function routeFixture() {
   const templates = {
     listForUser: vi.fn(async () => []),
     listAdmin: vi.fn(async () => []),
-    listModelOptions: vi.fn(async () => [{ modelId: 'coding', name: 'Coding' }]),
+    listModelOptions: vi.fn(async () => [{ modelId: 'coding-config-id', name: 'Coding' }]),
     detail: vi.fn(async () => ({})),
     create: vi.fn(
       async (_userId: number, _raw: unknown, inspect: InspectConversationTemplateDraft) => {

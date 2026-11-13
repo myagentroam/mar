@@ -18,14 +18,14 @@ export async function makeWritable(path: string): Promise<void> {
   await chmod(path, 0o600);
 }
 
-export function templateDraft(nodeId: string, workspaceId: string) {
+export function templateDraft(nodeId: string, workspaceId: string, modelConfigId: string) {
   return {
     nodeId,
     workspaceId,
     name: 'Hosted E2E Template',
     description: 'Cross-module hosted conversation validation.',
-    allowedModels: [{ modelId: 'hosted-e2e-model', name: 'Hosted E2E' }],
-    defaultModelId: 'hosted-e2e-model',
+    allowedModels: [{ modelId: modelConfigId, name: 'Hosted E2E' }],
+    defaultModelId: modelConfigId,
     mcpIds: [],
     networkMode: 'NONE',
     quotas: {

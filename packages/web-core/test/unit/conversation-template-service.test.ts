@@ -29,8 +29,8 @@ const storedDraft = {
   revision: 1,
   name: summary.name,
   description: summary.description,
-  allowedModels: [{ modelId: 'coding', name: 'Coding snapshot' }],
-  defaultModelId: 'coding',
+  allowedModels: [{ modelId: 'coding-config-primary', name: 'Coding snapshot' }],
+  defaultModelId: 'coding-config-primary',
   mcpIds: [],
   networkMode: 'NONE',
   quotas: {
@@ -102,8 +102,11 @@ describe('Web Conversation Template Service', () => {
       workspaceId: 'workspace-1',
       name: ' Code Review ',
       description: 'Review changes.',
-      allowedModels: [{ modelId: 'coding', name: 'Current Coding' }],
-      defaultModelId: 'coding',
+      allowedModels: [
+        { modelId: 'coding-config-primary', name: 'Current Coding' },
+        { modelId: 'coding-config-secondary', name: 'Current Coding' }
+      ],
+      defaultModelId: 'coding-config-secondary',
       mcpIds: [],
       networkMode: 'NONE',
       quotas: {
@@ -123,8 +126,11 @@ describe('Web Conversation Template Service', () => {
           workspaceId: 'workspace-1',
           name: 'Code Review',
           description: 'Review changes.',
-          allowedModels: [{ modelId: 'coding', name: 'Current Coding' }],
-          defaultModelId: 'coding',
+          allowedModels: [
+            { modelId: 'coding-config-primary', name: 'Current Coding' },
+            { modelId: 'coding-config-secondary', name: 'Current Coding' }
+          ],
+          defaultModelId: 'coding-config-secondary',
           mcpIds: [],
           networkMode: 'NONE',
           quotas: {
@@ -301,13 +307,14 @@ describe('Web Conversation Template Service', () => {
     );
   });
 
-  it('Read upstream model candidates from the source Node and fall back to the first visible selection', async () => {
+  it('Keeps same-name configuration candidates distinct and falls back within visible IDs', async () => {
     const requests: string[] = [];
     const service = createConversationTemplateService(async (path) => {
       requests.push(path);
       return {
         models: [
-          { modelId: 'coding', name: 'Current Coding' },
+          { modelId: 'coding-config-primary', name: 'Current Coding' },
+          { modelId: 'coding-config-secondary', name: 'Current Coding' },
           { modelId: 'review', name: 'Current Review' }
         ]
       } as never;
@@ -315,43 +322,58 @@ describe('Web Conversation Template Service', () => {
 
     const options = await service.listModelOptions('node-1');
     expect(options).toEqual([
-      { modelId: 'coding', name: 'Current Coding' },
+      { modelId: 'coding-config-primary', name: 'Current Coding' },
+      { modelId: 'coding-config-secondary', name: 'Current Coding' },
       { modelId: 'review', name: 'Current Review' }
     ]);
     expect(requests).toEqual(['/api/admin/conversation-templates/model-options?nodeId=node-1']);
     expect(
       reconcileConversationTemplateModelSelection(
-        ['missing', 'review', 'coding'],
+        ['missing', 'coding-config-secondary', 'coding-config-primary', 'review'],
         'missing',
         options
       )
     ).toEqual({
-      allowedModels: ['review', 'coding'],
-      defaultModelId: 'review'
+      allowedModels: ['coding-config-secondary', 'coding-config-primary', 'review'],
+      defaultModelId: 'coding-config-secondary'
     });
     expect(reconcileConversationTemplateModelSelection(['missing'], 'missing', options)).toEqual({
       allowedModels: [],
       defaultModelId: ''
     });
-    expect(conversationTemplateModelReferences(['coding'], options)).toEqual([
-      { modelId: 'coding', name: 'Current Coding' }
+    expect(
+      conversationTemplateModelReferences(
+        ['coding-config-primary', 'coding-config-secondary'],
+        options
+      )
+    ).toEqual([
+      { modelId: 'coding-config-primary', name: 'Current Coding' },
+      { modelId: 'coding-config-secondary', name: 'Current Coding' }
     ]);
     expect(
-      conversationTemplateModelSelectionIsAvailable(['review', 'coding'], 'review', options)
+      conversationTemplateModelSelectionIsAvailable(
+        ['review', 'coding-config-primary'],
+        'review',
+        options
+      )
     ).toBe(true);
     expect(
-      conversationTemplateModelSelectionIsAvailable(['missing', 'coding'], 'coding', options)
+      conversationTemplateModelSelectionIsAvailable(
+        ['missing', 'coding-config-primary'],
+        'coding-config-primary',
+        options
+      )
     ).toBe(false);
-    expect(conversationTemplateModelSelectionIsAvailable(['coding'], 'missing', options)).toBe(
-      false
-    );
+    expect(
+      conversationTemplateModelSelectionIsAvailable(['coding-config-primary'], 'missing', options)
+    ).toBe(false);
 
     const invalid = createConversationTemplateService(
       async () =>
         ({
           models: [
-            { modelId: 'coding', name: 'Coding' },
-            { modelId: 'coding', name: 'Duplicate' }
+            { modelId: 'coding-config-primary', name: 'Coding' },
+            { modelId: 'coding-config-primary', name: 'Duplicate' }
           ]
         }) as never
     );

@@ -212,6 +212,13 @@ export class MarAgentModelService {
   }
 
   async listForUser(userId: number): Promise<readonly MarAgentModelSummary[]> {
+    return deduplicateModelsByName(await this.listAuthorizedConversationModels(userId));
+  }
+
+  /** Keeps every authorized configuration; callers own any presentation-only name deduplication. */
+  protected async listAuthorizedConversationModels(
+    userId: number
+  ): Promise<readonly MarAgentModelSummary[]> {
     const rows = await this.#candidateRows(true, true);
     const visibleRows =
       this.access === undefined
@@ -230,7 +237,7 @@ export class MarAgentModelService {
       )
     );
     const ordered = await this.#applyUserOrder(userId, visible);
-    return deduplicateModelsByName(ordered.map(({ ownership: _ownership, ...model }) => model));
+    return ordered.map(({ ownership: _ownership, ...model }) => model);
   }
 
   async listTemplateOptionsForNode(

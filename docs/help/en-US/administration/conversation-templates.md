@@ -1,6 +1,6 @@
 ---
 title: Manage Conversation Templates
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-13
 ---
 
 # Manage Conversation Templates
@@ -23,7 +23,7 @@ In the Community state, the fixed Admin can create, test, and publish templates 
 
 1. Open **Admin → Chat Templates** and select **New template**.
 2. Choose the source Node and Workspace, then enter the name and description. The complete Workspace is published; there is no included-path field. The source is fixed after creation; create another template to use a different Node or Workspace. Follow [Maintain a Conversation Template Workspace](template-workspace-maintenance.md) to separate maintainer documents from runtime template instructions.
-3. Select allowed and default models. Candidates come only from effective model grants for the source Node owner. Multiple connection configurations for the same upstream model appear as one option. The template stores the upstream model ID and a current name snapshot rather than a specific connection configuration. While editing, unavailable models are removed and the default falls back to the first remaining option. Save, test, and publish are blocked when no model remains. Reasoning uses the model default, and templates do not configure tools, Skills, or model output limits.
+3. Select allowed and default models. Candidates come only from effective model grants for the source Node owner. Configurations with the same name or upstream model appear separately and can be selected independently. The template stores only the selected configuration IDs and current name snapshots, not upstream model IDs, connection settings, or credentials; these are loaded from currently authorized configurations at runtime. While editing, unavailable configurations are removed and the default falls back to the first remaining option. Save, test, and publish are blocked when no configuration remains. Invalid references are never replaced by matching a name or upstream model. If an older template's selections are no longer available, select configurations again, save, and publish. Reasoning uses the model default, and templates do not configure tools, Skills, or model output limits.
 4. Select MCP servers from the source Workspace's currently effective MCP configuration. You cannot type arbitrary IDs. Skills are discovered automatically from `.agents/skills/` in the published image and are not selected or displayed on the template page.
 5. Select a network mode:
    - **No network:** local processes cannot use the network, and Web tools, model Hosted Web, and remote HTTP MCP are unavailable. Sandboxed local stdio MCP can still run offline.

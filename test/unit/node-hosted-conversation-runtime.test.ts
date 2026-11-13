@@ -83,15 +83,15 @@ describe('Node hosted conversation runtime', () => {
     expect(readImage).not.toHaveBeenCalled();
   });
 
-  it('matches template permissions by upstream model ID and preserves concrete configuration preference', async () => {
+  it('matches template permissions and preferred selection by configuration ID', async () => {
     const fixture = await runtimeFixture({
       versionDraft: {
         ...draft,
         allowedModels: [
-          { modelId: 'model-one', name: 'Saved Model One' },
-          { modelId: 'model-two', name: 'Saved Model Two' }
+          { modelId: 'model-1', name: 'Saved Model One' },
+          { modelId: 'model-2', name: 'Saved Model Two' }
         ],
-        defaultModelId: 'model-one'
+        defaultModelId: 'model-1'
       }
     });
     const conversation = await createConversation(fixture, [
@@ -99,18 +99,14 @@ describe('Node hosted conversation runtime', () => {
       modelTwo,
       modelOne
     ]);
-    expect(conversation.modelId).toBe('model-1-alternative');
+    expect(conversation.modelId).toBe('model-1');
 
     const snapshot = (await fixture.service.operations()['conversation.hosted.get']!({
       conversationId: conversation.id,
       __requestUserId: 7,
       __marAgentModels: [modelOneAlternative, modelTwo, modelOne]
     })) as { models: readonly { id: string }[] };
-    expect(snapshot.models.map((model) => model.id)).toEqual([
-      'model-1-alternative',
-      'model-2',
-      'model-1'
-    ]);
+    expect(snapshot.models.map((model) => model.id)).toEqual(['model-2', 'model-1']);
 
     await fixture.service.operations()['conversation.hosted.config.update']!({
       conversationId: conversation.id,
@@ -137,6 +133,47 @@ describe('Node hosted conversation runtime', () => {
     expect(fixture.runtime.startRun).toHaveBeenCalledWith(
       expect.objectContaining({ modelId: 'model-1' })
     );
+  });
+
+  it('does not convert upstream IDs or admit a same-upstream configuration during fallback', async () => {
+    const legacy = await runtimeFixture({
+      versionDraft: {
+        ...draft,
+        allowedModels: [{ modelId: 'model-one', name: 'Legacy upstream reference' }],
+        defaultModelId: 'model-one'
+      }
+    });
+    await expect(createConversation(legacy, [modelOne])).rejects.toThrow(
+      'HOSTED_CONVERSATION_MODEL_NOT_AVAILABLE'
+    );
+
+    const fixture = await runtimeFixture({
+      versionDraft: {
+        ...draft,
+        allowedModels: [
+          { modelId: 'model-1-alternative', name: 'Alternative configuration' },
+          { modelId: 'model-2', name: 'Model Two' }
+        ],
+        defaultModelId: 'model-1-alternative'
+      }
+    });
+    const conversation = await createConversation(fixture, [modelOne, modelTwo]);
+    expect(conversation.modelId).toBe('model-2');
+
+    const snapshot = (await fixture.service.operations()['conversation.hosted.get']!({
+      conversationId: conversation.id,
+      __requestUserId: 7,
+      __marAgentModels: [modelOne, modelTwo]
+    })) as { models: readonly { id: string }[] };
+    expect(snapshot.models.map((candidate) => candidate.id)).toEqual(['model-2']);
+    await expect(
+      fixture.service.operations()['conversation.hosted.config.update']!({
+        conversationId: conversation.id,
+        modelId: 'model-1',
+        __requestUserId: 7,
+        __marAgentModels: [modelOne, modelTwo]
+      })
+    ).resolves.toMatchObject({ conversation: { modelId: 'model-2' } });
   });
 
   it('projects runtime credential models without exposing private runtime fields', async () => {
@@ -207,8 +244,8 @@ describe('Node hosted conversation runtime', () => {
       versionDraft: {
         ...draft,
         allowedModels: [
-          { modelId: 'model-one', name: 'Model One' },
-          { modelId: 'model-two', name: 'Model Two' }
+          { modelId: 'model-1', name: 'Model One' },
+          { modelId: 'model-2', name: 'Model Two' }
         ]
       }
     });

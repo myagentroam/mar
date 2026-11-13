@@ -2736,6 +2736,7 @@ export const conversationTemplateQuotaSchema = z
 
 export const conversationTemplateModelReferenceSchema = z
   .object({
+    // References the model configuration primary key, not its upstream modelId.
     modelId: protocolIdSchema,
     name: z.string().trim().min(1).max(128)
   })
@@ -2754,6 +2755,7 @@ export const conversationTemplateDraftSchema = z
     description: z.string().max(2000),
     icon: z.string().trim().min(1).max(128).optional(),
     allowedModels: z.array(conversationTemplateModelReferenceSchema).min(1).max(128),
+    // Uses the same configuration primary key as allowedModels[].modelId.
     defaultModelId: protocolIdSchema,
     mcpIds: z.array(protocolIdSchema).max(128),
     networkMode: conversationTemplateNetworkModeSchema,

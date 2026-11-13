@@ -25,16 +25,16 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function fixture() {
-  const f = await runtimeFixture();
+async function fixture(initialDraft = draft) {
+  const f = await runtimeFixture({ versionDraft: initialDraft });
   const conversation = await createConversation(f);
   const target = {
     ...draft,
     templateId: 'template-2',
     name: 'Office',
     description: 'Office template',
-    allowedModels: [{ modelId: 'model-two', name: 'Model Two' }],
-    defaultModelId: 'model-two'
+    allowedModels: [{ modelId: 'model-2', name: 'Model Two' }],
+    defaultModelId: 'model-2'
   };
   await seedVersion(f, 'office-v1', 1, target);
   const request = {
@@ -230,7 +230,13 @@ describe('Node hosted conversation template switch', () => {
   });
 
   it('rejects a late old-template model refresh without overwriting the new binding', async () => {
-    const f = await fixture();
+    const f = await fixture({
+      ...draft,
+      allowedModels: [
+        ...draft.allowedModels,
+        { modelId: 'model-1-alternative', name: 'Model One alternative configuration' }
+      ]
+    });
     const entered = deferred<void>();
     const release = deferred<void>();
     const refresh = f.store.updateConversation.bind(f.store);

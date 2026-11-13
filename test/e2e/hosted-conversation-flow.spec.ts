@@ -237,7 +237,21 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       targetType: 'ORGANIZATION',
       targetOrganizationId: 1
     });
-    const draft = templateDraft(nodeId, workspaceId);
+    const modelOptions = await readJson<{
+      models: Array<{ modelId: string; name: string }>;
+    }>(admin.context, `/api/admin/conversation-templates/model-options?nodeId=${nodeId}`);
+    expect(modelOptions.models).toContainEqual({ modelId, name: 'Hosted E2E' });
+    expect(modelOptions.models.some((option) => option.modelId === 'hosted-e2e-model')).toBe(false);
+    expect(modelId).not.toBe('hosted-e2e-model');
+
+    await writeJson(
+      admin,
+      'POST',
+      '/api/admin/conversation-templates',
+      templateDraft(nodeId, workspaceId, 'hosted-e2e-model'),
+      400
+    );
+    const draft = templateDraft(nodeId, workspaceId, modelId);
     const createdTemplate = await writeJson<{
       template: { id: string };
       draft: { revision: number };
