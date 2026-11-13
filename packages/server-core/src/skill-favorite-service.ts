@@ -8,7 +8,9 @@ import {
   withMysqlTransaction
 } from './mysql-reference-store.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { mkdir, readdir, rename, rm, stat, unlink, utimes } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import {
@@ -46,6 +48,10 @@ export interface SkillFavoriteSummary {
   readonly manageable: boolean;
 }
 
+/**
+ * Owns favorite/version transactions, cache publication, and each resolved bundle's lifetime.
+ * Repository reads and archive encoding remain in the provider; policy subclasses own visibility.
+ */
 export abstract class SkillFavoriteService {
   protected abstract favoriteRows(actorUserId: number): Promise<RowDataPacket[]>;
   protected abstract lockOrganization(
@@ -113,112 +119,117 @@ export abstract class SkillFavoriteService {
     const source = await this.sources.getVisible(actorUserId, input.sourceId);
     const request = resolveCandidate(source, input);
     const bundle = await this.provider.resolve(request);
-    const favoriteId = randomUUID();
-    const versionId = randomUUID();
-    const timestamp = this.now();
-    const ownerUserId = input.scope === 'PERSONAL' ? actorUserId : null;
-    const organizationId = input.scope === 'ORGANIZATION' ? input.organizationId! : null;
-    const key = ownerKey(input.scope, organizationId, ownerUserId);
-    const [countRows] = await this.database.raw.execute<RowDataPacket[]>(
-      'SELECT COUNT(*) AS total FROM skill_favorites WHERE owner_key=?',
-      [key]
-    );
-    if (Number(countRows[0]?.['total'] ?? 0) >= 500) throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
-    await withSkillCacheTransaction(
-      this.database.raw,
-      bundle.contentHash,
-      async (connection, assertConnected) => {
-        // Match organization deletion: organization, users, then dependent resources.
-        await this.lockOrganization(connection, organizationId, true, input.scope);
-        await lockMysqlUsers(connection, [actorUserId, ownerUserId], ownerUserId !== null);
-        await lockMysqlSkillSource(connection, input.sourceId);
-        // Lock the owner before any snapshot read, including storeBundle's cache usage read.
-        const [countRows] = await connection.execute<RowDataPacket[]>(
-          'SELECT COUNT(*) AS total FROM skill_favorites WHERE owner_key=?',
-          [key]
-        );
-        if (Number(countRows[0]?.['total'] ?? 0) >= 500)
-          throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
-        await this.storeBundle(bundle, connection, assertConnected);
-        await connection.execute(
-          `INSERT INTO skill_favorites
-         (id,source_id,scope,owner_organization_id,owner_user_id,repository_url,
-          repository_identity,skill_path,normalized_name,featured,tags,current_version_id,
-          created_by_user_id,created_at,updated_at,owner_key)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
-          [
-            favoriteId,
-            input.sourceId,
-            input.scope,
-            organizationId,
-            ownerUserId,
-            bundle.repositoryUrl,
-            bundle.repositoryIdentity,
-            bundle.skillPath,
-            bundle.name,
-            input.featured ?? false,
-            JSON.stringify(input.tags ?? []),
-            actorUserId,
-            timestamp,
-            timestamp,
-            key
-          ]
-        );
-        await connection.execute(
-          `INSERT INTO skill_versions
-         (id,favorite_id,commit_sha,content_hash,archive_hash,cache_key,file_count,content_bytes,
-          metadata,tls_verified,cache_state,unreferenced_at,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,'READY',NULL,?)`,
-          [
+    try {
+      const favoriteId = randomUUID();
+      const versionId = randomUUID();
+      const timestamp = this.now();
+      const ownerUserId = input.scope === 'PERSONAL' ? actorUserId : null;
+      const organizationId = input.scope === 'ORGANIZATION' ? input.organizationId! : null;
+      const key = ownerKey(input.scope, organizationId, ownerUserId);
+      const [countRows] = await this.database.raw.execute<RowDataPacket[]>(
+        'SELECT COUNT(*) AS total FROM skill_favorites WHERE owner_key=?',
+        [key]
+      );
+      if (Number(countRows[0]?.['total'] ?? 0) >= 500)
+        throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
+      await withSkillCacheTransaction(
+        this.database.raw,
+        bundle.contentHash,
+        async (connection, assertConnected) => {
+          // Match organization deletion: organization, users, then dependent resources.
+          await this.lockOrganization(connection, organizationId, true, input.scope);
+          await lockMysqlUsers(connection, [actorUserId, ownerUserId], ownerUserId !== null);
+          await lockMysqlSkillSource(connection, input.sourceId);
+          // Lock the owner before any snapshot read, including storeBundle's cache usage read.
+          const [countRows] = await connection.execute<RowDataPacket[]>(
+            'SELECT COUNT(*) AS total FROM skill_favorites WHERE owner_key=?',
+            [key]
+          );
+          if (Number(countRows[0]?.['total'] ?? 0) >= 500)
+            throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
+          await this.storeBundle(bundle, connection, assertConnected);
+          await connection.execute(
+            `INSERT INTO skill_favorites
+           (id,source_id,scope,owner_organization_id,owner_user_id,repository_url,
+            repository_identity,skill_path,normalized_name,featured,tags,current_version_id,
+            created_by_user_id,created_at,updated_at,owner_key)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
+            [
+              favoriteId,
+              input.sourceId,
+              input.scope,
+              organizationId,
+              ownerUserId,
+              bundle.repositoryUrl,
+              bundle.repositoryIdentity,
+              bundle.skillPath,
+              bundle.name,
+              input.featured ?? false,
+              JSON.stringify(input.tags ?? []),
+              actorUserId,
+              timestamp,
+              timestamp,
+              key
+            ]
+          );
+          await connection.execute(
+            `INSERT INTO skill_versions
+           (id,favorite_id,commit_sha,content_hash,archive_hash,cache_key,file_count,content_bytes,
+            metadata,tls_verified,cache_state,unreferenced_at,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,'READY',NULL,?)`,
+            [
+              versionId,
+              favoriteId,
+              bundle.commitSha,
+              bundle.contentHash,
+              bundle.archiveHash,
+              bundle.contentHash,
+              bundle.fileCount,
+              bundle.contentBytes,
+              JSON.stringify({ name: bundle.name, description: bundle.description }),
+              bundle.tlsVerified,
+              timestamp
+            ]
+          );
+          await connection.execute('UPDATE skill_favorites SET current_version_id=? WHERE id=?', [
             versionId,
-            favoriteId,
-            bundle.commitSha,
-            bundle.contentHash,
-            bundle.archiveHash,
-            bundle.contentHash,
-            bundle.files.length,
-            bundle.contentBytes,
-            JSON.stringify({ name: bundle.name, description: bundle.description }),
-            bundle.tlsVerified,
-            timestamp
-          ]
-        );
-        await connection.execute('UPDATE skill_favorites SET current_version_id=? WHERE id=?', [
-          versionId,
-          favoriteId
-        ]);
-        await connection.execute(
-          "UPDATE skill_versions SET unreferenced_at=NULL WHERE content_hash=? AND cache_key=? AND cache_state='READY'",
-          [bundle.contentHash, bundle.contentHash]
-        );
-      }
-    );
-    const summary = summaryFromBundle({
-      favoriteId,
-      versionId,
-      sourceId: input.sourceId,
-      scope: input.scope,
-      ownerOrganizationId: organizationId,
-      ownerUserId,
-      bundle,
-      featured: input.featured ?? false,
-      tags: input.tags ?? [],
-      timestamp
-    });
-    emitAudit(
-      this.database,
-      resourceAuditEvent(
-        {
-          eventType: 'skill.catalog.created',
-          actorUserId: actorUserId,
-          targetType: 'SKILL',
-          targetId: favoriteId
-        },
-        { ...summary, ownerOrganizationId: organizationId },
-        {}
-      )
-    );
-    return summary;
+            favoriteId
+          ]);
+          await connection.execute(
+            "UPDATE skill_versions SET unreferenced_at=NULL WHERE content_hash=? AND cache_key=? AND cache_state='READY'",
+            [bundle.contentHash, bundle.contentHash]
+          );
+        }
+      );
+      const summary = summaryFromBundle({
+        favoriteId,
+        versionId,
+        sourceId: input.sourceId,
+        scope: input.scope,
+        ownerOrganizationId: organizationId,
+        ownerUserId,
+        bundle,
+        featured: input.featured ?? false,
+        tags: input.tags ?? [],
+        timestamp
+      });
+      emitAudit(
+        this.database,
+        resourceAuditEvent(
+          {
+            eventType: 'skill.catalog.created',
+            actorUserId: actorUserId,
+            targetType: 'SKILL',
+            targetId: favoriteId
+          },
+          { ...summary, ownerOrganizationId: organizationId },
+          {}
+        )
+      );
+      return summary;
+    } finally {
+      await bundle.dispose();
+    }
   }
 
   async getVisible(actorUserId: number, favoriteId: string): Promise<SkillFavoriteSummary> {
@@ -238,17 +249,21 @@ export abstract class SkillFavoriteService {
       repositoryUrl: String(row['repository_url']),
       skillPath: String(row['skill_path'])
     });
-    if (bundle.name !== String(row['normalized_name'])) throw new Error('SKILL_NAME_CONFLICT');
-    const [versions] = await this.database.raw.execute<RowDataPacket[]>(
-      'SELECT commit_sha FROM skill_versions WHERE id=?',
-      [String(row['current_version_id'])]
-    );
-    const currentCommitSha = versions[0]?.['commit_sha'];
-    if (typeof currentCommitSha !== 'string') throw new Error('SKILL_VERSION_NOT_FOUND');
-    return {
-      updateAvailable: bundle.commitSha !== currentCommitSha,
-      latestCommitSha: bundle.commitSha
-    };
+    try {
+      if (bundle.name !== String(row['normalized_name'])) throw new Error('SKILL_NAME_CONFLICT');
+      const [versions] = await this.database.raw.execute<RowDataPacket[]>(
+        'SELECT commit_sha FROM skill_versions WHERE id=?',
+        [String(row['current_version_id'])]
+      );
+      const currentCommitSha = versions[0]?.['commit_sha'];
+      if (typeof currentCommitSha !== 'string') throw new Error('SKILL_VERSION_NOT_FOUND');
+      return {
+        updateAvailable: bundle.commitSha !== currentCommitSha,
+        latestCommitSha: bundle.commitSha
+      };
+    } finally {
+      await bundle.dispose();
+    }
   }
 
   async updatePresentation(
@@ -283,92 +298,96 @@ export abstract class SkillFavoriteService {
       repositoryUrl: String(row['repository_url']),
       skillPath: String(row['skill_path'])
     });
-    if (bundle.name !== String(row['normalized_name'])) throw new Error('SKILL_NAME_CONFLICT');
-    const timestamp = this.now();
-    const versionId = randomUUID();
-    return withSkillCacheTransaction(
-      this.database.raw,
-      bundle.contentHash,
-      async (connection, assertConnected) => {
-        await this.storeBundle(bundle, connection, assertConnected);
-        const [parents] = await connection.execute<RowDataPacket[]>(
-          `SELECT favorite.id,version.cache_key FROM skill_favorites favorite
-           LEFT JOIN skill_versions version ON version.id=favorite.current_version_id
-           WHERE favorite.id=? FOR UPDATE`,
-          [favoriteId]
-        );
-        if (parents.length !== 1) throw new Error('SKILL_FAVORITE_NOT_FOUND');
-        const [existing] = await connection.execute<RowDataPacket[]>(
-          'SELECT id FROM skill_versions WHERE favorite_id=? AND commit_sha=?',
-          [favoriteId, bundle.commitSha]
-        );
-        const effectiveVersionId =
-          existing[0] === undefined ? versionId : String(existing[0]['id']);
-        if (existing[0] === undefined)
-          await connection.execute(
-            `INSERT INTO skill_versions
-           (id,favorite_id,commit_sha,content_hash,archive_hash,cache_key,file_count,content_bytes,
-            metadata,tls_verified,cache_state,unreferenced_at,created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,'READY',NULL,?)`,
-            [
-              versionId,
-              favoriteId,
-              bundle.commitSha,
-              bundle.contentHash,
-              bundle.archiveHash,
-              bundle.contentHash,
-              bundle.files.length,
-              bundle.contentBytes,
-              JSON.stringify({ name: bundle.name, description: bundle.description }),
-              bundle.tlsVerified,
-              timestamp
-            ]
+    try {
+      if (bundle.name !== String(row['normalized_name'])) throw new Error('SKILL_NAME_CONFLICT');
+      const timestamp = this.now();
+      const versionId = randomUUID();
+      return await withSkillCacheTransaction(
+        this.database.raw,
+        bundle.contentHash,
+        async (connection, assertConnected) => {
+          await this.storeBundle(bundle, connection, assertConnected);
+          const [parents] = await connection.execute<RowDataPacket[]>(
+            `SELECT favorite.id,version.cache_key FROM skill_favorites favorite
+             LEFT JOIN skill_versions version ON version.id=favorite.current_version_id
+             WHERE favorite.id=? FOR UPDATE`,
+            [favoriteId]
           );
-        else
-          await connection.execute(
-            "UPDATE skill_versions SET cache_state='READY',unreferenced_at=NULL WHERE id=?",
-            [effectiveVersionId]
+          if (parents.length !== 1) throw new Error('SKILL_FAVORITE_NOT_FOUND');
+          const [existing] = await connection.execute<RowDataPacket[]>(
+            'SELECT id FROM skill_versions WHERE favorite_id=? AND commit_sha=?',
+            [favoriteId, bundle.commitSha]
           );
-        await connection.execute(
-          'UPDATE skill_favorites SET current_version_id=?,updated_at=? WHERE id=?',
-          [effectiveVersionId, timestamp, favoriteId]
-        );
-        const previousKey = parents[0]?.['cache_key'];
-        if (typeof previousKey === 'string' && previousKey !== bundle.contentHash)
-          await this.markCacheUnreferenced(connection, previousKey);
-        await connection.execute(
-          "UPDATE skill_versions SET unreferenced_at=NULL WHERE content_hash=? AND cache_key=? AND cache_state='READY'",
-          [bundle.contentHash, bundle.contentHash]
-        );
-        emitAuditAfterCommit(
-          this.database,
-          connection,
-          resourceAuditEvent(
-            {
-              eventType: 'skill.catalog.upgraded',
-              actorUserId: actorUserId,
-              targetType: 'SKILL',
-              targetId: favoriteId
-            },
-            row,
-            { version: effectiveVersionId }
-          )
-        );
-        return summaryFromBundle({
-          favoriteId,
-          versionId: effectiveVersionId,
-          sourceId: String(row['source_id']),
-          scope: String(row['scope']) as SkillFavoriteSummary['scope'],
-          ownerOrganizationId: nullableNumber(row['owner_organization_id']),
-          ownerUserId: nullableNumber(row['owner_user_id']),
-          bundle,
-          featured: Boolean(row['featured']),
-          tags: skillTags(row['tags']),
-          timestamp,
-          createdAt: Number(row['created_at'])
-        });
-      }
-    );
+          const effectiveVersionId =
+            existing[0] === undefined ? versionId : String(existing[0]['id']);
+          if (existing[0] === undefined)
+            await connection.execute(
+              `INSERT INTO skill_versions
+             (id,favorite_id,commit_sha,content_hash,archive_hash,cache_key,file_count,content_bytes,
+              metadata,tls_verified,cache_state,unreferenced_at,created_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,'READY',NULL,?)`,
+              [
+                versionId,
+                favoriteId,
+                bundle.commitSha,
+                bundle.contentHash,
+                bundle.archiveHash,
+                bundle.contentHash,
+                bundle.fileCount,
+                bundle.contentBytes,
+                JSON.stringify({ name: bundle.name, description: bundle.description }),
+                bundle.tlsVerified,
+                timestamp
+              ]
+            );
+          else
+            await connection.execute(
+              "UPDATE skill_versions SET cache_state='READY',unreferenced_at=NULL WHERE id=?",
+              [effectiveVersionId]
+            );
+          await connection.execute(
+            'UPDATE skill_favorites SET current_version_id=?,updated_at=? WHERE id=?',
+            [effectiveVersionId, timestamp, favoriteId]
+          );
+          const previousKey = parents[0]?.['cache_key'];
+          if (typeof previousKey === 'string' && previousKey !== bundle.contentHash)
+            await this.markCacheUnreferenced(connection, previousKey);
+          await connection.execute(
+            "UPDATE skill_versions SET unreferenced_at=NULL WHERE content_hash=? AND cache_key=? AND cache_state='READY'",
+            [bundle.contentHash, bundle.contentHash]
+          );
+          emitAuditAfterCommit(
+            this.database,
+            connection,
+            resourceAuditEvent(
+              {
+                eventType: 'skill.catalog.upgraded',
+                actorUserId: actorUserId,
+                targetType: 'SKILL',
+                targetId: favoriteId
+              },
+              row,
+              { version: effectiveVersionId }
+            )
+          );
+          return summaryFromBundle({
+            favoriteId,
+            versionId: effectiveVersionId,
+            sourceId: String(row['source_id']),
+            scope: String(row['scope']) as SkillFavoriteSummary['scope'],
+            ownerOrganizationId: nullableNumber(row['owner_organization_id']),
+            ownerUserId: nullableNumber(row['owner_user_id']),
+            bundle,
+            featured: Boolean(row['featured']),
+            tags: skillTags(row['tags']),
+            timestamp,
+            createdAt: Number(row['created_at'])
+          });
+        }
+      );
+    } finally {
+      await bundle.dispose();
+    }
   }
 
   async remove(actorUserId: number, favoriteId: string): Promise<void> {
@@ -552,12 +571,9 @@ export abstract class SkillFavoriteService {
     if (used + bundle.contentBytes > this.maxCacheBytes * 0.9)
       throw new Error('SKILL_SOURCE_LIMIT_EXCEEDED');
     const staging = `${destination}.${randomUUID()}.tmp`;
-    assertConnected();
-    await writeFile(staging, bundle.archiveJson, {
-      flag: 'wx',
-      mode: 0o600
-    });
     try {
+      assertConnected();
+      await pipeline(bundle.archive(), createWriteStream(staging, { flags: 'wx', mode: 0o600 }));
       assertConnected();
       await rename(staging, destination);
     } catch (error) {
@@ -567,6 +583,8 @@ export abstract class SkillFavoriteService {
         (error as NodeJS.ErrnoException).code === 'EEXIST'
       ))
         throw error;
+    } finally {
+      await rm(staging, { force: true });
     }
   }
 }

@@ -375,7 +375,8 @@ const openHistoryText = fileWorkbench.openHistoryText;
 
 async function navigateDiffSymbol(tab: WorkspaceFileTab, symbol: string): Promise<void> {
   if (tab.kind !== 'WORKTREE_DIFF') return;
-  await openWorktreeDiffText(tab);
+  const sourceId = await openWorktreeDiffText(tab);
+  if (sourceId === undefined || activePreview.value?.id !== sourceId) return;
   await navigateSymbol(symbol);
 }
 
@@ -384,7 +385,8 @@ async function navigateDiffFile(
   request: FileNavigationRequest
 ): Promise<void> {
   if (tab.kind !== 'WORKTREE_DIFF') return;
-  await openWorktreeDiffText(tab);
+  const sourceId = await openWorktreeDiffText(tab);
+  if (sourceId === undefined || activePreview.value?.id !== sourceId) return;
   await navigateFile(request);
 }
 

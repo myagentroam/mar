@@ -61,6 +61,7 @@ const props = defineProps<{
   readonly pwaState?: PwaApplicationState;
   readonly checkingForUpdates?: boolean;
   readonly sessions: readonly UserSessionSummary[];
+  readonly sessionsRefreshing?: boolean;
   readonly newPassword: string;
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
@@ -246,6 +247,9 @@ async function confirmLogout(): Promise<void> {
             v-tooltip="translate('generated.settingsContent.refreshSignInSessions')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
+            :loading="sessionsRefreshing"
+            :loading-icon="marIcon('loading-action')"
+            :aria-busy="sessionsRefreshing || undefined"
             :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
             text
             @click="emit('refreshSessions')"
@@ -383,83 +387,87 @@ async function confirmLogout(): Promise<void> {
     <section v-else-if="section === 'appearance'" class="full settings-panel">
       <h2>{{ t('settings.appearance') }}</h2>
       <p class="account-summary">{{ t('settings.appearanceSummary') }}</p>
-      <div class="theme-row">
-        <label class="theme-label" for="appearance-theme">{{ t('settings.theme') }}</label>
-        <el-select
-          id="appearance-theme"
-          :model-value="theme"
-          class="theme-select"
-          :aria-label="t('settings.theme')"
-          @update:model-value="setTheme($event as ThemePreference)"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-        >
-          <el-option :label="t('settings.light')" value="daylight" />
-          <el-option :label="t('settings.dark')" value="vscode-dark-2026" />
-          <el-option
-            v-for="item in customThemes"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id"
-          />
-        </el-select>
+      <div class="appearance-options">
+        <div class="theme-row">
+          <label class="theme-label" for="appearance-theme">{{ t('settings.theme') }}</label>
+          <el-select
+            id="appearance-theme"
+            :model-value="theme"
+            class="theme-select"
+            :aria-label="t('settings.theme')"
+            @update:model-value="setTheme($event as ThemePreference)"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
+            <el-option :label="t('settings.light')" value="daylight" />
+            <el-option :label="t('settings.dark')" value="vscode-dark-2026" />
+            <el-option
+              v-for="item in customThemes"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </div>
+        <div class="theme-row">
+          <label class="theme-label" for="appearance-file-editor">{{
+            t('settings.defaultFileMode')
+          }}</label>
+          <el-select
+            id="appearance-file-editor"
+            :model-value="fileEditorMode"
+            class="theme-select"
+            :aria-label="t('settings.defaultFileMode')"
+            @update:model-value="fileEditorService.setMode($event as FileEditorDefaultMode)"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
+            <el-option :label="t('settings.fileModeEdit')" value="edit" />
+            <el-option :label="t('settings.fileModeReadOnly')" value="read-only" />
+          </el-select>
+        </div>
+        <div class="theme-row">
+          <label class="theme-label" for="appearance-icon-theme">{{
+            t('settings.iconTheme')
+          }}</label>
+          <el-select
+            id="appearance-icon-theme"
+            :model-value="iconTheme"
+            class="theme-select"
+            :aria-label="t('settings.iconTheme')"
+            @update:model-value="setIconTheme($event as IconThemeId)"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
+            <el-option
+              v-for="option in iconThemes"
+              :key="option.id"
+              :label="t(option.labelKey)"
+              :value="option.id"
+            />
+          </el-select>
+        </div>
+        <div class="theme-row">
+          <label class="theme-label" for="appearance-language">{{ t('common.language') }}</label>
+          <el-select
+            id="appearance-language"
+            :model-value="locale"
+            class="theme-select"
+            :aria-label="t('common.language')"
+            @update:model-value="updateLocale($event as AppLocale)"
+            :clear-icon="marIcon('clear-input')"
+            :suffix-icon="marIcon('chevron-down')"
+          >
+            <el-option
+              v-for="option in SUPPORTED_LOCALES"
+              :key="option.value"
+              :label="option.nativeLabel"
+              :value="option.value"
+            />
+          </el-select>
+        </div>
+        <PromptCompletionPreferences />
       </div>
-      <div class="theme-row">
-        <label class="theme-label" for="appearance-file-editor">{{
-          t('settings.defaultFileMode')
-        }}</label>
-        <el-select
-          id="appearance-file-editor"
-          :model-value="fileEditorMode"
-          class="theme-select"
-          :aria-label="t('settings.defaultFileMode')"
-          @update:model-value="fileEditorService.setMode($event as FileEditorDefaultMode)"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-        >
-          <el-option :label="t('settings.fileModeEdit')" value="edit" />
-          <el-option :label="t('settings.fileModeReadOnly')" value="read-only" />
-        </el-select>
-      </div>
-      <div class="theme-row">
-        <label class="theme-label" for="appearance-icon-theme">{{ t('settings.iconTheme') }}</label>
-        <el-select
-          id="appearance-icon-theme"
-          :model-value="iconTheme"
-          class="theme-select"
-          :aria-label="t('settings.iconTheme')"
-          @update:model-value="setIconTheme($event as IconThemeId)"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-        >
-          <el-option
-            v-for="option in iconThemes"
-            :key="option.id"
-            :label="t(option.labelKey)"
-            :value="option.id"
-          />
-        </el-select>
-      </div>
-      <div class="theme-row">
-        <label class="theme-label" for="appearance-language">{{ t('common.language') }}</label>
-        <el-select
-          id="appearance-language"
-          :model-value="locale"
-          class="theme-select"
-          :aria-label="t('common.language')"
-          @update:model-value="updateLocale($event as AppLocale)"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-        >
-          <el-option
-            v-for="option in SUPPORTED_LOCALES"
-            :key="option.value"
-            :label="option.nativeLabel"
-            :value="option.value"
-          />
-        </el-select>
-      </div>
-      <PromptCompletionPreferences />
     </section>
     <section
       v-else-if="section === 'notifications' && systemNotifications"
@@ -759,55 +767,65 @@ async function confirmLogout(): Promise<void> {
           ><code>v{{ webVersion }}</code>
         </div>
       </div>
-      <el-descriptions :column="1" border>
-        <el-descriptions-item :label="t('webUpdate.displayModeLabel')">
-          {{ t(`webUpdate.displayMode.${standaloneWindow ? 'standalone' : 'browser'}`) }}
-        </el-descriptions-item>
-        <el-descriptions-item v-if="pwaState" :label="t('webUpdate.offlineLabel')">
-          <span>{{ t(`webUpdate.offline.${pwaState.offline}`) }}</span>
-          <div class="pwa-actions">
-            <el-button :loading="checkingForUpdates" @click="emit('checkForUpdates')">{{
-              t('webUpdate.check')
-            }}</el-button>
-            <el-button v-if="pwaState.update" type="primary" @click="emit('applyWebUpdate')">{{
-              t('webUpdate.apply')
-            }}</el-button>
-            <el-button v-else-if="pwaState.reload" @click="emit('applyWebUpdate')">{{
-              t(
-                pwaState.reload.action === 'activate'
-                  ? 'webUpdate.usePrepared'
-                  : 'webUpdate.reloadPrepared'
-              )
-            }}</el-button>
-          </div>
-        </el-descriptions-item>
-        <el-descriptions-item v-if="documentationAvailable" :label="t('settings.documentation')">
-          <el-link
-            :href="localizedDocsPath(locale, 'getting-started/overview')"
-            target="_blank"
-            :underline="false"
-            >{{ t('settings.openDocumentation') }}</el-link
-          >
-        </el-descriptions-item>
-        <el-descriptions-item :label="t('settings.thirdPartyOpenSourceSoftware')">
-          <p class="third-party-scope">{{ t('settings.thirdPartySummary') }}</p>
-          <dl class="third-party-groups">
-            <div v-for="group in thirdPartyGroups" :key="group">
-              <dt>{{ t('settings.thirdPartyGroups.' + group + '.title') }}</dt>
-              <dd>{{ t('settings.thirdPartyGroups.' + group + '.components') }}</dd>
+      <dl class="about-details">
+        <div>
+          <dt>{{ t('webUpdate.displayModeLabel') }}</dt>
+          <dd>{{ t(`webUpdate.displayMode.${standaloneWindow ? 'standalone' : 'browser'}`) }}</dd>
+        </div>
+        <div v-if="pwaState">
+          <dt>{{ t('webUpdate.offlineLabel') }}</dt>
+          <dd>
+            <span>{{ t(`webUpdate.offline.${pwaState.offline}`) }}</span>
+            <div class="pwa-actions">
+              <el-button :loading="checkingForUpdates" @click="emit('checkForUpdates')">{{
+                t('webUpdate.check')
+              }}</el-button>
+              <el-button v-if="pwaState.update" type="primary" @click="emit('applyWebUpdate')">{{
+                t('webUpdate.apply')
+              }}</el-button>
+              <el-button v-else-if="pwaState.reload" @click="emit('applyWebUpdate')">{{
+                t(
+                  pwaState.reload.action === 'activate'
+                    ? 'webUpdate.usePrepared'
+                    : 'webUpdate.reloadPrepared'
+                )
+              }}</el-button>
             </div>
-          </dl>
-          <el-link
-            class="third-party-notices-link"
-            href="/THIRD_PARTY_NOTICES.txt"
-            target="_blank"
-            rel="noopener noreferrer"
-            :underline="false"
-            >{{ t('settings.viewThirdPartyNotices') }}</el-link
-          >
-          <p class="third-party-scope">{{ t('settings.thirdPartyDistributionNotices') }}</p>
-        </el-descriptions-item>
-      </el-descriptions>
+          </dd>
+        </div>
+        <div v-if="documentationAvailable">
+          <dt>{{ t('settings.documentation') }}</dt>
+          <dd>
+            <el-link
+              :href="localizedDocsPath(locale, 'getting-started/overview')"
+              target="_blank"
+              :underline="false"
+              >{{ t('settings.openDocumentation') }}</el-link
+            >
+          </dd>
+        </div>
+        <div>
+          <dt>{{ t('settings.thirdPartyOpenSourceSoftware') }}</dt>
+          <dd>
+            <p class="third-party-scope">{{ t('settings.thirdPartySummary') }}</p>
+            <dl class="third-party-groups">
+              <div v-for="group in thirdPartyGroups" :key="group">
+                <dt>{{ t('settings.thirdPartyGroups.' + group + '.title') }}</dt>
+                <dd>{{ t('settings.thirdPartyGroups.' + group + '.components') }}</dd>
+              </div>
+            </dl>
+            <el-link
+              class="third-party-notices-link"
+              href="/THIRD_PARTY_NOTICES.txt"
+              target="_blank"
+              rel="noopener noreferrer"
+              :underline="false"
+              >{{ t('settings.viewThirdPartyNotices') }}</el-link
+            >
+            <p class="third-party-scope">{{ t('settings.thirdPartyDistributionNotices') }}</p>
+          </dd>
+        </div>
+      </dl>
     </section>
   </section>
 </template>
@@ -830,22 +848,17 @@ async function confirmLogout(): Promise<void> {
 </style>
 
 <style scoped>
-.full {
-  max-width: 960px;
-}
 .about-settings {
   width: 100%;
   min-height: 100%;
   box-sizing: border-box;
-  padding: 28px 32px 36px;
   background: var(--mar-bg-panel);
 }
 .system-brand {
   display: flex;
   align-items: center;
   gap: 16px;
-  width: min(100%, 820px);
-  padding-bottom: 22px;
+  padding-bottom: 1rem;
   border-bottom: 1px solid var(--mar-border-subtle);
 }
 .system-brand img {
@@ -866,25 +879,32 @@ async function confirmLogout(): Promise<void> {
   font-size: var(--mar-font-size-body);
 }
 
-.about-settings :deep(.el-descriptions) {
-  width: min(100%, 820px);
-  background: var(--mar-bg-panel);
+.about-details {
+  margin: 0;
 }
 
-.about-settings :deep(.el-descriptions__table) {
-  table-layout: fixed;
+.about-details > div {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 0.5rem 1.5rem;
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
 }
 
-.about-settings :deep(.el-descriptions__label) {
-  width: 180px;
-  background: var(--mar-fill-subtle);
+.about-details dt {
   color: var(--mar-text-secondary);
-  font-weight: 600;
+  font-weight: 400;
 }
 
-.about-settings :deep(.el-descriptions__content) {
-  background: var(--mar-bg-panel);
+.about-details dd {
+  min-width: 0;
+  margin: 0;
   color: var(--mar-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.about-details dd > p:first-child {
+  margin-top: 0;
 }
 
 .third-party-groups {
@@ -936,14 +956,19 @@ async function confirmLogout(): Promise<void> {
 
 <style scoped>
 .settings-content {
+  --mar-settings-page-padding: 0.875rem 1rem;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 0;
   background: var(--mar-bg-panel);
 }
 
 .settings-content .full {
-  max-width: 960px;
-  padding: 14px 16px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--mar-settings-page-padding);
 }
 
 .settings-content.page-settings-content {
@@ -1004,16 +1029,22 @@ async function confirmLogout(): Promise<void> {
 
 .theme-row {
   display: grid;
-  grid-template-columns: 9.5rem minmax(0, 18rem);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
   align-items: center;
   gap: 1rem;
-  margin-top: 0.75rem;
+  padding-block: 0.875rem;
+  border-bottom: 1px solid var(--mar-border-subtle);
+}
+
+.appearance-options {
+  max-width: 34rem;
+  margin-top: 0.5rem;
 }
 
 .theme-label {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .theme-select {
@@ -1082,7 +1113,7 @@ async function confirmLogout(): Promise<void> {
 
 .admin-sessions {
   margin: 0.8rem 0;
-  border-block: 1px solid var(--mar-border-medium);
+  border-block: 1px solid var(--mar-border-subtle);
   padding: 0.55rem 0;
 }
 
@@ -1150,7 +1181,7 @@ async function confirmLogout(): Promise<void> {
   align-items: center;
   gap: 8px;
   margin-top: 0.8rem;
-  border-top: 1px solid var(--mar-border-medium);
+  border-top: 1px solid var(--mar-border-subtle);
   padding-top: 0.8rem;
 }
 
@@ -1184,24 +1215,13 @@ async function confirmLogout(): Promise<void> {
 
 @media (max-width: 767px) {
   .settings-content {
-    padding: 0.75rem;
-  }
-
-  .about-settings {
-    padding: 20px 16px 28px;
-  }
-
-  .about-settings :deep(.el-descriptions__label) {
-    width: 128px;
+    --mar-settings-page-padding: 0.75rem;
   }
 }
 
-@media (max-width: 460px) {
-  .host-summary,
-  .overview-grid,
-  .full,
-  .settings-content {
-    padding: 0.65rem;
+@media (max-width: 520px) {
+  .about-details > div {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

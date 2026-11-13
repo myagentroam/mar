@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'mysql2/promise';
 import { SkillFavoriteService } from '../../ee/server/src/skill/skill-favorite-service.js';
@@ -256,6 +257,48 @@ describe('Skill cache reference coordination with gated SQL fake', () => {
     await expect(readFile(path.join(cache, `${old.contentHash}.json`), 'utf8')).resolves.toContain(
       'SKILL.md'
     );
+  });
+
+  it('Disposes bundles after successful and early-failed upgrades', async () => {
+    const { service, resolve } = await fixture();
+    const initialBundle = { ...skillBundle(), dispose: vi.fn(async () => {}) };
+    resolve.mockResolvedValueOnce(initialBundle);
+    const favorite = await service().create(7, favoriteInput);
+    expect(initialBundle.dispose).toHaveBeenCalledOnce();
+
+    const upgradedBundle = { ...skillBundle('b'), dispose: vi.fn(async () => {}) };
+    resolve.mockResolvedValueOnce(upgradedBundle);
+    await service().upgrade(7, favorite.id);
+    expect(upgradedBundle.dispose).toHaveBeenCalledOnce();
+
+    const rejectedBundle = {
+      ...skillBundle('c'),
+      name: 'different-name',
+      dispose: vi.fn(async () => {})
+    };
+    resolve.mockResolvedValueOnce(rejectedBundle);
+    await expect(service().upgrade(7, favorite.id)).rejects.toThrow('SKILL_NAME_CONFLICT');
+    expect(rejectedBundle.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('Removes the staging file and disposes a bundle when its archive stream fails', async () => {
+    const { cache, service, resolve } = await fixture();
+    const bundle = {
+      ...skillBundle('d'),
+      archive: () =>
+        Readable.from(
+          (async function* () {
+            yield '{"schemaVersion":1,';
+            throw new Error('ARCHIVE_STREAM_FAILED');
+          })()
+        ),
+      dispose: vi.fn(async () => {})
+    };
+    resolve.mockResolvedValueOnce(bundle);
+
+    await expect(service().create(7, favoriteInput)).rejects.toThrow('ARCHIVE_STREAM_FAILED');
+    expect(bundle.dispose).toHaveBeenCalledOnce();
+    await expect(readdir(cache)).resolves.toEqual([]);
   });
 });
 

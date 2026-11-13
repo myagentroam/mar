@@ -156,6 +156,7 @@ describe('Public workbench entity actions', () => {
       2
     );
     const openDraft = vi.fn();
+    const releaseSessionDraft = vi.fn();
     const controller = createWorkbenchEntityController({
       workspaceTarget: workspaceTargetRef(nodeId),
       actions: {
@@ -168,10 +169,12 @@ describe('Public workbench entity actions', () => {
       selectedSessionId,
       caches,
       openDraft,
+      releaseSessionDraft,
       replaceUrl: vi.fn()
     } as never);
     await controller.deleteSession(session);
     expect(caches.detail('node-a', session.workspaceId, session.id)).toBeUndefined();
+    expect(releaseSessionDraft).toHaveBeenCalledWith('node-a', session.workspaceId, session.id);
     expect(caches.view('node-a', session.workspaceId).selectedSessionId).toBeUndefined();
     expect(sessions.value).toEqual([session]);
     expect(selectedSessionId.value).toBe(session.id);

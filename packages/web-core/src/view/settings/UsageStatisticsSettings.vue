@@ -841,7 +841,7 @@ onUnmounted(() => {
   color: var(--mar-text-primary);
 }
 .usage-content {
-  padding: 1rem;
+  padding: var(--mar-settings-page-padding, 0.875rem 1rem);
 }
 header,
 .section-heading {
@@ -1063,9 +1063,6 @@ dd {
 @media (max-width: 640px) {
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .usage-content {
-    padding: 0.75rem;
   }
   .overview,
   .distributions {

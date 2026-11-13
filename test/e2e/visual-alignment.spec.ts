@@ -284,6 +284,61 @@ test('Node detail actions stay above Close and capability refresh stays within i
   }
 });
 
+test('Shared tooltip retains keyboard ownership after a cancelled pointer handoff', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  await page.clock.install();
+  const first = page.locator('[data-row="1"]');
+  const second = page.locator('[data-row="2"]');
+  const hint = page.locator('.mar-tooltip:visible');
+  await first.focus();
+  await first.hover();
+  await page.clock.fastForward(500);
+  await expect(hint).toHaveText('Original 1');
+  const firstBox = (await first.boundingBox())!;
+  const secondBox = (await second.boundingBox())!;
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2);
+  await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(500);
+  await expect(hint).toHaveText('Original 1');
+  await expect(first).toBeFocused();
+  await first.blur();
+  await page.clock.runFor(150);
+  await expect(hint).toHaveCount(0);
+});
+
+test('Shared tooltip retains keyboard ownership when a transient hover leaves into blank space', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  await page.clock.install();
+  const first = page.locator('[data-row="1"]');
+  const second = page.locator('[data-row="2"]');
+  const hint = page.locator('.mar-tooltip:visible');
+  await first.focus();
+  await first.hover();
+  await page.clock.fastForward(500);
+  await expect(hint).toHaveText('Original 1');
+  const secondBox = (await second.boundingBox())!;
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2);
+  await page.clock.runFor(50);
+  await expect(hint).toHaveText('Original 1');
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(500);
+  await expect(first).toBeFocused();
+  await expect(hint).toHaveText('Original 1');
+  await expect(first).toHaveAccessibleDescription('Existing description Original 1');
+  await expect(second).toHaveAttribute('aria-describedby', 'existing-description');
+  await first.blur();
+  await page.clock.runFor(150);
+  await expect(hint).toHaveCount(0);
+  await expect(first).toHaveAttribute('aria-describedby', 'existing-description');
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Computer Use separates its switch state from the supporting hint in ${theme}`, async ({
     page
@@ -384,6 +439,69 @@ test('Shared tooltip keeps one active instance for thousands of targets and pres
   expect(warnings).toEqual([]);
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Shared tooltip suppresses mouse-click focus and resumes deliberate hover and keyboard focus in ${theme}`, async ({
+    page
+  }) => {
+    await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1&theme=${theme}`);
+    await page.clock.install();
+    const first = page.locator('[data-row="1"]');
+    const second = page.locator('[data-row="2"]');
+    const hint = page.locator('.mar-tooltip:visible');
+    await first.hover();
+    await page.clock.fastForward(500);
+    await expect(hint).toHaveText('Original 1');
+    await first.click();
+    await expect(first).toBeFocused();
+    await page.clock.fastForward(1000);
+    await expect(hint).toHaveCount(0);
+
+    await page.mouse.move(0, 0);
+    await first.hover();
+    await page.clock.fastForward(500);
+    await expect(hint).toHaveText('Original 1');
+    await page.mouse.move(0, 0);
+    await page.clock.fastForward(500);
+    await expect(hint).toHaveCount(0);
+    await expect(first).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(second).toBeFocused();
+    await page.clock.fastForward(500);
+    await expect(hint).toHaveText('Original 2');
+  });
+
+  test(`Shared tooltip reuses the visible popper during a settled target handoff in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1&theme=${theme}`);
+    await page.clock.install();
+    const first = page.locator('[data-row="1"]');
+    const second = page.locator('[data-row="2"]');
+    const hint = page.locator('.mar-tooltip:visible');
+    await first.hover();
+    await page.clock.fastForward(500);
+    await expect(hint).toHaveText('Original 1');
+    const before = await hint.evaluate((element: HTMLElement) => {
+      element.dataset.handoffInstance = 'original';
+      return element.getBoundingClientRect().y;
+    });
+    const box = (await second.boundingBox())!;
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(hint).toHaveText('Original 1');
+    await page.clock.runFor(150);
+    await expect(hint).toHaveText('Original 2');
+    await expect(hint).toHaveAttribute('data-handoff-instance', 'original');
+    await expect(page.getByTestId('tooltip-created')).toHaveText('1');
+    await expect(first).toHaveAttribute('aria-describedby', 'existing-description');
+    await expect(second).toHaveAccessibleDescription('Existing description Original 2');
+    const after = (await hint.boundingBox())!.y;
+    expect(Math.abs(after - before - box.height)).toBeLessThan(2);
+    await page.clock.resume();
+    await page.screenshot({ path: testInfo.outputPath(`tooltip-handoff-${theme}.png`) });
+  });
+}
+
 test('Shared tooltip lets Escape reach the target and local bubble handlers without reaching business shortcuts', async ({
   page
 }) => {
@@ -438,7 +556,7 @@ test('Shared tooltip preserves inline cancellation and native select Escape insi
   page
 }) => {
   await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
-  await page.getByTestId('open-escape-dialog').click();
+  await page.getByTestId('open-escape-dialog').press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Escape ownership', exact: true });
   const input = dialog.getByRole('textbox', { name: 'Inline edit', exact: true });
   const hint = page.locator('.mar-tooltip:visible');
@@ -450,7 +568,8 @@ test('Shared tooltip preserves inline cancellation and native select Escape insi
   await expect(dialog).toBeVisible();
 
   const select = dialog.getByRole('combobox', { name: 'Escape select', exact: true });
-  await select.click();
+  await select.focus();
+  await select.press('Enter');
   await expect(page.getByRole('listbox')).toBeVisible();
   await expect(hint).toHaveText('Select details');
   await select.press('Escape');
@@ -464,10 +583,10 @@ test('Shared tooltip leaves nested native menu dismissal with its current overla
   page
 }) => {
   await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
-  await page.getByTestId('open-escape-dialog').click();
+  await page.getByTestId('open-escape-dialog').press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Escape ownership', exact: true });
   const trigger = dialog.getByRole('button', { name: 'Escape menu', exact: true });
-  await trigger.click();
+  await trigger.press('Enter');
   const item = page.getByRole('menuitem', { name: 'Menu action', exact: true });
   await item.focus();
   await expect(page.locator('.mar-tooltip:visible')).toHaveText('Menu action details');
@@ -485,10 +604,10 @@ test('Shared tooltip closes a mobile sidebar menu before the sidebar itself', as
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
   const openSidebar = page.getByTestId('open-mobile-sidebar');
-  await openSidebar.click();
+  await openSidebar.press('Enter');
   const sidebar = page.getByRole('complementary', { name: 'Mobile sidebar', exact: true });
   const trigger = sidebar.getByRole('button', { name: 'Mobile sidebar menu', exact: true });
-  await trigger.click();
+  await trigger.press('Enter');
   const item = page.getByRole('menuitem', { name: 'Mobile menu action', exact: true });
   await item.focus();
   await expect(page.getByRole('menu')).toBeVisible();
@@ -547,7 +666,7 @@ test('Shared tooltip cancels stale targets and follows content, hidden, removed 
   await page.getByTestId('disable').evaluate((button: HTMLButtonElement) => button.click());
   await expect(hint).toHaveCount(0);
   await expect(second).toHaveAttribute('aria-describedby', 'existing-description');
-  await page.getByTestId('disable').click();
+  await page.getByTestId('disable').press('Enter');
   await first.focus();
   await expect(hint).toHaveText('Updated 1');
   await page.getByTestId('hide').evaluate((button: HTMLButtonElement) => button.click());
@@ -641,7 +760,7 @@ test('Unified hints preserve keyboard actions, details and disabled semantics', 
   await expect(page.getByTestId('compact-count')).toHaveText('1');
   await compact.press('Space');
   await expect(page.getByTestId('compact-count')).toHaveText('2');
-  await page.getByText('Toggle availability', { exact: true }).click();
+  await page.getByText('Toggle availability', { exact: true }).press('Enter');
   await expect(compact).toHaveAttribute('aria-disabled', 'true');
   await compact.focus();
   await expect(hint).toContainText('currently unavailable');

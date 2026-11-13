@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -253,9 +254,8 @@ function bundle() {
     files: [
       {
         path: 'SKILL.md',
-        contentBase64: Buffer.from('---\nname: review\ndescription: Review code\n---\n').toString(
-          'base64'
-        )
+        open: () =>
+          Readable.from([Buffer.from('---\nname: review\ndescription: Review code\n---\n')])
       }
     ]
   };

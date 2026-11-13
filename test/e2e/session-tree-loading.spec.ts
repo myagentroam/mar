@@ -161,18 +161,32 @@ test('reveals row actions on hover, focus, and while its menu is open', async ({
   const row = tree.locator('.session-tree-row').first();
   const action = row.getByRole('button', { name: 'Session actions' });
   await page.mouse.move(0, 0);
-  await expect(action).toHaveCSS('opacity', '0');
+  await expect(tree.locator('.session-tree-actions')).toHaveCount(0);
+  await expect(row.locator('.el-dropdown')).toHaveCount(0);
+  const restingWidth = await row.locator('.session-tree-node').evaluate((node) => node.clientWidth);
   await row.hover();
-  await expect(action).toHaveCSS('opacity', '1');
+  await expect(action).toBeVisible();
+  expect(await row.locator('.session-tree-node').evaluate((node) => node.clientWidth)).toBeLessThan(
+    restingWidth
+  );
+  await page.mouse.move(0, 0);
+  await expect(action).toHaveCount(0);
+  await row.locator('.session-tree-node').focus();
+  await expect(action).toBeVisible();
   await action.focus();
   await page.mouse.move(0, 0);
-  await expect(action).toHaveCSS('opacity', '1');
+  await expect(action).toBeVisible();
   await action.click();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
   await menu.getByRole('menuitem').first().focus();
   await page.mouse.move(0, 0);
-  await expect(action).toHaveCSS('opacity', '1');
+  await expect(action).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(action).toBeFocused();
+  await page.getByTestId('tree-anchor').focus();
+  await expect(tree.locator('.session-tree-actions')).toHaveCount(0);
 });
 
 test('includes the action button in the selected row surface', async ({ page }, testInfo) => {
@@ -181,6 +195,7 @@ test('includes the action button in the selected row surface', async ({ page }, 
   const row = tree
     .locator('.session-tree-row')
     .filter({ has: page.locator('[aria-current="true"]') });
+  await row.hover();
   const action = row.locator('.session-tree-actions');
   const surfaceContainsAction = await action.evaluate((element) => {
     const action = element.getBoundingClientRect();
@@ -215,14 +230,56 @@ test('keeps parent context actions reachable with the keyboard', async ({ page }
   const parent = page.locator('.session-tree-parent');
   const action = parent.getByRole('button', { name: 'Session actions' });
   await page.mouse.move(0, 0);
-  await expect(action).toHaveCSS('opacity', '0');
-  await action.focus();
-  await expect(action).toHaveCSS('opacity', '1');
+  await expect(action).toHaveCount(0);
+  await parent.locator('.session-tree-node').focus();
+  await page.keyboard.press('Tab');
+  await expect(action).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('menu')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toBeHidden();
   await expect(page.getByRole('dialog')).toBeVisible();
+});
+
+test('mounts context actions before opening either parent or descendant menus', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}session-tree-loading.html?theme=dark&parent=1`);
+  await setFixtureState(page, 'ready');
+  for (const selector of ['.session-tree-parent', '.session-tree-row']) {
+    const row = page.locator(selector).first();
+    await page.mouse.move(0, 0);
+    await page.getByTestId('tree-anchor').focus();
+    await expect(row.locator('.session-tree-actions')).toHaveCount(0);
+    await row.dispatchEvent('contextmenu');
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(row.locator('.session-tree-node')).toBeFocused();
+    await page.getByTestId('tree-anchor').focus();
+    await expect(page.locator('.session-tree-actions')).toHaveCount(0);
+  }
+});
+
+test('releases keyboard context actions after closing the menu and leaving the row', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}session-tree-loading.html?theme=dark&parent=1`);
+  await setFixtureState(page, 'ready');
+  for (const selector of ['.session-tree-parent', '.session-tree-row']) {
+    const row = page.locator(selector).first();
+    await page.mouse.move(0, 0);
+    await page.getByTestId('tree-anchor').focus();
+    await expect(row.locator('.session-tree-actions')).toHaveCount(0);
+    await row.locator('.session-tree-node').focus();
+    await row.dispatchEvent('contextmenu');
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(row.locator('.session-tree-node')).toBeFocused();
+    await page.getByTestId('tree-anchor').focus();
+    await expect(page.locator('.session-tree-actions')).toHaveCount(0);
+  }
 });
 
 test.describe('touch input', () => {

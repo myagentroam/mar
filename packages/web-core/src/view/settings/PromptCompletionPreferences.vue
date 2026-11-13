@@ -41,9 +41,9 @@ function setEnabled(value: boolean) {
 .theme-label {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
-  font-weight: 600;
+  font-weight: 400;
 }
 .theme-select {
-  width: min(18rem, 100%);
+  width: 100%;
 }
 </style>

@@ -130,6 +130,131 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(() => window.scrollY)).toBe(outerScroll);
   });
 
+  test(`Goal stays above the scrolling queue and input tags follow attachments at ${width}px`, async ({
+    browser
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 844 },
+      isMobile: width < 768,
+      hasTouch: width < 768
+    });
+    try {
+      const page = await context.newPage();
+      for (const theme of ['vscode-dark-2026', 'daylight']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?utility-interaction&composer-layout&work-item-editing&queue-count=8&theme=${theme}`
+        );
+        const composer = page.locator('.composer-shell');
+        const queue = composer.locator('.composer-queue');
+        const goal = queue.locator('.goal-card');
+        const list = queue.locator('.composer-work-list');
+        if (width < 768)
+          await expect
+            .poll(() => page.locator('.composer-host').evaluate((element) => element.style.height))
+            .not.toBe('');
+        await expect(list.locator('.queue-item')).toHaveCount(8);
+        await expect(list.locator('.goal-card')).toHaveCount(0);
+        await expect(queue.locator('.composer-queue-heading')).toHaveCount(0);
+        await expect(goal).toHaveCSS('border-top-width', '0px');
+        await expect(goal).toHaveCSS('border-bottom-width', '0px');
+        await expect(list).toHaveCSS('border-top-width', '0px');
+        await expect(list.locator('ol')).toHaveCSS('border-top-width', '0px');
+        await expect(list.locator('.queue-item').first()).toHaveCSS('border-top-width', '1px');
+        await page.evaluate(() => document.fonts.ready);
+        await composer.scrollIntoViewIfNeeded();
+        const before = (await goal.boundingBox())!;
+        await list.evaluate((element) => (element.scrollTop = element.scrollHeight));
+        await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        expect((await goal.boundingBox())!.y).toBeCloseTo(before.y, 2);
+        expect((await goal.boundingBox())!.height).toBeCloseTo(before.height, 2);
+        const boundaries = await composer.evaluate((element) =>
+          ['.composer-queue', '.composer-attachments', '.composer-command-states', 'textarea'].map(
+            (selector) => {
+              const rect = element.querySelector(selector)!.getBoundingClientRect();
+              return { top: rect.top, bottom: rect.bottom };
+            }
+          )
+        );
+        for (let index = 1; index < boundaries.length; index++)
+          expect(boundaries[index]!.top).toBeGreaterThanOrEqual(boundaries[index - 1]!.bottom);
+        const input = composer.locator('textarea');
+        await input.fill('Keep this draft');
+        const goalBeforeAppend = (await goal.boundingBox())!;
+        await page.evaluate(() => {
+          const queue = (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue;
+          const items = queue.items();
+          queue.replace([
+            ...items,
+            { ...items[0]!, queueItemId: 'latest-item', content: 'Latest queued message' }
+          ]);
+        });
+        await expect(list.locator('.queue-item')).toHaveCount(9);
+        await expect
+          .poll(() =>
+            list.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop
+            )
+          )
+          .toBeLessThanOrEqual(1);
+        expect((await goal.boundingBox())!.y).toBeCloseTo(goalBeforeAppend.y, 2);
+        await expect(input).toBeFocused();
+        await page.locator('.composer').screenshot({
+          path: testInfo.outputPath(`composer-work-layout-${theme}-${width}.png`)
+        });
+        await composer.locator('.composer-skill-state').click();
+        await expect(composer.locator('.composer-skill-state')).toHaveCount(0);
+        await expect(input).toHaveValue('Keep this draft');
+        await expect(goal.locator('.goal-objective')).toHaveText('Review the pending goal');
+        await expect(list.locator('.queue-item')).toHaveCount(9);
+        await goal.getByRole('button', { name: 'Edit', exact: true }).click();
+        await expect(goal.locator('textarea')).toBeVisible();
+        await expect(goal.getByRole('button', { name: 'Update', exact: true })).toBeVisible();
+        if (width < 768)
+          await expect
+            .poll(() =>
+              page
+                .locator('.composer-host')
+                .evaluate((element) =>
+                  Math.abs(
+                    parseFloat(element.style.height) -
+                      element.querySelector('.composer')!.getBoundingClientRect().height
+                  )
+                )
+            )
+            .toBeLessThan(1);
+        await expect(list.locator('.queue-item').last()).toBeInViewport();
+        await goal.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(goal.locator('.goal-objective')).toBeVisible();
+        await input.focus();
+        const firstQueueItem = await page.evaluate(
+          () => (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue.items()[0]!
+        );
+        await page.evaluate(() => {
+          const queue = (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue;
+          queue.replace([]);
+        });
+        await expect(list).toHaveCount(0);
+        await expect(goal.locator('.goal-objective')).toBeVisible();
+        await page.evaluate((item) => {
+          const queue = (window as unknown as { utilityQueue: UtilityQueue }).utilityQueue;
+          queue.replace([
+            {
+              ...item,
+              queueItemId: 'first-queue-item',
+              clientMessageId: 'first-client-message',
+              content: 'First queued message'
+            }
+          ]);
+        }, firstQueueItem);
+        await expect(list.locator('.queue-item')).toHaveCount(1);
+        await expect(input).toBeFocused();
+        await expect(input).toHaveValue('Keep this draft');
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   test(`Pending work stays compact and scrolls without shrinking rows at ${width}px`, async ({
     browser
   }, testInfo) => {
@@ -150,14 +275,11 @@ for (const width of [1280, 390]) {
           await expect(rows).toHaveCount(count);
           await page.evaluate(() => document.fonts.ready);
           const layout = await queue.evaluate((element) => {
-            const heading = element.querySelector('.composer-queue-heading')!;
             const body = element.querySelector('.work-item-content')!;
             const list = element.querySelector('.composer-work-list')!;
             return {
               height: element.getBoundingClientRect().height,
               maxHeight: Number.parseFloat(getComputedStyle(element).maxHeight),
-              headingHeight: heading.getBoundingClientRect().height,
-              headingFont: getComputedStyle(heading.querySelector('strong')!).fontSize,
               bodyFont: getComputedStyle(body).fontSize,
               minRowHeight: Number.parseFloat(
                 getComputedStyle(element.querySelector('.queue-item')!).minHeight
@@ -169,8 +291,8 @@ for (const width of [1280, 390]) {
               scrolls: list.scrollHeight > list.clientHeight
             };
           });
-          expect(layout.headingHeight).toBe(24);
-          expect(layout.headingFont).toBe(layout.bodyFont);
+          await expect(queue.locator('.composer-queue-heading')).toHaveCount(0);
+          await expect(queue.locator('ol')).toHaveCSS('border-top-width', '0px');
           expect(layout.bodyFont).toBe(width < 768 ? '11px' : '12px');
           const maximumHeight = width < 768 ? 120 : 148;
           const precision = 1 / 64;
@@ -187,7 +309,7 @@ for (const width of [1280, 390]) {
             })
           );
           expect(kindLines).toEqual(Array(count).fill(1));
-          expect(Math.abs(layout.height - (count === 3 ? 114 : maximumHeight))).toBeLessThanOrEqual(
+          expect(Math.abs(layout.height - (count === 3 ? 89 : maximumHeight))).toBeLessThanOrEqual(
             precision
           );
           expect(layout.scrolls).toBe(count === 8);
@@ -430,7 +552,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           `${fixture.url}visual-alignment.html?utility-interaction&work-item-editing&theme=${theme}`
         );
         const queue = page.locator('.composer-queue');
-        const heading = queue.locator('.composer-queue-heading strong');
+        const kind = queue.locator('.goal-kind');
         for (const custom of [false, true]) {
           if (custom) {
             await queue.evaluate((element) => {
@@ -439,8 +561,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             });
           }
           const colors = custom ? await customPalette(page) : await palette(page);
-          await expect(heading).toHaveCSS('color', colors.secondary);
-          await expect(heading).toHaveCSS('font-weight', '500');
+          await expect(kind).toHaveCSS('color', colors.tertiary);
+          await expect(kind).toHaveCSS('font-weight', '400');
           await expect(queue.locator('.queue-item-content > p')).toHaveCSS('color', colors.primary);
           if (!custom)
             await queue.screenshot({ path: testInfo.outputPath(`pending-work-${width}.png`) });

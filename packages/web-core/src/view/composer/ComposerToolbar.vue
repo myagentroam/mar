@@ -642,7 +642,9 @@ function selectFiles(event: Event): void {
 
 @media (min-width: 768px) {
   .composer-toolbar {
+    padding-top: 4px;
     padding-right: 0.75rem;
+    padding-bottom: 4px;
   }
 }
 

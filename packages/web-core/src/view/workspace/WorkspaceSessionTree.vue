@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type {
   NavigationSession,
@@ -30,6 +30,41 @@ const emit = defineEmits<{
 }>();
 const parentMenu = ref<{ handleClose: () => void }>();
 const nodeMenus = ref<Array<{ handleClose: () => void }>>([]);
+const hoveredSessionId = ref<string>();
+const focusedSessionId = ref<string>();
+const openMenuSessionId = ref<string>();
+const hoverQuery =
+  typeof window === 'undefined'
+    ? undefined
+    : window.matchMedia('(hover: hover) and (pointer: fine)');
+const supportsHover = ref(hoverQuery?.matches ?? false);
+function updateHoverSupport(): void {
+  supportsHover.value = hoverQuery?.matches ?? false;
+}
+onMounted(() => hoverQuery?.addEventListener('change', updateHoverSupport));
+onBeforeUnmount(() => hoverQuery?.removeEventListener('change', updateHoverSupport));
+function actionsVisible(sessionId: string): boolean {
+  return (
+    !supportsHover.value ||
+    hoveredSessionId.value === sessionId ||
+    focusedSessionId.value === sessionId ||
+    openMenuSessionId.value === sessionId
+  );
+}
+function clearFocus(event: FocusEvent): void {
+  if (
+    event.currentTarget instanceof HTMLElement &&
+    event.relatedTarget instanceof Node &&
+    event.currentTarget.contains(event.relatedTarget)
+  )
+    return;
+  focusedSessionId.value = undefined;
+}
+function updateMenu(sessionId: string, visible: boolean): void {
+  if (visible) openMenuSessionId.value = sessionId;
+  else if (openMenuSessionId.value === sessionId) openMenuSessionId.value = undefined;
+  emit('menu', openMenuSessionId.value !== undefined);
+}
 function closeMenu(): void {
   parentMenu.value?.handleClose();
   for (const menu of nodeMenus.value) menu.handleClose();
@@ -87,9 +122,9 @@ function activityTitle(node: TreeNode): string | undefined {
 }
 function openContext(event: MouseEvent): void {
   event.preventDefault();
-  (event.currentTarget as HTMLElement)
-    .querySelector<HTMLButtonElement>('.session-tree-actions')
-    ?.click();
+  const row = event.currentTarget as HTMLElement;
+  row.querySelector<HTMLButtonElement>('.session-tree-node')?.focus({ preventScroll: true });
+  void nextTick(() => row.querySelector<HTMLButtonElement>('.session-tree-actions')?.click());
 }
 </script>
 
@@ -107,7 +142,15 @@ function openContext(event: MouseEvent): void {
       {{ translate('sessionGroups.treeUnavailable') }}
       <el-button link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</el-button>
     </p>
-    <div v-if="tree?.parent" class="session-tree-parent" @contextmenu="openContext">
+    <div
+      v-if="tree?.parent"
+      class="session-tree-parent"
+      @mouseenter="hoveredSessionId = tree.parent.id"
+      @mouseleave="hoveredSessionId = undefined"
+      @focusin="focusedSessionId = tree.parent.id"
+      @focusout="clearFocus"
+      @contextmenu="openContext"
+    >
       <span>{{ translate('sessionGroups.parent') }}</span>
       <div class="session-tree-item" :class="{ 'is-current': tree.parent.id === mainSessionId }">
         <button
@@ -144,10 +187,11 @@ function openContext(event: MouseEvent): void {
           translate('sessionGroups.inAside')
         }}</span>
         <el-dropdown
+          v-if="actionsVisible(tree.parent.id)"
           ref="parentMenu"
           trigger="click"
           popper-class="session-tree-menu"
-          @visible-change="emit('menu', $event)"
+          @visible-change="updateMenu(tree.parent.id, $event)"
           @command="emit('open', tree!.parent!.id, $event)"
         >
           <button
@@ -181,6 +225,10 @@ function openContext(event: MouseEvent): void {
         v-for="row in rows"
         :key="row.node.id"
         class="session-tree-row"
+        @mouseenter="hoveredSessionId = row.node.id"
+        @mouseleave="hoveredSessionId = undefined"
+        @focusin="focusedSessionId = row.node.id"
+        @focusout="clearFocus"
         @contextmenu="openContext"
       >
         <span v-if="row.branches.length === 0" class="session-tree-origin" aria-hidden="true">
@@ -243,10 +291,11 @@ function openContext(event: MouseEvent): void {
             >
           </button>
           <el-dropdown
+            v-if="actionsVisible(row.node.id)"
             ref="nodeMenus"
             trigger="click"
             popper-class="session-tree-menu"
-            @visible-change="emit('menu', $event)"
+            @visible-change="updateMenu(row.node.id, $event)"
             @command="emit('open', row.node.id, $event)"
           >
             <button
@@ -362,19 +411,6 @@ function openContext(event: MouseEvent): void {
 }
 .session-tree-item.is-current {
   background: var(--mar-fill-selection);
-}
-@media (hover: hover) and (pointer: fine) {
-  .session-tree-actions {
-    opacity: 0;
-    pointer-events: none;
-  }
-  .session-tree-row:hover .session-tree-actions,
-  .session-tree-parent:hover .session-tree-actions,
-  .session-tree-item:focus-within .session-tree-actions,
-  .session-tree-item:has([aria-expanded='true']) .session-tree-actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
 }
 .session-tree-node:focus-visible {
   outline: 2px solid var(--mar-color-brand);

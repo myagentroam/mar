@@ -40,6 +40,8 @@ localePreferenceService().setLocale(
 themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'light' ? 'daylight' : 'vscode-dark-2026'
 );
+const remoteDesktopIcons = new URL(location.href).searchParams.has('remote-desktop-icons');
+const remoteDesktopUnavailable = new URL(location.href).searchParams.has('desktop-unavailable');
 const node: NodeSummary = {
   id: 'host',
   displayName: 'Engineering',
@@ -51,8 +53,30 @@ const node: NodeSummary = {
   connected: true,
   disabled: false,
   manageable: true,
+  usable: remoteDesktopIcons,
   workspaceCreatable: true,
-  capabilities: {}
+  capabilities: remoteDesktopIcons
+    ? {
+        remoteDesktop: remoteDesktopUnavailable
+          ? {
+              apiVersion: 1,
+              available: false,
+              nodeGeneration: 'icon-fixture',
+              reasonCode: 'SCREEN_CAPTURE_UNAVAILABLE'
+            }
+          : {
+              apiVersion: 1,
+              available: true,
+              nodeGeneration: 'icon-fixture',
+              backend: 'TIGERVNC_X0',
+              supportsView: true,
+              supportsControl: true,
+              supportsMultiDisplay: false,
+              supportsUnicodePaste: false,
+              transports: ['RELAY']
+            }
+      }
+    : {}
 };
 const workspaces: Workspace[] = [
   {

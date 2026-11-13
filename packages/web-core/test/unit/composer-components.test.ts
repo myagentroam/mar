@@ -791,6 +791,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).toContain('Original queued message &lt;script&gt; generated.goal.');
     expect(html).toContain('Raw objective');
     expect(html).toContain(labels.pending);
+    expect(html).not.toContain('composer-queue-heading');
+    expect(html).toContain(i18n.global.t('generated.composerQueue.paused'));
+    expect(html).toContain('role="status"');
+    expect(html.indexOf('Raw objective')).toBeLessThan(html.indexOf('composer-work-list'));
+    expect(await render(ComposerQueue, { ...props, items: [] })).not.toContain(
+      'composer-work-list'
+    );
     expect(html).toContain(labels.goal);
     expect(html).toContain('goal-card');
     expect(html).not.toContain('mission-card');
@@ -953,6 +960,47 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
     expect(html).toContain('aria-label="Plan mode"');
     expect(html).toContain('aria-label="Additional plan details"');
     expect(tooltipValues.filter(Boolean)).toEqual(['Additional plan details']);
+  });
+
+  it('places input context tags after pending work and attachments, before the input', async () => {
+    const html = await render(
+      {
+        render: () =>
+          h(
+            ConversationComposer,
+            {
+              input: '',
+              placeholder: 'Message',
+              working: false,
+              workingLabel: '',
+              readonly: false,
+              dropTarget: false,
+              mobileViewport: false,
+              commandStates: [],
+              loading: false,
+              skillTokens: [
+                {
+                  name: 'find-skills',
+                  source: 'WORKSPACE',
+                  skillFilePath: '/workspace/.agents/skills/find-skills/SKILL.md',
+                  available: true
+                }
+              ]
+            },
+            {
+              queue: () => h('div', { class: 'pending-work-fixture' }, 'Queued message'),
+              attachments: () => h('div', { class: 'attachment-fixture' }, 'report.txt')
+            }
+          )
+      },
+      {}
+    );
+    expect(html.indexOf('pending-work-fixture')).toBeLessThan(html.indexOf('attachment-fixture'));
+    expect(html.indexOf('attachment-fixture')).toBeLessThan(
+      html.indexOf('composer-command-states')
+    );
+    expect(html.indexOf('composer-command-states')).toBeLessThan(html.indexOf('<textarea'));
+    expect(html).toContain('find-skills');
   });
 
   it('keeps the submitted text read-only while the submission window is pending', async () => {

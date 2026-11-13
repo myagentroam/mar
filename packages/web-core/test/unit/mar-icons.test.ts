@@ -104,6 +104,24 @@ describe('shared MAR icons', () => {
     expect(html).toContain('data-mar-icon="session-add"');
   });
 
+  it('distinguishes a Node from remote desktop with a complete monitor and a lighter pointer', async () => {
+    const [node, desktop, workspace] = await Promise.all(
+      (['node', 'desktop', 'workspace'] as const).map((name) =>
+        renderToString(createSSRApp(MarIcon, { name, size: 16 }))
+      )
+    );
+    const frame = (html: string) => html.match(/<rect\b[^>]*>/g);
+    expect(frame(node)).toHaveLength(1);
+    expect(frame(desktop)).toEqual(frame(node));
+    expect(frame(workspace)).toEqual(frame(node));
+    expect(node.match(/<path\b/g)).toHaveLength(1);
+    const desktopPaths = desktop.match(/<path\b[^>]*>/g);
+    expect(desktopPaths).toHaveLength(2);
+    expect(desktopPaths![1]).toContain('stroke-width="1"');
+    expect(iconShapes.node).not.toEqual(iconShapes.desktop);
+    expect(iconShapes.desktop).not.toEqual(iconShapes.workspace);
+  });
+
   it.each([
     ['reasoning', 'reasoning'],
     ['READ', 'document'],

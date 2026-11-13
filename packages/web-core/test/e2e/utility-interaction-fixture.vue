@@ -4,11 +4,14 @@ import MarIcon from '../../src/view/common/MarIcon.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
 import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
+import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
+import ComposerAttachments from '../../src/view/composer/ComposerAttachments.vue';
 import { createComposerQueueService } from '../../src/service/composer-queue-service.js';
 import ComposerCommandPicker from '../../src/view/composer/ComposerCommandPicker.vue';
 import ComposerReferencePicker from '../../src/view/composer/ComposerReferencePicker.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 import type {
+  ComposerAttachment,
   RunnerCommand,
   RunnerCommandState,
   Session,
@@ -25,6 +28,29 @@ const session: Session = {
   externalSessionId: 'native-session'
 };
 const queueItemCount = Number(new URLSearchParams(location.search).get('queue-count') ?? 1);
+const composerLayout = new URLSearchParams(location.search).has('composer-layout');
+const mobileViewport = window.matchMedia('(max-width: 767px)').matches;
+const composerInput = ref('');
+const attachmentFile = new File(['Report contents'], 'report.txt', { type: 'text/plain' });
+const attachments: ComposerAttachment[] = [
+  {
+    id: 'report',
+    nodeId: 'node',
+    workspaceId: 'workspace',
+    file: attachmentFile,
+    status: 'COMPLETED',
+    receivedBytes: attachmentFile.size,
+    previewUrl: null
+  }
+];
+const selectedSkills = ref([
+  {
+    name: 'find-skills',
+    source: 'WORKSPACE' as const,
+    skillFilePath: '/workspace/.agents/skills/find-skills/SKILL.md',
+    available: true
+  }
+]);
 const items = ref<WorkspaceQueueItem[]>(
   Array.from({ length: queueItemCount }, (_, index) => ({
     queueItemId: index === 0 ? 'queue-one' : `queue-${index + 1}`,
@@ -194,7 +220,42 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       :session-title="() => 'Review'"
       @open-surface="record(`surface:${$event}`)"
     />
+    <ConversationComposer
+      v-if="composerLayout"
+      v-model:input="composerInput"
+      placeholder="Message"
+      :working="true"
+      working-label="Running"
+      elapsed-label="21s"
+      :readonly="false"
+      :drop-target="false"
+      :mobile-viewport="mobileViewport"
+      :command-states="[]"
+      :loading="disabled"
+      :skill-tokens="selectedSkills"
+      @remove-skill="selectedSkills = selectedSkills.filter((skill) => skill.name !== $event)"
+    >
+      <template #queue>
+        <ComposerQueue
+          :items="items"
+          :paused="false"
+          :loading="disabled"
+          :editing-queue-item-id="editingQueueItemId"
+          :editing-content="editingContent"
+          :goal="goal"
+          @edit="editQueueItem"
+          @cancel-edit="queueEditor.finishEditing"
+          @update-content="editingContent = $event"
+          @save="saveQueueItem"
+          @save-goal="saveGoal"
+        />
+      </template>
+      <template #attachments>
+        <ComposerAttachments :attachments="attachments" />
+      </template>
+    </ConversationComposer>
     <ComposerQueue
+      v-else
       :items="items"
       :paused="false"
       :loading="disabled"

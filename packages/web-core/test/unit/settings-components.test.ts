@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 async function render(section: SettingsSection, slots = {}) {
-  const request = vi.fn(async <T>() => ({}) as T);
+  const request = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(async () => ({}));
   const app = createSSRApp({
     render: () =>
       h(
@@ -51,10 +51,11 @@ async function render(section: SettingsSection, slots = {}) {
           newPassword: '',
           changePassword: async () => false,
           passwordValidationError: '',
+          registrationLoading: false,
           registrationToken: undefined,
           loading: false,
           formatSessionTime: String,
-          request,
+          request: async <T>(path: string, init?: RequestInit) => (await request(path, init)) as T,
           quickPrompts: [],
           quickPromptsLoading: false,
           quickPromptsFailed: false,
@@ -94,6 +95,7 @@ describe('Shared personal settings components', () => {
       newPassword: '',
       changePassword: async () => false,
       passwordValidationError: '',
+      registrationLoading: false,
       registrationToken: undefined,
       loading: false,
       formatSessionTime: String,
@@ -107,8 +109,10 @@ describe('Shared personal settings components', () => {
       mode.locale === 'zh-CN'
         ? { label: '运行方式', browser: '浏览器标签页', standalone: 'PWA 独立窗口' }
         : { label: 'Display mode', browser: 'Browser tab', standalone: 'Standalone PWA window' };
-    const displayMode = () =>
-      view.findAll('ElDescriptionsItem').find((node) => node.props.label === labels.label)!;
+    const displayMode = () => {
+      const label = view.findAll('dt').find((node) => textContent(node) === labels.label)!;
+      return label.parent!.children.find((node) => node.type === 'dd')!;
+    };
     try {
       await flushComponent();
       expect(textContent(displayMode())).toBe(
@@ -144,6 +148,7 @@ describe('Shared personal settings components', () => {
         newPassword: '',
         changePassword: async () => false,
         passwordValidationError: '',
+        registrationLoading: false,
         registrationToken: undefined,
         loading: false,
         formatSessionTime: String,

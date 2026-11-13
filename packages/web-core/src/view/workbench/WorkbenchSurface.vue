@@ -876,6 +876,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           v-model:new-password="page.identity.newPassword"
           :section="page.application.settingsSection"
           :sessions="page.identity.adminSessions"
+          :sessions-refreshing="page.identity.adminSessionsRefreshing"
           :password-validation-error="page.identity.passwordValidationError"
           :registration-token="page.settings.registrationToken"
           :registration-loading="page.settings.registrationLoading"

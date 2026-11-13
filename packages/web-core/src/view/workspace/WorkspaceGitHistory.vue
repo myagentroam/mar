@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
         type="button"
         @click="loadHistory(true, true)"
       >
-        <MarIcon name="refresh" />
+        <MarIcon :name="historyLoading ? 'loading-action' : 'refresh'" />
       </button>
     </div>
     <p v-if="service.historyFetchFailed.value" class="git-fetch-notice" role="status">

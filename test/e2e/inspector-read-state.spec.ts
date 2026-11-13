@@ -51,6 +51,167 @@ async function expectReadableState(button: Locator) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Settings, directory and HTML refresh actions recover: ${theme} ${width}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      let pending: Promise<void> | undefined;
+      let release: (() => void) | undefined;
+      let failed = false;
+      await page.route('**/api/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        await pending;
+        await route.fulfill({
+          status: failed ? 503 : 200,
+          json: failed
+            ? { error: 'REFRESH_FAILED' }
+            : path.endsWith('/sessions')
+              ? { sessions: [] }
+              : path.endsWith('/workspace-directories')
+                ? {
+                    directory: {
+                      currentPath: '/workspace',
+                      homePath: '/workspace',
+                      parentPath: null,
+                      browseRoots: ['/workspace'],
+                      selectable: true,
+                      entries: [],
+                      truncated: false
+                    }
+                  }
+                : { url: '/fixture-preview.html' }
+        });
+      });
+      await page.route('**/fixture-preview.html', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<p>Preview</p>' })
+      );
+      await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls`);
+      for (const action of [
+        { panel: 'sign-in-refresh', selector: '.admin-sessions-heading button' },
+        { panel: 'directory-refresh', selector: '.workspace-picker-toolbar-actions button' },
+        { panel: 'html-refresh', selector: '.html-browser-actions button' }
+      ]) {
+        const panel = page.getByTestId(action.panel);
+        const refresh = panel.locator(action.selector).first();
+        await expect(refresh).toBeEnabled();
+        await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+        for (failed of [false, true, false]) {
+          pending = new Promise<void>((resolve) => (release = resolve));
+          try {
+            await refresh.click();
+            const loading = refresh.locator('[data-mar-icon="loading-action"]');
+            await expect(loading).toBeVisible();
+            await expect(refresh).toBeDisabled();
+            await expect(refresh).toHaveAttribute('aria-busy', 'true');
+            await expect(refresh.locator('svg')).toHaveCount(1);
+            await expect(refresh.locator('[data-mar-icon="refresh"]')).toHaveCount(0);
+          } finally {
+            release?.();
+          }
+          await expect(refresh).toBeEnabled();
+          await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+          await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+          await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          pending = undefined;
+        }
+      }
+      await page.locator('.refresh-actions-fixture').screenshot({
+        path: testInfo.outputPath(`refresh-actions-${theme}-${width}.png`),
+        animations: 'disabled'
+      });
+    });
+
+    for (const action of [
+      {
+        panel: 'Git History',
+        selector: '.history-refresh',
+        path: '/git/history'
+      },
+      {
+        panel: 'Files',
+        selector: '.explorer-toolbar > button',
+        path: '/fixture/files'
+      },
+      {
+        panel: 'Search',
+        selector: '.content-search-button',
+        path: '/content/search'
+      }
+    ]) {
+      test(`${action.panel} action replaces its icon while busy: ${theme} ${width}`, async ({
+        page
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        let pending: Promise<void> | undefined;
+        let release: (() => void) | undefined;
+        let failed = false;
+        await page.route('**/api/**', async (route) => {
+          const path = new URL(route.request().url()).pathname;
+          if (path.endsWith(action.path)) {
+            await pending;
+          }
+          if (path.endsWith(action.path) && failed) {
+            await route.fulfill({
+              status: 503,
+              json: { code: 'NODE_OFFLINE', message: 'Node offline' }
+            });
+            return;
+          }
+          await route.fulfill({
+            json: path.endsWith('/fixture/files')
+              ? { entries: [], nextCursor: null }
+              : path.endsWith('/content/search')
+                ? { search: { matches: [], truncated: false } }
+                : path.endsWith('/git/history')
+                  ? { commits: [], nextCursor: null }
+                  : path.endsWith('/git/refs')
+                    ? { refs: [] }
+                    : path.endsWith('/git/fetch')
+                      ? { fetchFailed: false }
+                      : {}
+          });
+        });
+        try {
+          await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}`);
+          const panel = page.getByTestId(action.panel);
+          const refresh = panel.locator(action.selector).first();
+          await expect(refresh).toBeEnabled();
+          if (action.panel === 'Search') {
+            await expect(panel.locator('.el-input__prefix [data-mar-icon="search"]')).toBeVisible();
+            await panel.getByRole('textbox').fill('workspace');
+          }
+          for (failed of [false, true]) {
+            pending = new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            if (action.panel === 'Search' && !failed)
+              await panel.getByRole('textbox').press('Enter');
+            else await refresh.click();
+            await expect(refresh).toBeDisabled();
+            await expect(refresh).toHaveAttribute('aria-busy', 'true');
+            await expect(refresh.locator('svg')).toHaveCount(1);
+            const spinner = refresh.locator('[data-mar-icon="loading-action"]');
+            await expect(spinner).toBeVisible();
+            await expect(spinner).not.toHaveCSS('animation-name', 'none');
+            await expect(refresh.locator('[data-mar-icon="refresh"]')).toHaveCount(0);
+            if (!failed)
+              await refresh.screenshot({ path: testInfo.outputPath('inspector-action-busy.png') });
+            release!();
+            await expect(refresh).toBeEnabled();
+            await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+            await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+            await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+          }
+        } finally {
+          release?.();
+        }
+      });
+    }
+  }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
     test(`Inspector read feedback keeps text, indentation and neutral actions: ${theme} ${width}`, async ({
       browser
     }, testInfo) => {

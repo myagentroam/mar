@@ -477,6 +477,9 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 </template>
 
 <style scoped>
+.personal-git-settings .mar-management-page {
+  padding: var(--mar-settings-page-padding, 0.875rem 1rem);
+}
 .git-hint {
   color: var(--el-text-color-secondary);
   line-height: 1.6;

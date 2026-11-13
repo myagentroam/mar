@@ -1,16 +1,17 @@
 import { homedir } from 'node:os';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { skillInstallMetadataSchema } from '@myagentroam/protocol';
 import type { NodeConfig } from '../config.js';
 import type { NodeDatabase } from '../database.js';
 import { SkillDirectoryService } from './skill-directory-service.js';
-import {
-  SkillInstallService,
-  workspaceSkillTracked,
-  type InstallableSkillBundle
-} from './skill-install-service.js';
+import { SkillInstallService, workspaceSkillTracked } from './skill-install-service.js';
 import { safeErrorCode } from '../util/safe-error.js';
+import { downloadSkillBundle } from './skill-bundle-download.js';
 
+/**
+ * Owns background Skill jobs, target exclusion, and downloaded bundle lifetimes.
+ * Archive decoding and filesystem transactions belong to their dedicated services.
+ */
 export class SkillNodeOperationService {
   private readonly directories = new SkillDirectoryService();
   private readonly installer = new SkillInstallService();
@@ -127,14 +128,24 @@ export class SkillNodeOperationService {
     workspace?: string;
   }): Promise<void> {
     const bundle = await this.download(input.ticket, input.metadata.contentHash);
-    if (input.target === 'NODE')
-      await this.installer.installNodeHome(homedir(), input.name, bundle, input.metadata);
-    else
-      await this.installer.installWorkspace(input.workspace!, input.name, bundle, input.metadata, {
-        confirmTracked: true,
-        includeParentRepository:
-          this.database().getWorkspaceByPath(input.workspace!)?.includeParentRepository ?? true
-      });
+    try {
+      if (input.target === 'NODE')
+        await this.installer.installNodeHome(homedir(), input.name, bundle, input.metadata);
+      else
+        await this.installer.installWorkspace(
+          input.workspace!,
+          input.name,
+          bundle,
+          input.metadata,
+          {
+            confirmTracked: true,
+            includeParentRepository:
+              this.database().getWorkspaceByPath(input.workspace!)?.includeParentRepository ?? true
+          }
+        );
+    } finally {
+      await bundle.dispose();
+    }
   }
 
   private async remove(target: 'NODE' | 'WORKSPACE', data: unknown) {
@@ -171,7 +182,7 @@ export class SkillNodeOperationService {
   private async download(
     ticket: string,
     expectedContentHash: string
-  ): Promise<InstallableSkillBundle> {
+  ): Promise<Awaited<ReturnType<typeof downloadSkillBundle>>> {
     const config = this.config();
     if (config.nodeId === undefined || config.credential === undefined)
       throw new Error('NODE_UNAUTHENTICATED');
@@ -185,46 +196,12 @@ export class SkillNodeOperationService {
         signal: AbortSignal.timeout(60_000)
       }
     );
-    if (!response.ok) throw new Error('SKILL_INSTALL_FAILED');
-    const bundle = (await response.json()) as InstallableSkillBundle;
-    validateBundle(bundle, expectedContentHash);
-    return bundle;
+    if (!response.ok || response.body === null) {
+      await response.body?.cancel();
+      throw new Error('SKILL_INSTALL_FAILED');
+    }
+    return downloadSkillBundle(response.body, expectedContentHash);
   }
-}
-
-function validateBundle(bundle: InstallableSkillBundle, expectedContentHash: string): void {
-  if (
-    bundle === null ||
-    typeof bundle !== 'object' ||
-    bundle.schemaVersion !== 1 ||
-    !Array.isArray(bundle.files) ||
-    bundle.files.length < 1 ||
-    bundle.files.length > 1_000
-  )
-    throw new Error('SKILL_CONTENT_INVALID');
-  let total = 0;
-  const paths = new Set<string>();
-  for (const file of bundle.files) {
-    if (
-      file === null ||
-      typeof file !== 'object' ||
-      typeof file.path !== 'string' ||
-      typeof file.contentBase64 !== 'string' ||
-      paths.has(file.path)
-    )
-      throw new Error('SKILL_CONTENT_INVALID');
-    paths.add(file.path);
-    const content = Buffer.from(file.contentBase64, 'base64');
-    if (content.toString('base64') !== file.contentBase64 || content.length > 5 * 1024 * 1024)
-      throw new Error('SKILL_CONTENT_INVALID');
-    total += content.length;
-    if (total > 25 * 1024 * 1024) throw new Error('SKILL_CONTENT_INVALID');
-  }
-  if (!paths.has('SKILL.md') || paths.has('.mar-skill-install.json'))
-    throw new Error('SKILL_CONTENT_INVALID');
-  const canonical = bundle.files.map((file) => `${file.path}\0${file.contentBase64}`).join('\0');
-  if (createHash('sha256').update(canonical).digest('hex') !== expectedContentHash)
-    throw new Error('SKILL_CONTENT_INVALID');
 }
 
 function record(value: unknown): Record<string, unknown> {

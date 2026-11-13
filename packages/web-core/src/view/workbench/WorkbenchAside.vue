@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, useId } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import MarTab from '../common/MarTab.vue';
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import MarIcon from '../common/MarIcon.vue';
 import { tabStripIdentity } from '../../util/tab-strip-identity.js';
+import {
+  consoleKeyboardShortcutService,
+  type ConsoleShortcutBinding
+} from '../../service/console-keyboard-shortcut-service.js';
+import { workspaceKeys } from '../../service/console-shortcut-keys.js';
 import type {
   AsideSession,
   AsideState,
@@ -101,10 +106,110 @@ function close(id: string | number): void {
   else if (target?.kind === 'session')
     emit('closeSession', { ...props.workspace, sessionId: target.sessionId });
 }
+
+// Aside owns only local close intents and frame listeners; its domain owners
+// retain tab cleanup, session drafts, selection fallback, and Run lifecycles.
+let browserDocument: Document | undefined;
+let releaseBrowserFrame: (() => void) | undefined;
+let unregisterClose: (() => void) | undefined;
+const closeBinding: ConsoleShortcutBinding = {
+  command: 'aside.closeTab',
+  priority: 60,
+  scope: 'workspace',
+  modalOwner: () => element.value,
+  keys: workspaceKeys.close,
+  when: (event) => {
+    const root = element.value;
+    const target = event.target as Node | null;
+    if (!root?.getClientRects().length || typeof target?.nodeType !== 'number') return false;
+    if (browserDocument?.contains(target) && props.state.active?.kind === 'browser') return true;
+    if (!root.contains(target)) return false;
+    return !(
+      target instanceof Element &&
+      target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') &&
+      !consoleKeyboardShortcutService.isWithin('pane', target)
+    );
+  },
+  execute: (event) => {
+    // Fixed tools and bulk/repeated closes must never fall through to Workspace.
+    if (!event.repeat && !event.shiftKey && activeId.value !== undefined) {
+      const active = props.state.active;
+      if (active?.kind === 'browser' || active?.kind === 'session') {
+        close(activeId.value);
+        void nextTick(() => {
+          const root = element.value;
+          if (!root?.getClientRects().length) return;
+          if (document.activeElement !== document.body && !root.contains(document.activeElement))
+            return;
+          root
+            .querySelector<HTMLElement>(
+              '.workbench-aside-header [role="tab"][aria-selected="true"]'
+            )
+            ?.focus({ preventScroll: true });
+        });
+      }
+    }
+    return 'HANDLED';
+  }
+};
+function clearBrowserFrame(): void {
+  releaseBrowserFrame?.();
+  releaseBrowserFrame = undefined;
+  browserDocument = undefined;
+}
+function bindBrowserFrame(event: Event): void {
+  const frame = event.target;
+  if (
+    props.state.active?.kind !== 'browser' ||
+    !(frame instanceof HTMLIFrameElement) ||
+    !frame.matches('.html-preview-frame')
+  )
+    return;
+  clearBrowserFrame();
+  let frameDocument: Document | null;
+  try {
+    frameDocument = frame.contentDocument;
+  } catch {
+    // A separately configured preview origin intentionally isolates keyboard events.
+    return;
+  }
+  if (frameDocument === null) return;
+  browserDocument = frameDocument;
+  const keydown = (event: KeyboardEvent): void => {
+    // Never forward unrelated preview keys to background Workspace commands.
+    if (consoleKeyboardShortcutService.invoke(closeBinding, event) !== 'HANDLED') return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  frameDocument.addEventListener('keydown', keydown, { capture: true });
+  releaseBrowserFrame = () =>
+    frameDocument.removeEventListener('keydown', keydown, { capture: true });
+}
+watch(
+  [
+    () => props.workspace.nodeId,
+    () => props.workspace.workspaceId,
+    () => activeId.value,
+    () => props.state.htmlPath
+  ],
+  clearBrowserFrame
+);
+onMounted(() => {
+  unregisterClose = consoleKeyboardShortcutService.register(closeBinding);
+});
+onBeforeUnmount(() => {
+  unregisterClose?.();
+  clearBrowserFrame();
+});
 </script>
 
 <template>
-  <aside ref="element" class="workbench-aside" :style="{ width: `${width}px` }">
+  <aside
+    ref="element"
+    class="workbench-aside"
+    :style="{ width: `${width}px` }"
+    @load.capture="bindBrowserFrame"
+  >
     <PanelResizeHandle
       class="workbench-aside-resize"
       :target="element"

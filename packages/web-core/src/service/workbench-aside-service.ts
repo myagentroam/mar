@@ -362,6 +362,14 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     snapshot,
     restore,
     removeWorkspace,
+    removeNode: (nodeId: string) => {
+      const nodes = new Map(workspaces.value);
+      nodes.delete(nodeId);
+      workspaces.value = nodes;
+    },
+    clear: () => {
+      workspaces.value = new Map();
+    },
     clearHtmlWorkspace,
     clearHtmlNode,
     clearHtml

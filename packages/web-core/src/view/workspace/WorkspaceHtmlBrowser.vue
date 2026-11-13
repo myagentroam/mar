@@ -43,8 +43,10 @@ onBeforeUnmount(preview.release);
           size="small"
           v-tooltip="translate('htmlPreview.reload')"
           :aria-label="translate('htmlPreview.reload')"
+          :disabled="state.loading"
+          :aria-busy="state.loading || undefined"
           @click="reload"
-          ><MarIcon name="refresh"
+          ><MarIcon :name="state.loading ? 'loading-action' : 'refresh'"
         /></el-button>
         <el-button
           class="mar-icon-action"

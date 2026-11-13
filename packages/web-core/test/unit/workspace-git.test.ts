@@ -61,9 +61,10 @@ it('derives file intents and locations from the live Git owner and workspace met
   );
   expect(service.changeIntent(entry)).toMatchObject({
     kind: 'WORKTREE_DIFF',
-    gitFile: true,
     paths: ['a.ts']
   });
+  expect(service.changeIntent(entry)?.gitFile).toBeUndefined();
+  expect(service.changeLocation(entry)).toEqual({ path: 'nested/a.ts' });
   expect(service.changeLocation(linked)).toMatchObject({ path: 'b.ts', worktreePath: '/linked' });
   expect(service.resolveRepositoryPath('', undefined)).toBeUndefined();
   workspacePath = '/another-root';
@@ -83,13 +84,12 @@ it('preserves repository and worktree identity in change intents', () => {
   };
   const linked = { ...entry, source: 'WORKTREE' as const, worktreePath: '/linked', path: 'b.ts' };
   expect(gitFileRepositoryPath('', undefined, '/root', '/root')).toBeUndefined();
-  expect(gitFileRepositoryPath('nested', undefined, '/root', '/root')).toBe('nested');
+  expect(gitFileRepositoryPath('nested', undefined, '/root', '/root')).toBeUndefined();
   expect(gitFileRepositoryPath('nested', '/linked', '/root', '/root')).toBeUndefined();
   expect(
     changeDiffIntent(entry, [entry, linked], { nodeId: 'n', workspaceId: 'w' }, '/root', '/root')
   ).toMatchObject({
     kind: 'WORKTREE_DIFF',
-    gitFile: true,
     repositoryPath: 'nested',
     worktreePath: '',
     paths: ['a.ts']
@@ -448,6 +448,56 @@ describe('Workspace Git service', () => {
     await service.loadChanges(true);
     expect(request.mock.calls.filter(([path]) => path.includes('/git/fetch'))).toHaveLength(3);
     expect(service.changesFetchFailed.value).toBe(true);
+  });
+
+  it.each(['completed', 'pending'])(
+    'clears an account-owned Changes fetch before the next account (%s)',
+    async (phase) => {
+      vi.spyOn(performance, 'now').mockReturnValue(0);
+      const previous = deferred<{ fetchFailed: boolean; updated: boolean }>();
+      const current = deferred<{ fetchFailed: boolean; updated: boolean }>();
+      let fetches = 0;
+      const { service } = createGitHarness(async (path) =>
+        path.includes('/git/fetch')
+          ? ++fetches === 1
+            ? previous.promise
+            : current.promise
+          : { changes: [] }
+      );
+      await service.loadChanges(true);
+      if (phase === 'completed') {
+        previous.resolve({ fetchFailed: true, updated: false });
+        await vi.waitFor(() => expect(service.changesFetchFailed.value).toBe(true));
+      }
+
+      service.clear();
+      await service.loadChanges(true);
+      expect(fetches).toBe(2);
+      previous.resolve({ fetchFailed: true, updated: false });
+      await previous.promise;
+      await service.loadChanges();
+      expect(service.changesFetchFailed.value).toBe(false);
+      current.resolve({ fetchFailed: false, updated: false });
+      await current.promise;
+    }
+  );
+
+  it('prunes expired Changes fetch bookkeeping without removing an in-flight attempt', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const deletes = vi.spyOn(Map.prototype, 'delete');
+    const pending = deferred<{ fetchFailed: boolean }>();
+    const { service, setTarget } = createGitHarness(async (path) =>
+      path.includes('/git/fetch') ? pending.promise : { changes: [] }
+    );
+    await service.loadChanges(true);
+    clock.mockReturnValue(31_000);
+    setTarget({ nodeId: 'node-2', workspaceId: 'workspace-2' });
+    service.reset();
+    expect(deletes).not.toHaveBeenCalledWith(JSON.stringify(['node-1', 'workspace-1']));
+    pending.resolve({ fetchFailed: false });
+    await vi.waitFor(() => expect(pending.promise).resolves.toEqual({ fetchFailed: false }));
+    await service.loadChanges();
+    expect(deletes).toHaveBeenCalledWith(JSON.stringify(['node-1', 'workspace-1']));
   });
 
   it('rejoins an in-flight Changes fetch after leaving and returning to its target', async () => {

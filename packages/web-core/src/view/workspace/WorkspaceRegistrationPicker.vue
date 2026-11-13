@@ -204,6 +204,9 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
               class="mar-icon-action"
               :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
               :icon="marIcon('refresh')"
+              :loading="loadingDirectory"
+              :loading-icon="marIcon('loading-action')"
+              :aria-busy="loadingDirectory || undefined"
               :disabled="loadingDirectory"
               native-type="button"
               text

@@ -120,16 +120,55 @@ describe('authentication generation boundaries', () => {
     expect(f.loading.value).toBe(false);
   });
 
+  it.each(['success', 'failure'] as const)(
+    'releases sign-in session refresh loading after %s',
+    async (result) => {
+      const f = authFixture();
+      const response = deferred<void>();
+      f.state.admin.value = { authenticated: true, mustChangePassword: false };
+      f.request.mockImplementationOnce(async () => {
+        await response.promise;
+        if (result === 'failure') throw new Error('SESSION_REFRESH_FAILED');
+        return { sessions: [] };
+      });
+      const pending = f.service.refreshSessions();
+      expect(f.service.view.adminSessionsRefreshing).toBe(true);
+      response.resolve();
+      await pending;
+      expect(f.service.view.adminSessionsRefreshing).toBe(false);
+      expect(f.notice).toHaveBeenCalledTimes(result === 'failure' ? 1 : 0);
+    }
+  );
+
+  it('keeps the latest sign-in session refresh loading when an older request finishes', async () => {
+    const f = authFixture();
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    f.state.admin.value = { authenticated: true, mustChangePassword: false };
+    f.request.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const oldRefresh = f.service.refreshSessions();
+    const newRefresh = f.service.refreshSessions();
+    first.resolve({ sessions: [] });
+    await oldRefresh;
+    expect(f.service.view.adminSessionsRefreshing).toBe(true);
+    second.resolve({ sessions: [] });
+    await newRefresh;
+    expect(f.service.view.adminSessionsRefreshing).toBe(false);
+  });
+
   it('does not repopulate the session list after signing out', async () => {
     const f = authFixture();
     const response = deferred<unknown>();
     f.state.admin.value = { authenticated: true, mustChangePassword: false };
     f.request.mockReturnValueOnce(response.promise);
     const pending = f.service.refreshSessions();
+    expect(f.service.view.adminSessionsRefreshing).toBe(true);
     f.service.returnToLogin();
+    expect(f.service.view.adminSessionsRefreshing).toBe(false);
     response.resolve({ sessions: [{ id: 'old-session' }] });
     await pending;
     expect(f.state.sessions.value).toEqual([]);
+    expect(f.service.view.adminSessionsRefreshing).toBe(false);
   });
 
   it('drops an invalidated renewal without replacing a newer CSRF token', async () => {

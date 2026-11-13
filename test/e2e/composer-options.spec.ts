@@ -32,6 +32,47 @@ async function expectMenuInsideViewport(menu: Locator) {
     .toBe(true);
 }
 
+for (const width of [1280, 390]) {
+  for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Composer action buttons keep balanced vertical space (${width}, ${theme})`, async ({
+      page
+    }, info) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}composer-options.html?short&running&theme=${theme}${width < 768 ? '&mobile' : ''}`
+      );
+      const toolbar = page.locator('.composer-toolbar');
+      await expect(toolbar).toBeVisible();
+      const padding = await toolbar.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          top: parseFloat(style.paddingTop),
+          bottom: parseFloat(style.paddingBottom),
+          rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize)
+        };
+      });
+      const expectedPadding = width >= 768 ? 4 : padding.rootFont * 0.18;
+      expect(padding.top).toBeCloseTo(expectedPadding, 1);
+      expect(padding.bottom).toBeCloseTo(expectedPadding, 1);
+      const toolbarBounds = (await toolbar.boundingBox())!;
+      for (const selector of ['.composer-send-button', '.composer-stop-button']) {
+        const button = toolbar.locator(selector);
+        await expect(button).toBeEnabled();
+        const bounds = (await button.boundingBox())!;
+        expect(bounds.width).toBe(width >= 768 ? 24 : 28);
+        expect(bounds.height).toBe(width >= 768 ? 24 : 28);
+        if (width >= 768) {
+          expect(bounds.y - toolbarBounds.y).toBeGreaterThanOrEqual(4);
+          expect(
+            toolbarBounds.y + toolbarBounds.height - bounds.y - bounds.height
+          ).toBeGreaterThanOrEqual(4);
+        }
+      }
+      await toolbar.screenshot({ path: info.outputPath('composer-action-spacing.png') });
+    });
+  }
+}
+
 for (const [width, height, theme, top] of [
   [1280, 844, 'daylight', false],
   [390, 844, 'vscode-dark-2026', false],

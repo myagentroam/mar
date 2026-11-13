@@ -14,6 +14,39 @@ import {
   createWorkspaceDirectTransferService
 } from '../../src/service/workspace-direct-transfer-service.js';
 
+function stubPreviewStorage(
+  writable: unknown,
+  getFile: () => Promise<File>,
+  removeEntry: (name: string) => Promise<void>,
+  entries: readonly string[] = []
+) {
+  const held = new Set<string>();
+  const directory = {
+    getDirectoryHandle: async () => directory,
+    getFileHandle: async () => ({ createWritable: async () => writable, getFile }),
+    removeEntry,
+    async *entries() {
+      for (const name of entries) yield [name, { kind: 'file' }];
+    }
+  };
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => directory },
+    locks: {
+      async request(name: string, options: unknown, next?: (lock: unknown) => unknown) {
+        const callback = (next ?? options) as (lock: unknown) => unknown;
+        if (held.has(name)) return callback(null);
+        held.add(name);
+        try {
+          return await callback({ name });
+        } finally {
+          held.delete(name);
+        }
+      }
+    }
+  });
+  return held;
+}
+
 class FakeDataChannel extends EventTarget {
   readyState = 'open' as RTCDataChannelState;
   binaryType: BinaryType = 'arraybuffer';
@@ -660,26 +693,19 @@ describe('Workspace direct transfer browser service', () => {
       close: vi.fn(async () => undefined),
       abort: vi.fn(async () => undefined)
     };
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: async () => ({
-          getDirectoryHandle: async () => ({
-            getFileHandle: async () => ({
-              createWritable: async () => writable,
-              getFile: async () => {
-                throw new Error('OPFS_READ_FAILED');
-              }
-            }),
-            removeEntry
-          })
-        })
-      }
-    });
+    const held = stubPreviewStorage(
+      writable,
+      async () => {
+        throw new Error('OPFS_READ_FAILED');
+      },
+      removeEntry
+    );
 
     const target = await createWorkspaceDirectObjectUrlSink('payload.bin');
     await target.sink.close();
     await expect(target.objectUrl()).rejects.toThrow('OPFS_READ_FAILED');
     expect(removeEntry).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(held.size).toBe(0));
   });
 
   it('keeps the OPFS entry until its object URL is revoked', async () => {
@@ -689,19 +715,11 @@ describe('Workspace direct transfer browser service', () => {
       close: vi.fn(async () => undefined),
       abort: vi.fn(async () => undefined)
     };
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: async () => ({
-          getDirectoryHandle: async () => ({
-            getFileHandle: async () => ({
-              createWritable: async () => writable,
-              getFile: async () => new File(['image'], 'logo.png')
-            }),
-            removeEntry
-          })
-        })
-      }
-    });
+    const held = stubPreviewStorage(
+      writable,
+      async () => new File(['image'], 'logo.png'),
+      removeEntry
+    );
     const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:logo');
     const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
 
@@ -711,10 +729,48 @@ describe('Workspace direct transfer browser service', () => {
     await expect(target.objectUrl()).resolves.toBe('blob:logo');
     expect(createObjectUrl).toHaveBeenCalledOnce();
     expect(removeEntry).not.toHaveBeenCalled();
+    expect(held.size).toBe(1);
 
     revokeWorkspaceDirectObjectUrl('blob:logo');
     await vi.waitFor(() => expect(removeEntry).toHaveBeenCalledOnce());
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:logo');
+    await vi.waitFor(() => expect(held.size).toBe(0));
+  });
+
+  it('reclaims abandoned previews but skips files owned by another page', async () => {
+    const remove = vi.fn(async () => undefined);
+    const writable = {
+      write: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      abort: vi.fn(async () => {})
+    };
+    const held = stubPreviewStorage(writable, async () => new File([], 'x'), remove, [
+      'orphan',
+      'live'
+    ]);
+    held.add('mar-direct-preview:live');
+    const target = await createWorkspaceDirectObjectUrlSink('next');
+    expect(remove.mock.calls).toEqual([['orphan']]);
+    await target.sink.abort();
+    await vi.waitFor(() => expect(held).toEqual(new Set(['mar-direct-preview:live'])));
+    await expect(target.objectUrl()).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('releases ownership and the entry when closing the writer fails', async () => {
+    const remove = vi.fn(async () => undefined);
+    const held = stubPreviewStorage(
+      {
+        close: async () => {
+          throw new Error('write failed');
+        }
+      },
+      async () => new File([], 'x'),
+      remove
+    );
+    const target = await createWorkspaceDirectObjectUrlSink('x');
+    await expect(target.sink.close()).rejects.toThrow('write failed');
+    await vi.waitFor(() => expect(held.size).toBe(0));
+    expect(remove).toHaveBeenCalledOnce();
   });
 });
 

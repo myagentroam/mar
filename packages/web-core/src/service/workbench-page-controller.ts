@@ -578,7 +578,8 @@ export function createWorkbenchPageController<
     nodeLabel,
     onEvict: (tab) => {
       discardWorkspaceViewCache(tab.nodeId, tab.workspaceId);
-      workbenchAsideService.clearHtmlWorkspace(tab);
+      drafts.releaseWorkspace(tab.nodeId, tab.workspaceId);
+      workbenchAsideService.removeWorkspace(tab);
       void terminalDocks.get(tab.id)?.release();
     },
     onChange: persistWorkbenchState
@@ -643,7 +644,7 @@ export function createWorkbenchPageController<
           'error'
         ),
       resolveRepositoryPath: (repositoryPath, worktreePath) =>
-        fileTools.git.resolveRepositoryPath(repositoryPath, worktreePath),
+        fileTools.git.resolveRepositoryPathForOpen(repositoryPath, worktreePath),
       reveal: (path, current) => fileTools.revealFileTree(path, current),
       comparison: (path) => fileTools.git.comparison(path),
       onOpenFailure: (error, path) => notice(filePreviewErrorMessage(error, path), 'error', error),
@@ -896,10 +897,14 @@ export function createWorkbenchPageController<
   } = workbenchCapabilityService;
   watch(
     [workspaceTabs, workspaceNodeId],
-    ([tabs, selected]) =>
-      retainNodeManifests(
-        new Set([...tabs.map((tab) => tab.nodeId), ...(selected === undefined ? [] : [selected])])
-      ),
+    ([tabs, selected]) => {
+      const retained = new Set([
+        ...tabs.map((tab) => tab.nodeId),
+        ...(selected === undefined ? [] : [selected])
+      ]);
+      retainNodeManifests(retained);
+      runnerProfileService.retainNodes(retained);
+    },
     { flush: 'sync' }
   );
 
@@ -1224,7 +1229,7 @@ export function createWorkbenchPageController<
   }
 
   function handleSignedOut(): void {
-    workbenchAsideService.clearHtml();
+    workbenchAsideService.clear();
     clearMessages();
     authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
@@ -1237,6 +1242,10 @@ export function createWorkbenchPageController<
     workbenchCapabilityService.resetResources();
     workbenchWorkspaceSelectionService.clear();
     retainNodeManifests(new Set());
+    runnerProfileService.retainNodes(new Set());
+    workspaceGit.clear();
+    workspaceViewCacheService.clear();
+    drafts.clear();
   }
 
   function persistWorkbenchState(): void {
@@ -1291,7 +1300,8 @@ export function createWorkbenchPageController<
     saveCurrent: saveCurrentWorkspaceView,
     discardCache: (nodeId, workspaceId) => {
       discardWorkspaceViewCache(nodeId, workspaceId);
-      workbenchAsideService.clearHtmlWorkspace({ nodeId, workspaceId });
+      drafts.releaseWorkspace(nodeId, workspaceId);
+      workbenchAsideService.removeWorkspace({ nodeId, workspaceId });
     },
     activateWorkspace: (target, restoreSession) => selectWorkspace(target, restoreSession),
     workspaceTabSession: workbenchNotificationService.workspaceTabSession,
@@ -1497,7 +1507,8 @@ export function createWorkbenchPageController<
         watchCoordinator.current?.stopSession();
       }
       discardWorkspaceViewCache(target.nodeId, target.workspaceId);
-      workbenchAsideService.clearHtmlWorkspace(target);
+      drafts.releaseWorkspace(target.nodeId, target.workspaceId);
+      workbenchAsideService.removeWorkspace(target);
       if (tab !== undefined) closeWorkspaceTab(tab, true);
       else if (
         workspaceTarget.value?.nodeId === target.nodeId &&
@@ -1651,9 +1662,11 @@ export function createWorkbenchPageController<
       tree: workspaceTreeService,
       replaceSession,
       refreshSessions: refreshWorkspaceSessions,
+      releaseSessionDraft: drafts.releaseSession,
       discardNodeCaches: (nodeId) => {
         discardNodeViewCaches(nodeId);
-        workbenchAsideService.clearHtmlNode(nodeId);
+        drafts.releaseNode(nodeId);
+        workbenchAsideService.removeNode(nodeId);
       },
       openDraft: () => openDraftSessionComposer(),
       replaceUrl: syncWorkbenchRoute,

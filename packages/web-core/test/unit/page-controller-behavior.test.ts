@@ -6,6 +6,7 @@ import * as snapshotRefresh from '../../src/service/session-snapshot-refresh-ser
 import * as directRead from '../../src/service/workspace-direct-file-read-service.js';
 import * as directObject from '../../src/service/workspace-direct-object-url-service.js';
 import * as directDownload from '../../src/service/workspace-direct-download-stream-service.js';
+import * as draftOwner from '../../src/service/session-draft-service.js';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
@@ -457,6 +458,65 @@ function controller(pwaApplication?: PwaApplicationService) {
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('releases draft cache owners on actual tab close and account sign-out', async () => {
+    const created = vi.spyOn(draftOwner, 'createSessionDraftService');
+    const { page } = controller();
+    const owner = created.mock.results[0]!.value as ReturnType<
+      typeof draftOwner.createSessionDraftService
+    >;
+    const a = { kind: 'workspace' as const, nodeId: node.id, workspaceId: 'a' };
+    const b = { kind: 'workspace' as const, nodeId: node.id, workspaceId: 'b' };
+    await captured.seedNodes!([node]);
+    captured.tabs!.remember(node.id, node, { id: 'a', path: '/a', kind: 'DIRECTORY' });
+    captured.tabs!.remember(node.id, node, { id: 'b', path: '/b', kind: 'DIRECTORY' });
+    captured.setTarget!(b);
+    await nextTick();
+    const first = owner.forTarget(a);
+    page.selection.closeWorkspaceTab(
+      page.selection.workspaceTabs.find((tab) => tab.workspaceId === 'a')!
+    );
+    expect(owner.forTarget(a)).not.toBe(first);
+    const second = owner.forTarget(b);
+    captured.signedOut!();
+    await nextTick();
+    expect(owner.forTarget(b)).not.toBe(second);
+  });
+
+  it('does not reuse the previous account Changes fetch after signing out', async () => {
+    const { page } = controller();
+    const workspace = { id: 'workspace-a', path: '/project', kind: 'GIT_WORKSPACE' as const };
+    const activate = async () => {
+      await captured.seedNodes!([node]);
+      captured.setTarget!({ nodeId: node.id, workspaceId: workspace.id });
+      await flushComponent();
+      captured.tree!.cacheWorkspaces(node.id, [workspace]);
+      captured.setWorkspaces!([workspace]);
+      await captured.seedManifest!({
+        manifestVersion: 1,
+        observedAt: 1,
+        conversation: { available: true, reasonCode: null },
+        files: { available: true, reasonCode: null },
+        git: { available: true, reasonCode: null, supportsHistory: true }
+      });
+    };
+    let fetches = 0;
+    vi.mocked(fetch).mockImplementation(async (request) => {
+      const result = String(request).includes('/git/fetch')
+        ? { fetchFailed: ++fetches === 1, updated: false }
+        : { changes: [] };
+      return new Response(JSON.stringify(result));
+    });
+    await activate();
+    await page.files.workspaceGit.loadChanges(true);
+    await vi.waitFor(() => expect(page.files.workspaceGit.changesFetchFailed.value).toBe(true));
+    captured.signedOut!();
+    await flushComponent();
+    await activate();
+    await page.files.workspaceGit.loadChanges(true);
+    await vi.waitFor(() => expect(fetches).toBe(2));
+    expect(page.files.workspaceGit.changesFetchFailed.value).toBe(false);
+  });
+
   it('provides complete resource and selection state before either Pane connects', () => {
     controller();
     expect(captured.paneConstruction).toEqual([

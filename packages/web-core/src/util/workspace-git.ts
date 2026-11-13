@@ -15,10 +15,10 @@ export function gitFileRepositoryPath(
   workspacePath: string | undefined
 ): string | undefined {
   if (worktreePath !== undefined) return undefined;
-  return typeof repositoryRoot === 'string' &&
-    (repositoryPath !== '' || repositoryRoot !== workspacePath)
-    ? repositoryPath
-    : undefined;
+  // Submodules under this Workspace use ordinary file access; other Git targets stay scoped.
+  return typeof repositoryRoot === 'string' && repositoryRoot === workspacePath
+    ? undefined
+    : repositoryPath;
 }
 
 export function changeDiffIntent(

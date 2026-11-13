@@ -552,7 +552,7 @@ it.each([
       target: () => target,
       page: () => undefined,
       prewarmEnabled: () => false,
-      resolveRepositoryPath: () => undefined,
+      resolveRepositoryPath: (repositoryPath) => repositoryPath,
       reveal: async () => {},
       comparison: async () => undefined,
       onOpenFailure: vi.fn(),

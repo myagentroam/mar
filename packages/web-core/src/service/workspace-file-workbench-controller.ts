@@ -61,7 +61,7 @@ export function createWorkspaceFileWorkbenchController(options: {
   readonly resolveRepositoryPath: (
     repositoryPath: string,
     worktreePath?: string
-  ) => string | undefined;
+  ) => string | undefined | Promise<string | undefined>;
   readonly reveal: (path: string, current: () => boolean) => Promise<void>;
   readonly onOpenFailure: (error: unknown, path: string) => void;
   readonly onDownloadFailure?: (error: unknown, path: string) => void;
@@ -495,19 +495,41 @@ export function createWorkspaceFileWorkbenchController(options: {
   async function openWorktreeDiffText(
     tab: WorkspaceFileOpenIntent,
     continueOpen = false
-  ): Promise<void> {
+  ): Promise<number | undefined> {
     if (tab.kind !== 'WORKTREE_DIFF') return;
-    if (!continueOpen) beginOpen();
-    const source = currentPosition();
-    const repositoryPath = tab.gitFile
-      ? tab.repositoryPath
-      : options.resolveRepositoryPath(tab.repositoryPath, tab.worktreePath || undefined);
+    const generation = continueOpen ? openGeneration : beginOpen();
+    const sourceId = tabs.activeTabId.value;
+    const repositoryPath = await options.resolveRepositoryPath(
+      tab.repositoryPath,
+      tab.worktreePath || undefined
+    );
+    const target = options.target();
+    if (
+      !isOpenCurrent(generation) ||
+      tabs.activeTabId.value !== sourceId ||
+      target?.nodeId !== tab.nodeId ||
+      target.workspaceId !== tab.workspaceId
+    )
+      return;
     const path =
       repositoryPath !== undefined
         ? tab.path
         : tab.worktreePath === '' && tab.repositoryPath !== ''
           ? `${tab.repositoryPath}/${tab.path}`
           : tab.path;
+    if (repositoryPath === undefined && tab.worktreePath === '') {
+      const opening = openFile(path, undefined, undefined, tab.quotePane);
+      const sourceGeneration = openGeneration;
+      const sourceTab = tabs.activeTab.value;
+      await opening;
+      return isOpenCurrent(sourceGeneration) &&
+        tabs.activeTab.value === sourceTab &&
+        sourceTab?.path === path &&
+        (sourceTab.kind === 'WORKTREE_TEXT' || sourceTab.kind === 'WORKTREE_PREVIEW')
+        ? sourceTab.id
+        : undefined;
+    }
+    const source = currentPosition();
     const opening = openWorkspaceFile(
       path,
       undefined,
@@ -518,9 +540,11 @@ export function createWorkspaceFileWorkbenchController(options: {
       true,
       true
     );
+    focusWhenReady(tabs.activeTab.value, generation);
     const targetId = tabs.activeTabId.value;
     if (targetId !== undefined) recordNavigation(source, targetId);
     await opening;
+    return isOpenCurrent(generation) && tabs.activeTabId.value === targetId ? targetId : undefined;
   }
   async function openTab(intent: WorkspaceFileOpenIntent): Promise<void> {
     const target = options.target();
@@ -538,11 +562,12 @@ export function createWorkspaceFileWorkbenchController(options: {
         intent.kind === 'HISTORY_DIFF' ||
         intent.kind === 'HISTORY_TEXT')
     ) {
-      if (intent.kind !== 'WORKTREE_DIFF' && !intent.commit) return;
-      const opening =
-        intent.kind === 'WORKTREE_DIFF'
-          ? openWorktreeDiffText(intent, true)
-          : openHistoryText(intent);
+      if (intent.kind === 'WORKTREE_DIFF') {
+        await openWorktreeDiffText(intent, true);
+        return;
+      }
+      if (!intent.commit) return;
+      const opening = openHistoryText(intent);
       const tab = tabs.activeTab.value;
       focusWhenReady(tab, generation);
       await opening;
@@ -590,7 +615,11 @@ export function createWorkspaceFileWorkbenchController(options: {
     }
     setSuspended(false);
     const existing = frames.value.find(
-      (frame) => frame.worktreePath.value === undefined && frame.fileContent.value?.path === path
+      (frame) =>
+        frame.worktreePath.value === undefined &&
+        frame.repositoryPath === undefined &&
+        frame.historySource === undefined &&
+        frame.fileContent.value?.path === path
     );
     if (existing !== undefined) {
       tabs.activate(existing.id);

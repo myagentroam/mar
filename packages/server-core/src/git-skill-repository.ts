@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,11 +6,9 @@ import { promisify } from 'node:util';
 import {
   finalizeSkillBundle,
   normalizeSkillName,
-  parseSkillFrontmatter,
-  type ResolvedSkillBundle,
-  type SkillBundleFile
+  readSkillFrontmatter,
+  type ResolvedSkillBundle
 } from './skill-bundle.js';
-import { assertPublicSkillHost } from './skill-network-policy.js';
 
 const execFileAsync = promisify(execFile);
 const GIT_SSH_COMMAND =
@@ -58,8 +56,7 @@ export class GitSkillRepository {
         .slice(0, limit);
       const result: GitSkillCandidate[] = [];
       for (const { skillFile, ...candidate } of candidates) {
-        const content = await gitText(repository.directory, ['show', `HEAD:${skillFile}`]);
-        const metadata = parseSkillFrontmatter(content);
+        const metadata = await readSkillFrontmatter(gitContent(repository.directory, skillFile));
         result.push({
           ...candidate,
           name: normalizeSkillName(metadata.name),
@@ -85,21 +82,16 @@ export class GitSkillRepository {
           ...file,
           relativePath: skillPath === '.' ? file.path : file.path.slice(skillPath.length + 1)
         }));
-      const files: SkillBundleFile[] = [];
-      let contentBytes = 0;
-      for (const file of selected) {
-        const content = await gitBuffer(repository.directory, ['show', `HEAD:${file.path}`]);
-        contentBytes += content.length;
-        files.push({ path: file.relativePath, contentBase64: content.toString('base64') });
-      }
       return finalizeSkillBundle({
         repositoryIdentity: repository.identity,
         repositoryUrl: input.repositoryUrl,
         skillPath,
         commitSha: repository.commitSha,
-        contentBytes,
         tlsVerified: repository.tlsVerified,
-        files
+        files: selected.map((file) => ({
+          path: file.relativePath,
+          open: () => gitContent(repository.directory, file.path)
+        }))
       });
     });
   }
@@ -109,7 +101,6 @@ export class GitSkillRepository {
     operation: (repository: GitRepositorySnapshot) => Promise<T>
   ): Promise<T> {
     const parsed = parseLocator(locator);
-    const address = await assertPublicSkillHost(parsed.hostname);
     const tlsDisabled = parsed.https ? await this.tlsVerificationDisabled() : undefined;
     const env = gitEnvironment(tlsDisabled);
     const transport = parsed.https
@@ -123,9 +114,7 @@ export class GitSkillRepository {
           '-c',
           'http.proxy=',
           '-c',
-          `http.sslVerify=${!tlsDisabled}`,
-          '-c',
-          `http.curloptResolve=${parsed.hostname}:${parsed.port}:${address.family === 6 ? `[${address.address}]` : address.address}`
+          `http.sslVerify=${!tlsDisabled}`
         ]
       : ['-c', 'protocol.file.allow=never'];
     const directory = await mkdtemp(path.join(tmpdir(), 'mar-skill-git-'));
@@ -189,7 +178,6 @@ function parseLocator(locator: string): {
   repositoryPath: string;
   locator: string;
   https: boolean;
-  port: string;
 } {
   if (locator.startsWith('https://')) {
     const url = new URL(locator);
@@ -204,7 +192,6 @@ function parseLocator(locator: string): {
       throw new Error('SKILL_SOURCE_PROVIDER_UNSUPPORTED');
     return {
       hostname: url.hostname,
-      port: url.port || '443',
       repositoryPath,
       locator: url.href,
       https: true
@@ -219,8 +206,7 @@ function parseLocator(locator: string): {
     hostname: match[1]!,
     repositoryPath: match[2]!.replace(/\.git$/u, ''),
     locator,
-    https: false,
-    port: '22'
+    https: false
   };
 }
 
@@ -261,6 +247,32 @@ async function gitBuffer(directory: string, args: readonly string[]): Promise<Bu
     windowsHide: true
   });
   return result.stdout;
+}
+
+/** Owns each local blob process and joins it before its repository can be removed. */
+async function* gitContent(directory: string, file: string): AsyncGenerator<Buffer> {
+  const child = spawn('git', ['show', `HEAD:${file}`], {
+    cwd: directory,
+    env: gitEnvironment(),
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 20_000,
+    windowsHide: true
+  });
+  // Resolve failures as values so an early stream failure cannot leave an unhandled rejection.
+  const completion = new Promise<Error | undefined>((resolve) => {
+    child.once('error', resolve);
+    child.once('close', (code) =>
+      resolve(code === 0 ? undefined : new Error('SKILL_SOURCE_UNAVAILABLE'))
+    );
+  });
+  try {
+    for await (const chunk of child.stdout) yield chunk as Buffer;
+    const error = await completion;
+    if (error !== undefined) throw error;
+  } finally {
+    child.kill();
+    await completion;
+  }
 }
 
 function gitEnvironment(tlsDisabled?: boolean): NodeJS.ProcessEnv {
