@@ -20,6 +20,7 @@ import {
 import { sessionSubmissionContext } from './workbench-submission-service.js';
 import { errorCode } from '../util/api-error.js';
 import { isTerminalRunStatus } from '../util/run-state.js';
+import type { DraftSettlement } from './session-draft-service.js';
 
 type DeliveryIntent = 'SEND' | 'QUEUE' | 'REPLACE_CURRENT';
 
@@ -69,6 +70,7 @@ export interface WorkbenchSessionMessageOptions {
         readonly skillTokens: Ref<readonly ComposerSkillToken[]>;
         readonly references?: Ref<readonly import('@myagentroam/protocol').ComposerReference[]>;
         readonly persist: () => void;
+        readonly retain?: () => DraftSettlement;
         readonly createdSession?: (session: Session) => void;
       }
     | undefined;
@@ -288,6 +290,14 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
       }
     );
     if (finishSubmission === undefined) return;
+    const settlement = capturedDraft.retain?.();
+    const settleDraft = (change: () => void) => {
+      if (settlement !== undefined) settlement.settle(change);
+      else {
+        change();
+        capturedDraft.persist();
+      }
+    };
     const releaseAttachments = options.retainAttachments(command === undefined ? outgoing : []);
     let completedInSubmissionWindow = false;
     try {
@@ -312,8 +322,9 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
             draftInput.value === originalInput &&
             originalInput.trim() === content
           ) {
-            draftInput.value = '';
-            capturedDraft.persist();
+            settleDraft(() => {
+              draftInput.value = '';
+            });
           }
           if (commandOverride === undefined) {
             options.selectedCommand.value = undefined;
@@ -342,8 +353,9 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
             draftInput.value === originalInput &&
             originalInput.trim() === content
           ) {
-            draftInput.value = '';
-            capturedDraft.persist();
+            settleDraft(() => {
+              draftInput.value = '';
+            });
           }
           if (
             commandOverride === undefined &&
@@ -473,10 +485,11 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
         draftSkills.value === submittedSkillTokens &&
         draftReferences?.value === submittedReferences
       ) {
-        draftInput.value = '';
-        draftSkills.value = [];
-        if (draftReferences !== undefined) draftReferences.value = [];
-        capturedDraft.persist();
+        settleDraft(() => {
+          draftInput.value = '';
+          draftSkills.value = [];
+          if (draftReferences !== undefined) draftReferences.value = [];
+        });
       }
     } catch (error) {
       if (!active()) return;
@@ -506,6 +519,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
           error
         );
     } finally {
+      settlement?.release();
       releaseAttachments();
       finishSubmission();
     }

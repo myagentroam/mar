@@ -1259,6 +1259,84 @@ describe('Workbench Message Submission Status', () => {
     }
   );
 
+  it.each(
+    (['close', 'evict', 'reopen', 'failure', 'delete', 'sign-out'] as const).flatMap((scenario) =>
+      (['main', 'aside'] as const).map((pane) => ({ scenario, pane }))
+    )
+  )(
+    'settles the durable captured $pane message after Workspace $scenario without reviving old input',
+    async ({ scenario, pane }) => {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+        removeItem: (key: string) => void values.delete(key),
+        get length() {
+          return values.size;
+        },
+        key: (index: number) => [...values.keys()][index] ?? null
+      };
+      const target = {
+        kind: 'session' as const,
+        nodeId: 'node-1',
+        workspaceId: workspace.id,
+        sessionId: session.id
+      };
+      const drafts = createSessionDraftService({ target: ref(undefined), storage });
+      const original = drafts.forTarget(target, pane);
+      original.input.value = 'Immediate Message';
+      const sibling = pane === 'main' ? 'aside' : 'main';
+      const aside = drafts.forTarget(target, sibling);
+      aside.input.value = 'Aside input';
+      const other = { ...target, nodeId: 'other-node' };
+      drafts.forTarget(other).input.value = 'Other host input';
+      drafts.forTarget(other).persist();
+      const harness = pendingRequestHarness({ captureDraft: () => original });
+      const sending = harness.service.send();
+      await vi.waitFor(() => expect(harness.request).toHaveBeenCalledOnce());
+      if (scenario === 'evict')
+        for (let index = 0; index < 65; index++)
+          drafts.forTarget({ ...target, workspaceId: `evict-${index}` });
+      else drafts.releaseWorkspace(target.nodeId, target.workspaceId);
+      const composerKey =
+        pane === 'main'
+          ? `mar.workbench.draft.node-1.${workspace.id}`
+          : `mar.workbench.aside-draft.${JSON.stringify([target.nodeId, target.workspaceId])}`;
+      expect(JSON.parse(storage.getItem(composerKey)!).input).toBe('Immediate Message');
+      if (scenario === 'reopen') {
+        drafts.forTarget(target, pane).input.value = 'New input';
+        drafts.forTarget(target, pane).persist();
+      } else if (scenario === 'delete')
+        drafts.releaseSession(target.nodeId, target.workspaceId, target.sessionId);
+      else if (scenario === 'sign-out') drafts.clear();
+      if (scenario === 'failure') harness.rejectRequest(new Error('request failed'));
+      else harness.resolveRequest(acceptedResult);
+      await sending;
+      const restored = createSessionDraftService({ target: ref(target), storage });
+      const expected =
+        scenario === 'reopen'
+          ? 'New input'
+          : scenario === 'failure' || scenario === 'delete'
+            ? 'Immediate Message'
+            : '';
+      expect(restored.forTarget(target, pane).input.value).toBe(expected);
+      expect(drafts.forTarget(target, pane).input.value).toBe(expected);
+      expect(restored.forTarget(target, sibling).input.value).toBe(
+        scenario === 'sign-out' ? '' : 'Aside input'
+      );
+      expect(restored.forTarget(other).input.value).toBe(
+        scenario === 'sign-out' ? '' : 'Other host input'
+      );
+      // A stale slot never gains arbitrary write access from its former submission.
+      original.input.value = 'stale mutation';
+      expect(original.persist()).toBe(false);
+      expect(
+        createSessionDraftService({ target: ref(target), storage }).forTarget(target, pane).input
+          .value
+      ).toBe(expected);
+    }
+  );
+
   it('blocks sending while an attachment is still uploading with a warning', async () => {
     const harness = pendingRequestHarness({ attachmentsPending: true });
 

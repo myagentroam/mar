@@ -593,15 +593,20 @@ export function createWorkspaceSessionPaneState(options: {
           const slot =
             target === undefined ? undefined : options.drafts.forTarget(target, options.pane);
           const captured = slot?.queueEdit.value;
-          return () => {
-            if (
-              slot === undefined ||
-              captured?.queueItemId !== queueItemId ||
-              slot.queueEdit.value !== captured
-            )
-              return;
-            slot.queueEdit.value = undefined;
-            slot.persist();
+          const settlement = slot?.retain();
+          return {
+            release: () => settlement?.release(),
+            finish: () => {
+              if (
+                slot === undefined ||
+                captured?.queueItemId !== queueItemId ||
+                slot.queueEdit.value !== captured
+              )
+                return;
+              settlement?.settle(() => {
+                slot.queueEdit.value = undefined;
+              });
+            }
           };
         }
       }),

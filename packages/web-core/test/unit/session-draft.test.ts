@@ -15,6 +15,100 @@ function workspaceDraftTarget(
 }
 
 describe('Web Workspace Draft State', () => {
+  it.each([false, true])(
+    'keeps bounded slots and retries a retained settlement after storage failure: %s',
+    (failStorage) => {
+      const values = new Map<string, string>();
+      let failing = false;
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          if (failing) throw new Error('quota');
+          values.set(key, value);
+        },
+        removeItem: (key: string) => {
+          if (failing) throw new Error('unavailable');
+          values.delete(key);
+        }
+      };
+      const owner = createSessionDraftService({ target: ref(undefined), storage });
+      const target = { kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 's' };
+      const old = owner.forTarget(target);
+      old.input.value = 'submitted';
+      const settlement = old.retain();
+      owner.releaseWorkspace('n', 'w');
+      const inactive = Array.from({ length: 65 }, (_, index) => {
+        const target = { kind: 'workspace' as const, nodeId: 'n', workspaceId: `other-${index}` };
+        return { target, slot: owner.forTarget(target) };
+      });
+      // The in-flight draft is not a pinned LRU slot: the oldest of 65 ordinary slots is evicted.
+      expect(owner.forTarget(inactive[0]!.target)).not.toBe(inactive[0]!.slot);
+      failing = failStorage;
+      settlement.settle(() => {
+        old.input.value = '';
+      });
+      settlement.release();
+      expect(old.persist()).toBe(false);
+      expect(owner.forTarget(target).input.value).toBe('');
+      failing = false;
+      expect(owner.forTarget(target).persist()).toBe(true);
+      expect(createSessionDraftService({ target: ref(target), storage }).input.value).toBe('');
+      settlement.settle(() => {
+        old.input.value = 'released settlement';
+      });
+      expect(owner.forTarget(target).input.value).toBe('');
+    }
+  );
+
+  it('keeps captured requests independent when one releases before another settles', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key)
+    };
+    const owner = createSessionDraftService({ target: ref(undefined), storage });
+    const target = { kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' };
+    const old = owner.forTarget(target);
+    old.input.value = 'submitted';
+    const finished = old.retain();
+    const pending = old.retain();
+    owner.releaseWorkspace('n', 'w');
+    finished.release();
+    finished.settle(() => {
+      old.input.value = 'already released';
+    });
+    expect(old.input.value).toBe('submitted');
+    pending.settle(() => {
+      old.input.value = '';
+    });
+    pending.release();
+    expect(createSessionDraftService({ target: ref(target), storage }).input.value).toBe('');
+    expect(old.persist()).toBe(false);
+  });
+
+  it('does not let an already released slot acquire a new settlement', () => {
+    const values = new Map<string, string>();
+    const owner = createSessionDraftService({
+      target: ref(undefined),
+      storage: {
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => void values.set(key, value),
+        removeItem: (key) => void values.delete(key)
+      }
+    });
+    const target = { kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' };
+    const old = owner.forTarget(target);
+    old.input.value = 'unsent';
+    owner.releaseWorkspace('n', 'w');
+    const late = old.retain();
+    late.settle(() => {
+      old.input.value = '';
+    });
+    late.release();
+    expect(owner.forTarget(target).input.value).toBe('unsent');
+  });
+
   it('releases closed Workspace drafts after persisting them and bounds inactive slots', () => {
     const values = new Map<string, string>();
     const owner = createSessionDraftService({

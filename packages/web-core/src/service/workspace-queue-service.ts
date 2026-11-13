@@ -16,7 +16,10 @@ export function createWorkspaceQueueService(options: {
   readonly serializeEditedContent?: (content: string) => string;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly finishEditing: () => void;
-  readonly captureEditing?: (queueItemId: string) => () => void;
+  readonly captureEditing?: (queueItemId: string) => {
+    readonly finish: () => void;
+    readonly release: () => void;
+  };
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
   readonly missingQueueItemError: (error: unknown) => boolean;
@@ -109,12 +112,12 @@ export function createWorkspaceQueueService(options: {
         method: 'PATCH',
         body: JSON.stringify({ nodeId, workspaceId, sessionId, content })
       });
-      if (finishCaptured !== undefined) finishCaptured();
+      if (finishCaptured !== undefined) finishCaptured.finish();
       else if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
       return true;
     } catch (error) {
       if (options.missingQueueItemError(error)) {
-        if (finishCaptured !== undefined) finishCaptured();
+        if (finishCaptured !== undefined) finishCaptured.finish();
         else if (current(nodeId, workspaceId, sessionId, revision)) options.finishEditing();
         return false;
       }
@@ -127,6 +130,8 @@ export function createWorkspaceQueueService(options: {
           error
         );
       return false;
+    } finally {
+      finishCaptured?.release();
     }
   }
 
