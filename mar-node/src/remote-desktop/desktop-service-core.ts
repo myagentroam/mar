@@ -51,9 +51,10 @@ export interface DesktopTransport {
   /** Relay sends its authenticated first frame on open before PREPARED. */
   readonly start?: () => void;
 }
-/** Tracks attachment IDs across transport owners until their cleanup settles. */
+/** Owns per-Node attachment identities and takeover across Direct and relay. */
 export class DesktopAttachmentRegistry {
   readonly #ids = new Set<string>();
+  readonly #opened = new Map<string, () => void>();
   has(id: string): boolean {
     return this.#ids.has(id);
   }
@@ -64,6 +65,14 @@ export class DesktopAttachmentRegistry {
   }
   release(id: string): void {
     this.#ids.delete(id);
+    this.#opened.delete(id);
+  }
+  /** A validated OPEN replaces only already-open attachments, not pending requests. */
+  opened(id: string, replace: () => void): void {
+    const previous = [...this.#opened.values()];
+    this.#opened.clear();
+    this.#opened.set(id, replace);
+    for (const close of previous) close();
   }
 }
 export interface DesktopServiceOptions {
@@ -324,6 +333,9 @@ export class DesktopServiceCore {
     )
       return this.#close(entry, 'DESKTOP_TRANSPORT_ERROR');
     try {
+      this.#registry.opened(entry.command.attachmentId, () =>
+        this.#close(entry, 'DESKTOP_CONNECTION_REPLACED')
+      );
       entry.stream = new DesktopByteStream(entry.channel, entry.transport.maxMessageBytes());
       entry.attachment = this.options.createAttachment(entry.command, entry.stream, {
         attached: () => {

@@ -44,7 +44,8 @@ export function registerRemoteDesktopDiscoveryRoute(input: {
         if (admitted.userId !== user.userId || admitted.sessionHash !== user.sessionHash)
           return sendError(reply, 401, 'UNAUTHENTICATED');
         const capability = nodeControl.nodeCapabilities(nodeId)?.remoteDesktop;
-        if (!capability?.available) return sendError(reply, 409, 'DESKTOP_UNAVAILABLE');
+        if (!capability) return sendError(reply, 409, 'DESKTOP_UNAVAILABLE');
+        if (!capability.available) return sendError(reply, 409, capability.reasonCode);
         const raw = await requestUserNode(
           nodeControl,
           user,
@@ -64,8 +65,9 @@ export function registerRemoteDesktopDiscoveryRoute(input: {
         if (authorized === undefined) return;
         if (authorized.userId !== user.userId || authorized.sessionHash !== user.sessionHash)
           return sendError(reply, 401, 'UNAUTHENTICATED');
-        if (!latest?.available || latest.nodeGeneration !== capability.nodeGeneration)
+        if (!latest || latest.nodeGeneration !== capability.nodeGeneration)
           return sendError(reply, 409, 'DESKTOP_UNAVAILABLE');
+        if (!latest.available) return sendError(reply, 409, latest.reasonCode);
         if (!description.success) return sendError(reply, 502, 'DESKTOP_DESCRIPTION_INVALID');
         if (
           selection.data.displayId !== undefined &&

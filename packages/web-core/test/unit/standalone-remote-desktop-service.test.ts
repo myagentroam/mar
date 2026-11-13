@@ -257,6 +257,33 @@ describe('standalone Remote Desktop page composition', () => {
     }
   });
 
+  it.each(['DESKTOP_BACKEND_UNAVAILABLE', 'DESKTOP_PERMISSION_REQUIRED'])(
+    'preserves the reported capability reason %s before allocating transport',
+    async (reasonCode) => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        response({
+          capability: {
+            apiVersion: 1,
+            available: false,
+            nodeGeneration: 'generation-123',
+            reasonCode
+          }
+        }) as never
+      );
+      const f = fixture();
+      try {
+        await expect(f.service.discover(new AbortController().signal)).rejects.toMatchObject({
+          code: reasonCode
+        });
+        expect(mocks.transport.ensureTransport).not.toHaveBeenCalled();
+        expect(mocks.direct.attach).not.toHaveBeenCalled();
+        expect(mocks.relay.attach).not.toHaveBeenCalled();
+      } finally {
+        await f.service.close();
+      }
+    }
+  );
+
   it('keeps the control connection until attachment settlement and fails closed on loss', async () => {
     const f = fixture();
     const snapshot = await f.service.discover(new AbortController().signal);

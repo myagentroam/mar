@@ -162,15 +162,106 @@ describe('Remote Desktop discovery route', () => {
       f.canUseNode.mockResolvedValueOnce(false);
       expect((await f.get()).statusCode).toBe(403);
       f.nodeCapabilities.mockReturnValueOnce(undefined);
-      expect((await f.get()).statusCode).toBe(409);
+      const unavailable = await f.get();
+      expect(unavailable.statusCode).toBe(409);
+      expect(unavailable.json().error.code).toBe('DESKTOP_UNAVAILABLE');
       expect(f.requestNode).not.toHaveBeenCalled();
     } finally {
       await f.app.close();
     }
   });
 
+  it('preserves an unavailable initial Node capability reason without requesting a description', async () => {
+    const f = fixture();
+    f.nodeCapabilities.mockReturnValueOnce({
+      remoteDesktop: {
+        apiVersion: 1,
+        available: false,
+        nodeGeneration: 'generation-a',
+        reasonCode: 'DESKTOP_BACKEND_START_FAILED'
+      }
+    });
+    try {
+      const response = await f.get();
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe('DESKTOP_BACKEND_START_FAILED');
+      expect(f.requestNode).not.toHaveBeenCalled();
+    } finally {
+      await f.app.close();
+    }
+  });
+
+  it('preserves a capability reason when the Node becomes unavailable during describe', async () => {
+    const f = fixture();
+    let release!: (value: unknown) => void;
+    f.requestNode.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    try {
+      const pending = f.get();
+      await vi.waitFor(() => expect(release).toBeDefined());
+      f.nodeCapabilities.mockReturnValue({
+        remoteDesktop: {
+          apiVersion: 1,
+          available: false,
+          nodeGeneration: 'generation-a',
+          reasonCode: 'DESKTOP_BACKEND_CLOSED'
+        }
+      });
+      release(description);
+      const response = await pending;
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe('DESKTOP_BACKEND_CLOSED');
+      expect(f.canUseNode).toHaveBeenCalledTimes(2);
+    } finally {
+      await f.app.close();
+    }
+  });
+
+  it.each(['permission', 'session'] as const)(
+    'keeps final %s revocation ahead of a newly unavailable capability',
+    async (revocation) => {
+      const f = fixture();
+      let release!: (value: unknown) => void;
+      f.requestNode.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+      try {
+        const pending = f.get();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        const unavailable = {
+          remoteDesktop: {
+            apiVersion: 1,
+            available: false,
+            nodeGeneration: 'generation-a',
+            reasonCode: 'DESKTOP_BACKEND_CLOSED'
+          }
+        };
+        if (revocation === 'permission') {
+          f.canUseNode.mockResolvedValueOnce(false);
+        } else {
+          f.nodeCapabilities.mockImplementationOnce(() => {
+            f.lookup.mockReturnValue(undefined);
+            return unavailable;
+          });
+        }
+        release(description);
+        const response = await pending;
+        expect(response.statusCode).toBe(revocation === 'permission' ? 403 : 401);
+        expect(response.json().error.code).toBe(
+          revocation === 'permission' ? 'NODE_ACCESS_DENIED' : 'UNAUTHENTICATED'
+        );
+        expect(response.json().error.code).not.toBe('DESKTOP_BACKEND_CLOSED');
+      } finally {
+        await f.app.close();
+      }
+    }
+  );
+
   it('does not return an in-flight description after session, permission or generation changes', async () => {
-    for (const change of ['session', 'permission', 'generation'] as const) {
+    for (const change of [
+      'session',
+      'permission',
+      'generation',
+      'generation-unavailable',
+      'capability'
+    ] as const) {
       const f = fixture();
       try {
         let release!: (value: unknown) => void;
@@ -183,11 +274,27 @@ describe('Remote Desktop discovery route', () => {
           f.nodeCapabilities.mockReturnValue({
             remoteDesktop: { ...capability, nodeGeneration: 'generation-b' }
           });
+        if (change === 'generation-unavailable')
+          f.nodeCapabilities.mockReturnValue({
+            remoteDesktop: {
+              apiVersion: 1,
+              available: false,
+              nodeGeneration: 'generation-b',
+              reasonCode: 'DESKTOP_BACKEND_CLOSED'
+            }
+          });
+        if (change === 'capability') f.nodeCapabilities.mockReturnValueOnce(undefined);
         release(description);
         const response = await pending;
         expect(response.statusCode).toBe(
           change === 'session' ? 401 : change === 'permission' ? 403 : 409
         );
+        if (
+          change === 'generation' ||
+          change === 'generation-unavailable' ||
+          change === 'capability'
+        )
+          expect(response.json().error.code).toBe('DESKTOP_UNAVAILABLE');
         expect(response.body).not.toContain('desktop-a');
       } finally {
         await f.app.close();

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RFB from '@novnc/novnc';
+import { publicErrorMessage } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import {
@@ -9,6 +10,8 @@ import {
 import { remoteDesktopViewport } from '../../service/remote-desktop-viewport.js';
 import { remoteDesktopEncodings } from '../../service/remote-desktop-encodings.js';
 import { createRemoteDesktopStatistics } from '../../service/remote-desktop-statistics.js';
+import { ApiError } from '../../util/api-error.js';
+import { errorMessage } from '../../util/error-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
 
 const props = defineProps<{ readonly nodeId: string }>();
@@ -26,6 +29,7 @@ const displayOptions = computed(
 );
 const state = ref<'connecting' | 'ready' | 'hidden' | 'error'>('connecting');
 const errorCode = ref<string>();
+const remoteError = shallowRef<ApiError>();
 const pasteError = ref(false);
 const softKeyboardOpen = ref(false);
 const softText = ref('');
@@ -46,12 +50,16 @@ const viewport = computed(() =>
     : undefined
 );
 const errorText = computed(() => {
-  if (errorCode.value === 'UNAUTHENTICATED') return translate('remoteDesktop.signIn');
-  if (errorCode.value === 'NODE_ACCESS_DENIED' || errorCode.value === 'DESKTOP_NOT_AUTHORIZED')
-    return translate('remoteDesktop.notAuthorized');
-  if (errorCode.value === 'DESKTOP_CONTROL_UNAVAILABLE')
-    return translate('remoteDesktop.unknownCleanup');
-  return translate('remoteDesktop.unavailable');
+  const code = errorCode.value ?? 'DESKTOP_UNAVAILABLE';
+  const summary =
+    code === 'UNAUTHENTICATED'
+      ? translate('remoteDesktop.signIn')
+      : code === 'NODE_ACCESS_DENIED' || code === 'DESKTOP_NOT_AUTHORIZED'
+        ? translate('remoteDesktop.notAuthorized')
+        : code === 'DESKTOP_CONTROL_UNAVAILABLE'
+          ? translate('remoteDesktop.unknownCleanup')
+          : undefined;
+  return errorMessage(remoteError.value ?? new ApiError(code, publicErrorMessage(code)), summary);
 });
 let service: ReturnType<typeof createStandaloneRemoteDesktopService> | undefined;
 let attachment: Attachment | undefined;
@@ -64,12 +72,22 @@ let disposed = false;
 let connectionClosed = false;
 
 function codeOf(error: unknown): string {
+  if (typeof error === 'string') return error;
   return error !== null &&
     typeof error === 'object' &&
     'code' in error &&
     typeof error.code === 'string'
     ? error.code
     : 'DESKTOP_UNAVAILABLE';
+}
+function apiErrorOf(error: unknown): ApiError {
+  if (error instanceof ApiError) return error;
+  const code = codeOf(error);
+  const message =
+    error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : publicErrorMessage(code);
+  return new ApiError(code, message);
 }
 function detachDisplay(): void {
   ++inputRevision;
@@ -85,9 +103,10 @@ function detachDisplay(): void {
     previous.disconnect();
   }
 }
-function failed(code: string, token: number): void {
+function failed(error: unknown, token: number): void {
   if (disposed || token !== generation) return;
-  errorCode.value = code;
+  remoteError.value = apiErrorOf(error);
+  errorCode.value = remoteError.value.code;
   state.value = 'error';
   detachDisplay();
 }
@@ -102,6 +121,7 @@ async function connect(): Promise<void> {
   mode.value = 'VIEW';
   pasteError.value = false;
   errorCode.value = undefined;
+  remoteError.value = undefined;
   state.value = 'connecting';
   // The owner fences the previous attachment synchronously before opening the replacement.
   const pending = service.select({
@@ -160,7 +180,7 @@ async function connect(): Promise<void> {
       { once: true }
     );
   } catch (error) {
-    if (token === generation && !disposed) failed(codeOf(error), token);
+    if (token === generation && !disposed) failed(error, token);
   } finally {
     if (opening === controller) opening = undefined;
   }
@@ -179,6 +199,7 @@ async function discoverAndConnect(displayId?: string): Promise<void> {
   mode.value = 'VIEW';
   state.value = 'connecting';
   errorCode.value = undefined;
+  remoteError.value = undefined;
   detachDisplay();
   try {
     const snapshot = await service.discover(controller.signal, displayId);
@@ -187,7 +208,7 @@ async function discoverAndConnect(displayId?: string): Promise<void> {
     screenId.value = snapshot.description.displays.find((display) => display.primary)?.displayId;
     await connect();
   } catch (error) {
-    if (token === generation && !disposed) failed(codeOf(error), token);
+    if (token === generation && !disposed) failed(error, token);
   } finally {
     if (opening === controller) opening = undefined;
   }
@@ -242,6 +263,10 @@ function stopActivity(): void {
     void closing.then((settled) => {
       if (!settled && !disposed && state.value === 'hidden') {
         errorCode.value = 'DESKTOP_CONTROL_UNAVAILABLE';
+        remoteError.value = new ApiError(
+          'DESKTOP_CONTROL_UNAVAILABLE',
+          publicErrorMessage('DESKTOP_CONTROL_UNAVAILABLE')
+        );
         state.value = 'error';
       }
     });
@@ -450,7 +475,7 @@ onBeforeUnmount(() => {
       <div v-if="state !== 'ready'" class="remote-desktop-overlay" role="status">
         <p class="remote-desktop-status-line">
           <MarIcon v-if="state === 'connecting'" name="loading-action" />
-          <span>{{
+          <span :class="{ 'remote-desktop-error-text': state === 'error' }">{{
             state === 'connecting'
               ? translate('remoteDesktop.connecting')
               : state === 'hidden'
@@ -602,6 +627,18 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 0;
+  max-width: 100%;
+  overflow: auto;
+}
+.remote-desktop-error-text {
+  min-width: 0;
+  max-width: 100%;
+  align-self: flex-start;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  text-align: left;
 }
 .remote-desktop-control-prompt {
   position: absolute;

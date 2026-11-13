@@ -94,6 +94,24 @@ describe('remote desktop Relay client', () => {
     });
     f.client.close();
   });
+  it('updates an adopted connection with the confirmed replacement reason after data closes', async () => {
+    const f = fixture();
+    const pending = f.client.attach(f.input);
+    f.client.handle(f.prepared);
+    await vi.waitFor(() => expect(f.createSocket).toHaveBeenCalledOnce());
+    f.raw.open();
+    f.raw.receive(JSON.stringify({ type: 'ATTACHED', attachmentId: f.prepared.attachmentId }));
+    await pending;
+    f.raw.close();
+    expect(f.onDisconnected).toHaveBeenLastCalledWith('DESKTOP_TRANSPORT_ERROR');
+    f.client.handle({
+      type: 'desktop.relay.settled',
+      attachmentId: f.prepared.attachmentId,
+      code: 'DESKTOP_CONNECTION_REPLACED'
+    });
+    expect(f.onDisconnected).toHaveBeenLastCalledWith('DESKTOP_CONNECTION_REPLACED');
+    f.client.close();
+  });
   it('uses the settled Node code when data closes before the control event', async () => {
     const f = fixture();
     const pending = f.client.attach(f.input);
@@ -233,6 +251,7 @@ describe('remote desktop Relay client', () => {
     });
     await closed;
     expect(result).toHaveBeenCalledWith(true);
+    expect(f.onDisconnected).not.toHaveBeenCalled();
     f.client.close();
   });
   it('treats missing settlement as unknown and refuses another attachment', async () => {
