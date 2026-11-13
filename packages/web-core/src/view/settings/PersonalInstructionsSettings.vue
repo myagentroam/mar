@@ -311,8 +311,6 @@ async function clear(): Promise<void> {
 .personal-instructions > header {
   flex: 0 0 auto;
   margin-bottom: 1rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  padding-bottom: 0.9rem;
 }
 
 .instruction-scopes,

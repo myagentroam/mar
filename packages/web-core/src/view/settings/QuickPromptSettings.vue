@@ -219,8 +219,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 <style scoped>
 .quick-prompts-content {
   box-sizing: border-box;
-  max-width: 960px;
-  padding: 0.875rem 1rem;
+  padding: var(--mar-settings-page-padding, 0.875rem 1rem);
 }
 
 .quick-prompts-content > header {
@@ -229,8 +228,6 @@ async function remove(prompt: QuickPrompt): Promise<void> {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  padding-bottom: 0.9rem;
 }
 
 .quick-prompts h2 {

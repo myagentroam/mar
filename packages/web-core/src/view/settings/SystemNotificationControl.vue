@@ -89,7 +89,7 @@ const blocked = computed(
 <style scoped>
 .system-notification-control {
   display: grid;
-  max-inline-size: 48rem;
+  max-inline-size: 34rem;
   font-size: var(--mar-font-size-body);
 }
 .notification-channel {
@@ -100,7 +100,7 @@ const blocked = computed(
   padding-block: 0.9rem;
 }
 .notification-channel + .notification-channel {
-  border-top: 1px solid var(--mar-border-default);
+  border-top: 1px solid var(--mar-border-subtle);
 }
 .notification-channel-info {
   display: grid;

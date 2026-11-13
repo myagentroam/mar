@@ -433,8 +433,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
 
 <style scoped>
 .theme-settings {
-  padding: 1.25rem;
+  padding: var(--mar-settings-page-padding, 0.875rem 1rem);
   min-width: 0;
+  container-type: inline-size;
   overflow: auto;
 }
 h2 {
@@ -564,7 +565,7 @@ h3 {
   tab-size: 2;
 }
 aside {
-  border-left: 1px solid var(--mar-border-default);
+  border-left: 1px solid var(--mar-border-subtle);
   padding-left: 1.5rem;
 }
 .validation {
@@ -586,7 +587,7 @@ aside {
   align-items: center;
   gap: 0.4rem;
 }
-@media (min-width: 1001px) {
+@container (min-width: 760px) {
   .editor-layout > :deep(.el-form) {
     display: flex;
     flex-direction: column;
@@ -609,13 +610,13 @@ aside {
     resize: none;
   }
 }
-@media (max-width: 1000px) {
+@container (width < 760px) {
   .editor-layout {
     grid-template-columns: minmax(0, 1fr);
   }
   aside {
     border-left: 0;
-    border-top: 1px solid var(--mar-border-default);
+    border-top: 1px solid var(--mar-border-subtle);
     padding: 1rem 0 0;
   }
 }
