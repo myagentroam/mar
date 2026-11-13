@@ -1,4 +1,4 @@
-import { h, ref } from 'vue';
+import { defineAsyncComponent, h, ref } from 'vue';
 import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vue';
@@ -101,9 +101,11 @@ function panel(name: string, content: ReturnType<typeof h>) {
     content
   ]);
 }
+const RefreshActionsFixture = defineAsyncComponent(() => import('./refresh-actions-fixture.vue'));
 createTooltipApp({
-  render: () =>
-    h('main', { class: 'inspector-read-fixture' }, [
+  render: () => {
+    if (parameters.has('refresh-controls')) return h(RefreshActionsFixture);
+    return h('main', { class: 'inspector-read-fixture' }, [
       panel(
         'Files',
         h(WorkspaceFilesPanel, {
@@ -139,7 +141,8 @@ createTooltipApp({
         },
         'Fail Files refresh'
       )
-    ])
+    ]);
+  }
 })
   .use(ElementPlus)
   .use(i18n)

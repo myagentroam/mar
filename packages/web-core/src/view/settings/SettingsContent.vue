@@ -61,6 +61,7 @@ const props = defineProps<{
   readonly pwaState?: PwaApplicationState;
   readonly checkingForUpdates?: boolean;
   readonly sessions: readonly UserSessionSummary[];
+  readonly sessionsRefreshing?: boolean;
   readonly newPassword: string;
   readonly passwordValidationError: string;
   readonly registrationToken: string | undefined;
@@ -246,6 +247,9 @@ async function confirmLogout(): Promise<void> {
             v-tooltip="translate('generated.settingsContent.refreshSignInSessions')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
+            :loading="sessionsRefreshing"
+            :loading-icon="marIcon('loading-action')"
+            :aria-busy="sessionsRefreshing || undefined"
             :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
             text
             @click="emit('refreshSessions')"

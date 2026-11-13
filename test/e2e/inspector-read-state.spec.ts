@@ -51,6 +51,76 @@ async function expectReadableState(button: Locator) {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`Settings, directory and HTML refresh actions recover: ${theme} ${width}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      let pending: Promise<void> | undefined;
+      let release: (() => void) | undefined;
+      let failed = false;
+      await page.route('**/api/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        await pending;
+        await route.fulfill({
+          status: failed ? 503 : 200,
+          json: failed
+            ? { error: 'REFRESH_FAILED' }
+            : path.endsWith('/sessions')
+              ? { sessions: [] }
+              : path.endsWith('/workspace-directories')
+                ? {
+                    directory: {
+                      currentPath: '/workspace',
+                      homePath: '/workspace',
+                      parentPath: null,
+                      browseRoots: ['/workspace'],
+                      selectable: true,
+                      entries: [],
+                      truncated: false
+                    }
+                  }
+                : { url: '/fixture-preview.html' }
+        });
+      });
+      await page.route('**/fixture-preview.html', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<p>Preview</p>' })
+      );
+      await page.goto(`${fixture.url}inspector-read-state.html?theme=${theme}&refresh-controls`);
+      for (const action of [
+        { panel: 'sign-in-refresh', selector: '.admin-sessions-heading button' },
+        { panel: 'directory-refresh', selector: '.workspace-picker-toolbar-actions button' },
+        { panel: 'html-refresh', selector: '.html-browser-actions button' }
+      ]) {
+        const panel = page.getByTestId(action.panel);
+        const refresh = panel.locator(action.selector).first();
+        await expect(refresh).toBeEnabled();
+        await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+        for (failed of [false, true, false]) {
+          pending = new Promise<void>((resolve) => (release = resolve));
+          try {
+            await refresh.click();
+            const loading = refresh.locator('[data-mar-icon="loading-action"]');
+            await expect(loading).toBeVisible();
+            await expect(refresh).toBeDisabled();
+            await expect(refresh).toHaveAttribute('aria-busy', 'true');
+            await expect(refresh.locator('svg')).toHaveCount(1);
+            await expect(refresh.locator('[data-mar-icon="refresh"]')).toHaveCount(0);
+          } finally {
+            release?.();
+          }
+          await expect(refresh).toBeEnabled();
+          await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
+          await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
+          await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          pending = undefined;
+        }
+      }
+      await page.locator('.refresh-actions-fixture').screenshot({
+        path: testInfo.outputPath(`refresh-actions-${theme}-${width}.png`),
+        animations: 'disabled'
+      });
+    });
+
     for (const action of [
       {
         panel: 'Git History',

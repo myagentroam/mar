@@ -52,6 +52,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   let sessionRefreshGeneration = 0;
   const authenticationUnknown = ref(false);
   const restoring = ref(false);
+  const sessionsRefreshing = ref(false);
 
   async function syncBrowserLocale(
     serverLocale: AppLocale | undefined,
@@ -76,6 +77,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   function replaceIdentity(): number {
     identityGeneration += 1;
     refreshGeneration += 1;
+    sessionsRefreshing.value = false;
     options.invalidateRequests();
     return identityGeneration;
   }
@@ -160,9 +162,11 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     const isCurrent = () =>
       identity === identityGeneration && generation === sessionRefreshGeneration;
     if (!options.admin.value.authenticated || options.admin.value.mustChangePassword) {
+      sessionsRefreshing.value = false;
       options.sessions.value = [];
       return;
     }
+    sessionsRefreshing.value = true;
     try {
       const result = await options.request<{ sessions: readonly UserSessionSummary[] }>(
         '/api/auth/sessions'
@@ -178,6 +182,8 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
         'error',
         error
       );
+    } finally {
+      if (isCurrent()) sessionsRefreshing.value = false;
     }
   }
 
@@ -348,6 +354,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       authenticationUnknown,
       authenticationRestoring: restoring,
       adminSessions: options.sessions,
+      adminSessionsRefreshing: sessionsRefreshing,
       changePassword,
       csrfToken: options.csrfToken,
       formatSessionTime,
@@ -393,6 +400,7 @@ export interface WorkbenchIdentityView {
   adminLoaded: boolean;
   authenticationUnknown: boolean;
   authenticationRestoring: boolean;
+  adminSessionsRefreshing: boolean;
   adminSessions: readonly {
     readonly id: string;
     readonly createdAt: number;
