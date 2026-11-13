@@ -498,6 +498,40 @@ test('Menu refresh falls back for an unavailable model and a real template switc
 
 for (const width of [1280, 390]) {
   for (const theme of ['daylight', 'vscode-dark-2026']) {
+    test(`Template menu does not overlap its name tooltip at ${width} in ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      const name = 'Office documents and research with a long template name';
+      await openEntry(page, name, theme);
+      await page.clock.install();
+      const trigger = page.locator('.hosted-template-trigger');
+      const tooltip = page.locator('.mar-tooltip:visible');
+      await trigger.hover();
+      await page.clock.fastForward(1000);
+      await expect(tooltip).toContainText(name);
+      await trigger.click();
+      await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
+      await page.mouse.move(0, 0);
+      await trigger.hover();
+      await page.clock.fastForward(1000);
+      await expect(tooltip).toHaveCount(0);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await page.screenshot({ path: testInfo.outputPath('template-menu-open.png') });
+      await page.keyboard.press('Escape');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await page.mouse.move(0, 0);
+      await trigger.hover();
+      await page.clock.fastForward(1000);
+      await expect(tooltip).toContainText(name);
+      await trigger.press('Enter');
+      await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
+      await page.clock.fastForward(1000);
+      await expect(tooltip).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
     test(`Hosted template presentation stays aligned before and after creation at ${width} in ${theme}`, async ({
       page
     }, testInfo) => {

@@ -68,6 +68,7 @@ const existingTemplates = ref<readonly ConversationTemplateSummary[]>([]);
 let disposed = false;
 const templatesLoading = ref(false);
 const templatesFailed = ref(false);
+const templateMenuOpen = ref(false);
 let messageIntent:
   | {
       readonly fingerprint: string;
@@ -474,7 +475,8 @@ async function selectTemplate(templateId: string): Promise<void> {
   }
 }
 
-async function refreshDraftTemplates(visible: boolean): Promise<void> {
+async function handleTemplateMenuVisibility(visible: boolean): Promise<void> {
+  templateMenuOpen.value = visible;
   if (!visible) return;
   if (props.draft) {
     props.reloadTemplates?.(true);
@@ -789,10 +791,10 @@ onBeforeUnmount(() => {
           :disabled="templateSelectionDisabled"
           trigger="click"
           @command="selectTemplate(String($event))"
-          @visible-change="refreshDraftTemplates"
+          @visible-change="handleTemplateMenuVisibility"
         >
           <button
-            v-tooltip="menuTemplateLabel"
+            v-tooltip="{ content: menuTemplateLabel, disabled: templateMenuOpen }"
             class="hosted-template-trigger hosted-model-trigger"
             type="button"
             :disabled="templateSelectionDisabled"
