@@ -310,6 +310,35 @@ test('Shared tooltip retains keyboard ownership after a cancelled pointer handof
   await expect(hint).toHaveCount(0);
 });
 
+test('Shared tooltip retains keyboard ownership when a transient hover leaves into blank space', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?shared-tooltip=1`);
+  await page.clock.install();
+  const first = page.locator('[data-row="1"]');
+  const second = page.locator('[data-row="2"]');
+  const hint = page.locator('.mar-tooltip:visible');
+  await first.focus();
+  await first.hover();
+  await page.clock.fastForward(500);
+  await expect(hint).toHaveText('Original 1');
+  const secondBox = (await second.boundingBox())!;
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2);
+  await page.clock.runFor(50);
+  await expect(hint).toHaveText('Original 1');
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(500);
+  await expect(first).toBeFocused();
+  await expect(hint).toHaveText('Original 1');
+  await expect(first).toHaveAccessibleDescription('Existing description Original 1');
+  await expect(second).toHaveAttribute('aria-describedby', 'existing-description');
+  await first.blur();
+  await page.clock.runFor(150);
+  await expect(hint).toHaveCount(0);
+  await expect(first).toHaveAttribute('aria-describedby', 'existing-description');
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Computer Use separates its switch state from the supporting hint in ${theme}`, async ({
     page

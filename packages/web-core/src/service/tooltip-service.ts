@@ -215,8 +215,19 @@ export class TooltipService {
 
   private leave(target: Element | undefined): void {
     if (!target) return;
-    if (this.pending === target) this.close();
-    else if (this.active.value?.target === target) {
+    if (this.pending === target) {
+      const active = this.active.value?.target;
+      if (
+        this.keyboardFocus &&
+        active &&
+        this.find(this.document.activeElement) === active &&
+        this.available(active)
+      ) {
+        clearTimeout(this.showTimer);
+        this.pending = undefined;
+        this.observeTargets();
+      } else this.close();
+    } else if (this.active.value?.target === target) {
       clearTimeout(this.hideTimer);
       this.hideTimer = setTimeout(this.close, tableTooltipOptions.hideAfter);
     }
@@ -234,7 +245,7 @@ export class TooltipService {
     if (target === this.find(event.relatedTarget)) return;
     if (!target || target !== (this.pending ?? this.active.value?.target)) return;
     this.pointerWithin = false;
-    if (this.keyboardFocus && target.contains(this.document.activeElement)) return;
+    if (this.keyboardFocus && this.find(this.document.activeElement) === target) return;
     this.leave(target);
   };
 

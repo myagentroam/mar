@@ -282,6 +282,66 @@ describe('TooltipService', () => {
     expect(service.active.value).toBeUndefined();
   });
 
+  it.each(['keyboard', 'pointer', 'none'])(
+    'cancels a transient pointer handoff into blank space with %s focus ownership',
+    (ownership) => {
+      const { document, service } = createCoordinator();
+      const first = new FakeElement();
+      const second = new FakeElement();
+      first.setAttribute('aria-describedby', 'existing-description');
+      service.update(first as unknown as Element, 'First hint');
+      service.update(second as unknown as Element, 'Second hint');
+      if (ownership === 'pointer')
+        document.dispatch('pointerdown', { target: first, pointerType: 'mouse' });
+      if (ownership !== 'none') {
+        document.activeElement = first;
+        document.dispatch('focusin', { target: first });
+      }
+      if (ownership !== 'keyboard') pointerOver(document, first);
+      vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+      expect(service.active.value?.target).toBe(first);
+
+      pointerOver(document, second);
+      vi.advanceTimersByTime(50);
+      document.dispatch('pointerout', { target: second, relatedTarget: null });
+      const retained = ownership === 'keyboard';
+      expect(service.active.value?.target).toBe(retained ? first : undefined);
+      vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+      expect(service.active.value?.target).toBe(retained ? first : undefined);
+      expect(first.getAttribute('aria-describedby')).toBe(
+        retained ? `existing-description ${descriptionId}` : 'existing-description'
+      );
+      expect(second.getAttribute('aria-describedby')).toBeNull();
+
+      document.activeElement = null;
+      document.dispatch('focusout', { target: first, relatedTarget: null });
+      vi.advanceTimersByTime(tableTooltipOptions.hideAfter);
+      expect(service.active.value).toBeUndefined();
+      expect(first.getAttribute('aria-describedby')).toBe('existing-description');
+    }
+  );
+
+  it('cancels an ancestor hover handoff while a nested trigger retains keyboard focus', () => {
+    const { document, service } = createCoordinator();
+    const focused = new FakeElement();
+    const ancestor = new FakeElement();
+    focused.parentElement = ancestor;
+    service.update(focused as unknown as Element, 'Focused hint');
+    service.update(ancestor as unknown as Element, 'Ancestor hint');
+    document.activeElement = focused;
+    document.dispatch('focusin', { target: focused });
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    expect(service.active.value?.target).toBe(focused);
+
+    pointerOver(document, ancestor);
+    vi.advanceTimersByTime(50);
+    document.dispatch('pointerout', { target: ancestor, relatedTarget: null });
+    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    expect(service.active.value?.target).toBe(focused);
+    expect(focused.getAttribute('aria-describedby')).toBe(descriptionId);
+    expect(ancestor.getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('settles on the latest hovered target without flashing hints for skipped targets', () => {
     const { document, service } = createCoordinator();
     const targets = [new FakeElement(), new FakeElement(), new FakeElement()];
