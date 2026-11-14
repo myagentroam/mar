@@ -1,6 +1,6 @@
 ---
 title: Install and Register a Node
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-14
 ---
 
 # Install and Register a Node
@@ -57,4 +57,4 @@ Install under the final service account. The default cache belongs to the instal
 
 The npm control library, browser binaries, and Linux system libraries are separate. Node downloads browser binaries but never runs sudo/UAC or installs system packages automatically. For `MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE`, first check matching caches, account access, and paths. Minimal Linux hosts may also need Chromium system libraries installed by an administrator. HTTP mode does not require Chromium; errors never trigger an automatic mode switch.
 
-Generated services default to `web-browsers/` in the Node data directory and use the same path for preparation and execution, preserving an explicit `PLAYWRIGHT_BROWSERS_PATH`. Linux units retain `ProtectSystem=strict` and allow writes to that cache; managed upgrades inherit the service environment. Existing services adopting this flow must regenerate and apply their service definitions using the platform guide. Node does not modify deployed services or accounts automatically. The final service account still needs read/execute access.
+Generated services default to `web-browsers/` in the Node data directory and use the same path for preparation and execution, preserving an explicit `PLAYWRIGHT_BROWSERS_PATH`. Linux units use the service account's OS permissions without an additional filesystem write allowlist; managed upgrades inherit the service environment. Existing services adopting this flow must regenerate and apply their service definitions using the platform guide. Node does not modify deployed services or accounts automatically. The final service account still needs read/execute access.

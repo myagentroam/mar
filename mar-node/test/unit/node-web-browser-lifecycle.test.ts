@@ -77,7 +77,7 @@ describe('Node browser preparation lifecycle', () => {
       expect(mocks.spawnSync.mock.invocationCallOrder[0]).toBeLessThan(
         mocks.writeService.mock.invocationCallOrder[0]!
       );
-      expect(mocks.writeService.mock.calls[0]?.[6]).toBe(
+      expect(mocks.writeService.mock.calls[0]?.[5]).toBe(
         mocks.spawnSync.mock.calls[0]?.[2].env.PLAYWRIGHT_BROWSERS_PATH
       );
     }
@@ -153,21 +153,15 @@ describe('Node browser preparation lifecycle', () => {
   );
 });
 
-it('keeps the prepared browser path in all generated service entrypoints without weakening systemd protection', async () => {
+it('keeps the prepared browser path in all generated service entrypoints without sandboxing the Node account', async () => {
   const service =
     await vi.importActual<typeof import('../../src/service.js')>('../../src/service.js');
   const path = '/fixture/data/web-browsers';
-  const unit = service.systemdUnit(
-    '/usr/bin/node',
-    '/fixture/config.json',
-    undefined,
-    ['/fixture/data'],
-    path
-  );
+  const unit = service.systemdUnit('/usr/bin/node', '/fixture/config.json', undefined, path);
   expect(unit).toContain('[Unit]\nDescription=MyAgentRoam Node\n');
   expect(unit).not.toContain('\\n');
-  expect(unit).toContain('ProtectSystem=strict');
-  expect(unit).toContain('ReadWritePaths="/fixture/data" "/fixture/data/web-browsers"');
+  for (const directive of ['ProtectSystem', 'ReadWritePaths', 'NoNewPrivileges', 'PrivateTmp'])
+    expect(unit).not.toContain(`${directive}=`);
   expect(unit).toContain('Environment="PLAYWRIGHT_BROWSERS_PATH=/fixture/data/web-browsers"');
   expect(
     service.launchdServiceDefinition('/usr/bin/node', '/fixture/config.json', undefined, path)

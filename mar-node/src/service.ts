@@ -6,24 +6,18 @@ export function browserCachePath(dataDirectory: string): string {
   return configured === '0' ? '0' : resolve(configured ?? resolve(dataDirectory, 'web-browsers'));
 }
 
+/** Run under the service account's OS permissions; hosted isolation belongs to Bubblewrap. */
 export function systemdUnit(
   executable: string,
   configPath: string,
   entrypoint?: string,
-  writablePaths: readonly string[] = [],
   browserPath?: string
 ): string {
   const command = [
     escapeSystemd(executable),
     ...(entrypoint === undefined ? [] : [escapeSystemd(entrypoint)])
   ].join(' ');
-  const readWritePaths = [
-    ...writablePaths,
-    ...(browserPath === undefined || browserPath === '0' ? [] : [browserPath])
-  ]
-    .map((path) => escapeSystemd(resolve(path)))
-    .join(' ');
-  return `[Unit]\nDescription=MyAgentRoam Node\nAfter=network-online.target\n\n[Service]\nType=simple\nUser=mar-node\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\n${readWritePaths.length === 0 ? '' : `ReadWritePaths=${readWritePaths}\n`}${browserPath === undefined ? '' : `Environment=${escapeSystemd(`PLAYWRIGHT_BROWSERS_PATH=${browserPath}`)}\n`}ExecStart=${command} supervise --config ${escapeSystemd(configPath)}\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n`;
+  return `[Unit]\nDescription=MyAgentRoam Node\nAfter=network-online.target\n\n[Service]\nType=simple\nUser=mar-node\n${browserPath === undefined ? '' : `Environment=${escapeSystemd(`PLAYWRIGHT_BROWSERS_PATH=${browserPath}`)}\n`}ExecStart=${command} supervise --config ${escapeSystemd(configPath)}\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n`;
 }
 
 export function windowsServiceDefinition(
@@ -91,12 +85,11 @@ export async function writeServiceDefinition(
   configPath: string,
   platform: NodeJS.Platform = process.platform,
   entrypoint?: string,
-  writablePaths: readonly string[] = [],
   browserPath?: string
 ): Promise<void> {
   const contents =
     platform === 'linux'
-      ? systemdUnit(executable, configPath, entrypoint, writablePaths, browserPath)
+      ? systemdUnit(executable, configPath, entrypoint, browserPath)
       : platform === 'win32'
         ? windowsServiceDefinition(executable, configPath, entrypoint, browserPath)
         : platform === 'darwin'

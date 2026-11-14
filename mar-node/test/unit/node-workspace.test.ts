@@ -742,10 +742,12 @@ describe('Node path and reconnection safety', () => {
     expect(nextReconnectDelay(0)).toBe(500);
     expect(nextReconnectDelay(4)).toBe(8_000);
     expect(nextReconnectDelay(99)).toBe(30_000);
-    expect(systemdUnit('/usr/bin/node', '/etc/mar-node.json')).toContain('NoNewPrivileges=true');
-    expect(
-      systemdUnit('/usr/bin/node', '/etc/mar-node.json', undefined, ['/var/lib/mar-node'])
-    ).toContain('ReadWritePaths="/var/lib/mar-node"');
+    const unit = systemdUnit('/usr/bin/node', '/etc/mar-node.json');
+    expect(unit).toContain('User=mar-node\n');
+    expect(unit).toContain('ExecStart="/usr/bin/node" supervise --config "/etc/mar-node.json"');
+    expect(unit).toContain('Restart=on-failure\n');
+    for (const directive of ['ProtectSystem', 'ReadWritePaths', 'NoNewPrivileges', 'PrivateTmp'])
+      expect(unit).not.toContain(`${directive}=`);
     expect(JSON.parse(windowsServiceDefinition('node.exe', 'node.json'))).toMatchObject({
       serviceName: 'MyAgentRoamNode',
       account: 'LocalService'

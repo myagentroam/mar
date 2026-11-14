@@ -1,6 +1,6 @@
 ---
 title: 安装与注册 Node
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-14
 ---
 
 # 安装与注册 Node
@@ -145,4 +145,4 @@ Node npm 包的 `postinstall` 自动准备其固定 Playwright 版本对应的 C
 
 npm 安装控制库不等于安装浏览器二进制或 Linux 系统库。Node 自动下载浏览器，但不会执行 sudo、UAC 或自动安装系统包。`MAR_AGENT_WEB_FETCH_BROWSER_UNAVAILABLE` 表示浏览器无法启动：先检查匹配缓存、服务账号和路径；Linux 精简环境还可能缺少 Chromium 系统库，由管理员按需安装。HTTP 模式不依赖浏览器，失败不会自动切换模式。
 
-生成的服务默认把浏览器缓存放在 Node 数据目录的 `web-browsers/`，准备步骤与服务启动使用同一路径；显式的 `PLAYWRIGHT_BROWSERS_PATH` 会被保留。Linux unit 保持 `ProtectSystem=strict` 并允许该缓存路径写入，受管升级复用服务环境。首次采用此流程的旧服务需按平台指南重新生成并应用服务定义；Node 不自行修改已部署服务或账号。仍须确保最终服务账号能读取、执行缓存。
+生成的服务默认把浏览器缓存放在 Node 数据目录的 `web-browsers/`，准备步骤与服务启动使用同一路径；显式的 `PLAYWRIGHT_BROWSERS_PATH` 会被保留。Linux unit 使用服务账号自身的系统权限，不额外配置文件系统写入白名单；受管升级复用服务环境。首次采用此流程的旧服务需按平台指南重新生成并应用服务定义；Node 不自行修改已部署服务或账号。仍须确保最终服务账号能读取、执行缓存。

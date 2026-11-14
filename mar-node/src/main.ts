@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { loadNodeConfig, nodeConfigPath, nodeDatabasePath, nodeDataDirectory } from './config.js';
+import { loadNodeConfig, nodeConfigPath, nodeDataDirectory } from './config.js';
 import { getNodeHealth } from './health.js';
 import { browserCachePath, removeServiceDefinition, writeServiceDefinition } from './service.js';
 import { superviseNode } from './supervisor.js';
@@ -150,7 +150,6 @@ async function writeCurrentServiceDefinition(output: string, configPath: string)
     configPath,
     process.platform,
     process.argv[1],
-    [dirname(nodeDatabasePath(nodeConfig, configPath)), ...nodeConfig.allowedRoots],
     cachePath
   );
 }
