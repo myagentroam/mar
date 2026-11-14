@@ -25,7 +25,8 @@ async function fixture(
   toolCall?: { name: string; input: unknown },
   additionalModels: readonly Partial<AgentModelConfiguration>[] = [],
   receipt?: { result: unknown; resolved: readonly unknown[] },
-  networkEnabled = true
+  networkEnabled = true,
+  observeData = false
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'mar-network-prompt-'));
   const configuration: AgentModelConfiguration = {
@@ -89,7 +90,9 @@ async function fixture(
             name: codeMode ? 'code_exec' : toolCall.name,
             arguments: codeMode
               ? {
-                  code: `observe.result(await tools.${toolCall.name}(${JSON.stringify(toolCall.input)}));`
+                  code: observeData
+                    ? `observe.text((await tools.${toolCall.name}(${JSON.stringify(toolCall.input)})).data);`
+                    : `observe.result(await tools.${toolCall.name}(${JSON.stringify(toolCall.input)}));`
                 }
               : toolCall.input
           };
@@ -239,7 +242,16 @@ it.each([false, true])(
       );
       expect(instructions).not.toContain('Send updates for meaningful progress');
       expect(instructions).toContain('prefer combining related updates');
-      expect(instructions).not.toContain('subscribe');
+      expect(instructions).toContain(
+        'Sending to a non-child Agent does not subscribe to future updates; waiting for a non-child observes it only for that call.'
+      );
+      expect(instructions).toContain(
+        'Before final delivery, resolve any outstanding child work required for the task.'
+      );
+      expect(instructions).toContain(
+        'Results already available in context usually need no additional wait or view.'
+      );
+      expect(instructions).not.toContain('Join or stop task-required child work');
       expect(instructions).toContain(
         "selecting a child's model or effort at creation use native agent_* tools"
       );
@@ -279,6 +291,7 @@ it('selects delegation and lateral guidance independently and omits both during 
       'immediate agent_view calls solely to confirm receipt are usually unnecessary',
       'The parent automatically collects the latest unread public reply and terminal state from each observed direct child',
       'rather than sending duplicate progress or completion reports with agent_send',
+      'Sending to a non-child Agent does not subscribe to future updates',
       'Contact the parent proactively when timely action or a decision is needed',
       'Routine child updates usually need no reply'
     ]) {
@@ -390,13 +403,12 @@ it.each([false, true])(
       { waitFor: 'message', waitMs: 0 },
       { waitFor: 'completion', waitMs: 300000, mode: 'all' }
     ] as const) {
-      const input =
-        'mode' in options ? { agentIds: ['child'], ...options } : { agentId: 'child', ...options };
+      const input = { agentIds: ['child'], ...options };
       const test = await fixture(codeMode, { name: 'agent_wait', input }, [], {
         resolved: [{ id: 'child', customTitle: 'Resolved task' }],
         result: { agents: [{ agentId: 'child', title: 'Resolved task' }] }
       });
-      const effective = { waitFor: 'completion', waitMs: 30000, ...options };
+      const effective = { waitFor: 'completion', waitMs: 30000, mode: 'any', ...options };
       expect(test.invoke.mock.calls[0]![2]).toEqual({ ...input, ...effective });
       const normalizer = new MarAgentConversationNormalizer();
       const items = test.publicEvents
@@ -412,6 +424,177 @@ it.each([false, true])(
       ).toBe(true);
       expect(items.at(-1)?.payload.agentOperation).toMatchObject({ detail: { wait: effective } });
       expect(items.at(-1)?.payload.inputSummary).toBe(JSON.stringify(input));
+    }
+  }
+);
+
+it('describes array-only waits and distinguishes Goal updates from messages and stopping', async () => {
+  const test = await fixture();
+  const definitions = test.requests[0]!.tools;
+  const wait = definitions.find((tool) => tool.name === 'agent_wait')!;
+  const properties = wait.inputSchema.properties as Record<string, unknown>;
+  expect(properties).not.toHaveProperty('agentId');
+  expect(properties.agentIds).toMatchObject({
+    type: 'array',
+    minItems: 1,
+    maxItems: 8,
+    description: expect.stringContaining('single')
+  });
+  expect(properties.waitMs).toMatchObject({
+    minimum: 0,
+    maximum: 300000,
+    description: expect.stringContaining('snapshot')
+  });
+  for (const name of ['agent_start', 'agent_send']) {
+    expect(
+      (
+        definitions.find((tool) => tool.name === name)!.inputSchema.properties as Record<
+          string,
+          unknown
+        >
+      ).goal
+    ).toHaveProperty('description', expect.stringContaining('does not stop'));
+  }
+});
+
+it.each([false, true])(
+  'rejects the retired wait agentId before invoking Node (nested=%s)',
+  async (nested) => {
+    const test = await fixture(nested, { name: 'agent_wait', input: { agentId: 'child' } });
+    expect(test.invoke).not.toHaveBeenCalled();
+    expect(test.failures).toContainEqual({
+      toolName: 'agent_wait',
+      code: 'MAR_AGENT_TOOL_INPUT_INVALID'
+    });
+  }
+);
+
+it.each([false, true])(
+  'projects receipts for both model content and programmatic data (nested=%s)',
+  async (nested) => {
+    for (const entry of [
+      {
+        name: 'agent_start',
+        input: { title: 'Task', content: 'Review' },
+        result: {
+          agentId: 'child',
+          start: {
+            run: { id: 'internal-run', status: 'STARTING' },
+            auditReceipt: { inputMode: 'REPLACE_CURRENT' },
+            idempotent: false
+          },
+          observation: { status: 'failed', code: 'OBSERVATION_FAILED' }
+        },
+        expected: {
+          agentId: 'child',
+          start: { executionStatus: 'STARTING', idempotent: false },
+          observation: { status: 'failed', code: 'OBSERVATION_FAILED' }
+        }
+      },
+      {
+        name: 'agent_send',
+        input: { agentId: 'child', content: 'Review' },
+        result: {
+          agentId: 'child',
+          message: {
+            status: 'accepted',
+            result: {
+              delivery: 'QUEUED',
+              queueItemId: 'internal-queue',
+              auditReceipt: { inputMode: 'QUEUE' },
+              idempotent: false
+            }
+          }
+        },
+        expected: {
+          agentId: 'child',
+          message: { status: 'accepted', delivery: 'QUEUED', idempotent: false }
+        }
+      },
+      {
+        name: 'agent_stop',
+        input: { agentId: 'child' },
+        result: {
+          agentId: 'child',
+          cancel: {
+            status: 'idle',
+            result: { status: 'IDLE', auditReceipt: { runId: 'internal-run' } }
+          },
+          goal: { status: 'cleared' }
+        },
+        expected: { agentId: 'child', cancel: { status: 'idle' }, goal: { status: 'cleared' } }
+      },
+      {
+        name: 'agent_wait',
+        input: { agentIds: ['child'], waitMs: 0 },
+        result: {
+          waitFor: 'completion',
+          mode: 'any',
+          waitOutcome: 'snapshot',
+          pendingAgentIds: ['child'],
+          agents: [
+            {
+              agentId: 'child',
+              runId: 'internal-run',
+              executionId: 'internal-execution',
+              status: 'RUNNING',
+              waitOutcome: 'snapshot'
+            }
+          ]
+        },
+        expected: {
+          waitFor: 'completion',
+          mode: 'any',
+          waitOutcome: 'snapshot',
+          pendingAgentIds: ['child'],
+          agents: [{ agentId: 'child', status: 'RUNNING', waitOutcome: 'snapshot' }]
+        }
+      },
+      {
+        name: 'agent_wait',
+        input: { waitMs: 0 },
+        result: {
+          agentId: 'child',
+          runId: 'internal-run',
+          executionId: 'internal-execution',
+          status: 'RUNNING',
+          waitOutcome: 'snapshot',
+          waitFor: 'completion'
+        },
+        expected: {
+          waitFor: 'completion',
+          waitOutcome: 'snapshot',
+          agents: [{ agentId: 'child', status: 'RUNNING', waitOutcome: 'snapshot' }]
+        }
+      }
+    ]) {
+      const original = structuredClone(entry.result);
+      const test = await fixture(
+        nested,
+        { name: entry.name, input: entry.input },
+        [],
+        { result: entry.result, resolved: [] },
+        true,
+        nested
+      );
+      expect(test.failures).toEqual([]);
+      const context = test.requests[1]?.messages.findLast((item) => item.role === 'tool');
+      expect(context).toBeDefined();
+      const serialized = JSON.stringify(context);
+      for (const internal of [
+        'internal-run',
+        'internal-queue',
+        'internal-execution',
+        'auditReceipt',
+        'REPLACE_CURRENT'
+      ])
+        expect(serialized).not.toContain(internal);
+      expect(serialized).toContain('child');
+      const envelope = JSON.parse(context!.content);
+      expect(nested ? JSON.parse(envelope.observations[0].value) : envelope).toEqual(
+        entry.expected
+      );
+      expect(entry.result).toEqual(original);
     }
   }
 );

@@ -253,7 +253,7 @@ describe('Agent Network wait diagnostics', () => {
       if (batch) f.start();
       const input = batch
         ? { agentIds: [f.child.id, idle.id], waitMs: 300_000 }
-        : { agentId: idle.id, waitMs: 300_000 };
+        : { agentIds: [idle.id], waitMs: 300_000 };
       const directory = await mkdtemp(join(tmpdir(), 'mar-agent-wait-error-'));
       const configuration: AgentModelConfiguration = {
         id: 'fixture',
@@ -329,9 +329,7 @@ describe('Agent Network wait diagnostics', () => {
           expect.objectContaining({
             toolName: 'agent_wait',
             code: 'AGENT_IDLE',
-            message: batch
-              ? `Agent is idle; there is no execution to wait for. Idle agent IDs: ${idle.id}.`
-              : 'Agent is idle; there is no execution to wait for.'
+            message: `Agent is idle; there is no execution to wait for. Idle agent IDs: ${idle.id}.`
           })
         );
         expect(failures.every((event) => event.code !== 'MAR_AGENT_HOST_OPERATION_FAILED')).toBe(

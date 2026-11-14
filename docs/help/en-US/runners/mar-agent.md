@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-14
 ---
 
 # Configure and Use MAR Agent
@@ -156,7 +156,7 @@ await tools.agent_list({ scope: 'active', query: 'review', limit: 20 });
 
 `sleep({ durationMs })` provides a bounded delay of 1 to 1800000 integer milliseconds (up to 30 minutes). Accepted user input or an unread public subagent message ends the wait early; messages are then automatically injected and marked read through the normal path, without repeated wake-ups. It does not monitor external conditions or wake on process or cell completion; use the corresponding wait for an existing resource. The model always calls `sleep` directly, never inside a Code Mode cell.
 
-`agent_wait` also supports an explicit group of child agents:
+`agent_wait` selects authorized targets through an `agentIds` array, including a single target:
 
 ```js
 agent_wait({
@@ -167,7 +167,9 @@ agent_wait({
 });
 ```
 
-`agentIds` must contain 1–8 distinct IDs and cannot be combined with `agentId`. `mode: 'any'` (default) returns when any selected child satisfies the condition; `mode: 'all'` waits for every child. `waitFor: 'completion'` (default) waits for terminal states; `waitFor: 'message'` waits for each target's latest unread public message or terminal state, not ordinary tool activity. Failed, cancelled and interrupted turns are also terminal, not successful. A group shares one timeout and returns `agents` in input order, an overall `waitOutcome`, and `pendingAgentIds` for unmet conditions; a timeout can include partial results. `waitMs=0` returns status snapshots without reading or consuming unread messages. Cancelling a wait does not stop child tasks. Single-agent and untargeted calls remain unchanged.
+`agentIds` must contain 1–8 distinct IDs. Use `agentIds: ['id']` for one target; `agentId` is no longer accepted. `mode: 'any'` (default) returns when any selected target satisfies the condition; `mode: 'all'` waits for every target. `waitFor: 'completion'` (default) waits for terminal states; `waitFor: 'message'` waits for each target's latest unread public message or terminal state, not ordinary tool activity. Failed, cancelled and interrupted turns are also terminal, not successful. An explicit group shares one timeout and returns `agents` in input order, an overall `waitOutcome`, and `pendingAgentIds` for unmet conditions; a timeout can include partial results. `waitMs=0` returns status snapshots without reading or consuming unread messages. A timeout or cancelled wait does not stop child tasks. Omitting targets still selects only from direct children and returns the selected target in `agents`; single-target marctl commands are unchanged.
+
+Native collaboration tools use the same compact result for direct calls and Code Mode `data`: target identity, actual operation status, new messages or terminal conclusions obtained by waiting, and partial failures, unknown outcomes, and error codes remain available. Internal audit receipts, queue item IDs, and internal execution identifiers are omitted. The optional `goal` in `agent_start` and `agent_send` is a persistent objective across executions, separate from the current message. Omit it or pass `null` to leave it unchanged, use `objective` to set or replace it, or use `clear` to remove it without stopping the current execution.
 
 ### Web search and fetch
 
