@@ -139,7 +139,11 @@ export async function connectSocks5Target(input: {
   )
     throw invalidSocks5Proxy();
 
-  const socket = connectTcp({ host: proxy.hostname, port: proxy.port });
+  // URL hostnames retain IPv6 brackets; TCP expects the bare address literal.
+  const socket = connectTcp({
+    host: proxy.hostname.startsWith('[') ? proxy.hostname.slice(1, -1) : proxy.hostname,
+    port: proxy.port
+  });
   const timeoutError = Object.assign(new Error('SOCKS5 connection timed out.'), {
     code: 'ETIMEDOUT'
   });

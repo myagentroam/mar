@@ -200,6 +200,7 @@ export async function startResponsesWebSocketServer(
 }
 
 export async function startSocks5Proxy(input: {
+  readonly listenHost?: string;
   readonly targetHost?: string;
   readonly targetPort: number;
   readonly username?: string;
@@ -293,12 +294,13 @@ export async function startSocks5Proxy(input: {
       consume();
     });
   });
-  await listen(server);
+  await listen(server, input.listenHost);
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('server unavailable');
+  const hostname = address.family === 'IPv6' ? `[${address.address}]` : address.address;
   return {
     server,
-    url: `socks5://${input.username === undefined ? '' : `${encodeURIComponent(input.username)}:${encodeURIComponent(input.password ?? '')}@`}127.0.0.1:${address.port}`,
+    url: `socks5://${input.username === undefined ? '' : `${encodeURIComponent(input.username)}:${encodeURIComponent(input.password ?? '')}@`}${hostname}:${address.port}`,
     destinations,
     authentications
   };
@@ -384,7 +386,10 @@ function serverFrame(opcode: number, payload: Buffer): Buffer {
   return Buffer.concat([header, payload]);
 }
 
-async function listen(server: { listen(...args: unknown[]): unknown }): Promise<void> {
+async function listen(
+  server: { listen(...args: unknown[]): unknown },
+  host = '127.0.0.1'
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const value = server as {
       listen(port: number, host: string, callback: () => void): void;
@@ -393,7 +398,7 @@ async function listen(server: { listen(...args: unknown[]): unknown }): Promise<
     };
     const onError = (error: Error) => reject(error);
     value.once('error', onError);
-    value.listen(0, '127.0.0.1', () => {
+    value.listen(0, host, () => {
       value.off('error', onError);
       resolve();
     });

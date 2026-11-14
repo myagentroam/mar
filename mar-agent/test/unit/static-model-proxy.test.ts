@@ -98,9 +98,15 @@ const request = {
 };
 
 describe('static model SOCKS5 connections', () => {
-  it.each(['HTTP_1_1', 'HTTP_2', 'WEBSOCKET'] as const)(
-    'routes Responses %s through authenticated SOCKS5 with remote DNS',
-    async (transport) => {
+  it.each([
+    ['HTTP_1_1', '127.0.0.1'],
+    ['HTTP_2', '127.0.0.1'],
+    ['WEBSOCKET', '127.0.0.1'],
+    ['HTTP_2', '::1'],
+    ['WEBSOCKET', '::1']
+  ] as const)(
+    'routes Responses %s through authenticated SOCKS5 on %s with remote DNS',
+    async (transport, proxyHost) => {
       process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
       const target = await (transport === 'WEBSOCKET'
         ? startResponsesWebSocketServer(responsesEvents)
@@ -110,9 +116,10 @@ describe('static model SOCKS5 connections', () => {
       servers.push(target.server);
       const targetUrl = new URL(target.baseUrl);
       const proxy = await startSocks5Proxy({
+        listenHost: proxyHost,
         targetPort: Number(targetUrl.port),
-        username: 'proxy-user',
-        password: 'proxy-pass'
+        username: 'proxy user',
+        password: 'proxy:pass@'
       });
       servers.push(proxy.server);
       const model: AgentModelConfiguration = {
@@ -131,11 +138,13 @@ describe('static model SOCKS5 connections', () => {
       expect(events).toContainEqual(
         expect.objectContaining({ type: 'text.completed', text: 'Proxied' })
       );
+      expect(events).toContainEqual(expect.objectContaining({ type: 'completed' }));
       expect(proxy.destinations).toEqual([
         { host: 'model.internal', port: Number(targetUrl.port) }
       ]);
-      expect(proxy.authentications).toEqual([{ username: 'proxy-user', password: 'proxy-pass' }]);
-      expect(JSON.stringify(model)).not.toContain('proxy-pass');
+      expect(proxy.authentications).toEqual([{ username: 'proxy user', password: 'proxy:pass@' }]);
+      expect(model.socks5Url?.reveal()).toBe(proxy.url);
+      expect(JSON.stringify(model)).not.toContain('proxy:pass@');
     }
   );
 
