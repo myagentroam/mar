@@ -32,11 +32,33 @@ export interface DraftSlot {
   readonly queueEdit: Ref<QueueEditDraft | undefined>;
   readonly restore: () => void;
   readonly persist: () => boolean | void;
+  readonly retain: () => DraftSettlement;
+}
+
+export interface DraftSettlement {
+  readonly settle: (change: () => void) => void;
+  readonly release: () => void;
 }
 
 type ComposerDraft = Pick<DraftSlot, 'input' | 'skillTokens' | 'references'>;
 
-/** Owns tab-local Pane drafts; inactive slots are persisted before they are released. */
+interface DraftEntry {
+  readonly target: DraftTarget;
+  readonly pane: DraftPane;
+  readonly storageKey: string;
+  readonly queueKey: string;
+  readonly slot: DraftSlot;
+}
+
+interface DraftReleaseOptions {
+  readonly invalidateSubmissions?: boolean;
+}
+
+/** Owns tab-local Pane drafts and in-flight settlements, independently of the bounded slot LRU.
+ * Ordinary release persists drafts; only retained submissions may settle after release.
+ * Confirmed resource removals opt into submission invalidation; ordinary closes do not.
+ * Session deletion and sign-out also invalidate submissions before releasing ownership.
+ */
 export function createSessionDraftService(options: {
   readonly target: Readonly<Ref<DraftTarget | undefined>>;
   readonly storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> &
@@ -67,37 +89,39 @@ export function createSessionDraftService(options: {
   const composers = new Map<string, ComposerDraft>();
   const migratedComposers = new Set<string>();
   const queueEdits = new Map<string, Ref<QueueEditDraft | undefined>>();
-  const slots = new Map<
-    string,
-    {
-      readonly target: DraftTarget;
-      readonly pane: DraftPane;
-      readonly storageKey: string;
-      readonly queueKey: string;
-      readonly slot: DraftSlot;
-    }
-  >();
+  const slots = new Map<string, DraftEntry>();
   const boundTargets: {
     readonly target: Readonly<Ref<DraftTarget | undefined>>;
     readonly pane: DraftPane;
   }[] = [];
   const empty = new Map<DraftPane, DraftSlot>();
+  const retained = new Set<DraftEntry>();
 
-  function releaseWhere(matches: (target: DraftTarget, pane: DraftPane) => boolean): boolean {
-    let saved = true;
-    for (const [id, entry] of slots) {
-      if (!matches(entry.target, entry.pane)) continue;
-      if (entry.slot.persist() === false) saved = false;
-      else slots.delete(id);
-    }
-    const composerKeys = new Set([...slots.values()].map((entry) => entry.storageKey));
-    const queueKeys = new Set([...slots.values()].map((entry) => entry.queueKey));
+  function releaseUnusedDrafts(): void {
+    const entries = [...slots.values(), ...retained];
+    const composerKeys = new Set(entries.map((entry) => entry.storageKey));
+    const queueKeys = new Set(entries.map((entry) => entry.queueKey));
     for (const key of composers.keys())
       if (!composerKeys.has(key)) {
         composers.delete(key);
         migratedComposers.delete(key);
       }
     for (const key of queueEdits.keys()) if (!queueKeys.has(key)) queueEdits.delete(key);
+  }
+
+  function releaseWhere(
+    matches: (target: DraftTarget, pane: DraftPane) => boolean,
+    invalidateSubmissions = false
+  ): boolean {
+    if (invalidateSubmissions)
+      for (const lease of retained) if (matches(lease.target, lease.pane)) retained.delete(lease);
+    let saved = true;
+    for (const [id, entry] of slots) {
+      if (!matches(entry.target, entry.pane)) continue;
+      if (entry.slot.persist() === false) saved = false;
+      else slots.delete(id);
+    }
+    releaseUnusedDrafts();
     return saved;
   }
 
@@ -171,6 +195,26 @@ export function createSessionDraftService(options: {
       slot = {
         ...composer,
         queueEdit,
+        retain: () => {
+          const entry = slots.get(slotKey);
+          if (entry === undefined || entry.slot !== slot)
+            return { settle: () => {}, release: () => {} };
+          // Each request owns an independent lease, even when it captures the same slot.
+          const lease = { ...entry };
+          retained.add(lease);
+          return {
+            settle: (change) => {
+              if (!retained.has(lease)) return;
+              change();
+              // Rejoin the normal bounded owner before writing; never authorize old-slot persist.
+              forTarget(target, pane).persist();
+            },
+            release: () => {
+              retained.delete(lease);
+              releaseUnusedDrafts();
+            }
+          };
+        },
         restore: () => {
           if (slots.get(slotKey)?.slot !== slot) return;
           restoreInto(storageKey, composer);
@@ -204,7 +248,13 @@ export function createSessionDraftService(options: {
       if (target.value !== undefined) return forTarget(target.value, pane);
       let slot = empty.get(pane);
       if (slot === undefined) {
-        slot = { ...createComposer(), queueEdit: ref(), restore: () => {}, persist: () => {} };
+        slot = {
+          ...createComposer(),
+          queueEdit: ref(),
+          restore: () => {},
+          persist: () => {},
+          retain: () => ({ settle: () => {}, release: () => {} })
+        };
         empty.set(pane, slot);
       }
       return slot;
@@ -338,11 +388,23 @@ export function createSessionDraftService(options: {
     },
     bindTarget,
     forTarget,
-    releaseWorkspace: (nodeId: string, workspaceId: string) =>
-      releaseWhere((target) => target.nodeId === nodeId && target.workspaceId === workspaceId),
-    releaseNode: (nodeId: string) => releaseWhere((target) => target.nodeId === nodeId),
+    releaseWorkspace: (nodeId: string, workspaceId: string, options?: DraftReleaseOptions) =>
+      releaseWhere(
+        (target) => target.nodeId === nodeId && target.workspaceId === workspaceId,
+        options?.invalidateSubmissions
+      ),
+    releaseNode: (nodeId: string, options?: DraftReleaseOptions) =>
+      releaseWhere((target) => target.nodeId === nodeId, options?.invalidateSubmissions),
     releaseSession: (nodeId: string, workspaceId: string, sessionId: string) => {
       const target = { kind: 'session' as const, nodeId, workspaceId, sessionId };
+      for (const lease of retained)
+        if (
+          lease.target.kind === 'session' &&
+          lease.target.nodeId === nodeId &&
+          lease.target.workspaceId === workspaceId &&
+          lease.target.sessionId === sessionId
+        )
+          retained.delete(lease);
       const queueKey = queueKeyFor(target);
       // Resolve Main first so a legacy Composer is migrated before its old key is removed.
       forTarget(target).queueEdit.value = undefined;
@@ -379,7 +441,7 @@ export function createSessionDraftService(options: {
       // Sign-out discards this tab's drafts, unlike ordinary Workspace release.
       // Include evicted and legacy entries so another account cannot restore them.
       const keys = new Set<string>();
-      for (const entry of slots.values()) {
+      for (const entry of [...slots.values(), ...retained]) {
         keys.add(entry.storageKey);
         keys.add(entry.queueKey);
         keys.add(legacyKeyFor(entry.target));
@@ -410,6 +472,7 @@ export function createSessionDraftService(options: {
         }
       }
       slots.clear();
+      retained.clear();
       composers.clear();
       migratedComposers.clear();
       queueEdits.clear();

@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-14
 ---
 
 # 配置和使用 MAR Agent
@@ -156,7 +156,7 @@ await tools.agent_list({ scope: 'active', query: 'review', limit: 20 });
 
 `sleep({ durationMs })` 提供有界定时等待，时长必须为 1 至 1800000 的整数毫秒（最长 30 分钟）。已接受的用户补充或子 Agent 未读公开消息会提前唤醒；消息随后沿正常路径自动注入并标记已读，不会重复唤醒。它不会监测外部条件，也不会因进程或 cell 完成而唤醒；已有资源应使用对应的 wait。`sleep` 始终由模型直接调用，不可在 Code Mode cell 内调用。
 
-`agent_wait` 也支持指定一组子 Agent：
+`agent_wait` 使用 `agentIds` 数组指定获授权的目标，包括单个目标：
 
 ```js
 agent_wait({
@@ -167,7 +167,9 @@ agent_wait({
 });
 ```
 
-`agentIds` 必须包含 1 至 8 个不同 ID，不能与 `agentId` 同传。`mode: 'any'`（默认）等待任意一个满足条件，`mode: 'all'` 等待全部；`waitFor: 'completion'`（默认）等待终态，`waitFor: 'message'` 等待每个目标的最新未读公开消息或终态，普通工具活动不会唤醒。失败、取消和中断也属于终态，不代表任务成功。批量等待共用一次超时，返回按输入顺序排列的 `agents`、集合 `waitOutcome` 和尚未满足条件的 `pendingAgentIds`；超时可以返回部分结果。`waitMs=0` 只返回状态快照，不读取或消费未读消息。取消等待不会停止子任务。单 Agent 和省略目标的调用方式保持不变。
+`agentIds` 必须包含 1 至 8 个不同 ID，单目标使用 `agentIds: ['id']`，不再接受 `agentId`。`mode: 'any'`（默认）等待任意一个满足条件，`mode: 'all'` 等待全部；`waitFor: 'completion'`（默认）等待终态，`waitFor: 'message'` 等待每个目标的最新未读公开消息或终态，普通工具活动不会唤醒。失败、取消和中断也属于终态，不代表任务成功。显式集合共用一次超时，返回按输入顺序排列的 `agents`、集合 `waitOutcome` 和尚未满足条件的 `pendingAgentIds`；超时可以返回部分结果。`waitMs=0` 只返回状态快照，不读取或消费未读消息。超时或取消等待不会停止子任务。省略目标仍只从直接子会话中选择，返回的目标也放在 `agents` 数组中；marctl 的单目标命令不变。
+
+原生协作工具的直接返回与 Code Mode `data` 使用相同的精简结果：保留目标身份、实际操作状态、等待取得的新消息或终态结论，以及部分失败、未知结果和错误码，不提供内部审计回执、队列项 ID 或内部执行关联 ID。`agent_start`、`agent_send` 的 `goal` 是跨执行持续推进的目标，区别于本次消息；省略或 `null` 保持现状，`objective` 设置或替换目标，`clear` 清除目标但不停止当前执行。
 
 ### Web 搜索与抓取
 

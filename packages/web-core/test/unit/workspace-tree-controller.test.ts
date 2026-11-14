@@ -104,6 +104,7 @@ function fixture() {
     request: request as WorkbenchWorkspaceTreeControllerOptions['request'],
     saveCurrent,
     discardCache,
+    releaseRemovedWorkspaceDrafts: vi.fn(),
     workspaceTabSession,
     openWorkspaceTabSession,
     activateWorkspace: (target, restoreSession) => {

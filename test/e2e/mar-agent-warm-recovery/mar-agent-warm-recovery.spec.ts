@@ -136,8 +136,7 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
       processId: firstResources.processId
     });
     expect(fakeAnthropic.resumedTask()).toMatchObject({
-      status: 'RUNNING',
-      agentId: firstResources.agentId
+      agents: [{ status: 'RUNNING', agentId: firstResources.agentId }]
     });
 
     const activeRemoval = await app.inject({
@@ -450,7 +449,9 @@ class FakeAnthropicServer {
   }
 
   stoppedTaskStatus(): unknown {
-    return this.#stoppedTask?.['status'];
+    return (this.#stoppedTask?.['agents'] as Array<Record<string, unknown>> | undefined)?.[0]?.[
+      'status'
+    ];
   }
 
   resumeSystem(): string {
@@ -587,7 +588,7 @@ class FakeAnthropicServer {
           {
             id: 'warm-task-output',
             name: 'agent_wait',
-            input: { agentId: resources.agentId, waitMs: 0 }
+            input: { agentIds: [resources.agentId], waitMs: 0 }
           }
         ]);
         return;
@@ -604,7 +605,7 @@ class FakeAnthropicServer {
               id: 'warm-child-stopped',
               name: 'agent_wait',
               input: {
-                agentId: this.firstResources().agentId,
+                agentIds: [this.firstResources().agentId],
                 waitFor: 'completion',
                 waitMs: 5_000
               }

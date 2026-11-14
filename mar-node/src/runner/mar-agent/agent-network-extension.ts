@@ -5,7 +5,7 @@ import type {
   AgentNetworkInvoke,
   ResolvedTargets
 } from '../../service/agent-network-service.js';
-import { agentNetworkWaitModelOutput } from './agent-network-wait-output.js';
+import { agentNetworkModelOutput } from './agent-network-model-output.js';
 import { agentOperationEvent } from './agent-operation-presentation.js';
 import { AGENT_WAIT_DEFAULTS } from '../../service/agent-network-wait.js';
 
@@ -16,6 +16,8 @@ const runner = {
     'Runner type (for example mar-agent), not a model name; defaults to the current Runner.'
 } as const;
 const goal = {
+  description:
+    'Optional persistent objective for continued work across executions, separate from the task message. Omit or use null to leave it unchanged; objective sets or replaces it, clear removes it but does not stop the current execution.',
   anyOf: [
     { type: 'null' },
     {
@@ -90,11 +92,33 @@ const tools: readonly {
     parallelSafety: 'safe',
     description: 'Wait for Agent messages or execution completion.',
     properties: {
-      agentId: text,
-      agentIds: { type: 'array', items: text, minItems: 1, maxItems: 8 },
-      mode: { type: 'string', enum: ['any', 'all'] },
-      waitFor: { type: 'string', enum: ['message', 'completion'] },
-      waitMs: { type: 'integer', minimum: 0, maximum: 300000 }
+      agentIds: {
+        type: 'array',
+        items: text,
+        minItems: 1,
+        maxItems: 8,
+        description:
+          'Target Session IDs, including a single target as a one-item array. Omit to select from direct children.'
+      },
+      mode: {
+        type: 'string',
+        enum: ['any', 'all'],
+        description:
+          'For explicit agentIds: return when any or all targets meet the wait condition.'
+      },
+      waitFor: {
+        type: 'string',
+        enum: ['message', 'completion'],
+        description:
+          'message waits for unread public output or a terminal execution; completion waits for a terminal execution, not necessarily success.'
+      },
+      waitMs: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 300000,
+        description:
+          'Maximum wait in milliseconds; 0 returns a snapshot. Timeout ends only this wait, not the target execution.'
+      }
     }
   },
   {
@@ -142,7 +166,7 @@ const delegationPrompt = [
   'A useful handoff includes an objective, necessary context, expected output, and a read-only boundary or non-overlapping write scope.',
   'Prefer following up through the direct delegate; deeper Session inspection is usually useful only when a concrete issue needs independent verification.',
   'While children run, prefer advancing meaningful, non-overlapping task work rather than duplicating delegated work. Waiting is generally useful once no meaningful local task work remains and a required result is needed to unblock or finish the task.',
-  'Verify consequential findings and changes. Join or stop task-required child work before final delivery, and retain responsibility for the final result.'
+  'Verify consequential findings and changes, and retain responsibility for the final result. Before final delivery, resolve any outstanding child work required for the task. Results already available in context usually need no additional wait or view.'
 ].join('\n\n');
 
 const collaborationPrompt = [
@@ -151,6 +175,7 @@ const collaborationPrompt = [
   'Prefer reusing known Session IDs rather than rediscovering them. Updates are most useful when requested or when the recipient needs to decide or change course; prefer combining related updates.',
   'An accepted message normally needs no separate acknowledgment. Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.',
   'The parent automatically collects the latest unread public reply and terminal state from each observed direct child before its next natural model request. Usually reply in the child Session itself rather than sending duplicate progress or completion reports with agent_send.',
+  'Sending to a non-child Agent does not subscribe to future updates; waiting for a non-child observes it only for that call.',
   'Contact the parent proactively when timely action or a decision is needed, such as a blocker, scope conflict or major risk, or when explicitly asked to report. Routine child updates usually need no reply; prefer combining related guidance.'
 ].join('\n\n');
 
@@ -171,6 +196,16 @@ export function agentNetworkExtension(
       context.hooks.intercept(
         'tool.invoke',
         (input, _call, next) => {
+          if (
+            input.name === 'agent_wait' &&
+            input.arguments !== null &&
+            typeof input.arguments === 'object' &&
+            'agentId' in input.arguments
+          )
+            throw new AgentError(
+              'MAR_AGENT_TOOL_INPUT_INVALID',
+              'Agent wait accepts agentIds, including for a single target.'
+            );
           if (
             (input.name === 'agent_start' || input.name === 'agent_send') &&
             input.arguments !== null &&
@@ -279,10 +314,9 @@ export function agentNetworkExtension(
                 }
               : undefined;
             const result = await invoke(executionId, tool.action, operationInput, call, onResolved);
-            const modelResult =
-              tool.action === 'wait' ? agentNetworkWaitModelOutput(result) : result;
+            const modelResult = agentNetworkModelOutput(tool.action, result);
             return {
-              data: result,
+              data: modelResult,
               content: JSON.stringify(modelResult),
               ...agentOperationEvent(tool.action, operationInput, result)
             };

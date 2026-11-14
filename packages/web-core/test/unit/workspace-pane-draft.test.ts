@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { ref } from 'vue';
+import { describe, expect, it, vi } from 'vitest';
+import { computed, effectScope, ref } from 'vue';
+import { createWorkspaceSessionPaneState } from '../../src/service/workspace-session-pane-state.js';
+import { createWorkbenchSubmissionOwner } from '../../src/service/workbench-submission-service.js';
+import { createComposerAttachmentService } from '../../src/service/composer-attachment-service.js';
 import {
   createSessionDraftService,
   type DraftTarget
@@ -10,7 +13,11 @@ function fixture() {
   const storage = {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => void values.set(key, value),
-    removeItem: (key: string) => void values.delete(key)
+    removeItem: (key: string) => void values.delete(key),
+    get length() {
+      return values.size;
+    },
+    key: (index: number) => [...values.keys()][index] ?? null
   };
   const target = ref<DraftTarget | undefined>({
     kind: 'session',
@@ -22,6 +29,107 @@ function fixture() {
 }
 
 describe('Workspace Pane composer drafts', () => {
+  it.each(
+    (['close', 'evict', 'reopen', 'failure', 'delete', 'sign-out'] as const).flatMap((scenario) =>
+      (['main', 'aside'] as const).map((pane) => ({ scenario, pane }))
+    )
+  )(
+    'settles a real $pane queue PATCH completion after Workspace $scenario in durable storage',
+    async ({ scenario, pane: position }) => {
+      const { owner, target, storage, values } = fixture();
+      const originalTarget = target.value!;
+      const scope = effectScope();
+      let resolve!: () => void;
+      let reject!: (error: Error) => void;
+      const pending = new Promise<void>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      const pane = scope.run(() =>
+        createWorkspaceSessionPaneState({
+          submissions: createWorkbenchSubmissionOwner(),
+          pane: position,
+          draftTarget: target,
+          drafts: owner,
+          attachments: createComposerAttachmentService({
+            context: () => target.value,
+            request: vi.fn() as never,
+            renewCsrfToken: vi.fn(),
+            csrfToken: ref('csrf'),
+            onUnauthenticated: vi.fn(),
+            notice: vi.fn()
+          }),
+          onConversationOverflow: vi.fn()
+        })
+      )!;
+      const queue = ref({ version: 0, paused: false, items: [] });
+      const actions = pane.createQueueActions({
+        queue,
+        currentSessionQueue: computed(() => queue.value),
+        currentSelectionRevision: () => 0,
+        request: (() => pending) as never,
+        notice: vi.fn(),
+        errorMessage: String,
+        missingQueueItemError: () => false,
+        beginSubmission: () => () => true
+      });
+      try {
+        owner.input.value = 'Unsubmitted composer';
+        const otherTargets = [
+          { ...originalTarget, nodeId: 'other-node' },
+          { ...originalTarget, workspaceId: 'other-workspace' },
+          { ...originalTarget, sessionId: 'other-session' }
+        ];
+        for (const other of otherTargets) {
+          const otherSlot = owner.forTarget(other);
+          otherSlot.queueEdit.value = {
+            queueItemId: 'item',
+            content: 'Other target',
+            tags: '',
+            origin: ''
+          };
+          otherSlot.persist();
+        }
+        pane.queue.startEditing({ queueItemId: 'item', content: 'Saved edit' });
+        const old = owner.forTarget(originalTarget, position);
+        const saving = actions.save('item');
+        target.value = undefined;
+        if (scenario === 'evict')
+          for (let index = 0; index < 65; index++)
+            owner.forTarget({ ...originalTarget, workspaceId: `evict-${index}` });
+        else owner.releaseWorkspace('n', 'w');
+        expect([...values.values()].some((value) => value.includes('Saved edit'))).toBe(true);
+        if (scenario === 'reopen') {
+          target.value = originalTarget;
+          pane.queue.startEditing({ queueItemId: 'item', content: 'New edit' });
+          pane.queue.editingContent.value = 'New edit';
+        } else if (scenario === 'delete') owner.releaseSession('n', 'w', 'a');
+        else if (scenario === 'sign-out') owner.clear();
+        if (scenario === 'failure') reject(new Error('PATCH failed'));
+        else resolve();
+        expect(await saving).toBe(scenario !== 'failure');
+        const restored = createSessionDraftService({ target: ref(originalTarget), storage });
+        const expected =
+          scenario === 'failure' ? 'Saved edit' : scenario === 'reopen' ? 'New edit' : undefined;
+        expect(restored.queueEdit.value?.content).toBe(expected);
+        expect(owner.forTarget(originalTarget).queueEdit.value?.content).toBe(expected);
+        expect(restored.input.value).toBe(scenario === 'sign-out' ? '' : 'Unsubmitted composer');
+        for (const other of otherTargets)
+          expect(restored.forTarget(other).queueEdit.value?.content).toBe(
+            scenario === 'sign-out' ? undefined : 'Other target'
+          );
+        old.queueEdit.value = { queueItemId: 'item', content: 'stale', tags: '', origin: '' };
+        expect(old.persist()).toBe(false);
+        expect(
+          createSessionDraftService({ target: ref(originalTarget), storage }).queueEdit.value
+            ?.content
+        ).toBe(expected);
+      } finally {
+        scope.stop();
+      }
+    }
+  );
+
   it('recovers the active legacy session draft into Main once without copying it into Aside', () => {
     const { owner, target, storage, values } = fixture();
     values.set(
