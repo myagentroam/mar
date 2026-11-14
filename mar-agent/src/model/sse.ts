@@ -1,6 +1,10 @@
 import { AgentError } from '../error.js';
 import { isRetryableModelHttpStatus } from './http.js';
 
+/**
+ * Decodes bounded SSE responses and shares safe JSON/header diagnostics with adapters.
+ * The parser owns its reader; adapters own credentials, retries, and request cancellation.
+ */
 const DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS = 180_000;
 const streamEventObservedAt = new WeakMap<object, number>();
 
@@ -24,10 +28,8 @@ export async function* parseSse(
   if (!response.ok) {
     const redact = responseRedactor(sensitiveValues);
     const body = redact(await readResponseText(response, signal, maxBytes, idleTimeoutMs));
-    const header = (name: string, limit: number) => {
-      const value = response.headers.get(name);
-      return value === null ? null : redact(value).slice(0, limit);
-    };
+    const header = (name: string, limit: number) =>
+      redactResponseHeader(response.headers.get(name), sensitiveValues, limit);
     const upstream = upstreamError(body);
     const code =
       upstream?.code ??
@@ -131,15 +133,10 @@ export async function* parseSse(
           .map((line) => line.slice(5).trimStart())
           .join('\n');
         if (data.length === 0 || data === '[DONE]') continue;
-        try {
-          yield observeModelStreamEvent(JSON.parse(data), observedAt);
-        } catch (cause) {
-          throw new AgentError(
-            'MAR_AGENT_MODEL_PROTOCOL_ERROR',
-            'Model SSE contained invalid JSON.',
-            { cause }
-          );
-        }
+        yield observeModelStreamEvent(
+          parseResponseJson(data, 'Model SSE contained invalid JSON.'),
+          observedAt
+        );
       }
     }
     buffer += decoder.decode();
@@ -252,7 +249,24 @@ async function readStreamChunk(
   });
 }
 
-function responseRedactor(sensitiveValues: readonly string[]): (value: string) => string {
+export function parseResponseJson(value: string, message: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Native parse errors quote truncated input, which cannot be reliably redacted.
+    throw new AgentError('MAR_AGENT_MODEL_PROTOCOL_ERROR', message);
+  }
+}
+
+export function redactResponseHeader(
+  value: string | null | undefined,
+  sensitiveValues: readonly string[],
+  limit = 128
+): string | null {
+  return value == null ? null : responseRedactor(sensitiveValues)(value).slice(0, limit);
+}
+
+export function responseRedactor(sensitiveValues: readonly string[]): (value: string) => string {
   const secrets = [
     ...new Set(
       sensitiveValues.flatMap((value) =>

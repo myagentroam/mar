@@ -13,6 +13,7 @@ import { ElMessageBox } from '../../service/message-box-service.js';
 import type { FormInstance, FormRules, TagProps } from 'element-plus';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
+  modelSocks5UrlSchema,
   resolveMarAgentDefaultReasoningEffort
 } from '@myagentroam/protocol';
 import type {
@@ -62,6 +63,7 @@ type ActiveTab = 'modelOrder' | 'models' | 'codexCredentials' | 'imageGeneration
 type CredentialAction = 'EDIT' | 'TEST' | 'REMOVE' | 'REFRESH';
 
 interface ModelDraft {
+  socks5Url: string;
   id: string;
   name: string;
   protocol: ProtocolChoice;
@@ -341,14 +343,17 @@ const loginAttemptSeconds = computed(() => {
 const eligibleTestNodes = computed(() => {
   const model = modelTestModel.value;
   if (model === undefined) return [];
-  return eligibleMarAgentTransportTestNodes(props.nodes).filter((node) =>
-    modelSupportsNodeTransport(
-      node,
-      model.responsesTransport,
-      model.serviceTier,
-      modelProtocolChoice(model) === 'GROK',
-      model.responsesPreviousResponseId === true
-    )
+  return eligibleMarAgentTransportTestNodes(props.nodes).filter(
+    (node) =>
+      (model.proxyConfigured !== true ||
+        node.capabilities.marAgentRuntimeCredentials?.modelSocks5Proxy === true) &&
+      modelSupportsNodeTransport(
+        node,
+        model.responsesTransport,
+        model.serviceTier,
+        modelProtocolChoice(model) === 'GROK',
+        model.responsesPreviousResponseId === true
+      )
   );
 });
 const selectedCatalogCount = computed(() => catalogRows.value.filter((row) => row.selected).length);
@@ -378,6 +383,20 @@ const rules = computed<FormRules>(() => ({
         if (isOAuthProtocol(draft.protocol)) return callback();
         if (String(value ?? '').trim() || canKeepCredential.value) return callback();
         callback(new Error(translate('marAgentModels.keyRequired')));
+      }
+    }
+  ],
+  socks5Url: [
+    {
+      validator: (_rule, value, callback) => {
+        const proxy = String(value ?? '').trim();
+        if (
+          isOAuthProtocol(draft.protocol) ||
+          !proxy ||
+          modelSocks5UrlSchema.safeParse(proxy).success
+        )
+          return callback();
+        callback(new Error(translate('marAgentModels.codexProxyInvalid')));
       }
     }
   ],
@@ -462,7 +481,11 @@ watch(activeTab, (tab) => {
   }
 });
 watch(canManageModels, (allowed) => {
-  if (!allowed) activeTab.value = 'modelOrder';
+  if (allowed) return;
+  // Invalidate pending detail reads even when their form has not opened yet.
+  modelDialogSequence += 1;
+  dialog.value = false;
+  activeTab.value = 'modelOrder';
 });
 watch(
   dialog,
@@ -471,6 +494,7 @@ watch(
       modelDialogSequence += 1;
       saving.value = false;
       draft.apiKey = '';
+      draft.socks5Url = '';
     }
   },
   { flush: 'sync' }
@@ -521,6 +545,7 @@ function emptyDraft(): ModelDraft {
     baseUrl: 'https://api.anthropic.com',
     credentialId: '',
     apiKey: '',
+    socks5Url: '',
     modelId: '',
     contextWindowTokens: DEFAULT_CONTEXT_WINDOW_TOKENS,
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
@@ -596,6 +621,7 @@ async function ensureCredentials(): Promise<void> {
 }
 
 async function openCreate() {
+  const sequence = ++modelDialogSequence;
   try {
     await props.prepareModel?.();
   } catch (error) {
@@ -603,6 +629,7 @@ async function openCreate() {
     return;
   }
   await ensureCredentials();
+  if (sequence !== modelDialogSequence) return;
   Object.assign(draft, emptyDraft());
   draft.sortOrder = Math.max(-1, ...models.value.map((model) => model.sortOrder)) + 1;
   editingId.value = undefined;
@@ -707,13 +734,21 @@ async function savePersonalOrder() {
 }
 
 async function openEdit(model: ModelSummary, duplicate = false) {
+  const sequence = ++modelDialogSequence;
+  let proxy: string | null = null;
   try {
     await props.prepareModel?.(duplicate ? undefined : model);
+    if ((model.credentialType ?? 'INLINE_API_KEY') === 'INLINE_API_KEY') {
+      const details = await managedModels.connectionDetails(model.id);
+      if (details === undefined) return;
+      proxy = details.socks5Url;
+    }
   } catch (error) {
-    showMessage(errorMessage(error), 'error', error);
+    if (sequence === modelDialogSequence) showMessage(errorMessage(error), 'error', error);
     return;
   }
   await ensureCredentials();
+  if (sequence !== modelDialogSequence) return;
   const credentialType = model.credentialType ?? 'INLINE_API_KEY';
   const protocol = modelProtocolChoice(model);
   Object.assign(draft, {
@@ -723,6 +758,7 @@ async function openEdit(model: ModelSummary, duplicate = false) {
     baseUrl: model.baseUrl,
     credentialId: '',
     apiKey: '',
+    socks5Url: proxy ?? '',
     modelId: model.modelId,
     contextWindowTokens: model.contextWindowTokens,
     maxOutputTokens: model.maxOutputTokens,
@@ -807,6 +843,7 @@ function modelSaveBody(): Record<string, unknown> {
   const oauth = isOAuthProtocol(draft.protocol);
   const grok = draft.protocol === 'GROK';
   const body: Record<string, unknown> = {
+    socks5Url: oauth ? null : draft.socks5Url.trim() || null,
     name: draft.name.trim(),
     protocol: oauth ? 'OPENAI_RESPONSES' : draft.protocol,
     baseUrl: oauth ? oauthBaseUrl(draft.protocol) : draft.baseUrl.trim(),
@@ -877,17 +914,7 @@ function openModelTest(model: ModelSummary): void {
   modelTestResult.value = undefined;
   modelTestModel.value = model;
   modelTestNodeId.value = '';
-  if (
-    !eligibleMarAgentTransportTestNodes(props.nodes).some((node) =>
-      modelSupportsNodeTransport(
-        node,
-        model.responsesTransport,
-        undefined,
-        modelProtocolChoice(model) === 'GROK',
-        model.responsesPreviousResponseId === true
-      )
-    )
-  ) {
+  if (eligibleTestNodes.value.length === 0) {
     showMessage(translate('marAgentModels.modelTestNoNode'), 'error');
     modelTestModel.value = undefined;
     return;
@@ -1468,6 +1495,7 @@ onBeforeUnmount(() => {
   userModels.dispose();
   credentialEditSequence += 1;
   draft.apiKey = '';
+  draft.socks5Url = '';
   Object.assign(credentialDraft, emptyCredentialDraft());
   loginPoller.dispose();
   stopCountdown();
@@ -1927,6 +1955,24 @@ onBeforeUnmount(() => {
             ><template #password-icon="{ visible }"
               ><MarIcon :name="visible ? 'view' : 'view-off'" /></template
           ></el-input>
+        </el-form-item>
+        <el-form-item :label="translate('marAgentModels.codexProxy')" prop="socks5Url">
+          <template v-if="!isOAuthProtocol(draft.protocol)">
+            <el-input
+              v-model="draft.socks5Url"
+              type="password"
+              show-password
+              maxlength="2048"
+              autocomplete="off"
+              :placeholder="translate('marAgentModels.codexProxyPlaceholder')"
+            >
+              <template #password-icon="{ visible }"
+                ><MarIcon :name="visible ? 'view' : 'view-off'"
+              /></template>
+            </el-input>
+            <p class="form-hint">{{ translate('marAgentModels.modelProxyHint') }}</p>
+          </template>
+          <p v-else class="form-hint">{{ translate('marAgentModels.modelProxyCredentialHint') }}</p>
         </el-form-item>
         <el-form-item :label="translate('marAgentModels.model')" prop="modelId">
           <el-input v-model="draft.modelId" maxlength="256" />

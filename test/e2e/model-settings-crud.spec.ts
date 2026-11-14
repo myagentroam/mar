@@ -102,6 +102,7 @@ test('model settings follow transactional create, duplicate, update and deletion
       protocol: 'OPENAI_RESPONSES',
       baseUrl: 'https://models.example.test/v1',
       credential: { type: 'INLINE_API_KEY', value: 'fixture-secret' },
+      socks5Url: 'socks5://fixture-user:fixture-pass@proxy.invalid:1080',
       modelId: 'upstream-fast-model',
       contextWindowTokens: 200_000,
       maxOutputTokens: 16_384,
@@ -124,7 +125,11 @@ test('model settings follow transactional create, duplicate, update and deletion
       modelId: input.modelId,
       serviceTier: 'priority'
     });
-    const copy = await models.duplicate(userId, created.id, { ...input, name: 'Settings Copy' });
+    const { socks5Url: _proxy, ...duplicateInput } = input;
+    const copy = await models.duplicate(userId, created.id, {
+      ...duplicateInput,
+      name: 'Settings Copy'
+    });
     expect(copy).toMatchObject({
       id: 'copy-model',
       unifiedCompact: true,
@@ -132,6 +137,13 @@ test('model settings follow transactional create, duplicate, update and deletion
       serviceTier: 'priority'
     });
     await models.update(userId, created.id, { name: 'Updated Source', serviceTier: 'flex' });
+    expect(JSON.stringify(await models.listManagedForUser(userId))).not.toContain(input.socks5Url);
+    expect(await models.connectionDetails(userId, created.id)).toEqual({
+      socks5Url: input.socks5Url
+    });
+    expect(await models.connectionDetails(userId, copy.id)).toEqual({ socks5Url: input.socks5Url });
+    await models.update(userId, copy.id, { socks5Url: null });
+    expect(await models.connectionDetails(userId, copy.id)).toEqual({ socks5Url: null });
     expect(await models.stored(created.id)).toMatchObject({
       name: 'Updated Source',
       unifiedCompact: true,

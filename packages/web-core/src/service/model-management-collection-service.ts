@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import {
   resolveMarAgentDefaultReasoningEffort,
+  marAgentModelConnectionDetailsSchema,
   type MarAgentModelSummary
 } from '@myagentroam/protocol';
 
@@ -114,11 +115,33 @@ export function createModelManagementCollectionService(
     return commitModelMutation(`${path}/${id}`, { method: 'DELETE' });
   }
 
+  async function connectionDetails(id: string) {
+    if (disposed || !canRefresh()) return undefined;
+    const response = await request<{ details: unknown }>(
+      `${path}/${encodeURIComponent(id)}/connection`,
+      { cache: 'no-store' }
+    );
+    return disposed || !canRefresh()
+      ? undefined
+      : marAgentModelConnectionDetailsSchema.parse(response.details);
+  }
+
   function dispose(): void {
     disposed = true;
     sequence += 1;
     loading.value = false;
   }
 
-  return { models, loading, ready, savingOrder, load, saveOrder, saveModel, removeModel, dispose };
+  return {
+    models,
+    loading,
+    ready,
+    savingOrder,
+    load,
+    saveOrder,
+    saveModel,
+    removeModel,
+    connectionDetails,
+    dispose
+  };
 }

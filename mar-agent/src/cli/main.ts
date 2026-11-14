@@ -212,7 +212,8 @@ async function modelsCommand(
             readsApiKey
               ? await readApiKey()
               : required(existing?.apiKey?.reveal(), '--api-key-stdin')
-          )
+          ),
+          ...(existing?.socks5Url === undefined ? {} : { socks5Url: existing.socks5Url })
         }),
     modelId: required(option('--model', existing?.modelId), '--model'),
     contextWindowTokens: integer('--context', existing?.contextWindowTokens ?? 256_000),

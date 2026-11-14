@@ -1,14 +1,14 @@
 import type { MarAgentModelService, MarAgentRuntimeModelService } from './session-run-contracts.js';
 
-/** The legacy path has no Node capability evidence and cannot safely relay disabled GC. */
-export function assertLegacyGcCompatible(models: readonly unknown[]): void {
+/** Legacy delivery cannot relay model options that require explicit Node capability evidence. */
+export function assertLegacyModelCompatibility(models: readonly unknown[]): void {
   if (
     models.some(
       (model) =>
         model !== null &&
         typeof model === 'object' &&
-        'gcEnabled' in model &&
-        model.gcEnabled === false
+        (('gcEnabled' in model && model.gcEnabled === false) ||
+          ('socks5Url' in model && model.socks5Url !== undefined))
     )
   )
     throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
@@ -41,7 +41,7 @@ export async function runtimeModelPayload(input: {
   if (input.marAgentModels === undefined) return {};
   const model = await input.marAgentModels.runtimeForUser(input.userId, input.selectedModelId);
   const models = await input.marAgentModels.runtimeConfigurationsForUser(input.userId);
-  assertLegacyGcCompatible([model, ...(Array.isArray(models) ? models : [])]);
+  assertLegacyModelCompatibility([model, ...(Array.isArray(models) ? models : [])]);
   return {
     marAgentModel: model,
     marAgentModels: models

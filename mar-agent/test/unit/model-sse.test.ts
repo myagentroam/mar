@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { parseSse } from '../../src/model/sse.js';
 
@@ -14,10 +15,15 @@ function responseFromChunks(chunks: Uint8Array[]): Response {
   );
 }
 
-async function collect(response: Response, signal = new AbortController().signal) {
+async function collect(
+  response: Response,
+  signal = new AbortController().signal,
+  sensitiveValues: readonly string[] = []
+) {
   const events: unknown[] = [];
   try {
-    for await (const event of parseSse(response, signal)) events.push(event);
+    for await (const event of parseSse(response, signal, undefined, undefined, sensitiveValues))
+      events.push(event);
     return events;
   } finally {
     expect(response.body?.locked).toBe(false);
@@ -156,6 +162,25 @@ describe('incremental model SSE framing', () => {
         message: 'MAR_AGENT_MODEL_PROTOCOL_ERROR: Model SSE contained invalid JSON.'
       });
     }
+  });
+
+  it.each([
+    { label: 'password', secret: 'private-proxy-password-'.repeat(8) },
+    {
+      label: 'URL',
+      secret: 'socks5://private-user:' + 'password-'.repeat(12) + '@proxy.invalid:1080'
+    }
+  ])('omits truncated $label fragments from malformed JSON diagnostics', async ({ secret }) => {
+    const failure = await collect(
+      responseFromChunks([encoder.encode(`data: ${secret}\n\n`)]),
+      new AbortController().signal,
+      [secret]
+    ).catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
+      publicMessage: 'Model SSE contained invalid JSON.'
+    });
+    expect(inspect(failure, { depth: 6 })).not.toContain(secret.slice(0, 10));
   });
 
   it('publishes complete frames before rejecting an incomplete final frame', async () => {

@@ -382,6 +382,92 @@ describe('MAR Agent model service', () => {
     }
   );
 
+  it.each([
+    {
+      scenario: 'inherits the source proxy',
+      overrides: {},
+      expectedProxy: 'socks5://source-user:source-password@proxy.example.test:1080',
+      protocol: 'ANTHROPIC_MESSAGES' as const
+    },
+    {
+      scenario: 'replaces the source proxy',
+      overrides: { socks5Url: 'socks5://replacement.example.test:1080' },
+      expectedProxy: 'socks5://replacement.example.test:1080',
+      protocol: 'ANTHROPIC_MESSAGES' as const
+    },
+    {
+      scenario: 'clears the source proxy',
+      overrides: { socks5Url: null },
+      expectedProxy: undefined,
+      protocol: 'ANTHROPIC_MESSAGES' as const
+    },
+    {
+      scenario: 'switches to a credential reference without inheriting the proxy',
+      overrides: {
+        protocol: 'OPENAI_RESPONSES' as const,
+        baseUrl: 'https://api.openai.com/v1',
+        credential: { type: 'CREDENTIAL_REF' as const, credentialId: 'credential-1' }
+      },
+      expectedProxy: undefined,
+      protocol: 'OPENAI_RESPONSES' as const
+    }
+  ])('duplicates with SOCKS5 settings and $scenario', async (scenario) => {
+    const sourceProxy = 'socks5://source-user:source-password@proxy.example.test:1080';
+    const summarySettings =
+      scenario.protocol === 'OPENAI_RESPONSES'
+        ? { version: 1, hostedWebSearch: false, responsesPreviousResponseId: false }
+        : { version: 1 };
+    const db = database([
+      [{ affectedRows: 1 }, []],
+      [
+        [
+          modelServiceRow('copy-id', {
+            protocol: scenario.protocol,
+            modelSettings: summarySettings
+          })
+        ],
+        []
+      ]
+    ]);
+    const credentialScopes = {
+      assertModelCredentialBinding: vi.fn(async () => undefined),
+      assertCredentialTarget: vi.fn(async () => undefined)
+    };
+    const service = new CoreMarAgentModelService(
+      db,
+      () => 10,
+      () => 'copy-id',
+      managementAccess(),
+      credentialScopes
+    );
+    const { apiKey: _sourceKey, sortOrder: _sourceOrder, ...sourceConfiguration } = input;
+    const source = marAgentStoredModelConfigurationSchema.parse({
+      ...sourceConfiguration,
+      id: 'source-id',
+      credential: { type: 'INLINE_API_KEY', value: 'source-secret' },
+      socks5Url: sourceProxy
+    });
+    vi.spyOn(service, 'stored').mockResolvedValue(source);
+    const { apiKey: _apiKey, ...configuration } = input;
+    const result = await service.duplicate(7, 'source-id', {
+      ...configuration,
+      ...scenario.overrides,
+      name: 'Proxy copy'
+    });
+
+    const savedSettings = modelSettingsDocument(db.raw.execute, 'copy-id') as Record<
+      string,
+      unknown
+    >;
+    if (scenario.expectedProxy === undefined) expect(savedSettings).not.toHaveProperty('socks5Url');
+    else expect(savedSettings.socks5Url).toBe(scenario.expectedProxy);
+    expect(result).not.toHaveProperty('socks5Url');
+    expect(JSON.stringify(result)).not.toContain(sourceProxy);
+    expect(JSON.stringify(result)).not.toContain('source-password');
+    if (scenario.expectedProxy === undefined) expect(result).not.toHaveProperty('proxyConfigured');
+    else expect(result).toHaveProperty('proxyConfigured', true);
+  });
+
   it('requires source management permission before reading or copying secrets', async () => {
     const db = database();
     const access = managementAccess();
@@ -806,6 +892,74 @@ describe('MAR Agent model service', () => {
     expect(insert[1]).toContain('PERSONAL');
     expect(insert[1]).toContain(7);
     expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('stores SOCKS5 proxy settings privately and preserves or clears them on update', async () => {
+    const modelId = 'proxy-model';
+    const socks5Url = 'socks5://proxy-user:proxy-password@proxy.example.test:1080';
+    const row = modelServiceRow(modelId, { modelSettings: { version: 1, socks5Url } });
+    const responses: unknown[] = [
+      [{ affectedRows: 1 }, []],
+      [[row], []],
+      [[row], []],
+      [[row], []]
+    ];
+    const db = database(responses);
+    const access = managementAccess();
+    const service = new CoreMarAgentModelService(
+      db,
+      () => 10,
+      () => modelId,
+      access,
+      { assertModelCredentialBinding: vi.fn(async () => undefined) }
+    );
+    const summary = await service.create(7, { ...input, socks5Url });
+
+    expect(summary).toHaveProperty('proxyConfigured', true);
+    expect(summary).not.toHaveProperty('socks5Url');
+    expect(JSON.stringify(summary)).not.toContain(socks5Url);
+    expect(modelSettingsDocument(db.raw.execute, modelId)).toMatchObject({ socks5Url });
+    await expect(service.stored(modelId)).resolves.toMatchObject({ socks5Url });
+    await expect(service.connectionDetails(7, modelId)).resolves.toEqual({ socks5Url });
+    expect(access.canManageModel).toHaveBeenCalledWith(7, modelId);
+
+    access.canManageModel.mockResolvedValue(false);
+    const queryCountBeforeDeniedRead = db.raw.execute.mock.calls.length;
+    await expect(service.connectionDetails(8, modelId)).rejects.toThrow(
+      'MODEL_RESOURCE_ADMIN_REQUIRED'
+    );
+    expect(db.raw.execute.mock.calls).toHaveLength(queryCountBeforeDeniedRead);
+
+    access.canManageModel.mockResolvedValue(true);
+    const queueUpdate = () => {
+      responses.push(
+        [[row], []],
+        [[row], []],
+        [[{ sort_order: 0 }], []],
+        [{ affectedRows: 1 }, []],
+        [[row], []]
+      );
+    };
+    const latestSettings = () => {
+      const writes = db.raw.execute.mock.calls.filter(
+        ([sql, parameters]) =>
+          String(sql).startsWith('INSERT INTO system_settings') &&
+          Array.isArray(parameters) &&
+          parameters[0] === `mar_agent_model_config:${modelId}`
+      );
+      const latest = writes.at(-1);
+      return JSON.parse(String((latest?.[1] as unknown[])[1])) as Record<string, unknown>;
+    };
+
+    queueUpdate();
+    await service.update(7, modelId, { name: 'Updated proxy model' });
+    expect(latestSettings().socks5Url).toBe(socks5Url);
+    queueUpdate();
+    const updatedSummary = await service.update(7, modelId, { socks5Url: null });
+    expect(latestSettings()).not.toHaveProperty('socks5Url');
+    expect(updatedSummary).not.toHaveProperty('socks5Url');
+    responses.push([[row], []]);
+    await expect(service.connectionDetails(7, modelId)).resolves.toEqual({ socks5Url: null });
   });
 
   it('generates a compact model configuration ID by default', async () => {

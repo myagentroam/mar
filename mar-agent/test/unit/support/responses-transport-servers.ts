@@ -270,7 +270,11 @@ export async function startSocks5Proxy(input: {
         buffer = buffer.subarray(offset + 2);
         destinations.push({ host, port });
         const upstream = connectTcp(input.targetPort, input.targetHost ?? '127.0.0.1');
+        client.once('close', () => upstream.destroy());
         upstream.once('connect', () => {
+          upstream.once('close', () => {
+            if (!upstream.readableEnded) client.destroy();
+          });
           client.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 0]));
           state = 'TUNNEL';
           if (buffer.length > 0) upstream.write(buffer);

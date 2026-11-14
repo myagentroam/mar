@@ -5,6 +5,10 @@ import { modelImageUrl } from './image.js';
 import { stableToolSchema } from './tool-schema.js';
 import { randomUUID } from 'node:crypto';
 import { AgentError } from '../error.js';
+import {
+  acquireModelCredential,
+  modelCredentialSensitiveValues
+} from '../network/credential-runtime.js';
 import { assertInlineMediaBudget } from './inline-media-budget.js';
 import {
   resolveModelDefaultReasoningEffort,
@@ -15,6 +19,8 @@ import {
   isRetryableUpstreamOverloadCode,
   number,
   parseSse,
+  redactResponseHeader,
+  responseRedactor,
   record,
   text,
   observeModelStreamEvent,
@@ -126,6 +132,12 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         'MAR_AGENT_MODEL_CONFIG_INVALID',
         'Anthropic Messages requires a static API key.'
       );
+    const credential = await acquireModelCredential(
+      this.configuration,
+      'REQUEST',
+      'Anthropic Messages requires a static API key.',
+      signal
+    );
     const tools: unknown[] =
       request.allowTools === false
         ? []
@@ -137,52 +149,56 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
     const response = await fetchModelResponse(
       `${this.configuration.baseUrl.replace(/\/$/, '')}/v1/messages`,
       {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey.reveal(),
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-          'user-agent': productUserAgent(),
-          accept: 'text/event-stream'
-        },
-        body: JSON.stringify({
-          model: this.configuration.modelId,
-          system:
-            request.systemBlocks !== undefined
-              ? anthropicTextBlocks(request.system, request.systemBlocks)
-              : request.system
-                ? [
-                    {
-                      type: 'text',
-                      text: request.system,
-                      cache_control: { type: 'ephemeral' }
-                    }
-                  ]
-                : [],
-          messages: anthropicMessages(
-            request.messages,
-            request.images,
-            request.tools,
-            this.configuration.id,
-            request.systemBlocks === undefined &&
-              request.messages.every((message) => message.textBlocks === undefined),
-            request.cachePrefixMessages
-          ),
-          tools,
-          ...(request.toolChoice === undefined
-            ? {}
-            : { tool_choice: { type: request.toolChoice } }),
-          stream: true,
-          max_tokens: Math.min(
-            request.outputLimit ?? this.configuration.maxOutputTokens,
-            this.configuration.maxOutputTokens
-          ),
-          output_config: {
-            effort:
-              request.reasoningEffort?.trim() ||
-              resolveModelDefaultReasoningEffort(this.configuration)
-          }
-        })
+        httpVersion: '1.1',
+        ...(credential.socks5Url === undefined ? {} : { socks5Url: credential.socks5Url.reveal() }),
+        request: {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey.reveal(),
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+            'user-agent': productUserAgent(),
+            accept: 'text/event-stream'
+          },
+          body: JSON.stringify({
+            model: this.configuration.modelId,
+            system:
+              request.systemBlocks !== undefined
+                ? anthropicTextBlocks(request.system, request.systemBlocks)
+                : request.system
+                  ? [
+                      {
+                        type: 'text',
+                        text: request.system,
+                        cache_control: { type: 'ephemeral' }
+                      }
+                    ]
+                  : [],
+            messages: anthropicMessages(
+              request.messages,
+              request.images,
+              request.tools,
+              this.configuration.id,
+              request.systemBlocks === undefined &&
+                request.messages.every((message) => message.textBlocks === undefined),
+              request.cachePrefixMessages
+            ),
+            tools,
+            ...(request.toolChoice === undefined
+              ? {}
+              : { tool_choice: { type: request.toolChoice } }),
+            stream: true,
+            max_tokens: Math.min(
+              request.outputLimit ?? this.configuration.maxOutputTokens,
+              this.configuration.maxOutputTokens
+            ),
+            output_config: {
+              effort:
+                request.reasoningEffort?.trim() ||
+                resolveModelDefaultReasoningEffort(this.configuration)
+            }
+          })
+        }
       },
       signal,
       1
@@ -214,7 +230,11 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
     let terminal: ModelStopReason | undefined;
     let latestInputUsage: AnthropicInputUsage | undefined;
     let thinkingBytes = 0;
-    for await (const raw of parseAnthropicSse(response, signal, apiKey.reveal())) {
+    for await (const raw of parseAnthropicSse(
+      response,
+      signal,
+      modelCredentialSensitiveValues(credential)
+    )) {
       const event = record(raw);
       const type = text(event.type) ?? 'unknown';
       const index = number(event.index) ?? -1;
@@ -547,15 +567,21 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         );
       } else if (type === 'error') {
         const upstream = record(event.error);
-        const code = boundedError(text(upstream.code) ?? text(upstream.type), 80);
-        const message = boundedError(text(upstream.message), 1_000);
+        const redact = responseRedactor(modelCredentialSensitiveValues(credential));
+        const code = boundedError(redact(text(upstream.code) ?? text(upstream.type) ?? ''), 80);
+        const message = boundedError(redact(text(upstream.message) ?? ''), 1_000);
         const retryable = isRetryableUpstreamOverloadCode(code);
         throw new AgentError(
           code ?? 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
           message ?? 'Anthropic Messages request failed.',
           retryable
             ? {
-                details: { retryAfter: response.headers.get('retry-after') },
+                details: {
+                  retryAfter: redactResponseHeader(
+                    response.headers.get('retry-after'),
+                    modelCredentialSensitiveValues(credential)
+                  )
+                },
                 retryable: true
               }
             : {}
@@ -574,7 +600,10 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
           retryable: true,
           details: {
             reason: 'ANTHROPIC_MESSAGES_EARLY_EOF',
-            retryAfter: response.headers.get('retry-after')
+            retryAfter: redactResponseHeader(
+              response.headers.get('retry-after'),
+              modelCredentialSensitiveValues(credential)
+            )
           }
         }
       );
@@ -584,10 +613,10 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
 async function* parseAnthropicSse(
   response: Response,
   signal: AbortSignal,
-  apiKey: string
+  sensitiveValues: readonly string[]
 ): AsyncIterable<unknown> {
   try {
-    yield* parseSse(response, signal, undefined, undefined, [apiKey]);
+    yield* parseSse(response, signal, undefined, undefined, sensitiveValues);
   } catch (cause) {
     if (
       response.ok &&
@@ -602,7 +631,7 @@ async function* parseAnthropicSse(
           retryable: true,
           details: {
             reason: 'ANTHROPIC_MESSAGES_EARLY_EOF',
-            retryAfter: response.headers.get('retry-after')
+            retryAfter: redactResponseHeader(response.headers.get('retry-after'), sensitiveValues)
           },
           cause
         }

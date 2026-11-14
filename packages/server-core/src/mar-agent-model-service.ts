@@ -247,6 +247,13 @@ export class MarAgentModelService {
     return this.access.listTemplateOptionsForNode(nodeId);
   }
 
+  /** Read sensitive connection data only after the model management check. */
+  async connectionDetails(userId: number, modelId: string): Promise<{ socks5Url: string | null }> {
+    await this.#assertManage(userId, modelId);
+    const model = await this.stored(modelId);
+    return { socks5Url: model.socks5Url ?? null };
+  }
+
   async create(userId: number, raw: unknown): Promise<MarAgentModelSummary> {
     const parsed = parseInput(raw, true);
     const ownership = await this.#ownership(userId, raw);
@@ -313,14 +320,21 @@ export class MarAgentModelService {
       throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
     const source = await this.stored(sourceId);
     const record = raw as Record<string, unknown>;
+    const credential =
+      record.credential ??
+      (typeof record.apiKey === 'string' && record.apiKey.length > 0
+        ? { type: 'INLINE_API_KEY', value: record.apiKey }
+        : source.credential);
     return this.create(userId, {
       ...record,
+      socks5Url:
+        record.socks5Url !== undefined
+          ? record.socks5Url
+          : (credential as MarAgentModelCredential).type === 'INLINE_API_KEY'
+            ? source.socks5Url
+            : undefined,
       metadata: record.metadata ?? source.metadata,
-      credential:
-        record.credential ??
-        (typeof record.apiKey === 'string' && record.apiKey.length > 0
-          ? { type: 'INLINE_API_KEY', value: record.apiKey }
-          : source.credential)
+      credential
     });
   }
 
@@ -346,6 +360,12 @@ export class MarAgentModelService {
         ...existing,
         ...record,
         credential,
+        socks5Url:
+          record.socks5Url !== undefined
+            ? record.socks5Url
+            : credential.type === 'INLINE_API_KEY'
+              ? existing.socks5Url
+              : undefined,
         serviceTier: Object.hasOwn(record, 'serviceTier')
           ? record.serviceTier
           : record.protocol !== undefined && record.protocol !== 'OPENAI_RESPONSES'
@@ -867,6 +887,7 @@ export class MarAgentModelService {
 }
 
 interface ParsedModel {
+  socks5Url?: string;
   metadata?: { useResourceUrl: boolean };
   name: string;
   protocol: MarAgentModelSummary['protocol'];
@@ -910,6 +931,7 @@ function parseInput(raw: unknown, requireKey: boolean): ParsedModel {
     protocol: record.protocol,
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl.trim() : record.baseUrl,
     credential,
+    socks5Url: record.socks5Url === null ? undefined : record.socks5Url,
     modelId: record.modelId,
     contextWindowTokens: record.contextWindowTokens,
     maxOutputTokens: record.maxOutputTokens,
@@ -987,6 +1009,7 @@ function runtimeConfiguration(
     protocol: value.protocol,
     baseUrl: value.baseUrl,
     credential: value.credential,
+    ...(value.socks5Url === undefined ? {} : { socks5Url: value.socks5Url }),
     modelId: value.modelId,
     contextWindowTokens: value.contextWindowTokens,
     maxOutputTokens: value.maxOutputTokens,
@@ -1027,6 +1050,7 @@ function storedConfiguration(
     protocol: value.protocol,
     baseUrl,
     credential,
+    ...(settings.socks5Url === undefined ? {} : { socks5Url: settings.socks5Url }),
     modelId: value.modelId,
     contextWindowTokens: value.contextWindowTokens,
     maxOutputTokens: value.maxOutputTokens,
@@ -1168,6 +1192,7 @@ function summary(row: RowDataPacket, settings: ModelSettings): MarAgentModelSumm
     access: row.public_access ? 'PUBLIC' : 'RESTRICTED',
     credentialType: credential.type,
     credentialConfigured: credential.configured,
+    ...(settings.socks5Url === undefined ? {} : { proxyConfigured: true }),
     lastTestedAt: row.last_tested_at === null ? null : Number(row.last_tested_at),
     lastTestStatus:
       row.last_test_status === null

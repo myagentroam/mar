@@ -86,6 +86,21 @@ export function registerMarAgentModelRoutes(input: {
       return databaseError(reply, error);
     }
   });
+  app.get<{ Params: { modelId: string } }>(
+    '/api/admin/mar-agent/models/:modelId/connection',
+    async (request, reply) => {
+      const actor = protectedAdmin(database, request, reply);
+      if (!actor) return;
+      reply.header('Cache-Control', 'private, no-store');
+      try {
+        return reply.send({
+          details: await models.connectionDetails(actor.userId, request.params.modelId)
+        });
+      } catch (error) {
+        return databaseError(reply, error);
+      }
+    }
+  );
   app.get('/api/mar-agent/models', async (request, reply) => {
     const actor = protectedAdmin(database, request, reply);
     if (!actor) return;

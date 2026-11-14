@@ -217,6 +217,10 @@ export const modelManagementEnUS = {
     codexLastRefresh: 'Last refresh',
     codexLastChecked: 'Last check',
     codexProxy: 'SOCKS5 proxy',
+    modelProxyHint:
+      'Optional. Clear to connect directly. The proxy must be reachable from the executing Node; localhost refers to that Node. A proxy failure never falls back to a direct connection.',
+    modelProxyCredentialHint:
+      'Uses the subscription credential’s proxy. Configure it under OAuth credentials.',
     codexProxyPlaceholder: 'socks5://host:port',
     codexProxyHint:
       'Optional. Credential exchange, catalog loading, and model requests use the same proxy configuration.',

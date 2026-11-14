@@ -31,6 +31,9 @@ import {
   isRetryableUpstreamOverloadCode,
   number,
   parseSse,
+  parseResponseJson,
+  redactResponseHeader,
+  responseRedactor,
   record,
   text,
   observeModelStreamEvent,
@@ -396,7 +399,10 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
           signal,
           continuation,
           turn,
-          credentialAcquired: (revision) => (latestCredentialRevision = revision)
+          credentialAcquired: (credential) => {
+            latestCredentialRevision = credential.revision;
+            diagnosticSecrets = modelCredentialSensitiveValues(credential);
+          }
         });
       else {
         response = await fetchResponse(body);
@@ -730,19 +736,26 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         ) {
           const topLevel = record(event.error);
           const nested = record(record(event.response).error);
+          const redact = responseRedactor(diagnosticSecrets);
           const code = boundedError(
-            text(event.code) ??
-              text(topLevel.code) ??
-              text(topLevel.type) ??
-              text(nested.code) ??
-              text(nested.type),
+            redact(
+              text(event.code) ??
+                text(topLevel.code) ??
+                text(topLevel.type) ??
+                text(nested.code) ??
+                text(nested.type) ??
+                ''
+            ),
             80
           );
           const message = boundedError(
-            text(event.message) ??
-              text(topLevel.message) ??
-              text(nested.message) ??
-              text(event.error),
+            redact(
+              text(event.message) ??
+                text(topLevel.message) ??
+                text(nested.message) ??
+                text(event.error) ??
+                ''
+            ),
             1_000
           );
           const status = upstreamHttpStatus(
@@ -764,7 +777,14 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                 ...(connectionLimit
                   ? { reason: OPENAI_RESPONSES_WEBSOCKET_CONNECTION_LIMIT_REASON }
                   : {}),
-                ...(retryable ? { retryAfter: response?.headers.get('retry-after') ?? null } : {}),
+                ...(retryable
+                  ? {
+                      retryAfter: redactResponseHeader(
+                        response?.headers.get('retry-after'),
+                        diagnosticSecrets
+                      )
+                    }
+                  : {}),
                 continuation,
                 ...(this.configuration.responsesTransport?.transport === 'WEBSOCKET'
                   ? { transport: 'WEBSOCKET' }
@@ -798,7 +818,10 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         {
           details: {
             reason: OPENAI_RESPONSES_EARLY_EOF_REASON,
-            retryAfter: response?.headers.get('retry-after') ?? null,
+            retryAfter: redactResponseHeader(
+              response?.headers.get('retry-after'),
+              diagnosticSecrets
+            ),
             continuation,
             ...(this.configuration.responsesTransport?.transport === 'WEBSOCKET'
               ? { transport: 'WEBSOCKET' }
@@ -816,16 +839,26 @@ function sameResponsesAdapterConfiguration(
 ): boolean {
   const {
     apiKey: currentApiKey,
+    socks5Url: currentSocks5Url,
     credentialProvider: currentCredentialProvider,
     ...currentTransport
   } = current;
-  const { apiKey: nextApiKey, credentialProvider: nextCredentialProvider, ...nextTransport } = next;
+  const {
+    apiKey: nextApiKey,
+    socks5Url: nextSocks5Url,
+    credentialProvider: nextCredentialProvider,
+    ...nextTransport
+  } = next;
   const credentialsAreRebindable =
     (currentCredentialProvider !== undefined && nextCredentialProvider !== undefined) ||
     (currentApiKey !== undefined &&
       nextApiKey !== undefined &&
       currentApiKey.reveal() === nextApiKey.reveal());
-  return credentialsAreRebindable && isDeepStrictEqual(currentTransport, nextTransport);
+  return (
+    credentialsAreRebindable &&
+    currentSocks5Url?.reveal() === nextSocks5Url?.reveal() &&
+    isDeepStrictEqual(currentTransport, nextTransport)
+  );
 }
 
 class OpenAiResponsesTurnSession implements ModelTurnSession {
@@ -1117,7 +1150,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
     readonly reason: ModelCredentialAcquireReason;
     readonly signal: AbortSignal;
     readonly continuation: boolean;
-    readonly credentialAcquired: (revision: number) => void;
+    readonly credentialAcquired: (credential: ModelCredential) => void;
   }): Promise<WebSocket> {
     const endpoint = webSocketEndpoint(input.configuration.baseUrl);
     const existingSocket = this.state.socket;
@@ -1143,7 +1176,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
         input.reason,
         input.signal
       );
-      input.credentialAcquired(handshakeCredential.revision);
+      input.credentialAcquired(handshakeCredential);
       await this.connectWebSocket(
         endpoint,
         handshakeCredential,
@@ -1157,7 +1190,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
       input.reason,
       input.signal
     );
-    input.credentialAcquired(requestCredential.revision);
+    input.credentialAcquired(requestCredential);
     if (
       requestCredential.revision !== this.state.credentialRevision ||
       responsesCredentialFingerprint(requestCredential) !== this.state.credentialFingerprint
@@ -1228,7 +1261,7 @@ class OpenAiResponsesTurnSession implements ModelTurnSession {
           })
     });
     try {
-      await waitForWebSocketOpen(socket, signal);
+      await waitForWebSocketOpen(socket, signal, modelCredentialSensitiveValues(credential));
     } catch (error) {
       terminateWebSocket(socket);
       throw error;
@@ -1327,7 +1360,7 @@ async function* parseOpenAiResponsesSse(
         {
           details: {
             reason: OPENAI_RESPONSES_EARLY_EOF_REASON,
-            retryAfter: response.headers.get('retry-after'),
+            retryAfter: redactResponseHeader(response.headers.get('retry-after'), sensitiveValues),
             continuation
           },
           retryable: true,
@@ -1346,7 +1379,7 @@ async function* webSocketResponseEvents(input: {
   readonly signal: AbortSignal;
   readonly continuation: boolean;
   readonly turn: OpenAiResponsesTurnSession;
-  readonly credentialAcquired: (revision: number) => void;
+  readonly credentialAcquired: (credential: ModelCredential) => void;
 }): AsyncIterable<unknown> {
   const body = input.turn.withTurnStateMetadata(input.body);
   const payload = Buffer.from(JSON.stringify({ type: 'response.create', ...body }), 'utf8');
@@ -1441,7 +1474,11 @@ function webSocketRequestDiagnostic(
   };
 }
 
-async function waitForWebSocketOpen(socket: WebSocket, signal: AbortSignal): Promise<void> {
+async function waitForWebSocketOpen(
+  socket: WebSocket,
+  signal: AbortSignal,
+  sensitiveValues: readonly string[]
+): Promise<void> {
   if (signal.aborted) {
     terminateWebSocket(socket);
     throw signal.reason;
@@ -1512,7 +1549,9 @@ async function waitForWebSocketOpen(socket: WebSocket, signal: AbortSignal): Pro
               details: {
                 status,
                 transport: 'WEBSOCKET',
-                ...(retryAfterValue === undefined ? {} : { retryAfter: retryAfterValue })
+                ...(retryAfterValue === undefined
+                  ? {}
+                  : { retryAfter: redactResponseHeader(retryAfterValue, sensitiveValues) })
               },
               ...(retryable ? { retryable: true } : {})
             }
@@ -1660,18 +1699,10 @@ function webSocketMessages(
               'MAR_AGENT_MODEL_PROTOCOL_ERROR',
               'Model response exceeded the size limit.'
             );
-          try {
-            const event = JSON.parse(text);
-            if (!isWebSocketNonProgressEvent(event))
-              idleDeadline = Date.now() + WEBSOCKET_IDLE_TIMEOUT_MS;
-            yield observeModelStreamEvent(event, item.observedAt);
-          } catch (cause) {
-            throw new AgentError(
-              'MAR_AGENT_MODEL_PROTOCOL_ERROR',
-              'Model WebSocket contained invalid JSON.',
-              { cause }
-            );
-          }
+          const event = parseResponseJson(text, 'Model WebSocket contained invalid JSON.');
+          if (!isWebSocketNonProgressEvent(event))
+            idleDeadline = Date.now() + WEBSOCKET_IDLE_TIMEOUT_MS;
+          yield observeModelStreamEvent(event, item.observedAt);
         }
       } finally {
         dispose();

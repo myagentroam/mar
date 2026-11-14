@@ -167,6 +167,9 @@ async function mockEnterpriseConsole(page: Page, english: boolean): Promise<void
   await page.route('**/api/enterprise/users', (route) => json(route, { users: [] }));
   await page.route('**/api/environment-secrets**', (route) => json(route, { secrets: [] }));
   await page.route('**/api/mar-agent/models', (route) => json(route, { models: [] }));
+  await page.route('**/api/admin/mar-agent/models/*/connection', (route) =>
+    json(route, { details: { socks5Url: null } })
+  );
   await page.route('**/api/admin/mar-agent/image-generation', (route) =>
     json(route, { configuration: [] })
   );
