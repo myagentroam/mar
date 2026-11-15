@@ -8,7 +8,7 @@ import { SkillFavoriteService } from '../../ee/server/src/skill/skill-favorite-s
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
 import type { SkillSourceService } from '../../ee/server/src/skill/skill-source-service.js';
-import type { GithubSkillProvider } from '../../ee/server/src/skill/github-skill-provider.js';
+import type { GitSkillRepository } from '../../ee/server/src/skill/git-skill-repository.js';
 import { deferMysqlAudit } from '../../packages/server-core/src/audit.js';
 import { withSkillCacheTransaction } from '../../packages/server-core/src/skill-cache-transaction.js';
 import { gate as mysqlGate } from '../e2e/support/skill-cache-fixture.js';
@@ -32,7 +32,7 @@ async function fixture(now: () => number = Date.now) {
       {
         getVisible: async () => ({ kind: 'REPOSITORY', locator: 'https://github.com/acme/skills' })
       } as unknown as SkillSourceService,
-      { resolve } as unknown as GithubSkillProvider,
+      { resolve } as unknown as GitSkillRepository,
       cache,
       now
     );

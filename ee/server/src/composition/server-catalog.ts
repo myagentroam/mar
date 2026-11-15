@@ -23,7 +23,7 @@ export function composeServerCatalog(input: {
   const { database, authorization, now, cacheDirectory } = input;
   const skillSources = new SkillSourceService(database, authorization, now);
   const skillNetwork = new SkillNetworkPolicy(database);
-  const skillRepository = new GitSkillRepository(() => skillNetwork.disabled());
+  const skillRepository = new GitSkillRepository();
   const skillDiscovery = new SkillDiscoveryService(skillNetwork.fetch, skillRepository);
   const skillFavorites = new SkillFavoriteService(
     database,

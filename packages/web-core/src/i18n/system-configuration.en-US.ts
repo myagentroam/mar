@@ -13,7 +13,7 @@ export const systemConfigurationEnUS = {
       actions: 'Actions',
       edit: 'Edit',
       save: 'Save',
-      disableSkillSourceTLSVerification: 'Disable Skill Source TLS Verification',
+      disableSkillSourceTLSVerification: 'Disable skills.sh Discovery API TLS Verification',
       htmlPreviewOrigin: 'HTML preview origin',
       htmlPreviewOriginDescription:
         'Empty uses the Console origin, where HTML runs with your permissions. A separate origin must route previews to this Server.',
@@ -22,7 +22,7 @@ export const systemConfigurationEnUS = {
         'Enter an HTTP or HTTPS origin without a path, or leave this empty.',
       htmlPreviewCurrentOrigin: 'Current Console origin',
       keepThisOffByDefaultUseIt:
-        'Keep this off by default. Use it only to troubleshoot internal self-signed certificates; repository host and path validation remain enforced.',
+        'Keep this off by default. It only affects the skills.sh discovery API. Git Skill repositories always skip certificate verification.',
       smtp: 'Email SMTP configuration',
       smtpDescription: 'Configure the deployment-wide SMTP sending service.',
       smtpPlaceholder: 'SMTP connection configuration',

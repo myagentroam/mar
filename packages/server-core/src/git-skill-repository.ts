@@ -22,12 +22,8 @@ export interface GitSkillCandidate {
   readonly skillPath: string;
 }
 
-/** Owns complete Git snapshots; discovery and bundles only read locally before cleanup. */
+/** Owns complete Git snapshots without remote identity verification; reads stay local before cleanup. */
 export class GitSkillRepository {
-  constructor(
-    private readonly tlsVerificationDisabled: () => Promise<boolean> = async () => false
-  ) {}
-
   async discover(
     locator: string,
     query: string,
@@ -101,8 +97,7 @@ export class GitSkillRepository {
     operation: (repository: GitRepositorySnapshot) => Promise<T>
   ): Promise<T> {
     const parsed = parseLocator(locator);
-    const tlsDisabled = parsed.https ? await this.tlsVerificationDisabled() : undefined;
-    const env = gitEnvironment(tlsDisabled);
+    const env = gitEnvironment(parsed.https);
     const transport = parsed.https
       ? [
           '-c',
@@ -114,7 +109,7 @@ export class GitSkillRepository {
           '-c',
           'http.proxy=',
           '-c',
-          `http.sslVerify=${!tlsDisabled}`
+          'http.sslVerify=false'
         ]
       : ['-c', 'protocol.file.allow=never'];
     const directory = await mkdtemp(path.join(tmpdir(), 'mar-skill-git-'));
@@ -150,7 +145,7 @@ export class GitSkillRepository {
         files,
         identity: `${parsed.hostname.toLowerCase()}/${parsed.repositoryPath.toLowerCase()}`,
         name: parsed.repositoryPath.split('/').at(-1)!,
-        tlsVerified: parsed.https && !tlsDisabled
+        tlsVerified: false
       });
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('SKILL_')) throw error;
@@ -275,18 +270,17 @@ async function* gitContent(directory: string, file: string): AsyncGenerator<Buff
   }
 }
 
-function gitEnvironment(tlsDisabled?: boolean): NodeJS.ProcessEnv {
+function gitEnvironment(https = false): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     GIT_TERMINAL_PROMPT: '0',
     GIT_SSH_COMMAND
   };
-  if (tlsDisabled !== undefined) {
+  if (https) {
     // HTTPS must not inherit URL rewrites, proxy routing, or TLS policy overrides.
     env['GIT_CONFIG_NOSYSTEM'] = '1';
     env['GIT_CONFIG_GLOBAL'] = devNull;
-    if (tlsDisabled) env['GIT_SSL_NO_VERIFY'] = 'true';
-    else delete env['GIT_SSL_NO_VERIFY'];
+    env['GIT_SSL_NO_VERIFY'] = 'true';
     delete env['GIT_CONFIG_COUNT'];
     delete env['GIT_CONFIG_PARAMETERS'];
   }

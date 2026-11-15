@@ -5,7 +5,7 @@ import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import type { AuthorizationService } from '../../ee/server/src/rbac/authorization-service.js';
-import type { GithubSkillProvider } from '../../ee/server/src/skill/github-skill-provider.js';
+import type { GitSkillRepository } from '../../ee/server/src/skill/git-skill-repository.js';
 import { SkillFavoriteService } from '../../ee/server/src/skill/skill-favorite-service.js';
 import type { SkillSourceService } from '../../ee/server/src/skill/skill-source-service.js';
 
@@ -39,7 +39,7 @@ describe('Server Skill favorite', () => {
       { raw: { execute: vi.fn(async () => [[row], []]) } } as unknown as MysqlServerDatabase,
       { authorize: vi.fn(async () => ({ allowed: true })) } as unknown as AuthorizationService,
       {} as SkillSourceService,
-      {} as GithubSkillProvider,
+      {} as GitSkillRepository,
       '/unused'
     );
 
@@ -119,7 +119,7 @@ describe('Server Skill favorite', () => {
           enabled: true
         }))
       } as unknown as SkillSourceService,
-      { resolve: vi.fn(async () => bundle) } as unknown as GithubSkillProvider,
+      { resolve: vi.fn(async () => bundle) } as unknown as GitSkillRepository,
       cache,
       () => 2_000,
       12,
@@ -238,7 +238,7 @@ describe('Server Skill favorite', () => {
       {} as SkillSourceService,
       {
         resolve: vi.fn(async () => bundle)
-      } as unknown as GithubSkillProvider,
+      } as unknown as GitSkillRepository,
       '/unused'
     );
 
@@ -273,7 +273,7 @@ describe('Server Skill favorite', () => {
       { raw: { execute } } as unknown as MysqlServerDatabase,
       { authorize: vi.fn(async () => ({ allowed: true })) } as unknown as AuthorizationService,
       {} as SkillSourceService,
-      {} as GithubSkillProvider,
+      {} as GitSkillRepository,
       '/unused',
       () => 3_000
     );
