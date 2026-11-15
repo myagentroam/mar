@@ -556,6 +556,92 @@ describe('unified Session image resources', () => {
     }
   );
 
+  it.each([false, true])(
+    'continues after a PNG checksum failure without publishing bad pixels (codeMode=%s)',
+    async (codeMode) => {
+      const { home, session } = await fixture();
+      const malformed = Buffer.from(pixel, 'base64');
+      malformed.writeUInt32BE(0, malformed.length - 4);
+      await writeFile(join(home, 'malformed.png'), malformed);
+      await writeFile(join(home, 'pixel.png'), Buffer.from(pixel, 'base64'));
+      const model: AgentModelConfiguration = {
+        id: 'vision',
+        name: 'Vision',
+        protocol: 'OPENAI_RESPONSES',
+        modelId: 'vision',
+        baseUrl: 'https://example.test',
+        apiKey: new SecretValue('test'),
+        contextWindowTokens: 100_000,
+        maxOutputTokens: 1000,
+        inputCapabilities: ['TEXT', 'IMAGE'],
+        outputCapabilities: ['TEXT'],
+        reasoningEfforts: ['low'],
+        defaultReasoningEffort: 'low',
+        enabled: true,
+        hostedWebSearch: false,
+        useResourceUrl: true,
+        codeMode
+      };
+      const requests: ModelRequest[] = [];
+      const publish = vi.fn(async () => ({ url, urlExpiresAt: 1 }));
+      const agent = await createAgentWithAdapter(
+        {
+          mode: 'normal',
+          models: [model],
+          host: new LocalAgentHost({
+            homeDirectory: home,
+            workspace: home,
+            publishModelResource: publish
+          })
+        },
+        () => ({
+          configuration: model,
+          async *start(request) {
+            requests.push(JSON.parse(JSON.stringify(request)));
+            if (requests.length <= 2) {
+              const path = requests.length === 1 ? 'malformed.png' : 'pixel.png';
+              yield {
+                type: 'client_tool.call' as const,
+                callId: `view-${requests.length}`,
+                name: codeMode ? 'code_exec' : 'view_image',
+                arguments: codeMode
+                  ? {
+                      code: `observe.result(await tools.view_image({path:${JSON.stringify(path)}}));`
+                    }
+                  : { path }
+              };
+              yield { type: 'completed' as const, reason: 'tool_use' as const };
+            } else {
+              yield { type: 'text.completed' as const, itemId: 'answer', text: 'recovered' };
+              yield { type: 'completed' as const, reason: 'completed' as const };
+            }
+          }
+        })
+      );
+      try {
+        const live = await agent.openSession(session.id);
+        expect(await live.run({ prompt: 'inspect' }).result()).toMatchObject({
+          status: 'completed'
+        });
+        expect(requests).toHaveLength(3);
+        const failed = requests[1]!.messages.find(
+          (message) => message.role === 'tool' && message.callId === 'view-1'
+        );
+        expect(failed).toMatchObject({ isError: true });
+        expect(failed!.content).toContain('MAR_AGENT_IMAGE_INCOMPLETE');
+        expect(failed!.content).toContain('Repair or recreate');
+        expect(requests[1]!.messages.every((message) => !message.images?.length)).toBe(true);
+        const recovered = requests[2]!.messages.find(
+          (message) => message.role === 'tool' && message.callId === 'view-2'
+        );
+        expect(recovered?.images).toEqual([expect.objectContaining({ url, urlExpiresAt: 1 })]);
+        expect(publish).toHaveBeenCalledTimes(1);
+      } finally {
+        await agent.dispose();
+      }
+    }
+  );
+
   it.each([
     { codeMode: false, partial: false },
     { codeMode: true, partial: false },
