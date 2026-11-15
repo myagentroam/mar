@@ -438,7 +438,7 @@ describe('Claude events and approvals', () => {
     await expect(
       execute.executeNodeOperation('session.get', { sessionId: 'native-session-1' })
     ).resolves.toMatchObject({
-      session: { id: 'native-session-1', activity: 'MANAGED_ACTIVE' }
+      session: { id: 'native-session-1', activity: 'RUNNING' }
     });
     await execute.executeNodeOperation('run.approval.decide', {
       runId: 'run-1',

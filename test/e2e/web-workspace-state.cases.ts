@@ -192,7 +192,7 @@ async function prepareDescendantTree(
     parentSessionId: index === 1 ? null : `tree-${index - 1}`,
     title: `树会话 ${index}`,
     runner: 'codex',
-    activity: index === 3 ? 'MANAGED_ACTIVE' : 'IDLE',
+    activity: index === 3 ? 'RUNNING' : 'IDLE',
     status: index === 3 ? 'RUNNING' : 'IDLE',
     lastActivityAt: 0
   });
@@ -1301,7 +1301,7 @@ test('Main and Aside keep independent session watches through width constraints 
     runner: 'codex',
     externalSessionId: `native-${index}`,
     customTitle: `双工作面会话 ${index}`,
-    activity: 'MANAGED_ACTIVE',
+    activity: 'RUNNING',
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   }));
   const watches: { sessionId: string; method: string; mode?: string; position?: string }[] = [];
@@ -1878,7 +1878,7 @@ for (const language of [
         [],
         'GIT_WORKSPACE',
         true,
-        'MANAGED_ACTIVE'
+        'RUNNING'
       );
       await page.addInitScript(
         (locale) => localStorage.setItem('mar.locale.v2', locale),

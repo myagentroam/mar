@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam/server-core",
-  "version": "0.13.21",
+  "version": "0.13.22",
   "private": true,
   "type": "module",
   "files": [
@@ -499,11 +499,6 @@
       "development": "./src/mcp-service.ts",
       "types": "./dist/mcp-service.d.ts",
       "import": "./dist/mcp-service.js"
-    },
-    "./github-skill-provider": {
-      "development": "./src/github-skill-provider.ts",
-      "types": "./dist/github-skill-provider.d.ts",
-      "import": "./dist/github-skill-provider.js"
     },
     "./git-skill-repository": {
       "development": "./src/git-skill-repository.ts",

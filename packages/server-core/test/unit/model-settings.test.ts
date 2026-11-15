@@ -59,6 +59,29 @@ describe('model settings documents', () => {
       );
     }
   );
+  it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
+    'round-trips an inline-key SOCKS5 proxy for %s and rejects other URL schemes',
+    (protocol) => {
+      const socks5Url = 'socks5://proxy-user:proxy-password@proxy.example.test:1080';
+      const settings = modelSettingsFromInput({ protocol, hostedWebSearch: false, socks5Url });
+
+      expect(settings.socks5Url).toBe(socks5Url);
+      expect(parseStoredModelSettings(protocol, JSON.stringify(settings)).socks5Url).toBe(
+        socks5Url
+      );
+      expect(() =>
+        parseModelSettings(protocol, { ...settings, socks5Url: 'https://proxy.test' })
+      ).toThrow('MAR_AGENT_MODEL_CONFIG_INVALID');
+      expect(() =>
+        validateModelSettingsTarget(
+          protocol,
+          protocol === 'OPENAI_RESPONSES' ? 'https://api.openai.com/v1' : 'https://gateway.test',
+          { type: 'CREDENTIAL_REF', credentialId: 'credential' },
+          settings
+        )
+      ).toThrow('MAR_AGENT_MODEL_CONFIG_INVALID');
+    }
+  );
   it('keeps the full model identifier in its unique setting key', () => {
     expect(modelSettingsKey('a'.repeat(128))).toBe(`mar_agent_model_config:${'a'.repeat(128)}`);
   });

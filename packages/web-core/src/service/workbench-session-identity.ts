@@ -8,7 +8,7 @@ export function replaceSessionIdentity(
     readonly selectedSessionId: Readonly<Ref<string | undefined>>;
     readonly setSelectedSessionId: (id: string | undefined) => void;
     readonly currentSelectionRevision: () => number;
-    readonly preserveManagedActive: (current: Session | undefined, next: Session) => Session;
+    readonly preserveRunning: (current: Session | undefined, next: Session) => Session;
     readonly mergeSessions: (sessions: readonly Session[]) => void;
     readonly transferSubmission: (previousId: string, nextId: string) => void;
   },
@@ -16,7 +16,7 @@ export function replaceSessionIdentity(
   next: Session
 ): void {
   const current = options.sessions.value.find((session) => session.id === previousId);
-  const value = options.preserveManagedActive(current, next);
+  const value = options.preserveRunning(current, next);
   const wasSelected = options.selectedSessionId.value === previousId;
   const selectionRevision = options.currentSelectionRevision();
   options.mergeSessions([value]);
@@ -59,7 +59,7 @@ export function createWorkbenchSessionIdentity(input: {
     selectedSessionId,
     setSelectedSessionId,
     currentSelectionRevision,
-    preserveManagedActive,
+    preserveRunning,
     mergeSessions,
     removeSessionExact
   } = input.projection;
@@ -94,7 +94,7 @@ export function createWorkbenchSessionIdentity(input: {
         selectedSessionId,
         setSelectedSessionId: setSelectedSessionId,
         currentSelectionRevision: currentSelectionRevision,
-        preserveManagedActive: preserveManagedActive,
+        preserveRunning: preserveRunning,
         mergeSessions,
         transferSubmission: (oldId, nextId) =>
           transferSessionSubmission(nodeId, workspaceId, oldId, nextId)

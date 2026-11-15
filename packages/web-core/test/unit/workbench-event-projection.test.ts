@@ -40,6 +40,60 @@ function segmentPage(turns: ReturnType<typeof turn>[], nextCursor: string | null
 }
 
 describe('Workbench Event Projection', () => {
+  it.each([false, true])(
+    'observes selected RUNNING sessions without ownership fields while preserving requested stop %s',
+    (requestedStop) => {
+      const selectedSessionId = ref('session-1');
+      const owner = createRunService(selectedSessionId);
+      owner.acceptRun({
+        id: 'run-1',
+        sessionId: selectedSessionId.value,
+        status: 'RUNNING'
+      } as AgentRun);
+      owner.settleSessionRuns(selectedSessionId.value, requestedStop);
+      const observeSessionRunning = vi.fn(owner.observeSessionRunning);
+      const mergeSessions = vi.fn();
+      const service = createWorkbenchEventProjectionService({
+        workspaceTarget: workspaceTargetRef({ value: 'node-1' }),
+        selectedSessionId,
+        mergeSessions,
+        settleSessionRuns: owner.settleSessionRuns,
+        observeSessionRunning
+      } as never);
+      const session: Session = {
+        id: selectedSessionId.value,
+        workspaceId: 'workspace-1',
+        runner: 'mar-agent',
+        activity: 'RUNNING'
+      };
+      service.apply({
+        nodeId: 'node-2',
+        sequence: 1,
+        category: 'session',
+        payload: { session }
+      });
+      service.apply({
+        nodeId: 'node-1',
+        sequence: 2,
+        category: 'session',
+        payload: { session: { ...session, id: 'session-2' } }
+      });
+      expect(observeSessionRunning).not.toHaveBeenCalled();
+      expect(owner.sessionInterruptionSettled(session.id)).toBe(true);
+
+      service.apply({
+        nodeId: 'node-1',
+        sequence: 3,
+        category: 'session',
+        payload: { session }
+      });
+      expect(observeSessionRunning).toHaveBeenCalledExactlyOnceWith(session.id);
+      expect(mergeSessions).toHaveBeenLastCalledWith([session]);
+      expect(owner.sessionInterruptionSettled(session.id)).toBe(requestedStop);
+      expect(owner.runs.value).toEqual([]);
+    }
+  );
+
   it('caches a selected native child queue without requiring that child in the Workspace list', () => {
     const cacheQueue = vi.fn();
     const mergeQueue = vi.fn();
@@ -125,7 +179,7 @@ describe('Workbench Event Projection', () => {
       mergeQueue: vi.fn(),
       mergeSessions: vi.fn(),
       settleSessionRuns: () => false,
-      observeManagedSessionActive: vi.fn(),
+      observeSessionRunning: vi.fn(),
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
@@ -166,7 +220,7 @@ describe('Workbench Event Projection', () => {
       mergeQueue: vi.fn(),
       mergeSessions,
       settleSessionRuns: () => false,
-      observeManagedSessionActive: vi.fn(),
+      observeSessionRunning: vi.fn(),
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
@@ -227,7 +281,7 @@ describe('Workbench Event Projection', () => {
       mergeQueue: vi.fn(),
       mergeSessions: vi.fn(),
       settleSessionRuns: () => false,
-      observeManagedSessionActive: vi.fn(),
+      observeSessionRunning: vi.fn(),
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
@@ -285,7 +339,7 @@ describe('Workbench Event Projection', () => {
       mergeQueue,
       mergeSessions: vi.fn(),
       settleSessionRuns: () => false,
-      observeManagedSessionActive: vi.fn(),
+      observeSessionRunning: vi.fn(),
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
@@ -449,7 +503,7 @@ describe('Workbench Event Projection', () => {
           id: 'session-1',
           workspaceId: 'workspace-1',
           runner: 'codex',
-          activity: 'MANAGED_ACTIVE'
+          activity: 'RUNNING'
         }
       ]
     };
@@ -478,7 +532,7 @@ describe('Workbench Event Projection', () => {
         sessions.value = [...incoming];
       },
       settleSessionRuns: () => false,
-      observeManagedSessionActive: vi.fn(),
+      observeSessionRunning: vi.fn(),
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
@@ -603,7 +657,7 @@ describe('Workbench Event Projection', () => {
             id: 'session-1',
             workspaceId: 'workspace-1',
             runner: 'mar-agent',
-            activity: 'MANAGED_ACTIVE'
+            activity: 'RUNNING'
           }
         ]
       };
@@ -631,8 +685,8 @@ describe('Workbench Event Projection', () => {
           sessions.value = [
             selectedSessionId === next.id &&
             hasActiveRun &&
-            sessions.value[0]?.activity === 'MANAGED_ACTIVE'
-              ? { ...next, activity: 'MANAGED_ACTIVE' }
+            sessions.value[0]?.activity === 'RUNNING'
+              ? { ...next, activity: 'RUNNING' }
               : next
           ];
         },
@@ -642,7 +696,7 @@ describe('Workbench Event Projection', () => {
           runs.value = [];
           return settled;
         },
-        observeManagedSessionActive: vi.fn(),
+        observeSessionRunning: vi.fn(),
         updateContext: vi.fn(),
         syncTurnStatus: vi.fn(),
         cacheRun: vi.fn(),

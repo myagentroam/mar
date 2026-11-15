@@ -278,7 +278,7 @@ describe('Claude session discovery, resumption, and projection', () => {
       expect(resumed).toMatchObject({
         session: {
           id: 'cli-session',
-          activity: 'MANAGED_ACTIVE',
+          activity: 'RUNNING',
           control: { level: 'MANAGED' },
           modelId: 'opus',
           effort: 'xhigh',

@@ -787,6 +787,7 @@ describe('maragent CLI', () => {
             protocol: 'ANTHROPIC_MESSAGES',
             baseUrl: 'https://example.test',
             apiKey: 'never-print-me',
+            socks5Url: 'socks5://never-print-user:never-print-password@proxy.invalid:1080',
             modelId: 'coding',
             contextWindowTokens: 200000,
             maxOutputTokens: 4096,
@@ -806,6 +807,8 @@ describe('maragent CLI', () => {
     );
     expect(stdout).toContain('coding');
     expect(stdout).not.toContain('never-print-me');
+    expect(stdout).not.toContain('never-print-password');
+    expect(stdout).not.toContain('proxy.invalid');
   });
 
   it.each([true, false])(
@@ -965,6 +968,9 @@ describe('maragent CLI', () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     expect(JSON.parse(raw).models[0]).not.toHaveProperty('responsesEncoding');
     expect(JSON.parse(raw).models[0]).not.toHaveProperty('highDensityCompaction');
+    const proxyCatalog = JSON.parse(raw);
+    proxyCatalog.models[0].socks5Url = 'socks5://fixture-user:fixture-password@proxy.invalid:1080';
+    await writeFile(path, JSON.stringify(proxyCatalog));
     await execute(
       process.execPath,
       [
@@ -985,7 +991,8 @@ describe('maragent CLI', () => {
         expect.objectContaining({
           reasoningEfforts: ['low'],
           defaultReasoningEffort: 'low',
-          codeMode: false
+          codeMode: false,
+          socks5Url: proxyCatalog.models[0].socks5Url
         })
       ]
     });

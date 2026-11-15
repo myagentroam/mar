@@ -564,7 +564,7 @@ test('New sessions open Composer directly and submit settings with the first mes
         runner: 'codex',
         runnerTitle: '分析这张图片',
         externalSessionId: 'session-created',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities: ['history.read', 'turn.steer'] }
       },
       run: {
@@ -585,7 +585,7 @@ test('New sessions open Composer directly and submit settings with the first mes
         runner: 'codex',
         runnerTitle: '分析这张图片',
         externalSessionId: 'session-created',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities: ['history.read', 'turn.steer'] }
       }
     })
@@ -663,7 +663,7 @@ test('New sessions open Composer directly and submit settings with the first mes
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'session-created',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities: ['history.read', 'turn.steer'] }
       },
       run: {
@@ -1724,7 +1724,7 @@ test('Composer displays Node-reported context usage and compacts only after conf
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities: ['history.read', 'turn.interrupt'] }
       },
       run: {

@@ -153,25 +153,31 @@ export const execWaitToolDefinition: ClientToolDefinition = {
 
 /** Validate the public entry points before delegating to the single process manager. */
 export function execToolInput(name: 'exec' | 'exec_wait', value: unknown): ExecInput {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return invalidExecInput();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return invalidExecInput('Expected an object containing tool arguments.');
   const input = value as Record<string, unknown>;
   const allowed =
     name === 'exec'
       ? ['command', 'cwd', 'login', 'timeoutMs', 'yieldMs']
       : ['processId', 'action', 'yieldMs', 'data'];
-  if (Object.keys(input).some((key) => !allowed.includes(key))) return invalidExecInput();
+  if (Object.keys(input).some((key) => !allowed.includes(key)))
+    return invalidExecInput(`Unexpected fields; expected only: ${allowed.join(', ')}.`);
   if (name === 'exec') return parseExecInput(input);
   const action = input.action ?? 'poll';
-  if (!['poll', 'write', 'cancel'].includes(String(action))) return invalidExecInput();
+  if (typeof action !== 'string' || !['poll', 'write', 'cancel'].includes(action))
+    return invalidExecInput("Field 'action' must be one of: poll, write, cancel.");
   return parseExecInput({ ...input, action });
 }
 
 export function parseExecInput(value: unknown): ExecInput {
-  if (!value || typeof value !== 'object') return invalidExecInput();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return invalidExecInput('Expected an object containing tool arguments.');
   const input = value as Record<string, unknown>;
-  const action = input.action == null && typeof input.command === 'string' ? 'start' : input.action;
-  if (!['start', 'poll', 'write', 'cancel'].includes(String(action))) return invalidExecInput();
+  const action = input.action ?? 'start';
+  if (typeof action !== 'string' || !['start', 'poll', 'write', 'cancel'].includes(action))
+    return invalidExecInput("Field 'action' must be one of: start, poll, write, cancel.");
   const yieldMs = optionalBoundedInteger(
+    'yieldMs',
     input.yieldMs,
     0,
     action === 'poll'
@@ -179,12 +185,14 @@ export function parseExecInput(value: unknown): ExecInput {
       : TOOL_EXECUTION_LIMITS.execMaxYieldMs
   );
   if (action === 'start') {
-    if (typeof input.command !== 'string' || input.command.trim() === '') return invalidExecInput();
+    if (typeof input.command !== 'string' || input.command.trim() === '')
+      return invalidExecInput("Field 'command' must be a nonblank string.");
     if (input.cwd !== undefined && input.cwd !== null && typeof input.cwd !== 'string')
-      return invalidExecInput();
+      return invalidExecInput("Field 'cwd' must be a string.");
     if (input.login !== undefined && input.login !== null && typeof input.login !== 'boolean')
-      return invalidExecInput();
+      return invalidExecInput("Field 'login' must be a boolean.");
     const timeoutMs = optionalBoundedInteger(
+      'timeoutMs',
       input.timeoutMs,
       1,
       TOOL_EXECUTION_LIMITS.execMaxTimeoutMs
@@ -198,7 +206,8 @@ export function parseExecInput(value: unknown): ExecInput {
       ...(yieldMs === undefined ? {} : { yieldMs })
     };
   }
-  if (typeof input.processId !== 'string' || input.processId === '') return invalidExecInput();
+  if (typeof input.processId !== 'string' || input.processId === '')
+    return invalidExecInput("Field 'processId' must be a nonempty string.");
   if (action === 'poll')
     return {
       action,
@@ -206,22 +215,25 @@ export function parseExecInput(value: unknown): ExecInput {
       yieldMs: yieldMs ?? TOOL_EXECUTION_LIMITS.execDefaultYieldMs
     };
   if (action === 'write') {
-    if (typeof input.data !== 'string') return invalidExecInput();
+    if (typeof input.data !== 'string')
+      return invalidExecInput("Field 'data' must be a string for action 'write'.");
     return { action, processId: input.processId, data: input.data };
   }
   return { action: 'cancel', processId: input.processId };
 }
 
 function optionalBoundedInteger(
+  field: 'yieldMs' | 'timeoutMs',
   value: unknown,
   minimum: number,
   maximum: number
 ): number | undefined {
   if (value === undefined || value === null) return undefined;
-  if (!Number.isInteger(value) || (value as number) < minimum) invalidExecInput();
+  if (!Number.isInteger(value) || (value as number) < minimum)
+    invalidExecInput(`Field '${field}' must be an integer at least ${minimum}.`);
   return Math.min(value as number, maximum);
 }
 
-function invalidExecInput(): never {
-  throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Exec input is invalid.');
+function invalidExecInput(message: string): never {
+  throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', message);
 }

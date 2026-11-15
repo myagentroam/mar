@@ -166,7 +166,7 @@ function openContext(event: MouseEvent): void {
           <span
             v-if="tree.parent.status !== 'IDLE'"
             class="mar-session-activity"
-            :class="tree.parent.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
+            :class="tree.parent.status === 'RUNNING' ? 'running' : 'tree-sleeping'"
             aria-hidden="true"
             ><i
           /></span>
@@ -279,7 +279,7 @@ function openContext(event: MouseEvent): void {
             <span
               v-if="row.node.status !== 'IDLE'"
               class="mar-session-activity"
-              :class="row.node.status === 'RUNNING' ? 'managed_active' : 'tree-sleeping'"
+              :class="row.node.status === 'RUNNING' ? 'running' : 'tree-sleeping'"
               aria-hidden="true"
               ><i />
             </span>

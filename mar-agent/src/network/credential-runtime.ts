@@ -1,4 +1,5 @@
 import { AgentError } from '../error.js';
+import { isValidSocks5ProxyUrl } from './http.js';
 import {
   SecretValue,
   type ModelCredentialProvider,
@@ -6,9 +7,14 @@ import {
   type ModelCredentialAcquireReason
 } from './credentials.js';
 
+/**
+ * Acquires and validates one request's credential snapshot. The caller owns the
+ * shared provider; this module owns only request-scoped waits and projections.
+ */
 export async function acquireModelCredential(
   configuration: {
     readonly apiKey?: SecretValue;
+    readonly socks5Url?: SecretValue | undefined;
     readonly credentialProvider?: ModelCredentialProvider;
   },
   reason: ModelCredentialAcquireReason,
@@ -36,7 +42,9 @@ export async function acquireModelCredential(
       credential.headers === null ||
       typeof credential.headers !== 'object' ||
       Array.isArray(credential.headers) ||
-      (credential.socks5Url !== undefined && !(credential.socks5Url instanceof SecretValue))
+      (credential.socks5Url !== undefined &&
+        (!(credential.socks5Url instanceof SecretValue) ||
+          !isValidSocks5ProxyUrl(credential.socks5Url.reveal())))
     )
       throw new AgentError(
         'MAR_AGENT_MODEL_CONFIG_INVALID',
@@ -50,7 +58,8 @@ export async function acquireModelCredential(
     revision: 0,
     expiresAt: Number.MAX_SAFE_INTEGER,
     bearer: configuration.apiKey,
-    headers: {}
+    headers: {},
+    ...(configuration.socks5Url === undefined ? {} : { socks5Url: configuration.socks5Url })
   };
 }
 

@@ -73,7 +73,6 @@ describe.runIf(process.platform === 'darwin' && process.env['MAR_MACOS_NATIVE_TE
         configPath,
         'darwin',
         entrypoint,
-        [],
         browserPath
       );
       await command('/usr/bin/plutil', ['-lint', plist]);

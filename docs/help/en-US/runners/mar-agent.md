@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-15
 ---
 
 # Configure and Use MAR Agent
@@ -10,6 +10,8 @@ MAR Agent is built into Node and does not require an external Agent CLI. Every u
 See [Upgrade MyAgentRoam](../deployment/upgrade.md) for coordinated version changes and older Node upgrade restrictions.
 
 ## Configure models
+
+API-key models using OpenAI Responses or Anthropic Messages can configure an independent **SOCKS5 proxy** using `socks5://[username:password@]host:port`. URL-encode special characters in credentials. Editing fetches the saved proxy on demand; leaving it unchanged preserves it, clearing and saving selects a direct connection, and duplicated models inherit an editable copy. The execution Node connects to the proxy: `localhost` means that Node, not your browser or Server. Proxy failures never fall back to a direct connection. This setting applies to Responses HTTP/1.1, HTTP/2 and WebSocket, and to Anthropic requests. The Node must advertise model SOCKS5 support; upgrade it otherwise. Subscription models always use their OAuth credential’s proxy, without a model-level override. The complete URL is fetched only for authorized editing and never enters model lists, logs or session records; do not share screenshots containing proxy passwords. Auxiliary tasks use the proxy of their selected model. Tools such as Web Fetch do not inherit model proxies.
 
 **Context GC** is enabled by default and can be turned off per model. When off, neither text nor image GC runs; automatic Compact and the image request hard limit still apply, and requests exceeding that limit are rejected. Disabling GC requires a Node that advertises support for the switch; older Nodes do not silently ignore it. Changes apply to subsequent executions.
 
@@ -196,6 +198,8 @@ Each Run selects only the first enabled image model available to the current use
 Codex can request transparent backgrounds and simple looping GIFs: 2–16 frames at 20–2000 ms per frame, defaulting to 9 frames at 200 ms. Each call saves one PNG or GIF; actual support depends on the configured model. Describe transparency or animation directly in your request. GIF originals preserve animation; static thumbnails do not verify the full animation.
 
 ## Code Mode tool orchestration
+
+For JSON tool calls, `code_exec` takes JavaScript source in `code`, for example `{"code":"observe.text(1);"}`. `apply_patch` takes the complete Patch text in `input`, including in `tools.apply_patch({ input: patchText })`; `patch` is not a supported field for new calls. When either tool is exposed as freeform, send its text directly without a JSON wrapper. Missing-field and type errors identify the required field or the expected and actual types without echoing argument values. Existing completed tool calls retain their recorded arguments during history replay and are not executed again.
 
 All six Agent collaboration tools support direct and programmatic calls. Code Mode Only exposes them through the cell without a separate dual-exposure setting. Child agents use the Code Mode setting of their selected model.
 

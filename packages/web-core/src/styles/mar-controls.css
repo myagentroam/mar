@@ -267,7 +267,7 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
   }
 }
 
-.mar-session-activity.managed_active i {
+.mar-session-activity.running i {
   background: var(--el-color-success);
 }
 .mar-session-activity.node-offline i {

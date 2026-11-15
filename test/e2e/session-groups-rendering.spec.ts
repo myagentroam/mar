@@ -156,17 +156,16 @@ for (const [width, theme, locale] of [
         expect(bounds.height).toBeLessThanOrEqual(28);
         expect(text.x + text.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
       }
-      const dots = page.locator('.mar-session-activity.managed_active i');
+      const dots = page.locator('.mar-session-activity.running i');
       await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
       await expect(dots).toHaveCount(2);
       for (const dot of await dots.all()) {
         await expect(dot).toHaveCSS('background-color', colors.running);
-        await expect(dot).toHaveCSS('width', '5px');
+        await expect(dot).toHaveCSS('width', '6px');
         await expect(dot).toHaveCSS('animation-name', 'none');
       }
       await page.emulateMedia({ reducedMotion: 'no-preference' });
-      for (const dot of await dots.all())
-        await expect(dot).toHaveCSS('animation-name', 'mar-run-glow');
+      for (const dot of await dots.all()) await expect(dot).toHaveCSS('animation-name', 'none');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       const unread = chats.locator('.session-unread-label').first();
       await expect(unread).toBeVisible();

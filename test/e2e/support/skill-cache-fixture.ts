@@ -10,7 +10,7 @@ import { SkillFavoriteService } from '../../../ee/server/src/skill/skill-favorit
 import type { MysqlServerDatabase } from '../../../ee/server/src/mysql/server-database.js';
 import type { AuthorizationService } from '../../../ee/server/src/rbac/authorization-service.js';
 import type { SkillSourceService } from '../../../ee/server/src/skill/skill-source-service.js';
-import type { GithubSkillProvider } from '../../../ee/server/src/skill/github-skill-provider.js';
+import type { GitSkillRepository } from '../../../ee/server/src/skill/git-skill-repository.js';
 import type { ResolvedSkillBundle } from '../../../packages/server-core/src/skill-bundle.js';
 import { prepareMysqlDatabase } from '../../../ee/server/src/mysql/connection.js';
 import {
@@ -164,7 +164,7 @@ export async function withSkillCacheFixture(
             locator: 'https://github.com/acme/skills'
           })
         } as unknown as SkillSourceService,
-        { resolve: async () => bundle(character) } as unknown as GithubSkillProvider,
+        { resolve: async () => bundle(character) } as unknown as GitSkillRepository,
         cache,
         now
       );

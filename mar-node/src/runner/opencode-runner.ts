@@ -494,7 +494,7 @@ export class OpenCodeRunner extends AbstractRunner<'opencode'> {
     context: RunnerSessionPresentationContext
   ): RunnerSessionPresentation {
     void capabilities;
-    const activity = context.managedActive ? ('MANAGED_ACTIVE' as const) : 'IDLE';
+    const activity = context.hasActiveRun ? ('RUNNING' as const) : 'IDLE';
     const runtimeCapabilities = [
       'history.read',
       'events.live',

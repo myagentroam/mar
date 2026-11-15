@@ -53,6 +53,7 @@ export interface NodeSummary {
       readonly serviceTiers?: readonly MarAgentResponsesServiceTier[];
       readonly namespacedTools?: boolean;
       readonly responsesHttpContinuation?: boolean;
+      readonly modelSocks5Proxy?: boolean;
       readonly httpVersions: readonly ('1.1' | '2')[];
     };
   };

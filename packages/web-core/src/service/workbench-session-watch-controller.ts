@@ -491,7 +491,7 @@ export function createWorkbenchSessionWatchController(options: {
       previous !== undefined &&
       current !== undefined &&
       previous.id === options.selectedSessionId.value &&
-      sessionActivity(previous) === 'MANAGED_ACTIVE' &&
+      sessionActivity(previous) === 'RUNNING' &&
       current.id === previous.id &&
       canWatch(current)
     )

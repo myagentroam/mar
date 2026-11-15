@@ -1,5 +1,6 @@
 import { permissionStopFromError } from '../permissions.js';
 import { RuntimeResourceHandles } from '../runtime-resource-handles.js';
+import { textToolInputError } from '../shared/text-input.js';
 import { AgentError, describeAgentError } from '../../error.js';
 import { truncateModelText } from '../../runtime/token-budget.js';
 import type {
@@ -232,11 +233,8 @@ export class CodeCells {
             'code' in value
           ? value.code
           : undefined;
-    if (
-      typeof source !== 'string' ||
-      !source.trim() ||
-      Buffer.byteLength(source) > limits.codeMaxInputBytes
-    )
+    if (typeof source !== 'string') throw textToolInputError('code', value);
+    if (!source.trim() || Buffer.byteLength(source) > limits.codeMaxInputBytes)
       throw new AgentError(
         'MAR_AGENT_TOOL_INPUT_INVALID',
         'Code must be a nonempty bounded JavaScript string.'

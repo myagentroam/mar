@@ -26,6 +26,8 @@ describe('Node capability version reporting', () => {
         responsesHttpContinuation: true,
         conversationModels: true,
         contextGcControl: true,
+        unifiedCompactControl: true,
+        modelSocks5Proxy: true,
         resourceInput: true,
         serviceTiers: ['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']
       });

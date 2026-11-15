@@ -555,7 +555,7 @@ class SubagentAdapter implements ModelAdapter {
           callId: 'child-move',
           name: 'apply_patch',
           arguments: {
-            patch:
+            input:
               '*** Begin Patch\n*** Update File: move.txt\n*** Move to: moved.txt\n*** End Patch'
           }
         };
@@ -753,9 +753,9 @@ class ToolRecoveryAdapter implements ModelAdapter {
         name: 'apply_patch',
         arguments:
           this.calls === 1
-            ? { patch: 'invalid patch' }
+            ? { input: 'invalid patch' }
             : {
-                patch:
+                input:
                   '*** Begin Patch\n*** Update File: input.txt\n@@\n-before\n+after\n*** End Patch'
               }
       };
@@ -2428,7 +2428,7 @@ describe('agent runtime', () => {
     });
     await expect(
       host.executeTool(
-        { name: 'apply_patch', arguments: { patch: '*** Begin Patch\n*** End Patch' } },
+        { name: 'apply_patch', arguments: { input: '*** Begin Patch\n*** End Patch' } },
         {
           mode: 'run',
           signal: new AbortController().signal,

@@ -96,6 +96,8 @@ Options:
 
 The analyzer streams events-*.jsonl and does not print message bodies, tool payloads,
 provider-private items, hashes, or credentials.
+Session roots follow index.json to select legacy or current V2 storage; standalone
+event segment directories also work. Unrecognized or unreadable storage is an error.
 Cache hit rate is sum(cacheReadTokens) / sum(contextInputTokens); total tokens are
 sum(inputTokens) + sum(outputTokens).
 Code Mode concurrency uses overlapping tool execution intervals, not JavaScript source text.

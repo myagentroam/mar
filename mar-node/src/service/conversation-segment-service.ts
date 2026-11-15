@@ -95,13 +95,14 @@ export class ConversationSegmentService {
     ) => Promise<ConversationHistoryPage>
   ) {}
 
+  /** Project the already bounded Turn page; only initial snapshots impose a Segment limit. */
   projectInitial(
     session: NodeAgentSession,
     page: ConversationHistoryPage,
-    limit: number
+    limit?: number
   ): ConversationSegmentPage {
     const all = page.turns.flatMap(conversationSegments);
-    const segments = all.slice(-limit);
+    const segments = limit === undefined ? all : all.slice(-limit);
     return {
       snapshotSequence: page.snapshotSequence,
       source: page.source,

@@ -1084,7 +1084,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     });
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
-  const managedStatus = page.locator('.mar-session-activity.managed_active');
+  const managedStatus = page.locator('.mar-session-activity.running');
   await expect(managedStatus).toHaveCount(1);
   await expect(managedStatus.first()).toHaveAttribute('role', 'img');
   await expect(managedStatus.first()).toHaveAttribute('aria-label', '运行中');
@@ -1341,7 +1341,7 @@ test('Page-level Workbench WebSocket coalesces high-frequency events without tur
       runner: 'codex',
       externalSessionId: 'vscode-thread-1',
       runnerTitle: '推送后的会话标题',
-      activity: 'MANAGED_ACTIVE',
+      activity: 'RUNNING',
       control: {
         level: 'MANAGED',
         capabilities: ['history.read', 'events.live', 'turn.start', 'turn.steer', 'turn.interrupt']

@@ -3,6 +3,36 @@ import { runtimeModelPayload } from '../../src/run-model-payload.js';
 import { hostedRuntimeModels } from '../../src/hosted-conversation-context.js';
 
 describe('legacy model delivery without Node capability evidence', () => {
+  it.each(['selected', 'catalog'])(
+    'refuses a SOCKS5 proxy on the %s model without capability evidence',
+    async (location) => {
+      const direct = { id: 'direct', gcEnabled: true };
+      const proxied = { id: 'proxied', socks5Url: 'socks5://proxy.invalid:1080' };
+      const models = {
+        runtimeForUser: async () => (location === 'selected' ? proxied : direct),
+        runtimeConfigurationsForUser: async () =>
+          location === 'catalog' ? [direct, proxied] : [direct]
+      };
+      await expect(
+        runtimeModelPayload({
+          userId: 1,
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          selectedModelId: 'direct',
+          marAgentModels: models as never
+        })
+      ).rejects.toThrow('CAPABILITY_VERSION_UNSUPPORTED');
+      await expect(
+        hostedRuntimeModels({
+          userId: 1,
+          nodeId: 'node',
+          workspaceId: 'workspace',
+          selectedModelId: 'direct',
+          models: models as never
+        })
+      ).rejects.toThrow('CAPABILITY_VERSION_UNSUPPORTED');
+    }
+  );
   it.each([undefined, true, false])('rejects only a disabled GC setting: %s', async (gcEnabled) => {
     const selected = gcEnabled === undefined ? { id: 'm' } : { id: 'm', gcEnabled };
     const models = {

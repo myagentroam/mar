@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentError } from '../error.js';
+import { isValidSocks5ProxyUrl } from '../network/http.js';
 
 import { SecretValue, type ModelCredentialProvider } from '../network/credentials.js';
 export { SecretValue } from '../network/credentials.js';
@@ -43,6 +44,7 @@ const modelFieldsSchema = z
     protocol: z.enum(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES']),
     baseUrl: z.string().url(),
     apiKey: z.string().min(1).max(16_384),
+    socks5Url: z.string().refine(isValidSocks5ProxyUrl, 'SOCKS5 proxy URL is invalid.').optional(),
     credentialProvider: z.never().optional(),
     credential: z.never().optional(),
     modelId: z.string().min(1).max(256),
@@ -83,7 +85,7 @@ const modelFieldsSchema = z
   .strip();
 
 function validateModelFields(
-  value: Omit<z.infer<typeof modelFieldsSchema>, 'apiKey' | 'credentialProvider'>,
+  value: Omit<z.infer<typeof modelFieldsSchema>, 'apiKey' | 'credentialProvider' | 'socks5Url'>,
   context: z.RefinementCtx
 ) {
   if (!value.inputCapabilities.includes('TEXT'))
@@ -138,6 +140,10 @@ const runtimeModelSchema = modelFieldsSchema
   .extend({
     // The direct SDK API accepts SecretValue or a live provider, not catalog strings.
     apiKey: z.instanceof(SecretValue).optional(),
+    socks5Url: z
+      .instanceof(SecretValue)
+      .refine((value) => isValidSocks5ProxyUrl(value.reveal()), 'SOCKS5 proxy URL is invalid.')
+      .optional(),
     credentialProvider: z
       .custom<ModelCredentialProvider>(
         (value) =>
@@ -158,11 +164,18 @@ const runtimeModelSchema = modelFieldsSchema
         code: 'custom',
         message: 'Exactly one model credential source is required.'
       });
+    if (value.socks5Url !== undefined && value.apiKey === undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['socks5Url'],
+        message: 'Model proxies require a static API key.'
+      });
   });
 
 export interface AgentModelConfiguration extends Omit<
   z.infer<typeof rawModelSchema>,
   | 'apiKey'
+  | 'socks5Url'
   | 'credential'
   | 'credentialProvider'
   | 'responsesPreviousResponseId'
@@ -175,6 +188,7 @@ export interface AgentModelConfiguration extends Omit<
   subagentModel?: boolean;
   useResourceUrl?: boolean;
   apiKey?: SecretValue;
+  socks5Url?: SecretValue;
   credentialProvider?: ModelCredentialProvider;
   /** Whether this Responses endpoint accepts native configuration_update input items. */
   responsesConfigurationUpdates?: boolean;
@@ -203,6 +217,7 @@ export function normalizeRuntimeModelConfiguration(input: unknown): AgentModelCo
     });
   const {
     apiKey,
+    socks5Url,
     credentialProvider,
     credential: _credential,
     responsesTransport,
@@ -212,6 +227,7 @@ export function normalizeRuntimeModelConfiguration(input: unknown): AgentModelCo
   return {
     ...model,
     ...(apiKey === undefined ? {} : { apiKey }),
+    ...(socks5Url === undefined ? {} : { socks5Url }),
     ...(credentialProvider === undefined ? {} : { credentialProvider }),
     ...(responsesTransport === undefined ? {} : { responsesTransport }),
     ...(responsesConfigurationUpdates === undefined ? {} : { responsesConfigurationUpdates })
@@ -281,6 +297,7 @@ export function parseModelCatalog(
     models: parsed.data.models.map(
       ({
         apiKey,
+        socks5Url,
         responsesTransport,
         responsesConfigurationUpdates,
         credentialProvider: _provider,
@@ -289,6 +306,7 @@ export function parseModelCatalog(
       }) => ({
         ...model,
         apiKey: new SecretValue(apiKey),
+        ...(socks5Url === undefined ? {} : { socks5Url: new SecretValue(socks5Url) }),
         ...(responsesConfigurationUpdates === undefined ? {} : { responsesConfigurationUpdates }),
         ...(responsesTransport === undefined ? {} : { responsesTransport })
       })

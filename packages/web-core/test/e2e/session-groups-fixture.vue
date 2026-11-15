@@ -124,7 +124,7 @@ const props = {
       ? 'Main project conversation'
       : 'Child collaboration with a long descriptive title',
   runnerIcon: () => '',
-  activity: () => 'MANAGED_ACTIVE',
+  activity: () => 'RUNNING',
   activityLabel: () => 'Working',
   activityDateTime: () => undefined,
   activityTitle: () => undefined,

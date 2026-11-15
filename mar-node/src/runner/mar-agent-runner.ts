@@ -367,7 +367,7 @@ export class MarAgentRunner extends AbstractRunner<'mar-agent'> {
     context: RunnerSessionPresentationContext
   ): RunnerSessionPresentation {
     void capabilities;
-    const activity = context.managedActive ? 'MANAGED_ACTIVE' : 'IDLE';
+    const activity = context.hasActiveRun ? 'RUNNING' : 'IDLE';
     const runtimeCapabilities = [
       'history.read',
       'events.live',

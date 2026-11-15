@@ -162,7 +162,7 @@ const asideSessions = computed(() =>
     return {
       sessionId,
       title: session?.title ?? sessionId,
-      active: session?.activity === 'MANAGED_ACTIVE'
+      active: session?.activity === 'RUNNING'
     };
   })
 );

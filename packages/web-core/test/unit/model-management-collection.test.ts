@@ -15,6 +15,24 @@ function deferred<T>() {
 }
 
 describe('model management collection', () => {
+  it('reads proxy details without caching or retaining a late response after disposal', async () => {
+    const pending = deferred<unknown>();
+    const request = vi.fn().mockReturnValue(pending.promise);
+    const collection = createModelManagementCollectionService(
+      request,
+      '/api/admin/mar-agent/models',
+      () => true
+    );
+    const reading = collection.connectionDetails('model/one');
+    expect(request).toHaveBeenCalledExactlyOnceWith(
+      '/api/admin/mar-agent/models/model%2Fone/connection',
+      { cache: 'no-store' }
+    );
+    collection.dispose();
+    pending.resolve({ details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' } });
+    await expect(reading).resolves.toBeUndefined();
+    expect(collection.models.value).toEqual([]);
+  });
   it('commits a model before refreshing and respects a revoked management scope', async () => {
     const commit = deferred<unknown>();
     let authorized = true;

@@ -55,7 +55,7 @@ export interface NativeSessionWatchOptions extends ConversationObservationOption
     session: NodeAgentSession,
     page: ConversationHistoryPage,
     unit: 'SEGMENT',
-    limit: number
+    limit?: number
   ) => unknown;
   readonly emitSession: (session: unknown) => void;
   readonly emitPage: (session: NodeAgentSession, page: ConversationHistoryPage) => void;
@@ -536,7 +536,7 @@ export class NativeSessionWatchService {
       if (!lease.ready) continue;
       const payload =
         lease.unit === 'SEGMENT'
-          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', INITIAL_SEGMENT_LIMIT)
+          ? this.options.projectInitialPage?.(session, page, 'SEGMENT')
           : page;
       if (payload === undefined) continue;
       this.options.emitWatchEvent?.({
@@ -565,7 +565,7 @@ export class NativeSessionWatchService {
       if (!lease.snapshotSent) continue;
       const payload =
         lease.unit === 'SEGMENT'
-          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', INITIAL_SEGMENT_LIMIT)
+          ? this.options.projectInitialPage?.(session, page, 'SEGMENT')
           : page;
       if (payload === undefined) continue;
       this.emitSnapshot(lease, session, payload);

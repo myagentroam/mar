@@ -61,7 +61,15 @@ function fixture(initialTurn: NodeConversationTurn) {
     resolve: vi.fn(async () => undefined),
     remember: vi.fn()
   } as unknown as NativeSessionProjectionService;
-  const history = vi.fn(async () => ({ turns: [initialTurn], nextCursor: null }));
+  const history = vi.fn(
+    async (
+      _session: unknown,
+      _input: { readonly cursor?: string; readonly limit?: number }
+    ): Promise<{ turns: NodeConversationTurn[]; nextCursor: string | null }> => ({
+      turns: [initialTurn],
+      nextCursor: null
+    })
+  );
   const catalog = new SessionCatalogService({
     database: () => database,
     nodeId: () => 'node',
@@ -94,6 +102,36 @@ const multiInputTurn = turn([first, steered]);
 afterEach(() => vi.restoreAllMocks());
 
 describe('SessionCatalogService rollback target selection', () => {
+  it('finds an older user message through history pagination rather than limiting rollback to the latest Turn', async () => {
+    const f = fixture(multiInputTurn);
+    const latest = {
+      ...multiInputTurn,
+      id: 'turn-3',
+      rewind: { before: 'turn-2', after: 'turn-3' }
+    };
+    f.history.mockResolvedValueOnce({ turns: [latest], nextCursor: 'older' });
+    try {
+      await f.catalog.operations()['session.rollback']!({
+        sessionId: f.session.id,
+        turnId: multiInputTurn.id,
+        itemId: 'first-user-item',
+        boundary: 'turn-1'
+      });
+      expect(f.history.mock.calls.map((call) => call[1])).toEqual([
+        { limit: 100 },
+        { limit: 100, cursor: 'older' }
+      ]);
+      expect(f.runner.rollbackNative).toHaveBeenCalledExactlyOnceWith(
+        f.session,
+        'turn-1',
+        'turn-2',
+        undefined
+      );
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('forwards the selected steered message identity to the Runner adapter', async () => {
     const f = fixture(multiInputTurn);
     try {

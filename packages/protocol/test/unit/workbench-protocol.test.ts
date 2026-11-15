@@ -26,6 +26,7 @@ import {
   marAgentNodeModelSummarySchema,
   marAgentRuntimeModelConfigurationSchema,
   agentRunStatusSchema,
+  sessionActivityStateSchema,
   runEventSchema,
   runPerformanceSchema,
   runnerUsageSchema,
@@ -49,6 +50,13 @@ import {
 } from '../../src/index.js';
 
 describe('Workbench protocol contracts', () => {
+  it('accepts only running and idle Session activity without the legacy managed state', () => {
+    expect(sessionActivityStateSchema.parse('RUNNING')).toBe('RUNNING');
+    expect(sessionActivityStateSchema.parse('IDLE')).toBe('IDLE');
+    expect(sessionActivityStateSchema.safeParse('MANAGED_ACTIVE').success).toBe(false);
+    expect(sessionActivityStateSchema.safeParse('SLEEPING').success).toBe(false);
+  });
+
   it('preserves the optional Goal message marker while accepting ordinary Agent messages', () => {
     const operation = { action: 'SEND', targets: [], detail: { message: 'Inspect' } };
     expect(agentOperationPresentationSchema.parse(operation)).toEqual(operation);

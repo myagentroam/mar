@@ -570,7 +570,7 @@ describe('bounded marctl Session views', () => {
         sessionId: session.id,
         workspaceId: workspace.id
       });
-      expect(generic.session).toHaveProperty('activity', 'MANAGED_ACTIVE');
+      expect(generic.session).toHaveProperty('activity', 'RUNNING');
       expect(generic.session).not.toHaveProperty('recentActivity');
       const watch = project('conversation', { event });
       expect(watch).toMatchObject({

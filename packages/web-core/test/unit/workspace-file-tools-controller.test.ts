@@ -239,6 +239,29 @@ it.each([
 );
 
 describe('Workspace file tools surface lifecycle', () => {
+  it('refreshes visible Changes locally before attempting a background remote update', async () => {
+    let finishLocal!: (value: unknown) => void;
+    const local = new Promise((resolve) => {
+      finishLocal = resolve;
+    });
+    const request = vi.fn(async (path: string) =>
+      path.includes('/git/fetch') ? { fetchFailed: false, updated: false } : local
+    );
+    const f = fixture(request);
+    try {
+      f.controller.refreshVisible('changes');
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request.mock.calls[0]![0]).toContain('/changes?');
+      finishLocal({ changes: [{ path: 'local.txt' }] });
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      expect(request.mock.calls[1]![0]).toContain('/git/fetch?');
+      expect(f.controller.git.changes.value).toEqual({ changes: [{ path: 'local.txt' }] });
+    } finally {
+      f.controller.dispose();
+      f.scope.stop();
+    }
+  });
+
   it('loads the visible Git tool once and refreshes on revisions and target changes', async () => {
     const f = fixture();
     const changes = vi.spyOn(f.controller.git, 'loadChanges').mockResolvedValue(undefined);

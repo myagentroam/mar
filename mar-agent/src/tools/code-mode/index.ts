@@ -48,7 +48,7 @@ export const codeModeToolDefinition: ClientToolDefinition = {
 - Observe only evidence needed for the next decision or verification: use observe.result for original results, observe.text for derived values, and observe.image for image values. Preserve source and failure details needed for reasoning; keep other intermediate data in the cell.
 - Single-tool cells are valid. Keep loops and retries bounded, and do not blindly replay operations with side effects.
 - Evaluates source in a fresh restricted ECMAScript runtime with top-level await and Promise.all. It is not Node.js or a browser. JavaScript globals do not survive between cells; bounded JSON state is available through state.
-- Accepts JavaScript source text. When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. Do not add another JSON wrapper, quoted string, or markdown code fence inside the source.
+- Accepts JavaScript source text. When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. JSON input example: \`{"code":"observe.text(1);"}\`. Do not add another JSON wrapper, quoted string, or markdown code fence inside the source.
 - Keep embedded commands, patches and source in JSON-escaped double-quoted strings when they contain backticks or literal \${...}; escape newlines as \\n, never put literal line breaks inside single- or double-quoted JS strings. JavaScript template literals would interpolate their contents before the tool runs. Do not paste Python literals such as None into JavaScript expressions.
 - Use only standard ECMAScript built-ins and the explicitly documented tools, observe, state, catalog and cell namespaces. Do not use Node.js, browser or Web APIs. Module imports, filesystem and network APIs are unavailable. Obtain external capabilities only through available tools. Use tools.exec to start managed processes when permitted; follow exec_wait's calling guidance for process control.
 
@@ -85,13 +85,15 @@ Inspect before a dependent edit; successful await needs no invented success flag
 const inspected = await tools.read({ reads: [{ path: "source.txt" }] });
 const sourceText = inspected.data.results[0].text;
 if (!sourceText?.includes("original=1")) throw new Error("Unexpected source");
-const patched = await tools.apply_patch({ patch: "*** Begin Patch\\n*** Update File: source.txt\\n@@\\n original=1\\n+updated=2\\n*** End Patch" });
+const patched = await tools.apply_patch({ input: "*** Begin Patch\\n*** Update File: source.txt\\n@@\\n original=1\\n+updated=2\\n*** End Patch" });
 observe.result(patched);
 \`\`\``,
   inputMode: 'freeform',
   inputSchema: {
     type: 'object',
-    properties: { code: { type: 'string' } },
+    properties: {
+      code: { type: 'string', description: 'JavaScript source for orchestrating tool calls.' }
+    },
     required: ['code'],
     additionalProperties: false
   },

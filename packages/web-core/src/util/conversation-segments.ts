@@ -127,7 +127,11 @@ export function mergeConversationProjectionUnits(
   for (const [incomingIndex, turn] of incoming.entries()) {
     const existing = merged.findIndex((candidate) => candidate.id === turn.id);
     if (existing >= 0) {
-      merged.splice(existing, 1, turn);
+      const previous = merged[existing]!;
+      // A live update can omit history metadata; only an explicit history reset discards it.
+      const rewind =
+        turn.rewind ?? (previous.sessionId === turn.sessionId ? previous.rewind : undefined);
+      merged.splice(existing, 1, rewind === undefined ? turn : { ...turn, rewind });
       continue;
     }
     if (turn.turnId !== undefined && turn.segmentIndex !== undefined) {

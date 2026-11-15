@@ -1,6 +1,6 @@
 ---
 title: Linux Node 与 systemd
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-14
 ---
 
 # Linux Node 与 systemd
@@ -17,7 +17,7 @@ chmod 700 "$HOME/.config/myagentroam" "$HOME/.local/share/myagentroam"
 chmod 600 "$HOME/.config/myagentroam/mar-node.json"
 ```
 
-先由 `ubuntu` 用户生成 unit 临时文件，再由 root 安装。`mar-node install` 还会准备 Web Fetch 浏览器，可能需要网络下载，见[浏览器准备](node-installation.md#web-fetch-浏览器准备)。`node_bin_dir` 必须在服务账号环境中取得；unit 显式设置 `HOME`、`PATH` 并关闭 systemd 的登录环境覆盖，避免服务进程回落到系统默认 PATH 而无法发现用户级 npm 安装的 Runner。若 Agent 需要写入数据目录和配置的根目录以外的目录，在运行安装 unit 的 `sudo install` 前编辑临时文件的 `ReadWritePaths`，只添加实际存在且需要的目录：
+先由 `ubuntu` 用户生成 unit 临时文件，再由 root 安装。`mar-node install` 还会准备 Web Fetch 浏览器，可能需要网络下载，见[浏览器准备](node-installation.md#web-fetch-浏览器准备)。`node_bin_dir` 必须在服务账号环境中取得；unit 显式设置 `HOME`、`PATH` 并关闭 systemd 的登录环境覆盖，避免服务进程回落到系统默认 PATH 而无法发现用户级 npm 安装的 Runner：
 
 ```bash
 unit_file=$(mktemp)
@@ -41,7 +41,7 @@ sudo journalctl -u myagentroam-node.service -f
 
 示例 PATH 包含服务账号的 `~/.local/bin`，与安装页的用户级 npm 前缀一致。如果使用其他安装目录，请同时调整 unit 和下方诊断命令，确保验证的是同一环境。
 
-`mar-node install` 只生成以 `mar-node supervise` 为入口的 unit；`systemctl enable --now` 才注册并启动服务。生成的 `ReadWritePaths` 包含数据目录和配置的根目录；如所用 Agent 还需要写入其他配置目录，请在安装前将实际存在且需要的目录加入该项，并确认服务账号具有权限。不要照搬未使用或不存在的 Agent 目录。Supervisor 与 Node 使用同一账号，该账号必须能够写入 Node 数据目录，且不会调用 sudo。修改配置或手工升级 npm 包后，重新生成/安装 unit，再执行 `daemon-reload` 和 `restart`。
+`mar-node install` 只生成以 `mar-node supervise` 为入口的 unit；`systemctl enable --now` 才注册并启动服务。普通 Node、Runner 和终端使用服务账号本身的系统权限，默认 unit 不设置 `ProtectSystem`、`ReadWritePaths`、`NoNewPrivileges` 或 `PrivateTmp`，不额外限制软链接目标、工具缓存和系统临时目录；托管对话仍使用独立沙箱。请使用非 root 账号，并确保其能写入 Node 数据目录、Workspace、Agent 配置及软链接的真实目标；需要额外主机隔离时由管理员按用途显式配置。Supervisor 与 Node 使用同一账号，Supervisor 不会调用 sudo。修改配置或手工升级 npm 包后，重新生成/安装 unit，再执行 `daemon-reload` 和 `restart`。旧服务需要同时检查 `systemctl cat` 显示的本地 drop-in，避免遗留限制继续生效；远程升级不会自动修改 unit。
 
 ## 自启动与远程升级验收
 
@@ -63,7 +63,7 @@ sudo -u ubuntu env HOME=/home/ubuntu PATH="${node_bin_dir}:/home/ubuntu/.local/b
 
 - `ExecStart` 包含 `supervise --config`，不能仍是 `run --config`；
 - `User` 是拥有 Node 配置、Agent 登录状态和 Workspace 权限的账号；
-- `ReadWritePaths` 包含 Node `dataDirectory` 和需要写入的 Workspace/Agent 配置目录；
+- 服务账号能写入 Node `dataDirectory`、Workspace、Agent 配置目录及软链接的真实目标，旧 unit 或 drop-in 未残留非预期的只读挂载限制；
 - 服务账号能在 unit 的 `HOME`、`PATH` 下执行 `node`、`npm` 并使用该账号的 npm 配置查询精确版本；
 - 服务账号能在同一环境解析并执行所使用的 `mar-node`、`opencode`、`codex`、`claude`；不使用的 Agent 可忽略；
 - 需要 npm 类型 MCP 时能解析 `npx`，需要 Git Workspace/技能源时能解析 `git`，需要 Python 工具时能解析 `python3`/`python` 与 `pip3`/`pip`；

@@ -8,6 +8,8 @@ import { workspaceDirectTransferCapabilitySchema } from './direct-transfer.js';
 import { terminalDirectCapabilitySchema } from './terminal-direct.js';
 import { remoteDesktopCapabilitySchema } from './remote-desktop.js';
 import { chatgptLoginCapabilitySchema } from './chatgpt-oauth.js';
+import { modelSocks5UrlSchema } from './model-connection.js';
+export * from './model-connection.js';
 export * from './chatgpt-oauth.js';
 export const XAI_SUBSCRIPTION_PROXY_BASE_URL = 'https://cli-chat-proxy.grok.com/v1';
 export const XAI_SUBSCRIPTION_BASE_URL = XAI_SUBSCRIPTION_PROXY_BASE_URL;
@@ -68,6 +70,7 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
     responsesOptionalParameters: z.boolean().optional(),
     responsesHttpContinuation: z.boolean().optional(),
     contextGcControl: z.boolean().optional(),
+    modelSocks5Proxy: z.boolean().optional(),
     unifiedCompactControl: z.boolean().optional(),
     conversationModels: z.boolean().optional(),
     resourceInput: z.boolean().optional(),
@@ -947,6 +950,7 @@ const marAgentModelSummaryShape = {
   sortOrder: z.number().int(),
   credentialType: z.enum(['INLINE_API_KEY', 'CREDENTIAL_REF']).optional(),
   credentialConfigured: z.boolean().optional(),
+  proxyConfigured: z.boolean().optional(),
   lastTestedAt: z.number().int().nonnegative().nullable().optional(),
   lastTestStatus: z.enum(['UNVERIFIED', 'SUCCEEDED', 'FAILED']).nullable().optional(),
   lastTestCode: z.string().max(80).nullable().optional()
@@ -957,6 +961,7 @@ export const marAgentNodeModelSummarySchema = refineMarAgentModel(
       ...marAgentModelSummaryShape,
       access: z.never().optional(),
       apiKey: z.never().optional(),
+      socks5Url: z.never().optional(),
       credential: z.never().optional(),
       imageGeneration: z.never().optional()
     })
@@ -999,6 +1004,7 @@ export interface MarAgentModelSummary {
   access: 'PUBLIC' | 'RESTRICTED';
   credentialType?: 'INLINE_API_KEY' | 'CREDENTIAL_REF';
   credentialConfigured?: boolean;
+  proxyConfigured?: boolean;
   lastTestedAt?: number | null;
   lastTestStatus?: 'UNVERIFIED' | 'SUCCEEDED' | 'FAILED' | null;
   lastTestCode?: string | null;
@@ -1012,6 +1018,7 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
       baseUrl: z.string().url().max(2048),
       useResourceUrl: z.boolean().default(false),
       credential: marAgentRuntimeCredentialSchema,
+      socks5Url: modelSocks5UrlSchema.optional(),
       responsesToolNamespace: z
         .string()
         .regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/u)
@@ -1031,6 +1038,12 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
     })
     .strip()
 ).superRefine((configuration, context) => {
+  if (configuration.socks5Url !== undefined && configuration.credential.type !== 'INLINE_API_KEY')
+    context.addIssue({
+      code: 'custom',
+      path: ['socks5Url'],
+      message: 'Model proxies require an inline API key'
+    });
   if (
     configuration.responsesToolNamespace !== undefined &&
     configuration.protocol !== 'OPENAI_RESPONSES'
@@ -1296,10 +1309,18 @@ export const marAgentStoredModelConfigurationSchema = refineMarAgentModel(
     .object({
       ...marAgentModelShape,
       baseUrl: z.string().url().max(2048),
-      credential: marAgentModelCredentialSchema
+      credential: marAgentModelCredentialSchema,
+      socks5Url: modelSocks5UrlSchema.optional()
     })
     .strict()
-);
+).superRefine((configuration, context) => {
+  if (configuration.socks5Url !== undefined && configuration.credential.type !== 'INLINE_API_KEY')
+    context.addIssue({
+      code: 'custom',
+      path: ['socks5Url'],
+      message: 'Model proxies require an inline API key'
+    });
+});
 export type MarAgentStoredModelConfiguration = z.infer<
   typeof marAgentStoredModelConfigurationSchema
 >;
@@ -2036,7 +2057,7 @@ export const sessionRuntimeCapabilitiesSchema = z.object({
 });
 export type SessionRuntimeCapabilities = z.infer<typeof sessionRuntimeCapabilitiesSchema>;
 
-export const sessionActivityStateSchema = z.enum(['MANAGED_ACTIVE', 'IDLE']);
+export const sessionActivityStateSchema = z.enum(['RUNNING', 'IDLE']);
 export type SessionActivityState = z.infer<typeof sessionActivityStateSchema>;
 
 export const eventCursorSchema = z.object({

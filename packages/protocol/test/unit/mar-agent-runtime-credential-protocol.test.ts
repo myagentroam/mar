@@ -11,6 +11,8 @@ import {
   marAgentModelTransportTestInputSchema,
   marAgentModelTransportTestResultSchema,
   marAgentModelSummarySchema,
+  marAgentNodeModelSummarySchema,
+  modelSocks5UrlSchema,
   marAgentRuntimeCredentialCapabilitySchema,
   marAgentRuntimeModelConfigurationSchema,
   marAgentStoredModelConfigurationSchema,
@@ -51,6 +53,59 @@ const ticket = {
   nonce: 'nonce-1',
   signature: 'a'.repeat(64)
 };
+
+describe('Static model SOCKS5 configuration', () => {
+  it('preserves private proxies in stored and runtime configurations but not public summaries', () => {
+    const proxy = 'socks5://user:password@proxy.invalid:1080';
+    const value = {
+      ...baseModel,
+      credential: { type: 'INLINE_API_KEY', value: 'key' },
+      socks5Url: proxy
+    };
+    expect(marAgentStoredModelConfigurationSchema.parse(value).socks5Url).toBe(proxy);
+    expect(marAgentRuntimeModelConfigurationSchema.parse(value).socks5Url).toBe(proxy);
+    const summary = { ...baseModel, sortOrder: 0, access: 'PUBLIC', proxyConfigured: true };
+    expect(marAgentModelSummarySchema.parse(summary)).toHaveProperty('proxyConfigured', true);
+    expect(
+      marAgentNodeModelSummarySchema.safeParse({ ...baseModel, sortOrder: 0, socks5Url: proxy })
+        .success
+    ).toBe(false);
+    expect(marAgentModelSummarySchema.safeParse({ ...summary, socks5Url: proxy }).success).toBe(
+      false
+    );
+    expect(
+      marAgentStoredModelConfigurationSchema.safeParse({
+        ...value,
+        credential: { type: 'CREDENTIAL_REF', credentialId: 'credential' }
+      }).success
+    ).toBe(false);
+    expect(
+      marAgentRuntimeModelConfigurationSchema.safeParse({
+        ...value,
+        credential: { type: 'RUNTIME_TICKET', credentialId: 'credential', ticket }
+      }).success
+    ).toBe(false);
+  });
+
+  it('validates remote SOCKS5 URLs and bounded percent-encoded credentials', () => {
+    for (const proxy of [
+      'socks5://localhost',
+      'socks5://[::1]:1080',
+      'socks5://user:p%40ss@proxy.invalid:1080'
+    ])
+      expect(modelSocks5UrlSchema.safeParse(proxy).success, proxy).toBe(true);
+    for (const proxy of [
+      'http://proxy.invalid',
+      'socks5://proxy.invalid:0',
+      'socks5://proxy.invalid/path',
+      'socks5://proxy.invalid?secret=1',
+      'socks5://:password@proxy.invalid',
+      'socks5://user:%ZZ@proxy.invalid',
+      `socks5://${'%E4%B8%AD'.repeat(86)}:password@proxy.invalid`
+    ])
+      expect(modelSocks5UrlSchema.safeParse(proxy).success).toBe(false);
+  });
+});
 
 describe('Conversation model purpose', () => {
   it('defaults unified Compact off and preserves explicit values in all model projections', () => {

@@ -1944,7 +1944,7 @@ describe('MAR Agent Node Runner', () => {
           createdAt: 0
         },
         capabilities,
-        { managedActive: false, commandStates: [] }
+        { hasActiveRun: false, commandStates: [] }
       )
     ).not.toThrow();
     expect(
@@ -1969,7 +1969,7 @@ describe('MAR Agent Node Runner', () => {
           createdAt: 0
         },
         capabilities,
-        { managedActive: false, commandStates: [] }
+        { hasActiveRun: false, commandStates: [] }
       ).runtime.capabilities
     ).toEqual(expect.arrayContaining(['turn.start', 'user-input.respond']));
   });
@@ -2285,12 +2285,12 @@ describe('MAR Agent Node Runner', () => {
           createdAt: 0
         },
         capabilities,
-        { managedActive: false, commandStates: [] }
+        { hasActiveRun: false, commandStates: [] }
       ).runtime.capabilities
     ).toEqual(expect.arrayContaining(['session.rewind', 'session.rollback']));
   });
 
-  it('releases warm resources before rolling back persisted history in place', async () => {
+  it('releases warm resources before rolling back an earlier persisted input in place', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-agent-runner-rollback-home-'));
     try {
       const store = await JsonlSessionStore.open(home);
@@ -2323,6 +2323,12 @@ describe('MAR Agent Node Runner', () => {
         executionId: 'execution-2',
         turnId: 'turn-2'
       });
+      await store.append(native.id, {
+        type: 'turn.user',
+        payload: { prompt: 'remove later input too' },
+        executionId: 'execution-3',
+        turnId: 'turn-3'
+      });
       await store.close();
       const runner = new MarAgentRunner(home);
       const releaseSessionResources = vi.fn(async () => undefined);
@@ -2349,7 +2355,11 @@ describe('MAR Agent Node Runner', () => {
 
       const invalidate = vi.fn();
       runner.setWebSessionInvalidator(invalidate);
-      await expect(runner.rollbackNative(session, 'turn-1')).resolves.toEqual(expect.any(Number));
+      const before = (await runner.readOfficialConversation(session, {}))!;
+      expect(before.turns.map((turn) => turn.id)).toEqual(['turn-1', 'turn-2', 'turn-3']);
+      await expect(
+        runner.rollbackNative(session, before.turns[1]!.rewind!.before, 'turn-2')
+      ).resolves.toEqual(expect.any(Number));
       expect(releaseSessionResources).toHaveBeenCalledWith(native.id);
       expect(invalidate).toHaveBeenCalledExactlyOnceWith(native.id);
       await expect(runner.readOfficialConversation(session, {})).resolves.toMatchObject({

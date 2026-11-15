@@ -58,7 +58,7 @@ describe('Session identity handoff', () => {
           sessions.value = sessions.value.filter((value) => value !== item);
         },
         currentSelectionRevision: () => 0,
-        preserveManagedActive: (_current, value) => value,
+        preserveRunning: (_current, value) => value,
         mergeSessions: (values) => {
           sessions.value = [...sessions.value, ...values];
         },
@@ -101,7 +101,7 @@ describe('Session identity handoff', () => {
             sessions.value = sessions.value.filter((value) => value !== item);
           },
           currentSelectionRevision: () => 0,
-          preserveManagedActive: (_current, next) => next,
+          preserveRunning: (_current, next) => next,
           mergeSessions: (values) => {
             sessions.value = [...sessions.value, ...values];
           },
@@ -151,7 +151,7 @@ describe('Session identity handoff', () => {
             sessions.value = sessions.value.filter((value) => value !== item);
           },
           currentSelectionRevision: () => revision,
-          preserveManagedActive: (_current, next) => next,
+          preserveRunning: (_current, next) => next,
           mergeSessions: (values) => {
             sessions.value = [...sessions.value, ...values];
           },
@@ -187,7 +187,7 @@ describe('Session identity handoff', () => {
           sessions.value = sessions.value.filter((value) => value !== item);
         },
         currentSelectionRevision: () => revision,
-        preserveManagedActive: (_current, next) => next,
+        preserveRunning: (_current, next) => next,
         mergeSessions: (values) => {
           revision += 1;
           sessions.value = [reopened, ...values];
@@ -232,7 +232,7 @@ describe('Session identity handoff', () => {
           },
           removeSessionExact: discovery.projection.removeExact,
           currentSelectionRevision: () => 0,
-          preserveManagedActive: discovery.preserveManagedActive,
+          preserveRunning: discovery.preserveRunning,
           mergeSessions: discovery.merge,
           transferSubmission: submission.transferSession
         },
@@ -278,7 +278,7 @@ describe('Session identity handoff', () => {
           },
           removeSessionExact: discovery.projection.removeExact,
           currentSelectionRevision: () => 0,
-          preserveManagedActive: discovery.preserveManagedActive,
+          preserveRunning: discovery.preserveRunning,
           mergeSessions: discovery.merge,
           transferSubmission: submission.transferSession
         },

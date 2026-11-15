@@ -115,7 +115,7 @@ describe('Node Workbench external session observation', () => {
     }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage: readPage as never,
@@ -186,7 +186,7 @@ describe('Node Workbench external session observation', () => {
     }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage: async () =>
@@ -248,7 +248,7 @@ describe('Node Workbench external session observation', () => {
     }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage: async () => {
@@ -335,7 +335,7 @@ describe('Node Workbench external session observation', () => {
     const emitted: Array<{ watchId?: string; payload?: { turns?: { id: string }[] } }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage: readPage as never,
@@ -401,7 +401,7 @@ describe('Node Workbench external session observation', () => {
     const emitted: Array<{ type?: string; payload?: { turns?: { id: string }[] } }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage: readPage as never,
@@ -441,7 +441,7 @@ describe('Node Workbench external session observation', () => {
       workspaceId: 'workspace-short-failed-run',
       externalSessionId: 'external-short-failed-run'
     } as NodeAgentSession;
-    let managedActive = false;
+    let hasActiveRun = false;
     let historyReads = 0;
     let runtimeReads = 0;
     let releaseRuntime!: () => void;
@@ -454,11 +454,11 @@ describe('Node Workbench external session observation', () => {
     }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => managedActive,
+      hasActiveRun: () => hasActiveRun,
       refreshActivity: async () => undefined,
-      present: () => ({ activity: managedActive ? 'MANAGED_ACTIVE' : 'IDLE' }),
+      present: () => ({ activity: hasActiveRun ? 'RUNNING' : 'IDLE' }),
       readPage: async () => {
-        if (managedActive) {
+        if (hasActiveRun) {
           runtimeReads += 1;
           await runtimePending;
           return { turns: [{ id: 'visible-send-error' }], source: 'runtime' };
@@ -490,14 +490,14 @@ describe('Node Workbench external session observation', () => {
     await vi.waitFor(() => expect(historyReads).toBe(1));
     emitted.length = 0;
 
-    managedActive = true;
+    hasActiveRun = true;
     service.emitRealtime(session.id, {
       sequence: 1,
       category: 'run',
       payload: { run: { status: 'STARTING' } }
     });
     await vi.waitFor(() => expect(runtimeReads).toBe(1));
-    managedActive = false;
+    hasActiveRun = false;
     service.emitRealtime(session.id, {
       sequence: 2,
       category: 'session',
@@ -551,7 +551,7 @@ describe('Node Workbench external session observation', () => {
       const log = vi.fn();
       const service = createTestSessionWatch({
         resolve: async () => session,
-        managedActive: () => active,
+        hasActiveRun: () => active,
         refreshActivity: async () => undefined,
         present: () => session,
         readPage: async () => {
@@ -598,7 +598,7 @@ describe('Node Workbench external session observation', () => {
         service.emitRealtime(session.id, {
           sequence: 2,
           category: 'session',
-          payload: { session: { ...session, activity: 'MANAGED_ACTIVE' } }
+          payload: { session: { ...session, activity: 'RUNNING' } }
         });
         await vi.waitFor(() => expect(runtimeReads).toBe(2));
         service.emitRealtime(session.id, { sequence: 3, category: 'conversation', payload: {} });
@@ -647,9 +647,9 @@ describe('Node Workbench external session observation', () => {
       const log = vi.fn();
       const service = createTestSessionWatch({
         resolve: async () => session,
-        managedActive: () => activeRun !== undefined,
+        hasActiveRun: () => activeRun !== undefined,
         refreshActivity: async () => undefined,
-        present: () => ({ activity: activeRun === undefined ? 'IDLE' : 'MANAGED_ACTIVE' }),
+        present: () => ({ activity: activeRun === undefined ? 'IDLE' : 'RUNNING' }),
         readPage,
         projectInitialPage: (_session, page) => page,
         emitSession: vi.fn(),
@@ -728,9 +728,9 @@ describe('Node Workbench external session observation', () => {
     const log = vi.fn();
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => true,
+      hasActiveRun: () => true,
       refreshActivity: async () => undefined,
-      present: () => ({ activity: 'MANAGED_ACTIVE' }),
+      present: () => ({ activity: 'RUNNING' }),
       readPage: async () => {
         if (++runtimeReads === 1) return { turns: [{ id: 'live' }], source: 'runtime' };
         await runtimePending;
@@ -785,15 +785,15 @@ describe('Node Workbench external session observation', () => {
       workspaceId: 'workspace-runtime-snapshot-failure',
       externalSessionId: 'external-runtime-snapshot-failure'
     } as NodeAgentSession;
-    let managedActive = false;
+    let hasActiveRun = false;
     const emitted: Array<{ type?: string; event?: { sequence?: number } }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => managedActive,
+      hasActiveRun: () => hasActiveRun,
       refreshActivity: async () => undefined,
-      present: () => ({ activity: managedActive ? 'MANAGED_ACTIVE' : 'IDLE' }),
+      present: () => ({ activity: hasActiveRun ? 'RUNNING' : 'IDLE' }),
       readPage: async () => {
-        if (managedActive) throw new Error('RUNTIME_SNAPSHOT_UNAVAILABLE');
+        if (hasActiveRun) throw new Error('RUNTIME_SNAPSHOT_UNAVAILABLE');
         return { turns: [{ id: 'history-turn' }], source: 'official' };
       },
       projectInitialPage: (_session, page) => page,
@@ -815,7 +815,7 @@ describe('Node Workbench external session observation', () => {
     );
     emitted.length = 0;
 
-    managedActive = true;
+    hasActiveRun = true;
     service.emitRealtime(session.id, {
       sequence: 1,
       category: 'run',
@@ -844,19 +844,19 @@ describe('Node Workbench external session observation', () => {
       workspaceId: 'workspace-sdk-stream',
       externalSessionId: 'external-sdk-stream'
     } as NodeAgentSession;
-    let managedActive = false;
+    let hasActiveRun = false;
     let reads = 0;
     const emitted: Array<{ type?: string; event?: { sequence?: number } }> = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => managedActive,
+      hasActiveRun: () => hasActiveRun,
       refreshActivity: async () => undefined,
-      present: () => ({ activity: managedActive ? 'MANAGED_ACTIVE' : 'IDLE' }),
+      present: () => ({ activity: hasActiveRun ? 'RUNNING' : 'IDLE' }),
       readPage: async () => {
         reads += 1;
         return {
           turns: [{ id: 'streamed-turn' }],
-          source: managedActive || reads > 1 ? 'runtime' : 'official'
+          source: hasActiveRun || reads > 1 ? 'runtime' : 'official'
         };
       },
       readHistoryPage: async () => ({
@@ -881,7 +881,7 @@ describe('Node Workbench external session observation', () => {
       await vi.waitFor(() =>
         expect(emitted.filter((event) => event.type === 'watch.session.snapshot')).toHaveLength(1)
       );
-      managedActive = true;
+      hasActiveRun = true;
       service.emitRealtime(session.id, {
         sequence: 1,
         category: 'run',
@@ -893,7 +893,7 @@ describe('Node Workbench external session observation', () => {
       const snapshotsBeforeCompletion = emitted.filter(
         (event) => event.type === 'watch.session.snapshot'
       ).length;
-      managedActive = false;
+      hasActiveRun = false;
       service.emitRealtime(session.id, {
         sequence: 2,
         category: 'session',
@@ -1159,7 +1159,7 @@ describe('Node Workbench external session observation', () => {
     );
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage,

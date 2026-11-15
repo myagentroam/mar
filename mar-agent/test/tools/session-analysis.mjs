@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { createSessionToolAnalysis } from './session-tool-analysis.mjs';
 
 const EVENT_FILE_PATTERN = /^events-(\d+)\.jsonl$/u;
@@ -397,19 +397,16 @@ export function formatSessionAnalysis(report, { lastExecutions = 10 } = {}) {
 }
 
 async function* readSessionRecords(sessionDirectory) {
-  const fileNames = (await readdir(sessionDirectory))
-    .filter((fileName) => EVENT_FILE_PATTERN.test(fileName))
-    .sort(
-      (left, right) =>
-        Number(EVENT_FILE_PATTERN.exec(left)?.[1]) - Number(EVENT_FILE_PATTERN.exec(right)?.[1])
-    );
+  const { directory, fileNames, expectRecords } = await sessionEventFiles(sessionDirectory);
+  let hasRecords = false;
   for (const file of fileNames) {
-    const input = createReadStream(join(sessionDirectory, file), { encoding: 'utf8' });
+    const input = createReadStream(join(directory, file), { encoding: 'utf8' });
     const lines = createInterface({ input, crlfDelay: Infinity });
     let lineNumber = 0;
     for await (const line of lines) {
       lineNumber += 1;
       if (line.length === 0) continue;
+      hasRecords = true;
       try {
         yield { file, line: lineNumber, record: JSON.parse(line) };
       } catch (error) {
@@ -421,6 +418,59 @@ async function* readSessionRecords(sessionDirectory) {
       }
     }
   }
+  if (expectRecords && !hasRecords)
+    throw new Error('Indexed Session event segments contain no records.');
+}
+
+/** Read only the published storage selection; never recover or scan old generations. */
+async function sessionEventFiles(sessionDirectory) {
+  let directory = resolve(sessionDirectory);
+  let entries = await readdir(directory);
+  let rawIndex;
+  try {
+    rawIndex = await readFile(join(dirname(directory), 'index.json'), 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  let emptySession = false;
+  let expectRecords = false;
+  if (rawIndex !== undefined) {
+    let index;
+    try {
+      index = JSON.parse(rawIndex);
+    } catch {
+      throw new Error('Session index is corrupt.');
+    }
+    if (!isRecord(index) || ![1, 2].includes(index.version) || !Array.isArray(index.sessions))
+      throw new Error('Session index has an unsupported format.');
+    const session = index.sessions.find((entry) => entry?.id === basename(directory));
+    if (!session || !Number.isSafeInteger(session.nextSequence) || session.nextSequence < 1)
+      throw new Error('Session index does not contain a valid entry for this Session.');
+    emptySession = session.nextSequence === 1;
+    expectRecords = session.nextSequence > 1;
+    if (index.version === 2) {
+      const storage = session.storage;
+      if (!isRecord(storage) || ![1, 2].includes(storage.encoding))
+        throw new Error('Session index selects an unsupported encoding.');
+      if (storage.encoding === 2) {
+        if (typeof storage.generation !== 'string' || !/^[0-9a-f-]{36}$/iu.test(storage.generation))
+          throw new Error('Session index selects an invalid storage generation.');
+        directory = join(directory, 'v2', storage.generation);
+        entries = await readdir(directory);
+      }
+    }
+  } else if (entries.includes('v2')) {
+    throw new Error('Session index is required to select V2 storage.');
+  }
+  const fileNames = entries
+    .filter((fileName) => EVENT_FILE_PATTERN.test(fileName))
+    .sort(
+      (left, right) =>
+        Number(EVENT_FILE_PATTERN.exec(left)?.[1]) - Number(EVENT_FILE_PATTERN.exec(right)?.[1])
+    );
+  if (fileNames.length === 0 && !emptySession)
+    throw new Error('No event segments found; expected a Session or event segment directory.');
+  return { directory, fileNames, expectRecords };
 }
 
 function getExecution(executions, executionId, record) {

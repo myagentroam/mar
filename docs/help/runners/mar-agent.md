@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-15
 ---
 
 # 配置和使用 MAR Agent
@@ -10,6 +10,8 @@ MAR Agent 是随 Node 内置的编码 Agent，不需要安装外部 Agent CLI。
 Server、Web 和 Node 的版本切换及旧 Node 升级限制见[升级 MyAgentRoam](../deployment/upgrade.md)。
 
 ## 配置模型
+
+OpenAI Responses 与 Anthropic Messages 的 API Key 模型可以单独配置 **SOCKS5 代理**，格式为 `socks5://[username:password@]host:port`，用户名或密码中的特殊字符需要 URL 编码。编辑时会按需读取已保存的代理；不修改则保留，清空并保存后直连，复制模型会继承代理且可修改。代理从执行 Node 连接，`localhost` 指该 Node，不是浏览器或 Server；代理失败不会回退直连。Responses 的 HTTP/1.1、HTTP/2、WebSocket 和 Anthropic 请求均使用此设置，执行 Node 必须声明支持模型 SOCKS5，否则需先升级 Node。订阅模型始终沿用 OAuth 凭据的代理，不提供模型级覆盖。完整代理地址只在授权编辑表单中读取，不进入模型列表、日志或会话记录；请勿公开截图中的代理密码。辅助任务使用其实际选中模型的代理，Web Fetch 等工具不继承模型代理。
 
 模型表单中的 **上下文回收** 默认开启，可按模型关闭。关闭后不执行文本或图片 GC；自动 Compact 和图片请求硬限额仍生效，图片超限时请求会被拒绝。关闭配置需要运行 Node 声明支持该开关，旧 Node 不会静默忽略它。更改对后续执行生效。
 
@@ -196,6 +198,8 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 Codex 可请求透明背景和简单循环 GIF：GIF 为 2–16 帧，每帧 20–2000 毫秒，默认 9 帧、200 毫秒；单次保存一个 PNG 或 GIF，实际支持取决于所配置的模型。你可以在请求中直接说明透明背景或动画需求。GIF 原件保留动画；静态缩略图不能用于判断完整动画。
 
 ## Code Mode 工具编排
+
+JSON 工具调用中，`code_exec` 使用 `code` 传入 JavaScript 源码，例如 `{"code":"observe.text(1);"}`；`apply_patch` 使用 `input` 传入完整 Patch 文本，`tools.apply_patch({ input: patchText })` 也采用同一字段，新调用不再接受 `patch` 字段。工具以 freeform 形式提供时，直接发送正文，不添加 JSON 包装。字段缺失或类型错误会指出缺失字段或预期与实际类型，不回显参数值。历史回放保留已完成工具调用的原始参数，不会再次执行这些调用。
 
 六个 Agent 协作工具均支持直接调用和 Code Mode 内的 programmatic 调用。启用 Code Mode Only 后，它们通过 cell 使用，不额外保留双入口展示；子 Agent 自身按所选模型的配置使用 Code Mode。
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Pool, PoolConnection } from 'mysql2/promise';
-import type { MarAgentModelSummary } from '@myagentroam/protocol';
+import { modelSocks5UrlSchema, type MarAgentModelSummary } from '@myagentroam/protocol';
 
 // These schemas are part of the released v34 conversion, not the evolving wire schema.
 export const modelSettingsV1TierSchema = z.enum([
@@ -37,7 +37,11 @@ const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const CHATGPT_BASE_URL = 'https://api.openai.com/v1';
 
 type ModelSettingsV1 = z.infer<typeof responses> | z.infer<typeof anthropic>;
-export type ModelSettings = ModelSettingsV1 & { gcEnabled?: boolean; unifiedCompact?: boolean };
+export type ModelSettings = ModelSettingsV1 & {
+  gcEnabled?: boolean;
+  unifiedCompact?: boolean;
+  socks5Url?: string;
+};
 export const modelSettingsKey = (id: string): string => `mar_agent_model_config:${id}`;
 
 type Executor = Pick<Pool | PoolConnection, 'execute'>;
@@ -92,15 +96,18 @@ export function parseModelSettings(
 ): ModelSettings {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
-  const { gcEnabled, unifiedCompact, ...legacy } = value as Record<string, unknown>;
+  const { gcEnabled, unifiedCompact, socks5Url, ...legacy } = value as Record<string, unknown>;
   if (gcEnabled !== undefined && typeof gcEnabled !== 'boolean')
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
   if (unifiedCompact !== undefined && typeof unifiedCompact !== 'boolean')
     throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
+  const proxy = modelSocks5UrlSchema.optional().safeParse(socks5Url);
+  if (!proxy.success) throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
   return {
     ...parseModelSettingsV1(protocol, legacy),
     ...(gcEnabled === undefined ? {} : { gcEnabled }),
-    ...(unifiedCompact === undefined ? {} : { unifiedCompact })
+    ...(unifiedCompact === undefined ? {} : { unifiedCompact }),
+    ...(proxy.data === undefined ? {} : { socks5Url: proxy.data })
   };
 }
 
@@ -129,6 +136,7 @@ export function modelSettingsFromInput(model: {
   responsesPreviousResponseId?: boolean | undefined;
   gcEnabled?: boolean | undefined;
   unifiedCompact?: boolean | undefined;
+  socks5Url?: string | undefined;
 }): ModelSettings {
   if (model.protocol === 'ANTHROPIC_MESSAGES') {
     if (
@@ -140,12 +148,14 @@ export function modelSettingsFromInput(model: {
       throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
     return parseModelSettings(model.protocol, {
       version: 1,
+      ...(model.socks5Url === undefined ? {} : { socks5Url: model.socks5Url }),
       gcEnabled: model.gcEnabled ?? true,
       unifiedCompact: model.unifiedCompact ?? false
     });
   }
   return parseModelSettings(model.protocol, {
     version: 1,
+    ...(model.socks5Url === undefined ? {} : { socks5Url: model.socks5Url }),
     gcEnabled: model.gcEnabled ?? true,
     unifiedCompact: model.unifiedCompact ?? false,
     hostedWebSearch: model.hostedWebSearch,
@@ -165,6 +175,11 @@ export function validateModelSettingsTarget(
   settings: ModelSettings
 ): void {
   validateModelSettingsTargetV1(protocol, baseUrl, credential, settings);
+  if (
+    settings.socks5Url !== undefined &&
+    modelSettingsV1CredentialSchema.parse(credential).type !== 'INLINE_API_KEY'
+  )
+    throw new Error('MAR_AGENT_MODEL_CONFIG_INVALID');
 }
 
 /** Immutable v1 credential/target rules used by the v34 migration. */

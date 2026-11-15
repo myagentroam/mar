@@ -49,15 +49,20 @@ export async function writeModelCatalog(home: string, catalog: CliModelCatalog):
 }
 
 export function serializeModel(model: CliModelConfiguration) {
-  const { apiKey, credentialProvider, credentialSource, ...configuration } = model;
+  const { apiKey, socks5Url, credentialProvider, credentialSource, ...configuration } = model;
   if (apiKey !== undefined) {
     if (credentialProvider !== undefined || credentialSource !== undefined)
       throw new AgentError(
         'MAR_AGENT_MODEL_CONFIG_INVALID',
         'Model credential sources are ambiguous.'
       );
-    return { ...configuration, apiKey: apiKey.reveal() };
+    return {
+      ...configuration,
+      apiKey: apiKey.reveal(),
+      ...(socks5Url === undefined ? {} : { socks5Url: socks5Url.reveal() })
+    };
   }
+  if (socks5Url !== undefined) throw invalidCatalog();
   if (credentialSource !== undefined)
     return {
       ...configuration,
@@ -101,7 +106,7 @@ function parseCliModelCatalog(
       Object.keys(credential).length !== 1
     )
       throw invalidCatalog();
-    if (Object.hasOwn(model, 'apiKey')) throw invalidCatalog();
+    if (Object.hasOwn(model, 'apiKey') || model.socks5Url !== undefined) throw invalidCatalog();
     externalCredentialModels.add(index);
     const { credential: _credential, ...configuration } = model;
     void _credential;

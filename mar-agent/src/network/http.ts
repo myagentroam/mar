@@ -9,6 +9,10 @@ import {
 } from 'undici';
 import { TransportFault } from './transport-error.js';
 
+/**
+ * Runs request-scoped HTTP transports and SOCKS5/TLS connections. Each attempt
+ * owns its dispatcher; connection helpers observe cancellation until handing off a socket.
+ */
 const SOCKS5_HANDSHAKE_TIMEOUT_MS = 10_000;
 
 export interface HttpAttempt {
@@ -66,7 +70,7 @@ async function fetchHttpAttempt(
     attempt.socks5Url === undefined
       ? http2Client(url)
       : attempt.httpVersion === '2'
-        ? http2SocksClient(url, attempt.socks5Url)
+        ? http2SocksClient(url, attempt.socks5Url, signal)
         : new Socks5ProxyAgent(attempt.socks5Url);
   try {
     const response = await undiciFetch(url, {
@@ -90,7 +94,7 @@ function http2Client(url: string): Client {
   });
 }
 
-function http2SocksClient(url: string, socks5Url: string): Client {
+function http2SocksClient(url: string, socks5Url: string, signal: AbortSignal): Client {
   return new Client(new URL(url).origin, {
     allowH2: true,
     connect: async (options, callback) => {
@@ -102,7 +106,8 @@ function http2SocksClient(url: string, socks5Url: string): Client {
           tls: true,
           servername: options.servername || options.hostname,
           alpnProtocols: ['h2'],
-          requiredAlpnProtocol: 'h2'
+          requiredAlpnProtocol: 'h2',
+          signal
         });
         callback(null, tlsSocket);
       } catch (error) {
@@ -134,7 +139,11 @@ export async function connectSocks5Target(input: {
   )
     throw invalidSocks5Proxy();
 
-  const socket = connectTcp({ host: proxy.hostname, port: proxy.port });
+  // URL hostnames retain IPv6 brackets; TCP expects the bare address literal.
+  const socket = connectTcp({
+    host: proxy.hostname.startsWith('[') ? proxy.hostname.slice(1, -1) : proxy.hostname,
+    port: proxy.port
+  });
   const timeoutError = Object.assign(new Error('SOCKS5 connection timed out.'), {
     code: 'ETIMEDOUT'
   });
@@ -193,6 +202,16 @@ export async function connectSocks5Target(input: {
   } finally {
     socket.off('timeout', timeout);
     input.signal?.removeEventListener('abort', abort);
+  }
+}
+
+export function isValidSocks5ProxyUrl(value: string): boolean {
+  try {
+    if (value.length > 2048) return false;
+    parseSocks5Proxy(value);
+    return true;
+  } catch {
+    return false;
   }
 }
 

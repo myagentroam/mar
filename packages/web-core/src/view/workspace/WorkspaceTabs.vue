@@ -392,9 +392,9 @@ function activate(tab: WorkspaceTab): void {
               </span>
               <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
               <span
-                v-tooltip="translate('generated.sessionPresentation.managed')"
+                v-tooltip="translate('generated.sessionPresentation.running')"
                 v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                class="workspace-tab-running mar-session-activity managed_active"
+                class="workspace-tab-running mar-session-activity running"
                 role="img"
                 :aria-label="translate('workspaceTabs.running')"
                 ><i aria-hidden="true"
@@ -469,9 +469,9 @@ function activate(tab: WorkspaceTab): void {
                 </span>
                 <span v-else class="workspace-tab-node">{{ nodeLabel(tab) }}</span>
                 <span
-                  v-tooltip="translate('generated.sessionPresentation.managed')"
+                  v-tooltip="translate('generated.sessionPresentation.running')"
                   v-if="hasActiveRun(tab.nodeId, tab.workspaceId)"
-                  class="workspace-tab-running mar-session-activity managed_active"
+                  class="workspace-tab-running mar-session-activity running"
                   role="img"
                   :aria-label="translate('workspaceTabs.running')"
                   ><i aria-hidden="true"

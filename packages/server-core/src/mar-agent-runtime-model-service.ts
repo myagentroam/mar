@@ -291,6 +291,8 @@ function runtimeModel(
   capability: MarAgentRuntimeCredentialCapability | undefined,
   resourceUrlsEnabled: boolean = true
 ): MarAgentRuntimeModelConfiguration {
+  if (model.socks5Url !== undefined && capability?.modelSocks5Proxy !== true)
+    throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
   if (model.gcEnabled === false && capability?.contextGcControl !== true)
     throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
   if (model.inputCapabilities.includes('IMAGE') && capability?.resourceInput !== true)
@@ -323,6 +325,7 @@ function runtimeModel(
     name: model.name,
     protocol: model.protocol,
     baseUrl: model.baseUrl,
+    ...(model.socks5Url === undefined ? {} : { socks5Url: model.socks5Url }),
     ...(model.credential.type === 'INLINE_API_KEY'
       ? { credential: { type: 'INLINE_API_KEY', value: model.credential.value } }
       : {

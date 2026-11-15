@@ -586,7 +586,7 @@ describe('Node Runtime history boundaries', () => {
         capabilities: () => ({}) as never,
         attachments: {} as never,
         snapshotSequence: () => 1,
-        hasManagedActiveRun: () => true,
+        hasActiveRun: () => true,
         setExternalActivity: vi.fn()
       });
       const readOfficial = vi.spyOn(history, 'readOfficial');
@@ -621,7 +621,7 @@ describe('Node Runtime history boundaries', () => {
       capabilities: () => ({}) as never,
       attachments: {} as never,
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => true,
+      hasActiveRun: () => true,
       setExternalActivity: vi.fn()
     });
     const readOfficial = vi.spyOn(history, 'readOfficial');
@@ -684,7 +684,7 @@ describe('Node Runtime history boundaries', () => {
       capabilities: () => ({}) as never,
       attachments: {} as never,
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => true,
+      hasActiveRun: () => true,
       setExternalActivity: vi.fn()
     });
     expect((await history.read(resumed, { limit: 10 })).nextCursor).not.toBeNull();

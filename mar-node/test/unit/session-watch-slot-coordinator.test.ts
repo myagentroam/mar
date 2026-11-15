@@ -32,7 +32,7 @@ describe('Session Watch connection slots', () => {
     const events: unknown[] = [];
     const service = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: (value) => value,
       readPage: async () => ({ turns: [] }),
@@ -71,7 +71,7 @@ describe('Session Watch connection slots', () => {
     const events: unknown[] = [];
     const service = createTestSessionWatch({
       resolve: async (id) => sessions.find((session) => session.id === id),
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: (session) => session,
       readPage: async () => ({ turns: [] }),
@@ -128,7 +128,7 @@ describe('Session Watch connection slots', () => {
     const service = createTestSessionWatch({
       sessionWatchSlots: slots,
       resolve: async (id) => sessions.find((session) => session.id === id),
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: (session) => session,
       readPage: async (session) => (session.id === 'a' ? primaryPage : { turns: [] }),

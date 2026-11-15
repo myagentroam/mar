@@ -570,7 +570,7 @@ function submitSessionSearch(): void {
                 >
                 <span
                   v-tooltip="activityLabel(session)"
-                  v-if="nodeReady && activity(session) === 'MANAGED_ACTIVE'"
+                  v-if="nodeReady && activity(session) === 'RUNNING'"
                   :class="['mar-session-activity', activity(session).toLocaleLowerCase()]"
                   :aria-label="activityLabel(session)"
                   role="img"

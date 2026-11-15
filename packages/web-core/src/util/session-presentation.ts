@@ -33,7 +33,7 @@ export function sessionActivity(session: Session): NonNullable<Session['activity
 
 export function sessionActivityLabel(session: Session): string {
   return {
-    MANAGED_ACTIVE: translate('generated.sessionPresentation.managed'),
+    RUNNING: translate('generated.sessionPresentation.running'),
     IDLE: translate('generated.sessionPresentation.ready')
   }[sessionActivity(session)];
 }

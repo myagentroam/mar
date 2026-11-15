@@ -562,9 +562,6 @@ export function createConversationProjectionService(options: {
     if (staleSnapshot(page)) return false;
     const priorTurns = options.turns.value;
     const pageTurns = page.turns.map(limitConversationSegmentText);
-    const insertsNewTurn = pageTurns.some(
-      (turn) => !priorTurns.some((candidate) => candidate.id === turn.id)
-    );
     const incoming = pageTurns;
     const previous = new Map(priorTurns.map((turn) => [turn.id, turn]));
     const mergedIncoming = incoming.map((turn) => {
@@ -589,8 +586,14 @@ export function createConversationProjectionService(options: {
     const mergedTurns = reconcileOptimisticConversationTurns(
       mergeConversationProjectionUnits(priorTurns, mergedIncoming)
     );
+    // Filling an older prefix is not a live append and must not collapse loaded history.
+    const previousTail = priorTurns.at(-1)?.id;
+    const previousTailIndex = mergedTurns.findIndex((turn) => turn.id === previousTail);
+    const appendsNewTurn = mergedTurns
+      .slice(previousTailIndex + 1)
+      .some((turn) => !previous.has(turn.id));
     const overflowed =
-      insertsNewTurn && mergedTurns.length > CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT;
+      appendsNewTurn && mergedTurns.length > CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT;
     const nextTurns = options.limitHistory(
       overflowed
         ? limitRecentConversationSegments(mergedTurns, CONVERSATION_RECENT_SEGMENT_LIMIT)

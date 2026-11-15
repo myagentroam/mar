@@ -237,7 +237,7 @@ describe('freeform apply_patch parsing', () => {
   });
 
   it('retains input type and byte-limit errors without fabricated locations', async () => {
-    expect(() => applyPatchToolInput({ patch: 42 })).toThrow('Patch is required.');
+    expect(() => applyPatchToolInput({ input: 42 })).toThrow('Expected string field "input"');
     const { tools } = await fixture();
     const error = await failure(tools, 'x'.repeat(TOOL_EXECUTION_LIMITS.patchMaxBytes + 1));
     expect(error.code).toBe('MAR_AGENT_TOOL_OUTPUT_LIMIT');
@@ -297,7 +297,7 @@ describe('freeform apply_patch parsing', () => {
           requests.push(request);
           if (requests.length <= patches.length) {
             const patch = patches[requests.length - 1]!;
-            const input = protocol === 'ANTHROPIC_MESSAGES' ? { patch } : patch;
+            const input = protocol === 'ANTHROPIC_MESSAGES' ? { input: patch } : patch;
             const code = `observe.result(await tools.apply_patch(${JSON.stringify(input)}));`;
             yield {
               type: 'client_tool.call',

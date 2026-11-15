@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { h } from 'vue';
+import { h, reactive } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import Page from '../../src/view/settings/MarAgentModelManagementPage.vue?unit-render';
@@ -100,6 +100,7 @@ function requestFixture(models: readonly MarAgentModelSummary[] = [model]) {
     if (path === '/api/admin/mar-agent/models' || path === '/api/mar-agent/models')
       return init?.method ? {} : { models };
     if (path === '/api/admin/mar-agent/codex-credentials') return { credentials };
+    if (path.endsWith('/connection')) return { details: { socks5Url: null } };
     const credential = credentials.find((item) => path.endsWith(`/${item.id}`));
     if (credential) return { details: { credential, socks5Url: 'socks5://fixture.invalid:1080' } };
     if (path.endsWith('/usage')) return { usage };
@@ -124,6 +125,129 @@ afterEach(() => {
 });
 
 describe('Model management component behavior', () => {
+  it.each(['zh-CN', 'en-US'] as const)(
+    'edits, copies and clears a sensitive model proxy in %s',
+    async (locale) => {
+      i18n.global.locale.value = locale;
+      const labels = commonMessages[locale].marAgentModels;
+      const proxy = 'socks5://user:private-password@proxy.invalid:1080';
+      const base = requestFixture();
+      const request = vi.fn(async (path: string, init?: RequestInit) => {
+        if (path.endsWith('/connection')) return { details: { socks5Url: proxy } };
+        if (init?.method === 'PUT' || init?.method === 'POST') return {};
+        return base(path, init);
+      });
+      const view = renderComponent(
+        Page,
+        { request, canManageModels: true, writable: true, nodes: [] },
+        {},
+        { validate: async () => true }
+      );
+      try {
+        await flushComponent();
+        expect(textContent(view.root)).not.toContain(proxy);
+        expect(request.mock.calls.some(([path]) => path.endsWith('/connection'))).toBe(false);
+        await trigger(button(view, labels.edit), 'onClick');
+        const input = control(view, labels.codexProxy, 'ElInput');
+        expect(input.props['modelValue']).toBe(proxy);
+        expect(input.props['type']).toBe('password');
+        const rule = (
+          view.findAll('ElForm')[0]!.props['rules'] as Record<string, { validator: Function }[]>
+        ).socks5Url![0]!;
+        const validate = vi.fn();
+        rule.validator({}, 'http://proxy.invalid:1080', validate);
+        expect(validate).toHaveBeenCalledWith(expect.any(Error));
+        await trigger(button(view, labels.save), 'onClick');
+        expect(
+          JSON.parse(
+            String(request.mock.calls.find(([, init]) => init?.method === 'PUT')![1]!.body)
+          )
+        ).toMatchObject({ socks5Url: proxy });
+        expect(view.findAll('ElDialog')).toHaveLength(0);
+        await trigger(button(view, labels.duplicate), 'onClick');
+        expect(control(view, labels.codexProxy, 'ElInput').props['modelValue']).toBe(proxy);
+        await trigger(control(view, labels.codexProxy, 'ElInput'), 'onUpdate:modelValue', '');
+        await trigger(button(view, labels.save), 'onClick');
+        expect(
+          JSON.parse(
+            String(request.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body)
+          )
+        ).toMatchObject({ socks5Url: null });
+        await trigger(button(view, labels.edit), 'onClick');
+        await trigger(control(view, labels.protocol, 'ElSelect'), 'onChange', 'CHATGPT');
+        expect(control(view, labels.codexProxy, 'ElInput')).toBeUndefined();
+        expect(textContent(view.root)).toContain(labels.modelProxyCredentialHint);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
+  it('discards a late proxy response after another model form opens', async () => {
+    const pending = deferred<{ details: { socks5Url: string } }>();
+    const base = requestFixture();
+    const request = vi.fn((path: string, init?: RequestInit) =>
+      path.endsWith('/connection') ? pending.promise : base(path, init)
+    );
+    const view = renderComponent(Page, {
+      request,
+      canManageModels: true,
+      writable: true,
+      nodes: []
+    });
+    try {
+      await flushComponent();
+      const opening = trigger(button(view, messages.edit), 'onClick');
+      await flushComponent();
+      await trigger(button(view, messages.add), 'onClick');
+      pending.resolve({ details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' } });
+      await opening;
+      expect(control(view, messages.codexProxy, 'ElInput').props['modelValue']).toBe('');
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it.each([false, true])(
+    'clears a model proxy when management access is revoked (pending=%s)',
+    async (pending) => {
+      const response = deferred<{ details: { socks5Url: string } }>();
+      const base = requestFixture();
+      const request = vi.fn(async (path: string, init?: RequestInit) =>
+        path.endsWith('/connection') ? response.promise : base(path, init)
+      );
+      const props = reactive({ request, canManageModels: true, writable: true, nodes: [] });
+      const view = renderComponent(Page, props);
+      try {
+        await flushComponent();
+        const opening = trigger(button(view, messages.edit), 'onClick');
+        if (!pending) {
+          response.resolve({
+            details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' }
+          });
+          await opening;
+          expect(view.findAll('ElDialog')).toHaveLength(1);
+        }
+        props.canManageModels = false;
+        await flushComponent();
+        expect(view.findAll('ElDialog')).toHaveLength(0);
+        props.canManageModels = true;
+        await flushComponent();
+        if (pending) {
+          response.resolve({
+            details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' }
+          });
+          await opening;
+          expect(view.findAll('ElDialog')).toHaveLength(0);
+        }
+        await trigger(button(view, messages.add), 'onClick');
+        expect(control(view, messages.codexProxy, 'ElInput').props['modelValue']).toBe('');
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it.each([
     { locale: 'zh-CN', initial: undefined, expected: true },
     { locale: 'en-US', initial: false, expected: false }
@@ -697,6 +821,49 @@ describe('Model management component behavior', () => {
           method: 'PUT',
           body: JSON.stringify({ modelIds: ['model-2', 'model-1'] })
         });
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
+  it.each([undefined, false, true])(
+    'opens a proxy model transport test only for compatible Nodes (capability=%s)',
+    async (modelSocks5Proxy) => {
+      const request = requestFixture([{ ...model, proxyConfigured: true }]);
+      const nodes = [
+        {
+          id: 'ready',
+          displayName: 'Ready Node',
+          connected: true,
+          disabled: false,
+          capabilities: {
+            marAgentRuntimeCredentials: {
+              apiVersion: 1,
+              websocket: true,
+              httpVersions: ['1.1', '2'],
+              modelSocks5Proxy
+            }
+          }
+        }
+      ];
+      const view = renderComponent(Page, { request, canManageModels: true, writable: true, nodes });
+      try {
+        await flushComponent();
+        await trigger(button(view, messages.test), 'onClick');
+        if (modelSocks5Proxy === true) {
+          expect(view.findAll('ElDialog')).toHaveLength(1);
+          expect(
+            control(view, messages.modelTestNode, 'ElSelect')
+              .children.filter((node) => node.type === 'ElOption')
+              .map((node) => node.props['value'])
+          ).toEqual(['ready']);
+          expect(showMessage).not.toHaveBeenCalled();
+        } else {
+          expect(view.findAll('ElDialog')).toHaveLength(0);
+          expect(showMessage).toHaveBeenCalledWith(messages.modelTestNoNode, 'error');
+        }
+        expect(request.mock.calls.some(([path]) => path.endsWith('/test'))).toBe(false);
       } finally {
         view.unmount();
       }

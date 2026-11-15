@@ -9,7 +9,6 @@ import { devNull, tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GithubSkillProvider } from '../../ee/server/src/skill/github-skill-provider.js';
 import { GitSkillRepository } from '../../ee/server/src/skill/git-skill-repository.js';
 
 const { runGit, spawnGit, lookup } = vi.hoisted(() => ({
@@ -103,7 +102,7 @@ describe('Git Skill repository snapshots', () => {
     ['https://git.example.com/acme/group/skills.git', 'git.example.com/acme/group/skills'],
     ['git@git.example.com:acme/skills.git', 'git.example.com/acme/skills']
   ])('clones %s once and reads a pinned Skill bundle locally', async (repositoryUrl, identity) => {
-    const bundle = await new GithubSkillProvider().resolve({
+    const bundle = await new GitSkillRepository().resolve({
       repositoryUrl,
       skillPath: 'skills/review'
     });
@@ -138,7 +137,7 @@ describe('Git Skill repository snapshots', () => {
   });
 
   it('builds identical canonical content regardless of transport and tree order', async () => {
-    const repository = new GithubSkillProvider();
+    const repository = new GitSkillRepository();
     const github = await repository.resolve({
       repositoryUrl: 'https://github.com/acme/skills',
       skillPath: 'skills/review'
@@ -155,7 +154,7 @@ describe('Git Skill repository snapshots', () => {
 
   it('supports repository-root skills and resolving candidates by name', async () => {
     entries = [{ path: 'SKILL.md', content: skill }];
-    const repository = new GithubSkillProvider();
+    const repository = new GitSkillRepository();
     await expect(
       repository.resolve({ repositoryUrl: 'https://github.com/acme/skills', skillPath: '.' })
     ).resolves.toMatchObject({ skillPath: '.', name: 'review' });
@@ -190,7 +189,7 @@ describe('Git Skill repository snapshots', () => {
     'rejects unsafe Skill path %s before network access',
     async (skillPath) => {
       await expect(
-        new GithubSkillProvider().resolve({
+        new GitSkillRepository().resolve({
           repositoryUrl: 'https://github.com/acme/skills',
           skillPath
         })
@@ -209,7 +208,7 @@ describe('Git Skill repository snapshots', () => {
     'https://example.com/.git'
   ])('rejects invalid locator %s before cloning', async (repositoryUrl) => {
     await expect(
-      new GithubSkillProvider().resolve({ repositoryUrl, skillPath: '.' })
+      new GitSkillRepository().resolve({ repositoryUrl, skillPath: '.' })
     ).rejects.toThrow('SKILL_SOURCE_PROVIDER_UNSUPPORTED');
     expect(runGit).not.toHaveBeenCalled();
   });
@@ -218,7 +217,7 @@ describe('Git Skill repository snapshots', () => {
     'clones %s without manual DNS or public-address validation',
     async (repositoryUrl) => {
       await expect(
-        new GithubSkillProvider().resolve({ repositoryUrl, skillPath: 'skills/review' })
+        new GitSkillRepository().resolve({ repositoryUrl, skillPath: 'skills/review' })
       ).resolves.toMatchObject({ name: 'review' });
       expect(lookup).not.toHaveBeenCalled();
       expect(runGit.mock.calls[0]?.[1]).toContain('clone');
@@ -237,17 +236,17 @@ describe('Git Skill repository snapshots', () => {
     expect(spawnGit.mock.results[0]?.value.stdout.destroyed).toBe(true);
   });
 
-  it.each([false, true])(
-    'applies the TLS policy (%s) without manual DNS or inherited overrides',
-    async (disabled) => {
-      vi.stubEnv('GIT_SSL_NO_VERIFY', 'true');
+  it.each(['https://github.com/acme/skills', 'https://git.example.com/acme/skills.git'])(
+    'skips HTTPS certificate verification for %s without manual DNS or inherited overrides',
+    async (repositoryUrl) => {
+      vi.stubEnv('GIT_SSL_NO_VERIFY', 'false');
       vi.stubEnv('GIT_CONFIG_COUNT', '1');
-      vi.stubEnv('GIT_CONFIG_PARAMETERS', "'http.sslVerify=false'");
-      const result = await new GithubSkillProvider(async () => disabled).resolve({
-        repositoryUrl: 'https://github.com/acme/skills',
+      vi.stubEnv('GIT_CONFIG_PARAMETERS', "'http.sslVerify=true'");
+      const result = await new GitSkillRepository().resolve({
+        repositoryUrl,
         skillPath: 'skills/review'
       });
-      expect(result.tlsVerified).toBe(!disabled);
+      expect(result.tlsVerified).toBe(false);
       const clone = runGit.mock.calls.find(([, args]) => args.includes('clone'))!;
       expect(clone[1]).toEqual(
         expect.arrayContaining([
@@ -264,28 +263,37 @@ describe('Git Skill repository snapshots', () => {
       });
       expect(clone[2].env.GIT_CONFIG_COUNT).toBeUndefined();
       expect(clone[2].env.GIT_CONFIG_PARAMETERS).toBeUndefined();
-      expect(clone[2].env.GIT_SSL_NO_VERIFY).toBe(disabled ? 'true' : undefined);
-      expect(clone[1]).toContain(`http.sslVerify=${!disabled}`);
+      expect(clone[2].env.GIT_SSL_NO_VERIFY).toBe('true');
+      expect(clone[1]).toContain('http.sslVerify=false');
       expect(clone[1].some((arg: string) => arg.startsWith('http.curloptResolve='))).toBe(false);
       expect(lookup).not.toHaveBeenCalled();
     }
   );
 
-  it('keeps SSH configuration independent from the HTTPS TLS setting', async () => {
-    const disabled = vi.fn(async () => true);
-    const result = await new GithubSkillProvider(disabled).resolve({
-      repositoryUrl: 'git@git.example.com:acme/skills.git',
-      skillPath: 'skills/review'
-    });
-    expect(result.tlsVerified).toBe(false);
-    expect(disabled).not.toHaveBeenCalled();
-    expect(runGit.mock.calls[0]?.[2].env.GIT_SSH_COMMAND).toContain('BatchMode=yes');
-  });
+  it.each(['git@github.com:acme/skills.git', 'git@git.example.com:acme/skills.git'])(
+    'skips host verification for %s while retaining deployment SSH configuration',
+    async (repositoryUrl) => {
+      const result = await new GitSkillRepository().resolve({
+        repositoryUrl,
+        skillPath: 'skills/review'
+      });
+      expect(result.tlsVerified).toBe(false);
+      const clone = runGit.mock.calls.find(([, args]) => args.includes('clone'))!;
+      for (const option of [
+        'BatchMode=yes',
+        'StrictHostKeyChecking=no',
+        'UserKnownHostsFile=/dev/null'
+      ])
+        expect(clone[2].env.GIT_SSH_COMMAND).toContain(option);
+      expect(clone[1]).not.toContain('http.sslVerify=false');
+      expect(clone[2].env.GIT_CONFIG_GLOBAL).toBe(process.env['GIT_CONFIG_GLOBAL']);
+    }
+  );
 
   it('rejects forged installation metadata and ambiguous Skill names', async () => {
     entries.push({ path: 'skills/review/.mar-skill-install.json', content: Buffer.from('{}') });
     await expect(
-      new GithubSkillProvider().resolve({
+      new GitSkillRepository().resolve({
         repositoryUrl: 'https://github.com/acme/skills',
         skillPath: 'skills/review'
       })
@@ -293,7 +301,7 @@ describe('Git Skill repository snapshots', () => {
     entries = entries.filter((entry) => !entry.path.endsWith('.json'));
     entries.push({ path: '.agents/skills/review/SKILL.md', content: skill });
     await expect(
-      new GithubSkillProvider().resolve({
+      new GitSkillRepository().resolve({
         repositoryUrl: 'https://github.com/acme/skills',
         skillName: 'review'
       })
@@ -340,14 +348,14 @@ describe('Git Skill repository snapshots', () => {
       throw new Error('credential-bearing Git diagnostic');
     });
     await expect(
-      new GithubSkillProvider().resolve({
+      new GitSkillRepository().resolve({
         repositoryUrl: 'https://github.com/acme/skills',
         skillPath: '.'
       })
     ).rejects.toThrow(/^SKILL_SOURCE_UNAVAILABLE$/u);
   });
 
-  it('uses real HTTPS Git with the TLS policy and reads the complete snapshot after the source goes offline', async () => {
+  it('clones real self-signed HTTPS Git by default and reads the complete snapshot after the source goes offline', async () => {
     const childProcess =
       await vi.importActual<typeof import('node:child_process')>('node:child_process');
     const exec = promisify(childProcess.execFile);
@@ -445,10 +453,7 @@ describe('Git Skill repository snapshots', () => {
         }
         return exec('git', args, options);
       });
-      await expect(
-        new GithubSkillProvider().resolve({ repositoryUrl, skillPath: 'skills/review' })
-      ).rejects.toThrow('SKILL_SOURCE_UNAVAILABLE');
-      const bundle = await new GithubSkillProvider(async () => true).resolve({
+      const bundle = await new GitSkillRepository().resolve({
         repositoryUrl,
         skillPath: 'skills/review'
       });

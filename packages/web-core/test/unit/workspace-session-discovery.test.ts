@@ -1090,7 +1090,7 @@ describe('Web Workspace Session Discovery', () => {
     });
   });
 
-  it('Does not let a stale IDLE snapshot revoke managed activity while an active Run exists', () => {
+  it('Does not let a stale IDLE snapshot revoke running activity while an active Run exists', () => {
     const { sessions, controller } = state([
       { id: 'run-1', sessionId: 'session-1', status: 'RUNNING' }
     ]);
@@ -1099,14 +1099,14 @@ describe('Web Workspace Session Discovery', () => {
         id: 'session-1',
         workspaceId: 'workspace-1',
         runner: 'codex',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED' }
       }
     ] as never);
     controller.merge([
       { id: 'session-1', workspaceId: 'workspace-1', runner: 'codex', activity: 'IDLE' } as never
     ]);
-    expect(sessions.value[0]?.activity).toBe('MANAGED_ACTIVE');
+    expect(sessions.value[0]?.activity).toBe('RUNNING');
   });
 
   it('Allows an authoritative Watch snapshot with IDLE to converge stale browser activity', () => {
@@ -1118,7 +1118,7 @@ describe('Web Workspace Session Discovery', () => {
         id: 'session-1',
         workspaceId: 'workspace-1',
         runner: 'codex',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         lastActivityAt: 100,
         control: { level: 'MANAGED' },
         runtime: { capabilities: ['history.read'] }
@@ -1282,7 +1282,7 @@ describe('Web Workspace Session Discovery', () => {
         id: 'session-1',
         workspaceId: 'workspace-1',
         runner: 'codex',
-        activity: 'MANAGED_ACTIVE'
+        activity: 'RUNNING'
       }
     ]);
     const synchronizing = controller.synchronize('workspace-1');
@@ -1302,7 +1302,7 @@ describe('Web Workspace Session Discovery', () => {
     });
     await synchronizing;
     expect(sessions.value[0]?.runnerTitle).toBe('Old home-page title');
-    expect(sessions.value[0]?.activity).toBe('MANAGED_ACTIVE');
+    expect(sessions.value[0]?.activity).toBe('RUNNING');
   });
 
   it('Preserves the current page cursor when a manual refresh fails', async () => {

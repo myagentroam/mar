@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SecretValue } from '@myagentroam/agent';
 import { LocalAgentHost } from '@myagentroam/agent/host';
 import type { AgentModelConfiguration } from '@myagentroam/agent';
 import { createAgentWithAdapter } from '../../../mar-agent/dist/sdk/agent.js';
@@ -120,6 +121,27 @@ describe('Node MAR Agent runtime credentials', () => {
         })
       ).toThrow();
     }
+  });
+  it('wraps a projected SOCKS5 proxy URL in SecretValue for the SDK model', async () => {
+    const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });
+    const socks5Url = 'socks5://proxy-user:proxy-password@proxy.example.test:1080';
+    const [model] = new MarAgentRuntimeModelFactory(control, () => 1_000).create(
+      [
+        {
+          ...runtimeModel(ticket('proxy', 1_000)),
+          credential: { type: 'INLINE_API_KEY', value: 'fixture-api-key' },
+          socks5Url
+        }
+      ],
+      { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
+    );
+
+    expect(model?.socks5Url).toBeInstanceOf(SecretValue);
+    expect(model?.socks5Url?.reveal()).toBe(socks5Url);
+    expect(JSON.stringify(model)).not.toContain(socks5Url);
+    expect(JSON.stringify(model)).not.toContain('proxy-password');
+    expect(JSON.stringify(model)).toContain('[REDACTED]');
+    await model?.credentialProvider?.close();
   });
   it.each(['1.1', '2'] as const)(
     'relays HTTP/%s continuation to SDK without adding storage configuration',

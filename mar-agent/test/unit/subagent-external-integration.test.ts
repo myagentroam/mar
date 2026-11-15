@@ -1498,7 +1498,7 @@ it('projects a real child final answer and changed file from public history', as
         : call('agent_wait', { agentId: childId });
     if (!request.messages.some((message) => message.role === 'tool'))
       return call('apply_patch', {
-        patch: '*** Begin Patch\n*** Add File: child-created.txt\n+child content\n*** End Patch'
+        input: '*** Begin Patch\n*** Add File: child-created.txt\n+child content\n*** End Patch'
       });
     return [
       { type: 'text.completed', itemId: 'answer', text: 'Finished child work.' },

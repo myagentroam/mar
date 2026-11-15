@@ -1,6 +1,7 @@
 import type { ClientToolDefinition } from '../contracts.js';
 import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
+import { crc32 } from 'node:zlib';
 import { AgentError } from '../../error.js';
 
 import type { ToolExecutionResult, ViewImageRegion, ViewImageResult } from '../contracts.js';
@@ -334,6 +335,11 @@ function validateImageContainer(data: Buffer, mimeType: ViewImageResult['mimeTyp
     const length = data.readUInt32BE(offset);
     const next = offset + 12 + length;
     if (next > data.length) incompleteImage();
+    if (crc32(data.subarray(offset + 4, next - 4)) !== data.readUInt32BE(next - 4))
+      throw new AgentError(
+        'MAR_AGENT_IMAGE_INCOMPLETE',
+        'PNG chunk checksum is invalid. Repair or recreate the image and read it again.'
+      );
     const type = data.toString('ascii', offset + 4, offset + 8);
     if (offset === 8) {
       if (

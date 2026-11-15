@@ -18,7 +18,7 @@ describe('Session history Watch reset', () => {
     const frames: Array<Record<string, unknown>> = [];
     const watch = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage,
@@ -64,7 +64,7 @@ describe('Session history Watch reset', () => {
     let removed = false;
     const watch = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => session,
       readPage: async () => ({ turns: removed ? [] : [{ id: 'removed-turn' }] }),

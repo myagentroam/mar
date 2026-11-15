@@ -508,6 +508,44 @@ describe('local image file integrity', () => {
     });
   });
 
+  it.each(['IHDR', 'IDAT', 'tEXt', 'IEND'])(
+    'rejects a complete PNG with an invalid %s checksum before publishing pixels',
+    async (chunkType) => {
+      const malformed = pngWithTextPadding(png, png.length + 64);
+      let offset = 8;
+      while (malformed.toString('ascii', offset + 4, offset + 8) !== chunkType)
+        offset += malformed.readUInt32BE(offset) + 12;
+      const checksumOffset = offset + 8 + malformed.readUInt32BE(offset);
+      malformed.writeUInt32BE((malformed.readUInt32BE(checksumOffset) ^ 1) >>> 0, checksumOffset);
+      const { tool } = await fixture(malformed);
+      await expect(tool.execute({ path: 'image.bin' })).rejects.toMatchObject({
+        code: 'MAR_AGENT_IMAGE_INCOMPLETE',
+        message: expect.stringContaining('checksum')
+      });
+    }
+  );
+
+  it('rejects a zero IEND checksum for paths and resources, including transformed input', async () => {
+    const malformed = Buffer.from(png);
+    malformed.writeUInt32BE(0, malformed.length - 4);
+    const { tool } = await fixture(malformed);
+    const reader = async () => ({ dataBase64: malformed.toString('base64') });
+    const error = {
+      code: 'MAR_AGENT_IMAGE_INCOMPLETE',
+      message: expect.stringContaining('Repair or recreate')
+    };
+    await expect(tool.execute({ path: 'image.bin' })).rejects.toMatchObject(error);
+    await expect(
+      tool.execute({ path: 'image.bin', resize: { maxWidth: 1 } })
+    ).rejects.toMatchObject(error);
+    await expect(viewResourceImage({ resourceId: 'malformed' }, reader)).rejects.toMatchObject(
+      error
+    );
+    await expect(
+      viewResourceImage({ resourceId: 'malformed', resize: { maxWidth: 1 } }, reader)
+    ).rejects.toMatchObject(error);
+  });
+
   it.each(['growth', 'same-size rewrite'])(
     'rejects %s during its read even when the captured PNG is complete',
     async (change) => {

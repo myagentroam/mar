@@ -49,7 +49,7 @@ test('Queued messages remain only in the queue until an authoritative Turn is pr
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: {
           level: 'MANAGED',
           capabilities: [
@@ -195,7 +195,7 @@ test('Late stop-and-send responses do not create ghost queues after a message is
           id: 'session-1',
           workspaceId: 'workspace-1',
           runner: 'codex',
-          activity: 'MANAGED_ACTIVE',
+          activity: 'RUNNING',
           control: {
             level: 'MANAGED',
             capabilities: [
@@ -464,14 +464,14 @@ test('Managed sessions permit insertion before late Run snapshots and stop the c
     writes,
     'GIT_WORKSPACE',
     true,
-    'MANAGED_ACTIVE'
+    'RUNNING'
   );
   const session = {
     id: 'session-1',
     workspaceId: 'workspace-1',
     runner: 'codex' as const,
     externalSessionId: 'vscode-thread-1',
-    activity: 'MANAGED_ACTIVE' as const,
+    activity: 'RUNNING' as const,
     control: {
       level: 'MANAGED',
       capabilities: ['history.read', 'events.live', 'turn.steer', 'turn.interrupt']
@@ -766,7 +766,7 @@ test('Official and realtime questions with the same requestId share one card and
     workspaceId: 'workspace-1',
     runner: 'codex' as const,
     externalSessionId: 'vscode-thread-1',
-    activity: 'MANAGED_ACTIVE' as const,
+    activity: 'RUNNING' as const,
     control: {
       level: 'MANAGED',
       capabilities: ['history.read', 'events.live', 'turn.start', 'turn.steer', 'turn.interrupt']
@@ -874,7 +874,7 @@ for (const entry of ['message', 'command'] as const) {
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities }
       };
       const run = {

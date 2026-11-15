@@ -7,7 +7,10 @@ import { OpenCodeRunner } from '../../src/runner/opencode-runner.js';
 import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import type { AbstractRunner } from '../../src/runner/abstract-runner.js';
 import { RunnerRegistry } from '../../src/runner/runner-registry.js';
-import { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
+import {
+  ConversationHistoryService,
+  composeConversationRuntimePage
+} from '../../src/service/conversation-history-service.js';
 import { ConversationObservation } from '../../src/service/conversation-observation.js';
 
 function turn(
@@ -72,7 +75,7 @@ function fixture(
     externalSessionId: 'native-session',
     nativeControl: 'MAR_MANAGED'
   } as NodeAgentSession;
-  let managedActive = true;
+  let hasActiveRun = true;
   const service = new ConversationHistoryService({
     runtime: {
       getAgentSession: () => session,
@@ -80,7 +83,7 @@ function fixture(
     },
     runners: new RunnerRegistry([runner]),
     snapshotSequence: () => 42,
-    hasManagedActiveRun: () => managedActive
+    hasActiveRun: () => hasActiveRun
   } as never);
   const official = vi.spyOn(service, 'readOfficial').mockResolvedValue({
     turns: native,
@@ -92,11 +95,49 @@ function fixture(
     service,
     official,
     nativeRead,
-    setActive: (value: boolean) => (managedActive = value)
+    setActive: (value: boolean) => (hasActiveRun = value)
   };
 }
 
 const rewind = { before: 'native-before', after: 'native-after' };
+
+describe('Runtime Rewind boundary retention', () => {
+  it.each([false, true])(
+    'retains matched history boundaries without replacing live content (native identity=%s)',
+    (nativeIdentity) => {
+      const historical = turn(nativeIdentity ? 'native' : 'local', 'shared-input', { rewind });
+      const live = turn('local', 'shared-input');
+      const page = {
+        source: 'official' as const,
+        turns: [historical],
+        nextCursor: 'older',
+        snapshotSequence: 1,
+        readAt: 1,
+        latestVisibleAt: 20
+      };
+      const runtime = { ...page, source: 'runtime' as const, turns: [live], nextCursor: null };
+      expect(composeConversationRuntimePage(page, runtime)).toEqual({
+        ...runtime,
+        nextCursor: 'older',
+        turns: [{ ...live, rewind }]
+      });
+      expect(live.rewind).toBeUndefined();
+      const replacement = { before: null, after: 'new-boundary' };
+      expect(
+        composeConversationRuntimePage(page, {
+          ...runtime,
+          turns: [{ ...live, rewind: replacement }]
+        }).turns[0]?.rewind
+      ).toEqual(replacement);
+      expect(
+        composeConversationRuntimePage(page, {
+          ...runtime,
+          turns: [turn('different', 'unrelated')]
+        }).turns[1]?.rewind
+      ).toBeUndefined();
+    }
+  );
+});
 
 describe('Managed conversation Rewind supplementation', () => {
   it('fills only missing terminal boundaries while retaining the entire Runtime page', async () => {
@@ -223,7 +264,7 @@ describe('Managed conversation Rewind supplementation', () => {
     const result = await new CodexRunner().readConversationRewind({
       session,
       turns: [turn('local')],
-      managedActive: false,
+      hasActiveRun: false,
       firstPage: true,
       readHistory
     });
@@ -257,7 +298,7 @@ describe('Managed conversation Rewind supplementation', () => {
       return { turns: [turn('native', 'local', { rewind })], nextCursor: null };
     });
     const observation = new ConversationObservation(session, {
-      managedActive: () => true,
+      hasActiveRun: () => true,
       refreshActivity: async () => undefined,
       readPage: (current, limit) => service.read(current, { limit })
     });

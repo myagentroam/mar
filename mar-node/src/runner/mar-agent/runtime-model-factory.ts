@@ -155,7 +155,10 @@ export class MarAgentRuntimeModelFactory {
         if (credential.type === 'INLINE_API_KEY')
           return {
             ...model,
-            apiKey: new SecretValue(credential.value)
+            apiKey: new SecretValue(credential.value),
+            ...(configuration.socks5Url === undefined
+              ? {}
+              : { socks5Url: new SecretValue(configuration.socks5Url) })
           };
         if (credential?.type !== 'RUNTIME_TICKET')
           throw new AgentError(

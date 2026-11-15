@@ -383,7 +383,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
       NodeConversationTurn['id'],
       NonNullable<NodeConversationTurn['rewind']>
     >();
-    if (!input.firstPage || input.session.externalSessionId === null || !input.managedActive)
+    if (!input.firstPage || input.session.externalSessionId === null || !input.hasActiveRun)
       return supplements;
     const candidates = input.turns.filter(
       (turn) =>
@@ -693,7 +693,7 @@ export class CodexRunner extends AbstractRunner<'codex'> {
       nativeControl: session.nativeControl,
       activeTurn
     });
-    const activity = context.managedActive ? 'MANAGED_ACTIVE' : 'IDLE';
+    const activity = context.hasActiveRun ? 'RUNNING' : 'IDLE';
     return {
       control,
       activity,

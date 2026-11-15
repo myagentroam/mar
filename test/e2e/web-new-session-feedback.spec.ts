@@ -27,7 +27,7 @@ for (const { width, theme, lateSuccess } of [
       workspaceId: 'workspace-1',
       runner: 'codex',
       externalSessionId: 'feedback-native-session',
-      activity: 'MANAGED_ACTIVE',
+      activity: 'RUNNING',
       control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start', 'turn.interrupt'] }
     };
     const run = {
@@ -212,7 +212,7 @@ test('Session activity does not hide synchronization feedback before the initial
     [],
     'GIT_WORKSPACE',
     true,
-    'MANAGED_ACTIVE'
+    'RUNNING'
   );
   let releaseWatch!: () => void;
   const watchReady = new Promise<void>((resolve) => (releaseWatch = resolve));

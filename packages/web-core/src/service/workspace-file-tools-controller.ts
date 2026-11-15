@@ -416,7 +416,7 @@ export function createWorkspaceFileToolsController(input: {
     search.reset();
   }
   function refreshVisible(tool: 'files' | 'changes'): void {
-    if (tool === 'changes') void git.loadChanges();
+    if (tool === 'changes') void git.loadChanges(true);
     else void files.requestRefresh();
   }
   async function revealFileTree(path: string, current: () => boolean = () => true): Promise<void> {

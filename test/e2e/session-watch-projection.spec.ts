@@ -110,7 +110,7 @@ test('Session projection stays Watch-only across target switches, refreshes and 
           session: {
             ...sessions.find((session) => session.id === id),
             runnerTitle: 'BROADCAST_POISON',
-            activity: 'MANAGED_ACTIVE'
+            activity: 'RUNNING'
           }
         }
       ],

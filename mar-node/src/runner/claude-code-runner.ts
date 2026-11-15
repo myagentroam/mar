@@ -256,7 +256,7 @@ export class ClaudeCodeRunner extends AbstractRunner<'claude-code'> {
       ...(session.externalSessionId === null ? [] : ['session.rewind'])
     ];
     return {
-      activity: context.managedActive ? 'MANAGED_ACTIVE' : 'IDLE',
+      activity: context.hasActiveRun ? 'RUNNING' : 'IDLE',
       control: {
         level: 'MANAGED',
         capabilities: ['history.read', 'events.live', 'turn.start', 'turn.interrupt']

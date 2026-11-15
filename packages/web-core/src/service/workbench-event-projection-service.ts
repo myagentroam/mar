@@ -35,7 +35,7 @@ export function createWorkbenchEventProjectionService(options: {
   readonly mergeQueue: (queue: WorkspaceQueue, source?: WorkspaceQueueSnapshotSource) => void;
   readonly mergeSessions: (sessions: readonly Session[]) => void;
   readonly settleSessionRuns: (sessionId: string) => boolean;
-  readonly observeManagedSessionActive: (sessionId: string) => void;
+  readonly observeSessionRunning: (sessionId: string) => void;
   readonly updateContext: (sessionId: string, context: unknown) => void;
   readonly syncTurnStatus: (runId: string, status: string, sessionId?: string) => void;
   readonly cacheRun: (run: AgentRun) => void;
@@ -122,12 +122,11 @@ export function createWorkbenchEventProjectionService(options: {
       const session = payload.session;
       if (isSession(session)) {
         const selected = session.id === options.selectedSessionId.value;
-        if (selected && session.activity !== undefined && session.activity !== 'MANAGED_ACTIVE')
+        if (selected && session.activity !== undefined && session.activity !== 'RUNNING')
           options.settleSessionRuns(session.id);
         options.mergeSessions([session]);
         if (selected) {
-          if (session.activity === 'MANAGED_ACTIVE')
-            options.observeManagedSessionActive(session.id);
+          if (session.activity === 'RUNNING') options.observeSessionRunning(session.id);
         }
       }
       if (typeof payload.sessionId === 'string' && 'context' in payload)

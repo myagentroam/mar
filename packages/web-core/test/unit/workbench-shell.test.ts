@@ -290,12 +290,12 @@ describe('Shared workbench shell', () => {
       );
       expect(html.match(/\bworkspace-tab-direct-icon\b/gu)).toHaveLength(1);
       expect(
-        html.match(/class="workspace-tab-running mar-session-activity managed_active/gu)
+        html.match(/class="workspace-tab-running mar-session-activity running/gu)
       ).toHaveLength(1);
       expect(html.match(/class="workspace-tab-unread\b[^"]*"/gu)).toHaveLength(1);
       expect(html).toContain('aria-label="' + running + '"');
       expect(html).not.toContain(
-        'title="' + i18n.global.t('generated.sessionPresentation.managed') + '"'
+        'title="' + i18n.global.t('generated.sessionPresentation.running') + '"'
       );
       expect(html).toContain('>' + unread + '</span>');
       const directNode = html.match(

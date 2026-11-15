@@ -3,7 +3,7 @@ import type { NodeDatabase } from '../database.js';
 import type { NodeRuntimeState } from '../runtime-state.js';
 import type { CommandStateStore } from '../runner-command-engine.js';
 import type { RunnerRegistry } from '../runner/runner-registry.js';
-import { hasManagedActiveRun } from '../service/conversation-history-service.js';
+import { hasActiveRun } from '../service/conversation-history-service.js';
 import { SessionPresentationService } from '../session/session-presentation-service.js';
 import { NativeSessionProjectionService } from '../session/native-session-projection-service.js';
 
@@ -26,7 +26,7 @@ export function composeSessionProjection(input: {
     commands: input.commands,
     runners: input.runners,
     capabilities: input.capabilities,
-    hasManagedActiveRun: (session) => hasManagedActiveRun(input.runtime, session),
+    hasActiveRun: (session) => hasActiveRun(input.runtime, session),
     projectionForNative: (session) => native.projectionForNative(session),
     cachedNativeActivityAt: (session) => native.cachedActivityAt(session)
   });

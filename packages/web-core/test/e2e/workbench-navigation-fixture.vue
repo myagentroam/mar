@@ -104,7 +104,7 @@ const response = wideContent
         workspace-branch="develop"
         :title="title"
         :runner-icon="runnerBrandIcon"
-        :activity="(session) => (session.id === 'session-1' ? 'MANAGED_ACTIVE' : 'IDLE')"
+        :activity="(session) => (session.id === 'session-1' ? 'RUNNING' : 'IDLE')"
         :activity-label="(session) => (session.id === 'session-1' ? 'Running' : 'Idle')"
         :activity-date-time="() => '2026-11-11T04:00:00Z'"
         :activity-title="() => 'November 11, 2026'"

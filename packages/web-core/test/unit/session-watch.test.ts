@@ -329,7 +329,7 @@ describe('Web Session Watch Lifecycle', () => {
       payload: {
         kind: 'session-watch-snapshot',
         sequence: 2,
-        session: { id: 'session-1', workspaceId: 'workspace-1', activity: 'MANAGED_ACTIVE' },
+        session: { id: 'session-1', workspaceId: 'workspace-1', activity: 'RUNNING' },
         runs: [{ id: 'run-1', sessionId: 'session-1', status: 'RUNNING' }],
         performance: { runId: 'run-1', latencyMs: 80, tokensPerSecond: 42 },
         queue: { version: 3, paused: false, items: [] },
@@ -343,7 +343,7 @@ describe('Web Session Watch Lifecycle', () => {
       sequence: 2,
       category: 'session',
       payload: {
-        session: { id: 'session-1', workspaceId: 'workspace-1', activity: 'MANAGED_ACTIVE' }
+        session: { id: 'session-1', workspaceId: 'workspace-1', activity: 'RUNNING' }
       }
     });
     expect(applyRunsSnapshot).toHaveBeenCalledWith([
@@ -483,7 +483,7 @@ describe('Web Session Watch Lifecycle', () => {
     });
 
     controller.reconcileWorkspaceSnapshot(
-      { id: 'session-1', workspaceId: 'workspace-1', activity: 'MANAGED_ACTIVE' } as never,
+      { id: 'session-1', workspaceId: 'workspace-1', activity: 'RUNNING' } as never,
       sessions.value[0]
     );
 
@@ -548,7 +548,8 @@ describe('Web Session Watch Lifecycle', () => {
             expect.objectContaining({ id: 'turn-2:segment:0' }),
             expect.objectContaining({ id: 'turn-1:segment:0' })
           ]
-        })
+        }),
+        'initial'
       )
     );
     expect(scrollAfterLayout).not.toHaveBeenCalled();
@@ -661,7 +662,8 @@ describe('Web Session Watch Lifecycle', () => {
         'session-1',
         expect.objectContaining({
           turns: [expect.objectContaining({ id: 'turn-1:segment:0', segmentIndex: 0 })]
-        })
+        }),
+        'initial'
       )
     );
     controller.stopSelectedSessionWatch();
@@ -873,7 +875,7 @@ describe('Web Session Watch Lifecycle', () => {
       payload: {
         kind: 'session-watch-snapshot',
         sequence: 3,
-        session: { id: 'session-1', workspaceId: 'workspace-1', activity: 'MANAGED_ACTIVE' },
+        session: { id: 'session-1', workspaceId: 'workspace-1', activity: 'RUNNING' },
         runs: [{ id: 'run-1', sessionId: 'session-1', status: 'RUNNING' }],
         queue: { version: 1, paused: false, items: [] },
         conversation: {

@@ -104,6 +104,40 @@ describe('Server MAR Agent runtime model service', () => {
       models: [{ gcEnabled: true }]
     });
   });
+  it('requires Node SOCKS5 capability before projecting a configured model proxy', async () => {
+    const configured = {
+      ...model('proxied', { type: 'INLINE_API_KEY', value: 'key' }),
+      responsesPreviousResponseId: false,
+      socks5Url: 'socks5://proxy-user:proxy-password@proxy.example.test:1080'
+    };
+    let supportsModelSocks5Proxy = false;
+    const service = new MarAgentRuntimeModelService({
+      models: {
+        storedConfigurationsForUser: vi.fn(async () => [configured]),
+        stored: vi.fn(async () => configured)
+      },
+      tickets: { issue: vi.fn() },
+      capability: () => ({
+        apiVersion: 1,
+        websocket: true,
+        httpVersions: ['1.1'],
+        modelSocks5Proxy: supportsModelSocks5Proxy
+      })
+    });
+    const context = {
+      userId: 1,
+      nodeId: 'node',
+      workspaceId: 'workspace',
+      selectedModelId: configured.id
+    };
+
+    await expect(service.prepare(context)).rejects.toThrow('CAPABILITY_VERSION_UNSUPPORTED');
+    supportsModelSocks5Proxy = true;
+    await expect(service.prepare(context)).resolves.toMatchObject({
+      model: { id: configured.id, socks5Url: configured.socks5Url },
+      models: [{ id: configured.id, socks5Url: configured.socks5Url }]
+    });
+  });
   it('keeps auxiliary models for generation while refusing them as conversation models', async () => {
     const conversation = model('conversation', { type: 'INLINE_API_KEY', value: 'key' });
     const auxiliary = {
