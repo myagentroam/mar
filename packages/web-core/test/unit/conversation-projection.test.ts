@@ -33,6 +33,37 @@ function state(initial: ConversationTurn[] = [turn()], onRecentWindowOverflow = 
 }
 
 describe('Web Conversation Projection State', () => {
+  it('keeps an expanded history window when a handoff fills an older prefix rather than appending a live Segment', () => {
+    const segments = Array.from({ length: 36 }, (_, index) => ({
+      ...turn('SUCCEEDED'),
+      id: `segment-${index}`,
+      turnId: 'turn-1',
+      segmentIndex: index
+    }));
+    const overflow = vi.fn();
+    const { turns, nextCursor, controller } = state(segments.slice(6), overflow);
+    nextCursor.value = 'before-segment-6';
+    const rewind = { before: null, after: 'native-turn-1' };
+    controller.mergeLatest({
+      turns: segments.map((segment) => ({ ...segment, rewind })),
+      nextCursor: null,
+      snapshotSequence: 1
+    });
+    expect(turns.value.map((segment) => segment.id)).toEqual(segments.map((segment) => segment.id));
+    expect(turns.value.every((segment) => segment.rewind === rewind)).toBe(true);
+    expect(nextCursor.value).toBe('before-segment-6');
+    expect(overflow).not.toHaveBeenCalled();
+    controller.mergeLatest({
+      turns: [{ ...segments.at(-1)!, id: 'segment-36', segmentIndex: 36 }],
+      nextCursor: null,
+      snapshotSequence: 2
+    });
+    expect(turns.value).toHaveLength(15);
+    expect(turns.value.at(-1)?.id).toBe('segment-36');
+    expect(nextCursor.value).toBeNull();
+    expect(overflow).toHaveBeenCalledOnce();
+  });
+
   it('Flushes the previous Segment before admitting a new Segment in the same frame', () => {
     const { turns, controller } = state([
       { ...turn(), id: 'turn-1:segment:0', turnId: 'turn-1', segmentIndex: 0 }

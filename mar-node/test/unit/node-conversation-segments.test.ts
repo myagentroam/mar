@@ -55,6 +55,70 @@ function turn(id: string, kinds: readonly string[]) {
 }
 
 describe('Node Conversation Segment', () => {
+  it('backfills all Segments of an observed Turn rather than truncating its earlier user inputs', async () => {
+    let active = true;
+    const session = {
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      externalSessionId: 'native-1'
+    } as never;
+    const original = turn(
+      'many-segments',
+      Array.from({ length: 36 }, () => ['user_message', 'assistant_message']).flat()
+    );
+    const readPage = vi.fn(async () => ({
+      turns: active
+        ? [original]
+        : [{ ...original, rewind: { before: null, after: 'native-many-segments' } }],
+      nextCursor: null,
+      snapshotSequence: active ? 0 : 1,
+      source: active ? ('runtime' as const) : ('official' as const),
+      readAt: 1,
+      latestVisibleAt: 1
+    }));
+    const segments = new ConversationSegmentService(readPage);
+    const snapshots: ReturnType<typeof segments.projectInitial>[] = [];
+    const watch = createTestSessionWatch({
+      resolve: async () => session,
+      hasActiveRun: () => active,
+      refreshActivity: async () => undefined,
+      present: () => session,
+      readPage,
+      projectInitialPage: (selected, history, _unit, limit) =>
+        segments.projectInitial(selected, history, limit),
+      emitSession: vi.fn(),
+      emitPage: vi.fn(),
+      emitWatchEvent: (event) => {
+        const frame = event as { type: string; payload: unknown };
+        if (frame.type === 'watch.session.snapshot') snapshots.push(frame.payload as never);
+      }
+    });
+    try {
+      await watch.operations()['session.watch']!({
+        sessionId: 'session-1',
+        workspaceId: 'workspace-1',
+        workbenchConnectionId: 'connection-segments',
+        watchId: 'watch-segments',
+        mode: 'initial',
+        unit: 'SEGMENT'
+      });
+      await vi.waitFor(() => expect(snapshots).toHaveLength(1));
+      expect(snapshots[0]!.segments).toHaveLength(6);
+      active = false;
+      watch.emitRealtime('session-1', {
+        sequence: 1,
+        category: 'session',
+        payload: { session: { id: 'session-1', activity: 'IDLE' } }
+      });
+      await vi.waitFor(() => expect(snapshots).toHaveLength(2));
+      expect(snapshots[1]!.segments).toHaveLength(36);
+      expect(snapshots[1]!.segments[0]!.items[0]!.id).toBe('many-segments-0');
+      expect(snapshots[1]!.segments.every((segment) => segment.rewind !== undefined)).toBe(true);
+    } finally {
+      watch.clear();
+    }
+  });
+
   it.each([false, true])(
     'sends six complete Segments on initial Watch and revisit, with three more per cursor: running=%s',
     async (running) => {

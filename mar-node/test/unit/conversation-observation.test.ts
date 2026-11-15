@@ -30,6 +30,112 @@ function page(limit: number) {
 }
 
 describe('Conversation observation read windows', () => {
+  it('does not reuse an in-flight periodic tail for the terminal handoff', async () => {
+    let active = true;
+    const pending = Promise.withResolvers<void>();
+    const readPage = vi.fn(async (_session: NodeAgentSession, limit: number) => {
+      if (limit === 10) await pending.promise;
+      return {
+        ...page(limit),
+        source: active ? ('runtime' as const) : ('official' as const),
+        turns: page(limit).turns.map((turn) =>
+          active ? turn : { ...turn, rewind: { before: null, after: turn.id } }
+        )
+      };
+    });
+    const observation = new ConversationObservation(session, {
+      hasActiveRun: () => active,
+      readPage,
+      refreshActivity: async () => undefined
+    });
+    try {
+      await observation.initial();
+      active = false;
+      const periodic = observation.refresh();
+      await vi.waitFor(() => expect(readPage).toHaveBeenCalledTimes(2));
+      const terminal = observation.observe({
+        sequence: 1,
+        category: 'session',
+        payload: { session: { id: session.id, activity: 'IDLE' } }
+      });
+      pending.resolve();
+      const [, update] = await Promise.all([periodic, terminal]);
+      expect(update).toMatchObject({ handoff: true, snapshot: true });
+      expect(update?.page.turns).toHaveLength(30);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([30, 10, 30]);
+    } finally {
+      pending.resolve();
+      observation.close();
+    }
+  });
+
+  it('keeps the full convergence window after a temporary Runtime fallback', async () => {
+    let active = true;
+    let persisted = false;
+    const readPage = vi.fn(async (_session: NodeAgentSession, limit: number) => ({
+      ...page(limit),
+      source: persisted ? ('official' as const) : ('runtime' as const),
+      turns: page(limit).turns.map((turn) =>
+        persisted ? { ...turn, rewind: { before: null, after: turn.id } } : turn
+      )
+    }));
+    const observation = new ConversationObservation(session, {
+      hasActiveRun: () => active,
+      readPage,
+      refreshActivity: async () => undefined
+    });
+    try {
+      await observation.initial();
+      active = false;
+      const fallback = await observation.observe({
+        sequence: 1,
+        category: 'session',
+        payload: { session: { id: session.id, activity: 'IDLE' } }
+      });
+      expect(fallback?.page.turns).toEqual(turns.slice(-30));
+      persisted = true;
+      const recovered = await observation.refresh();
+      expect(recovered).toMatchObject({ handoff: true, snapshot: true });
+      expect(recovered?.page.turns).toHaveLength(30);
+      expect(recovered?.page.turns.every((turn) => turn.rewind !== undefined)).toBe(true);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([30, 30, 30]);
+    } finally {
+      observation.close();
+    }
+  });
+
+  it('hands off the full terminal window instead of only the recent emission tail', async () => {
+    let active = true;
+    const readPage = vi.fn(async (_session: NodeAgentSession, limit: number) => ({
+      ...page(limit),
+      source: active ? ('runtime' as const) : ('official' as const),
+      turns: page(limit).turns.map((turn) =>
+        active ? turn : { ...turn, rewind: { before: null, after: turn.id } }
+      )
+    }));
+    const observation = new ConversationObservation(session, {
+      hasActiveRun: () => active,
+      readPage,
+      refreshActivity: async () => undefined
+    });
+    try {
+      expect((await observation.initial())?.page.turns).toHaveLength(30);
+      active = false;
+      const update = await observation.observe({
+        sequence: 1,
+        category: 'session',
+        payload: { session: { id: session.id, activity: 'IDLE' } }
+      });
+      expect(update).toMatchObject({ handoff: true, snapshot: true });
+      expect(update?.page.turns).toHaveLength(30);
+      expect(update?.page.turns.every((turn) => turn.rewind !== undefined)).toBe(true);
+      expect(readPage.mock.calls.map((call) => call[1])).toEqual([30, 30]);
+      expect((await observation.refresh())?.changed).toBe(false);
+    } finally {
+      observation.close();
+    }
+  });
+
   it.each([
     [3, 30, [3, 30]],
     [30, 3, [30]],

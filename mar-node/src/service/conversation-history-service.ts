@@ -112,7 +112,11 @@ export function composeConversationRuntimePage(
   for (const turn of runtime.turns) {
     const index = turns.findIndex((candidate) => sameConversationTurn(candidate, turn));
     if (index < 0) insertConversationTurnChronologically(turns, turn);
-    else turns[index] = turn;
+    else {
+      const rewind = turn.rewind ?? turns[index]!.rewind;
+      // Runtime owns accepted content, but may not carry the persisted history boundary.
+      turns[index] = rewind === undefined ? turn : { ...turn, rewind };
+    }
   }
   return { ...runtime, nextCursor: history.nextCursor, turns };
 }

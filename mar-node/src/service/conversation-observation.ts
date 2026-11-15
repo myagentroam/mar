@@ -98,7 +98,8 @@ export class ConversationObservation {
     limit = EMITTED_TURN_LIMIT
   ): Promise<ConversationObservationUpdate | undefined> {
     if (this.refreshRead !== undefined) return this.refreshRead;
-    const read = this.performRefresh(mode, limit).finally(() => {
+    const readLimit = this.mode === 'CONVERGING' ? Math.max(limit, INITIAL_TURN_LIMIT) : limit;
+    const read = this.performRefresh(mode, readLimit).finally(() => {
       if (this.refreshRead === read) {
         this.refreshRead = undefined;
         this.refreshMode = undefined;
@@ -107,7 +108,7 @@ export class ConversationObservation {
     });
     this.refreshRead = read;
     this.refreshMode = mode;
-    this.refreshLimit = limit;
+    this.refreshLimit = readLimit;
     return read;
   }
 
@@ -156,7 +157,8 @@ export class ConversationObservation {
       turns: convergence.page.turns.slice(-(EMITTED_TURN_LIMIT + 1))
     };
     const handoff = this.mode === 'CONVERGING' && !this.options.hasActiveRun(this.session);
-    if (handoff) {
+    // A temporary fallback or lagging history must not end full-window convergence.
+    if (handoff && page.source !== 'runtime' && convergence.page.source !== 'runtime') {
       this.mode = 'HISTORY';
       this.runtimePage = undefined;
       this.runtimeRevision = undefined;
@@ -176,7 +178,9 @@ export class ConversationObservation {
     // Keep coverage metadata current even when the visible content did not change.
     this.page = accepted;
     return {
-      page: mode === 'initial' ? convergence.page : accepted,
+      // A terminal handoff must backfill boundaries across the full initial window.
+      // Only ordinary observations use the smaller incremental emission tail.
+      page: mode === 'initial' || handoff ? convergence.page : accepted,
       changed,
       handoff,
       snapshot: handoff && (changed || accepted.source !== 'runtime')
@@ -235,6 +239,9 @@ export class ConversationObservation {
     generation: number
   ): Promise<ConversationObservationUpdate | undefined> {
     await this.historyRead?.catch(() => undefined);
+    // A periodic tail may already be reading when the idle event arrives. Wait for
+    // it to settle instead of treating that smaller, possibly invalidated read as a handoff.
+    while (this.refreshRead !== undefined) await this.refreshRead.catch(() => undefined);
     // Let the current event enter each lease's buffer before completing a handoff.
     if (this.closed || this.mode !== 'CONVERGING' || this.transitionGeneration !== generation)
       return undefined;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isConversationSegment,
+  mergeConversationProjectionUnits,
   parseConversationSegmentPage,
   segmentPageAsTurnPage,
   syncConversationRunStatus
@@ -9,6 +10,34 @@ import {
 const item = (id: string, kind: string) => ({ id, kind, status: 'COMPLETED', payload: {} });
 
 describe('Web Conversation Segment', () => {
+  it('retains accepted boundaries when a live Segment omits them without retaining stale content', () => {
+    const rewind = { before: 'previous', after: 'native-turn' };
+    const historical = {
+      id: 'message:input:segment:0',
+      turnId: 'native-turn',
+      segmentIndex: 0,
+      sessionId: 'session',
+      runId: null,
+      status: 'SUCCEEDED',
+      items: [item('old-reply', 'assistant_message')],
+      rewind
+    };
+    const { rewind: _rewind, ...withoutBoundary } = historical;
+    const live = {
+      ...withoutBoundary,
+      turnId: 'local-turn',
+      runId: 'run',
+      items: [item('live-reply', 'assistant_message')]
+    };
+    expect(mergeConversationProjectionUnits([historical], [live])).toEqual([{ ...live, rewind }]);
+    expect(live).not.toHaveProperty('rewind');
+    const updated = { ...live, rewind: { before: null, after: 'updated' } };
+    expect(mergeConversationProjectionUnits([historical], [updated])).toEqual([updated]);
+    const unrelated = { ...live, sessionId: 'other-session' };
+    expect(mergeConversationProjectionUnits([historical], [unrelated])).toEqual([unrelated]);
+    expect(mergeConversationProjectionUnits([], [live])).toEqual([live]);
+  });
+
   it('Map Node segments to separate display pages while preserving actual Turn boundaries', () => {
     const page = segmentPageAsTurnPage({
       segments: [

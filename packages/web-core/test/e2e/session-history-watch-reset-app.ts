@@ -133,6 +133,11 @@ createTooltipApp(
       return () =>
         h('main', [
           h('output', { 'data-testid': 'watch-identity' }, JSON.stringify(identity.value)),
+          h(
+            'button',
+            { onClick: () => conversation.paging.loadOlderConversationTurns() },
+            'Load earlier'
+          ),
           h(ConversationTimeline, {
             turns: turns.value,
             loading: false,
@@ -146,7 +151,7 @@ createTooltipApp(
             planContinuation: undefined,
             nodeReady: true,
             synchronized: true,
-            rewindEnabled: false,
+            rewindEnabled: true,
             rollbackEnabled: true,
             captureRenderAnchor: () => () => undefined,
             onRollback: (turn: ConversationTurn, item: ConversationItem) => {
