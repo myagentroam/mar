@@ -30,7 +30,7 @@ interface SessionPresentationServiceOptions {
   readonly commands: CommandStateStore;
   readonly runners: RunnerRegistry;
   readonly capabilities: () => NodeCapabilities;
-  readonly hasManagedActiveRun: (session: NodeAgentSession) => boolean;
+  readonly hasActiveRun: (session: NodeAgentSession) => boolean;
   readonly projectionForNative: (session: NodeAgentSession) => NodeAgentSession | undefined;
   readonly cachedNativeActivityAt: (session: NodeAgentSession) => number;
 }
@@ -76,7 +76,7 @@ export class SessionPresentationService {
     const presentation = this.options.runners
       .require(session.runner)
       .presentSession(session, this.options.capabilities(), {
-        managedActive: this.options.hasManagedActiveRun(session),
+        hasActiveRun: this.options.hasActiveRun(session),
         commandStates: this.options.commands.list(session.id)
       });
     return {

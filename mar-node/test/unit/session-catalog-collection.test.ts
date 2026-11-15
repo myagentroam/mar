@@ -320,7 +320,7 @@ describe('Session Catalog collection', () => {
     const active = new Set(['main-active', 'child-active']);
     f.present.mockImplementation((session) => ({
       ...session,
-      activity: active.has(session.id) ? 'MANAGED_ACTIVE' : 'IDLE'
+      activity: active.has(session.id) ? 'RUNNING' : 'IDLE'
     }));
     const create = (
       id: string,

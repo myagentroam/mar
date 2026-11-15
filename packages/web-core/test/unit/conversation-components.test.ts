@@ -1560,7 +1560,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
 
     const managed = await render(ConversationHeader, {
       ...props,
-      session: { ...session, activity: 'MANAGED_ACTIVE' }
+      session: { ...session, activity: 'RUNNING' }
     });
     const idle = await render(ConversationHeader, {
       ...props,

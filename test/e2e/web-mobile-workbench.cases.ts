@@ -143,15 +143,7 @@ for (const labels of [
   }, testInfo) => {
     const capabilities = ['history.read', 'events.live', 'turn.start', 'turn.interrupt'];
     await page.setViewportSize({ width: 1600, height: 900 });
-    await mockConsoleApi(
-      page,
-      'MANAGED',
-      capabilities,
-      [],
-      'GIT_WORKSPACE',
-      true,
-      'MANAGED_ACTIVE'
-    );
+    await mockConsoleApi(page, 'MANAGED', capabilities, [], 'GIT_WORKSPACE', true, 'RUNNING');
     await page.addInitScript(
       (locale) => localStorage.setItem('mar.locale.v2', locale),
       labels.locale
@@ -161,7 +153,7 @@ for (const labels of [
       workspaceId: 'workspace-1',
       runner: 'codex' as const,
       externalSessionId: 'vscode-thread-1',
-      activity: 'MANAGED_ACTIVE' as const,
+      activity: 'RUNNING' as const,
       control: { level: 'MANAGED', capabilities }
     };
     await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
@@ -1166,7 +1158,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: {
           level: 'MANAGED',
           capabilities: [
@@ -1294,7 +1286,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
     workspaceId: 'workspace-1',
     runner: 'codex',
     externalSessionId: 'vscode-thread-1',
-    activity: 'MANAGED_ACTIVE',
+    activity: 'RUNNING',
     control: {
       level: 'MANAGED',
       capabilities: ['history.read', 'events.live', 'turn.start', 'turn.steer', 'turn.interrupt']
@@ -1449,7 +1441,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: {
           level: 'MANAGED',
           capabilities: [

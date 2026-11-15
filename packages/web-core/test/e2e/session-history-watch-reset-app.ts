@@ -67,7 +67,7 @@ createTooltipApp(
         mergeQueue: () => undefined,
         mergeSessions: () => undefined,
         settleSessionRuns: () => false,
-        observeManagedSessionActive: () => undefined,
+        observeSessionRunning: () => undefined,
         updateContext: () => undefined,
         syncTurnStatus: projection.syncRunStatus,
         cacheRun: () => undefined,

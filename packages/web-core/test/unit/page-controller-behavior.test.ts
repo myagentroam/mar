@@ -2648,7 +2648,7 @@ describe('Workbench controller composition behavior', () => {
       sequence: 1,
       category: 'session',
       payload: {
-        session: { ...session, runnerTitle: 'Broadcast title', activity: 'MANAGED_ACTIVE' }
+        session: { ...session, runnerTitle: 'Broadcast title', activity: 'RUNNING' }
       }
     });
     expect(page.sessionList.sessions).toEqual([session]);

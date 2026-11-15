@@ -61,7 +61,7 @@ export async function mockConsoleApi(
   writes: { readonly url: string; readonly csrf: string | undefined; readonly body: string }[],
   workspaceKind: 'DIRECTORY' | 'GIT_WORKSPACE' = 'GIT_WORKSPACE',
   connected = true,
-  activityOverride?: 'MANAGED_ACTIVE' | 'IDLE',
+  activityOverride?: 'RUNNING' | 'IDLE',
   runnerDefaults?: readonly {
     readonly runner: 'codex' | 'claude-code';
     readonly modelId: string;
@@ -457,8 +457,7 @@ export async function mockConsoleApi(
     });
   });
   let authenticated = false;
-  const activity =
-    activityOverride ?? (capabilities.includes('turn.steer') ? 'MANAGED_ACTIVE' : 'IDLE');
+  const activity = activityOverride ?? (capabilities.includes('turn.steer') ? 'RUNNING' : 'IDLE');
   const session = {
     id: 'session-1',
     workspaceId: 'workspace-1',
@@ -718,7 +717,7 @@ export async function mockConsoleApi(
       sequence: 1,
       session,
       runs:
-        activity === 'MANAGED_ACTIVE'
+        activity === 'RUNNING'
           ? [
               {
                 id: 'run-1',
@@ -744,7 +743,7 @@ export async function mockConsoleApi(
             id: 'turn-1:segment:0',
             sessionId: session.id,
             turnId: 'turn-1',
-            runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+            runId: activity === 'RUNNING' ? 'run-1' : null,
             index: 0,
             status: 'RUNNING',
             startedAt: 1,
@@ -754,7 +753,7 @@ export async function mockConsoleApi(
                 id: 'item-1',
                 sessionId: session.id,
                 turnId: 'turn-1',
-                runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+                runId: activity === 'RUNNING' ? 'run-1' : null,
                 parentItemId: null,
                 sourceSequence: null,
                 revision: 1,
@@ -768,7 +767,7 @@ export async function mockConsoleApi(
                 id: 'item-thinking',
                 sessionId: session.id,
                 turnId: 'turn-1',
-                runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+                runId: activity === 'RUNNING' ? 'run-1' : null,
                 parentItemId: null,
                 sourceSequence: null,
                 revision: 1,
@@ -782,7 +781,7 @@ export async function mockConsoleApi(
                 id: 'item-tool',
                 sessionId: session.id,
                 turnId: 'turn-1',
-                runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+                runId: activity === 'RUNNING' ? 'run-1' : null,
                 parentItemId: null,
                 sourceSequence: null,
                 revision: 1,
@@ -805,7 +804,7 @@ export async function mockConsoleApi(
                 id: 'run-1:approval:approval-1',
                 sessionId: session.id,
                 turnId: 'turn-1',
-                runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+                runId: activity === 'RUNNING' ? 'run-1' : null,
                 parentItemId: null,
                 sourceSequence: null,
                 revision: 1,
@@ -824,7 +823,7 @@ export async function mockConsoleApi(
                 id: 'run-1:approval:approval-2',
                 sessionId: session.id,
                 turnId: 'turn-1',
-                runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+                runId: activity === 'RUNNING' ? 'run-1' : null,
                 parentItemId: null,
                 sourceSequence: null,
                 revision: 1,
@@ -843,7 +842,7 @@ export async function mockConsoleApi(
                 id: 'item-summary',
                 sessionId: session.id,
                 turnId: 'turn-1',
-                runId: activity === 'MANAGED_ACTIVE' ? 'run-1' : null,
+                runId: activity === 'RUNNING' ? 'run-1' : null,
                 parentItemId: null,
                 sourceSequence: null,
                 revision: 1,

@@ -78,9 +78,9 @@ describe('Node Conversation Segment', () => {
       }));
       const service = createTestSessionWatch({
         resolve: async () => session,
-        managedActive: () => running,
+        hasActiveRun: () => running,
         refreshActivity: async () => undefined,
-        present: () => ({ activity: running ? 'MANAGED_ACTIVE' : 'IDLE' }),
+        present: () => ({ activity: running ? 'RUNNING' : 'IDLE' }),
         readPage,
         projectInitialPage: (selected, history, _unit, limit) =>
           segments.projectInitial(selected, history, limit),

@@ -1178,7 +1178,7 @@ export function createWorkbenchPageController<
     refreshing: refreshingWorkspaceSessions,
     searchQuery: workspaceSessionSearchQuery,
     searching: searchingWorkspaceSessions,
-    preserveManagedActive: preserveManagedActiveSession,
+    preserveRunning: preserveRunningSession,
     merge: mergeSessions,
     applySnapshot: applyWorkspaceSessionSnapshot,
     loadMore: loadMoreWorkspaceSessions,
@@ -1839,7 +1839,7 @@ export function createWorkbenchPageController<
       setSelectedSessionId: sessionSelection.setSession,
       removeSessionExact: sessionProjection.removeExact,
       currentSelectionRevision: currentDetailRequest,
-      preserveManagedActive: preserveManagedActiveSession,
+      preserveRunning: preserveRunningSession,
       mergeSessions
     }
   });

@@ -18,7 +18,7 @@ describe('Shared Run State Convergence', () => {
       };
       state.replaceRuns([run]);
       state.settleSessionRuns('session-1');
-      state.observeManagedSessionActive('session-1');
+      state.observeSessionRunning('session-1');
       // An ordinary response is not authority to revive a settled Run.
       state.mergeSnapshots([{ ...run, version }]);
       expect(state.runs.value).toEqual([]);
@@ -83,7 +83,7 @@ describe('Shared Run State Convergence', () => {
       state.settleSessionRuns('session-1', true);
       if (phase !== 'settled') state.markSessionInterrupted('session-1', run.id);
       if (phase === 'resumed') state.resumeSessionAfterInterruption('session-1');
-      state.observeManagedSessionActive('session-1');
+      state.observeSessionRunning('session-1');
       state.mergeAuthoritativeSnapshot([{ ...run, version: 3 }], []);
       expect(state.runs.value).toEqual([]);
       state.mergeAuthoritativeSnapshot([{ ...run, status: 'CANCELLED', version: 4 }], []);
@@ -289,7 +289,7 @@ describe('Shared Run State Convergence', () => {
     expect(state.settleSessionRuns('session-1')).toBe(false);
   });
 
-  it('New managed activity clears ordinary idle settlement but not a user-initiated stop', () => {
+  it('New running activity clears ordinary idle settlement but not a user-initiated stop', () => {
     const normal = createRunService({ value: 'session-1' } as never);
     normal.replaceRuns([
       {
@@ -301,7 +301,7 @@ describe('Shared Run State Convergence', () => {
       }
     ]);
     normal.settleSessionRuns('session-1');
-    normal.observeManagedSessionActive('session-1');
+    normal.observeSessionRunning('session-1');
     expect(normal.sessionInterruptionSettled('session-1')).toBe(false);
 
     const interrupted = createRunService({ value: 'session-1' } as never);
@@ -315,7 +315,7 @@ describe('Shared Run State Convergence', () => {
       }
     ]);
     interrupted.settleSessionRuns('session-1', true);
-    interrupted.observeManagedSessionActive('session-1');
+    interrupted.observeSessionRunning('session-1');
     expect(interrupted.sessionInterruptionSettled('session-1')).toBe(true);
   });
 });

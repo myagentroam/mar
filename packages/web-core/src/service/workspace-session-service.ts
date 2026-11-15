@@ -59,10 +59,10 @@ function createWorkspaceSessionProjection() {
         (session) => session.workspaceId !== workspaceId || session.id === selectedId
       );
     },
-    markManagedActive: (session: Session) => {
+    markRunning: (session: Session) => {
       sessions.value = sessions.value.map((current) =>
         current.id === session.id && current.workspaceId === session.workspaceId
-          ? { ...current, activity: 'MANAGED_ACTIVE' }
+          ? { ...current, activity: 'RUNNING' }
           : current
       );
     }
@@ -158,21 +158,17 @@ export function createWorkspaceSessionService(options: {
     return merged;
   }
 
-  const markManagedActive = projection.markManagedActive;
+  const markRunning = projection.markRunning;
   const replaceSessions = projection.replaceAll;
 
-  function preserveManagedActive(current: Session | undefined, next: Session): Session {
+  function preserveRunning(current: Session | undefined, next: Session): Session {
     const withStablePresentation = preserveStablePresentation(current, next);
     const hasActiveRun = options.runs.value.some(
       (run) =>
         ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status) &&
         (run.sessionId === current?.id || run.sessionId === next.id)
     );
-    if (
-      current?.activity !== 'MANAGED_ACTIVE' ||
-      next.activity === 'MANAGED_ACTIVE' ||
-      !hasActiveRun
-    )
+    if (current?.activity !== 'RUNNING' || next.activity === 'RUNNING' || !hasActiveRun)
       return withStablePresentation;
     return {
       ...withStablePresentation,
@@ -203,7 +199,7 @@ export function createWorkspaceSessionService(options: {
     next: Session,
     authoritativeActivity = false
   ): Session {
-    const merged = authoritativeActivity ? next : preserveManagedActive(current, next);
+    const merged = authoritativeActivity ? next : preserveRunning(current, next);
     return current !== undefined && JSON.stringify(current) === JSON.stringify(merged)
       ? current
       : merged;
@@ -645,8 +641,8 @@ export function createWorkspaceSessionService(options: {
     searching,
     loadingMoreSearchResults,
     loadMoreSearchResultsError,
-    preserveManagedActive,
-    markManagedActive,
+    preserveRunning,
+    markRunning,
     replaceSessions,
     merge,
     applySnapshot,

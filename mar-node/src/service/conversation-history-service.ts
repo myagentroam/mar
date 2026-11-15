@@ -16,17 +16,12 @@ import type { RunAttachmentService } from './run-attachment-service.js';
 import type { ExternalSessionActivationState } from '../session/contracts.js';
 import { nodeLog } from '../operational.js';
 
-export function hasManagedActiveRun(runtime: NodeRuntimeState, session: NodeAgentSession): boolean {
-  const current = runtime.getAgentSession(session.id) ?? session;
-  return (
-    current.nativeControl === 'MAR_MANAGED' &&
-    runtime
-      .listRunsForSession(current.id)
-      .some(
-        (run) =>
-          run.status === 'STARTING' || run.status === 'RUNNING' || run.status === 'CANCELLING'
-      )
-  );
+export function hasActiveRun(runtime: NodeRuntimeState, session: NodeAgentSession): boolean {
+  return runtime
+    .listRunsForSession(session.id)
+    .some(
+      (run) => run.status === 'STARTING' || run.status === 'RUNNING' || run.status === 'CANCELLING'
+    );
 }
 
 export function convergeConversationWatchPage(
@@ -160,7 +155,7 @@ interface ConversationHistoryServiceOptions {
   readonly capabilities: () => NodeCapabilities;
   readonly attachments: RunAttachmentService;
   readonly snapshotSequence: () => number;
-  readonly hasManagedActiveRun: (session: NodeAgentSession) => boolean;
+  readonly hasActiveRun: (session: NodeAgentSession) => boolean;
   readonly setExternalActivity: (
     sessionId: string,
     activity: ExternalSessionActivationState
@@ -182,8 +177,8 @@ export class ConversationHistoryService {
       return this.readIdleMarAgentHistory(session, input, snapshotSequence, readAt);
     }
     const activeCursor = decodeActiveHistoryCursor(input.cursor, session.id);
-    if (activeCursor !== undefined || this.options.hasManagedActiveRun(session))
-      return this.readManagedRuntime(session, input, activeCursor, snapshotSequence, readAt);
+    if (activeCursor !== undefined || this.options.hasActiveRun(session))
+      return this.readRuntimeHistory(session, input, activeCursor, snapshotSequence, readAt);
     return this.readHistory(session, input, snapshotSequence, readAt);
   }
 
@@ -192,7 +187,7 @@ export class ConversationHistoryService {
     input: { readonly cursor?: string; readonly limit?: number }
   ): Promise<ConversationHistoryPage> {
     if (input.cursor !== undefined) return this.read(session, input);
-    if (this.options.hasManagedActiveRun(session) && this.hasManagedRuntimeHistory(session)) {
+    if (this.options.hasActiveRun(session) && this.hasMarAgentRuntimeHistory(session)) {
       const runtimeTurns = this.options.runtime.listConversationTurns({
         sessionId: session.id,
         limit: 500
@@ -203,7 +198,7 @@ export class ConversationHistoryService {
         beforeAt: oldestTurnActivityAt(runtimeTurns),
         cursor: null
       };
-      return this.readManagedRuntime(
+      return this.readRuntimeHistory(
         session,
         input,
         olderCursor,
@@ -214,10 +209,9 @@ export class ConversationHistoryService {
     return this.readHistory(session, input, this.options.snapshotSequence(), Date.now());
   }
 
-  private hasManagedRuntimeHistory(session: NodeAgentSession): boolean {
+  private hasMarAgentRuntimeHistory(session: NodeAgentSession): boolean {
     return (
       session.runner === 'mar-agent' &&
-      session.nativeControl === 'MAR_MANAGED' &&
       this.options.runtime.getAgentSession(session.id) !== undefined &&
       this.options.runtime.listConversationTurns({ sessionId: session.id, limit: 1 }).turns.length >
         0
@@ -470,7 +464,7 @@ export class ConversationHistoryService {
     } catch (error) {
       // Never replace a visible local failure with an empty SDK snapshot.
       if (input.cursor !== undefined || runtime.length === 0) throw error;
-      return this.readManagedActive(session, input, undefined, snapshotSequence, readAt);
+      return this.readActiveHistory(session, input, undefined, snapshotSequence, readAt);
     }
     if (locatingBoundary) throw new Error('EVENT_CURSOR_INVALID');
     const turns = merged.slice(-limit);
@@ -544,7 +538,7 @@ export class ConversationHistoryService {
     return { page, incompleteNative };
   }
 
-  private async readManagedActive(
+  private async readActiveHistory(
     session: NodeAgentSession,
     input: { readonly cursor?: string; readonly limit?: number },
     cursor: ActiveHistoryCursor | undefined,
@@ -609,21 +603,21 @@ export class ConversationHistoryService {
     });
   }
 
-  private async readManagedRuntime(
+  private async readRuntimeHistory(
     session: NodeAgentSession,
     input: { readonly cursor?: string; readonly limit?: number },
     cursor: ActiveHistoryCursor | undefined,
     snapshotSequence: number,
     readAt: number
   ): Promise<ConversationHistoryPage> {
-    const page = await this.readManagedActive(session, input, cursor, snapshotSequence, readAt);
+    const page = await this.readActiveHistory(session, input, cursor, snapshotSequence, readAt);
     try {
       const supplements = await this.options.runners
         .require(session.runner)
         .readConversationRewind({
           session,
           turns: page.turns,
-          managedActive: this.options.hasManagedActiveRun(session),
+          hasActiveRun: this.options.hasActiveRun(session),
           firstPage: input.cursor === undefined,
           readHistory: async (historyInput) =>
             (await this.readRunnerHistory(session, historyInput)).page

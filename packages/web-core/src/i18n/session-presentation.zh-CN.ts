@@ -2,7 +2,6 @@ export const sessionPresentationZhCN = {
   generated: {
     sessionPresentation: {
       newSession: '新建会话',
-      managed: '运行中',
       running: '运行中',
       ready: '可继续',
       unavailable: '暂不可用',

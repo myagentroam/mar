@@ -157,7 +157,7 @@ export interface RunnerConversationHistoryPage extends RunnerConversationPage {
 export interface RunnerConversationRewindInput {
   readonly session: Readonly<NodeAgentSession>;
   readonly turns: readonly NodeConversationTurn[];
-  readonly managedActive: boolean;
+  readonly hasActiveRun: boolean;
   readonly firstPage: boolean;
   readonly readHistory: (input: {
     readonly limit: number;
@@ -165,7 +165,7 @@ export interface RunnerConversationRewindInput {
 }
 
 export interface RunnerSessionPresentationContext {
-  readonly managedActive: boolean;
+  readonly hasActiveRun: boolean;
   readonly commandStates: readonly RunnerCommandState[];
 }
 

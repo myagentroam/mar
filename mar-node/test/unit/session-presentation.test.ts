@@ -4,7 +4,7 @@ import { NodeRuntimeState } from '../../src/runtime-state.js';
 import { CommandStateStore } from '../../src/runner-command-engine.js';
 import { CodexRunner } from '../../src/runner/codex-runner.js';
 import { RunnerRegistry } from '../../src/runner/runner-registry.js';
-import { hasManagedActiveRun } from '../../src/service/conversation-history-service.js';
+import { hasActiveRun } from '../../src/service/conversation-history-service.js';
 import { composeSessionProjection } from '../../src/application/session-projection-composition.js';
 import type { PresentedSession } from '../../src/session/session-presentation-service.js';
 import { createTestSessionWatch } from './support/conversation-watch.js';
@@ -63,19 +63,43 @@ function fixture() {
 }
 
 describe('Current Session presentation', () => {
-  it('uses current ownership for activity checks made with a pre-resume Session', () => {
+  it('projects activity from the current Run before native ownership changes', () => {
     const f = fixture();
     try {
-      expect(hasManagedActiveRun(f.runtime, f.session)).toBe(false);
+      const run = f.runtime.createMessageRun({
+        sessionId: f.session.id,
+        clientMessageId: 'pre-activation',
+        content: 'Prepare the resumed session'
+      }).run;
+      expect(f.runtime.getAgentSession(f.session.id)?.nativeControl).toBe('EXTERNAL');
+      expect(hasActiveRun(f.runtime, f.session)).toBe(true);
+      expect(f.presentation.present(f.session).activity).toBe('RUNNING');
+      f.runtime.finishRun(run.id, 'FAILED');
+      expect(hasActiveRun(f.runtime, f.session)).toBe(false);
+      expect(f.presentation.present(f.session).activity).toBe('IDLE');
+    } finally {
+      f.database.close();
+    }
+  });
+
+  it('keeps activity running through starting, running and cancelling before becoming idle', () => {
+    const f = fixture();
+    try {
+      expect(hasActiveRun(f.runtime, f.session)).toBe(false);
+      expect(f.presentation.present(f.session).activity).toBe('IDLE');
       const run = f.start();
       expect(f.session.nativeControl).toBe('EXTERNAL');
-      expect(hasManagedActiveRun(f.runtime, f.session)).toBe(true);
+      expect(hasActiveRun(f.runtime, f.session)).toBe(true);
+      expect(f.presentation.present(f.session).activity).toBe('RUNNING');
       f.runtime.transitionRun(run.id, 'RUNNING');
-      expect(hasManagedActiveRun(f.runtime, f.session)).toBe(true);
+      expect(hasActiveRun(f.runtime, f.session)).toBe(true);
+      expect(f.presentation.present(f.session).activity).toBe('RUNNING');
       f.runtime.transitionRun(run.id, 'CANCELLING');
-      expect(hasManagedActiveRun(f.runtime, f.session)).toBe(true);
+      expect(hasActiveRun(f.runtime, f.session)).toBe(true);
+      expect(f.presentation.present(f.session).activity).toBe('RUNNING');
       f.runtime.finishRun(run.id, 'INTERRUPTED');
-      expect(hasManagedActiveRun(f.runtime, f.session)).toBe(false);
+      expect(hasActiveRun(f.runtime, f.session)).toBe(false);
+      expect(f.presentation.present(f.session).activity).toBe('IDLE');
     } finally {
       f.database.close();
     }
@@ -94,7 +118,7 @@ describe('Current Session presentation', () => {
       });
       expect(projected).toMatchObject({
         nativeControl: 'MAR_MANAGED',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         externalDiscovered: true,
         lastActivityAt
       });
@@ -116,12 +140,12 @@ describe('Current Session presentation', () => {
       f.native.remember([discovered]);
       const discover = vi.spyOn(f.runner, 'discoverSessions');
       expect(f.presentation.presentDiscovered([discovered])[0]).toMatchObject({
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         lastActivityAt
       });
       for (const session of [f.session, current])
         expect(f.presentation.present(session)).toMatchObject({
-          activity: 'MANAGED_ACTIVE',
+          activity: 'RUNNING',
           nativeControl: 'MAR_MANAGED',
           lastActivityAt
         });
@@ -286,12 +310,12 @@ describe('Current Session presentation', () => {
     const snapshots: PresentedSession[] = [];
     const events: unknown[] = [];
     const readPage = vi.fn(async () => {
-      if (hasManagedActiveRun(f.runtime, f.session)) await pendingRead;
+      if (hasActiveRun(f.runtime, f.session)) await pendingRead;
       return { source: 'runtime' as const, turns: [] };
     });
     const watch = createTestSessionWatch({
       resolve: async () => f.runtime.getAgentSession(f.session.id),
-      managedActive: (session) => hasManagedActiveRun(f.runtime, session),
+      hasActiveRun: (session) => hasActiveRun(f.runtime, session),
       refreshActivity: async () => undefined,
       present: (session) => f.presentation.present(session),
       readPage,
@@ -330,12 +354,12 @@ describe('Current Session presentation', () => {
       await vi.waitFor(() => expect(snapshots).toHaveLength(2));
       expect(snapshots[1]).toMatchObject({
         nativeControl: 'MAR_MANAGED',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         access: 'workspace-write',
         lastActivityAt
       });
       expect(events).toMatchObject([
-        { type: 'watch.session.snapshot', payload: { session: { activity: 'MANAGED_ACTIVE' } } },
+        { type: 'watch.session.snapshot', payload: { session: { activity: 'RUNNING' } } },
         { type: 'watch.session.event', event: { category: 'run' } }
       ]);
     } finally {

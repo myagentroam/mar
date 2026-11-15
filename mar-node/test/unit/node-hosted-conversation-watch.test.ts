@@ -1369,7 +1369,7 @@ describe('Node hosted conversation watch', () => {
     } as NodeAgentSession;
     const native = createTestSessionWatch({
       resolve: async () => session,
-      managedActive: () => false,
+      hasActiveRun: () => false,
       refreshActivity: async () => undefined,
       present: () => ({ activity: 'IDLE' }),
       readPage: async () => ({ turns: [] }),

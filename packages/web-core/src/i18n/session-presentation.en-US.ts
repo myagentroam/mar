@@ -2,7 +2,6 @@ export const sessionPresentationEnUS = {
   generated: {
     sessionPresentation: {
       newSession: 'New Session',
-      managed: 'Running',
       running: 'Running',
       ready: 'Ready',
       unavailable: 'Unavailable',

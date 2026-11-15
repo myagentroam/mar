@@ -732,7 +732,7 @@ describe('Node Workbench history projection and pagination', () => {
       runtime: {
         createAgentSession(input: unknown): NodeAgentSession;
       };
-      nativeSessionProjectionService: { directNative: Map<string, NodeAgentSession> };
+      nativeSessionProjectionService: NativeSessionProjectionService;
     };
     const managed = internals.runtime.createAgentSession({
       workspaceId: workspace.id,
@@ -742,12 +742,14 @@ describe('Node Workbench history projection and pagination', () => {
       cwd: workspace.path,
       title: 'first user message'
     });
-    internals.nativeSessionProjectionService.directNative.set(managed.id, {
-      ...managed,
-      runnerTitle: 'Runner correct title',
-      titleSource: 'RUNNER',
-      externalDiscovered: true
-    });
+    internals.nativeSessionProjectionService.remember([
+      {
+        ...managed,
+        runnerTitle: 'Runner correct title',
+        titleSource: 'RUNNER',
+        externalDiscovered: true
+      }
+    ]);
 
     try {
       const listed = (await operation(connector, 'session.list', {})) as {
@@ -767,12 +769,14 @@ describe('Node Workbench history projection and pagination', () => {
         })
       );
 
-      internals.nativeSessionProjectionService.directNative.set(managed.id, {
-        ...managed,
-        runnerTitle: 'latest user message preview',
-        titleSource: 'AUTO',
-        externalDiscovered: true
-      });
+      internals.nativeSessionProjectionService.remember([
+        {
+          ...managed,
+          runnerTitle: 'latest user message preview',
+          titleSource: 'AUTO',
+          externalDiscovered: true
+        }
+      ]);
       const listedAfterPreview = (await operation(connector, 'session.list', {})) as {
         readonly sessions: readonly NodeAgentSession[];
       };
@@ -1245,7 +1249,7 @@ describe('Node Workbench history projection and pagination', () => {
       capabilities: () => ({}) as never,
       attachments: {},
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => true,
+      hasActiveRun: () => true,
       setExternalActivity: () => undefined
     } as never);
     service.readOfficial = readOfficial as never;

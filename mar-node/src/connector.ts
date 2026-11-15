@@ -111,7 +111,7 @@ import { SessionIdentityService } from './session/session-identity-service.js';
 import { NativeSessionProjectionService } from './session/native-session-projection-service.js';
 import {
   ConversationHistoryService,
-  hasManagedActiveRun
+  hasActiveRun
 } from './service/conversation-history-service.js';
 import { ConversationSegmentService } from './service/conversation-segment-service.js';
 import { RunnerInteractionService } from './service/runner-interaction-service.js';
@@ -884,7 +884,7 @@ export class NodeConnector {
       capabilities: () => this.capabilities,
       attachments: this.runAttachmentService,
       snapshotSequence: () => this.workbenchEventService.snapshotSequence(),
-      hasManagedActiveRun: (session) => hasManagedActiveRun(this.runtime, session),
+      hasActiveRun: (session) => hasActiveRun(this.runtime, session),
       setExternalActivity: (sessionId, activity) =>
         this.externalSessionResumeService.setActivity(sessionId, activity)
     });
@@ -1186,7 +1186,7 @@ export class NodeConnector {
       resolve: async (sessionId) =>
         this.runtime.getAgentSession(sessionId) ??
         this.nativeSessionProjectionService.resolveCurrent(sessionId),
-      managedActive: (session) => hasManagedActiveRun(this.runtime, session),
+      hasActiveRun: (session) => hasActiveRun(this.runtime, session),
       suspended: (sessionId) => this.externalSessionResumeService.transitioning(sessionId),
       refreshActivity: (session) =>
         this.conversationHistoryService.refreshExternalActivity(session),

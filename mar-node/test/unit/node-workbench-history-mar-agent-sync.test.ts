@@ -7,6 +7,7 @@ import {
   convergeConversationWatchPage
 } from '../../src/service/conversation-history-service.js';
 import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
+import { ConversationObservation } from '../../src/service/conversation-observation.js';
 import { ConversationSegmentService } from '../../src/service/conversation-segment-service.js';
 import { projectMarAgentHistory } from '../../src/runner/mar-agent/history-projection.js';
 
@@ -104,7 +105,11 @@ function compactTurn(
   };
 }
 
-function fixture(local: NodeConversationTurn[], official: NodeConversationTurn[]) {
+function fixture(
+  local: NodeConversationTurn[],
+  official: NodeConversationTurn[],
+  target = session
+) {
   let active = false;
   const readOfficial = vi.fn<ConversationHistoryService['readOfficial']>(async () => ({
     turns: official,
@@ -112,7 +117,7 @@ function fixture(local: NodeConversationTurn[], official: NodeConversationTurn[]
   }));
   const service = new ConversationHistoryService({
     runtime: {
-      getAgentSession: () => session,
+      getAgentSession: () => target,
       listConversationTurns: () => ({ turns: local, nextCursor: null })
     },
     runners: {
@@ -130,7 +135,7 @@ function fixture(local: NodeConversationTurn[], official: NodeConversationTurn[]
     attachments: {},
     capabilities: () => ({}),
     snapshotSequence: () => 1,
-    hasManagedActiveRun: () => active,
+    hasActiveRun: () => active,
     setExternalActivity: () => undefined
   } as never);
   service.readOfficial = readOfficial;
@@ -521,6 +526,45 @@ describe.each(['read', 'readHistoryPage'] as const)(
   }
 );
 
+it.each(['MAR_MANAGED', 'EXTERNAL'] as const)(
+  'hydrates active MAR Agent history without losing or duplicating the live Turn with %s metadata',
+  async (nativeControl) => {
+    const target = { ...session, nativeControl };
+    const old = turn('old', 1);
+    const local: NodeConversationTurn = {
+      ...turn('local', 10, 'current-input'),
+      runId: 'current-run',
+      status: 'RUNNING',
+      completedAt: null
+    };
+    const { service, readOfficial, setActive } = fixture(
+      [local],
+      [old, turn('native-current', 10, 'current-input'), turn('other-node', 20)],
+      target
+    );
+    setActive(true);
+    const observation = new ConversationObservation(target, {
+      hasActiveRun: () => true,
+      readPage: (value, limit) => service.read(value, { limit }),
+      readHistoryPage: (value, limit) => service.readHistoryPage(value, { limit }),
+      refreshActivity: async () => undefined
+    });
+    try {
+      const initial = await observation.initial();
+      expect(initial?.page.source).toBe('runtime');
+      expect(initial?.page.turns).toEqual([local]);
+      expect(readOfficial).not.toHaveBeenCalled();
+
+      const hydrated = await observation.hydrate();
+      expect(hydrated?.page.turns).toEqual([old, local]);
+      expect(hydrated?.page.turns.filter((value) => value.runId === 'current-run')).toHaveLength(1);
+      expect(readOfficial).toHaveBeenCalledExactlyOnceWith(target, { limit: 30 });
+    } finally {
+      observation.close();
+    }
+  }
+);
+
 it('keeps active MAR Agent reads on the live stream', async () => {
   const local = turn('local', 10);
   const { service, readOfficial, setActive } = fixture([local], [local, turn('other-node', 20)]);
@@ -664,7 +708,7 @@ it('refreshes an idle Watch after another Node continues without erasing the loc
   const emitted = vi.fn();
   const watch = new NativeSessionWatchService({
     resolve: async () => session,
-    managedActive: () => false,
+    hasActiveRun: () => false,
     refreshActivity: async () => undefined,
     present: () => session,
     readPage: (value, limit) => service.read(value, { limit }),

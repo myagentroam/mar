@@ -2683,7 +2683,7 @@ for (const runner of ['mar-agent', 'codex'] as const) {
     const rollbackButton = userMessage.getByRole('button', {
       name: '永久删除此用户消息及其后的对话记录'
     });
-    const activeSession = { ...session, activity: 'MANAGED_ACTIVE' };
+    const activeSession = { ...session, activity: 'RUNNING' };
     await emitMockSessionEvent(page, 'session', { session: activeSession });
     await expect(page.locator('.composer-working')).toBeVisible();
     await expect(rewindButton).toHaveCount(0);
@@ -4223,22 +4223,14 @@ for (const recovery of ['切换会话', '断线重连', '可见性恢复'] as co
       'turn.steer',
       'turn.interrupt'
     ];
-    await mockConsoleApi(
-      page,
-      'MANAGED',
-      capabilities,
-      writes,
-      'GIT_WORKSPACE',
-      true,
-      'MANAGED_ACTIVE'
-    );
+    await mockConsoleApi(page, 'MANAGED', capabilities, writes, 'GIT_WORKSPACE', true, 'RUNNING');
     const active = {
       id: 'session-1',
       workspaceId: 'workspace-1',
       runner: 'codex',
       runnerTitle: '流式回归会话',
       externalSessionId: 'realtime-thread-1',
-      activity: 'MANAGED_ACTIVE',
+      activity: 'RUNNING',
       control: { level: 'MANAGED', capabilities }
     };
     const other = {

@@ -144,7 +144,7 @@ export class SessionCatalogService {
     const sessions = await this.collect(input);
     const runningCounts = { MAIN: 0, CHILD: 0 };
     for (const session of sessions)
-      if ('activity' in session && session.activity === 'MANAGED_ACTIVE')
+      if ('activity' in session && session.activity === 'RUNNING')
         runningCounts[sessionGroup(session)] += 1;
     const query =
       typeof input.query === 'string'

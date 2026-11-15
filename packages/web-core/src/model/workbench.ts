@@ -72,7 +72,7 @@ export interface Session {
   readonly canMovePinUp?: boolean;
   readonly canMovePinDown?: boolean;
   readonly externalDiscovered?: boolean;
-  readonly activity?: 'MANAGED_ACTIVE' | 'IDLE';
+  readonly activity?: import('@myagentroam/protocol').SessionActivityState;
   readonly control?: { readonly level?: string; readonly capabilities?: readonly string[] };
   readonly runtime?: { readonly capabilities?: readonly string[] };
   readonly commandStates?: readonly RunnerCommandState[];

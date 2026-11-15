@@ -255,7 +255,7 @@ it.each([
         })
       },
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => false
+      hasActiveRun: () => false
     } as never);
     const read = service.read(session as never, cursor === undefined ? {} : { cursor });
     if (fallback) await expect(read).resolves.toMatchObject({ source: 'runtime', turns });
@@ -307,7 +307,7 @@ it('does not identify distinct Turns by their shared Run when the submission ID 
     capabilities: () => ({}),
     attachments: {},
     snapshotSequence: () => 1,
-    hasManagedActiveRun: () => false,
+    hasActiveRun: () => false,
     setExternalActivity: () => undefined
   } as never);
   service.readOfficial = async () => ({ turns: [turn('official-old')], nextCursor: null }) as never;
@@ -366,7 +366,7 @@ it('keeps the scheduled source when official history replaces a live user messag
     capabilities: () => ({}),
     attachments: {},
     snapshotSequence: () => 1,
-    hasManagedActiveRun: () => false,
+    hasActiveRun: () => false,
     setExternalActivity: () => undefined
   } as never);
   service.readOfficial = async () => ({ turns: [turn()], nextCursor: null }) as never;
@@ -961,7 +961,7 @@ describe('Node Workbench official-history lag compensation', () => {
             : undefined
       },
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => false,
+      hasActiveRun: () => false,
       setExternalActivity: () => undefined
     } as never);
     const readOfficial = vi.fn(async () => ({ turns: officialTurns, nextCursor: null }) as never);
@@ -1044,7 +1044,7 @@ describe('Node Workbench official-history lag compensation', () => {
       capabilities: () => ({}),
       attachments: { registerNative: () => [] },
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => false,
+      hasActiveRun: () => false,
       setExternalActivity: () => undefined
     } as never);
     service.readNative = async () => ({
@@ -1123,7 +1123,7 @@ describe('Node Workbench official-history lag compensation', () => {
       capabilities: () => ({}),
       attachments: {},
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => true,
+      hasActiveRun: () => true,
       setExternalActivity: () => undefined
     } as never);
     const readOfficial = vi.fn(async () => official);
@@ -1299,7 +1299,7 @@ describe('Node Workbench official-history lag compensation', () => {
       capabilities: () => ({}),
       attachments: {},
       snapshotSequence: () => 1,
-      hasManagedActiveRun: () => false,
+      hasActiveRun: () => false,
       setExternalActivity: () => undefined
     } as never);
     service.readOfficial = async (_session, input) => {

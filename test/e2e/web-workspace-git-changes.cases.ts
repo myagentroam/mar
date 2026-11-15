@@ -594,11 +594,11 @@ test('Realtime idle updates only session state without refreshing Git Changes', 
       workspaceId: 'workspace-1',
       runner: 'codex',
       externalSessionId: 'vscode-thread-1',
-      activity: 'MANAGED_ACTIVE',
+      activity: 'RUNNING',
       control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
     }
   });
-  await expect(page.locator('.mar-session-activity.managed_active').first()).toBeVisible();
+  await expect(page.locator('.mar-session-activity.running').first()).toBeVisible();
   await emitMockSessionEvent(page, 'session', {
     session: {
       id: 'session-1',
@@ -610,7 +610,7 @@ test('Realtime idle updates only session state without refreshing Git Changes', 
     }
   });
 
-  await expect(page.locator('.mar-session-activity.managed_active')).toHaveCount(0);
+  await expect(page.locator('.mar-session-activity.running')).toHaveCount(0);
   await expect(
     page.getByText(`after-run-${changesReadsBeforeIdle}.txt`, { exact: true })
   ).toBeVisible();
@@ -734,7 +734,7 @@ for (const section of ['changes', 'files'] as const) {
         id: 'session-2',
         workspaceId: 'workspace-1',
         runner: 'codex',
-        activity: 'MANAGED_ACTIVE'
+        activity: 'RUNNING'
       };
       await emitMockWorkspaceSnapshot(page, 'sessions', {
         sessions: [background],
@@ -798,7 +798,7 @@ test('Realtime and duplicate idle events do not refresh visible Files', async ({
   const readsBeforeIdle = filesReads;
   filesChanged = true;
 
-  const session = (activity: 'MANAGED_ACTIVE' | 'IDLE') => ({
+  const session = (activity: 'RUNNING' | 'IDLE') => ({
     session: {
       id: 'session-1',
       workspaceId: 'workspace-1',
@@ -808,10 +808,10 @@ test('Realtime and duplicate idle events do not refresh visible Files', async ({
       control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
     }
   });
-  await emitMockSessionEvent(page, 'session', session('MANAGED_ACTIVE'));
-  await expect(page.locator('.mar-session-activity.managed_active').first()).toBeVisible();
+  await emitMockSessionEvent(page, 'session', session('RUNNING'));
+  await expect(page.locator('.mar-session-activity.running').first()).toBeVisible();
   await emitMockSessionEvent(page, 'session', session('IDLE'));
-  await expect(page.locator('.mar-session-activity.managed_active')).toHaveCount(0);
+  await expect(page.locator('.mar-session-activity.running')).toHaveCount(0);
   await emitMockSessionEvent(page, 'session', session('IDLE'));
   await page.evaluate(
     () =>

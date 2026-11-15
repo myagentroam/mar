@@ -61,19 +61,21 @@ describe('Public Session Presentation', () => {
     expect(sessionActivityLabel(session)).toBe(
       sessionPresentationZhCN.generated.sessionPresentation.ready
     );
+    expect(sessionActivityLabel({ ...session, activity: 'RUNNING' })).toBe('运行中');
     expect(runStatusLabel('RUNNING')).toBe(
       sessionPresentationZhCN.generated.sessionPresentation.running2
     );
     localePreferenceService().setLocale('en-US');
     expect(sessionTitle(session)).toBe('My demo project');
     expect(sessionActivityLabel(session)).toBe('Ready');
+    expect(sessionActivityLabel({ ...session, activity: 'RUNNING' })).toBe('Running');
     expect(runStatusLabel('RUNNING')).toBe('Running');
   });
 
   it('Uses the explicit activity when it is present and otherwise presents sessions as idle', () => {
     const session = { id: 's', workspaceId: 'w', runner: 'codex' as const };
     expect(sessionActivity(session)).toBe('IDLE');
-    expect(sessionActivity({ ...session, activity: 'MANAGED_ACTIVE' })).toBe('MANAGED_ACTIVE');
+    expect(sessionActivity({ ...session, activity: 'RUNNING' })).toBe('RUNNING');
     expect(sessionActivity({ ...session, activity: 'IDLE' })).toBe('IDLE');
   });
 

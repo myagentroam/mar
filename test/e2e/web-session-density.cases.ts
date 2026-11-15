@@ -62,7 +62,7 @@ for (const locale of ['zh-CN', 'en-US']) {
             runnerTitle: longTitle,
             runner: 'codex',
             pinOrder: 0,
-            activity: 'MANAGED_ACTIVE'
+            activity: 'RUNNING'
           },
           {
             id: 'unread',
@@ -164,7 +164,7 @@ for (const locale of ['zh-CN', 'en-US']) {
         await links.first().click();
         await expect(rows.first()).toHaveClass(/selected/);
         await expect(rows.nth(1).locator('.session-unread-label')).toBeVisible();
-        await expect(rows.first().locator('.mar-session-activity.managed_active')).toBeVisible();
+        await expect(rows.first().locator('.mar-session-activity.running')).toBeVisible();
         await expect(rows.nth(2).locator('.session-pin-indicator')).toBeVisible();
         await expect(links.first().locator('strong')).toHaveAttribute('title', longTitle);
         await expect(links.first().locator('strong')).toHaveCSS('text-overflow', 'ellipsis');

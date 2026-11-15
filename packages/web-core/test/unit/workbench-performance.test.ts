@@ -56,7 +56,7 @@ describe('Selected Workspace session performance', () => {
       payload: {
         kind: 'session-watch-snapshot',
         sequence: 1,
-        session: { id: 'session', workspaceId: 'workspace', activity: 'MANAGED_ACTIVE' },
+        session: { id: 'session', workspaceId: 'workspace', activity: 'RUNNING' },
         runs: [{ id: 'run', sessionId: 'session', status: 'RUNNING' }],
         performance,
         conversation: { unit: 'SEGMENT', segments: [], nextCursor: null }

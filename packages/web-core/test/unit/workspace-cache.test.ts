@@ -382,11 +382,11 @@ describe('Web Workspace View Cache', () => {
       workspaceId: 'workspace-1',
       runner: 'codex',
       externalSessionId: 'native-session-1',
-      activity: 'MANAGED_ACTIVE'
+      activity: 'RUNNING'
     });
 
     expect(state.view('node-1', 'workspace-1').sessions).toEqual([
-      expect.objectContaining({ id: 'session-1', activity: 'MANAGED_ACTIVE' })
+      expect.objectContaining({ id: 'session-1', activity: 'RUNNING' })
     ]);
     expect(state.detail('node-1', 'workspace-1', 'draft-1')).toBeUndefined();
     expect(state.detail('node-1', 'workspace-1', 'session-1')).toMatchObject({

@@ -63,7 +63,7 @@ export async function mockSharedConversation(
     modelId: 'test-model',
     effort: 'high',
     access: 'auto',
-    activity: 'MANAGED_ACTIVE',
+    activity: 'RUNNING',
     capabilities: []
   };
   await page.route('**/api/session-shares/participants-test/session', (route) =>

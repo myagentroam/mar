@@ -380,7 +380,7 @@ describe('shared Workbench state composition', () => {
             payload: {
               kind: 'session-watch-snapshot',
               sequence: 1,
-              session: { id: item.sessionId, workspaceId: 'w', activity: 'MANAGED_ACTIVE' },
+              session: { id: item.sessionId, workspaceId: 'w', activity: 'RUNNING' },
               runs: [{ id: `run-${item.sessionId}`, sessionId: item.sessionId, status: 'RUNNING' }],
               conversation: { unit: 'SEGMENT', segments: [], nextCursor: null, source: 'runtime' }
             }

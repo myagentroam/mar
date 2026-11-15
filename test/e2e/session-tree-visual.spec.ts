@@ -94,7 +94,7 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
     'Idle leaf',
     'Idle leaf two'
   ]);
-  await expect(tree.locator('.mar-session-activity.managed_active')).toHaveCount(2);
+  await expect(tree.locator('.mar-session-activity.running')).toHaveCount(2);
   await expect(tree.locator('.mar-session-activity.tree-sleeping')).toHaveCount(1);
   await expect(tree.locator('.session-tree-time')).toHaveText(Array(6).fill('—'));
   await expect(tree.getByRole('button', { name: 'Running branch, Running' })).toBeVisible();
@@ -445,7 +445,7 @@ for (const width of [390, 1280]) {
       const rows = dialog.locator('.session-tree-node');
       await expect(rows).toHaveCount(4);
       await expect(rows.locator('.session-tree-status')).toHaveCount(0);
-      await expect(dialog.locator('.mar-session-activity.managed_active')).toHaveCount(1);
+      await expect(dialog.locator('.mar-session-activity.running')).toHaveCount(1);
       await expect(rows.locator('.session-tree-time')).toHaveText(['>12m', '>5m', '<1m', '>2h']);
       await expect(rows.first().locator('.session-tree-time')).toHaveAttribute(
         'datetime',

@@ -245,7 +245,7 @@ onBeforeUnmount(() => {
           <span class="workbench-aside-label">{{ item.label }}</span>
           <span
             v-if="entries.find((entry) => entry.id === item.id)?.active"
-            class="workbench-aside-activity mar-session-activity managed_active"
+            class="workbench-aside-activity mar-session-activity running"
             aria-hidden="true"
             ><i />
           </span>

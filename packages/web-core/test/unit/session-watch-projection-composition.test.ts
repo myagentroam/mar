@@ -43,7 +43,7 @@ describe('Session Watch projection composition', () => {
       mergeQueue: vi.fn(),
       mergeSessions: vi.fn(),
       settleSessionRuns: vi.fn(() => false),
-      observeManagedSessionActive: vi.fn(),
+      observeSessionRunning: vi.fn(),
       updateContext: vi.fn(),
       syncTurnStatus: vi.fn(),
       cacheRun: vi.fn(),
@@ -178,7 +178,7 @@ describe('Session Watch projection composition', () => {
       const begun = watch.beginSelectedSessionWatch('session-1');
       await vi.waitFor(() => expect(requested.sessionId).toBe('session-1'));
       const first = { ...requested };
-      broadcast('session', { session: { ...session, activity: 'MANAGED_ACTIVE' } });
+      broadcast('session', { session: { ...session, activity: 'RUNNING' } });
       broadcast('session', { sessionId: session.id, context: { used: 999 } });
       broadcast('run', { run: { id: 'run-1', sessionId: session.id, status: 'RUNNING' } });
       broadcast('queue', { sessionId: session.id, queue: { version: 9, items: [], paused: true } });

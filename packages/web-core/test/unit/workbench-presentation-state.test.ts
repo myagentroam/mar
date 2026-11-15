@@ -246,7 +246,7 @@ describe('Workbench mutually exclusive controls', () => {
     expect(f.state.rollbackConversationEnabled.value).toBe(true);
     expect(f.state.canDeleteSession(f.session.value)).toBe(true);
     expect(f.state.canCompactContext.value).toBe(true);
-    f.session.value = { ...f.session.value, activity: 'MANAGED_ACTIVE' };
+    f.session.value = { ...f.session.value, activity: 'RUNNING' };
     expect(f.state.activeComposerRun.value).toBeUndefined();
     expect(f.state.rewindConversationEnabled.value).toBe(false);
     expect(f.state.rollbackConversationEnabled.value).toBe(false);
@@ -283,7 +283,7 @@ describe('Workbench mutually exclusive controls', () => {
 
   it('keeps idle-only controls locked after interruption is requested until authoritative idle', () => {
     const f = controlsFixture();
-    f.session.value = { ...f.session.value, activity: 'MANAGED_ACTIVE' };
+    f.session.value = { ...f.session.value, activity: 'RUNNING' };
     f.runService.markSessionInterruptionPending(f.session.value.id);
     expect(f.state.composerSessionBusy.value).toBe(false);
     expect(f.state.rewindConversationEnabled.value).toBe(false);
@@ -333,7 +333,7 @@ describe('Workbench mutually exclusive controls', () => {
 
   it('keeps state commands available while hiding idle-only commands during Working', () => {
     const f = controlsFixture();
-    f.session.value = { ...f.session.value, activity: 'MANAGED_ACTIVE' };
+    f.session.value = { ...f.session.value, activity: 'RUNNING' };
     expect(f.state.canExecuteRunnerCommand(f.compact)).toBe(false);
     expect(
       f.state.canExecuteRunnerCommand({ ...f.compact, interaction: 'DESTRUCTIVE_ACTION' })

@@ -22,7 +22,7 @@ test('A fresh Watch snapshot restores process activity after observed session id
     workspaceId: 'workspace-1',
     runner: 'codex',
     externalSessionId: 'vscode-thread-1',
-    activity: 'MANAGED_ACTIVE',
+    activity: 'RUNNING',
     control: {
       level: 'MANAGED',
       capabilities: ['history.read', 'events.live', 'turn.start', 'turn.interrupt']
@@ -156,7 +156,7 @@ test('Idle transitions preserve input and late responses cannot switch back to t
       workspaceId: 'workspace-1',
       runner: 'codex' as const,
       runnerTitle: '第二会话',
-      activity: 'MANAGED_ACTIVE' as const,
+      activity: 'RUNNING' as const,
       control: {
         level: 'MANAGED',
         capabilities: ['history.read', 'events.live', 'turn.start']
@@ -229,7 +229,7 @@ test('Idle transitions preserve input and late responses cannot switch back to t
   await page.route('**/api/agent-sessions/session-1/messages', async (route) => {
     await messagePending;
     return write(route, writes, {
-      session: { ...sessions[0], activity: 'MANAGED_ACTIVE' },
+      session: { ...sessions[0], activity: 'RUNNING' },
       run: {
         id: 'run-session-1',
         sessionId: 'session-1',
@@ -664,7 +664,7 @@ test('Reselecting the active session neither recreates Watch nor overwrites runn
     workspaceId: 'workspace-1',
     runner: 'codex',
     externalSessionId: 'vscode-thread-1',
-    activity: 'MANAGED_ACTIVE',
+    activity: 'RUNNING',
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start', 'turn.steer'] }
   };
   await page.route('**/api/agent-sessions/session-1/watch*', (route) => {
@@ -812,7 +812,7 @@ test('Successful queue pause waits for queue events without recreating Session W
     workspaceId: 'workspace-1',
     runner: 'codex' as const,
     externalSessionId: 'vscode-thread-1',
-    activity: 'MANAGED_ACTIVE' as const,
+    activity: 'RUNNING' as const,
     control: {
       level: 'MANAGED',
       capabilities: ['history.read', 'events.live', 'turn.start', 'turn.queue']

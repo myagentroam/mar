@@ -2057,7 +2057,7 @@ export const sessionRuntimeCapabilitiesSchema = z.object({
 });
 export type SessionRuntimeCapabilities = z.infer<typeof sessionRuntimeCapabilitiesSchema>;
 
-export const sessionActivityStateSchema = z.enum(['MANAGED_ACTIVE', 'IDLE']);
+export const sessionActivityStateSchema = z.enum(['RUNNING', 'IDLE']);
 export type SessionActivityState = z.infer<typeof sessionActivityStateSchema>;
 
 export const eventCursorSchema = z.object({

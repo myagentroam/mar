@@ -11,7 +11,7 @@ const INITIAL_TURN_LIMIT = 30;
 const EMITTED_TURN_LIMIT = 10;
 
 export interface ConversationObservationOptions {
-  readonly managedActive: (session: NodeAgentSession) => boolean;
+  readonly hasActiveRun: (session: NodeAgentSession) => boolean;
   readonly readPage: (session: NodeAgentSession, limit: number) => Promise<ConversationHistoryPage>;
   readonly readHistoryPage?: (
     session: NodeAgentSession,
@@ -53,7 +53,7 @@ export class ConversationObservation {
     public session: NodeAgentSession,
     private readonly options: ConversationObservationOptions
   ) {
-    this.mode = options.managedActive(session) ? 'RUNNING' : 'HISTORY';
+    this.mode = options.hasActiveRun(session) ? 'RUNNING' : 'HISTORY';
   }
 
   get snapshotPending(): boolean {
@@ -67,7 +67,7 @@ export class ConversationObservation {
 
   async initial(limit = INITIAL_TURN_LIMIT): Promise<ConversationObservationUpdate | undefined> {
     if (this.closed) return undefined;
-    if (this.options.managedActive(this.session)) {
+    if (this.options.hasActiveRun(this.session)) {
       this.mode = 'RUNNING';
       return { page: await this.runningWindow(), changed: false, handoff: false, snapshot: false };
     }
@@ -86,7 +86,7 @@ export class ConversationObservation {
     );
     const update = await this.refresh('initial', initialLimit);
     if (this.closed || update === undefined) return undefined;
-    if (this.options.managedActive(this.session)) {
+    if (this.options.hasActiveRun(this.session)) {
       this.mode = 'RUNNING';
       return { ...update, page: await this.runningWindow(update.page) };
     }
@@ -116,7 +116,7 @@ export class ConversationObservation {
     limit: number
   ): Promise<ConversationObservationUpdate | undefined> {
     if (this.closed || this.options.suspended?.(this.session.id) === true) return undefined;
-    if (mode === 'observation' && this.options.managedActive(this.session)) return undefined;
+    if (mode === 'observation' && this.options.hasActiveRun(this.session)) return undefined;
     const historical = this.mode === 'HISTORY' && this.options.readHistoryPage !== undefined;
     this.stage = 'refresh_activity';
     await this.options.refreshActivity(this.session);
@@ -155,7 +155,7 @@ export class ConversationObservation {
       ...convergence.page,
       turns: convergence.page.turns.slice(-(EMITTED_TURN_LIMIT + 1))
     };
-    const handoff = this.mode === 'CONVERGING' && !this.options.managedActive(this.session);
+    const handoff = this.mode === 'CONVERGING' && !this.options.hasActiveRun(this.session);
     if (handoff) {
       this.mode = 'HISTORY';
       this.runtimePage = undefined;
@@ -291,9 +291,5 @@ function sessionActivity(event: WorkbenchEvent): 'RUNNING' | 'IDLE' | undefined 
   }
   if (event.category !== 'session' || !isPlainRecord(event.payload.session)) return undefined;
   const activity = event.payload.session.activity;
-  return typeof activity === 'string'
-    ? activity === 'MANAGED_ACTIVE'
-      ? 'RUNNING'
-      : 'IDLE'
-    : undefined;
+  return activity === 'RUNNING' || activity === 'IDLE' ? activity : undefined;
 }

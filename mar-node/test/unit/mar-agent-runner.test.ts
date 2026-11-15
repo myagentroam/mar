@@ -1944,7 +1944,7 @@ describe('MAR Agent Node Runner', () => {
           createdAt: 0
         },
         capabilities,
-        { managedActive: false, commandStates: [] }
+        { hasActiveRun: false, commandStates: [] }
       )
     ).not.toThrow();
     expect(
@@ -1969,7 +1969,7 @@ describe('MAR Agent Node Runner', () => {
           createdAt: 0
         },
         capabilities,
-        { managedActive: false, commandStates: [] }
+        { hasActiveRun: false, commandStates: [] }
       ).runtime.capabilities
     ).toEqual(expect.arrayContaining(['turn.start', 'user-input.respond']));
   });
@@ -2285,7 +2285,7 @@ describe('MAR Agent Node Runner', () => {
           createdAt: 0
         },
         capabilities,
-        { managedActive: false, commandStates: [] }
+        { hasActiveRun: false, commandStates: [] }
       ).runtime.capabilities
     ).toEqual(expect.arrayContaining(['session.rewind', 'session.rollback']));
   });

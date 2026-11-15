@@ -35,7 +35,7 @@ test('Rollback resets a second browser page immediately without losing its unsen
     nodeId: () => 'node-1',
     nodeGeneration: () => 'generation-1',
     resolve: async () => session,
-    managedActive: () => true,
+    hasActiveRun: () => true,
     refreshActivity: async () => undefined,
     present: () => session,
     projectInitialPage: (_session, value) => ({

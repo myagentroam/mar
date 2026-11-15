@@ -151,7 +151,7 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     return activeRunIds.size > 0;
   }
 
-  function observeManagedSessionActive(sessionId: string): void {
+  function observeSessionRunning(sessionId: string): void {
     if (!requestedSessionInterruptions.has(sessionId))
       settledSessionInterruptions.delete(sessionId);
   }
@@ -185,7 +185,7 @@ export function createRunService(selectedSessionId: Ref<string | undefined>) {
     markSessionInterrupted,
     markSessionInterruptionPending,
     settleSessionRuns,
-    observeManagedSessionActive,
+    observeSessionRunning,
     clearSessionInterruption,
     resumeSessionAfterInterruption,
     sessionInterruptionSettled

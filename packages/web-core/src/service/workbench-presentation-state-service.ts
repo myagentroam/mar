@@ -130,8 +130,7 @@ export function createWorkspaceSessionPresentationStateService(
     () => nodeReady.value && selectedCapabilities.value.has('turn.start')
   );
   const mustSteerCurrentTurn = computed(
-    () =>
-      selectedSessionActivity.value === 'MANAGED_ACTIVE' && activeComposerRun.value !== undefined
+    () => selectedSessionActivity.value === 'RUNNING' && activeComposerRun.value !== undefined
   );
   const draftRunnerProfileSupportsTurns = computed(
     () => options.composerProfile.value?.capabilities.includes('turn.start') === true
@@ -146,7 +145,7 @@ export function createWorkspaceSessionPresentationStateService(
         ? options.runnerProfilesLoading.value ||
           options.runnerProfilesFailed.value ||
           draftRunnerProfileSupportsTurns.value
-        : selectedSessionActivity.value === 'MANAGED_ACTIVE' ||
+        : selectedSessionActivity.value === 'RUNNING' ||
           (mustSteerCurrentTurn.value
             ? selectedRuntimeCapabilities.value.has('turn.queue')
             : canStartTurn.value))
@@ -177,14 +176,14 @@ export function createWorkspaceSessionPresentationStateService(
     () =>
       activeComposerRun.value !== undefined ||
       sessionHasActiveGoal(options.selectedSession.value?.commandStates) ||
-      (selectedSessionActivity.value === 'MANAGED_ACTIVE' &&
+      (selectedSessionActivity.value === 'RUNNING' &&
         !options.runService.sessionInterruptionSettled(options.selectedSessionId.value))
   );
   const sessionControlsBusy = computed(
     () =>
       composerSessionBusy.value ||
       options.selectedSessionId.value?.startsWith('draft:') === true ||
-      selectedSessionActivity.value === 'MANAGED_ACTIVE' ||
+      selectedSessionActivity.value === 'RUNNING' ||
       options.loading.value ||
       options.submissionPending.value
   );
@@ -292,7 +291,7 @@ export function createWorkspaceSessionPresentationStateService(
   const interruptVisible = computed(
     () =>
       (activeComposerRun.value !== undefined ||
-        (selectedSessionActivity.value === 'MANAGED_ACTIVE' &&
+        (selectedSessionActivity.value === 'RUNNING' &&
           (options.selectedSessionId.value === undefined ||
             !options.runService.sessionInterruptionSettled(options.selectedSessionId.value)))) &&
       nodeReady.value

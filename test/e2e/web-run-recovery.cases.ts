@@ -305,7 +305,7 @@ test('First messages immediately mark new sessions as managed runs and merge rea
     runner: 'codex' as const,
     externalSessionId: 'session-created',
     runnerTitle: '首条消息',
-    activity: 'MANAGED_ACTIVE' as const,
+    activity: 'RUNNING' as const,
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   };
   let createdWatchId: string | undefined;
@@ -409,7 +409,7 @@ test('First messages immediately mark new sessions as managed runs and merge rea
   const input = page.getByRole('textbox', { name: '输入消息' });
   await input.fill('请开始');
   await input.press('Control+Enter');
-  await expect(page.locator('.session-list .mar-session-activity.managed_active')).toHaveCount(1);
+  await expect(page.locator('.session-list .mar-session-activity.running')).toHaveCount(1);
   await expect(page.locator('.conversation-item.user_message')).toContainText('请开始');
   await expect.poll(() => createdWatchId).toBeTruthy();
   await page.evaluate(
@@ -532,7 +532,7 @@ test('Input-required events arriving before message responses replay immediately
     runner: 'codex' as const,
     externalSessionId: 'session-input-race',
     runnerTitle: '待输入竞态',
-    activity: 'MANAGED_ACTIVE' as const,
+    activity: 'RUNNING' as const,
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   };
   await page.route('**/api/agent-sessions/start', async (route) => {
@@ -674,7 +674,7 @@ test('Older session snapshots cannot overwrite newly pushed messages', async ({ 
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
       },
       run: {
@@ -1001,7 +1001,7 @@ test('Realtime reconnection backfills the final result of the active session', a
         workspaceId: 'workspace-1',
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
-        activity: snapshotReads <= 1 ? 'MANAGED_ACTIVE' : 'IDLE',
+        activity: snapshotReads <= 1 ? 'RUNNING' : 'IDLE',
         control:
           snapshotReads <= 1
             ? {
@@ -1022,7 +1022,7 @@ test('Realtime reconnection backfills the final result of the active session', a
       workspaceId: 'workspace-1',
       runner: 'codex',
       externalSessionId: 'vscode-thread-1',
-      activity: active ? 'MANAGED_ACTIVE' : 'IDLE',
+      activity: active ? 'RUNNING' : 'IDLE',
       control: active
         ? { level: 'MANAGED', capabilities: ['history.read', 'events.live', 'turn.start'] }
         : { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }

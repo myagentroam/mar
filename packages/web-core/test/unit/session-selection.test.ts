@@ -108,7 +108,7 @@ function createSelection(
     markActive: (session) => {
       options.sessions.value = options.sessions.value.map((candidate) =>
         candidate.id === session.id && candidate.workspaceId === session.workspaceId
-          ? { ...candidate, activity: 'MANAGED_ACTIVE' }
+          ? { ...candidate, activity: 'RUNNING' }
           : candidate
       );
     },
@@ -1427,7 +1427,7 @@ describe('Shared session selection', () => {
       expect.objectContaining({ deferredOlderHistory: true })
     );
     expect(openRun).toHaveBeenCalledWith('run-stale');
-    expect(sessions.value[0]?.activity).toBe('MANAGED_ACTIVE');
+    expect(sessions.value[0]?.activity).toBe('RUNNING');
     expect(backfill).not.toHaveBeenCalled();
     expect(requests).toContain(
       '/api/agent-sessions/session-1/turns?nodeId=node-1&limit=6&unit=SEGMENT'

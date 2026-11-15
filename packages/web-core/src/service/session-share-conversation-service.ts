@@ -116,7 +116,7 @@ export function createSessionShareConversationService(options: {
     runState.runs.value.find((run) => ['STARTING', 'RUNNING', 'CANCELLING'].includes(run.status))
   );
   const busy = computed(
-    () => activeRun.value !== undefined || selectedSession.value?.activity === 'MANAGED_ACTIVE'
+    () => activeRun.value !== undefined || selectedSession.value?.activity === 'RUNNING'
   );
   const projection = state.projection;
   const mergeSessions = (values: readonly Session[]) => {
@@ -147,7 +147,7 @@ export function createSessionShareConversationService(options: {
     },
     mergeSessions,
     settleSessionRuns: runState.settleSessionRuns,
-    observeManagedSessionActive: runState.observeManagedSessionActive,
+    observeSessionRunning: runState.observeSessionRunning,
     updateContext: (_id, value) => {
       state.contextUsage.value = value as typeof state.contextUsage.value;
     },

@@ -216,7 +216,7 @@ export function createWorkspaceSessionPaneController(
     >;
     readonly discovery: Pick<
       ReturnType<typeof import('./workspace-session-service.js').createWorkspaceSessionService>,
-      'merge' | 'markManagedActive'
+      'merge' | 'markRunning'
     > & {
       readonly projection: Pick<
         ReturnType<
@@ -233,7 +233,7 @@ export function createWorkspaceSessionPaneController(
       | 'selectedSession'
       | 'conversationNextCursor'
       | 'settleSessionRuns'
-      | 'observeManagedSessionActive'
+      | 'observeSessionRunning'
       | 'updateContext'
       | 'syncTurnStatus'
       | 'cacheRun'
@@ -679,7 +679,7 @@ export function createWorkspaceSessionPaneController(
       if (projected.length > 0) options.discovery.merge(projected);
     },
     settleSessionRuns: state.run.settleSessionRuns,
-    observeManagedSessionActive: state.run.observeManagedSessionActive,
+    observeSessionRunning: state.run.observeSessionRunning,
     updateContext: (sessionId, value) => {
       const target = state.workspaceTarget.value;
       if (target !== undefined)
@@ -818,7 +818,7 @@ export function createWorkspaceSessionPaneController(
       markActive: (session) => {
         const target = ports.target.value;
         if (target !== undefined)
-          state.acceptResolvedSession(target.nodeId, { ...session, activity: 'MANAGED_ACTIVE' });
+          state.acceptResolvedSession(target.nodeId, { ...session, activity: 'RUNNING' });
       },
       openRun: realtime.openRun,
       canWatch: watch.canWatchSessionHistory,
@@ -1606,7 +1606,7 @@ export function createWorkspaceSessionPane(
           draftOpen: location.selection.draftOpen,
           closeMobile: location.closeMobile,
           saveCurrent: location.saveCurrent,
-          markActive: services.discovery.markManagedActive,
+          markActive: services.discovery.markRunning,
           markRead: location.markRead
         },
         position: {

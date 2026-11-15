@@ -66,7 +66,7 @@ describe('Codex Run lifecycle and control', () => {
     connector.stop();
   });
 
-  it('marks the session as managed-active when the Run enters STARTING without waiting for a native Turn ID', () => {
+  it('marks the session as running when the Run enters STARTING without waiting for a native Turn ID', () => {
     const database = new NodeDatabase(':memory:', 'node-session-activity');
     const workspace = database.saveWorkspace({
       path: '/workspace-session-activity',
@@ -105,7 +105,7 @@ describe('Codex Run lifecycle and control', () => {
         payload: expect.objectContaining({
           category: 'session',
           payload: expect.objectContaining({
-            session: expect.objectContaining({ id: session.id, activity: 'MANAGED_ACTIVE' })
+            session: expect.objectContaining({ id: session.id, activity: 'RUNNING' })
           })
         })
       })

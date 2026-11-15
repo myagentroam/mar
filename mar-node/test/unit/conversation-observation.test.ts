@@ -43,7 +43,7 @@ describe('Conversation observation read windows', () => {
         return page(limit);
       });
       const observation = new ConversationObservation(session, {
-        managedActive: () => false,
+        hasActiveRun: () => false,
         readPage,
         refreshActivity: async () => undefined
       });
@@ -69,7 +69,7 @@ describe('Conversation observation read windows', () => {
       .fn(async (_session: NodeAgentSession, limit: number) => page(limit))
       .mockRejectedValueOnce(new Error('history unavailable'));
     const observation = new ConversationObservation(session, {
-      managedActive: () => false,
+      hasActiveRun: () => false,
       readPage,
       refreshActivity: async () => undefined
     });
@@ -89,7 +89,7 @@ describe('Conversation observation read windows', () => {
       return page(limit);
     });
     const observation = new ConversationObservation(session, {
-      managedActive: () => false,
+      hasActiveRun: () => false,
       readPage,
       refreshActivity: async () => undefined
     });
@@ -117,7 +117,7 @@ describe('Conversation observation read windows', () => {
     const readPage = vi.fn(async () => page(3));
     readPage.mockResolvedValueOnce({ ...page(3), turns: [], nextCursor: null });
     const observation = new ConversationObservation(session, {
-      managedActive: () => false,
+      hasActiveRun: () => false,
       readPage,
       refreshActivity: async () => undefined
     });
@@ -141,7 +141,7 @@ describe('Conversation observation read windows', () => {
         )
     }));
     const observation = new ConversationObservation(session, {
-      managedActive: () => false,
+      hasActiveRun: () => false,
       readPage,
       refreshActivity: async () => undefined
     });
@@ -177,7 +177,7 @@ describe('Conversation observation read windows', () => {
           )
       }));
       const observation = new ConversationObservation(session, {
-        managedActive: () => false,
+        hasActiveRun: () => false,
         readPage,
         refreshActivity: async () => undefined
       });

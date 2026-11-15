@@ -270,7 +270,7 @@ test('Idle external Codex sessions accept input and let Node resume on the first
         runner: 'codex',
         externalSessionId: 'vscode-thread-1',
         nativeControl: 'MAR_MANAGED',
-        activity: 'MANAGED_ACTIVE',
+        activity: 'RUNNING',
         control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
       },
       run: {
@@ -477,7 +477,7 @@ test('Resumed external Claude history is not duplicated by managed projections',
     ...externalSession,
     id: 'managed-claude-history',
     nativeControl: 'MAR_MANAGED' as const,
-    activity: 'MANAGED_ACTIVE' as const,
+    activity: 'RUNNING' as const,
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   };
   await page.route('**/api/agent-sessions?nodeId=node-1*', (route) =>
@@ -534,7 +534,7 @@ test('Resumed external Claude history is not duplicated by managed projections',
   await expect
     .poll(() => writes.filter((entry) => entry.url.includes('/external-claude-history/messages')))
     .toHaveLength(1);
-  const managedActivity = page.locator('.session-list .mar-session-activity.managed_active');
+  const managedActivity = page.locator('.session-list .mar-session-activity.running');
   await expect(managedActivity).toHaveCount(1);
   await expect(managedActivity.locator('i')).toHaveCSS('animation-name', 'mar-run-glow');
   await page.emulateMedia({ reducedMotion: 'reduce' });

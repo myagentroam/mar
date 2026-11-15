@@ -72,7 +72,7 @@ function fixture(
     externalSessionId: 'native-session',
     nativeControl: 'MAR_MANAGED'
   } as NodeAgentSession;
-  let managedActive = true;
+  let hasActiveRun = true;
   const service = new ConversationHistoryService({
     runtime: {
       getAgentSession: () => session,
@@ -80,7 +80,7 @@ function fixture(
     },
     runners: new RunnerRegistry([runner]),
     snapshotSequence: () => 42,
-    hasManagedActiveRun: () => managedActive
+    hasActiveRun: () => hasActiveRun
   } as never);
   const official = vi.spyOn(service, 'readOfficial').mockResolvedValue({
     turns: native,
@@ -92,7 +92,7 @@ function fixture(
     service,
     official,
     nativeRead,
-    setActive: (value: boolean) => (managedActive = value)
+    setActive: (value: boolean) => (hasActiveRun = value)
   };
 }
 
@@ -223,7 +223,7 @@ describe('Managed conversation Rewind supplementation', () => {
     const result = await new CodexRunner().readConversationRewind({
       session,
       turns: [turn('local')],
-      managedActive: false,
+      hasActiveRun: false,
       firstPage: true,
       readHistory
     });
@@ -257,7 +257,7 @@ describe('Managed conversation Rewind supplementation', () => {
       return { turns: [turn('native', 'local', { rewind })], nextCursor: null };
     });
     const observation = new ConversationObservation(session, {
-      managedActive: () => true,
+      hasActiveRun: () => true,
       refreshActivity: async () => undefined,
       readPage: (current, limit) => service.read(current, { limit })
     });

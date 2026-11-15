@@ -169,7 +169,7 @@ test('shows Agent records without shortcuts and opens the child through the sess
     workspaceId: 'workspace-1',
     runner: 'mar-agent',
     externalSessionId: 'native-child',
-    activity: 'MANAGED_ACTIVE',
+    activity: 'RUNNING',
     sessionGroup: 'CHILD',
     control: { level: 'MANAGED', capabilities }
   };

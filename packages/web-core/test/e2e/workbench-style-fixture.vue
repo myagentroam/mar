@@ -301,7 +301,7 @@ const sessionProps = {
   workspaceBranch: undefined,
   title: (session: Session) => session.id,
   runnerIcon: () => '',
-  activity: (session: Session) => (session.id === 'active' ? 'MANAGED_ACTIVE' : 'IDLE'),
+  activity: (session: Session) => (session.id === 'active' ? 'RUNNING' : 'IDLE'),
   activityLabel: () => 'Working',
   activityDateTime: () => undefined,
   activityTitle: () => undefined,
