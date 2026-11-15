@@ -180,6 +180,55 @@ describe('Node control connection recovery', () => {
     expect(onReconnectScheduled).not.toHaveBeenCalled();
   });
 
+  it.each([45_000, 45_001])(
+    'rejects a matching pong after the %i ms wall-clock deadline before the interval runs',
+    async (elapsed) => {
+      const socket = await open();
+      await ready(socket);
+      const ping = once(socket, 'ping');
+      await vi.advanceTimersByTimeAsync(15_000);
+      const [payload] = await ping;
+
+      // Move wall time without advancing the monotonic clock or running the liveness interval.
+      vi.setSystemTime(Date.now() + elapsed - 15_000);
+      const client = channel.connection() as WebSocket;
+      const pong = once(client, 'pong');
+      const closed = once(client, 'close');
+      socket.pong(payload);
+      await pong;
+
+      expect(channel.connected()).toBe(false);
+      await closed;
+      expect(onReconnectScheduled).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('rejects a matching pong at the monotonic deadline after wall-clock rollback', async () => {
+    const socket = await open();
+    await ready(socket);
+    const monotonicAtReady = performance.now();
+    const ping = once(socket, 'ping');
+    await vi.advanceTimersByTimeAsync(15_000);
+    const [payload] = await ping;
+
+    // Advance only the monotonic reading and roll wall time back, without running the interval.
+    vi.setSystemTime(Date.now() - 60 * 60 * 1_000);
+    const monotonicNow = vi.spyOn(performance, 'now').mockReturnValue(monotonicAtReady + 45_000);
+    try {
+      const client = channel.connection() as WebSocket;
+      const pong = once(client, 'pong');
+      const closed = once(client, 'close');
+      socket.pong(payload);
+      await pong;
+
+      expect(channel.connected()).toBe(false);
+      await closed;
+      expect(onReconnectScheduled).toHaveBeenCalledTimes(1);
+    } finally {
+      monotonicNow.mockRestore();
+    }
+  });
+
   it('does not renew liveness with unrelated or replayed pong frames', async () => {
     const socket = await open();
     await ready(socket);
