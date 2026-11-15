@@ -6,6 +6,9 @@ import { RotatingLogStream } from '../rotating-log-stream.js';
 import { databaseError, logCorrelation, safePublicError, sendError } from '../util/http-request.js';
 import { ServerTrafficMetrics } from '../service/server-traffic-metrics.js';
 
+/** Fresh schema migration runs during startup and can exceed Fastify's 10s default. */
+const SERVER_STARTUP_TIMEOUT_MS = 180_000;
+
 /** Own the HTTP boundary and request instrumentation, independent of product storage. */
 export function createServerHttp(options: {
   readonly dataDirectory: string;
@@ -14,6 +17,8 @@ export function createServerHttp(options: {
 }) {
   const { dataDirectory } = options;
   const app = Fastify({
+    // A fresh schema migration runs in onReady and can exceed Fastify's 10s default.
+    pluginTimeout: SERVER_STARTUP_TIMEOUT_MS,
     genReqId: () => `req-${randomUUID()}`,
     logController: new LogController({ disableRequestLogging: true }),
     logger:
