@@ -6,7 +6,7 @@ import type { WorkspaceWatchService } from './workspace-watch-service.js';
 
 export type WorkspaceWatchTopic = 'sessions' | 'files' | 'changes' | 'sessionNavigation';
 
-const FILES_REFRESH_INTERVAL_MS = 30_000;
+const RESOURCE_REFRESH_INTERVAL_MS = 30_000;
 
 export interface WorkspaceWatchSnapshotServiceOptions {
   readonly requireWorkspace: (workspaceId: unknown) => NodeWorkspace;
@@ -23,10 +23,10 @@ export interface WorkspaceWatchSnapshotServiceOptions {
   ) => Promise<unknown>;
   readonly nodeId: () => string;
   readonly emitWatchEvent: (payload: unknown) => void;
-  readonly filesRefreshIntervalMs?: number;
+  readonly resourceRefreshIntervalMs?: number;
 }
 
-/** Owns Workspace topic reads, single-flight invalidation and directed snapshot delivery. */
+/** Owns Workspace topic reads, periodic local resources, single-flight invalidation and delivery. */
 export class WorkspaceWatchSnapshotService {
   private readonly filePrewarmTimers = new Map<WorkspaceWatch, NodeJS.Timeout>();
   private readonly refreshes = new Map<string, Promise<void>>();
@@ -44,7 +44,7 @@ export class WorkspaceWatchSnapshotService {
       >
     >
   >();
-  private filesRefreshTimer: NodeJS.Timeout | undefined;
+  private resourceRefreshTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly options: WorkspaceWatchSnapshotServiceOptions) {}
 
@@ -53,7 +53,7 @@ export class WorkspaceWatchSnapshotService {
     watch: WorkspaceWatch,
     previous?: WorkspaceWatch
   ): Promise<void> {
-    if (watch.topics.files !== undefined) this.ensureFilesRefreshTimer();
+    if (watch.topics.files !== undefined || watch.topics.changes) this.ensureResourceRefreshTimer();
     await Promise.all(
       this.subscribedTopics(watch).map(async (topic) => {
         const revision = this.readRevision(workspace.id, topic);
@@ -148,24 +148,27 @@ export class WorkspaceWatchSnapshotService {
   clearAll(): void {
     for (const timer of this.filePrewarmTimers.values()) clearTimeout(timer);
     this.filePrewarmTimers.clear();
-    if (this.filesRefreshTimer !== undefined) clearInterval(this.filesRefreshTimer);
-    this.filesRefreshTimer = undefined;
+    if (this.resourceRefreshTimer !== undefined) clearInterval(this.resourceRefreshTimer);
+    this.resourceRefreshTimer = undefined;
     this.dirty.clear();
     this.signatures.clear();
   }
 
-  private ensureFilesRefreshTimer(): void {
-    if (this.filesRefreshTimer !== undefined) return;
-    this.filesRefreshTimer = setInterval(() => {
-      const workspaceIds = this.options.watch.activeWorkspaceIds('files');
-      if (workspaceIds.length === 0) {
-        if (this.filesRefreshTimer !== undefined) clearInterval(this.filesRefreshTimer);
-        this.filesRefreshTimer = undefined;
-        return;
+  private ensureResourceRefreshTimer(): void {
+    if (this.resourceRefreshTimer !== undefined) return;
+    this.resourceRefreshTimer = setInterval(() => {
+      let active = false;
+      for (const topic of ['files', 'changes'] as const) {
+        const workspaceIds = this.options.watch.activeWorkspaceIds(topic);
+        active ||= workspaceIds.length > 0;
+        for (const workspaceId of workspaceIds) void this.invalidate(workspaceId, topic);
       }
-      for (const workspaceId of workspaceIds) void this.invalidate(workspaceId, 'files');
-    }, this.options.filesRefreshIntervalMs ?? FILES_REFRESH_INTERVAL_MS);
-    this.filesRefreshTimer.unref();
+      if (!active) {
+        if (this.resourceRefreshTimer !== undefined) clearInterval(this.resourceRefreshTimer);
+        this.resourceRefreshTimer = undefined;
+      }
+    }, this.options.resourceRefreshIntervalMs ?? RESOURCE_REFRESH_INTERVAL_MS);
+    this.resourceRefreshTimer.unref();
   }
 
   private async refresh(workspaceId: string, topic: WorkspaceWatchTopic): Promise<void> {
@@ -357,6 +360,8 @@ export class WorkspaceWatchSnapshotService {
   private fail(workspaceId: string, watch: WorkspaceWatch, topic: WorkspaceWatchTopic): void {
     if (!this.matches(workspaceId, watch)) return;
     if (topic !== 'sessionNavigation') {
+      // A successful retry must clear the client failure even when content is unchanged.
+      this.signatures.delete(this.viewKey(workspaceId, topic, watch));
       const snapshots = this.resourceSnapshots.get(watch);
       if (snapshots !== undefined) delete snapshots[topic];
     }

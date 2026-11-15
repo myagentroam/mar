@@ -247,7 +247,7 @@ describe('Node Workspace watch', () => {
       requireWorkspace: () => ({ id: 'workspace-1', kind: 'DIRECTORY' }) as never,
       watch: {
         activeWatches: () => [watch],
-        activeWorkspaceIds: () => ['workspace-1'],
+        activeWorkspaceIds: (topic: string) => (topic === 'files' ? ['workspace-1'] : []),
         matches: () => true,
         nextRevision: vi.fn().mockReturnValue(1),
         nextSnapshotSequence: vi.fn().mockReturnValue(1)
@@ -260,7 +260,7 @@ describe('Node Workspace watch', () => {
       listSessions: vi.fn(),
       nodeId: () => 'node-1',
       emitWatchEvent: vi.fn(),
-      filesRefreshIntervalMs: 30_000
+      resourceRefreshIntervalMs: 30_000
     });
 
     const initial = service.initial(
