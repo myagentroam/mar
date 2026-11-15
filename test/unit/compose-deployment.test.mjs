@@ -53,6 +53,17 @@ test('Server installation and image do not bundle a Node execution domain', asyn
   assert.doesNotMatch(dockerfile, /COPY mar-node|COPY mar-agent|COPY marctl/u);
 });
 
+test('Server runtime image includes the system trust store required by HTTPS Skill repositories', async () => {
+  const dockerfile = await readFile(resolve(root, 'Dockerfile'), 'utf8');
+  const runtime = dockerfile.split(/^FROM .* AS server$/mu)[1];
+  assert.ok(runtime, 'The final Server runtime stage must exist');
+  const packages = [...runtime.matchAll(/apt-get install\s+([^;&]+)/gu)].flatMap((match) =>
+    match[1].replace(/\\\n/gu, ' ').trim().split(/\s+/u)
+  );
+  for (const name of ['ca-certificates', 'git', 'openssh-client'])
+    assert.ok(packages.includes(name), `The Server runtime must install ${name}`);
+});
+
 test('Server image reuses the pnpm store and trusts the copied lockfile', async () => {
   const dockerfile = await readFile(resolve(root, 'Dockerfile'), 'utf8');
   const storeMountedRuns = dockerfile

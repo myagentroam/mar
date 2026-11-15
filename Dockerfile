@@ -62,7 +62,7 @@ FROM node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703
 WORKDIR /opt/myagentroam
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git openssh-client \
+  && apt-get install -y --no-install-recommends ca-certificates git openssh-client \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=server-build --chown=node:node /runtime/server ./
