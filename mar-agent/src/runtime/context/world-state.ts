@@ -10,10 +10,11 @@ export interface ContextualWorldState {
   instructionSnapshot: string | undefined;
   resourceSnapshot: string | undefined;
   mcpSnapshot?: string | undefined;
+  skillSnapshot?: string | undefined;
   promptSnapshot?: readonly ContextualPart[];
   entries: Array<{
     index: number;
-    kind: 'instructions' | 'resources' | 'mcp' | 'prompt';
+    kind: 'instructions' | 'resources' | 'mcp' | 'skills' | 'prompt';
     content: string;
     block?: ModelContextualBlock;
     textBlocks?: readonly ModelTextBlock[];
@@ -115,12 +116,17 @@ export function updatePromptWorldState(
   if (new Set(selected.map((part) => part.id)).size !== selected.length)
     throw new AgentError('MAR_AGENT_EXTENSION_PROMPT_CONFLICT', 'Contextual block ids conflict.');
   const changes = contextualChanges(state.promptSnapshot ?? [], selected);
-  if (!changes.length && state.promptSnapshot !== undefined) return state;
+  // Remove legacy catalog bodies from replay while retaining the trusted removal
+  // below to revoke a previously sent instruction on continuation chains.
+  const legacySkillBody = (entry: ContextualWorldState['entries'][number]) =>
+    entry.block?.id === 'core:skill-catalog' && entry.block.operation === 'replace';
+  const hasLegacySkillBody = state.entries.some(legacySkillBody);
+  if (!changes.length && state.promptSnapshot !== undefined && !hasLegacySkillBody) return state;
   return {
     ...state,
     promptSnapshot: selected,
     entries: [
-      ...state.entries,
+      ...state.entries.filter((entry) => !legacySkillBody(entry)),
       ...changes.map(({ block, content, textBlocks }) => ({
         index,
         kind: 'prompt' as const,
@@ -164,6 +170,7 @@ export function parsePersistedContextualWorldState(
       (entry.kind !== 'instructions' &&
         entry.kind !== 'resources' &&
         entry.kind !== 'mcp' &&
+        entry.kind !== 'skills' &&
         entry.kind !== 'prompt') ||
       typeof entry.content !== 'string' ||
       entry.content.length === 0
@@ -210,6 +217,7 @@ export function parsePersistedContextualWorldState(
     instructionSnapshot,
     resourceSnapshot,
     mcpSnapshot: typeof record.mcpSnapshot === 'string' ? record.mcpSnapshot : undefined,
+    skillSnapshot: typeof record.skillSnapshot === 'string' ? record.skillSnapshot : undefined,
     entries
   };
 }
@@ -239,6 +247,7 @@ export async function persistContextualWorldState(
     instructionSnapshot: state.instructionSnapshot ?? null,
     resourceSnapshot: state.resourceSnapshot ?? null,
     mcpSnapshot: state.mcpSnapshot ?? null,
+    skillSnapshot: state.skillSnapshot ?? null,
     entries: state.entries
   });
 }

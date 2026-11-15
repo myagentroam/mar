@@ -78,8 +78,7 @@ export function createSessionOpener(services: SessionServices) {
       availableTools: readonly ClientToolDefinition[],
       promptMode: ExecutionMode,
       selectedModel: ResolvedModelConfiguration,
-      executionSystemInstruction: string | undefined,
-      skillCatalog: string | undefined
+      executionSystemInstruction: string | undefined
     ) =>
       buildSystemPromptSections({
         mode: promptMode,
@@ -114,7 +113,6 @@ export function createSessionOpener(services: SessionServices) {
           .map((tool) => tool.name),
         extension: executionSystemInstruction
       }).concat([
-        { id: 'core:skill-catalog', text: skillCatalog || null },
         {
           id: 'core:child-instructions',
           text: sessionSource.type === 'subagent' ? childSubagentInstruction || null : null
@@ -234,17 +232,11 @@ export function createSessionOpener(services: SessionServices) {
           };
         },
         composePrompt: createSessionExtensionPrompt({
-          sessionId,
           source: sessionSource.type,
-          home: description.homeDirectory,
-          workspace: instructionWorkspace,
-          displayWorkspace: logicalWorkspace,
           codeExecute: description.capabilities.includes('code.execute'),
-          host,
           execution: () => sessionRuntime.execution,
           models: () => services.modelState(),
           instruction: () => settings.systemInstruction,
-          workspaceMapped: () => settings.workspaceMapping !== undefined,
           capture: (call) => services.extensions.session(sessionId)?.capture(call),
           sections: buildSessionPromptSections
         }),

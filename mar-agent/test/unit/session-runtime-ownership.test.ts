@@ -1,10 +1,68 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { SessionExtensionContext } from '../../src/extensions.js';
 import { answer, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
 
 describe('Session execution ownership across handles', () => {
+  it.each(['whole', 'cache'] as const)(
+    'excludes discovered Skill metadata from composeDefault and %s fallback',
+    async (fallback) => {
+      let context!: SessionExtensionContext;
+      const f = await fixture(
+        [
+          {
+            id: 'compose-catalog',
+            apiVersion: '1.0',
+            attachSession(value) {
+              context = value;
+              if (fallback === 'whole')
+                value.hooks.intercept('prompt.compose', (input, _call, next) =>
+                  next(`${input}\nMiddleware`)
+                );
+              else
+                value.hooks.intercept('prompt.sections', (input, _call, next) =>
+                  next({
+                    ...input,
+                    sections: input.sections.map((part) =>
+                      part.id === 'core:identity' ? { ...part, scope: 'shared' as const } : part
+                    )
+                  })
+                );
+            }
+          }
+        ],
+        answer
+      );
+      const directory = join(f.home, '.agents', 'skills', 'test-skill');
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, 'SKILL.md'),
+        '---\ndescription: CATALOG_INJECTION\n---\nbody'
+      );
+      expect(await f.session.run({ prompt: 'task' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      const listSessionSkills = vi.fn(async () => {
+        throw new Error('Prompt preview must not query Skills');
+      });
+      Object.assign(f.host, { listSessionSkills });
+      expect(JSON.stringify(await context.prompts.composeDefault())).not.toContain(
+        'CATALOG_INJECTION'
+      );
+      expect(listSessionSkills).not.toHaveBeenCalled();
+      const request = f.adapter.requests[0]!;
+      expect(request.system).not.toContain('CATALOG_INJECTION');
+      if (fallback === 'whole') expect(request.system).toContain('Middleware');
+      else expect(request.systemBlocks?.some((block) => block.cache)).toBe(true);
+      expect(
+        request.messages.find((message) => message.contextualBlock?.id === 'runtime:skills')
+          ?.content
+      ).toContain('CATALOG_INJECTION');
+    }
+  );
   it('uses the executing handle model and mode through the shared backend', async () => {
     let context!: SessionExtensionContext;
     const seen: Array<{ modelId: string; mode: string | undefined }> = [];
@@ -107,16 +165,14 @@ describe('Session execution ownership across handles', () => {
         );
         expect(await context.session!.describe()).toMatchObject({ modelId: 'other' });
         listExecutionExtensions.mockClear();
+        listExecutionExtensions.mockImplementationOnce(async () => {
+          throw new Error('Prompt preview must not query Skills');
+        });
         expect(
           (await context.prompts.composeDefault({ modelId: 'test', mode: 'run', tools: [] })).facts
         ).toEqual({ modelId: 'test', mode: 'run', tools: [] });
-        expect(listExecutionExtensions).toHaveBeenCalledWith(
-          expect.objectContaining({
-            sessionId: f.session.id,
-            executionId: pending.executionId,
-            modelId: 'test'
-          })
-        );
+        expect(listExecutionExtensions).not.toHaveBeenCalled();
+        listExecutionExtensions.mockReset().mockResolvedValue({ skills: [] });
         if (status === 'cancelled') pending.cancel();
       } finally {
         resume();

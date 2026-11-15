@@ -54,7 +54,6 @@ const SDK_CONTEXTUAL_IDS = new Set([
   'core:mode',
   'core:compaction',
   'core:subagent',
-  'core:skill-catalog',
   'core:child-instructions'
 ]);
 

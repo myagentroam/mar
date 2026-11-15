@@ -6,6 +6,7 @@ import {
   persistContextualWorldState,
   resetContextualWorldState,
   updateContextualWorldState,
+  updatePromptWorldState,
   type ContextualWorldState
 } from '../runtime/context/world-state.js';
 import { environmentContextUpdate } from '../runtime/context/environment.js';
@@ -40,6 +41,7 @@ interface ExecutionModelContextPorts {
   renderInstructions(previous: boolean): string | undefined;
   retainedResourceSnapshot(): Promise<string | undefined>;
   mcpNavigation(): string | undefined;
+  skillNavigation(): string | undefined;
   reportSidecarFailure(): void;
   resetGc(): void;
   restoreMcp(): void;
@@ -111,19 +113,32 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
     messages.push(message);
     recordedEnvironment = ports.environment();
   };
-  const syncMcpWorldState = async (index = instructionInsertIndex) => {
-    const snapshot = ports.mcpNavigation();
-    if (worldState.mcpSnapshot === snapshot) return;
+  const syncCatalogWorldState = async (index = instructionInsertIndex) => {
+    const skillSnapshot = ports.skillNavigation();
+    const mcpSnapshot = ports.mcpNavigation();
+    const catalogs = [
+      {
+        kind: 'skills' as const,
+        previous: worldState.skillSnapshot,
+        current: skillSnapshot,
+        empty: 'No skills remain available.'
+      },
+      {
+        kind: 'mcp' as const,
+        previous: worldState.mcpSnapshot,
+        current: mcpSnapshot,
+        empty: '<mcp_catalog>No deferred MCP tools remain.</mcp_catalog>'
+      }
+    ];
+    const changes = catalogs.filter((catalog) => catalog.previous !== catalog.current);
+    if (!changes.length) return;
     const next: ContextualWorldState = {
       ...worldState,
-      mcpSnapshot: snapshot,
+      skillSnapshot,
+      mcpSnapshot,
       entries: [
         ...worldState.entries,
-        {
-          index,
-          kind: 'mcp',
-          content: snapshot ?? '<mcp_catalog>No deferred MCP tools remain.</mcp_catalog>'
-        }
+        ...changes.map(({ kind, current, empty }) => ({ index, kind, content: current ?? empty }))
       ]
     };
     await commitWorldState(next);
@@ -135,7 +150,7 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
     },
     commitWorldState,
     recordEnvironment,
-    syncMcpWorldState,
+    syncCatalogWorldState,
     rememberInput(input: CompactUserInput) {
       userMessages.push(input);
     },
@@ -176,6 +191,16 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
       );
       if (!isDeepStrictEqual(worldState, nextInstructionWorldState))
         await commitWorldState(nextInstructionWorldState);
+      // Compact can be the first operation after an upgrade, before a normal
+      // prompt composition has a chance to revoke the old catalog instruction.
+      if (worldState.promptSnapshot !== undefined) {
+        const migrated = updatePromptWorldState(
+          worldState,
+          instructionInsertIndex,
+          worldState.promptSnapshot.filter((part) => part.id !== 'core:skill-catalog')
+        );
+        if (migrated !== worldState) await commitWorldState(migrated);
+      }
     },
     // Must run inside the existing writer/projection commit window.
     replaceCompactMessages(
