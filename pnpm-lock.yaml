@@ -135,6 +135,9 @@ importers:
       '@jitl/quickjs-wasmfile-release-sync':
         specifier: 0.32.0
         version: 0.32.0
+      js-yaml:
+        specifier: 4.3.2
+        version: 4.3.2
       quickjs-emscripten-core:
         specifier: 0.32.0
         version: 0.32.0
@@ -151,6 +154,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@types/js-yaml':
+        specifier: 4.0.9
+        version: 4.0.9
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1

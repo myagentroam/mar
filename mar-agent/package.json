@@ -62,6 +62,7 @@
   },
   "dependencies": {
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "js-yaml": "4.3.2",
     "quickjs-emscripten-core": "0.32.0",
     "sharp": "0.35.5",
     "undici": "7.29.0",
@@ -69,6 +70,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/js-yaml": "4.0.9",
     "@types/ws": "8.18.1",
     "vitest": "^4.0.14"
   }
