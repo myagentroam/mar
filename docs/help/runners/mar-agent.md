@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-15
 ---
 
 # 配置和使用 MAR Agent
@@ -198,6 +198,8 @@ Codex 配置凭据和模型 ID；火山方舟配置 API Key、模型 ID 和完�
 Codex 可请求透明背景和简单循环 GIF：GIF 为 2–16 帧，每帧 20–2000 毫秒，默认 9 帧、200 毫秒；单次保存一个 PNG 或 GIF，实际支持取决于所配置的模型。你可以在请求中直接说明透明背景或动画需求。GIF 原件保留动画；静态缩略图不能用于判断完整动画。
 
 ## Code Mode 工具编排
+
+JSON 工具调用中，`code_exec` 使用 `code` 传入 JavaScript 源码，例如 `{"code":"observe.text(1);"}`；`apply_patch` 使用 `input` 传入完整 Patch 文本，`tools.apply_patch({ input: patchText })` 也采用同一字段，新调用不再接受 `patch` 字段。工具以 freeform 形式提供时，直接发送正文，不添加 JSON 包装。字段缺失或类型错误会指出缺失字段或预期与实际类型，不回显参数值。历史回放保留已完成工具调用的原始参数，不会再次执行这些调用。
 
 六个 Agent 协作工具均支持直接调用和 Code Mode 内的 programmatic 调用。启用 Code Mode Only 后，它们通过 cell 使用，不额外保留双入口展示；子 Agent 自身按所选模型的配置使用 Code Mode。
 

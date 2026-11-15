@@ -68,8 +68,8 @@ describe('Responses optional endpoint parameters', () => {
               inputMode: 'freeform' as const,
               inputSchema: {
                 type: 'object',
-                properties: { patch: { type: 'string' } },
-                required: ['patch']
+                properties: { input: { type: 'string' } },
+                required: ['input']
               }
             },
             {
@@ -135,7 +135,7 @@ describe('Responses optional endpoint parameters', () => {
                 type: 'function_call',
                 call_id: 'patch-1',
                 name: 'apply_patch',
-                arguments: JSON.stringify({ patch: 'patch text' })
+                arguments: JSON.stringify({ input: 'patch text' })
               },
               {
                 type: 'function_call',

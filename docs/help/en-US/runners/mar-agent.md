@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-14
+lastUpdated: 2026-11-15
 ---
 
 # Configure and Use MAR Agent
@@ -198,6 +198,8 @@ Each Run selects only the first enabled image model available to the current use
 Codex can request transparent backgrounds and simple looping GIFs: 2–16 frames at 20–2000 ms per frame, defaulting to 9 frames at 200 ms. Each call saves one PNG or GIF; actual support depends on the configured model. Describe transparency or animation directly in your request. GIF originals preserve animation; static thumbnails do not verify the full animation.
 
 ## Code Mode tool orchestration
+
+For JSON tool calls, `code_exec` takes JavaScript source in `code`, for example `{"code":"observe.text(1);"}`. `apply_patch` takes the complete Patch text in `input`, including in `tools.apply_patch({ input: patchText })`; `patch` is not a supported field for new calls. When either tool is exposed as freeform, send its text directly without a JSON wrapper. Missing-field and type errors identify the required field or the expected and actual types without echoing argument values. Existing completed tool calls retain their recorded arguments during history replay and are not executed again.
 
 All six Agent collaboration tools support direct and programmatic calls. Code Mode Only exposes them through the cell without a separate dual-exposure setting. Child agents use the Code Mode setting of their selected model.
 

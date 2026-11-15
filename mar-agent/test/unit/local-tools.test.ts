@@ -2379,8 +2379,8 @@ describe('local workspace tools', () => {
   it('preserves patch string and object inputs with tool-owned validation', () => {
     const patch = '*** Begin Patch\n*** End Patch';
     expect(applyPatchToolInput(patch)).toBe(patch);
-    expect(applyPatchToolInput({ patch })).toBe(patch);
-    for (const input of [undefined, null, {}, { patch: 12 }]) {
+    expect(applyPatchToolInput({ input: patch })).toBe(patch);
+    for (const input of [undefined, null, {}, { input: 12 }]) {
       expect(() => applyPatchToolInput(input)).toThrowError(
         expect.objectContaining({ code: 'MAR_AGENT_TOOL_INPUT_INVALID' })
       );

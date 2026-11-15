@@ -738,7 +738,7 @@ describe('QuickJS Code Mode', () => {
     const invoke = vi.fn(async (_call: { arguments: unknown }) => ({ content: 'unchanged' }));
     input.codeMode = { tools: [raw, readToolDefinition], invoke };
     const text = String.fromCharCode(34, 96, 92, 10) + '${literal}中文😀';
-    const payload = { patch: text };
+    const payload = { input: text };
     try {
       const result = await host.executeTool(
         {

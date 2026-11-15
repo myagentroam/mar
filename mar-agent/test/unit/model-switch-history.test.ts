@@ -306,96 +306,122 @@ describe('model switch history recovery', () => {
     }
   );
 
-  it('replays Responses freeform tool history as a paired Anthropic tool exchange', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-model-switch-freeform-'));
-    homes.push(home);
-    const workspace = join(home, 'workspace');
-    await mkdir(workspace);
-    const store = await JsonlSessionStore.open(home);
-    const session = await store.createSession({ workspace, title: 'Freeform model switch' });
-    const patch = '*** Begin Patch\n*** Add File: added.txt\n+added\n*** End Patch';
-    await store.append(session.id, {
-      type: 'execution.header',
-      payload: { modelId: 'responses-source', mode: 'run' },
-      executionId: 'responses-execution',
-      turnId: 'responses-turn'
-    });
-    await store.append(session.id, {
-      type: 'turn.user',
-      payload: { prompt: 'Create the file.' },
-      executionId: 'responses-execution',
-      turnId: 'responses-turn'
-    });
-    await store.append(session.id, {
-      type: 'model.context',
-      payload: {
-        role: 'tool_call',
-        content: '',
-        callId: 'patch-call',
-        name: 'apply_patch',
-        arguments: patch,
-        inputMode: 'freeform'
-      },
-      executionId: 'responses-execution',
-      turnId: 'responses-turn'
-    });
-    await store.append(session.id, {
-      type: 'model.context',
-      payload: {
-        role: 'tool',
-        content: 'Applied patch successfully.',
-        callId: 'patch-call'
-      },
-      executionId: 'responses-execution',
-      turnId: 'responses-turn'
-    });
-    await store.append(session.id, {
-      type: 'message.completed',
-      payload: { text: 'The file was created.' },
-      executionId: 'responses-execution',
-      turnId: 'responses-turn'
-    });
-    await store.close();
+  it.each(['freeform', 'historical JSON'] as const)(
+    'replays %s tool history as a paired Anthropic exchange without rewriting arguments',
+    async (transport) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-model-switch-freeform-'));
+      homes.push(home);
+      const workspace = join(home, 'workspace');
+      await mkdir(workspace);
+      const store = await JsonlSessionStore.open(home);
+      const session = await store.createSession({ workspace, title: 'Freeform model switch' });
+      const patch = '*** Begin Patch\n*** Add File: added.txt\n+added\n*** End Patch';
+      await store.append(session.id, {
+        type: 'execution.header',
+        payload: { modelId: 'responses-source', mode: 'run' },
+        executionId: 'responses-execution',
+        turnId: 'responses-turn'
+      });
+      await store.append(session.id, {
+        type: 'turn.user',
+        payload: { prompt: 'Create the file.' },
+        executionId: 'responses-execution',
+        turnId: 'responses-turn'
+      });
+      await store.append(session.id, {
+        type: 'model.context',
+        payload: {
+          role: 'tool_call',
+          content: '',
+          callId: 'patch-call',
+          name: 'apply_patch',
+          arguments: transport === 'freeform' ? patch : { patch },
+          ...(transport === 'freeform' ? { inputMode: 'freeform' } : {})
+        },
+        executionId: 'responses-execution',
+        turnId: 'responses-turn'
+      });
+      await store.append(session.id, {
+        type: 'model.context',
+        payload: {
+          role: 'tool',
+          content: 'Applied patch successfully.',
+          callId: 'patch-call'
+        },
+        executionId: 'responses-execution',
+        turnId: 'responses-turn'
+      });
+      await store.append(session.id, {
+        type: 'message.completed',
+        payload: { text: 'The file was created.' },
+        executionId: 'responses-execution',
+        turnId: 'responses-turn'
+      });
+      await store.close();
 
-    const server = await startAnthropicServer('Anthropic resumed');
-    const agent = await createAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [anthropicModel('anthropic-target', 'Anthropic Target', server.baseUrl)]
-    });
-    await expect(
-      (await agent.openSession(session.id)).run({ prompt: 'Continue with Anthropic' }).result()
-    ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'Anthropic resumed' });
-    await agent.dispose();
+      const server = await startAnthropicServer('Anthropic resumed');
+      const agent = await createAgent({
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [anthropicModel('anthropic-target', 'Anthropic Target', server.baseUrl)]
+      });
+      await expect(
+        (await agent.openSession(session.id)).run({ prompt: 'Continue with Anthropic' }).result()
+      ).resolves.toMatchObject({ status: 'completed', finalAnswer: 'Anthropic resumed' });
+      await agent.dispose();
 
-    expect(server.requests).toHaveLength(1);
-    const messages = server.requests[0]?.messages;
-    expect(messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: 'assistant',
-          content: expect.arrayContaining([
-            {
-              type: 'tool_use',
-              id: 'patch-call',
-              name: 'apply_patch',
-              input: { patch }
-            }
-          ])
-        }),
-        expect.objectContaining({
-          role: 'user',
-          content: expect.arrayContaining([
-            expect.objectContaining({
-              type: 'tool_result',
-              tool_use_id: 'patch-call',
-              content: 'Applied patch successfully.'
+      expect(server.requests).toHaveLength(1);
+      expect(server.requests[0]?.tools).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'apply_patch',
+            input_schema: expect.objectContaining({
+              properties: { input: expect.objectContaining({ type: 'string' }) },
+              required: ['input']
             })
-          ])
-        })
-      ])
-    );
-  });
+          })
+        ])
+      );
+      const messages = server.requests[0]?.messages;
+      expect(messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'assistant',
+            content: expect.arrayContaining([
+              {
+                type: 'tool_use',
+                id: 'patch-call',
+                name: 'apply_patch',
+                input: transport === 'freeform' ? { input: patch } : { patch }
+              }
+            ])
+          }),
+          expect.objectContaining({
+            role: 'user',
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: 'tool_result',
+                tool_use_id: 'patch-call',
+                content: 'Applied patch successfully.'
+              })
+            ])
+          })
+        ])
+      );
+      const reopened = await JsonlSessionStore.open(home);
+      try {
+        const history = await reopened.read(session.id);
+        expect(history.find((record) => record.type === 'model.context')).toMatchObject({
+          payload: {
+            callId: 'patch-call',
+            arguments: transport === 'freeform' ? patch : { patch }
+          }
+        });
+      } finally {
+        await reopened.close();
+      }
+    }
+  );
 
   it('keeps post-compact Responses context owned by its originating model', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-model-switch-compact-'));

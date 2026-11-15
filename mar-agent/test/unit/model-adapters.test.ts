@@ -2363,8 +2363,8 @@ describe('model adapters', () => {
               description: 'Apply patch',
               inputSchema: {
                 type: 'object',
-                properties: { patch: { type: 'string' } },
-                required: ['patch'],
+                properties: { input: { type: 'string' } },
+                required: ['input'],
                 additionalProperties: false
               },
               inputMode: 'freeform'
