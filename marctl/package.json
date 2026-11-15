@@ -1,7 +1,7 @@
 {
   "name": "@myagentroam/marctl",
   "private": true,
-  "version": "0.13.23",
+  "version": "0.13.24",
   "description": "MyAgentRoam command-line interface for authorized Node access.",
   "license": "Apache-2.0",
   "type": "module",

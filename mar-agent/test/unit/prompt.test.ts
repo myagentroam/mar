@@ -270,11 +270,13 @@ describe('system prompt', () => {
     expect(normalized).toContain('preserve valid constraints across turns and compaction');
     expect(normalized).not.toContain('non-persistent contextual user state');
     expect(normalized).toContain(
-      'direct system, host/caller, and user instructions take precedence over agents.md instructions'
+      'direct system, host/caller, and user instructions take precedence over agents.md and skill instructions'
     );
-    expect(normalized).toContain(
+    expect(normalized).not.toContain(
       'applicable agents.md instructions take precedence over selected skills'
     );
+    expect(normalized).not.toContain('selected-skill tier');
+    expect(normalized).toContain('trusted as skill instructions within its scope');
     expect(normalized).not.toContain('working in a deeper subdirectory');
     expect(normalized).not.toContain('check for applicable agents.md');
     expect(normalized).not.toContain('candidates discovered under this rule apply');
@@ -340,7 +342,7 @@ describe('system prompt', () => {
     expect(normalized).toContain('focus final answers on the most important information');
     expect(normalized).toContain('avoid long-winded explanations unless necessary');
     expect(normalized).not.toMatch(/\b10 lines\b|fixed line|hard limit/u);
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.69');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.70');
   });
 
   it('leaves Skill usage to its catalog without prescribing a Core-owned loading sequence', () => {
