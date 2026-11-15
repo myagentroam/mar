@@ -1,6 +1,7 @@
 import { lstat, open, readdir, readlink, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { skillInstallMetadataSchema, type SkillInstallMetadata } from '@myagentroam/protocol';
+import { CORE_SCHEMA, load } from 'js-yaml';
 import { hasBrokenWorkspaceSkillGitExclude } from '../workspace/workspace-git-exclude-service.js';
 
 const MAX_METADATA_BYTES = 64 * 1024;
@@ -170,26 +171,18 @@ async function readBounded(file: string): Promise<string> {
 function parseSkillFrontmatter(content: string): { name: string; description: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content);
   if (match === null) throw new Error('SKILL_METADATA_INVALID');
-  const values = new Map<string, string>();
-  for (const line of match[1]!.split(/\r?\n/u)) {
-    const field = /^(name|description):\s*(.*?)\s*$/u.exec(line);
-    if (field !== null) values.set(field[1]!, unquote(field[2]!));
+  let metadata: unknown;
+  try {
+    metadata = load(`${match[1]!}\n`, { schema: CORE_SCHEMA });
+  } catch {
+    throw new Error('SKILL_METADATA_INVALID');
   }
-  const name = values.get('name');
-  const description = values.get('description');
-  if (name === undefined || description === undefined || description.length > 4096)
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata))
+    throw new Error('SKILL_METADATA_INVALID');
+  const { name, description } = metadata as Record<string, unknown>;
+  if (typeof name !== 'string' || typeof description !== 'string' || description.length > 4096)
     throw new Error('SKILL_METADATA_INVALID');
   return { name, description };
-}
-
-function unquote(value: string): string {
-  if (
-    value.length >= 2 &&
-    ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'")))
-  )
-    return value.slice(1, -1);
-  return value;
 }
 
 function mergeWorkspaceCopies(

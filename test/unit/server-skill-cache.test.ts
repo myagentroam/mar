@@ -40,6 +40,60 @@ async function fixture(now: () => number = Date.now) {
 }
 
 describe('Skill cache reference coordination with gated SQL fake', () => {
+  it('offers a read-only metadata repair and upgrades the same Commit without replacing immutable content', async () => {
+    const { fake, service, resolve, cache, audit } = await fixture();
+    resolve.mockResolvedValue({ ...skillBundle(), description: '|' });
+    const original = await service().create(7, favoriteInput);
+    const version = fake.versions.get(original.currentVersionId)!;
+    const originalVersion = { ...version };
+    const file = path.join(cache, `${original.contentHash}.json`);
+    const archive = await readFile(file, 'utf8');
+    audit.mockClear();
+    resolve.mockResolvedValue({ ...skillBundle(), description: 'Review code\nUse for changes.\n' });
+
+    await expect(service().checkUpdate(7, original.id)).resolves.toEqual({
+      updateAvailable: true,
+      latestCommitSha: original.commitSha
+    });
+    expect(version).toEqual(originalVersion);
+    expect(audit).not.toHaveBeenCalled();
+
+    const updated = await service().upgrade(7, original.id);
+    expect(updated).toMatchObject({
+      currentVersionId: original.currentVersionId,
+      commitSha: original.commitSha,
+      contentHash: original.contentHash,
+      description: 'Review code\nUse for changes.\n'
+    });
+    expect(fake.versions.size).toBe(1);
+    expect(version).toEqual({
+      ...originalVersion,
+      metadata: JSON.stringify({ name: 'review', description: updated.description })
+    });
+    expect(await readFile(file, 'utf8')).toBe(archive);
+    await expect(service().checkUpdate(7, original.id)).resolves.toEqual({
+      updateAvailable: false,
+      latestCommitSha: original.commitSha
+    });
+  });
+
+  it('rolls back same-Commit metadata repairs when the transaction fails', async () => {
+    const { fake, service, resolve, audit } = await fixture();
+    resolve.mockResolvedValue({ ...skillBundle(), description: '|' });
+    const original = await service().create(7, favoriteInput);
+    const previousVersion = { ...fake.versions.get(original.currentVersionId)! };
+    resolve.mockResolvedValue(skillBundle());
+    audit.mockClear();
+    fake.beforeCommit = async () => {
+      throw new Error('COMMIT_FAILED');
+    };
+
+    await expect(service().upgrade(7, original.id)).rejects.toThrow('COMMIT_FAILED');
+    expect(fake.versions.get(original.currentVersionId)).toEqual(previousVersion);
+    expect(fake.favorites.get(original.id)?.['current_version_id']).toBe(original.currentVersionId);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
   for (const operation of ['create', 'upgrade'] as const) {
     for (const release of ['remove', 'upgrade'] as const) {
       it(`Restarts a continuous 24-hour grace after ${operation} reuses an expired orphan key and ${release} releases it`, async () => {

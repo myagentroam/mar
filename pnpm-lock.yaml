@@ -187,6 +187,9 @@ importers:
       '@opencode-ai/sdk':
         specifier: 1.18.20
         version: 1.18.20
+      js-yaml:
+        specifier: 4.3.2
+        version: 4.3.2
       minimatch:
         specifier: ^10.2.6
         version: 10.2.6
@@ -224,6 +227,9 @@ importers:
       '@myagentroam/marctl':
         specifier: workspace:*
         version: link:../marctl
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
@@ -345,6 +351,9 @@ importers:
       fastify:
         specifier: ^5.1.0
         version: 5.12.0
+      js-yaml:
+        specifier: 4.3.2
+        version: 4.3.2
       mysql2:
         specifier: ^3.23.4
         version: 3.23.4(@types/node@24.13.3)
@@ -364,6 +373,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/nodemailer':
         specifier: ^8.0.2
         version: 8.0.2
@@ -3647,6 +3659,12 @@ packages:
     resolution:
       {
         integrity: sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g==
+      }
+
+  '@types/js-yaml@4.0.9':
+    resolution:
+      {
+        integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==
       }
 
   '@types/json-schema@7.0.15':
@@ -10651,6 +10669,8 @@ snapshots:
   '@types/hast@3.0.5':
     dependencies:
       '@types/unist': 3.0.3
+
+  '@types/js-yaml@4.0.9': {}
 
   '@types/json-schema@7.0.15': {}
 

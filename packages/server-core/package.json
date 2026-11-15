@@ -660,6 +660,7 @@
     "@fastify/websocket": "^11.3.0",
     "@myagentroam/protocol": "workspace:*",
     "fastify": "^5.1.0",
+    "js-yaml": "4.3.2",
     "mysql2": "^3.23.4",
     "nodemailer": "^10.0.11",
     "undici": "7.29.0",
@@ -668,6 +669,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/nodemailer": "^8.0.2",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1"
