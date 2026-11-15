@@ -89,6 +89,7 @@ export default defineConfig({
         ? [
             {
               command: serverCommand,
+              timeout: 180_000,
               env: {
                 MAR_TEST_RUN_ID: testRunId,
                 MAR_LICENSE_HOST_PATH: licenseHostPath,
@@ -108,6 +109,7 @@ export default defineConfig({
         : [
             {
               command: serverCommand,
+              timeout: 180_000,
               env: {
                 MAR_TEST_RUN_ID: testRunId,
                 MAR_LICENSE_HOST_PATH: licenseHostPath,
