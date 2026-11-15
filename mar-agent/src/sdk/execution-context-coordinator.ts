@@ -26,7 +26,7 @@ export class ExecutionContextCoordinator {
       readonly model: Pick<ExecutionModelLifecycle, 'tokens'>;
       readonly context: Pick<
         ReturnType<typeof createExecutionModelContext>,
-        'syncMcpWorldState' | 'recordEnvironment' | 'adoptGcCheckpoint'
+        'syncCatalogWorldState' | 'recordEnvironment' | 'adoptGcCheckpoint'
       >;
       readonly compact: Pick<CompactCoordinator, 'pending' | 'checkpoint'>;
       readonly requests: Pick<CompactRequests, 'drain'>;
@@ -74,11 +74,11 @@ export class ExecutionContextCoordinator {
     await ports.appendMailbox();
     if (ports.includeSessionContext) await ports.appendSessionContext();
     ports.refreshTools();
-    await this.ports.context.syncMcpWorldState(this.ports.messages.length);
+    await this.ports.context.syncCatalogWorldState(this.ports.messages.length);
     this.advanceBoundary();
     if (this.drainRequests()) await this.ports.compact.checkpoint(true);
     await this.ensureBudget();
-    await this.ports.context.syncMcpWorldState(this.ports.messages.length);
+    await this.ports.context.syncCatalogWorldState(this.ports.messages.length);
     ports.updateEnvironment();
     await this.ports.context.recordEnvironment();
   }

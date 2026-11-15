@@ -17,7 +17,7 @@ function basePorts(): ConstructorParameters<typeof ExecutionContextCoordinator>[
     model: { tokens: undefined },
     context: {
       adoptGcCheckpoint: unused,
-      syncMcpWorldState: async () => {},
+      syncCatalogWorldState: async () => {},
       recordEnvironment: async () => {}
     },
     compact: { pending: false, checkpoint: async () => false },
@@ -81,7 +81,7 @@ it('prepares input and compact safety points before recording the environment', 
     ...ports,
     context: {
       ...ports.context,
-      syncMcpWorldState: async () => {
+      syncCatalogWorldState: async () => {
         order.push('world');
       },
       recordEnvironment: async () => {

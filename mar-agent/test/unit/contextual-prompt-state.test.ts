@@ -17,10 +17,12 @@ import {
 import {
   parsePersistedContextualWorldState,
   persistContextualWorldState,
+  updateContextualWorldState,
   updatePromptWorldState
 } from '../../src/runtime/context/world-state.js';
 import { ExtensionRequestBridge } from '../../src/extensions/model-request.js';
 import { AgentError } from '../../src/error.js';
+import { createExecutionModelContext } from '../../src/sdk/execution-model-context.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -52,6 +54,133 @@ const model: AgentModelConfiguration = {
 };
 
 describe('Contextual prompt state', () => {
+  it('revokes an old skill catalog as an SDK instruction without re-emitting its contents', () => {
+    const initial = {
+      generation: undefined,
+      initialized: true,
+      instructionSnapshot: undefined,
+      resourceSnapshot: undefined,
+      entries: []
+    };
+    const oldCatalog: ContextualPart = {
+      id: 'core:skill-catalog',
+      source: 'sdk',
+      authority: 'instruction',
+      content: 'OLD_CATALOG'
+    };
+    const host = part('host:policy', 'HOST_POLICY');
+    const oldState = updatePromptWorldState(initial, 0, [host, oldCatalog]);
+    const restored = parsePersistedContextualWorldState({
+      version: 2,
+      generation: null,
+      instructionSnapshot: null,
+      resourceSnapshot: null,
+      promptSnapshot: oldState.promptSnapshot,
+      entries: oldState.entries
+    })!;
+    const initialized = updateContextualWorldState(restored, 1, {
+      instructionSnapshot: undefined,
+      instructionContent: undefined
+    });
+    expect(initialized.promptSnapshot).toEqual([host, oldCatalog]);
+    const migrated = updatePromptWorldState(initialized, 1, [host]);
+    const removal = migrated.entries.at(-1)!;
+    expect(removal.block).toMatchObject({
+      id: 'core:skill-catalog',
+      source: 'sdk',
+      authority: 'instruction',
+      operation: 'remove'
+    });
+    expect(removal.content).not.toContain('OLD_CATALOG');
+    expect(migrated.entries.some((entry) => entry.content.includes('OLD_CATALOG'))).toBe(false);
+    expect(migrated.promptSnapshot).toEqual([host]);
+    expect(updatePromptWorldState(migrated, 2, [host])).toBe(migrated);
+  });
+  it('removes old catalog bodies even when the previous release already revoked the catalog', () => {
+    const host = part('host:policy', 'HOST_POLICY');
+    const oldCatalog: ContextualPart = {
+      id: 'core:skill-catalog',
+      source: 'sdk',
+      authority: 'instruction',
+      content: 'OLD_CATALOG'
+    };
+    const changes = [
+      ...contextualChanges([], [host, oldCatalog]),
+      ...contextualChanges([host, oldCatalog], [host])
+    ];
+    const restored = parsePersistedContextualWorldState({
+      version: 2,
+      generation: null,
+      instructionSnapshot: null,
+      resourceSnapshot: null,
+      promptSnapshot: [host],
+      entries: changes.map(({ block, content }) => ({ index: 0, kind: 'prompt', block, content }))
+    })!;
+    const migrated = updatePromptWorldState(restored, 1, [host]);
+    expect(migrated.entries.some((entry) => entry.content.includes('OLD_CATALOG'))).toBe(false);
+    expect(
+      migrated.entries.filter((entry) => entry.block?.id === 'core:skill-catalog')
+    ).toHaveLength(1);
+    expect(migrated.entries.at(-1)?.block).toMatchObject({
+      operation: 'remove',
+      authority: 'instruction',
+      source: 'sdk'
+    });
+    expect(migrated.entries.some((entry) => entry.content.includes('HOST_POLICY'))).toBe(true);
+    expect(updatePromptWorldState(migrated, 2, [host])).toBe(migrated);
+  });
+  it('revokes legacy catalog instructions during initialization before a manual Compact can project them', async () => {
+    const host = part('host:policy', 'HOST_POLICY');
+    const catalog: ContextualPart = {
+      id: 'core:skill-catalog',
+      source: 'sdk',
+      authority: 'instruction',
+      content: 'OLD_CATALOG'
+    };
+    const initial = updatePromptWorldState(
+      {
+        generation: undefined,
+        initialized: true,
+        instructionSnapshot: undefined,
+        resourceSnapshot: undefined,
+        entries: []
+      },
+      0,
+      [host, catalog]
+    );
+    const write = vi.fn(async () => {});
+    const context = createExecutionModelContext({
+      restored: {
+        messages: [{ role: 'user', content: 'task' }],
+        userMessages: [],
+        environmentState: undefined
+      },
+      initialContextualWorldState: initial,
+      store: { writeContextualWorldState: write },
+      sessionId: 'session',
+      executionId: 'execution',
+      turnId: 'turn',
+      mode: 'compact',
+      contextRecords: [],
+      contextualWorldStateGeneration: undefined,
+      compactMayContainAgentInstructions: false,
+      messageSources: new WeakMap(),
+      updateWorldState: () => {},
+      instructionSnapshot: () => undefined,
+      renderInstructions: () => undefined
+    } as unknown as Parameters<typeof createExecutionModelContext>[0]);
+    await context.initializeWorldState();
+    expect(write).toHaveBeenCalled();
+    expect(context.worldState.entries.some((entry) => entry.content.includes('OLD_CATALOG'))).toBe(
+      false
+    );
+    expect(context.worldState.entries.at(-1)?.block).toMatchObject({
+      id: 'core:skill-catalog',
+      operation: 'remove',
+      authority: 'instruction'
+    });
+    expect(context.worldState.promptSnapshot).toEqual([host]);
+  });
   it('retains active instructions in native automatic Compact but excludes them from fallback evidence', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-contextual-budget-'));
     roots.push(home);

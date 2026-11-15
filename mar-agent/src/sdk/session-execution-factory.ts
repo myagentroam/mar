@@ -162,8 +162,7 @@ export function createSessionExecutionFactory(ports: {
     tools: readonly ClientToolDefinition[],
     mode: ExecutionMode,
     model: ResolvedModelConfiguration,
-    instruction: string | undefined,
-    skills: string | undefined
+    instruction: string | undefined
   ) => ReturnType<typeof buildSystemPromptSections>;
   sessionAdapter(
     modelId: string,
@@ -401,6 +400,7 @@ export function createSessionExecutionFactory(ports: {
           retainedResourceSnapshot: async () =>
             retainedSessionResourcesSnapshot(await loadRetainedSessionResources()),
           mcpNavigation: () => mcpRegistry.navigation(),
+          skillNavigation: () => instructionContext?.skillCatalog || undefined,
           reportSidecarFailure: () =>
             coreExtensions.diagnose({
               code: 'MAR_AGENT_COMPACT_SIDECAR_PERSIST_FAILED',
@@ -701,8 +701,7 @@ export function createSessionExecutionFactory(ports: {
             availableTools,
             promptMode,
             selectedModel,
-            executionSystemInstruction,
-            instructionContext?.skillCatalog
+            executionSystemInstruction
           );
         const buildExecutionSystemPrompt = (
           availableTools: readonly ClientToolDefinition[] = toolCatalog.tools,
@@ -719,7 +718,7 @@ export function createSessionExecutionFactory(ports: {
             tools: availableTools.map((tool) => tool.name)
           }
         });
-        if (mode !== 'compact') await modelContext.syncMcpWorldState();
+        if (mode !== 'compact') await modelContext.syncCatalogWorldState();
         const performCompact = (
           input: { readonly focus?: string },
           leaf: (
