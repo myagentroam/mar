@@ -20,6 +20,7 @@ import {
   updatePromptWorldState
 } from '../../src/runtime/context/world-state.js';
 import { ExtensionRequestBridge } from '../../src/extensions/model-request.js';
+import { AgentError } from '../../src/error.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -51,7 +52,7 @@ const model: AgentModelConfiguration = {
 };
 
 describe('Contextual prompt state', () => {
-  it('keeps dynamic private instruction overhead out of automatic Compact evidence', async () => {
+  it('retains active instructions in native automatic Compact but excludes them from fallback evidence', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-contextual-budget-'));
     roots.push(home);
     const requests: ModelRequest[] = [];
@@ -65,6 +66,15 @@ describe('Contextual prompt state', () => {
       () => ({
         async *start(request) {
           requests.push(request);
+          // Exercise fallback explicitly instead of depending on the current Core prompt size.
+          if (
+            request.toolChoice === 'none' &&
+            request.messages.some((message) => message.content.includes('HOST_POLICY'))
+          )
+            throw new AgentError(
+              'context_length_exceeded',
+              'Native compact exceeded the fixture context window.'
+            );
           yield* answer();
           yield {
             type: 'usage' as const,
@@ -79,12 +89,28 @@ describe('Contextual prompt state', () => {
       const result = await session.run({ prompt: 'overflow' }).result();
       expect(result).toMatchObject({ status: 'completed' });
       const compactions = requests.filter((request) => request.toolChoice === 'none');
-      expect(compactions.length).toBeGreaterThan(0);
+      const fallbacks = compactions.filter((request) =>
+        request.messages.some((message) =>
+          message.content.includes('Conversation evidence (chronological):')
+        )
+      );
+      const native = compactions.filter((request) => !fallbacks.includes(request));
+      expect(native.length).toBeGreaterThan(0);
+      expect(fallbacks).toHaveLength(native.length);
       expect(
-        compactions.every(
-          (request) =>
-            !request.system.includes('HOST_POLICY') &&
-            request.messages.every((message) => !message.content.includes('HOST_POLICY'))
+        native.every((request) =>
+          request.messages.some((message) => message.content.includes('HOST_POLICY'))
+        )
+      ).toBe(true);
+      expect(compactions.every((request) => !request.system.includes('HOST_POLICY'))).toBe(true);
+      expect(
+        fallbacks.every((request) =>
+          request.messages.every((message) => !message.content.includes('HOST_POLICY'))
+        )
+      ).toBe(true);
+      expect(
+        fallbacks.every((request) =>
+          request.messages.some((message) => message.content.includes('first'))
         )
       ).toBe(true);
       expect(requests.filter((request) => request.toolChoice !== 'none')).toHaveLength(2);

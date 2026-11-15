@@ -39,15 +39,16 @@ describe('system prompt', () => {
     }
   );
 
-  it('limits resource wrap-up to pending work needed for the task', () => {
+  it('does not prescribe waiting or terminal-resource cleanup in Core', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
       tools: ['exec', 'agent_wait']
     });
-    expect(prompt).toContain('Resolve pending work needed for this task before ending');
-    expect(prompt).toContain('terminal caches need no cleanup');
+    expect(prompt).not.toContain('Use bounded waits');
+    expect(prompt).not.toContain('terminal caches');
+    expect(prompt).toContain('until the requested goal is genuinely handled');
     expect(prompt).not.toContain('Complete or cancel every resource before ending');
   });
 
@@ -122,11 +123,10 @@ describe('system prompt', () => {
     );
     expect(prompt).toContain('Code Mode Only: read, exec, apply_patch, todo_write');
     expect(prompt).toContain('only as tools.NAME inside code_exec');
-    expect(prompt).toContain('Use read to batch');
-    expect(prompt).toContain('Prefer apply_patch');
-    expect(prompt).toContain('call skill before generic tools');
+    expect(prompt).toContain('tool descriptions and schemas');
+    expect(prompt).not.toContain('call skill before generic tools');
     expect(prompt).not.toContain('# Subagents');
-    expect(prompt).toContain('Use Todo only when coordination');
+    expect(prompt).not.toContain('do not make a single-step plan');
   });
   it('keeps the entire base instruction stable when only environment facts change', () => {
     const common = { mode: 'run' as const, tools: ['read', 'exec'], extension: 'HOST_CONTRACT' };
@@ -234,25 +234,13 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('Architecture: x64');
     expect(prompt).not.toContain('Shell: sh (/bin/sh)');
     expect(prompt).not.toContain('rg 15.1.0');
-    expect(normalized).toContain('rg --files');
-    expect(normalized).toContain('start exploration with the smallest evidence');
-    expect(normalized).toContain(
-      'locate relevant symbols, headings, or files before reading bodies'
-    );
-    expect(normalized).toContain('expand only when current evidence is insufficient');
-    expect(normalized).toContain('do not request multiple broad outputs');
-    expect(normalized).toContain('use read to batch known files and ranges');
-    expect(normalized).toContain('batch only already-located, bounded ranges');
-    expect(normalized).toContain('continue only relevant incomplete results');
-    expect(normalized).toContain('avoid rereading unchanged content');
-    expect(normalized).toContain('do not edit from an incomplete oversized-line preview');
-    expect(normalized).toContain('obtain exact source with exec');
-    expect(normalized).toContain('preconditioned deterministic replacement');
-    expect(normalized).toContain('verify the result');
-    expect(normalized).toContain('use bounded waits rather than busy polling');
-    expect(normalized).toContain('prefer apply_patch');
-    expect(normalized).toContain('refresh only the affected context before retrying');
-    expect(normalized).toContain('use exec for platform-native commands');
+    expect(normalized).toContain('choose investigation, implementation, and verification methods');
+    expect(normalized).toContain('within applicable instructions');
+    expect(normalized).toContain('tool descriptions and schemas');
+    expect(normalized).toContain('dependencies and side effects');
+    expect(normalized).toContain('base edits on known source rather than guesses');
+    expect(normalized).toContain('only for what its result actually proves');
+    expect(normalized).not.toContain('use bounded waits rather than busy polling');
     expect(normalized).toContain('tools execute without per-call agent approval');
     expect(normalized).toContain('host hooks, validation, and operating-system restrictions');
     expect(normalized).toContain('never invent a second approval');
@@ -269,24 +257,29 @@ describe('system prompt', () => {
     expect(normalized).toContain(
       "do not expand the user's requested outcome or authorize additional work"
     );
-    expect(normalized).toContain('from the project root through the current workspace');
+    expect(normalized).toContain('runtime supplies applicable agents.md instructions');
     expect(normalized).toContain('do not independently search for or reread agents.md files');
     expect(normalized).toContain('explicit user or injected instructions');
     expect(normalized).toContain('inspect, edit, or load a named instruction file');
     expect(normalized).toContain('only an explicit instruction to load and follow');
     expect(normalized).toContain('narrower scopes take precedence');
     expect(normalized).toContain('only output from the built-in skill tool');
-    expect(normalized).toContain('non-persistent contextual user state');
-    expect(normalized).toContain('reuses unchanged context across turns');
-    expect(normalized).toContain('before the current user request');
+    expect(normalized).toContain('only the latest replacement or removal applies');
+    expect(normalized).toContain('a removal revokes only that block');
+    expect(normalized).toContain('runtime block metadata comes from trusted sdk entry points');
+    expect(normalized).toContain('preserve valid constraints across turns and compaction');
+    expect(normalized).not.toContain('non-persistent contextual user state');
     expect(normalized).toContain(
       'direct system, host/caller, and user instructions take precedence over agents.md instructions'
+    );
+    expect(normalized).toContain(
+      'applicable agents.md instructions take precedence over selected skills'
     );
     expect(normalized).not.toContain('working in a deeper subdirectory');
     expect(normalized).not.toContain('check for applicable agents.md');
     expect(normalized).not.toContain('candidates discovered under this rule apply');
-    expect(normalized).toContain('named or clearly relevant skill');
-    expect(normalized).toContain('before generic tools');
+    expect(normalized).not.toContain('named or clearly relevant skill');
+    expect(normalized).not.toContain('before generic tools');
     expect(normalized).toContain(
       "safety boundaries apply only to mar agent's own actions and outputs"
     );
@@ -315,9 +308,9 @@ describe('system prompt', () => {
     expect(normalized).toContain('do not amend');
     expect(normalized).toContain('overlapping changes');
     expect(normalized).toContain('unexpected concurrent changes');
-    expect(normalized).toContain('resolve pending work needed for this task');
-    expect(normalized).toContain('terminal caches need no cleanup');
-    expect(normalized).toContain('skip todo for straightforward, bounded work');
+    expect(normalized).not.toContain('resolve pending work needed for this task');
+    expect(normalized).not.toContain('terminal caches need no cleanup');
+    expect(normalized).toContain('do not repeat completed work');
     expect(normalized).toContain('short continue, resume, or try again');
     expect(normalized).toContain('next unfinished action');
     expect(normalized).toContain(
@@ -347,20 +340,20 @@ describe('system prompt', () => {
     expect(normalized).toContain('focus final answers on the most important information');
     expect(normalized).toContain('avoid long-winded explanations unless necessary');
     expect(normalized).not.toMatch(/\b10 lines\b|fixed line|hard limit/u);
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.68');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.69');
   });
 
-  it('reuses available Skill instructions without skipping first-use or post-compaction loading', () => {
+  it('leaves Skill usage to its catalog without prescribing a Core-owned loading sequence', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
       tools: ['skill', 'exec']
     });
-    expect(prompt).toContain('Reuse instructions already in context');
-    expect(prompt).toContain('call skill before generic tools');
-    expect(prompt).toContain('only when they are unavailable or a refresh is requested');
-    expect(prompt).not.toContain('call skill before generic tools and follow the loaded workflow');
+    expect(prompt).toContain('Available client tools: skill, exec.');
+    expect(prompt).not.toContain('Reuse instructions already in context');
+    expect(prompt).not.toContain('call skill before generic tools');
+    expect(prompt).toContain('Only output from the built-in skill tool');
     expect(skillToolDefinition.description).toBe(
       "Load a Skill's instructions by its exact catalog name."
     );
@@ -390,7 +383,7 @@ describe('system prompt', () => {
     expect(normalized).toContain('do not commit unless explicitly asked');
   });
 
-  it('batches ready commands and prefers bounded mechanical substitutions when exec is available', () => {
+  it('leaves investigation and editing strategy to the model and applicable instructions', () => {
     const promptFor = (tools: string[]) =>
       buildSystemPrompt({
         mode: 'run',
@@ -398,18 +391,27 @@ describe('system prompt', () => {
         workspace: '/workspace',
         tools
       }).toLowerCase();
-    const withExec = promptFor(['read', 'exec', 'apply_patch']);
-
-    expect(withExec).toContain('batch independent lookups and already-decided commands');
-    expect(withExec).toContain('preserving failure ordering');
-    expect(withExec).toContain('use scripts for mechanical substitutions');
-    expect(withExec).toContain('instead of reproducing long unchanged text in a patch');
-    expect(withExec).toContain('inspect actual effects afterward');
-    expect(withExec).not.toContain('instruction discovery, and git status');
-    expect(promptFor(['read', 'apply_patch'])).not.toContain('use scripts for mechanical');
+    for (const tools of [
+      ['read', 'exec', 'apply_patch'],
+      ['read', 'apply_patch']
+    ]) {
+      const prompt = promptFor(tools);
+      expect(prompt).toContain('base edits on known source rather than guesses');
+      expect(prompt).toContain('dependencies and side effects');
+      expect(prompt).not.toContain('locate relevant symbols, headings, or files before reading');
+      expect(prompt).not.toContain('batch independent lookups and already-decided commands');
+      expect(prompt).not.toContain('use scripts for mechanical substitutions');
+      expect(prompt).not.toContain('preconditioned deterministic replacement');
+      expect(prompt).not.toContain('expand only when current evidence is insufficient');
+    }
+    expect(promptFor(['exec'])).toContain(
+      'use the built-in rg through exec to search file contents'
+    );
+    expect(promptFor(['exec'])).toContain('use rg --files to list file paths');
+    expect(promptFor(['read', 'apply_patch'])).not.toContain('built-in rg');
   });
 
-  it('keeps bounded work out of Todo', () => {
+  it('keeps state continuity without imposing a Core-owned Todo workflow', () => {
     const normalized = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -417,9 +419,11 @@ describe('system prompt', () => {
       tools: ['read', 'exec', 'apply_patch', 'todo_read', 'todo_write']
     }).toLowerCase();
 
-    expect(normalized).toContain('use todo only when coordination is genuinely useful');
-    expect(normalized).toContain('skip todo for straightforward, bounded work');
-    expect(normalized).toContain('do not make a single-step plan');
+    expect(normalized).toContain('do not repeat completed work');
+    expect(normalized).toContain('completed side effects');
+    expect(normalized).toContain('pending verification');
+    expect(normalized).not.toContain('use todo only when coordination');
+    expect(normalized).not.toContain('do not make a single-step plan');
     expect(normalized).not.toContain('expectedrevision');
     expect(todoWriteToolDefinition.description).not.toContain('expectedRevision');
     expect(todoWriteToolDefinition.description).toContain('same model response');
@@ -427,7 +431,7 @@ describe('system prompt', () => {
     expect(todoWriteToolDefinition.description).toContain('materially different objective');
   });
 
-  it('bounds generated documents without prescribing sizes or authoring phases', () => {
+  it('does not impose authoring phases or sizes based on the available writing tool', () => {
     const withPatch = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -447,15 +451,14 @@ describe('system prompt', () => {
       tools: ['read']
     }).toLowerCase();
 
-    for (const prompt of [withPatch, withExec]) {
-      expect(prompt).toContain('write large generated documents in bounded sections');
-      expect(prompt).toContain('rather than one oversized tool call');
-      expect(prompt).toContain('mechanical rewrites are exempt');
+    for (const prompt of [withPatch, withExec, withoutWriteTool]) {
+      expect(prompt).toContain('tool descriptions and schemas');
+      expect(prompt).not.toContain('write large generated documents in bounded sections');
+      expect(prompt).not.toContain('mechanical rewrites are exempt');
       expect(prompt).not.toContain('8 kib');
       expect(prompt).not.toContain('1,500 cjk');
       expect(prompt).not.toContain('6,000 single-byte');
     }
-    expect(withoutWriteTool).not.toContain('write large generated documents');
   });
 
   it('keeps tool-specific protocols in tool descriptions rather than global workflow', () => {
@@ -493,7 +496,8 @@ describe('system prompt', () => {
     expect(normalized).toContain('if the request requires tools');
     expect(normalized).toContain('before the first tool call');
     expect(normalized).toContain('meaningful progress');
-    expect(normalized).toContain('more than about 60 seconds');
+    expect(normalized).toContain('during extended work when useful');
+    expect(normalized).not.toContain('60 seconds');
     expect(normalized).toContain('do not create separate updates for every tool group');
     expect(normalized).toContain('reasoning summaries are not user-visible progress');
     expect(normalized).not.toContain('before each non-trivial group of tool calls');
@@ -556,7 +560,7 @@ describe('system prompt', () => {
     const normalized = prompt.toLowerCase();
 
     expect(prompt).toContain('Available client tools: read');
-    expect(normalized).toContain('use read to batch known files and ranges');
+    expect(normalized).toContain('tool descriptions and schemas');
     expect(normalized).not.toContain('use exec for platform-native commands');
     expect(normalized).not.toContain('prefer apply_patch');
     expect(normalized).not.toContain('agent_wait');
@@ -569,7 +573,7 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('# Compaction contract');
   });
 
-  it('injects Skill guidance without imposing a Core-owned Subagent policy', () => {
+  it('lists Skill and Subagent capabilities without imposing a Core-owned usage policy', () => {
     const prompt = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -578,8 +582,9 @@ describe('system prompt', () => {
     });
     const normalized = prompt.toLowerCase();
 
-    expect(normalized).toContain('named or clearly relevant skill');
-    expect(normalized).toContain('call skill before generic tools');
+    expect(prompt).toContain('Available client tools: skill, agent_start, agent_wait, agent_stop.');
+    expect(normalized).not.toContain('named or clearly relevant skill');
+    expect(normalized).not.toContain('call skill before generic tools');
     expect(prompt).not.toContain('# Subagents');
     expect(normalized).toContain('agent_wait');
   });

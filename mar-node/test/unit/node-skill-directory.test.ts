@@ -13,6 +13,38 @@ afterEach(async () => {
 });
 
 describe('Node Skill directory scan', () => {
+  it.each([
+    ['|\n  Review code\n  Use for changes.', 'Review code\nUse for changes.\n'],
+    ['|+\n  Review code\n\n', 'Review code\n\n\n'],
+    ['>-\n  Review code\n  Use for changes.', 'Review code Use for changes.'],
+    ['"Review: code # keep this"', 'Review: code # keep this'],
+    ["'Review ''quoted'' code'", "Review 'quoted' code"],
+    ['"Review\\ncode"', 'Review\ncode'],
+    ['Review code # comment', 'Review code']
+  ])(
+    'reads standard YAML description %s from an installed Skill',
+    async (description, expected) => {
+      const home = await temporaryRoot();
+      await writeSkill(path.join(home, '.agents', 'skills', 'review'), description);
+      const result = await new SkillDirectoryService().inspectNodeHome(home);
+      expect(result.skills).toMatchObject([
+        { name: 'review', description: expected, localStatus: 'UNKNOWN_VERSION' }
+      ]);
+    }
+  );
+
+  it.each(['true', 'null', '[Review, code]', '"Unterminated', 'Review\ndescription: Duplicate'])(
+    'marks invalid YAML description %s as INVALID rather than displaying a raw token',
+    async (description) => {
+      const home = await temporaryRoot();
+      await writeSkill(path.join(home, '.agents', 'skills', 'review'), description);
+      const result = await new SkillDirectoryService().inspectNodeHome(home);
+      expect(result.skills).toMatchObject([
+        { name: 'review', description: '', localStatus: 'INVALID' }
+      ]);
+    }
+  );
+
   it('reads only bounded metadata and install records without recomputing the version after the body changes', async () => {
     const home = await temporaryRoot();
     const skill = path.join(home, '.agents', 'skills', 'review');

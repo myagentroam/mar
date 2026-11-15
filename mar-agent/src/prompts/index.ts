@@ -17,7 +17,7 @@ import {
   workflowPrompt
 } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.68';
+export const MAR_AGENT_PROMPT_VERSION = '1.69';
 
 interface SystemPromptInput {
   mode: ExecutionMode;
@@ -57,7 +57,7 @@ export function buildSystemPromptSections(input: SystemPromptInput): readonly Pr
     ['output-style', outputStylePrompt],
     ['environment-rules', environmentPrompt(input)],
     ['tools', input.tools.length > 0 ? toolUsagePrompt(input.tools, input.directTools) : ''],
-    ['long-running', hasLongRunningCapability ? longRunningPrompt(input.tools) : ''],
+    ['long-running', hasLongRunningCapability ? longRunningPrompt() : ''],
     [
       'mode',
       modePrompt(input.mode, {

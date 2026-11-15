@@ -10,5 +10,10 @@
       "@/*": ["../ee/web/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "vite.config.ts", "../ee/web/src/**/*.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "vite.config.ts",
+    "../packages/web-core/src/**/*.d.ts",
+    "../ee/web/src/**/*.d.ts"
+  ]
 }

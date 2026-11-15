@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
+import { CORE_SCHEMA, load } from 'js-yaml';
 
 export interface SkillBundleFile {
   readonly path: string;
@@ -131,14 +132,16 @@ export async function readSkillFrontmatter(
 export function parseSkillFrontmatter(content: string): { name: string; description: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content);
   if (match === null) throw new Error('SKILL_CONTENT_INVALID');
-  const values = new Map<string, string>();
-  for (const line of match[1]!.split(/\r?\n/u)) {
-    const field = /^(name|description):\s*(.*?)\s*$/u.exec(line);
-    if (field !== null) values.set(field[1]!, field[2]!.replace(/^['"]|['"]$/gu, ''));
+  let metadata: unknown;
+  try {
+    metadata = load(`${match[1]!}\n`, { schema: CORE_SCHEMA });
+  } catch {
+    throw new Error('SKILL_CONTENT_INVALID');
   }
-  const name = values.get('name');
-  const description = values.get('description');
-  if (name === undefined || description === undefined || description.length > 4096)
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata))
+    throw new Error('SKILL_CONTENT_INVALID');
+  const { name, description } = metadata as Record<string, unknown>;
+  if (typeof name !== 'string' || typeof description !== 'string' || description.length > 4096)
     throw new Error('SKILL_CONTENT_INVALID');
   return { name, description };
 }

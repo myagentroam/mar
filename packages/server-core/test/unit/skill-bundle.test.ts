@@ -79,6 +79,55 @@ describe('Skill bundle construction', () => {
     ).rejects.toThrow('SKILL_CONTENT_INVALID');
   });
 
+  it.each([
+    ['Review code # YAML comment', 'Review code'],
+    ['"Review: code # keep this"', 'Review: code # keep this'],
+    ["'Review ''quoted'' code'", "Review 'quoted' code"],
+    ['"Review\\ncode\\t\\u00e9"', 'Review\ncode\té'],
+    ['|\n  Review code\n  Use for changes.', 'Review code\nUse for changes.\n'],
+    ['|-\n  Review code\n  Use for changes.', 'Review code\nUse for changes.'],
+    ['|+\n  Review code\n\n', 'Review code\n\n\n'],
+    ['>\n  Review code\n  Use for changes.', 'Review code Use for changes.\n'],
+    ['>-\n  Review code\n\n  Use for changes.', 'Review code\nUse for changes.'],
+    ['|2-\n    Review code\n    Keep indentation.', '  Review code\n  Keep indentation.'],
+    ['on', 'on'],
+    ['2026-11-15', '2026-11-15'],
+    ['""', '']
+  ])('parses YAML description %s without changing scalar semantics', (description, expected) => {
+    expect(parseSkillFrontmatter(`---\nname: review\ndescription: ${description}\n---\n`)).toEqual({
+      name: 'review',
+      description: expected
+    });
+  });
+
+  it('parses quoted keys, flow mappings and unrelated nested metadata', () => {
+    expect(
+      parseSkillFrontmatter(
+        '---\n"name": review\n\'description\': Review code\nmetadata:\n  description: Not the root description\n---\n'
+      )
+    ).toEqual({ name: 'review', description: 'Review code' });
+    expect(
+      parseSkillFrontmatter('---\n{ name: review, description: "Review code" }\n---\n')
+    ).toEqual({ name: 'review', description: 'Review code' });
+  });
+
+  it.each([
+    'name: review',
+    'name: 12\ndescription: Review code',
+    'name: review\ndescription: true',
+    'name: review\ndescription: null',
+    'name: review\ndescription: [Review, code]',
+    'name: review\ndescription: { text: Review code }',
+    'name: review\ndescription: "Unterminated',
+    'name: review\ndescription: Review code\ndescription: Duplicate',
+    'name: review\ndescription: !!js/function "function() {}"',
+    '[name, description]',
+    'not a mapping',
+    `name: review\ndescription: |-\n  ${'a'.repeat(4097)}`
+  ])('rejects malformed or non-string YAML metadata: %s', (metadata) => {
+    expect(() => parseSkillFrontmatter(`---\n${metadata}\n---\n`)).toThrow('SKILL_CONTENT_INVALID');
+  });
+
   it('canonicalizes an independent copy regardless of input order', async () => {
     const script = file('z.sh', 'ZWNobyByZXZpZXcK');
     const unordered = [script, skill];
@@ -124,7 +173,9 @@ describe('Skill bundle construction', () => {
     let closed = false;
     async function* chunks() {
       try {
-        for (const byte of Buffer.from('---\r\nname: review\r\ndescription: Résumé\r\n---\r\n'))
+        for (const byte of Buffer.from(
+          '---\r\nname: review\r\ndescription: |\r\n  Résumé\r\n  Review code\r\n---\r\n'
+        ))
           yield Buffer.from([byte]);
         bodyRead = true;
         throw new Error('The Markdown body must not be read');
@@ -134,7 +185,7 @@ describe('Skill bundle construction', () => {
     }
     await expect(readSkillFrontmatter(chunks())).resolves.toEqual({
       name: 'review',
-      description: 'Résumé'
+      description: 'Résumé\nReview code\n'
     });
     expect(bodyRead).toBe(false);
     expect(closed).toBe(true);

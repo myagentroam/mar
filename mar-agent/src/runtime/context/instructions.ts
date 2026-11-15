@@ -1,6 +1,7 @@
 import { markupAttributes, markupText } from '../../prompts/markup.js';
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, posix, relative, resolve } from 'node:path';
+import { CORE_SCHEMA, load } from 'js-yaml';
 import { AgentError } from '../../error.js';
 import type { HostSkill } from '../../host/skill-contract.js';
 
@@ -251,7 +252,7 @@ async function discoverSkills(
     const path = join(root, entry.name, 'SKILL.md');
     const content = await safeRead(path, boundary);
     if (!content) continue;
-    const description = /^description:\s*(.+)$/imu.exec(content)?.[1]?.trim() ?? 'Agent skill';
+    const description = skillDescription(content);
     target.set(entry.name, {
       name: entry.name,
       description,
@@ -260,6 +261,22 @@ async function discoverSkills(
       boundary
     });
   }
+}
+
+/** Reads catalog metadata without changing filesystem identity or body-loading behavior. */
+function skillDescription(content: string): string {
+  const fallback = 'Agent skill';
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content);
+  if (!match) return fallback;
+  let metadata: unknown;
+  try {
+    metadata = load(`${match[1]!}\n`, { schema: CORE_SCHEMA });
+  } catch {
+    return fallback;
+  }
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return fallback;
+  const description = (metadata as Record<string, unknown>)['description'];
+  return typeof description === 'string' ? description : fallback;
 }
 
 async function safeRead(path: string, boundary: string): Promise<string | undefined> {

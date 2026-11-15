@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost, type HostSessionResourceSnapshot } from '../../src/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AgentError } from '../../src/error.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
 import {
   type ModelAdapter,
@@ -601,61 +602,83 @@ describe('AGENTS model context', () => {
     expect(host.reads).toBe(0);
   });
 
-  it('keeps private contextual state out of manual Compact and reloads it afterward', async () => {
-    const { home, workspace } = await fixture('mar-instructions-compact-');
-    await writeFile(join(workspace, 'AGENTS.md'), 'RULE_MUST_NOT_ENTER_COMPACT');
-    const adapter = new RecordingAdapter();
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new ChangingResourceHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => adapter
-    );
+  it.each(['native', 'fallback'] as const)(
+    'preserves private-state boundaries for %s manual Compact',
+    async (inputMode) => {
+      const { home, workspace } = await fixture('mar-instructions-compact-');
+      const marker = 'PRIVATE_WORKSPACE_RULE';
+      await writeFile(join(workspace, 'AGENTS.md'), marker);
+      const adapter = new RecordingAdapter();
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new ChangingResourceHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => adapter
+      );
 
-    let sessionId = '';
-    try {
-      const session = await agent.createSession({ workspace, title: 'Instructions' });
-      sessionId = session.id;
-      await session.run({ prompt: 'first' }).result();
-      await session.compact().result();
-      await session.run({ prompt: 'after compact' }).result();
-    } finally {
-      await agent.dispose();
+      let sessionId = '';
+      try {
+        const session = await agent.createSession({ workspace, title: 'Instructions' });
+        sessionId = session.id;
+        expect((await session.run({ prompt: 'first' }).result()).status).toBe('completed');
+        if (inputMode === 'fallback') {
+          vi.spyOn(adapter, 'start').mockImplementationOnce(async function* (request) {
+            adapter.requests.push(request);
+            throw new AgentError('context_length_exceeded', 'Fixture context overflow.');
+          });
+        }
+        expect((await session.compact().result()).status).toBe('completed');
+        expect((await session.run({ prompt: 'after compact' }).result()).status).toBe('completed');
+      } finally {
+        await agent.dispose();
+      }
+
+      const compactRequests = adapter.requests.filter((request) => request.toolChoice === 'none');
+      expect(compactRequests).toHaveLength(inputMode === 'native' ? 1 : 2);
+      const nativeRequest = compactRequests[0]!;
+      expect(nativeRequest.messages.slice(0, adapter.requests[0]!.messages.length)).toEqual(
+        adapter.requests[0]!.messages
+      );
+      expect(JSON.stringify(nativeRequest.messages)).toContain(marker);
+      if (inputMode === 'fallback') {
+        const fallbackRequest = compactRequests[1]!;
+        expect(JSON.stringify(fallbackRequest.messages)).not.toContain(marker);
+        expect(fallbackRequest.messages[0]?.content).toContain('Conversation evidence');
+        expect(fallbackRequest.messages[0]?.content).toContain('first');
+      }
+      expect(JSON.stringify(compactRequests.map((request) => request.system))).not.toContain(
+        marker
+      );
+      expect(JSON.stringify(compactRequests)).not.toContain('retained-process');
+      const store = await JsonlSessionStore.open(home);
+      const records = await store.read(sessionId);
+      await store.close();
+      expect(JSON.stringify(records)).not.toContain(marker);
+      expect(JSON.stringify(records)).not.toContain('retained-process');
+      expect(records.find((record) => record.type === 'compact.completed')?.payload.summary).toBe(
+        'durable summary'
+      );
+      const postCompactRequest = adapter.requests.at(-1);
+      expect(postCompactRequest?.toolChoice).not.toBe('none');
+      expect(postCompactRequest?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content: expect.stringContaining('durable summary') }),
+          expect.objectContaining({
+            content: expect.stringContaining(marker)
+          }),
+          expect.objectContaining({ content: expect.stringContaining('retained-process') }),
+          expect.objectContaining({ content: 'after compact' })
+        ])
+      );
+      expect(
+        postCompactRequest?.messages.filter((message) =>
+          message.content.includes('# Retained Session resources')
+        )
+      ).toHaveLength(1);
     }
-
-    const compactRequest = adapter.requests.find((request) => request.toolChoice === 'none');
-    expect(compactRequest).toBeDefined();
-    expect(compactRequest?.system).not.toContain('RULE_MUST_NOT_ENTER_COMPACT');
-    expect(JSON.stringify(compactRequest?.messages)).not.toContain('RULE_MUST_NOT_ENTER_COMPACT');
-    expect(JSON.stringify(compactRequest?.messages)).not.toContain('retained-process');
-    const store = await JsonlSessionStore.open(home);
-    const records = await store.read(sessionId);
-    await store.close();
-    expect(JSON.stringify(records)).not.toContain('RULE_MUST_NOT_ENTER_COMPACT');
-    expect(JSON.stringify(records)).not.toContain('retained-process');
-    expect(records.find((record) => record.type === 'compact.completed')?.payload.summary).toBe(
-      'durable summary'
-    );
-    const postCompactRequest = adapter.requests.at(-1);
-    expect(postCompactRequest?.toolChoice).not.toBe('none');
-    expect(postCompactRequest?.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ content: expect.stringContaining('durable summary') }),
-        expect.objectContaining({
-          content: expect.stringContaining('RULE_MUST_NOT_ENTER_COMPACT')
-        }),
-        expect.objectContaining({ content: expect.stringContaining('retained-process') }),
-        expect.objectContaining({ content: 'after compact' })
-      ])
-    );
-    expect(
-      postCompactRequest?.messages.filter((message) =>
-        message.content.includes('# Retained Session resources')
-      )
-    ).toHaveLength(1);
-  });
+  );
 
   it('keeps one Compact resource snapshot across changes, expiry and restart without resync', async () => {
     const { home, workspace } = await fixture('mar-compact-resource-once-');

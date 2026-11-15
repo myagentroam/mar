@@ -86,6 +86,8 @@ export class SkillCacheFake {
         ];
       if (sql.includes('SELECT * FROM skill_favorites'))
         return [[this.favorites.get(String(values[0]))].filter(Boolean), []];
+      if (sql.includes('FROM skill_versions WHERE id=?'))
+        return [[this.versions.get(String(values[0]))].filter(Boolean), []];
       if (sql.includes('SELECT DISTINCT cache_key'))
         return [
           [...this.versions.values()].filter((version) => version['favorite_id'] === values[0]),
@@ -207,7 +209,10 @@ export class SkillCacheFake {
                 id: values[0],
                 favorite_id: values[1],
                 commit_sha: values[2],
+                content_hash: values[3],
+                archive_hash: values[4],
                 cache_key: values[5],
+                metadata: values[8],
                 cache_state: 'READY',
                 unreferenced_at: null
               })
@@ -260,6 +265,14 @@ export class SkillCacheFake {
           } else if (sql.includes("SET cache_state='READY'")) {
             pending.push(() =>
               Object.assign(this.versions.get(String(values[0]))!, {
+                cache_state: 'READY',
+                unreferenced_at: null
+              })
+            );
+          } else if (sql.includes("SET metadata=?,cache_state='READY'")) {
+            pending.push(() =>
+              Object.assign(this.versions.get(String(values[1]))!, {
+                metadata: values[0],
                 cache_state: 'READY',
                 unreferenced_at: null
               })

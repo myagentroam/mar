@@ -252,13 +252,17 @@ export abstract class SkillFavoriteService {
     try {
       if (bundle.name !== String(row['normalized_name'])) throw new Error('SKILL_NAME_CONFLICT');
       const [versions] = await this.database.raw.execute<RowDataPacket[]>(
-        'SELECT commit_sha FROM skill_versions WHERE id=?',
+        'SELECT commit_sha,metadata FROM skill_versions WHERE id=?',
         [String(row['current_version_id'])]
       );
       const currentCommitSha = versions[0]?.['commit_sha'];
       if (typeof currentCommitSha !== 'string') throw new Error('SKILL_VERSION_NOT_FOUND');
+      const metadata = skillMetadata(versions[0]?.['metadata'] ?? '{}');
       return {
-        updateAvailable: bundle.commitSha !== currentCommitSha,
+        updateAvailable:
+          bundle.commitSha !== currentCommitSha ||
+          metadata['name'] !== bundle.name ||
+          metadata['description'] !== bundle.description,
         latestCommitSha: bundle.commitSha
       };
     } finally {
@@ -342,8 +346,11 @@ export abstract class SkillFavoriteService {
             );
           else
             await connection.execute(
-              "UPDATE skill_versions SET cache_state='READY',unreferenced_at=NULL WHERE id=?",
-              [effectiveVersionId]
+              "UPDATE skill_versions SET metadata=?,cache_state='READY',unreferenced_at=NULL WHERE id=?",
+              [
+                JSON.stringify({ name: bundle.name, description: bundle.description }),
+                effectiveVersionId
+              ]
             );
           await connection.execute(
             'UPDATE skill_favorites SET current_version_id=?,updated_at=? WHERE id=?',
