@@ -2354,10 +2354,16 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(activeHtml).toContain('mar-busy-indicator');
     expect(activeHtml).not.toContain(i18n.global.t('conversationProcess.warning'));
 
-    const disconnectedHtml = await render(ConversationWorkProcess, {
-      block: active,
-      synchronized: false
-    });
+    const disconnectedHtml = await render(
+      ConversationWorkProcess,
+      {
+        block: active,
+        synchronized: false
+      },
+      { default: () => h('span', 'Cached process details') }
+    );
+    expect(disconnectedHtml).toMatch(/class="process-heading"[^>]*aria-expanded="true"/u);
+    expect(disconnectedHtml).toContain('Cached process details');
     expect(disconnectedHtml).not.toContain('process-activity-indicator');
 
     const ended = conversationWorkProcessBlocks(

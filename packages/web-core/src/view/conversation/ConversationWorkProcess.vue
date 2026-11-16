@@ -18,7 +18,8 @@ const props = defineProps<{
 }>();
 const root = ref<HTMLElement>();
 const manualOpen = ref<boolean>();
-const defaultOpen = ref(props.synchronized && props.block.active);
+// Restore cached disclosure without treating cached activity as confirmed live progress.
+const defaultOpen = ref(props.block.active);
 const open = computed(() => !props.block.groupId || (manualOpen.value ?? defaultOpen.value));
 // The scheduler reads the actual disclosure state, including manual and focus overrides.
 defineExpose({ isOpen: () => open.value });
