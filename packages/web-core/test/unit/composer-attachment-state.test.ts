@@ -23,7 +23,7 @@ describe('Web Composer Attachment State', () => {
       direct: { generation: () => 'generation', upload }
     });
     const main = owner.forTarget(() => a);
-    const aside = owner.forTarget(() => b);
+    const aside = owner.forTarget(() => b, 'aside');
     main.add([new File(['a'], 'a.txt')]);
     aside.add([new File(['b'], 'b.txt')]);
     await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
@@ -31,14 +31,14 @@ describe('Web Composer Attachment State', () => {
     expect(aside.attachments.value.map((item) => item.file.name)).toEqual(['b.txt']);
     uploads.forEach((finish) => finish());
     await vi.waitFor(() => expect(aside.attachments.value[0]?.status).toBe('COMPLETED'));
-    const moved = owner.forTarget(() => b);
+    const moved = owner.forTarget(() => b, 'aside');
     expect(moved.attachments.value[0]?.id).toBe(aside.attachments.value[0]?.id);
     expect(upload).toHaveBeenCalledTimes(2);
     main.clear();
     expect(aside.attachments.value).toHaveLength(1);
     owner.clearAll();
   });
-  it('keeps a late upload with its original Session and transfers only the created draft target', async () => {
+  it('keeps uploads with their Workspace Pane across session and new-session switches', async () => {
     const workspace = { kind: 'workspace' as const, nodeId: 'node-1', workspaceId: 'workspace-1' };
     const a = {
       kind: 'session' as const,
@@ -71,24 +71,82 @@ describe('Web Composer Attachment State', () => {
     });
     state.add([new File(['text'], 'a.txt')]);
     await vi.waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    const original = state.attachments.value[0]!;
     target.value = b;
-    expect(state.attachments.value).toEqual([]);
+    expect(state.attachments.value).toEqual([original]);
     finish();
-    target.value = a;
     await vi.waitFor(() => expect(state.attachments.value[0]?.status).toBe('COMPLETED'));
     target.value = workspace;
+    expect(state.attachments.value).toEqual([original]);
     state.add([new File(['other'], 'new.txt')]);
-    const draft = state.attachments.value[0]!;
+    const draft = state.attachments.value[1]!;
     await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
-    state.moveDraft(workspace, b);
-    expect(state.attachments.value).toEqual([]);
     target.value = b;
-    expect(state.attachments.value.map((attachment) => attachment.id)).toEqual([draft.id]);
+    expect(state.attachments.value.map((attachment) => attachment.id)).toEqual([
+      original.id,
+      draft.id
+    ]);
     finish();
-    await vi.waitFor(() => expect(state.attachments.value[0]?.status).toBe('COMPLETED'));
+    await vi.waitFor(() => expect(draft.status).toBe('COMPLETED'));
+    target.value = { ...b, workspaceId: 'other-workspace' };
+    expect(state.attachments.value).toEqual([]);
     target.value = a;
-    expect(state.attachments.value.map((attachment) => attachment.file.name)).toEqual(['a.txt']);
+    expect(state.attachments.value.map((attachment) => attachment.file.name)).toEqual([
+      'a.txt',
+      'new.txt'
+    ]);
+    expect(upload).toHaveBeenCalledTimes(2);
     state.clearAll();
+  });
+
+  it('applies attachment limits across sessions in the same Pane without consuming another Pane allowance', () => {
+    const target = ref({ kind: 'session' as const, nodeId: 'n', workspaceId: 'w', sessionId: 'a' });
+    const notice = vi.fn();
+    const owner = createComposerAttachmentService({
+      context: () => target.value,
+      notice,
+      request: vi.fn(() => new Promise<never>(() => undefined)),
+      csrfToken: ref('csrf'),
+      renewCsrfToken: vi.fn(),
+      onUnauthenticated: vi.fn()
+    });
+    const main = owner.forTarget(() => target.value, 'main');
+    const aside = owner.forTarget(() => target.value, 'aside');
+    main.add(Array.from({ length: 5 }, (_, index) => file(`${index}.txt`, 3)));
+    target.value = { ...target.value, sessionId: 'b' };
+    main.add([file('too-many.txt', 3)]);
+    expect(main.attachments.value).toHaveLength(5);
+    expect(notice).toHaveBeenCalledOnce();
+    expect(aside.attachments.value).toHaveLength(0);
+    aside.add([file('aside.txt', 3)]);
+    expect(aside.attachments.value.map((item) => item.file.name)).toEqual(['aside.txt']);
+    main.remove(aside.attachments.value[0]!.id);
+    expect(aside.attachments.value).toHaveLength(1);
+    owner.clearAll();
+  });
+
+  it('clears only its Pane uploads and preserves another Pane preview', () => {
+    const owner = createComposerAttachmentService({
+      context: () => ({ kind: 'workspace', nodeId: 'n', workspaceId: 'w' }),
+      notice: vi.fn(),
+      request: vi.fn(() => new Promise<never>(() => undefined)),
+      csrfToken: ref('csrf'),
+      renewCsrfToken: vi.fn(),
+      onUnauthenticated: vi.fn()
+    });
+    const target = () => ({ kind: 'workspace' as const, nodeId: 'n', workspaceId: 'w' });
+    const main = owner.forTarget(target, 'main');
+    const aside = owner.forTarget(target, 'aside');
+    main.add([file('main.txt', 3)]);
+    aside.add([new File(['image'], 'aside.png', { type: 'image/png' })]);
+    owner.openPreview(aside.attachments.value[0]!);
+    main.clear();
+    expect(main.attachments.value).toHaveLength(0);
+    expect(aside.attachments.value).toHaveLength(1);
+    expect(owner.previewOpen.value).toBe(true);
+    aside.clear();
+    expect(owner.previewOpen.value).toBe(false);
+    owner.clearAll();
   });
   it.each(['remove', 'clear', 'clearAll'] as const)(
     '%s only changes the next draft while an overlapping submission still owns the attachment',

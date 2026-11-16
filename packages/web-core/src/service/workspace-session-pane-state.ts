@@ -131,7 +131,7 @@ export function createWorkspaceSessionPaneState(options: {
   readonly drafts: Pick<ReturnType<typeof createSessionDraftService>, 'bindTarget' | 'forTarget'>;
   readonly attachments: Pick<
     ReturnType<typeof createComposerAttachmentService>,
-    'forTarget' | 'moveDraft' | 'consume' | 'retainForSubmission'
+    'forTarget' | 'consume' | 'retainForSubmission'
   >;
   readonly submissions: ReturnType<typeof createWorkbenchSubmissionOwner>;
   readonly onConversationOverflow: () => void;
@@ -150,7 +150,10 @@ export function createWorkspaceSessionPaneState(options: {
       return previous;
     return { nodeId: target.nodeId, workspaceId: target.workspaceId };
   });
-  const attachments = options.attachments.forTarget(() => options.draftTarget.value);
+  const attachments = options.attachments.forTarget(
+    () => options.draftTarget.value,
+    options.pane ?? 'main'
+  );
   const draft = options.drafts.bindTarget(options.draftTarget, options.pane);
   const skillTokens = createComposerSkillTokenService(draft.skillTokens);
   watch(draft.input, draft.persist);
@@ -336,7 +339,6 @@ export function createWorkspaceSessionPaneState(options: {
           session.id,
           true
         );
-        options.attachments.moveDraft(target, next);
       }
     };
   };

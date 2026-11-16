@@ -1,6 +1,6 @@
 ---
 title: Messages and Composer
-lastUpdated: 2026-10-29
+lastUpdated: 2026-11-16
 ---
 
 # Messages and Composer
@@ -16,6 +16,8 @@ Create a phrase and prompt in **Settings → Quick Prompts**. Type `#phrase` to 
 Pasting regular text keeps plain text only and remains undoable as one native edit with `Ctrl/Command+Z`. Text reaching either 100 lines or 10,000 characters is converted to a TXT attachment before it enters the editor, preventing large logs or code blocks from freezing the page. Conversion preserves the existing draft, and a message body is still required before sending.
 
 Uploaded attachments that have not been sent remain available for one hour. Add them again after they expire.
+
+In ordinary workspaces, each Composer pane keeps its message draft and unsent attachments together. Switching sessions or opening a new session does not remove attachments or restart uploads. Main and Aside remain independent, as do different workspaces; returning to a workspace restores that pane's attachments. Attachments stay only in the current page's memory and must be added again after refreshing or leaving the page.
 
 During the short sending window, the input stays visible but is temporarily read-only so the next message cannot mix with the previous one. Success clears the submitted content; failure or the five-second timeout restores editing. For ordinary workspace messages, a late success removes sent attachments while preserving subsequently edited text and newly added attachments, without switching sessions. Removing an attachment while a request is in flight only changes the next draft; it does not withdraw the message already sent.
 

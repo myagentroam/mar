@@ -29,6 +29,89 @@ function fixture() {
 }
 
 describe('Workspace Pane composer drafts', () => {
+  it.each(['main', 'aside'] as const)(
+    'keeps the $0 draft and in-flight attachments together across session creation and switches',
+    async (position) => {
+      const { owner, target } = fixture();
+      const original = target.value!;
+      const scope = effectScope();
+      const finishes: Array<() => void> = [];
+      const upload = vi.fn(() => new Promise<void>((resolve) => finishes.push(resolve)));
+      const attachments = createComposerAttachmentService({
+        context: () => target.value,
+        notice: vi.fn(),
+        request: vi.fn().mockResolvedValue(undefined),
+        csrfToken: ref('csrf'),
+        renewCsrfToken: vi.fn(),
+        onUnauthenticated: vi.fn(),
+        direct: { generation: () => 'generation', upload }
+      });
+      const submissions = createWorkbenchSubmissionOwner();
+      const createPane = (pane: 'main' | 'aside') =>
+        scope.run(() =>
+          createWorkspaceSessionPaneState({
+            pane,
+            draftTarget: target,
+            drafts: owner,
+            attachments,
+            submissions,
+            onConversationOverflow: vi.fn()
+          })
+        )!;
+      const pane = createPane(position);
+      const other = createPane(position === 'main' ? 'aside' : 'main');
+      try {
+        pane.draft.input.value = 'Unsent question';
+        pane.attachments.add([new File(['pending'], 'pending.txt')]);
+        const pending = pane.attachments.attachments.value[0]!;
+        expect(other.attachments.attachments.value).toEqual([]);
+        other.draft.input.value = 'Other Pane';
+        other.attachments.add([new File(['other'], 'other.txt')]);
+        await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
+        target.value = { ...original, kind: 'session', sessionId: 'b' };
+        expect(pane.draft.input.value).toBe('Unsent question');
+        expect(pane.attachments.attachments.value).toEqual([pending]);
+        target.value = {
+          kind: 'workspace',
+          nodeId: original.nodeId,
+          workspaceId: original.workspaceId
+        };
+        const captured = pane.captureDraft()!;
+        captured.createdSession({ id: 'created', workspaceId: original.workspaceId });
+        target.value = { ...original, kind: 'session', sessionId: 'created' };
+        expect(pane.attachments.attachments.value).toEqual([pending]);
+        for (const changed of [
+          { ...original, workspaceId: 'other-workspace' },
+          { ...original, nodeId: 'other-node' }
+        ]) {
+          target.value = changed;
+          expect(pane.attachments.attachments.value).toEqual([]);
+          expect(pane.draft.input.value).toBe('');
+        }
+        finishes.forEach((finish) => finish());
+        await vi.waitFor(() => expect(pending.status).toBe('COMPLETED'));
+        target.value = original;
+        expect(pane.draft.input.value).toBe('Unsent question');
+        expect(pane.attachments.attachments.value).toEqual([pending]);
+        expect(upload).toHaveBeenCalledTimes(2);
+        const release = attachments.retainForSubmission([pending]);
+        pane.attachments.add([new File(['next'], 'next.txt')]);
+        attachments.consume([pending]);
+        release();
+        expect(pane.attachments.attachments.value.map((item) => item.file.name)).toEqual([
+          'next.txt'
+        ]);
+        expect(other.draft.input.value).toBe('Other Pane');
+        expect(other.attachments.attachments.value.map((item) => item.file.name)).toEqual([
+          'other.txt'
+        ]);
+      } finally {
+        attachments.clearAll();
+        scope.stop();
+      }
+    }
+  );
+
   it.each(
     (['close', 'evict', 'reopen', 'failure', 'delete', 'sign-out'] as const).flatMap((scenario) =>
       (['main', 'aside'] as const).map((pane) => ({ scenario, pane }))
