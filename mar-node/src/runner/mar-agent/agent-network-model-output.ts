@@ -59,6 +59,7 @@ function projectAgent(
       'agentId',
       'status',
       'waitOutcome',
+      'hasMoreUpdates',
       'summary',
       'summaryTruncated',
       'changedFilesTruncated',
@@ -103,7 +104,14 @@ function projectAgent(
       if (isPlainRecord(update)) shorten(update, 'value', 'truncated');
   if (size() <= maximumBytes) return result;
   return {
-    ...pick(input, ['agentId', 'status', 'waitOutcome', 'errorCode', 'errorMessage']),
+    ...pick(input, [
+      'agentId',
+      'status',
+      'waitOutcome',
+      'hasMoreUpdates',
+      'errorCode',
+      'errorMessage'
+    ]),
     detailsTruncated: true
   };
 }

@@ -64,6 +64,7 @@ type Observation = {
 type ResultProjection = {
   summary?: string;
   summaryTruncated?: boolean;
+  summaryRevision?: number;
   turnId?: string;
   changedFiles: string[];
   changedFilesTruncated?: boolean;
@@ -74,7 +75,8 @@ export interface AgentObservationSnapshot {
   readonly runId: string;
   readonly executionId: string;
   readonly firstRevision: number;
-  readonly result?: Omit<ResultProjection, 'revision'>;
+  readonly hasMoreUpdates?: true;
+  readonly result?: Omit<ResultProjection, 'revision' | 'summaryRevision'>;
   readonly updates: readonly {
     readonly kind: 'message' | 'terminal';
     readonly value: string;
@@ -158,6 +160,11 @@ export class AgentNetworkObservations {
   }
 }
 
+/** Session-scoped unread reports in publication order; acknowledges only delivered versions.
+ * Automatic collection batches reports; explicit consumers take one message at a time.
+ * Terminal state and its final result are independent of the remaining message backlog.
+ * This buffer does not own Agent executions or approval decisions.
+ */
 export class ParentObservations implements ExtensionSessionContextProvider {
   readonly #items = new Map<string, Observation>();
   readonly #results = new Map<string, ResultProjection>();
@@ -186,16 +193,20 @@ export class ParentObservations implements ExtensionSessionContextProvider {
   }): boolean {
     if (this.#closed) return false;
     const value = boundedUtf8(input.value, 2000);
-    this.#items.set(JSON.stringify([input.childId, input.runId, input.executionId, 'report']), {
-      revision: ++this.#revision,
-      childId: input.childId,
-      runId: input.runId,
-      executionId: input.executionId,
-      kind: 'message',
-      value: value.value,
-      truncated: value.truncated,
-      wakes: false
-    });
+    const revision = ++this.#revision;
+    this.#items.set(
+      JSON.stringify([input.childId, input.runId, input.executionId, 'report', revision]),
+      {
+        revision,
+        childId: input.childId,
+        runId: input.runId,
+        executionId: input.executionId,
+        kind: 'message',
+        value: value.value,
+        truncated: value.truncated,
+        wakes: false
+      }
+    );
     return true;
   }
 
@@ -214,18 +225,20 @@ export class ParentObservations implements ExtensionSessionContextProvider {
   ): void {
     if (this.#closed) return;
     const { childId, runId, executionId, kind } = input;
+    const revision = ++this.#revision;
     const resultKey = JSON.stringify([childId, runId, executionId]);
     if (kind === 'terminal' && input.value !== 'SUCCEEDED') {
       const result = this.#results.get(resultKey);
       if (result) {
-        result.revision = ++this.#revision;
+        result.revision = revision;
         delete result.summary;
         delete result.summaryTruncated;
+        delete result.summaryRevision;
       }
     }
     if (kind === 'files' || (kind === 'message' && input.final)) {
       const result = this.#results.get(resultKey) ?? { changedFiles: [], revision: 0 };
-      result.revision = ++this.#revision;
+      result.revision = revision;
       if (kind === 'files') {
         for (const path of input.paths) {
           if (result.changedFiles.includes(path)) continue;
@@ -238,6 +251,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       } else {
         const summary = boundedUtf8(input.value, 16_384);
         result.summary = summary.value;
+        result.summaryRevision = revision;
         if (summary.truncated) result.summaryTruncated = true;
         else delete result.summaryTruncated;
         if (input.turnId) result.turnId = input.turnId;
@@ -248,9 +262,15 @@ export class ParentObservations implements ExtensionSessionContextProvider {
     if (kind === 'files') return;
     const { value } = input;
     const bounded = boundedUtf8(value, 2_000);
-    const key = JSON.stringify([childId, runId, executionId, kind]);
+    const key = JSON.stringify([
+      childId,
+      runId,
+      executionId,
+      kind,
+      ...(kind === 'message' ? [revision] : [])
+    ]);
     this.#items.set(key, {
-      revision: ++this.#revision,
+      revision,
       childId,
       runId,
       executionId,
@@ -284,17 +304,14 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       8
     );
     return children.map((childId) => {
-      const snapshot = this.capture(childId)!;
-      const updates =
-        snapshot.result?.summary && !snapshot.result.summaryTruncated
-          ? snapshot.updates.filter((item) => !item.final)
-          : snapshot.updates;
+      const snapshot = this.captureBatch(childId, undefined, Infinity)!;
       const content = boundedObservation({
         agentId: snapshot.childId,
         runId: snapshot.runId,
         executionId: snapshot.executionId,
+        ...(snapshot.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
         ...snapshot.result,
-        updates: updates.map((item) => ({
+        updates: snapshot.updates.map((item) => ({
           kind: item.kind,
           value: item.value,
           ...(item.truncated ? { truncated: true } : {})
@@ -307,8 +324,16 @@ export class ParentObservations implements ExtensionSessionContextProvider {
     });
   }
 
-  /** Capture the same versions used by automatic collection for wait/send consumption. */
+  /** Capture one unread message plus the terminal result for an explicit consumer. */
   capture(childId: string, executionId?: string): AgentObservationSnapshot | undefined {
+    return this.captureBatch(childId, executionId, 1);
+  }
+
+  private captureBatch(
+    childId: string,
+    executionId: string | undefined,
+    maximumMessages: number
+  ): AgentObservationSnapshot | undefined {
     const group: Array<[string, Observation]> = [];
     for (const [key, item] of this.#items) {
       if (
@@ -334,52 +359,57 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       ...(stored.changedFilesTruncated ? { changedFilesTruncated: true } : {})
     };
     const resultRevision = stored?.revision;
+    const coveredFinal =
+      result?.summary && !result.summaryTruncated
+        ? group.find(([, item]) => item.revision === stored?.summaryRevision)
+        : undefined;
+    // Keep space for the terminal result and envelope. Escaping can expand a 2 KB message sixfold.
+    let messageBytes = 0;
+    let messageCount = 0;
+    let batchFull = false;
+    const delivered = group.filter(([key, item]) => {
+      if (item.kind === 'terminal' || key === coveredFinal?.[0]) return true;
+      if (batchFull || messageCount >= maximumMessages) return false;
+      const bytes = Buffer.byteLength(
+        escapedJson({
+          kind: item.kind,
+          value: item.value,
+          ...(item.truncated ? { truncated: true } : {})
+        }),
+        'utf8'
+      );
+      if (messageBytes + bytes > 16_384) {
+        batchFull = true;
+        return false;
+      }
+      messageBytes += bytes;
+      messageCount++;
+      return true;
+    });
     return {
       childId,
       runId: first.runId,
       executionId: first.executionId,
-      firstRevision: Math.min(...group.map(([, item]) => item.revision)),
+      firstRevision: Math.min(...delivered.map(([, item]) => item.revision)),
+      ...(delivered.length < group.length ? { hasMoreUpdates: true as const } : {}),
       ...(result === undefined ? {} : { result }),
-      updates: group.map(([, item]) => ({
-        kind: item.kind,
-        value: item.value,
-        truncated: item.truncated,
-        ...(item.final ? { final: true } : {})
-      })),
+      updates: delivered
+        .filter(([key]) => key !== coveredFinal?.[0])
+        .map(([, item]) => ({
+          kind: item.kind,
+          value: item.value,
+          truncated: item.truncated,
+          ...(item.final ? { final: true } : {})
+        })),
       acknowledge: () => {
         let terminalAcknowledged = false;
-        for (const [key, item] of group) {
+        for (const [key, item] of delivered) {
           if (this.#items.get(key)?.revision !== item.revision) continue;
           this.#items.delete(key);
           if (item.kind === 'terminal') terminalAcknowledged = true;
         }
         if (terminalAcknowledged && this.#results.get(resultKey)?.revision === resultRevision)
           this.#results.delete(resultKey);
-      }
-    };
-  }
-
-  captureBeforeSend(childId: string): { acknowledge(): void } {
-    const captured = [...this.#items].filter(([, item]) => item.childId === childId);
-    const results = new Map(
-      captured
-        .filter(([, item]) => item.kind === 'terminal')
-        .map(([, item]) => {
-          const key = JSON.stringify([item.childId, item.runId, item.executionId]);
-          return [key, this.#results.get(key)?.revision] as const;
-        })
-    );
-    return {
-      acknowledge: () => {
-        for (const [key, item] of captured) {
-          if (this.#items.get(key)?.revision !== item.revision) continue;
-          this.#items.delete(key);
-          if (item.kind === 'terminal') {
-            const resultKey = JSON.stringify([item.childId, item.runId, item.executionId]);
-            if (this.#results.get(resultKey)?.revision === results.get(resultKey))
-              this.#results.delete(resultKey);
-          }
-        }
       }
     };
   }
@@ -403,10 +433,17 @@ function boundedUtf8(value: string, maximum: number): { value: string; truncated
   return { value: bytes.subarray(0, end).toString('utf8'), truncated: true };
 }
 
+function escapedJson(value: unknown): string {
+  return JSON.stringify(value).replace(/[<>&]/g, (character) =>
+    character === '<' ? '\\u003c' : character === '>' ? '\\u003e' : '\\u0026'
+  );
+}
+
 function boundedObservation(input: {
   agentId: string;
   runId: string;
   executionId: string;
+  hasMoreUpdates?: boolean;
   summary?: string;
   summaryTruncated?: boolean;
   turnId?: string;
@@ -421,12 +458,10 @@ function boundedObservation(input: {
   };
   let updatesTruncated = false;
   const render = () =>
-    `<mar_subagent_update>\n${JSON.stringify({
+    `<mar_subagent_update>\n${escapedJson({
       ...data,
       ...(updatesTruncated ? { updatesTruncated: true } : {})
-    }).replace(/[<>&]/g, (character) =>
-      character === '<' ? '\\u003c' : character === '>' ? '\\u003e' : '\\u0026'
-    )}\n</mar_subagent_update>`;
+    })}\n</mar_subagent_update>`;
   const tooLarge = () => Buffer.byteLength(render(), 'utf8') > 32768;
   while (tooLarge() && data.changedFiles?.length) {
     data.changedFiles.pop();
@@ -467,11 +502,10 @@ function boundedObservation(input: {
       agentId: boundedUtf8(data.agentId, 512).value,
       runId: boundedUtf8(data.runId, 512).value,
       executionId: boundedUtf8(data.executionId, 512).value,
+      ...(data.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
       detailsTruncated: true
     };
-    return `<mar_subagent_update>\n${JSON.stringify(fallback).replace(/[<>&]/g, (character) =>
-      character === '<' ? '\\u003c' : character === '>' ? '\\u003e' : '\\u0026'
-    )}\n</mar_subagent_update>`;
+    return `<mar_subagent_update>\n${escapedJson(fallback)}\n</mar_subagent_update>`;
   }
   return render();
 }

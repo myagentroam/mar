@@ -30,6 +30,41 @@ function fixture(parentWorkspace = 'workspace') {
 }
 
 describe('Agent Network Run projection', () => {
+  it('retains pending approval details when a later public reply arrives', async () => {
+    const f = fixture();
+    const parent = f.observations.attach(f.parent.id);
+    f.runtime.createApproval({
+      runId: f.run.id,
+      approvalId: 'approval-to-retain',
+      payload: { toolName: 'command' },
+      expiresAt: Date.now() + 60_000
+    });
+    f.projection.accept({
+      run: f.run,
+      executionId: 'execution',
+      eventType: 'approval.request',
+      payload: {}
+    });
+    f.projection.accept({
+      run: f.run,
+      executionId: 'execution',
+      eventType: 'conversation.item',
+      payload: {
+        kind: 'assistant_message',
+        status: 'COMPLETED',
+        payload: { text: 'Waiting for approval', phase: 'commentary' }
+      }
+    });
+    const [item] = await parent.collect(new AbortController().signal);
+    expect(item!.content).toContain('pendingApprovals');
+    expect(item!.content).toContain('approval-to-retain');
+    expect(item!.content).toContain('Waiting for approval');
+    item!.acknowledge();
+    expect(await parent.collect(new AbortController().signal)).toEqual([]);
+    parent.close();
+    f.projection.dispose();
+  });
+
   it('projects approvals and terminal identity to the direct parent, not a foreign Workspace', () => {
     const f = fixture();
     const parent = f.observations.attach(f.parent.id);

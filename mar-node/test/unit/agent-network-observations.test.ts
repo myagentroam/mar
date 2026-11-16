@@ -16,6 +16,97 @@ function publish(
 }
 
 describe('live Agent Network observations', () => {
+  it.each([false, true])(
+    'retains an unread decision request before a later reply (final=%s)',
+    async (final) => {
+      const network = new AgentNetworkObservations();
+      const parent = network.attach('parent');
+      const identity = {
+        parentId: 'parent',
+        childId: 'child',
+        runId: 'run',
+        executionId: 'execution'
+      };
+      network.publish({ ...identity, kind: 'message', value: 'Choose A or B before I proceed' });
+      network.publish({ ...identity, kind: 'message', value: 'Waiting for guidance', final });
+      if (final) network.publish({ ...identity, kind: 'terminal', value: 'SUCCEEDED' });
+      const [item] = await parent.collect(new AbortController().signal);
+      expect(item!.content).toContain('Choose A or B before I proceed');
+      expect(item!.content.match(/Waiting for guidance/g)).toHaveLength(1);
+      const [retry] = await parent.collect(new AbortController().signal);
+      expect(retry!.content).toBe(item!.content);
+      item!.acknowledge();
+      expect(await parent.collect(new AbortController().signal)).toEqual([]);
+      parent.close();
+    }
+  );
+
+  it('retains earlier final replies instead of treating every final as the summary', async () => {
+    const network = new AgentNetworkObservations();
+    const parent = network.attach('parent');
+    const identity = {
+      parentId: 'parent',
+      childId: 'child',
+      runId: 'run',
+      executionId: 'execution'
+    };
+    for (const value of ['Decision: choose A or B', 'Latest final'])
+      network.publish({ ...identity, kind: 'message', value, final: true });
+    network.publish({ ...identity, kind: 'terminal', value: 'SUCCEEDED' });
+    const [item] = await parent.collect(new AbortController().signal);
+    expect(item!.content).toContain('Decision: choose A or B');
+    expect(item!.content.match(/Latest final/g)).toHaveLength(1);
+    item!.acknowledge();
+    expect(await parent.collect(new AbortController().signal)).toEqual([]);
+    parent.close();
+  });
+
+  it.each([false, true])(
+    'batches escaped unread messages without consuming later batches (terminal=%s)',
+    async (terminal) => {
+      const network = new AgentNetworkObservations();
+      const parent = network.attach('parent');
+      const expected = Array.from({ length: 12 }, (_, index) => `${index}:` + '<'.repeat(1900));
+      for (const value of expected) publish(network, 'parent', 'child', 'message', value);
+      if (terminal) {
+        network.publish({
+          parentId: 'parent',
+          childId: 'child',
+          runId: 'run-1',
+          executionId: 'execution-1',
+          kind: 'message',
+          value: 'Final summary',
+          final: true
+        });
+        publish(network, 'parent', 'child', 'terminal', 'SUCCEEDED');
+      }
+      const delivered: string[] = [];
+      const summaries: string[] = [];
+      for (let batch = 0; batch < expected.length; batch++) {
+        const [item] = await parent.collect(new AbortController().signal);
+        if (!item) break;
+        expect(Buffer.byteLength(item.content)).toBeLessThanOrEqual(32768);
+        const payload = JSON.parse(
+          item.content.slice('<mar_subagent_update>\n'.length, -'\n</mar_subagent_update>'.length)
+        );
+        expect(payload).not.toHaveProperty('updatesTruncated');
+        if (batch < expected.length - 1) expect(payload.hasMoreUpdates).toBe(true);
+        else expect(payload).not.toHaveProperty('hasMoreUpdates');
+        if (payload.summary) summaries.push(payload.summary);
+        for (const update of payload.updates) {
+          expect(update).not.toHaveProperty('truncated');
+          if (update.kind === 'message') delivered.push(update.value);
+        }
+        expect((await parent.collect(new AbortController().signal))[0]!.content).toBe(item.content);
+        item.acknowledge();
+      }
+      expect(delivered).toEqual(expected);
+      expect(summaries).toEqual(terminal ? ['Final summary'] : []);
+      expect(await parent.collect(new AbortController().signal)).toEqual([]);
+      parent.close();
+    }
+  );
+
   it.each(['FAILED', 'CANCELLED'] as const)(
     'does not project an earlier final message as a summary after %s',
     async (status) => {

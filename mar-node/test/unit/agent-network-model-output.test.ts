@@ -13,6 +13,7 @@ it('bounds the model projection fairly while preserving the Node result', () => 
       status: 'SUCCEEDED',
       waitOutcome: 'completion',
       summary,
+      hasMoreUpdates: true,
       changedFiles: Array.from({ length: 200 }, (_, i) => `src/${n}/${i}-${'x'.repeat(100)}.ts`)
     }))
   };
@@ -23,6 +24,7 @@ it('bounds the model projection fairly while preserving the Node result', () => 
     input.agents.map((item) => item.agentId)
   );
   expect(output.agents.every((item) => 'summaryTruncated' in item)).toBe(true);
+  expect(output.agents.every((item) => item.hasMoreUpdates === true)).toBe(true);
   expect(output.agents.every((item) => !('runId' in item) && !('executionId' in item))).toBe(true);
   expect(
     input.agents.every((item) => item.summary === summary && item.changedFiles.length === 200)
@@ -128,6 +130,7 @@ it('wraps implicit child selection in agents and preserves messages, files and i
     status: 'RUNNING',
     changedFiles: ['src/task.ts'],
     changedFilesTruncated: true,
+    hasMoreUpdates: true,
     updates: [{ kind: 'message', value: 'A decision is needed', truncated: false }]
   };
   expect(agentNetworkModelOutput('wait', input)).toEqual({
@@ -141,6 +144,7 @@ it('wraps implicit child selection in agents and preserves messages, files and i
         waitOutcome: 'interrupted',
         changedFiles: ['src/task.ts'],
         changedFilesTruncated: true,
+        hasMoreUpdates: true,
         updates: input.updates
       }
     ]
