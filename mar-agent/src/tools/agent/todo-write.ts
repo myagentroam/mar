@@ -5,6 +5,7 @@ import type { TodoItem } from './todo.js';
 import { AgentError } from '../../error.js';
 import { TOOL_EXECUTION_LIMITS } from '../execution-limits.js';
 
+/** @deprecated Unregistered legacy Todo tool; retained until Todo compatibility is removed. */
 export const todoWriteToolDefinition: ClientToolDefinition = {
   name: 'todo_write',
   allowedCallers: ['direct', 'programmatic'],
@@ -34,6 +35,7 @@ export const todoWriteToolDefinition: ClientToolDefinition = {
   }
 };
 
+/** @deprecated Internal legacy handler; not registered as a callable tool. */
 export async function executeTodoWrite(arguments_: unknown, context: ToolRuntimeContext) {
   const value = parseTodoWriteInput(arguments_);
   const todo = context.todo.write(value);

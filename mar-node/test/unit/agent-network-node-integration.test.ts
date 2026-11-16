@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -41,6 +41,7 @@ describe('Node Agent Network owner integration', () => {
     'allows parallel reads while publishing resolved wait titles and replaying history (nested=%s)',
     async (nested) => {
       const directory = await mkdtemp(join(tmpdir(), 'mar-network-wait-titles-'));
+      await writeFile(join(directory, 'input.txt'), 'NETWORK_PARALLEL_READ_OK\n');
       const network = new AgentNetworkObservations();
       const observer = network.attach('parent');
       const children = ['a', 'b'].map(
@@ -124,7 +125,7 @@ describe('Node Agent Network owner integration', () => {
                 name: nested ? 'code_exec' : 'agent_wait',
                 arguments: nested
                   ? {
-                      code: `await Promise.all([tools.agent_wait(${JSON.stringify(input)}), tools.todo_read({})]);`
+                      code: `await Promise.all([tools.agent_wait(${JSON.stringify(input)}), tools.read({reads:[{path:"input.txt"}]})]);`
                     }
                   : input
               };
@@ -132,8 +133,8 @@ describe('Node Agent Network owner integration', () => {
                 yield {
                   type: 'client_tool.call',
                   callId: 'read-call',
-                  name: 'todo_read',
-                  arguments: {}
+                  name: 'read',
+                  arguments: { reads: [{ path: 'input.txt' }] }
                 };
               yield { type: 'completed', reason: 'tool_use' };
             } else {
@@ -196,7 +197,7 @@ describe('Node Agent Network owner integration', () => {
               })
             );
           }
-          if (event.type === 'tool.completed' && event.toolName === 'todo_read') {
+          if (event.type === 'tool.completed' && event.toolName === 'read') {
             expect(completed).toBe(false);
             readCompleted = true;
           }

@@ -114,9 +114,9 @@ class ContextGcAdapter implements ModelAdapter {
     else if (call >= 3 && call <= 12)
       yield {
         type: 'client_tool.call',
-        callId: `todo-${call}`,
-        name: 'todo_read',
-        arguments: {}
+        callId: `sleep-${call}`,
+        name: 'sleep',
+        arguments: { durationMs: 1 }
       };
     else yield { type: 'text.completed', itemId: `answer-${call}`, text: 'finished' };
     yield {

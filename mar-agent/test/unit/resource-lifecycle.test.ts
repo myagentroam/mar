@@ -453,8 +453,8 @@ describe('resource lifecycle', () => {
             yield {
               type: 'client_tool.call',
               callId: 'snapshot',
-              name: 'todo_read',
-              arguments: {}
+              name: 'sleep',
+              arguments: { durationMs: 1 }
             };
             yield { type: 'completed', reason: 'tool_use' };
           } else {

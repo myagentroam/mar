@@ -2,6 +2,7 @@ import type { ClientToolDefinition } from '../contracts.js';
 
 import type { ToolRuntimeContext } from '../runtime-context.js';
 
+/** @deprecated Unregistered legacy Todo tool; retained until Todo compatibility is removed. */
 export const todoReadToolDefinition: ClientToolDefinition = {
   name: 'todo_read',
   allowedCallers: ['direct', 'programmatic'],
@@ -11,6 +12,7 @@ export const todoReadToolDefinition: ClientToolDefinition = {
   inputSchema: { type: 'object', properties: {}, additionalProperties: false }
 };
 
+/** @deprecated Internal legacy handler; not registered as a callable tool. */
 export function executeTodoRead(context: ToolRuntimeContext) {
   const plan = context.todo.read();
   return Promise.resolve({ content: JSON.stringify(plan), data: plan });

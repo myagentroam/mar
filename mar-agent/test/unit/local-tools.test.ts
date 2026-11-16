@@ -117,8 +117,6 @@ describe('local workspace tools', () => {
 
   it('registers each built-in once without a built-in collaboration handler', () => {
     const names = BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name);
-    const todoRead = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'todo_read')!;
-    const todoWrite = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'todo_write')!;
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual([
       'skill',
@@ -131,8 +129,6 @@ describe('local workspace tools', () => {
       'code_exec_wait',
       'apply_patch',
       'question',
-      'todo_read',
-      'todo_write',
       'smart_compact',
       'sleep'
     ]);
@@ -141,21 +137,13 @@ describe('local workspace tools', () => {
       'sleep',
       'smart_compact',
       'tool_search',
-      'question',
-      'todo_read',
-      'todo_write'
+      'question'
     ]);
     expect(names.some((name) => name.startsWith('agent_'))).toBe(false);
-    expect(todoRead.description).toContain(
-      'Do not read an empty or new Todo merely to decide whether straightforward bounded work needs one.'
-    );
-    expect(todoWrite.description).toContain(
-      'Use only after Todo has been chosen for coordination-heavy work'
-    );
-    expect(todoWrite.description).toContain('straightforward bounded work does not need it');
-    expect(todoWrite.description).toContain('after meaningful stage changes');
-    expect(todoWrite.description).toContain('same model response');
-    expect(todoWrite.description).toContain('only for Todo bookkeeping');
+    for (const name of ['todo_read', 'todo_write']) {
+      expect(names).not.toContain(name);
+      expect(AGENT_TOOL_HANDLERS.has(name)).toBe(false);
+    }
   });
 
   it('reads a validated image as transient multimodal content without exposing base64 in data', async () => {

@@ -12,7 +12,7 @@ import type { EventPayload } from '../../src/runtime/events.js';
 import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
 import { ExecutionLoop, type ExecutionLoopInput } from '../../src/runtime/execution.js';
 import { TodoStore } from '../../src/tools/agent/todo.js';
-import { todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
+import { sleepToolDefinition } from '../../src/tools/agent/sleep.js';
 import { executeRoundTools, type RoundToolScope } from '../../src/tools/execution.js';
 import { createSessionToolScheduler } from '../../src/tools/scheduler.js';
 
@@ -241,11 +241,9 @@ describe('Execution loop boundaries', () => {
         if (seenAttempts.length === 1) {
           yield {
             type: 'client_tool.call',
-            callId: 'todo',
-            name: 'todo_write',
-            arguments: {
-              items: [{ id: 'done', step: 'Record the completed operation.', status: 'completed' }]
-            }
+            callId: 'sleep',
+            name: 'sleep',
+            arguments: { durationMs: 1 }
           };
           yield { type: 'completed', reason: 'tool_use' };
           return;
@@ -263,7 +261,7 @@ describe('Execution loop boundaries', () => {
         }
         yield { type: 'completed', reason: 'completed' };
       },
-      [todoWriteToolDefinition]
+      [sleepToolDefinition]
     );
     const outcome = new ExecutionLoop(state.input).run().then(
       (result) => ({ result }),
@@ -272,7 +270,7 @@ describe('Execution loop boundaries', () => {
     expect(await outcome).toMatchObject({ result: { finalAnswer: 'Recovered.' } });
     expect(seenAttempts).toEqual([0, 0, 1]);
     expect(
-      state.publish.mock.calls.filter(([event]) => event.type === 'todo.updated')
+      state.publish.mock.calls.filter(([event]) => event.type === 'sleep.started')
     ).toHaveLength(1);
     expect(state.closeMailbox).toHaveBeenCalledOnce();
   });

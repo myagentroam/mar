@@ -119,7 +119,7 @@ ask 通过 Runner 审批卡在线等待，显示公开原因、命令/参数/代
 
 **Auto 不是操作系统沙箱，也不是独立安全审查器。** Full access 不做 Auto 自评，两种档位都保留 Host 路径与资源校验，工具使用 Node 服务账号的实际权限。请使用低权限专用账号并限制 Workspace 和主机权限。
 
-原生会话记录保存在 Node 运行账号的 `~/.mar/agent/sessions/`。Server 不保存会话正文。MAR Agent 支持 Plan、Compact、question、Todo、MCP、图片和 subagent。每个 subagent 都是独立持久化的子会话，保留自己的历史和父子关系，但默认会话列表只显示用户根会话；Agent Network 支持根会话、子会话和孙会话三层，不支持第四层。目标模式由 Node 的统一 Goal 流程管理，不在 Agent SDK 内重复实现。
+原生会话记录保存在 Node 运行账号的 `~/.mar/agent/sessions/`。Server 不保存会话正文。MAR Agent 支持 Plan、Compact、question、MCP、图片和 subagent。Todo 工具已废弃，不再向模型提供，也没有启用开关；已有会话中的 Todo 历史仍保留兼容。每个 subagent 都是独立持久化的子会话，保留自己的历史和父子关系，但默认会话列表只显示用户根会话；Agent Network 支持根会话、子会话和孙会话三层，不支持第四层。目标模式由 Node 的统一 Goal 流程管理，不在 Agent SDK 内重复实现。
 
 MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提供名称和用途摘要；用户请求明确命中某个 Skill 时，再加载该 Skill 的完整工作流和资源目录。无需在请求中写出 Skill 名称。 同名技能按 Workspace、用户、SDK 内置的顺序选择；项目可以定制指导，但不能改变工具参数或主机权限。
 

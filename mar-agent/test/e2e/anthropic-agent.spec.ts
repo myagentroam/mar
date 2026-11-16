@@ -24,9 +24,6 @@ async function finish(handle: ExecutionHandle) {
   for await (const event of handle) events.push(event);
   return { events, result: await handle.result() };
 }
-function latestTodoItems(events: readonly AgentEvent[]) {
-  return events.findLast((event) => event.type === 'todo.updated')?.items;
-}
 function captureRequests(model: AgentModelConfiguration, requests: ModelRequest[]): ModelAdapter {
   const delegate = new AnthropicMessagesAdapter(model);
   return {
@@ -174,8 +171,8 @@ describe.runIf(enabled)('Anthropic-compatible Agent E2E', () => {
     }
   }, 60_000);
 
-  it('replaces completed Todo items for an unrelated objective and preserves them for continuation', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'mar-agent-todo-objectives-'));
+  it('uses ordinary tools without exposing retired Todo tools', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-agent-todo-retired-'));
     directories.push(root);
     const home = join(root, 'home');
     const workspace = join(root, 'workspace');
@@ -183,62 +180,41 @@ describe.runIf(enabled)('Anthropic-compatible Agent E2E', () => {
     await writeFile(join(workspace, 'sample.ts'), 'export const value = 1;\n');
     const catalog = await loadCatalog();
     const model = catalog.models.find((candidate) => candidate.id === 'coding')!;
-    const agent = await createMarAgent({
-      mode: 'normal',
-      host: new LocalAgentHost({ homeDirectory: home, workspace }),
-      models: [model],
-      defaultModelId: model.id
-    });
+    const requests: ModelRequest[] = [];
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace }),
+        models: [model],
+        defaultModelId: model.id
+      },
+      () => captureRequests(model, requests)
+    );
     try {
       const session = await agent.createSession({ workspace });
-      const previous = await finish(
+      const execution = await finish(
         session.run({
           prompt:
-            'Use todo_write to replace the Todo with exactly two completed items whose IDs are old-analysis and old-verification. Do not use other tools. Then reply OLD_TODO_READY.',
+            'Use read to inspect sample.ts, verify its exported value, and report the result.',
           modelId: model.id
         })
       );
-      expect(previous.result, previous.result.errorCode).toMatchObject({ status: 'completed' });
-      expect(latestTodoItems(previous.events)?.map((item) => item.id)).toEqual([
-        'old-analysis',
-        'old-verification'
-      ]);
-
-      const unrelated = await finish(
-        session.run({
-          prompt:
-            'Start a completely different multi-stage objective: inspect sample.ts, verify its exported value, and report the result. Use Todo to track this new objective before reading the file.',
-          modelId: model.id
-        })
-      );
-      expect(unrelated.result, unrelated.result.errorCode).toMatchObject({ status: 'completed' });
-      const unrelatedIds = latestTodoItems(unrelated.events)?.map((item) => item.id) ?? [];
-      expect(unrelatedIds.length).toBeGreaterThan(1);
-      expect(unrelatedIds).not.toContain('old-analysis');
-      expect(unrelatedIds).not.toContain('old-verification');
-      expect(unrelated.events).toEqual(
+      expect(execution.result, execution.result.errorCode).toMatchObject({ status: 'completed' });
+      expect(execution.events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ type: 'tool.completed', toolName: 'read' })
         ])
       );
-
-      const continuation = await finish(
-        session.run({
-          prompt:
-            'Continue the same sample.ts objective by adding a final verification step. Update the existing Todo, preserve every current Todo ID, and then complete the verification.',
-          modelId: model.id
-        })
-      );
-      expect(continuation.result, continuation.result.errorCode).toMatchObject({
-        status: 'completed'
-      });
-      const continuationIds = latestTodoItems(continuation.events)?.map((item) => item.id) ?? [];
-      expect(continuationIds.length).toBeGreaterThan(unrelatedIds.length);
-      expect(continuationIds).toEqual(expect.arrayContaining(unrelatedIds));
+      expect(execution.events.some((event) => event.type === 'todo.updated')).toBe(false);
+      expect(requests.length).toBeGreaterThan(0);
+      for (const request of requests) {
+        expect(request.tools.map((tool) => tool.name)).not.toContain('todo_read');
+        expect(request.tools.map((tool) => tool.name)).not.toContain('todo_write');
+      }
     } finally {
       await agent.dispose();
     }
-  }, 180_000);
+  }, 60_000);
 
   it('completes workflow modes, interaction, resume, cancellation and subagent', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mar-agent-workflows-'));
@@ -267,14 +243,14 @@ describe.runIf(enabled)('Anthropic-compatible Agent E2E', () => {
       });
     let agent = await create();
     const session = await agent.createSession({ workspace });
-    const todo = await finish(
+    const initial = await finish(
       session.run({
-        prompt: 'Use todo_write to create one completed item, then reply TODO_OK.'
+        prompt: 'Reply WORKFLOW_READY.'
       })
     );
-    expect(todo.result.errorCode).toBeUndefined();
-    expect(todo.result).toMatchObject({ status: 'completed' });
-    expect(todo.events.some((event) => event.type === 'todo.updated')).toBe(true);
+    expect(initial.result.errorCode).toBeUndefined();
+    expect(initial.result).toMatchObject({ status: 'completed' });
+    expect(initial.events.some((event) => event.type === 'todo.updated')).toBe(false);
     const plan = await finish(
       session.plan({
         prompt:
