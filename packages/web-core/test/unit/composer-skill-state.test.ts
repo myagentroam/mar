@@ -1,6 +1,6 @@
 import { parseComposerTags } from '@myagentroam/protocol';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { createComposerSkillService } from '../../src/service/composer-skill-service.js';
 import type { EffectiveWorkspaceSkill } from '../../src/service/effective-workspace-skill-service.js';
@@ -58,6 +58,39 @@ async function flush(): Promise<void> {
 }
 
 describe('Web Composer Skill Loading State', () => {
+  it.each(['success', 'failure'] as const)(
+    'discards an old-account skill %s while the same Workspace loads for the next account',
+    async (outcome) => {
+      let resolveOld!: (value: { skills: readonly EffectiveWorkspaceSkill[] }) => void;
+      let rejectOld!: (error: Error) => void;
+      let resolveCurrent!: (value: { skills: readonly EffectiveWorkspaceSkill[] }) => void;
+      let reads = 0;
+      const f = createSkillServiceHarness({
+        respond: () =>
+          ++reads === 1
+            ? new Promise((resolve, reject) => {
+                resolveOld = resolve;
+                rejectOld = reject;
+              })
+            : new Promise((resolve) => {
+                resolveCurrent = resolve;
+              })
+      });
+      f.service.ensureFresh();
+      f.service.clear();
+      f.service.ensureFresh();
+      if (outcome === 'success') resolveOld({ skills: [skillA] });
+      else rejectOld(new Error('old request failed'));
+      await flush();
+      expect(f.skills.value).toEqual([]);
+      expect(f.loading.value).toBe(true);
+      expect(f.failed.value).toBe(false);
+      resolveCurrent({ skills: [skillB] });
+      await vi.waitFor(() => expect(f.skills.value).toEqual([skillB]));
+      expect(f.loading.value).toBe(false);
+    }
+  );
+
   it('Loads skills when first invoked and avoids duplicate requests for five minutes', async () => {
     let now = 1_000_000;
     const harness = createSkillServiceHarness({ now: () => now });

@@ -103,6 +103,7 @@ function catalog(hash: string, includeContextWindow: boolean) {
 }
 
 interface ManagementShellIdentity {
+  readonly userId: number;
   readonly username: string;
   readonly isAdmin: boolean;
   readonly edition: 'COMMUNITY' | 'ENTERPRISE';
@@ -115,6 +116,7 @@ interface ManagementShellIdentity {
 async function mockManagementShell(
   page: Page,
   identity: ManagementShellIdentity = {
+    userId: 1,
     username: 'admin',
     isAdmin: true,
     edition: 'COMMUNITY',
@@ -245,6 +247,7 @@ async function chooseNamedCatalogModel(
 test('Enterprise members can manage their own models and Codex credentials', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await mockManagementShell(page, {
+    userId: 2,
     username: 'member',
     isAdmin: false,
     edition: 'ENTERPRISE',
@@ -2223,6 +2226,7 @@ test('Enterprise model grants and organization credential ownership reuse shared
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await mockManagementShell(page, {
+    userId: 1,
     username: 'admin',
     isAdmin: true,
     edition: 'ENTERPRISE',

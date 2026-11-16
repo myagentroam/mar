@@ -159,6 +159,58 @@ async function fixture(hasUnread = false) {
 }
 
 describe('Hosted history selection during initial opening', () => {
+  it.each(['success', 'failure'])(
+    'retires the old page file batch before starting another file under a new account after %s',
+    async (outcome) => {
+      const f = await fixture();
+      const snapshot = {
+        conversation: first,
+        template: {
+          id: 'template',
+          nodeId: first.nodeId,
+          name: 'Template',
+          description: '',
+          status: 'ACTIVE',
+          currentVersionId: 'version',
+          available: true,
+          createdAt: 1,
+          updatedAt: 1
+        },
+        run: null,
+        turns: [],
+        files: [],
+        models: [],
+        historyNextCursor: null,
+        error: null,
+        snapshotSequence: 1
+      };
+      f.workspace.selectConversation(first.nodeId, first.id, snapshot as never);
+      const pending = deferred();
+      const upload = vi.spyOn(f.workspace, 'uploadFile').mockImplementation(async () => {
+        await pending.promise;
+        if (outcome === 'failure') throw new Error('OLD_UPLOAD_FAILED');
+        return {} as never;
+      });
+      await flushComponent();
+      const input = f.view
+        .findAll('input')
+        .find((node) => node.props.class === 'related-files-input')!;
+      await trigger(input, 'onChange', {
+        target: { value: 'files', files: [{ name: 'first.txt' }, { name: 'second.txt' }] }
+      });
+      expect(upload).toHaveBeenCalledTimes(1);
+      f.workspace.clear();
+      f.view.unmount();
+      expect(upload.mock.calls[0]?.[3]?.aborted).toBe(true);
+      f.workspace.selectConversation(first.nodeId, first.id, snapshot as never);
+      vi.mocked(showMessage).mockClear();
+      pending.resolve();
+      await flushComponent();
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect(showMessage).not.toHaveBeenCalled();
+    }
+  );
+
   it('replaces the refresh icon with a loading icon while reloading history', async () => {
     const f = await fixture();
     try {

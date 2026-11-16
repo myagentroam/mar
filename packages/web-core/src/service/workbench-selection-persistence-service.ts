@@ -10,6 +10,7 @@ interface StoredWorkbenchSelection {
 
 const SELECTION_STORAGE_KEY = 'mar.workbench.selection.v1';
 export interface WorkbenchSelectionPersistenceOptions {
+  readonly storage?: Storage;
   readonly isWorkbenchActive: () => boolean;
   readonly nodes: Ref<readonly NodeSummary[]>;
   readonly sessions: Ref<readonly Session[]>;
@@ -29,11 +30,13 @@ export interface WorkbenchSelectionPersistenceOptions {
 export function createWorkbenchSelectionPersistenceService(
   options: WorkbenchSelectionPersistenceOptions
 ) {
+  let storage = options.storage ?? localStorage;
   let initialized = false;
   const pendingRestores = new Set<() => boolean>();
 
   async function restore(): Promise<void> {
-    const selection = readSelection();
+    const owner = storage;
+    const selection = readSelection(storage);
     if (
       !options.isWorkbenchActive() ||
       selection === undefined ||
@@ -49,6 +52,7 @@ export function createWorkbenchSelectionPersistenceService(
     const target = options.workspaceTarget.value;
     const revision = options.currentSelectionRevision?.();
     const current = () =>
+      owner === storage &&
       target !== undefined &&
       options.workspaceTarget.value === target &&
       options.selectedSessionId.value === undefined &&
@@ -59,11 +63,12 @@ export function createWorkbenchSelectionPersistenceService(
         await restoreSession(selection.workspace.workspaceId, selection.sessionId);
     } finally {
       pendingRestores.delete(current);
-      persist();
+      if (owner === storage) persist();
     }
   }
 
   async function restoreSession(workspaceId: string, preferredId?: string): Promise<void> {
+    const owner = storage;
     const targetWorkspace = options.workspaceTarget.value;
     if (targetWorkspace === undefined) return;
     const nodeId = targetWorkspace.nodeId;
@@ -72,6 +77,7 @@ export function createWorkbenchSelectionPersistenceService(
     const selectedId = options.selectedSessionId.value;
     const revision = options.currentSelectionRevision?.();
     const current = () =>
+      owner === storage &&
       options.workspaceTarget.value === targetWorkspace &&
       targetWorkspace.workspaceId === workspaceId &&
       options.selectedSessionId.value === selectedId &&
@@ -117,7 +123,7 @@ export function createWorkbenchSelectionPersistenceService(
       }
     } finally {
       pendingRestores.delete(current);
-      persist();
+      if (owner === storage) persist();
     }
   }
 
@@ -135,10 +141,10 @@ export function createWorkbenchSelectionPersistenceService(
         : selectedId;
     try {
       if (workspace === undefined) {
-        localStorage.removeItem(SELECTION_STORAGE_KEY);
+        storage.removeItem(SELECTION_STORAGE_KEY);
         return;
       }
-      localStorage.setItem(
+      storage.setItem(
         SELECTION_STORAGE_KEY,
         JSON.stringify({
           workspace,
@@ -151,14 +157,23 @@ export function createWorkbenchSelectionPersistenceService(
     }
   }
 
-  return { restore, restoreSession, persist };
+  return {
+    restore,
+    restoreSession,
+    persist,
+    bindStorage: (next: Storage) => {
+      storage = next;
+      initialized = false;
+      pendingRestores.clear();
+    }
+  };
 }
 
-function readSelection(): StoredWorkbenchSelection | undefined {
+function readSelection(storage: Storage): StoredWorkbenchSelection | undefined {
   try {
-    const value = JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY) ?? 'null') as unknown;
+    const value = JSON.parse(storage.getItem(SELECTION_STORAGE_KEY) ?? 'null') as unknown;
     if (isSelection(value)) return value;
-    if (value !== null) localStorage.removeItem(SELECTION_STORAGE_KEY);
+    if (value !== null) storage.removeItem(SELECTION_STORAGE_KEY);
     return undefined;
   } catch {
     return undefined;

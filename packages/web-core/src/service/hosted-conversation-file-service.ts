@@ -14,6 +14,7 @@ interface FileTarget {
   readonly conversationId: string;
 }
 
+/** Owns file requests and upload sequences; retiring uploads stops follow-up writes, not accepted commits. */
 export function createHostedConversationFileService(options: {
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly requireContext: () => FileTarget;
@@ -21,6 +22,7 @@ export function createHostedConversationFileService(options: {
   readonly removeFile: (target: FileTarget, fileId: string) => void;
   readonly acceptFile: (target: FileTarget, file: ConversationFileProjection) => void;
 }) {
+  let uploadGeneration = 0;
   function responseInvalid(): Error {
     return new Error('HOSTED_CONVERSATION_RESPONSE_INVALID');
   }
@@ -94,6 +96,10 @@ export function createHostedConversationFileService(options: {
     signal?: AbortSignal
   ): Promise<HostedConversationUpload> {
     const context = options.requireContext();
+    const generation = uploadGeneration;
+    const requireCurrent = () => {
+      if (generation !== uploadGeneration) throw new Error('UPLOAD_CANCELLED');
+    };
     if (options.templateChanging()) throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const mimeType = file.type.trim() || 'application/octet-stream';
     signal?.throwIfAborted();
@@ -114,7 +120,10 @@ export function createHostedConversationFileService(options: {
       throw responseInvalid();
     if (preflight.data.files[0].status !== 'READY')
       throw new Error(`HOSTED_CONVERSATION_UPLOAD_${preflight.data.files[0].status}`);
+    requireCurrent();
+    signal?.throwIfAborted();
 
+    // Keep creation observable so a local abort can cancel the returned upload identity.
     let upload = parseUploadResponse(
       await options.request<unknown>(`${conversationBasePath(context)}/uploads`, {
         method: 'POST',
@@ -123,17 +132,19 @@ export function createHostedConversationFileService(options: {
           size: file.size,
           mimeType,
           clientRequestId
-        }),
-        ...(signal === undefined ? {} : { signal })
+        })
       }),
       context.conversationId
     );
-    onProgress?.(upload);
+    requireCurrent();
     const chunkSize = 512 * 1024;
     try {
+      signal?.throwIfAborted();
+      onProgress?.(upload);
       for (let offset = upload.receivedBytes; offset < file.size; offset += chunkSize) {
         const end = Math.min(file.size, offset + chunkSize);
         const chunk = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+        requireCurrent();
         signal?.throwIfAborted();
         if (chunk.byteLength !== end - offset) throw responseInvalid();
         upload = parseUploadResponse(
@@ -150,28 +161,33 @@ export function createHostedConversationFileService(options: {
           ),
           context.conversationId
         );
+        requireCurrent();
         if (upload.receivedBytes !== end) throw responseInvalid();
         onProgress?.(upload);
       }
+      requireCurrent();
+      signal?.throwIfAborted();
+      // Once submitted, completion must settle independently of the page's local cancellation.
       upload = parseUploadResponse(
         await options.request<unknown>(
           `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/complete`,
           {
             method: 'POST',
-            body: '{}',
-            ...(signal === undefined ? {} : { signal })
+            body: '{}'
           }
         ),
         context.conversationId
       );
+      requireCurrent();
       if (upload.status !== 'COMPLETED' || upload.file === undefined) throw responseInvalid();
     } catch (error) {
-      await options
-        .request(
-          `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/cancel`,
-          { method: 'POST', body: '{}' }
-        )
-        .catch(() => undefined);
+      if (generation === uploadGeneration)
+        await options
+          .request(
+            `${conversationBasePath(context)}/uploads/${encodeURIComponent(upload.uploadId)}/cancel`,
+            { method: 'POST', body: '{}' }
+          )
+          .catch(() => undefined);
       throw error;
     }
     options.acceptFile(context, upload.file);
@@ -179,7 +195,15 @@ export function createHostedConversationFileService(options: {
     return upload;
   }
 
-  return { deleteFile, readFile, contentUrl, uploadFile };
+  return {
+    deleteFile,
+    readFile,
+    contentUrl,
+    uploadFile,
+    clearUploads: () => {
+      uploadGeneration += 1;
+    }
+  };
 }
 
 function record(value: unknown): value is Record<string, unknown> {

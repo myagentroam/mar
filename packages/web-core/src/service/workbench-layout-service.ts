@@ -12,6 +12,7 @@ interface WorkbenchLayout {
 }
 
 interface WorkbenchLayoutServiceOptions {
+  readonly storage?: { readonly local: Storage; readonly session: Storage };
   readonly sidebarCollapsed: Ref<boolean>;
   readonly expandedNodeIds: Ref<readonly string[]>;
   readonly nodeOrder: Ref<readonly string[]>;
@@ -29,6 +30,7 @@ interface WorkbenchLayoutServiceOptions {
 const LAYOUT_STORAGE_KEY = 'mar.workbench.layout.v1';
 const TABS_STORAGE_KEY = 'mar.workbench.tabs.v1';
 const WIDTHS_STORAGE_KEY = 'mar.workbench.panel-widths.v1';
+const SIDEBAR_STORAGE_KEY = 'mar.workbench.sidebar-collapsed.v1';
 
 export const WORKBENCH_PANEL_LIMITS = {
   sidebar: { min: 220, max: 420 },
@@ -47,6 +49,8 @@ function panelWidth(panel: WorkbenchPanel, value: unknown): number | undefined {
 
 export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOptions) {
   const panelWidths = ref<PanelWidths>({});
+  let local = options.storage?.local ?? localStorage;
+  let session = options.storage?.session ?? sessionStorage;
 
   function setPanelWidth(panel: WorkbenchPanel, value: number): void {
     const width = panelWidth(panel, value);
@@ -72,7 +76,12 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
 
   function persist(): void {
     try {
-      sessionStorage.setItem(
+      sessionStorage.setItem(SIDEBAR_STORAGE_KEY, String(options.sidebarCollapsed.value));
+    } catch {
+      // Browser preferences remain usable when persistence is unavailable.
+    }
+    try {
+      session.setItem(
         LAYOUT_STORAGE_KEY,
         JSON.stringify({
           sidebarCollapsed: options.sidebarCollapsed.value,
@@ -85,7 +94,7 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
       // A blocked or full browser session cache must not prevent access to Node facts.
     }
     try {
-      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(options.workspaceTabs.value));
+      local.setItem(TABS_STORAGE_KEY, JSON.stringify(options.workspaceTabs.value));
     } catch {
       // A blocked or full browser local cache must not prevent access to Node facts.
     }
@@ -112,12 +121,15 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
       // Invalid preferences fall back to responsive defaults independently of tabs.
     }
     try {
-      const layout = JSON.parse(sessionStorage.getItem(LAYOUT_STORAGE_KEY) ?? '{}') as unknown;
+      const layout = JSON.parse(session.getItem(LAYOUT_STORAGE_KEY) ?? '{}') as unknown;
       if (typeof layout === 'object' && layout !== null) {
         const stored = layout as WorkbenchLayout;
+        const collapsed = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
         options.sidebarCollapsed.value =
-          stored.sidebarCollapsed === true ||
-          (stored.sidebarCollapsed === undefined && stored.explorerCollapsed === true);
+          collapsed === null
+            ? stored.sidebarCollapsed === true ||
+              (stored.sidebarCollapsed === undefined && stored.explorerCollapsed === true)
+            : collapsed === 'true';
         options.restoreTree(
           Array.isArray(stored.expandedNodeIds)
             ? stored.expandedNodeIds.filter((id): id is string => typeof id === 'string')
@@ -132,7 +144,7 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
       options.restoreTree([], {}, []);
     }
     try {
-      const storedTabs = JSON.parse(localStorage.getItem(TABS_STORAGE_KEY) ?? '[]') as unknown;
+      const storedTabs = JSON.parse(local.getItem(TABS_STORAGE_KEY) ?? '[]') as unknown;
       if (!Array.isArray(storedTabs)) return;
       options.restoreTabs(
         restoreWorkspaceTabs(storedTabs.filter(isWorkspaceTab), options.maxWorkspaceTabs)
@@ -142,7 +154,17 @@ export function createWorkbenchLayoutService(options: WorkbenchLayoutServiceOpti
     }
   }
 
-  return { persist, restore, panelWidths, setPanelWidth, asideWidth };
+  return {
+    persist,
+    restore,
+    panelWidths,
+    setPanelWidth,
+    asideWidth,
+    bindStorage: (next: { readonly local: Storage; readonly session: Storage }) => {
+      local = next.local;
+      session = next.session;
+    }
+  };
 }
 
 function isWorkspaceTab(value: unknown): value is WorkspaceTab {

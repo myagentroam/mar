@@ -19,6 +19,10 @@ for (const destination of ['conversations', 'settings'] as const) {
     page
   }) => {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await page.route(
+      '**/api/nodes/node-1/conversation-templates/template-1/model-options',
+      (route) => json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+    );
     const created = {
       id: 'session-created-late',
       workspaceId: 'workspace-1',
@@ -109,7 +113,9 @@ for (const destination of ['conversations', 'settings'] as const) {
     await expect
       .poll(() =>
         page.evaluate(
-          () => JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}').sessionId
+          () =>
+            JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
+              .sessionId
         )
       )
       .toBe(created.id);
@@ -550,6 +556,9 @@ test('Returning to a selected hosted conversation reconciles only its unread not
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+  );
   await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
     json(route, { items: [conversation], nextCursor: null })
   );
@@ -594,8 +603,8 @@ test('Returning to a selected hosted conversation reconciles only its unread not
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '对话', exact: true }).click();
   await expect(page.locator('.hosted-timeline-scroll')).toBeVisible();
-  await expect.poll(() => reads.length).toBeGreaterThan(0);
   await page.getByRole('button', { name: '设置', exact: true }).click();
+  expect(reads).toEqual([]);
   notifications = [conversation.id, 'conversation-other'].map((conversationId) => ({
     id: conversationId,
     kind: 'run',
@@ -612,14 +621,14 @@ test('Returning to a selected hosted conversation reconciles only its unread not
       conversationName: 'Review'
     }
   }));
-  const center = page.getByRole('button', { name: '打开通知中心' });
+  const center = page.getByRole('button', { name: '会话与通知', exact: true });
   await center.click();
-  await expect(center.locator('.workbench-notification-badge')).toHaveText('2');
+  await expect(center.locator('.activity-entry-count')).toHaveText('2');
   await center.click();
   const beforeReturn = reads.length;
   await page.getByRole('button', { name: '对话', exact: true }).click();
   await expect(page.locator('.hosted-timeline-scroll')).toBeVisible();
-  await expect(center.locator('.workbench-notification-badge')).toHaveText('1');
+  await expect(center.locator('.activity-entry-count')).toHaveText('1');
   expect(reads.slice(beforeReturn)).toEqual([
     { nodeId: 'node-1', conversationId: conversation.id }
   ]);
@@ -1976,6 +1985,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   const deleteDialog = page.locator('.el-message-box');
   await expect(deleteDialog).toContainText('删除“result.txt”后无法恢复。是否继续？');
   await deleteDialog.getByRole('button', { name: '删除文件', exact: true }).click();
+  await expect(deleteDialog).toBeHidden();
   await expect(projectedFile).toHaveCount(0);
   await expect(
     page.locator('.hosted-conversation-files').getByRole('button', { name: /^drop-one\.txt/u })

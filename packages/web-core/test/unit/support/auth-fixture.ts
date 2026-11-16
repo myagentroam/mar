@@ -27,6 +27,7 @@ export function authFixture(locale: AppLocale = 'zh-CN') {
   const request = vi.fn();
   const restore = vi.fn(async () => undefined);
   const signedOut = vi.fn();
+  const accountChanged = vi.fn<(userId: number) => void>();
   const notice = vi.fn();
   const loading = ref(false);
   const renew = vi.fn(async () => 'renewed');
@@ -43,6 +44,7 @@ export function authFixture(locale: AppLocale = 'zh-CN') {
     invalidateRequests: vi.fn(),
     onAuthenticated: restore,
     onSignedOut: signedOut,
+    onAccountChanged: accountChanged,
     notice,
     errorMessage: (error) => (error instanceof Error ? error.message : 'UNKNOWN'),
     presentation: {
@@ -53,5 +55,17 @@ export function authFixture(locale: AppLocale = 'zh-CN') {
       }
     }
   });
-  return { service, state, storage, request, restore, signedOut, notice, loading, renew, i18n };
+  return {
+    service,
+    state,
+    storage,
+    request,
+    restore,
+    signedOut,
+    accountChanged,
+    notice,
+    loading,
+    renew,
+    i18n
+  };
 }

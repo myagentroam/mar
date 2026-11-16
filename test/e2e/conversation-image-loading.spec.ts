@@ -6,6 +6,7 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 // @test-covers packages/web-core/src/view/conversation/DecodedPreviewImage.vue
 // @test-covers packages/web-core/src/view/conversation/ConversationImageThumbnail.vue
+// @test-covers packages/web-core/src/view/conversation/ImagePreviewDialogs.vue
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 let images: Server;
 let imageOrigin: string;
@@ -419,14 +420,25 @@ for (const width of [1440, 390]) {
     await expect(original).toHaveText('');
     await expect(original).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     const originalBox = (await original.boundingBox())!;
-    const closeBox = (await dialog.locator('.el-dialog__headerbtn').boundingBox())!;
+    const close = dialog.locator('.el-dialog__headerbtn');
+    const closeBox = (await close.boundingBox())!;
+    await expect(close).toHaveCSS('width', '32px');
+    await expect(close).toHaveCSS('height', '32px');
     expect(originalBox.x + originalBox.width).toBeLessThanOrEqual(closeBox.x);
+    await close.hover();
+    await expect(close).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await page.screenshot({ path: info.outputPath('original-button.png'), animations: 'disabled' });
     await original.click();
     await expect(dialog.locator('img')).toBeVisible();
     expect(
       await dialog.locator('img').evaluate((element: HTMLImageElement) => element.naturalWidth)
     ).toBe(3600);
+    await page.keyboard.press('Tab');
+    await close.focus();
+    await expect(close).toBeFocused();
+    await expect(close).toHaveCSS('outline-style', 'solid');
+    await close.press('Enter');
+    await expect(dialog).toHaveCount(0);
   });
 }
 

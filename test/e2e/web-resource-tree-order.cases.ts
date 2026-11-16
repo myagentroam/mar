@@ -486,8 +486,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(tab).toHaveAttribute('aria-selected', 'true');
 
     const saved = await page.evaluate(() => ({
-      layout: JSON.parse(sessionStorage.getItem('mar.workbench.layout.v1') ?? '{}'),
-      localLayout: localStorage.getItem('mar.workbench.layout.v1')
+      layout: JSON.parse(
+        sessionStorage.getItem('mar.account.v1.1.mar.workbench.layout.v1') ?? '{}'
+      ),
+      localLayout: localStorage.getItem('mar.account.v1.1.mar.workbench.layout.v1')
     }));
     expect(saved.layout.nodeOrder).toEqual(['node-2', 'node-1']);
     expect(saved.localLayout).toBeNull();

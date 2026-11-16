@@ -64,7 +64,7 @@ export function createSessionDraftService(options: {
   readonly storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> &
     Partial<Pick<Storage, 'length' | 'key'>>;
 }) {
-  const storage = options.storage ?? sessionStorage;
+  let storage = options.storage ?? sessionStorage;
 
   function keyFor(target: DraftTarget | undefined, pane: DraftPane = 'main'): string | undefined {
     return target === undefined
@@ -436,6 +436,9 @@ export function createSessionDraftService(options: {
       } catch {
         // Preserve the original legacy entry if its queue metadata cannot be rewritten safely.
       }
+    },
+    bindStorage: (next: typeof storage) => {
+      storage = next;
     },
     clear: () => {
       // Sign-out discards this tab's drafts, unlike ordinary Workspace release.

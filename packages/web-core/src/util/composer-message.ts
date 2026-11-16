@@ -16,6 +16,42 @@ export function composerMessageInputText(payload: unknown): string {
       : '';
 }
 
+/** Copies user content and reusable resources, never provenance or execution wrappers. */
+export function composerMessageCopyText(payload: unknown): string {
+  const parts = parseComposerTags(composerMessageInputText(payload));
+  const fragments = parts.map((part) => {
+    if (part.kind === 'text') return part.text;
+    if (
+      part.kind === 'mar_references' ||
+      part.kind === 'mar_attachments' ||
+      part.kind === 'mar_skills'
+    )
+      return part.raw;
+    if (part.kind === 'mar_steer') return part.payload.message;
+    if (part.kind === 'mar_goal_start' || part.kind === 'mar_schedule')
+      return part.payload.objective;
+    return undefined;
+  });
+
+  // Remove one separator for standalone hidden fragments, never trim body whitespace.
+  fragments.forEach((fragment, index) => {
+    if (fragment !== undefined) return;
+    const before = parts[index - 1];
+    const after = parts[index + 1];
+    const lineStart =
+      before === undefined || (before.kind === 'text' && before.text.endsWith('\n'));
+    const lineEnd = after === undefined || (after.kind === 'text' && /^\r?\n/u.test(after.text));
+    if (!lineStart || !lineEnd) return;
+    const previousText = fragments[index - 1];
+    if (previousText?.endsWith('\n')) fragments[index - 1] = previousText.replace(/\r?\n$/u, '');
+    else {
+      const nextText = fragments[index + 1];
+      if (nextText !== undefined) fragments[index + 1] = nextText.replace(/^\r?\n/u, '');
+    }
+  });
+  return fragments.join('');
+}
+
 export function composerMessagePresentation(payload: unknown) {
   const value = conversationPayload(payload);
   const parts = parseComposerTags(composerMessageInputText(payload));

@@ -48,6 +48,7 @@ async function openWorkspace(
     route.fulfill({
       json: {
         authenticated: true,
+        userId: 1,
         mustChangePassword: false,
         username: 'admin',
         isAdmin: true

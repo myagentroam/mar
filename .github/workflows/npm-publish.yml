@@ -32,7 +32,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: npm-publication
+  group: npm-publication-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:

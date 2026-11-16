@@ -8,6 +8,7 @@ describe('shared browser authentication lifecycle', () => {
     const f = authFixture('en-US');
     f.request.mockResolvedValue({
       authenticated: true,
+      userId: 101,
       mustChangePassword: false,
       csrfToken: 'csrf',
       locale: 'zh-CN'
@@ -34,6 +35,7 @@ describe('shared browser authentication lifecycle', () => {
     const f = authFixture();
     f.request.mockResolvedValue({
       authenticated: true,
+      userId: 101,
       mustChangePassword: true,
       csrfToken: 'csrf'
     });
@@ -62,6 +64,7 @@ describe('shared browser authentication lifecycle', () => {
     f.request
       .mockResolvedValueOnce({
         authenticated: true,
+        userId: 101,
         mustChangePassword: false,
         csrfToken: 'new-csrf'
       })
@@ -112,6 +115,7 @@ describe('shared browser authentication lifecycle', () => {
     f.request
       .mockResolvedValueOnce({
         authenticated: true,
+        userId: 101,
         mustChangePassword: false,
         csrfToken: 'updated-csrf'
       })
@@ -159,6 +163,7 @@ describe('shared browser authentication lifecycle', () => {
         if (path === '/api/auth/change-password')
           return {
             authenticated: true,
+            userId: 101,
             mustChangePassword: false,
             csrfToken: 'confirmed-csrf'
           };
@@ -211,7 +216,7 @@ describe('shared browser authentication lifecycle', () => {
   it('reveals authenticated state before host recovery and does not discard it on a Node failure', async () => {
     const f = authFixture();
     f.storage.set('mar.user.csrf-token', 'csrf');
-    f.request.mockResolvedValue({ authenticated: true, mustChangePassword: false });
+    f.request.mockResolvedValue({ authenticated: true, userId: 101, mustChangePassword: false });
     const error = new Error('NODE_REQUEST_TIMEOUT');
     f.restore.mockImplementation(async () => {
       expect(f.state.loaded.value).toBe(true);
@@ -231,7 +236,11 @@ describe('shared browser authentication lifecycle', () => {
 
   it('renews missing CSRF during restore and ignores identity arriving after sign-out', async () => {
     const f = authFixture();
-    f.request.mockResolvedValueOnce({ authenticated: true, mustChangePassword: false });
+    f.request.mockResolvedValueOnce({
+      authenticated: true,
+      userId: 101,
+      mustChangePassword: false
+    });
     await f.service.refresh();
     expect(f.renew).toHaveBeenCalledOnce();
     let complete!: (value: unknown) => void;
@@ -243,7 +252,7 @@ describe('shared browser authentication lifecycle', () => {
     );
     const pending = f.service.refresh();
     f.service.returnToLogin();
-    complete({ authenticated: true, mustChangePassword: false });
+    complete({ authenticated: true, userId: 101, mustChangePassword: false });
     await pending;
     expect(f.state.admin.value.authenticated).toBe(false);
     expect(f.state.sessions.value).toEqual([]);
@@ -254,7 +263,12 @@ describe('shared browser authentication lifecycle', () => {
     'preserves the current page and identity when an authentication check fails (%s)',
     async (locale) => {
       const f = authFixture(locale);
-      const identity = { authenticated: true, mustChangePassword: false, username: 'admin' };
+      const identity = {
+        authenticated: true,
+        userId: 101,
+        mustChangePassword: false,
+        username: 'admin'
+      };
       f.state.admin.value = identity;
       f.state.loaded.value = true;
       f.state.csrfToken.value = 'saved-csrf';
@@ -293,7 +307,11 @@ describe('shared browser authentication lifecycle', () => {
     expect(f.storage.get('mar.user.csrf-token')).toBe('saved-csrf');
     expect(f.signedOut).not.toHaveBeenCalled();
     expect(f.restore).not.toHaveBeenCalled();
-    f.request.mockResolvedValueOnce({ authenticated: true, mustChangePassword: false });
+    f.request.mockResolvedValueOnce({
+      authenticated: true,
+      userId: 101,
+      mustChangePassword: false
+    });
     await f.service.refresh();
     expect(f.state.loaded.value).toBe(true);
     expect(f.state.admin.value.authenticated).toBe(true);
@@ -303,12 +321,18 @@ describe('shared browser authentication lifecycle', () => {
 
   it('preserves identity and CSRF when authentication recovery renewal fails', async () => {
     const f = authFixture();
-    const identity = { authenticated: true, mustChangePassword: false, username: 'admin' };
+    const identity = {
+      authenticated: true,
+      userId: 101,
+      mustChangePassword: false,
+      username: 'admin'
+    };
     f.state.admin.value = identity;
     f.state.loaded.value = true;
     f.state.csrfToken.value = 'current-csrf';
     f.request.mockResolvedValue({
       authenticated: true,
+      userId: 101,
       mustChangePassword: false,
       username: 'other'
     });

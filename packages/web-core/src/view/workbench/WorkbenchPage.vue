@@ -124,7 +124,7 @@ function closeStandaloneFileWindow(): void {
       @submit="page.identity.changePassword"
     />
 
-    <template v-else>
+    <template v-else :key="page.identity.accountKey">
       <input
         :ref="
           (element) => (page.uploads.workspaceUploadRecoveryInput = element as HTMLInputElement)

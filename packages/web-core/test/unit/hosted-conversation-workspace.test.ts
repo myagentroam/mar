@@ -57,6 +57,25 @@ it('Retains the ready hosted directory and its cursor when refresh fails', async
   expect(workspace.hasMoreConversations.value).toBe(false);
 });
 
+it('Discards the previous account directory cursor even if the next first page fails', async () => {
+  const failure = new Error('Next account directory unavailable');
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({ items: [conversation], nextCursor: 'previous-account-cursor' })
+    .mockRejectedValueOnce(failure);
+  const workspace = service(request as HostedConversationRequest);
+  await workspace.loadConversations();
+  expect(workspace.hasMoreConversations.value).toBe(true);
+  workspace.clear();
+  expect(workspace.hasMoreConversations.value).toBe(false);
+  expect(workspace.conversations.value).toEqual([]);
+  await expect(workspace.loadConversations()).rejects.toBe(failure);
+  await workspace.loadMoreConversations();
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(workspace.conversationsLoaded.value).toBe(false);
+  expect(workspace.hasMoreConversations.value).toBe(false);
+});
+
 const snapshot = {
   conversation,
   template,
@@ -2320,6 +2339,37 @@ describe('Web Hosted Conversation Workspace Service', () => {
     ).rejects.toThrow('NETWORK_FAILED');
 
     expect(workspace.turns.value).toEqual([]);
+  });
+
+  it('releases the previous account submission without letting its settlement release a new one', async () => {
+    const old = deferred<unknown>();
+    const current = deferred<unknown>();
+    const request = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+    const workspace = service(request as HostedConversationRequest);
+    workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    vi.spyOn(workspace.watchReady, 'value', 'get').mockReturnValue(true);
+    const previous = workspace.sendMessage({
+      prompt: 'Old',
+      attachmentIds: [],
+      clientMessageId: 'old'
+    });
+    const previousResult = expect(previous).rejects.toThrow('OLD_ACCOUNT');
+    workspace.clear();
+    expect(workspace.messageSubmitting.value).toBe(false);
+    expect(workspace.messageSubmissionContext.value).toBeUndefined();
+    workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    const next = workspace.sendMessage({
+      prompt: 'New',
+      attachmentIds: [],
+      clientMessageId: 'new'
+    });
+    const nextResult = expect(next).rejects.toThrow('NEW_ACCOUNT');
+    old.reject(new Error('OLD_ACCOUNT'));
+    await previousResult;
+    expect(workspace.messageSubmitting.value).toBe(true);
+    current.reject(new Error('NEW_ACCOUNT'));
+    await nextResult;
+    expect(workspace.messageSubmitting.value).toBe(false);
   });
 
   it('Message requests reuse plain session commit transactions and are only being sent in the current Hosted Conversation presentation', async () => {

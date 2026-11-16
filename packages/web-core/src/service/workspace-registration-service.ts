@@ -26,6 +26,7 @@ export interface WorkspaceRegistrationInput {
   readonly preserveGitConfig?: boolean;
 }
 
+/** Owns picker state, directory reads and registration settlement; browsing does not invalidate submissions. */
 export function createWorkspaceRegistrationService<Context = void>(options: {
   readonly submit?: (
     input: WorkspaceRegistrationInput,
@@ -46,6 +47,7 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
   const loadingDirectory = ref(false);
   const openTools = ref<string[]>([]);
   let directoryRequestRevision = 0;
+  let registrationRevision = 0;
 
   const selectedPathValid = computed(() => {
     const current = directory.value;
@@ -61,6 +63,8 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
 
   function reset(openPicker = false): void {
     directoryRequestRevision += 1;
+    registrationRevision += 1;
+    loading.value = false;
     path.value = '';
     preserveGitConfig.value = false;
     pendingDirectoryName.value = '';
@@ -119,6 +123,7 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
   }
 
   async function register(context?: Context): Promise<void> {
+    let revision = registrationRevision;
     const nodeId = options.targetNodeId.value;
     const selectedPath = path.value.trim();
     if (nodeId === undefined || selectedPath.length === 0) return;
@@ -145,13 +150,16 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
       ) as { workspace?: { id?: unknown } };
       const workspaceId = result?.workspace?.id;
       if (typeof workspaceId !== 'string') throw new Error('WORKSPACE_REGISTER_RESPONSE_INVALID');
-      if (options.targetNodeId.value !== nodeId) return;
+      if (options.targetNodeId.value !== nodeId || revision !== registrationRevision) return;
       reset();
+      revision = registrationRevision;
+      loading.value = true;
       await options.onRegistered(nodeId, workspaceId);
     } catch (error) {
+      if (revision !== registrationRevision) return;
       options.error(registrationFailureMessage(options.errorMessage(error)), error);
     } finally {
-      loading.value = false;
+      if (revision === registrationRevision) loading.value = false;
     }
   }
 

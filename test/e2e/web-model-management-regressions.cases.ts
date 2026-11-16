@@ -130,6 +130,7 @@ async function mockEnterpriseConsole(page: Page, english: boolean): Promise<void
   let authenticated = false;
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: true,

@@ -83,6 +83,19 @@ function serializedBytes(value: unknown): number {
   return encoder.encode(JSON.stringify(value)).byteLength;
 }
 
+function serializedTurnBytes(turn: ConversationTurn): number {
+  const cached = serializedByteSizes.get(turn);
+  if (cached !== undefined) return cached;
+  // Projection updates replace immutable Items. Reuse their sizes instead of serializing
+  // every retained exec output again when only a trailing Item or Segment metadata changes.
+  let size = encoder.encode(JSON.stringify({ ...turn, items: [] })).byteLength;
+  for (let index = 0; index < turn.items.length; index += 1) {
+    size += serializedBytes(turn.items[index]!) + (index > 0 ? 1 : 0);
+  }
+  serializedByteSizes.set(turn, size);
+  return size;
+}
+
 export function limitConversationPayloadText(payload: unknown): unknown {
   const itemMessage = itemTruncationMessage();
   const value = conversationPayload(payload);
@@ -136,7 +149,7 @@ export function limitConversationSegmentText(turn: ConversationTurn): Conversati
 
 function compactOversizedTurn(turn: ConversationTurn, maximumBytes: number): ConversationTurn {
   const historyMessage = truncationMessage();
-  const turnBytes = serializedBytes(turn);
+  const turnBytes = serializedTurnBytes(turn);
   if (turnBytes <= maximumBytes) return turn;
   let items = [...turn.items];
   let truncated = false;
@@ -145,13 +158,14 @@ function compactOversizedTurn(turn: ConversationTurn, maximumBytes: number): Con
     let high = items.length - 1;
     while (low < high) {
       const middle = Math.floor((low + high) / 2);
-      if (serializedBytes({ ...turn, items: items.slice(middle) }) <= maximumBytes) high = middle;
+      if (serializedTurnBytes({ ...turn, items: items.slice(middle) }) <= maximumBytes)
+        high = middle;
       else low = middle + 1;
     }
     items = items.slice(low);
     truncated = true;
   }
-  if (serializedBytes({ ...turn, items }) > maximumBytes && items[0] !== undefined) {
+  if (serializedTurnBytes({ ...turn, items }) > maximumBytes && items[0] !== undefined) {
     const item = items[0];
     const payload = conversationPayload(item.payload);
     const text = typeof payload?.text === 'string' ? payload.text : undefined;
@@ -180,7 +194,7 @@ function compactOversizedTurn(turn: ConversationTurn, maximumBytes: number): Con
   const candidates = [withWarning, items, []];
   for (const candidate of candidates) {
     const compacted = { ...turn, items: candidate } as ConversationTurn;
-    if (serializedBytes(compacted) <= maximumBytes) {
+    if (serializedTurnBytes(compacted) <= maximumBytes) {
       normalizedTurns.add(compacted);
       return compacted;
     }
@@ -199,12 +213,12 @@ export function limitConversationHistory(
   if (turns.length === 0 || maximumBytes <= arrayOverhead) return [];
   const normalizedTurns = turns.map(limitConversationSegmentText);
   const newest = compactOversizedTurn(normalizedTurns.at(-1)!, maximumBytes - arrayOverhead);
-  const newestBytes = serializedBytes(newest);
+  const newestBytes = serializedTurnBytes(newest);
   if (newestBytes + arrayOverhead > maximumBytes) return [];
   const retained = [newest];
   let used = arrayOverhead + newestBytes;
   for (const turn of normalizedTurns.slice(0, -1).reverse()) {
-    const size = serializedBytes(turn) + 1;
+    const size = serializedTurnBytes(turn) + 1;
     if (used + size > maximumBytes) break;
     retained.push(turn);
     used += size;

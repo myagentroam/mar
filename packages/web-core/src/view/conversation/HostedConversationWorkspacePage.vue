@@ -1,5 +1,11 @@
 <script setup lang="ts">
+// Owns Hosted workspace presentation, local upload batches and preview lifetimes.
+// Domain state, requests and Watch ownership stay with the workspace services.
 import { createUuid } from '../../util/uuid.js';
+import {
+  ACCOUNT_STORAGE_KEY,
+  unboundAccountStorage
+} from '../../service/account-storage-service.js';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -11,7 +17,16 @@ import type {
   HostedConversationSummary
 } from '@myagentroam/protocol';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import {
+  computed,
+  inject,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch
+} from 'vue';
 import { createConversationImageService } from '../../service/conversation-image-service.js';
 import { createConversationScrollService } from '../../service/conversation-scroll-service.js';
 import {
@@ -189,6 +204,7 @@ const hoveredConversationKey = ref<string>();
 const focusedConversationKey = ref<string>();
 const draftingNewConversation = ref(false);
 const entry = createHostedConversationEntryService(props.request, {
+  storage: inject(ACCOUNT_STORAGE_KEY, shallowRef(unboundAccountStorage)).value,
   submission: {
     workspace: props.workspace,
     select: (snapshot) => props.selectConversation(snapshot.conversation, snapshot)
@@ -198,6 +214,7 @@ const mobileFilesOpen = defineModel<boolean>('mobileFilesOpen', { default: false
 const filesDragging = ref(false);
 const uploadingDroppedFiles = ref(false);
 const relatedFilesInput = ref<HTMLInputElement>();
+const relatedFilesUploadController = new AbortController();
 const deletingFileId = ref<string>();
 const rollbackPending = ref(false);
 const composer = ref<{
@@ -734,10 +751,17 @@ async function uploadRelatedFiles(selectedFiles: Iterable<File>): Promise<void> 
   let uploaded = 0;
   try {
     for (const file of files) {
+      if (relatedFilesUploadController.signal.aborted) break;
       try {
-        await props.workspace.uploadFile(file, createUuid());
+        await props.workspace.uploadFile(
+          file,
+          createUuid(),
+          undefined,
+          relatedFilesUploadController.signal
+        );
         uploaded += 1;
       } catch (error) {
+        if (relatedFilesUploadController.signal.aborted) break;
         showMessage(
           translate('hostedConversations.fileUploadFailed', {
             name: file.name,
@@ -751,7 +775,7 @@ async function uploadRelatedFiles(selectedFiles: Iterable<File>): Promise<void> 
   } finally {
     uploadingDroppedFiles.value = false;
   }
-  if (uploaded > 0)
+  if (uploaded > 0 && !relatedFilesUploadController.signal.aborted)
     showMessage(
       translate('hostedConversations.filesUploaded', {
         count: uploaded
@@ -948,6 +972,7 @@ onBeforeUnmount(entry.dispose);
 
 onMounted(initialize);
 onBeforeUnmount(() => {
+  relatedFilesUploadController.abort();
   historyAppendObserver?.disconnect();
   conversationResizeObserver?.disconnect();
   filePreview.dispose();

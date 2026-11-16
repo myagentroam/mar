@@ -9,6 +9,7 @@ import {
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { composerMessagePresentation } from '../../src/util/composer-message.js';
 import {
+  conversationItemCopyText,
   conversationItemLabel,
   conversationItemText
 } from '../../src/util/conversation-presentation.js';
@@ -46,6 +47,133 @@ afterEach(() => {
 });
 
 describe('Composer product tag presentation', () => {
+  it.each([
+    serializeComposerTag('mar_session_origin', {
+      sessionId: 'source-session',
+      name: 'Reviewer',
+      relation: 'other'
+    }),
+    serializeComposerTag('mar_session_origin', {}),
+    serializeComposerTag('mar_channel', {
+      source: 'WEB_SHARE',
+      channelId: 'share-one',
+      senderId: 'visitor-one',
+      name: 'Alice'
+    })
+  ])('copies the body without source metadata (%s)', (origin) => {
+    for (const payload of [
+      { text: `${origin}\nReview this` },
+      { content: `Review this\n${origin}` }
+    ])
+      expect(conversationItemCopyText('user_message', payload)).toBe('Review this');
+    expect(conversationItemCopyText('user_message', { text: origin })).toBe('');
+  });
+
+  it.each([
+    [serializeComposerTag('mar_steer', { message: 'Focus here' }), 'Focus here'],
+    [
+      serializeComposerTag('mar_goal_start', {
+        objective: 'Complete task',
+        instruction: 'Internal execution guidance'
+      }),
+      'Complete task'
+    ],
+    [serializeComposerTag('mar_schedule', { objective: 'Check status' }), 'Check status'],
+    [
+      serializeComposerTag('mar_goal_continue', {
+        objective: 'Internal objective',
+        instruction: 'Internal continuation guidance'
+      }),
+      ''
+    ],
+    [serializeComposerTag('mar_restart', {}), '']
+  ])('copies control message bodies without their wrappers (%s)', (text, expected) => {
+    expect(conversationItemCopyText('user_message', { text })).toBe(expected);
+  });
+
+  it('retains resource XML and quote snapshots while removing source and steering wrappers', () => {
+    const quote = serializeComposerTag('mar_references', {
+      references: [
+        {
+          type: 'quote',
+          id: 'quote-one',
+          source: 'assistant',
+          messageId: 'reply-one',
+          label: 'Reply',
+          text: 'Snapshot <mar_restart /> & symbols'
+        }
+      ]
+    });
+    const resources = [references, quote, attachments, skills].join('\n');
+    const source = serializeComposerTag('mar_session_origin', {
+      sessionId: 'source-session',
+      name: 'Reviewer'
+    });
+    const text = [source, serializeComposerTag('mar_steer', { message: 'Review' }), resources].join(
+      '\n'
+    );
+    expect(conversationItemCopyText('user_message', { text })).toBe(`Review\n${resources}`);
+    expect(conversationItemCopyText('user_message', { text: resources })).toBe(resources);
+  });
+
+  it.each([
+    '  Keep <custom> & **markdown**\n',
+    '<mar_unknown><mar_restart /></mar_unknown>',
+    '<mar_steer><instruction>Missing body</instruction></mar_steer>',
+    '<mar_session_origin sessionId="broken">Unclosed',
+    '```xml\n<mar_restart />\n```',
+    '~~~xml\n<mar_restart />\n~~~'
+  ])('preserves literal, unknown, malformed and fenced user text (%s)', (text) => {
+    expect(conversationItemCopyText('user_message', { text })).toBe(text);
+  });
+
+  it('decodes copied control bodies once without recursively interpreting product tags', () => {
+    const body = '中文 &lt; & <mar_restart />';
+    const text = serializeComposerTag('mar_steer', { message: body });
+    expect(conversationItemCopyText('user_message', { text })).toBe(body);
+    expect(conversationItemCopyText('assistant_message', { text })).toBe(text);
+  });
+
+  it('preserves body whitespace when removing standalone source lines', () => {
+    const source = serializeComposerTag('mar_session_origin', {});
+    const body = '\n    indented code\n\tsecond line  \n';
+    for (const separator of ['\n', '\r\n']) {
+      for (const text of [
+        source + separator + body,
+        body + separator + source,
+        [source, source, body, source, source].join(separator)
+      ])
+        expect(conversationItemCopyText('user_message', { text })).toBe(body);
+    }
+  });
+
+  it('preserves surrounding line breaks when a hidden tag is inline', () => {
+    const source = serializeComposerTag('mar_channel', {
+      source: 'WEB_SHARE',
+      channelId: 'share-one',
+      senderId: 'visitor-one',
+      name: 'Alice'
+    });
+    for (const [text, expected] of [
+      [`before${source}\nafter  \n`, 'before\nafter  \n'],
+      [`  before\n${source}after`, '  before\nafter'],
+      [`before${source}after`, 'beforeafter'],
+      [`before\n${source}\nafter`, 'before\nafter']
+    ])
+      expect(conversationItemCopyText('user_message', { text })).toBe(expected);
+  });
+
+  it('preserves decoded control body whitespace including whitespace-only messages', () => {
+    for (const body of ['\n    indented code  \n', ' \t\n']) {
+      for (const text of [
+        serializeComposerTag('mar_steer', { message: body }),
+        serializeComposerTag('mar_goal_start', { objective: body }),
+        serializeComposerTag('mar_schedule', { objective: body })
+      ])
+        expect(conversationItemCopyText('user_message', { text })).toBe(body);
+    }
+  });
+
   it('checks the final message length after later edits and skill/reference serialization', () => {
     const quote = {
       type: 'quote',

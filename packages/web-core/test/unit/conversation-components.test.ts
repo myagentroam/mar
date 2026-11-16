@@ -2186,7 +2186,16 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       parentNode: () => null,
       nextSibling: () => null
     });
-    const item = conversationItem('user-1', 'user_message', { text: 'Copied text' });
+    const item = conversationItem('user-1', 'user_message', {
+      text: [
+        serializeComposerTag('mar_session_origin', {
+          sessionId: 'source-session',
+          name: 'Reviewer',
+          relation: 'other'
+        }),
+        serializeComposerTag('mar_steer', { message: 'Copied text' })
+      ].join('\n')
+    });
     let setupState: Record<string, unknown> | undefined;
     let copied: (() => void) | undefined;
     const app = renderer.createApp({

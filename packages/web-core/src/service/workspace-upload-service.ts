@@ -1,4 +1,5 @@
 import { createUuid } from '../util/uuid.js';
+import { unboundAccountStorage } from './account-storage-service.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { computed, ref, watch, type Ref } from 'vue';
 import { translate } from './locale-preference-service.js';
@@ -49,6 +50,7 @@ interface StoredWorkspaceUploadTask {
 }
 
 interface WorkspaceUploadOptions {
+  readonly storage?: Storage;
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly csrfToken: Ref<string>;
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -135,7 +137,14 @@ export function parseStoredWorkspaceUploads(value: unknown): WorkspaceUploadTask
   });
 }
 
+/** Owns local transfers and refresh recovery, using the storage bound by the page root.
+ * Account cleanup cancels local ownership and discards recovery; page disposal keeps
+ * its existing recovery behavior. Authentication and account selection stay outside.
+ */
 export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
+  let storage =
+    options.storage ??
+    (typeof window === 'undefined' ? unboundAccountStorage : window.sessionStorage);
   const tasks = ref<WorkspaceUploadTask[]>([]);
   const recoveryInput = ref<HTMLInputElement>();
   const pendingRecoveryId = ref<string>();
@@ -191,8 +200,8 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       return [storedTask(task)];
     });
     try {
-      if (stored.length === 0) window.sessionStorage.removeItem(STORAGE_KEY);
-      else window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+      if (stored.length === 0) storage.removeItem(STORAGE_KEY);
+      else storage.setItem(STORAGE_KEY, JSON.stringify(stored));
     } catch {
       // sessionStorage supports refresh recovery only; Node timeouts still clean temporary files.
     }
@@ -209,7 +218,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       return;
     }
     try {
-      const current: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]');
+      const current: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? '[]');
       if (!Array.isArray(current)) return;
       // Patch only the unchanged recovery entry, never an old owner's entire snapshot.
       const index = current.findIndex((entry) => matchesRecoveryEntry(entry, expected));
@@ -222,7 +231,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
         cleanupUnconfirmed: true,
         error: task.error
       };
-      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+      storage.setItem(STORAGE_KEY, JSON.stringify(current));
     } catch {
       // Unavailable recovery storage cannot guarantee remote cleanup; Node TTL remains the fallback.
     }
@@ -260,7 +269,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     releaseRecoveryReceivers();
     recoveryGenerations.clear();
     try {
-      const stored: unknown = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? '[]');
+      const stored: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? '[]');
       tasks.value = parseStoredWorkspaceUploads(stored);
       for (const task of tasks.value) {
         const original = Array.isArray(stored)
@@ -275,7 +284,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       // Preserve restore-only lineage; an actual user mutation invalidates it synchronously.
       persist();
     } catch {
-      window.sessionStorage.removeItem(STORAGE_KEY);
+      storage.removeItem(STORAGE_KEY);
     }
   }
 
@@ -338,6 +347,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   }
 
   async function upload(task: WorkspaceUploadTask): Promise<void> {
+    const owner = storage;
     try {
       if (task.file === undefined) throw new Error('UPLOAD_SOURCE_REQUIRED');
       const generation = options.direct?.generation(task.nodeId);
@@ -381,7 +391,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
           task.cleanupUnconfirmed = false;
           task.receivedBytes = task.size;
           task.status = 'COMPLETED';
-          if (!closed) options.onFilesChanged();
+          if (!closed && owner === storage) options.onFilesChanged();
           changed(task);
           return;
         } catch (error) {
@@ -442,6 +452,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
             overwrite: task.overwrite
           })
         });
+        if (owner !== storage) return;
         task.uploadId = created.upload.uploadId;
         task.receivedBytes = created.upload.receivedBytes;
         if (closed || task.cancelled) {
@@ -464,7 +475,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
       );
       task.receivedBytes = completed.upload.receivedBytes;
       task.status = 'COMPLETED';
-      if (!closed) options.onFilesChanged();
+      if (!closed && owner === storage) options.onFilesChanged();
       changed(task);
     } catch (error) {
       if (task.cancelled || errorCode(error) === 'UPLOAD_CANCELLED') {
@@ -545,13 +556,13 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     throw lastError instanceof Error ? lastError : new Error('UPLOAD_CHUNK_FAILED');
   }
 
-  async function cancel(task: WorkspaceUploadTask): Promise<boolean> {
+  async function cancel(task: WorkspaceUploadTask, remote = true): Promise<boolean> {
     const pending = cancellations.get(task.id);
     if (pending !== undefined) return pending;
     if (!closed) invalidateRecovery(task);
     // A cancellation before create returns owns no remote identity yet. Do not cache it:
     // the in-flight create still has to hand its late identity back to this cleanup path.
-    const cancellation = cancelUpload(task);
+    const cancellation = cancelUpload(task, remote);
     if (task.uploadId === undefined) return cancellation;
     cancellations.set(task.id, cancellation);
     try {
@@ -561,7 +572,7 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     }
   }
 
-  async function cancelUpload(task: WorkspaceUploadTask): Promise<boolean> {
+  async function cancelUpload(task: WorkspaceUploadTask, remote = true): Promise<boolean> {
     if (
       (task.status === 'COMPLETED' || task.status === 'CANCELLED') &&
       task.uploadId === undefined &&
@@ -571,6 +582,9 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
     task.cancelled = true;
     directRequests.get(task.id)?.abort();
     activeRequests.get(task.id)?.abort();
+    // Account teardown only aborts local transport. Do not send an old identity's
+    // cleanup through a cookie that may now belong to another user.
+    if (!remote) return true;
     if (task.uploadId !== undefined) {
       try {
         await options.request(
@@ -679,6 +693,18 @@ export function createWorkspaceUploadService(options: WorkspaceUploadOptions) {
   );
 
   return {
+    bindStorage: (next: Storage) => {
+      storage = next;
+    },
+    // End local task ownership without closing the reusable service or undoing accepted commits.
+    clear: () => {
+      for (const task of tasks.value) void cancel(task, false);
+      releaseRecoveryReceivers();
+      recoveryGenerations.clear();
+      pendingRecoveryId.value = undefined;
+      tasks.value = [];
+      persist();
+    },
     tasks,
     recoveryInput,
     activeCount,

@@ -27,7 +27,13 @@ for (const [width, itemsPerSegment] of [
     await mockConsoleApi(page, 'MANAGED', ['turn.start'], [], 'DIRECTORY');
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({
-        json: { authenticated: true, mustChangePassword: false, username: 'admin', isAdmin: true }
+        json: {
+          authenticated: true,
+          userId: 1,
+          mustChangePassword: false,
+          username: 'admin',
+          isAdmin: true
+        }
       })
     );
     await page.route('**/api/nodes', (route) =>

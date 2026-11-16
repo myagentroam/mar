@@ -19,6 +19,7 @@ test('Authentication recovery preserves CSRF after network failure and resumes t
     if (authenticationChecks === 1) return route.abort('connectionfailed');
     return json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true
@@ -48,6 +49,7 @@ test('CSRF renewal failure hides protected content and recovers after reload', a
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true
@@ -95,6 +97,7 @@ test('Enterprise account identity keeps OAuth unlinking without passing roles to
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 2,
       mustChangePassword: false,
       username: 'member',
       isAdmin: false,
@@ -153,6 +156,7 @@ test('Hidden management URLs fall back safely without requesting enterprise page
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 2,
       mustChangePassword: false,
       username: 'member',
       isAdmin: false,
@@ -188,6 +192,7 @@ test('Linux Quick Start shows Community status without requesting or displaying 
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -242,6 +247,7 @@ test('Importing a License refreshes product capabilities and enterprise menus', 
     capabilityReads += 1;
     return json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -326,11 +332,11 @@ test('Required password change shows minimum length and rejects short passwords'
 }) => {
   let changeRequests = 0;
   await page.route('**/api/auth/me', (route) =>
-    json(route, { authenticated: true, mustChangePassword: true, csrfToken: 'csrf-1' })
+    json(route, { authenticated: true, userId: 1, mustChangePassword: true, csrfToken: 'csrf-1' })
   );
   await page.route('**/api/auth/change-password', (route) => {
     changeRequests += 1;
-    json(route, { authenticated: true, mustChangePassword: false, csrfToken: 'csrf-2' });
+    json(route, { authenticated: true, userId: 1, mustChangePassword: false, csrfToken: 'csrf-2' });
   });
   await page.route('**/api/auth/csrf', (route) => json(route, { csrfToken: 'csrf-1' }));
 
@@ -472,6 +478,7 @@ test('Personal password dialog closes only after success and reopens without sen
       finish = async () => {
         await json(route, {
           authenticated: true,
+          userId: 1,
           mustChangePassword: false,
           csrfToken: 'updated-csrf'
         });
@@ -594,6 +601,7 @@ test('Personal password dialog ignores a previous opening completing after it is
       finish = async () => {
         await json(route, {
           authenticated: true,
+          userId: 1,
           mustChangePassword: false,
           csrfToken: 'updated-csrf'
         });
@@ -647,6 +655,7 @@ for (const delayedStep of ['workbench recovery', 'session refresh'] as const) {
       confirmed = true;
       return json(route, {
         authenticated: true,
+        userId: 1,
         mustChangePassword: false,
         csrfToken: 'confirmed-csrf'
       });

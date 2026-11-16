@@ -2846,6 +2846,10 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
   page
 }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
+  await page.route(/\/api\/workspaces\/workspace-2\/changes(?:\?.*)?$/, (route) =>
+    json(route, { changes: [] })
+  );
   const sessions = [1, 2].map((index) => ({
     id: `session-${index}`,
     workspaceId: `workspace-${index}`,
@@ -2933,7 +2937,7 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
   await expect
     .poll(() =>
       page.evaluate(() =>
-        JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]').map(
+        JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]').map(
           (tab: { selectedSessionId?: string }) => tab.selectedSessionId
         )
       )
@@ -2956,7 +2960,9 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
     await expect
       .poll(() =>
         page.evaluate(
-          () => JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}').sessionId
+          () =>
+            JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
+              .sessionId
         )
       )
       .toBe('session-2');
@@ -2970,8 +2976,11 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
 
   await page.evaluate(() =>
     localStorage.setItem(
-      'mar.workbench.selection.v1',
-      JSON.stringify({ nodeId: 'node-1', workspaceId: 'workspace-1', sessionId: 'missing' })
+      'mar.account.v1.1.mar.workbench.selection.v1',
+      JSON.stringify({
+        workspace: { nodeId: 'node-1', workspaceId: 'workspace-1' },
+        sessionId: 'missing'
+      })
     )
   );
   await page.reload();
@@ -2985,7 +2994,9 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
   await expect
     .poll(() =>
       page.evaluate(
-        () => JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}').sessionId
+        () =>
+          JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
+            .sessionId
       )
     )
     .toBeUndefined();
@@ -3010,7 +3021,7 @@ test('Offline Nodes preserve their offline state and consistently degrade to rea
 
   await page.addInitScript(() => {
     localStorage.setItem(
-      'mar.workbench.selection.v1',
+      'mar.account.v1.1.mar.workbench.selection.v1',
       JSON.stringify({ workspace: { nodeId: 'node-1', workspaceId: 'workspace-1' } })
     );
   });
@@ -3474,7 +3485,9 @@ test('Workspace Tabs support Alt switching and Alt+W closure while bulk close pr
   await expect(page.locator('.workspace-tab[data-tab-id]')).toHaveCount(1);
   await composer.focus();
   const singleTabActivity = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]')[0]?.lastActiveAt
+    () =>
+      JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]')[0]
+        ?.lastActiveAt
   );
   expect(singleTabActivity).toBeGreaterThan(0);
   for (const key of ['ArrowLeft', 'ArrowRight', 'Tab']) {
@@ -3501,7 +3514,9 @@ test('Workspace Tabs support Alt switching and Alt+W closure while bulk close pr
   }
   expect(
     await page.evaluate(
-      () => JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]')[0]?.lastActiveAt
+      () =>
+        JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]')[0]
+          ?.lastActiveAt
     )
   ).toBe(singleTabActivity);
   await expect(page.getByRole('tab', { name: /project-1/ })).toHaveAttribute(
@@ -3585,7 +3600,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     const close = page.getByRole('menuitem', { name: labels.close, exact: true });
     const activity = () =>
       page.evaluate(() => {
-        const tabs = JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]') as {
+        const tabs = JSON.parse(
+          localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]'
+        ) as {
           id: string;
           lastActiveAt: number;
         }[];
@@ -3895,9 +3912,9 @@ test('Pinned Workspace Tabs do not consume the eight-tab LRU quota and survive r
     animations: 'disabled'
   });
   await page.evaluate(() => {
-    const tabs = JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]');
+    const tabs = JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]');
     localStorage.setItem(
-      'mar.workbench.tabs.v1',
+      'mar.account.v1.1.mar.workbench.tabs.v1',
       JSON.stringify(
         tabs.map((tab: { label: string }) => ({ ...tab, pinned: tab.label !== 'project-10' }))
       )
@@ -3915,9 +3932,9 @@ test('Pinned Workspace Tabs do not consume the eight-tab LRU quota and survive r
   });
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.evaluate(() => {
-    const tabs = JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]');
+    const tabs = JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]');
     localStorage.setItem(
-      'mar.workbench.tabs.v1',
+      'mar.account.v1.1.mar.workbench.tabs.v1',
       JSON.stringify(
         tabs.map((tab: { label: string }) => ({ ...tab, pinned: tab.label === 'project-1' }))
       )
@@ -3996,7 +4013,9 @@ test('Admin Workbench retains at most eight ordinary Workspace Tabs with stable 
   expect(desktopTabSizing.cappedWidth).toBeLessThanOrEqual(desktopTabSizing.maximumWidth + 1);
   const tabLabels = await page.locator('.workspace-tab-content > span').allTextContents();
   const previousLastActiveAt = await page.evaluate(() => {
-    const tabs = JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]') as {
+    const tabs = JSON.parse(
+      localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]'
+    ) as {
       readonly label: string;
       readonly lastActiveAt: number;
     }[];
@@ -4034,7 +4053,9 @@ test('Admin Workbench retains at most eight ordinary Workspace Tabs with stable 
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const tabs = JSON.parse(localStorage.getItem('mar.workbench.tabs.v1') ?? '[]') as {
+        const tabs = JSON.parse(
+          localStorage.getItem('mar.account.v1.1.mar.workbench.tabs.v1') ?? '[]'
+        ) as {
           readonly label: string;
           readonly lastActiveAt: number;
         }[];
@@ -4371,7 +4392,7 @@ test('Workspace registration uses an independent action target and cancellation 
     }
   }
   const selection = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}')
+    JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
   );
   expect(selection.workspace).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
   await dialog.locator('.el-dialog__headerbtn').click();
@@ -4430,7 +4451,7 @@ test('Workspace activation is immediate, Node groups create no independent selec
   );
   await page.addInitScript(() =>
     localStorage.setItem(
-      'mar.workbench.tabs.v1',
+      'mar.account.v1.1.mar.workbench.tabs.v1',
       JSON.stringify([
         {
           id: 'node-1:workspace-1',
@@ -4468,7 +4489,7 @@ test('Workspace activation is immediate, Node groups create no independent selec
   await expect(page.locator('.workspace-selection-panel .el-skeleton')).toBeVisible();
   await expect.poll(() => slowRequests).toBeGreaterThanOrEqual(1);
   const selection = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}')
+    JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
   );
   expect(selection).toEqual({ workspace: { nodeId: 'node-2', workspaceId: 'workspace-2' } });
   await first.click();
@@ -4481,7 +4502,7 @@ test('Workspace activation is immediate, Node groups create no independent selec
   await expect(first).toHaveAttribute('aria-selected', 'true');
   await expect(composer).toHaveValue('工作区一草稿');
   const final = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('mar.workbench.selection.v1') ?? '{}')
+    JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
   );
   expect(final.workspace).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
   expect(final).not.toHaveProperty('nodeId');
@@ -4496,6 +4517,10 @@ test('Workspaces restore target drafts first and failed background refreshes can
     readonly body: string;
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
+  await page.route(/\/api\/workspaces\/workspace-2\/changes(?:\?.*)?$/, (route) =>
+    json(route, { changes: [] })
+  );
   let node1WorkspaceRequests = 0;
   let failNode1Refresh = false;
   let releaseNode1Refresh!: () => void;
@@ -4574,7 +4599,8 @@ test('Workspaces restore target drafts first and failed background refreshes can
   await expect(nodeOneTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('Node 1 的草稿');
   releaseNode1Refresh();
-  await expect(page.getByText(/无法读取节点工作区/)).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('工作区加载失败');
+  await expect(page.getByRole('alert')).toContainText('NODE_REFRESH_FAILED');
   await expect(nodeOneTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('Node 1 的草稿');
   failNode1Refresh = false;
@@ -5004,8 +5030,8 @@ test('Layout and unsent drafts are persisted only in the current browser session
   await expect
     .poll(() =>
       page.evaluate(() => ({
-        layout: sessionStorage.getItem('mar.workbench.layout.v1'),
-        draft: sessionStorage.getItem('mar.workbench.draft.node-1.workspace-1')
+        layout: sessionStorage.getItem('mar.account.v1.1.mar.workbench.layout.v1'),
+        draft: sessionStorage.getItem('mar.account.v1.1.mar.workbench.draft.node-1.workspace-1')
       }))
     )
     .toEqual({

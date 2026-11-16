@@ -8,6 +8,7 @@ test('Personal secret validation and CRUD reuse authoritative lists without subm
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -100,6 +101,7 @@ test('Secret and OAuth management show read-only row details and organization se
   let authenticated = true;
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: true,
@@ -324,6 +326,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.route('**/api/auth/me', (route) =>
       json(route, {
         authenticated: true,
+        userId: 1,
         mustChangePassword: false,
         username: 'admin',
         isAdmin: true,

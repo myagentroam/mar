@@ -45,7 +45,7 @@ export function createComposerAttachmentService(options: {
   };
 }) {
   const attachments = ref<ComposerAttachment[]>([]);
-  const owners = new Map<string, AttachmentTarget>();
+  let owners = new Map<string, AttachmentTarget>();
   const sameTarget = (left: AttachmentTarget | undefined, right: AttachmentTarget | undefined) =>
     left !== undefined &&
     right !== undefined &&
@@ -73,6 +73,8 @@ export function createComposerAttachmentService(options: {
   const preview = ref<ComposerAttachment>();
   const previewOpen = ref(false);
   const directRequests = new Map<string, AbortController>();
+  const activeRequests = new Map<string, XMLHttpRequest>();
+  const isCurrent = (attachment: ComposerAttachment) => owners.has(attachment.id);
 
   function addFor(context: AttachmentTarget | undefined, files: Iterable<File>): void {
     for (const file of files) {
@@ -145,12 +147,15 @@ export function createComposerAttachmentService(options: {
 
   function clearAll(): void {
     previewOpen.value = false;
+    preview.value = undefined;
+    dragging.value = false;
     for (const attachment of attachments.value) {
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
-      void cancel(attachment);
+      // A confirmed account switch may already have replaced the Server cookie.
+      void cancel(attachment, false);
     }
     attachments.value = [];
-    owners.clear();
+    owners = new Map();
   }
 
   function retainForSubmission(submitted: readonly ComposerAttachment[]): () => void {
@@ -205,6 +210,7 @@ export function createComposerAttachmentService(options: {
   }
 
   async function upload(attachment: ComposerAttachment): Promise<void> {
+    const owner = owners;
     try {
       if (isBmpAttachment(attachment.file)) {
         const file = await normalizeComposerImage(attachment.file);
@@ -283,7 +289,7 @@ export function createComposerAttachmentService(options: {
         })
       });
       if (!attachments.value.some((item) => item.id === attachment.id)) {
-        await cancel({ ...attachment, uploadId: created.upload.uploadId });
+        if (owner === owners) await cancel({ ...attachment, uploadId: created.upload.uploadId });
         return;
       }
       const current = attachments.value.find((item) => item.id === attachment.id);
@@ -291,11 +297,14 @@ export function createComposerAttachmentService(options: {
       current.uploadId = created.upload.uploadId;
       current.receivedBytes = created.upload.receivedBytes;
       while (current.receivedBytes < current.file.size) {
+        if (!isCurrent(current)) return;
         const offset = current.receivedBytes;
         const chunk = current.file.slice(offset, Math.min(current.file.size, offset + CHUNK_BYTES));
         const uploaded = await uploadChunk(current, offset, chunk);
+        if (!isCurrent(current)) return;
         current.receivedBytes = uploaded.receivedBytes;
       }
+      if (!isCurrent(current)) return;
       if (current.uploadId === undefined) throw new Error('COMPOSER_ATTACHMENT_UPLOAD_FAILED');
       await options.request(
         `/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads/${encodeURIComponent(current.uploadId)}/complete`,
@@ -319,9 +328,11 @@ export function createComposerAttachmentService(options: {
     let lastError: unknown;
     let renewedCsrfToken = false;
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!isCurrent(attachment)) throw new Error('UPLOAD_CANCELLED');
       try {
         return await new Promise<{ readonly receivedBytes: number }>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
+          activeRequests.set(attachment.id, xhr);
           const path = `/api/workspaces/${encodeURIComponent(attachment.workspaceId)}/uploads/${encodeURIComponent(attachment.uploadId ?? '')}/chunks?nodeId=${encodeURIComponent(attachment.nodeId)}&offset=${offset}`;
           xhr.open('POST', options.resourceUrl?.(path) ?? path);
           xhr.withCredentials = true;
@@ -334,6 +345,10 @@ export function createComposerAttachmentService(options: {
           xhr.onerror = () => reject(new Error('UPLOAD_NETWORK_FAILED'));
           xhr.onabort = () => reject(new Error('UPLOAD_CANCELLED'));
           xhr.onload = () => {
+            if (!isCurrent(attachment)) {
+              reject(new Error('UPLOAD_CANCELLED'));
+              return;
+            }
             if (xhr.status < 200 || xhr.status >= 300) {
               let code: string | undefined;
               try {
@@ -358,6 +373,7 @@ export function createComposerAttachmentService(options: {
         });
       } catch (error) {
         lastError = error;
+        if (!isCurrent(attachment) || errorCode(error) === 'UPLOAD_CANCELLED') throw error;
         if (errorCode(error) === 'UNAUTHENTICATED') throw error;
         if (errorCode(error) === 'CSRF_INVALID') {
           if (renewedCsrfToken) throw error;
@@ -365,17 +381,21 @@ export function createComposerAttachmentService(options: {
           await options.renewCsrfToken();
         }
         attachment.receivedBytes = offset;
+      } finally {
+        activeRequests.delete(attachment.id);
       }
     }
     throw lastError instanceof Error ? lastError : new Error('COMPOSER_ATTACHMENT_UPLOAD_FAILED');
   }
 
-  async function cancel(attachment: ComposerAttachment): Promise<void> {
-    // Removing a draft attachment must not cancel a message already in flight.
-    // Unconsumed uploads removed in flight are left to Node's expiry cleanup.
-    if (submissions.has(attachmentKey(attachment))) return;
+  async function cancel(attachment: ComposerAttachment, remote = true): Promise<void> {
     directRequests.get(attachment.id)?.abort();
     directRequests.delete(attachment.id);
+    activeRequests.get(attachment.id)?.abort();
+    activeRequests.delete(attachment.id);
+    // Removing a draft attachment must not cancel a message already in flight.
+    // Unconsumed uploads removed in flight are left to Node's expiry cleanup.
+    if (!remote || submissions.has(attachmentKey(attachment))) return;
     const uploadId = attachment.status === 'COMPLETED' ? attachment.id : attachment.uploadId;
     if (uploadId === undefined) return;
     await options

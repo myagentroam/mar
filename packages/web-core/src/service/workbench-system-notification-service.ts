@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue';
+import { unboundAccountStorage } from './account-storage-service.js';
 import { isMobileNotificationClient } from '../util/notification-capability.js';
 import type { ServerNotification } from '@myagentroam/protocol';
 import { createWebPushSubscriptionService } from './web-push-subscription-service.js';
@@ -16,6 +17,8 @@ export function createWorkbenchSystemNotificationService(
   request?: <T>(path: string, init?: RequestInit) => Promise<T>
 ) {
   const push = createWebPushSubscriptionService(username, request);
+  let storage: Storage = typeof localStorage === 'undefined' ? unboundAccountStorage : localStorage;
+  let physicalKey: (key: string) => string = (key) => key;
   const mode = isMobileNotificationClient() ? 'mobile-push' : 'desktop-system';
   const pendingDisplays = new Map<string, () => boolean>();
   const enabled = ref(false);
@@ -57,7 +60,7 @@ export function createWorkbenchSystemNotificationService(
 
   function save(account: string): void {
     try {
-      localStorage.setItem(storageKey(account), String(enabled.value));
+      storage.setItem(storageKey(account), String(enabled.value));
     } catch {
       // The opt-in still applies to this page if browser storage is unavailable.
     }
@@ -206,7 +209,7 @@ export function createWorkbenchSystemNotificationService(
   }
 
   function onStorage(event: StorageEvent): void {
-    if (activeAccount === undefined || event.key !== storageKey(activeAccount)) return;
+    if (activeAccount === undefined || event.key !== physicalKey(storageKey(activeAccount))) return;
     const next = event.newValue === 'true';
     if (enabled.value === next && !requesting.value) return;
     generation += 1;
@@ -255,7 +258,7 @@ export function createWorkbenchSystemNotificationService(
     activeAccount = account;
     void push.invalidate();
     try {
-      enabled.value = account !== undefined && localStorage.getItem(storageKey(account)) === 'true';
+      enabled.value = account !== undefined && storage.getItem(storageKey(account)) === 'true';
     } catch {
       enabled.value = false;
     }
@@ -284,6 +287,10 @@ export function createWorkbenchSystemNotificationService(
   }
 
   return {
+    bindStorage: (next: Storage, keyForEvent: (key: string) => string) => {
+      storage = next;
+      physicalKey = keyForEvent;
+    },
     enabled,
     mode,
     pushReady: push.canSubscribe,

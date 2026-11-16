@@ -1,6 +1,10 @@
 import { absoluteSessionTime as formatSessionTime } from '../util/workbench-presentation.js';
 import type { MessageFeedback } from '../model/message-feedback.js';
 import type { UserSessionSummary } from '../model/workbench.js';
+/** Owns confirmed authentication and request generations for one page.
+ * Identity publication invokes narrow lifecycle ports; domain cleanup and storage
+ * serialization belong to the composition root and its domain owners.
+ */
 import { computed, proxyRefs, ref, type Ref } from 'vue';
 import type { AppLocale } from '../i18n/locale-config.js';
 import { ApiError } from '../util/api-error.js';
@@ -13,6 +17,7 @@ export interface AuthenticationPresentation {
 
 export interface AdminState {
   readonly authenticated: boolean;
+  readonly userId?: number;
   readonly mustChangePassword: boolean;
   readonly username?: string;
   readonly isAdmin?: boolean;
@@ -38,6 +43,7 @@ export interface AdminAuthStateOptions {
   readonly invalidateRequests: () => void;
   readonly onAuthenticated: () => Promise<void>;
   readonly onSignedOut: () => void;
+  readonly onAccountChanged?: (userId: number) => void;
   readonly notice: MessageFeedback;
   readonly errorMessage: (error: unknown) => string;
 }
@@ -52,6 +58,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
   let sessionRefreshGeneration = 0;
   const authenticationUnknown = ref(false);
   const restoring = ref(false);
+  const accountKey = ref('');
   const sessionsRefreshing = ref(false);
 
   async function syncBrowserLocale(
@@ -99,6 +106,10 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
 
   function returnToLogin(): void {
     replaceIdentity();
+    clearIdentity();
+  }
+
+  function clearIdentity(): void {
     options.admin.value = { authenticated: false, mustChangePassword: false };
     options.loaded.value = true;
     authenticationUnknown.value = false;
@@ -106,13 +117,26 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
     options.loading.value = false;
     options.sessions.value = [];
     options.csrfToken.value = '';
-    window.sessionStorage.removeItem(CSRF_STORAGE_KEY);
+    try {
+      window.sessionStorage.removeItem(CSRF_STORAGE_KEY);
+    } catch {
+      // Unavailable persistence must not retain the previous account in memory.
+    }
     options.onSignedOut();
   }
 
+  function publishIdentity(next: AdminState): void {
+    if (typeof next.userId !== 'number') throw new Error('AUTHENTICATION_RESPONSE_INVALID');
+    if (!options.admin.value.authenticated || options.admin.value.userId !== next.userId) {
+      options.onAccountChanged?.(next.userId);
+      accountKey.value = `${next.userId}:${identityGeneration}`;
+    }
+    options.admin.value = next;
+  }
+
   async function refresh(): Promise<void> {
-    const generation = ++refreshGeneration;
-    const identity = identityGeneration;
+    let generation = ++refreshGeneration;
+    let identity = identityGeneration;
     const isCurrent = () => generation === refreshGeneration && identity === identityGeneration;
     restoring.value = true;
     try {
@@ -122,11 +146,19 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
         returnToLogin();
         return;
       }
+      if (typeof nextAdmin.userId !== 'number') throw new Error('AUTHENTICATION_RESPONSE_INVALID');
+      if (options.admin.value.authenticated && nextAdmin.userId !== options.admin.value.userId) {
+        identity = replaceIdentity();
+        generation = refreshGeneration;
+        // End A as soon as the Server confirms B, even if B's CSRF renewal fails.
+        clearIdentity();
+        restoring.value = true;
+      }
       const storedCsrfToken = window.sessionStorage.getItem(CSRF_STORAGE_KEY) ?? '';
       if (storedCsrfToken.length === 0) await options.renewCsrfToken();
       if (!isCurrent()) return;
       if (storedCsrfToken.length > 0) options.csrfToken.value = storedCsrfToken;
-      options.admin.value = nextAdmin;
+      publishIdentity(nextAdmin);
       authenticationUnknown.value = false;
       // Authentication is a Server-local fact. Reveal the shell before Node-backed
       // restoration so a busy or offline Node cannot leave the refresh gate blank.
@@ -226,9 +258,10 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       if (generation !== identityGeneration) return;
       options.invalidateRequests();
       refreshGeneration += 1;
+      if (options.admin.value.authenticated) clearIdentity();
       options.csrfToken.value = result.csrfToken;
       window.sessionStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken);
-      options.admin.value = result;
+      publishIdentity(result);
       authenticationUnknown.value = false;
       await syncBrowserLocale(result.locale, () => generation === identityGeneration);
       if (generation !== identityGeneration) return;
@@ -300,9 +333,12 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
       if (generation !== identityGeneration) return false;
       options.invalidateRequests();
       refreshGeneration += 1;
+      if (typeof result.userId !== 'number') throw new Error('AUTHENTICATION_RESPONSE_INVALID');
+      if (options.admin.value.authenticated && options.admin.value.userId !== result.userId)
+        clearIdentity();
+      publishIdentity(result);
       options.csrfToken.value = result.csrfToken;
       window.sessionStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken);
-      options.admin.value = result;
       options.password.value = '';
       options.notice(
         translate('generated.adminAuthService.passwordUpdatedPreviousSignInSessionsWere'),
@@ -349,6 +385,7 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
 
   return {
     view: proxyRefs({
+      accountKey,
       admin: options.admin,
       adminLoaded: options.loaded,
       authenticationUnknown,
@@ -385,7 +422,9 @@ export function createAdminAuthService(options: AdminAuthStateOptions) {
 }
 
 export interface WorkbenchIdentityView {
+  accountKey: string;
   admin: {
+    readonly userId?: number;
     readonly authenticated: boolean;
     readonly mustChangePassword: boolean;
     readonly username?: string;

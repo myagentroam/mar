@@ -471,7 +471,13 @@ export async function mockConsoleApi(
     json(
       route,
       authenticated
-        ? { authenticated: true, mustChangePassword: false, username: 'admin', isAdmin: true }
+        ? {
+            authenticated: true,
+            userId: 1,
+            mustChangePassword: false,
+            username: 'admin',
+            isAdmin: true
+          }
         : { authenticated: false, mustChangePassword: false }
     )
   );
@@ -479,6 +485,7 @@ export async function mockConsoleApi(
     authenticated = true;
     return json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,

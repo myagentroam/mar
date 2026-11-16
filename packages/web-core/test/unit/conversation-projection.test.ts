@@ -36,6 +36,66 @@ function state(initial: ConversationTurn[] = [turn()], onRecentWindowOverflow = 
 }
 
 describe('Web Conversation Projection State', () => {
+  it('does not reserialize completed exec output when only the live tail Item changes', () => {
+    const readOutput = vi.fn(() => 'retained output '.repeat(2_000));
+    const completedItems = Array.from({ length: 40 }, (_, index) => ({
+      id: `exec-${index}`,
+      kind: 'tool_call',
+      status: 'COMPLETED',
+      payload: {
+        toolName: 'exec',
+        output: {
+          blocks: [
+            {
+              channel: 'STDOUT',
+              get text() {
+                return readOutput();
+              }
+            }
+          ]
+        }
+      }
+    }));
+    const cached = limitConversationHistory([
+      {
+        ...turn(),
+        items: [
+          ...completedItems,
+          { id: 'live-exec', kind: 'tool_call', status: 'IN_PROGRESS', payload: {} }
+        ]
+      }
+    ]);
+    const { turns, projection } = createConversationProjectionState({
+      limitHistory: limitConversationHistory,
+      onRecentWindowOverflow: vi.fn()
+    });
+    projection.restoreWindow(cached, 'older');
+    readOutput.mockClear();
+
+    for (let sequence = 1; sequence <= 3; sequence += 1) {
+      expect(
+        projection.mergeItem(
+          'run-1',
+          {
+            itemId: 'live-exec',
+            kind: 'tool_call',
+            status: 'IN_PROGRESS',
+            payload: { output: { blocks: [{ channel: 'STDOUT', text: `poll ${sequence}` }] } }
+          },
+          sequence
+        )
+      ).toBe(true);
+    }
+
+    expect(readOutput).not.toHaveBeenCalled();
+    expect(turns.value[0]?.items).toHaveLength(41);
+    expect(turns.value[0]?.items[0]).toBe(cached[0]?.items[0]);
+    expect(turns.value[0]?.items.at(-1)?.payload).toEqual({
+      output: { blocks: [{ channel: 'STDOUT', text: 'poll 3' }] }
+    });
+    expect(cached[0]?.items.at(-1)?.payload).toEqual({});
+  });
+
   it('reuses bounded history on Workspace restore without traversing its payload again', () => {
     const readPayload = vi.fn(() => 'Retained history text');
     const current = {
