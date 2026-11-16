@@ -68,7 +68,7 @@ If unavailable, check personal preferences, Node compatibility and capability, m
 
 ### Before starting
 
-MAR Agent, Codex, Claude Code, and OpenCode support Goals with no execution-count limit. **Entering this mode clears pending regular queue items. MAR Agent retains its current Auto / Full access setting; other Agents switch to their confirmation-free permission, which does not revert when the Goal ends or is removed.** Check the objective, directories, and permission boundaries first, and restore the desired permission manually in Composer afterward.
+MAR Agent, Codex, Claude Code, and OpenCode support Goals with no execution-count limit. Entering, updating, or leaving Goal mode preserves pending regular messages and their order. Switching state alone does not resume a paused queue; actual sends, stops, and resumes follow the regular delivery rules. **MAR Agent retains its current Auto / Full access setting; other Agents switch to their confirmation-free permission, which does not revert when the Goal ends or is removed.** Check the objective, directories, and permission boundaries first, and restore the desired permission manually in Composer afterward.
 
 `/goal` uses MAR compatibility semantics, managed by the Node for all four Agents; it is distinct from native Codex Goal. The bare command waits for an objective, `/goal <objective>` sets or edits it, and `/goal --clear` removes it. Native Goal pause, resume, and budget controls are not provided; a native Goal created and completed within the current managed Codex execution also ends this Goal.
 

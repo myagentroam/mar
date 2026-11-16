@@ -104,6 +104,13 @@ const workspaceOffline = computed(
     props.page.application.networkUnavailable ||
     props.page.resources.workspaceHost?.connected === false
 );
+function workspaceTabHasActiveRun(nodeId: string, workspaceId: string): boolean {
+  return (
+    !props.page.application.networkUnavailable &&
+    props.page.resources.nodes.some((node) => node.id === nodeId && node.connected) &&
+    props.page.notifications.hasActiveWorkspaceRun(nodeId, workspaceId)
+  );
+}
 const workspaceFilesRestriction = computed(() => {
   const host = props.page.resources.workspaceHost;
   const capability = props.page.resources.nodeManifest?.files;
@@ -393,7 +400,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :node-label="page.selection.workspaceTabNodeLabel"
           :direct-available="page.resources.workspaceDirectAvailable"
           :direct-description="page.resources.workspaceDirectDescription"
-          :has-active-run="page.notifications.hasActiveWorkspaceRun"
+          :has-active-run="workspaceTabHasActiveRun"
           :has-unread="page.notifications.hasUnreadWorkspace"
           @activate="page.selection.activateWorkspaceTab"
           @close="page.selection.closeWorkspaceTab"
@@ -431,7 +438,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           :node-label="page.selection.workspaceTabNodeLabel"
           :direct-available="page.resources.workspaceDirectAvailable"
           :direct-description="page.resources.workspaceDirectDescription"
-          :has-active-run="page.notifications.hasActiveWorkspaceRun"
+          :has-active-run="workspaceTabHasActiveRun"
           :has-unread="page.notifications.hasUnreadWorkspace"
           @activate="page.selection.activateWorkspaceTab"
           @close="page.selection.closeWorkspaceTab"

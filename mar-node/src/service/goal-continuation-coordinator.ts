@@ -46,7 +46,7 @@ interface Options {
   readonly commands: Pick<CommandStateStore, 'get' | 'set' | 'clear'>;
   readonly queue: () => Pick<
     ContinuousRunCoordinator<unknown>,
-    'pending' | 'hasExecutionStarted' | 'removeGoalQueue' | 'removePendingQueue' | 'deleteQueueItem'
+    'pending' | 'hasExecutionStarted' | 'removeGoalQueue' | 'deleteQueueItem'
   >;
   readonly submit: SessionMessageService['submitGoal'];
   readonly emitRun: NodeRunEventBridge['emitRun'];
@@ -262,7 +262,7 @@ export class GoalContinuationCoordinator {
       this.options.commands.clear(session.id, 'goal');
     }
     const prepared = this.prepareGoalSession(session);
-    this.options.queue().removePendingQueue(session.id);
+    this.options.queue().removeGoalQueue(session.id);
     this.options.commands.set(session.id, this.pendingGoalCommandState());
     this.options.emitSession(prepared.session);
     return {

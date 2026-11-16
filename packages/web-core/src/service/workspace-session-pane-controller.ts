@@ -1629,8 +1629,7 @@ export function createWorkspaceSessionPane(
           beginSessionWatch: location.beginWatch
         },
         history: {
-          onDraftFilled: (text, operation) => {
-            if (operation === 'rollback') location.saveCurrent();
+          onDraftFilled: (text) => {
             state.focusInput(text.length);
           },
           replaceSession: location.replaceSession,

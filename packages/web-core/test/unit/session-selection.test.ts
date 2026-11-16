@@ -756,6 +756,43 @@ describe('Shared session selection', () => {
     expect(f.options.scrollLatest).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    'silently refreshes a cached empty session without restarting initial rendering (fails=%s)',
+    async (fails) => {
+      const f = tabSessionFixture();
+      vi.spyOn(f.options, 'restoreCachedDetail').mockReturnValue({
+        sessionId: f.session.id,
+        runs: [],
+        turns: [],
+        nextCursor: null,
+        contextUsage: null,
+        lastAccessedAt: 1
+      });
+      let settle!: () => void;
+      const failure = new Error('HISTORY_UNAVAILABLE');
+      vi.mocked(f.options.beginWatch).mockImplementation(
+        () =>
+          new Promise<boolean>((resolve, reject) => {
+            settle = () => (fails ? reject(failure) : resolve(true));
+          })
+      );
+      const opening = f.service.openWorkspaceTabSession(f.session.id);
+      await vi.waitFor(() => expect(f.options.beginWatch).toHaveBeenCalledOnce());
+      const loadingContent = f.service.loadingInitialContent.value;
+      expect(f.options.loadingInitial.value).toBe(true);
+      expect(f.turns.value).toEqual([]);
+      settle();
+      await opening;
+      expect(loadingContent).toBe(false);
+      expect(f.options.loadingInitial.value).toBe(false);
+      expect(f.service.loadingInitialContent.value).toBe(false);
+      expect(f.options.beginInitialRender).not.toHaveBeenCalled();
+      expect(f.options.scrollLatest).not.toHaveBeenCalled();
+      expect(f.options.initialLoadFailed.value).toBe(fails);
+      expect(f.options.initialFailureCause.value).toBe(fails ? failure : undefined);
+    }
+  );
+
   it('keeps restored content readable and preserves reading position across Watch synchronization', async () => {
     const f = tabSessionFixture();
     let scrollTop = 0;

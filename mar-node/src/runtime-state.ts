@@ -1501,7 +1501,6 @@ export class NodeRuntimeState {
   }
   resetAgentSessionHistory(sessionId: string, lastActivityAt: number): NodeAgentSession {
     if (this.activeSessionRun(sessionId) !== undefined) throw new Error('SESSION_ACTIVE');
-    if (this.sessionQueue(sessionId).itemIds.length > 0) throw new Error('SESSION_QUEUE_NOT_EMPTY');
     this.turns.delete(sessionId);
     this.clearTerminalMessageSubmissions(sessionId);
     for (const [id, run] of this.terminalRunIds)

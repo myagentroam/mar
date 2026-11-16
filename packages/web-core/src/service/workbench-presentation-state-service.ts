@@ -193,9 +193,7 @@ export function createWorkspaceSessionPresentationStateService(
   );
   const rollbackConversationEnabled = computed(
     () =>
-      rewindConversationEnabled.value &&
-      selectedRuntimeCapabilities.value.has('session.rollback') &&
-      currentSessionQueue.value.items.length === 0
+      rewindConversationEnabled.value && selectedRuntimeCapabilities.value.has('session.rollback')
   );
   function canDeleteSession(session: Session): boolean {
     const current =

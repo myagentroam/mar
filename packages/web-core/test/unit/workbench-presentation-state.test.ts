@@ -309,7 +309,7 @@ describe('Workbench mutually exclusive controls', () => {
     expect(f.state.rollbackConversationEnabled.value).toBe(true);
   });
 
-  it('checks only the current session queue for destructive operations', () => {
+  it('allows idle rollback with a queue while keeping destructive commands guarded', () => {
     const f = controlsFixture();
     const item = {
       queueItemId: 'queue-1',
@@ -323,7 +323,7 @@ describe('Workbench mutually exclusive controls', () => {
     };
     const clear = { ...f.compact, id: 'clear', interaction: 'DESTRUCTIVE_ACTION' as const };
     f.queue.value = { ...f.queue.value, paused: true, items: [item] };
-    expect(f.state.rollbackConversationEnabled.value).toBe(false);
+    expect(f.state.rollbackConversationEnabled.value).toBe(true);
     expect(f.state.rewindConversationEnabled.value).toBe(true);
     expect(f.state.canExecuteRunnerCommand(clear)).toBe(false);
     f.queue.value = { ...f.queue.value, items: [{ ...item, sessionId: 'session-2' }] };

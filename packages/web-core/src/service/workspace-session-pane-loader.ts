@@ -97,7 +97,8 @@ export function createWorkspaceSessionPaneRenderLifecycle(options: {
     if (options.content === undefined) throw new Error('Pane content is not configured.');
     if (input.activeRunId !== undefined) options.content.openRun(input.activeRunId);
     const hasContent = options.content.hasContent();
-    restoredContent.value = hasContent;
+    const restoredView = input.restored || hasContent;
+    restoredContent.value = restoredView;
     const cachedPositioning =
       input.restored && hasContent && !input.deferInitialScroll
         ? positionRestored(input.requestId, input.isCurrent)
@@ -122,9 +123,9 @@ export function createWorkspaceSessionPaneRenderLifecycle(options: {
       afterLoad: async (loaded) => {
         await finish({
           isCurrent: input.isCurrent,
-          initialRender: !hasContent,
+          initialRender: !restoredView,
           shouldScroll: () =>
-            !hasContent && (input.switching || loaded.changed || !input.deferInitialScroll),
+            !restoredView && (input.switching || loaded.changed || !input.deferInitialScroll),
           cachedPositioning
         });
         if (input.isCurrent()) input.onLoaded(loaded.session);

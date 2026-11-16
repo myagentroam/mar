@@ -27,7 +27,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
   readonly draft: {
     read(): string;
     restore(text: string): void;
-    fill(text: string, operation: 'rewind' | 'rollback'): void;
+    fill(text: string): void;
   };
   readonly replaceSession: (previousId: string, session: Session) => void;
   readonly openSession: ReturnType<typeof createWorkbenchSessionSelectionService>['openSession'];
@@ -85,7 +85,7 @@ export function createWorkbenchSessionHistoryMutationService(options: {
       revision = options.currentRevision();
       await opening;
       if (!isCurrent(source.nodeId, session, revision)) return { status: 'STALE', session };
-      options.draft.fill(restoredText, 'rewind');
+      options.draft.fill(restoredText);
       return { status: 'APPLIED', session };
     } catch (error) {
       if (session !== undefined && isCurrent(source.nodeId, session, revision)) {
@@ -141,7 +141,6 @@ export function createWorkbenchSessionHistoryMutationService(options: {
       return { status: 'SKIPPED' };
     const release = options.beginSubmission('session:' + source.session.id);
     if (release === undefined) return { status: 'SKIPPED' };
-    const restoredText = conversationItemText(item.kind, item.payload);
     let session: Session | undefined;
     pending.value = true;
     try {
@@ -163,7 +162,6 @@ export function createWorkbenchSessionHistoryMutationService(options: {
       revision = options.currentRevision();
       await opening;
       if (!isCurrent(source.nodeId, source.session, revision)) return { status: 'STALE', session };
-      options.draft.fill(restoredText, 'rollback');
       return { status: 'APPLIED', session };
     } catch (error) {
       return {

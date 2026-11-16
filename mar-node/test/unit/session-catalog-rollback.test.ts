@@ -4,6 +4,7 @@ import type { NodeConversationTurn } from '../../src/runtime-model.js';
 import { NodeRuntimeState } from '../../src/runtime-state.js';
 import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import { SessionCatalogService } from '../../src/session/session-catalog-service.js';
+import { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
 
 function turn(items: readonly Record<string, unknown>[]): NodeConversationTurn {
@@ -70,6 +71,7 @@ function fixture(initialTurn: NodeConversationTurn) {
       nextCursor: null
     })
   );
+  const onHistoryMutationSettled = vi.fn();
   const catalog = new SessionCatalogService({
     database: () => database,
     nodeId: () => 'node',
@@ -90,9 +92,10 @@ function fixture(initialTurn: NodeConversationTurn) {
     history,
     invalidateHistory: () => undefined,
     invalidateWorkspaceSessions: () => undefined,
-    emitSession: () => undefined
+    emitSession: () => undefined,
+    onHistoryMutationSettled
   });
-  return { database, runtime, session, runner, catalog, history };
+  return { database, runtime, session, runner, catalog, history, onHistoryMutationSettled };
 }
 
 const first = userItem('first-user-item', 'first-message');
@@ -102,6 +105,182 @@ const multiInputTurn = turn([first, steered]);
 afterEach(() => vi.restoreAllMocks());
 
 describe('SessionCatalogService rollback target selection', () => {
+  it.each(['success', 'failure', 'paused'] as const)(
+    'reconsiders preserved FIFO after rollback settles without resuming a paused queue (%s)',
+    async (outcome) => {
+      const f = fixture(multiInputTurn);
+      const control = vi.fn();
+      const coordinator = new ContinuousRunCoordinator({
+        runtime: f.runtime,
+        control,
+        executionTerminating: () => undefined,
+        keepRunActive: () => false,
+        emitQueue: vi.fn(),
+        emitConversation: vi.fn(),
+        clearImages: vi.fn(),
+        cleanupAttachments: vi.fn(),
+        migrateAssets: vi.fn(),
+        emitRun: vi.fn(),
+        stopped: () => false,
+        markInterrupted: vi.fn(),
+        mcps: () => []
+      });
+      f.onHistoryMutationSettled.mockImplementation((id: string) => coordinator.schedule(id));
+      const item = f.runtime.createQueueItem({
+        sessionId: f.session.id,
+        clientMessageId: 'preserved-fifo',
+        content: 'Continue in FIFO order'
+      }).item;
+      coordinator.prepare(item.id, {
+        runId: item.id,
+        sessionId: f.session.id,
+        workspaceId: f.session.workspaceId,
+        input: item.content,
+        attachments: [],
+        attachmentPaths: [],
+        cwd: f.session.cwd,
+        externalSessionId: f.session.externalSessionId,
+        modelId: null,
+        effort: null,
+        access: null,
+        collaborationMode: 'default',
+        secretEnvironment: {},
+        executionContext: { runner: 'mar-agent' }
+      });
+      if (outcome === 'paused') f.runtime.pauseSessionQueue(f.session.id);
+      const native = Promise.withResolvers<number>();
+      f.runner.rollbackNative.mockReturnValueOnce(native.promise);
+      try {
+        const pending = Promise.resolve(
+          f.catalog.operations()['session.rollback']!({
+            sessionId: f.session.id,
+            turnId: multiInputTurn.id,
+            itemId: first.id,
+            boundary: 'turn-1'
+          })
+        );
+        void pending.catch(() => undefined);
+        await vi.waitFor(() => expect(f.runner.rollbackNative).toHaveBeenCalledOnce());
+        if (outcome !== 'paused')
+          await expect(coordinator.dispatch(f.session.id)).rejects.toThrow('SESSION_ACTIVE');
+        expect(control).not.toHaveBeenCalled();
+        if (outcome === 'failure') {
+          native.reject(new Error('NATIVE_ROLLBACK_FAILED'));
+          await expect(pending).rejects.toThrow('NATIVE_ROLLBACK_FAILED');
+        } else {
+          native.resolve(1_500);
+          await pending;
+        }
+        if (outcome === 'paused') {
+          await coordinator.dispatch(f.session.id);
+          expect(f.runtime.sessionQueue(f.session.id)).toMatchObject({
+            paused: true,
+            itemIds: [item.id]
+          });
+          expect(control).not.toHaveBeenCalled();
+        } else {
+          await vi.waitFor(() =>
+            expect(control).toHaveBeenCalledWith('run.start', expect.anything())
+          );
+          expect(f.runtime.sessionQueue(f.session.id).itemIds).toEqual([]);
+        }
+        expect(f.onHistoryMutationSettled).toHaveBeenCalledExactlyOnceWith(f.session.id);
+      } finally {
+        native.resolve(1_500);
+        coordinator.clear();
+        f.database.close();
+      }
+    }
+  );
+
+  it.each([false, true])(
+    'preserves pending messages and queue state during rollback (paused=%s)',
+    async (paused) => {
+      const f = fixture(multiInputTurn);
+      const first = f.runtime.createQueueItem({
+        sessionId: f.session.id,
+        clientMessageId: 'pending-first',
+        content: 'Keep this first',
+        initiatedByUserId: 42
+      }).item;
+      const second = f.runtime.createQueueItem({
+        sessionId: f.session.id,
+        clientMessageId: 'pending-second',
+        content: 'Keep this second',
+        initiatedByUserId: 42
+      }).item;
+      if (paused) f.runtime.pauseSessionQueue(f.session.id);
+      const queue = f.runtime.sessionQueue(f.session.id);
+      const native = Promise.withResolvers<number>();
+      f.runner.rollbackNative.mockReturnValueOnce(native.promise);
+      try {
+        const pending = Promise.resolve(
+          f.catalog.operations()['session.rollback']!({
+            sessionId: f.session.id,
+            turnId: multiInputTurn.id,
+            itemId: 'first-user-item',
+            boundary: 'turn-1'
+          })
+        );
+        void pending.catch(() => undefined);
+        await vi.waitFor(() => expect(f.runner.rollbackNative).toHaveBeenCalledOnce());
+        expect(() => f.runtime.startRunFromQueueItem(first.id)).toThrow('SESSION_ACTIVE');
+        expect(() =>
+          f.runtime.createMessageRun({
+            sessionId: f.session.id,
+            clientMessageId: 'racing-input',
+            content: 'Cannot race with history mutation'
+          })
+        ).toThrow('SESSION_ACTIVE');
+        native.resolve(1_500);
+        await expect(pending).resolves.toMatchObject({ session: { id: f.session.id } });
+        expect(f.runtime.sessionQueue(f.session.id)).toEqual(queue);
+        expect(f.runtime.getQueueItem(first.id)).toEqual(first);
+        expect(f.runtime.getQueueItem(second.id)).toEqual(second);
+        expect(f.runtime.findMessageSubmission(f.session.id, first.clientMessageId)).toMatchObject({
+          kind: 'queue',
+          item: first
+        });
+        if (paused) f.runtime.resumeSessionQueue(f.session.id);
+        expect(f.runtime.startRunFromQueueItem(first.id).turn.items[0]?.payload).toMatchObject({
+          text: first.content
+        });
+      } finally {
+        native.resolve(1_500);
+        f.database.close();
+      }
+    }
+  );
+
+  it('preserves a paused queue and releases admission when native rollback fails', async () => {
+    const f = fixture(multiInputTurn);
+    const queued = f.runtime.createQueueItem({
+      sessionId: f.session.id,
+      clientMessageId: 'pending-message',
+      content: 'Keep after failure'
+    }).item;
+    f.runtime.pauseSessionQueue(f.session.id);
+    const queue = f.runtime.sessionQueue(f.session.id);
+    f.runner.rollbackNative.mockRejectedValueOnce(new Error('NATIVE_ROLLBACK_FAILED'));
+    try {
+      await expect(
+        f.catalog.operations()['session.rollback']!({
+          sessionId: f.session.id,
+          turnId: multiInputTurn.id,
+          boundary: 'turn-1',
+          itemId: 'first-user-item'
+        })
+      ).rejects.toThrow('NATIVE_ROLLBACK_FAILED');
+      expect(f.runtime.sessionQueue(f.session.id)).toEqual(queue);
+      expect(f.runtime.getQueueItem(queued.id)).toEqual(queued);
+      expect(() =>
+        f.runtime.beginSessionHistoryMutation(f.session.id, { allowQueued: true })()
+      ).not.toThrow();
+    } finally {
+      f.database.close();
+    }
+  });
+
   it('finds an older user message through history pagination rather than limiting rollback to the latest Turn', async () => {
     const f = fixture(multiInputTurn);
     const latest = {

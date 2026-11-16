@@ -394,6 +394,12 @@ describe('Node Workbench history projection and pagination', () => {
             readonly run: { readonly id: string };
           };
           createQueueItem(input: Record<string, unknown>): unknown;
+          pauseSessionQueue(sessionId: string): void;
+          sessionQueue(sessionId: string): {
+            readonly version: number;
+            readonly paused: boolean;
+            readonly itemIds: readonly string[];
+          };
           finishRun(runId: string, status: 'SUCCEEDED'): unknown;
           listConversationTurns(input: { sessionId: string }): {
             readonly turns: readonly unknown[];
@@ -430,6 +436,8 @@ describe('Node Workbench history projection and pagination', () => {
         clientMessageId: 'queued-message',
         content: 'queued'
       });
+      internals.runtime.pauseSessionQueue(queuedSource.id);
+      const pausedQueue = internals.runtime.sessionQueue(queuedSource.id);
       vi.spyOn(internals.conversationHistoryService, 'read').mockImplementation(
         async (session) => ({
           turns: [
@@ -508,14 +516,6 @@ describe('Node Workbench history projection and pagination', () => {
             boundary: `before-${activeSource.id}`
           })
         ).rejects.toThrow('SESSION_ACTIVE');
-        await expect(
-          operation(connector, 'session.rollback', {
-            sessionId: queuedSource.id,
-            turnId: `turn-${queuedSource.id}`,
-            boundary: `before-${queuedSource.id}`
-          })
-        ).rejects.toThrow('SESSION_QUEUE_NOT_EMPTY');
-
         const pending = operation(connector, 'session.rollback', {
           sessionId: source.id,
           turnId: `turn-${source.id}`,
@@ -551,6 +551,16 @@ describe('Node Workbench history projection and pagination', () => {
             content: 'allowed again'
           })
         ).not.toThrow();
+        rollback.mockResolvedValueOnce(1_789_000_000_001);
+        await expect(
+          operation(connector, 'session.rollback', {
+            sessionId: queuedSource.id,
+            turnId: `turn-${queuedSource.id}`,
+            boundary: `before-${queuedSource.id}`
+          })
+        ).resolves.toMatchObject({ session: { id: queuedSource.id } });
+        expect(internals.runtime.sessionQueue(queuedSource.id)).toEqual(pausedQueue);
+        expect(rollback).toHaveBeenCalledTimes(2);
       } finally {
         await connector.stop();
       }

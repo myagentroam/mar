@@ -58,6 +58,8 @@ interface SessionCatalogServiceOptions {
   readonly invalidateHistory: (sessionId: string, workspaceId: string) => void;
   readonly invalidateWorkspaceSessions: (workspaceId: string) => void;
   readonly emitSession: (session: NodeAgentSession) => void;
+  /** Lets the FIFO owner reconsider preserved input after history admission is released. */
+  readonly onHistoryMutationSettled?: (sessionId: string) => void;
 }
 
 interface SessionTreeCleanup {
@@ -544,9 +546,6 @@ export class SessionCatalogService {
         .some((run) => !isTerminalRunStatus(run.status))
     )
       throw new Error('SESSION_ACTIVE');
-    if (this.options.runtime.sessionQueue(source.id).itemIds.length > 0)
-      throw new Error('SESSION_QUEUE_NOT_EMPTY');
-
     const turn = await this.findTurn(source, input.turnId);
     const target =
       turn === undefined
@@ -559,7 +558,9 @@ export class SessionCatalogService {
       turn.rewind?.before !== input.boundary
     )
       throw new Error('SESSION_ROLLBACK_TARGET_INVALID');
-    const releaseMutation = this.options.runtime.beginSessionHistoryMutation(source.id);
+    const releaseMutation = this.options.runtime.beginSessionHistoryMutation(source.id, {
+      allowQueued: true
+    });
     try {
       const lastActivityAt = await runner.rollbackNative(
         source,
@@ -579,6 +580,7 @@ export class SessionCatalogService {
       return { session: this.options.present(session) };
     } finally {
       releaseMutation();
+      this.options.onHistoryMutationSettled?.(source.id);
     }
   }
 

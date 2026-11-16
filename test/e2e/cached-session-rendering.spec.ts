@@ -10,13 +10,15 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-for (const [width, itemsPerSegment] of [
-  [1280, 200],
-  [390, 200],
-  [1280, 1],
-  [390, 1]
+for (const [width, itemsPerSegment, running] of [
+  [1280, 200, false],
+  [390, 200, false],
+  [1280, 1, false],
+  [390, 1, false],
+  [1280, 1, true],
+  [390, 1, true]
 ] as const) {
-  test(`Workbench switches cached history without a scroll at ${width}px with ${itemsPerSegment} items per segment`, async ({
+  test(`Workbench switches cached ${running ? 'running' : 'idle'} history without a scroll at ${width}px with ${itemsPerSegment} items per segment`, async ({
     page
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -68,7 +70,7 @@ for (const [width, itemsPerSegment] of [
       runner: 'codex',
       externalSessionId: `native-${name}`,
       nativeControl: 'MAR_MANAGED',
-      activity: 'IDLE',
+      activity: running ? 'RUNNING' : 'IDLE',
       control: { level: 'MANAGED', capabilities: ['turn.start'] }
     }));
     await page.route('**/api/agent-sessions?*', (route) =>
@@ -108,24 +110,62 @@ for (const [width, itemsPerSegment] of [
     });
     const finishWatch = async (route: Route) => {
       const session = sessions.find((candidate) => route.request().url().includes(candidate.id))!;
-      await fulfillMockSessionWatch(page, route, session, {
+      const conversation = {
         unit: 'SEGMENT',
         segments: Array.from({ length: 3 }, (_, segment) => ({
           id: `${session.id}-${segment}`,
           turnId: `${session.id}-turn`,
           sessionId: session.id,
-          runId: null,
+          runId: running ? `${session.id}-run` : null,
           index: segment,
-          status: 'SUCCEEDED',
-          items: Array.from({ length: itemsPerSegment }, (_, item) => ({
-            id: `${session.id}-${segment}-${item}`,
-            kind: 'assistant_message',
-            status: 'COMPLETED',
-            payload: { text: `${session.id} generation ${generation} body ${segment}-${item}` }
-          }))
+          status: running ? 'RUNNING' : 'SUCCEEDED',
+          items: [
+            ...(running && segment === 2
+              ? [
+                  {
+                    id: `${session.id}-work`,
+                    kind: 'command_execution',
+                    status: 'IN_PROGRESS',
+                    processGroup: { id: `process-${session.id}`, isStart: true },
+                    payload: { command: `echo cached work for ${session.id}` }
+                  }
+                ]
+              : []),
+            ...Array.from({ length: itemsPerSegment }, (_, item) => ({
+              id: `${session.id}-${segment}-${item}`,
+              kind: 'assistant_message',
+              status: 'COMPLETED',
+              payload: { text: `${session.id} generation ${generation} body ${segment}-${item}` }
+            }))
+          ]
         })),
         nextCursor: itemsPerSegment === 1 && session.id === 'cached-session' ? 'older-page' : null
-      });
+      };
+      await fulfillMockSessionWatch(
+        page,
+        route,
+        session,
+        running
+          ? {
+              kind: 'session-watch-snapshot',
+              sequence: snapshots + 1,
+              session,
+              runs: [
+                {
+                  id: `${session.id}-run`,
+                  sessionId: session.id,
+                  workspaceId: session.workspaceId,
+                  status: 'RUNNING',
+                  recoveryState: 'ACTIVE',
+                  clientMessageId: `${session.id}-message`
+                }
+              ],
+              queue: { version: 0, paused: false, items: [] },
+              context: null,
+              conversation
+            }
+          : conversation
+      );
       snapshots++;
     };
     await page.route('**/api/agent-sessions/*/watch', async (route) => {
@@ -168,6 +208,12 @@ for (const [width, itemsPerSegment] of [
     await expect.poll(() => pendingWatch !== undefined).toBe(true);
     await expect(latest('cached', 0)).toBeInViewport();
     await expect(latest('cached', 0)).toBeVisible();
+    await expect(page.locator('.conversation-loading-initial')).toHaveCount(0);
+    if (running) {
+      const process = page.locator('[data-process-id="process-cached-session"]');
+      await expect(process.locator('.process-heading')).toHaveAttribute('aria-expanded', 'true');
+      await expect(process.locator('.process-body')).toBeVisible();
+    }
     if (itemsPerSegment === 1) {
       await page.evaluate(
         () =>
@@ -179,6 +225,12 @@ for (const [width, itemsPerSegment] of [
     generation = 1;
     await finishWatch(pendingWatch!);
     await expect(latest('cached', 1)).toBeInViewport();
+    await expect(page.locator('.conversation-loading-initial')).toHaveCount(0);
+    if (running) {
+      await expect(
+        page.locator('[data-process-id="process-cached-session"] .process-heading')
+      ).toHaveAttribute('aria-expanded', 'true');
+    }
     if (itemsPerSegment === 1) {
       await expect.poll(() => olderReads).toBe(2);
       await expect(page.getByText('Older body 2-199', { exact: true })).toBeAttached();
