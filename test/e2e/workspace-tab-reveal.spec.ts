@@ -9,6 +9,79 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`Workspace Tab reveal skips branch animation measurements: ${reducedMotion}`, async ({
+    page
+  }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript(() => {
+      const measurements = { height: 0, bounds: 0 };
+      Object.assign(window, { branchMeasurements: measurements });
+      const height = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight')!;
+      Object.defineProperty(Element.prototype, 'scrollHeight', {
+        ...height,
+        get() {
+          if (this.matches('.workspace-tree .workspace-branches')) measurements.height++;
+          return height.get!.call(this);
+        }
+      });
+      const bounds = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function () {
+        if (this.matches('.workspace-tree .workspace-branches')) measurements.bounds++;
+        return bounds.call(this);
+      };
+    });
+    const measurements = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as { branchMeasurements: { height: number; bounds: number } })
+            .branchMeasurements
+      );
+    const branchesReady = () =>
+      page.evaluate(() => {
+        const branches = [
+          ...document.querySelectorAll<HTMLElement>('.workspace-tree .workspace-branches')
+        ];
+        return (
+          branches.length > 0 &&
+          branches.every(
+            (branch) =>
+              !branch.inert && branch.style.getPropertyValue('--workspace-branch-height') === ''
+          )
+        );
+      });
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html?tree-reveal&locale=en-US`);
+    for (const label of ['Remote', 'Target', 'Second', 'Plain', 'Target']) {
+      const tab = page.getByRole('tab', { name: label, exact: true });
+      await tab.click();
+      await expect(tab).toBeFocused();
+    }
+    await expect(page.getByRole('button', { name: '/target', exact: true })).toBeInViewport();
+    expect(await measurements()).toEqual({ height: 0, bounds: 0 });
+    await expect.poll(branchesReady).toBe(true);
+
+    const node = page.getByRole('button', { name: 'node', exact: true });
+    await node.click();
+    await expect(page.getByRole('button', { name: '/target', exact: true })).toBeHidden();
+    await node.click();
+    await expect(page.getByRole('button', { name: '/target', exact: true })).toBeVisible();
+    await expect(
+      page.locator('.workspace-branch-enter-active, .workspace-branch-leave-active')
+    ).toHaveCount(0);
+    await expect.poll(branchesReady).toBe(true);
+    const target = page.getByRole('button', { name: '/target', exact: true });
+    await target.focus();
+    await expect(target).toBeFocused();
+    const explicit = await measurements();
+    if (reducedMotion === 'reduce') expect(explicit).toEqual({ height: 0, bounds: 0 });
+    else {
+      expect(explicit.height).toBeGreaterThan(0);
+      expect(explicit.bounds).toBeGreaterThan(0);
+    }
+  });
+}
+
 test('Workspace Tabs reveal the target and collapse other Nodes and groups without moving focus', async ({
   page
 }) => {

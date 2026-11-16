@@ -36,15 +36,18 @@ function enableBranchMotion(): void {
 function enterBranch(element: Element): void {
   const branch = element as HTMLElement;
   branch.inert = false;
-  branch.style.setProperty('--workspace-branch-height', `${branch.scrollHeight}px`);
+  // Vue still invokes transition hooks when CSS motion is disabled for automatic reveal.
+  if (animateBranches.value)
+    branch.style.setProperty('--workspace-branch-height', `${branch.scrollHeight}px`);
 }
 
 function leaveBranch(element: Element): void {
   const branch = element as HTMLElement;
-  branch.style.setProperty(
-    '--workspace-branch-height',
-    `${branch.getBoundingClientRect().height}px`
-  );
+  if (animateBranches.value)
+    branch.style.setProperty(
+      '--workspace-branch-height',
+      `${branch.getBoundingClientRect().height}px`
+    );
   branch.inert = true;
 }
 

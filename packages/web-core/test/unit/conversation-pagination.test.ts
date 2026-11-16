@@ -563,6 +563,64 @@ describe('Conversation History Pagination', () => {
     ).toEqual(['middle', 'newest']);
   });
 
+  it('keeps exact UTF-8 history budgets after immutable Item and Segment metadata replacements', () => {
+    const older: ConversationTurn = {
+      ...turn('older'),
+      items: [
+        {
+          id: 'old-item',
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload: { text: 'old'.repeat(40) }
+        }
+      ]
+    };
+    const latest: ConversationTurn = {
+      ...turn('latest'),
+      turnId: 'turn-1',
+      segmentIndex: 2,
+      startedAt: null,
+      items: [
+        {
+          id: 'exec',
+          kind: 'tool_call',
+          status: 'IN_PROGRESS',
+          payload: { output: { blocks: [{ channel: 'STDOUT', text: '😀中文\n"\\\ud800' }] } }
+        },
+        {
+          id: 'assistant',
+          kind: 'assistant_message',
+          status: 'IN_PROGRESS',
+          payload: { text: 'latest', extra: [null, undefined, '😀'] }
+        }
+      ]
+    };
+    const replacements: ConversationTurn[] = [
+      latest,
+      { ...latest, rewind: { before: null, after: 'native-😀' }, completedAt: 123 },
+      {
+        ...latest,
+        items: [
+          latest.items[0]!,
+          { ...latest.items[1]!, status: 'COMPLETED', payload: { text: 'new\n"\\😀'.repeat(40) } }
+        ]
+      },
+      { ...latest, items: [latest.items[1]!] },
+      { ...latest, items: [] }
+    ];
+
+    for (const replacement of replacements) {
+      const window = [older, replacement];
+      const exactBytes = new TextEncoder().encode(JSON.stringify(window)).byteLength;
+      const retained = limitConversationHistory(window, exactBytes);
+      expect(retained).toHaveLength(2);
+      expect(retained[0]).toBe(older);
+      expect(retained[1]).toBe(replacement);
+      expect(limitConversationHistory(window, exactBytes - 1)).toEqual([replacement]);
+      expect(new TextEncoder().encode(JSON.stringify(retained)).byteLength).toBe(exactBytes);
+    }
+  });
+
   it('When a single newest Turn exceeds the limit, removes large payloads while preserving the local truncation notice', () => {
     const oversized = turn('newest', {
       items: [

@@ -2,6 +2,87 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+// @test-covers packages/web-core/src/view/conversation/ConversationTimeline.vue
+test('switching Workspace Tabs does not recalculate an unchanged sibling style', async ({
+  page,
+  browserName
+}) => {
+  test.skip(browserName !== 'chromium', 'Style invalidation telemetry requires Chromium CDP.');
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-mobile-drawer.html', {
+    protocolSource: true
+  });
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // Load both style owners without re-optimizing Vite dependencies during the trace.
+    const timelineModule = new URL(
+      '/packages/web-core/src/view/conversation/ConversationTimeline.vue',
+      fixture.url
+    ).href;
+    const moduleResponse = await page.request.get(timelineModule);
+    expect(moduleResponse.status(), (await moduleResponse.text()).slice(0, 2000)).toBe(200);
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html?tree-reveal=1`);
+    await page.evaluate(async (moduleUrl) => {
+      await import(moduleUrl);
+    }, timelineModule);
+    const tabs = page.locator('.workspace-tab');
+    await expect(tabs).toHaveCount(4);
+    await page.evaluate(() => {
+      const sibling = document.createElement('aside');
+      sibling.dataset.styleSentinel = '';
+      sibling.textContent = 'Unchanged workspace navigation';
+      sibling.style.cssText = 'position:fixed;bottom:0;left:0;pointer-events:none';
+      document.querySelector('.console-shell')!.prepend(sibling);
+      void sibling.offsetWidth;
+    });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('DOM.enable');
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+    const { nodeId } = await cdp.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: '[data-style-sentinel]'
+    });
+    const { node } = await cdp.send('DOM.describeNode', { nodeId });
+    let siblingRecalculations = 0;
+    let totalRecalculations = 0;
+    cdp.on('Tracing.dataCollected', ({ value }) => {
+      for (const event of value) {
+        if (event.name === 'StyleResolver::ResolveStyle') totalRecalculations++;
+        if (
+          event.name === 'StyleResolver::ResolveStyle' &&
+          event.args?.data?.nodeId === node.backendNodeId
+        )
+          siblingRecalculations++;
+      }
+    });
+    await cdp.send('Tracing.start', {
+      categories:
+        'devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.invalidationTracking'
+    });
+    for (let index = 0; index < 4; index++) {
+      await tabs.nth((index + 1) % 4).click();
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+      );
+    }
+    const completed = new Promise<void>((resolve) =>
+      cdp.once('Tracing.tracingComplete', () => resolve())
+    );
+    await cdp.send('Tracing.end');
+    await completed;
+    await cdp.detach();
+    expect(totalRecalculations).toBeGreaterThan(0);
+    expect(siblingRecalculations).toBe(0);
+    await expect(page.locator('[data-style-sentinel]')).toHaveText(
+      'Unchanged workspace navigation'
+    );
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('records a reproducible conversation detail performance sample', async ({ page }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/conversation-tool-detail.html', {
     protocolSource: true

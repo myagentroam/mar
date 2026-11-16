@@ -1806,8 +1806,9 @@ function stepDuration(item: ConversationItem): string | undefined {
   box-sizing: border-box;
 }
 
-.conversation-item:has(> details.conversation-tool-presentation)
-  > details
+/* Keep invalidation local to the owned detail, not unrelated workbench subtrees. */
+.conversation-item
+  > details.conversation-tool-presentation
   > :not(summary):not(.mar-conversation-detail-body),
 .conversation-item:where(
     .reasoning-group,
