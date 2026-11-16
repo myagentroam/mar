@@ -659,8 +659,7 @@ it.each([false, true])(
           sealed: !active,
           active
         },
-        synchronized: true,
-        now: undefined
+        synchronized: true
       },
       { default: slot },
       tooltipValues
@@ -2332,7 +2331,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(active).toMatchObject({ sealed: true, active: true, status: 'executing' });
     const activeHtml = await render(
       ConversationWorkProcess,
-      { block: active, synchronized: true, now: undefined },
+      { block: active, synchronized: true },
       { default: () => h('span', 'Process details') }
     );
     expect(activeHtml).toMatch(/class="process-heading"[^>]*aria-expanded="true"/u);
@@ -2348,8 +2347,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
 
     const disconnectedHtml = await render(ConversationWorkProcess, {
       block: active,
-      synchronized: false,
-      now: undefined
+      synchronized: false
     });
     expect(disconnectedHtml).not.toContain('process-activity-indicator');
 
@@ -2360,7 +2358,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(ended).toMatchObject({ sealed: true, active: false, status: 'completed' });
     const endedHtml = await render(
       ConversationWorkProcess,
-      { block: ended, synchronized: true, now: undefined },
+      { block: ended, synchronized: true },
       { default: () => h('span', 'Process details') }
     );
     expect(endedHtml).toMatch(/class="process-heading"[^>]*aria-expanded="false"/u);
@@ -2381,7 +2379,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     ])[0]!;
     const partialHtml = await render(
       ConversationWorkProcess,
-      { block: partial, synchronized: false, now: undefined },
+      { block: partial, synchronized: false },
       { default: () => h('span', 'Partial details') }
     );
     expect(partial.partial).toBe(true);
@@ -2626,7 +2624,6 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
         h(ConversationWorkProcess, {
           block: block.value,
           synchronized: true,
-          now: undefined,
           onVnodeMounted: (vnode) => {
             setupState = (
               vnode.component as unknown as { readonly setupState: Record<string, unknown> } | null

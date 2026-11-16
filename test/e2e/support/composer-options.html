@@ -18,7 +18,7 @@
 
       const query = new URLSearchParams(location.search);
       document.documentElement.dataset.theme = query.get('theme') ?? 'daylight';
-      localePreferenceService().setLocale('en-US');
+      localePreferenceService().setLocale(query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
       const selected = ref('model-0');
       const effort = ref('medium');
       const selection = ref(query.get('single') === 'effort' ? 'effort:medium' : 'model:model-0');
@@ -42,7 +42,7 @@
             },
             [
               h(ComposerToolbar, {
-                draftSessionOpen: true,
+                draftSessionOpen: !query.has('existing-session'),
                 runner: 'mar-agent',
                 runnerOptions: [
                   { value: 'mar-agent', label: 'MAR Agent' },
@@ -73,12 +73,20 @@
                 contextUsageLabel: '42% used',
                 canCompactContext: false,
                 mobileViewport: query.has('mobile'),
-                activeRun: undefined,
+                activeRun: query.has('running')
+                  ? {
+                      id: 'fixture-run',
+                      status: 'RUNNING',
+                      recoveryState: '',
+                      clientMessageId: 'fixture-message'
+                    }
+                  : undefined,
                 canInterrupt: query.has('running'),
                 interruptVisible: query.has('running'),
-                inputHasContent: true,
+                inputHasContent: !query.has('empty'),
                 hasSelectedCommand: false,
                 loading: false,
+                submitting: query.has('submitting'),
                 attachmentsPending: false,
                 effortLabel: String,
                 onUpdateModelEffort(value) {

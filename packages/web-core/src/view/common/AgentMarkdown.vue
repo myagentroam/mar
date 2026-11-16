@@ -206,8 +206,20 @@ onBeforeUnmount(() => {
   copyResetTimers.clear();
 });
 
+// Parent renders recreate identity tuples; equal values must not invalidate mounted HTML.
+const stableCacheIdentity = computed<readonly string[] | undefined>((previous) => {
+  const next = props.cacheIdentity;
+  return previous &&
+    next &&
+    previous.length === next.length &&
+    previous.every((part, index) => part === next[index])
+    ? previous
+    : next;
+});
+
 const html = computed(() => {
   const language = locale.value;
+  const identity = stableCacheIdentity.value;
   const render = () =>
     DOMPurify.sanitize(renderer.render(props.content), {
       ADD_ATTR: [
@@ -225,14 +237,10 @@ const html = computed(() => {
       ]
     });
   // Resource callbacks can depend on live context; never reuse HTML containing image syntax.
-  if (
-    !markdownCache ||
-    !props.cacheIdentity ||
-    (props.imageResourceUrl && props.content.includes('!'))
-  )
+  if (!markdownCache || !identity || (props.imageResourceUrl && props.content.includes('!')))
     return render();
   return markdownCache.render(
-    [...props.cacheIdentity, props.content, props.workspaceRoot ?? '', language],
+    [...identity, props.content, props.workspaceRoot ?? '', language],
     render
   );
 });

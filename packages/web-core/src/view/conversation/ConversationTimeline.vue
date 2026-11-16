@@ -7,7 +7,6 @@ import MarIcon from '../common/MarIcon.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { toolPresentation, toolPresentationStatus } from '../../util/tool-presentation.js';
 import { translate } from '../../service/locale-preference-service.js';
-import { createWorkbenchSecondClock } from '../../service/workbench-clock-service.js';
 import {
   computed,
   nextTick,
@@ -571,13 +570,6 @@ watch(
   }
 );
 const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
-const processNow = createWorkbenchSecondClock(
-  computed(
-    () =>
-      synchronized.value &&
-      processBlocks.value.some((block) => block.active && block.startedAt !== undefined)
-  )
-);
 
 function stepDuration(item: ConversationItem): string | undefined {
   const duration = completedStepDuration(item);
@@ -610,7 +602,6 @@ function stepDuration(item: ConversationItem): string | undefined {
       :ref="(instance) => setProcessView(block.id, instance)"
       :block="block"
       :synchronized="synchronized"
-      :now="block.active ? processNow : undefined"
       :performance="performance"
       class="conversation-turn"
     >

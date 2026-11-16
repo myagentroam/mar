@@ -1357,13 +1357,12 @@ describe('shared Workbench state composition', () => {
     const drafts = createSessionDraftService({ target });
     const attachments = createComposerAttachmentService({
       context: () => target.value,
-      request: vi.fn() as never,
+      request: vi.fn(() => new Promise<never>(() => undefined)),
       renewCsrfToken: vi.fn(),
       csrfToken: ref('csrf'),
       onUnauthenticated: vi.fn(),
       notice: vi.fn()
     });
-    const moveAttachments = vi.spyOn(attachments, 'moveDraft');
     const submissions = createWorkbenchSubmissionOwner();
     const pane = createWorkspaceSessionPaneState({
       submissions,
@@ -1372,6 +1371,8 @@ describe('shared Workbench state composition', () => {
       attachments,
       onConversationOverflow: vi.fn()
     });
+    pane.attachments.add([new File(['next'], 'next.txt')]);
+    const unsent = pane.attachments.attachments.value[0]!;
     const first = pane.captureDraft()!;
     const finishFirst = pane.submission.begin('session:draft', undefined, null)!;
     // Timeout releases admission, but the first request can still return after a retry starts.
@@ -1384,7 +1385,11 @@ describe('shared Workbench state composition', () => {
     expect(finishNewer).toBeDefined();
     retry.createdSession({ id: 'retry', workspaceId: 'w' });
     expect(pane.submission.pending.value).toBe(true);
-    expect(moveAttachments).toHaveBeenCalledTimes(1);
+    expect(pane.attachments.attachments.value).toEqual([unsent]);
+    expect(
+      attachments.forTarget(() => ({ ...target.value, kind: 'session', sessionId: 'first' }))
+        .attachments.value
+    ).toEqual([unsent]);
     expect(pane.submission.begin('session:draft', undefined, null)).toBeUndefined();
     expect(finishRetry()).toBe(true);
     expect(pane.submission.pending.value).toBe(true);

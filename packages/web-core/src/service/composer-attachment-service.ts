@@ -7,14 +7,23 @@ import { errorCode } from '../util/api-error.js';
 import { workspaceFileSha256 } from '../util/workspace-file-checksum.js';
 import { errorMessage } from '../util/error-presentation.js';
 import type { DirectTransferDescriptor } from '@myagentroam/protocol';
-import type { DraftTarget } from './session-draft-service.js';
+import type { DraftPane, DraftTarget } from './session-draft-service.js';
 import { isBmpAttachment, normalizeComposerImage } from '../util/composer-image-compatibility.js';
+
+interface AttachmentTarget {
+  readonly nodeId: string;
+  readonly workspaceId: string;
+  readonly pane: DraftPane;
+}
 
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const CHUNK_BYTES = 512 * 1024;
 
+/** Owns tab-local uploads by Workspace and Composer pane, independently of session selection.
+ * Submission retention protects captured files; cancellation and preview URL cleanup stay here.
+ */
 export function createComposerAttachmentService(options: {
   readonly context: () => DraftTarget | undefined;
   readonly notice: MessageFeedback;
@@ -36,29 +45,36 @@ export function createComposerAttachmentService(options: {
   };
 }) {
   const attachments = ref<ComposerAttachment[]>([]);
-  const owners = new Map<string, DraftTarget>();
-  const sameTarget = (left: DraftTarget | undefined, right: DraftTarget | undefined) =>
+  const owners = new Map<string, AttachmentTarget>();
+  const sameTarget = (left: AttachmentTarget | undefined, right: AttachmentTarget | undefined) =>
     left !== undefined &&
     right !== undefined &&
-    left.kind === right.kind &&
     left.nodeId === right.nodeId &&
     left.workspaceId === right.workspaceId &&
-    (left.kind === 'workspace' || (right.kind === 'session' && left.sessionId === right.sessionId));
+    left.pane === right.pane;
+  const targetFor = (
+    target: DraftTarget | undefined,
+    pane: DraftPane = 'main'
+  ): AttachmentTarget | undefined =>
+    target === undefined
+      ? undefined
+      : { nodeId: target.nodeId, workspaceId: target.workspaceId, pane };
+  const currentTarget = () => targetFor(options.context());
   const submissions = new Map<string, number>();
   const attachmentKey = (attachment: ComposerAttachment) =>
     JSON.stringify([attachment.nodeId, attachment.workspaceId, attachment.id]);
-  function attachmentsFor(context: DraftTarget | undefined): ComposerAttachment[] {
+  function attachmentsFor(context: AttachmentTarget | undefined): ComposerAttachment[] {
     return context === undefined
       ? []
       : attachments.value.filter((attachment) => sameTarget(owners.get(attachment.id), context));
   }
-  const visibleAttachments = computed(() => attachmentsFor(options.context()));
+  const visibleAttachments = computed(() => attachmentsFor(currentTarget()));
   const dragging = ref(false);
   const preview = ref<ComposerAttachment>();
   const previewOpen = ref(false);
   const directRequests = new Map<string, AbortController>();
 
-  function addFor(context: DraftTarget | undefined, files: Iterable<File>): void {
+  function addFor(context: AttachmentTarget | undefined, files: Iterable<File>): void {
     for (const file of files) {
       const visible = attachmentsFor(context);
       if (visible.length >= MAX_FILES)
@@ -113,10 +129,11 @@ export function createComposerAttachmentService(options: {
     if (attachment !== undefined) void cancel(attachment);
   }
 
-  function clearFor(context: DraftTarget | undefined, discardUploads = true): void {
+  function clearFor(context: AttachmentTarget | undefined, discardUploads = true): void {
     if (context === undefined) return;
-    previewOpen.value = false;
     const current = attachmentsFor(context);
+    if (current.some((attachment) => attachment.id === preview.value?.id))
+      previewOpen.value = false;
     for (const attachment of current) {
       if (attachment.previewUrl !== null) URL.revokeObjectURL(attachment.previewUrl);
       if (discardUploads) void cancel(attachment);
@@ -134,23 +151,6 @@ export function createComposerAttachmentService(options: {
     }
     attachments.value = [];
     owners.clear();
-  }
-
-  function moveDraft(from: DraftTarget, to: DraftTarget): void {
-    if (
-      from.kind !== 'workspace' ||
-      to.kind !== 'session' ||
-      from.nodeId !== to.nodeId ||
-      from.workspaceId !== to.workspaceId
-    )
-      return;
-    let moved = false;
-    for (const [id, owner] of owners) {
-      if (!sameTarget(owner, from)) continue;
-      owners.set(id, { ...to });
-      moved = true;
-    }
-    if (moved) attachments.value = [...attachments.value];
   }
 
   function retainForSubmission(submitted: readonly ComposerAttachment[]): () => void {
@@ -192,14 +192,15 @@ export function createComposerAttachmentService(options: {
     previewOpen.value = true;
   }
 
-  function forTarget(target: () => DraftTarget | undefined) {
+  function forTarget(target: () => DraftTarget | undefined, pane: DraftPane = 'main') {
+    const context = () => targetFor(target(), pane);
     return {
-      attachments: computed(() => attachmentsFor(target())),
-      add: (files: Iterable<File>) => addFor(target(), files),
+      attachments: computed(() => attachmentsFor(context())),
+      add: (files: Iterable<File>) => addFor(context(), files),
       remove: (id: string) => {
-        if (sameTarget(owners.get(id), target())) remove(id);
+        if (sameTarget(owners.get(id), context())) remove(id);
       },
-      clear: (discardUploads = true) => clearFor(target(), discardUploads)
+      clear: (discardUploads = true) => clearFor(context(), discardUploads)
     };
   }
 
@@ -390,11 +391,10 @@ export function createComposerAttachmentService(options: {
     dragging,
     preview,
     previewOpen,
-    add: (files: Iterable<File>) => addFor(options.context(), files),
+    add: (files: Iterable<File>) => addFor(currentTarget(), files),
     remove,
-    clear: (discardUploads = true) => clearFor(options.context(), discardUploads),
+    clear: (discardUploads = true) => clearFor(currentTarget(), discardUploads),
     clearAll,
-    moveDraft,
     forTarget,
     retainForSubmission,
     consume,

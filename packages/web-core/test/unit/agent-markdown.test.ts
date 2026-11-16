@@ -1,4 +1,4 @@
-import { createRenderer, createSSRApp, h } from 'vue';
+import { createRenderer, createSSRApp, h, nextTick, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DOMPurify from 'dompurify';
@@ -71,6 +71,131 @@ it('reuses sanitized completed content only when its full context is stable', as
   } finally {
     localePreferenceService().setLocale(previousLocale);
     vi.unstubAllGlobals();
+  }
+});
+
+it('keeps 80 mounted markdown entries cached across equivalent-identity parent updates', async () => {
+  class HostNode {
+    readonly children: HostNode[] = [];
+    readonly props = new Map<string, unknown>();
+    parent: HostNode | undefined;
+    innerHTML = '';
+    text = '';
+
+    constructor(readonly type: string) {}
+
+    querySelectorAll() {
+      return [];
+    }
+  }
+
+  const renderer = createRenderer<HostNode, HostNode>({
+    patchProp(element, key, _previous, value) {
+      element.props.set(key, value);
+      if (key === 'innerHTML') element.innerHTML = String(value ?? '');
+    },
+    insert(element, parent, anchor) {
+      if (element.parent !== undefined) {
+        const previousIndex = element.parent.children.indexOf(element);
+        if (previousIndex !== -1) element.parent.children.splice(previousIndex, 1);
+      }
+      const anchorIndex = anchor == null ? -1 : parent.children.indexOf(anchor);
+      parent.children.splice(anchorIndex === -1 ? parent.children.length : anchorIndex, 0, element);
+      element.parent = parent;
+    },
+    remove(element) {
+      if (element.parent === undefined) return;
+      const index = element.parent.children.indexOf(element);
+      if (index !== -1) element.parent.children.splice(index, 1);
+      element.parent = undefined;
+    },
+    createElement: (type) => new HostNode(type),
+    createText: () => new HostNode('#text'),
+    createComment: () => new HostNode('#comment'),
+    setText(node, text) {
+      node.text = text;
+    },
+    setElementText(node, text) {
+      node.text = text;
+      node.children.length = 0;
+    },
+    parentNode: (node) => node.parent ?? null,
+    nextSibling(node) {
+      if (node.parent === undefined) return null;
+      const index = node.parent.children.indexOf(node);
+      return node.parent.children[index + 1] ?? null;
+    }
+  });
+  const sanitize = vi.mocked(DOMPurify.sanitize);
+  sanitize.mockClear();
+  const cache = createConversationMarkdownCache();
+  const contents = ref(Array.from({ length: 80 }, (_, index) => `message-${index}`));
+  const identities = ref(
+    Array.from({ length: 80 }, (_, index) => ['session-1', 'turn-1', `item-${index}`])
+  );
+  const unrelated = ref(0);
+  const app = renderer.createApp({
+    setup() {
+      return () => {
+        void unrelated.value;
+        return h(
+          'section',
+          contents.value.map((content, index) =>
+            h(AgentMarkdownInteractive, {
+              key: `markdown-${index}`,
+              content,
+              // Match Timeline: equal identity values are re-created on each parent render.
+              cacheIdentity: [...identities.value[index]!]
+            })
+          )
+        );
+      };
+    }
+  });
+  const container = new HostNode('container');
+  app.use(i18n);
+  app.provide(CONVERSATION_MARKDOWN_CACHE_KEY, cache);
+
+  function markdownNodes(): HostNode[] {
+    const found: HostNode[] = [];
+    const visit = (node: HostNode) => {
+      if (node.props.get('class') === 'agent-markdown') found.push(node);
+      for (const child of node.children) visit(child);
+    };
+    visit(container);
+    return found;
+  }
+
+  try {
+    app.mount(container);
+    await nextTick();
+    const initialNodes = markdownNodes();
+    const initialHtml = initialNodes.map((node) => node.innerHTML);
+    expect(initialNodes).toHaveLength(80);
+    expect(sanitize).toHaveBeenCalledTimes(80);
+
+    unrelated.value++;
+    await nextTick();
+    expect(sanitize).toHaveBeenCalledTimes(80);
+    expect(markdownNodes().map((node) => node.innerHTML)).toEqual(initialHtml);
+
+    contents.value = contents.value.map((content, index) =>
+      index === 37 ? 'updated-message-37' : content
+    );
+    await nextTick();
+    expect(sanitize).toHaveBeenCalledTimes(81);
+    expect(markdownNodes()[37]?.innerHTML).toContain('updated-message-37');
+
+    const priorIdentityHtml = markdownNodes()[12]?.innerHTML;
+    identities.value = identities.value.map((identity, index) =>
+      index === 12 ? [...identity, 'revision-2'] : identity
+    );
+    await nextTick();
+    expect(sanitize).toHaveBeenCalledTimes(82);
+    expect(markdownNodes()[12]?.innerHTML).toBe(priorIdentityHtml);
+  } finally {
+    app.unmount();
+    sanitize.mockClear();
   }
 });
 

@@ -79,6 +79,36 @@ for (const [width, columnWidth] of [
     expect(box.x + box.width).toBeLessThanOrEqual(container.x + container.width);
   });
 
+test('Process duration ticks do not reproject the conversation body', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(
+    `${fixture.url}conversation-style.html?reasoning-preview=1&live-performance=1&clock-isolation=1`
+  );
+  const duration = page.locator('[data-process-id="preview-process"] .process-duration');
+  await expect(duration).toBeVisible();
+  const before = await duration.innerText();
+  const reads = await page.evaluate(() => Reflect.get(window, '__conversationClockPayloadReads'));
+  expect(reads).toBeGreaterThan(0);
+  await page.clock.runFor(3000);
+  await expect(duration).not.toHaveText(before);
+  expect(await page.evaluate(() => Reflect.get(window, '__conversationClockPayloadReads'))).toBe(
+    reads
+  );
+
+  await page.getByTestId('finish-reasoning-process').click();
+  await expect(page.getByText('Finished reviewing files.', { exact: true })).toBeVisible();
+  const heading = page.locator('[data-process-id="preview-process"] .process-heading');
+  const completedLabel = await heading.innerText();
+  const completedReads = await page.evaluate(() =>
+    Reflect.get(window, '__conversationClockPayloadReads')
+  );
+  await page.clock.runFor(3000);
+  expect(await heading.innerText()).toBe(completedLabel);
+  expect(await page.evaluate(() => Reflect.get(window, '__conversationClockPayloadReads'))).toBe(
+    completedReads
+  );
+});
+
 for (const locale of ['en-US', 'zh-CN']) {
   for (const width of [1280, 390]) {
     test(`Session branch actions distinguish Rewind from Rollback in ${locale} at ${width}px`, async ({

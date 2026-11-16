@@ -6,7 +6,10 @@ import {
 } from '../../src/service/conversation-projection-service.js';
 import { createWorkbenchConversationSnapshotService } from '../../src/service/workbench-conversation-snapshot-service.js';
 import type { ConversationTurn } from '../../src/model/workbench.js';
-import { MAX_CONVERSATION_ITEM_TEXT_CHARACTERS } from '../../src/util/conversation-history.js';
+import {
+  limitConversationHistory,
+  MAX_CONVERSATION_ITEM_TEXT_CHARACTERS
+} from '../../src/util/conversation-history.js';
 import { conversationDisplayItems } from '../../src/util/conversation-presentation.js';
 
 function turn(status = 'RUNNING'): ConversationTurn {
@@ -33,6 +36,71 @@ function state(initial: ConversationTurn[] = [turn()], onRecentWindowOverflow = 
 }
 
 describe('Web Conversation Projection State', () => {
+  it('reuses bounded history on Workspace restore without traversing its payload again', () => {
+    const readPayload = vi.fn(() => 'Retained history text');
+    const current = {
+      ...turn(),
+      items: [
+        {
+          id: 'assistant',
+          kind: 'assistant_message',
+          status: 'RUNNING',
+          payload: {
+            get text() {
+              return readPayload();
+            }
+          }
+        }
+      ]
+    } satisfies ConversationTurn;
+    const cached = limitConversationHistory([current]);
+    const { turns, projection } = createConversationProjectionState({
+      limitHistory: limitConversationHistory,
+      onRecentWindowOverflow: vi.fn()
+    });
+    readPayload.mockClear();
+    projection.restoreWindow(cached, 'older');
+    expect(limitConversationHistory(turns.value)).toEqual(cached);
+    expect(readPayload).not.toHaveBeenCalled();
+    expect(turns.value[0]).toBe(cached[0]);
+  });
+
+  it('publishes streamed replacements while preserving a restored immutable cache', () => {
+    const cached = [
+      {
+        ...turn(),
+        items: [
+          {
+            id: 'assistant',
+            kind: 'assistant_message',
+            status: 'RUNNING',
+            payload: { text: 'First' }
+          }
+        ]
+      }
+    ];
+    const { turns, projection } = createConversationProjectionState({
+      limitHistory: limitConversationHistory,
+      onRecentWindowOverflow: vi.fn()
+    });
+    projection.restoreWindow(cached, null);
+    const published = vi.fn();
+    const stop = watch(turns, published, { flush: 'sync' });
+    try {
+      projection.mergeTextDelta('run-1', { itemId: 'assistant', text: ' second' }, 1);
+      projection.flushPendingTextDeltas();
+      expect(published).toHaveBeenCalledOnce();
+      expect(turns.value[0]?.items[0]?.payload).toEqual({
+        text: 'First second',
+        format: 'markdown',
+        model: null
+      });
+      expect(cached[0]?.items[0]?.payload).toEqual({ text: 'First' });
+    } finally {
+      stop();
+    }
+  });
+
   it('keeps an expanded history window when a handoff fills an older prefix rather than appending a live Segment', () => {
     const segments = Array.from({ length: 36 }, (_, index) => ({
       ...turn('SUCCEEDED'),
@@ -343,10 +411,11 @@ describe('Web Conversation Projection State', () => {
     }));
     const overflow = vi.fn();
     const { turns, nextCursor, controller } = state(initial, overflow);
+    nextCursor.value = 'older';
 
     controller.mergeLatest({
       turns: [{ ...turn(), id: 'turn-16', runId: 'run-16', startedAt: 16 }],
-      nextCursor: 'older',
+      nextCursor: 'before-turn-16',
       snapshotSequence: 16
     });
     controller.mergeTextDelta('run-16', { text: 'Continue output' }, 17);
@@ -1347,6 +1416,123 @@ describe('Web Conversation Projection State', () => {
     }
   });
 
+  it('does not revisit unrelated history payloads when a tail snapshot changes', () => {
+    const readHistory = vi.fn(() => 'Retained tool output');
+    const history = {
+      ...turn('SUCCEEDED'),
+      id: 'history',
+      items: [
+        {
+          id: 'tool',
+          kind: 'tool_call',
+          status: 'COMPLETED',
+          payload: {
+            get text() {
+              return readHistory();
+            }
+          }
+        }
+      ]
+    } satisfies ConversationTurn;
+    const { turns, projection } = createConversationProjectionState({
+      limitHistory: limitConversationHistory,
+      onRecentWindowOverflow: vi.fn()
+    });
+    projection.replaceRecent({ turns: [history, turn()], nextCursor: null });
+    const retained = turns.value[0];
+    readHistory.mockClear();
+
+    expect(
+      projection.mergeLatest({ turns: [{ ...turn(), completedAt: 30 }], nextCursor: null })
+    ).toBe(true);
+    expect(turns.value[0]).toBe(retained);
+    expect(turns.value[1]?.completedAt).toBe(30);
+    expect(readHistory).not.toHaveBeenCalled();
+  });
+
+  it('retains unchanged snapshot units when another unit changes', () => {
+    const history = {
+      ...turn('SUCCEEDED'),
+      id: 'history',
+      rewind: { before: null, after: 'native-history' }
+    };
+    const { turns, controller } = state([history, turn()]);
+
+    expect(
+      controller.mergeLatest({
+        turns: [structuredClone(history), { ...turn(), status: 'SUCCEEDED' }],
+        nextCursor: null
+      })
+    ).toBe(true);
+    expect(turns.value[0]).toBe(history);
+    expect(turns.value[1]?.status).toBe('SUCCEEDED');
+  });
+
+  it('treats reordered JSON keys and omitted optional fields as unchanged', () => {
+    const current = {
+      ...turn(),
+      items: [
+        {
+          id: 'tool',
+          kind: 'tool_call',
+          status: 'COMPLETED',
+          payload: { text: 'Output', details: { code: 0, path: '/work', diagnostic: undefined } }
+        }
+      ]
+    };
+    const { turns, controller } = state([current]);
+    const prior = turns.value;
+
+    expect(
+      controller.mergeLatest({
+        turns: [
+          {
+            ...turn(),
+            items: [
+              {
+                status: 'COMPLETED',
+                kind: 'tool_call',
+                id: 'tool',
+                payload: { details: { path: '/work', code: 0 }, text: 'Output' }
+              }
+            ]
+          }
+        ],
+        nextCursor: null
+      })
+    ).toBe(false);
+    expect(turns.value).toBe(prior);
+  });
+
+  it.each([
+    { text: 'Changed', details: { code: 0 } },
+    { text: 'Output', details: { code: 1 } },
+    { text: 'Output' },
+    { text: 'Output', details: null },
+    { text: 'Output', details: [0] }
+  ])('publishes nested payload changes without mutating cached units: %j', (payload) => {
+    const current = {
+      ...turn(),
+      items: [
+        {
+          id: 'tool',
+          kind: 'tool_call',
+          status: 'COMPLETED',
+          payload: { text: 'Output', details: { code: 0 } }
+        }
+      ]
+    };
+    const { turns, controller } = state([current]);
+    expect(
+      controller.mergeLatest({
+        turns: [{ ...current, items: [{ ...current.items[0]!, payload }] }],
+        nextCursor: null
+      })
+    ).toBe(true);
+    expect(turns.value[0]?.items[0]?.payload).toEqual(payload);
+    expect(current.items[0]?.payload).toEqual({ text: 'Output', details: { code: 0 } });
+  });
+
   it('Publishes only the final bounded snapshot and its reconstructed cursor', () => {
     const overflow = vi.fn();
     const { turns, nextCursor, projection } = createConversationProjectionState({
@@ -1379,6 +1565,74 @@ describe('Web Conversation Projection State', () => {
     } finally {
       stop();
     }
+  });
+
+  it.each([null, 'older-user-history'])(
+    'keeps explicitly loaded history and its %s cursor when a refresh covers only the latest six Segments',
+    (cursor) => {
+      const loaded = Array.from({ length: 9 }, (_, index) => ({
+        ...turn('SUCCEEDED'),
+        id: `segment-${index}`,
+        rewind: { before: null, after: `native-${index}` }
+      }));
+      const { turns, nextCursor, controller } = state(loaded);
+      controller.restore(turns.value);
+      nextCursor.value = cursor;
+      expect(
+        controller.mergeLatest({
+          turns: structuredClone(loaded.slice(-6)),
+          nextCursor: 'before-segment-3',
+          snapshotSequence: 100
+        })
+      ).toBe(false);
+      expect(turns.value.map(({ id }) => id)).toEqual(loaded.map(({ id }) => id));
+      expect(turns.value[0]!.rewind).toEqual({ before: null, after: 'native-0' });
+      expect(nextCursor.value).toBe(cursor);
+    }
+  );
+
+  it('accepts a replayed tool completion for a loaded Segment omitted from the latest-six snapshot', () => {
+    const loaded = Array.from({ length: 7 }, (_, index) => ({
+      ...turn('SUCCEEDED'),
+      id: `turn-1:segment:${index}`,
+      turnId: 'turn-1',
+      segmentIndex: index,
+      items: [
+        {
+          id: `tool-${index}`,
+          kind: 'tool_call',
+          status: 'IN_PROGRESS',
+          payload: { text: 'Before' }
+        }
+      ]
+    }));
+    const { turns, controller } = state(loaded);
+    controller.replaceAuthoritative({ turns: loaded, nextCursor: null, snapshotSequence: 0 });
+    controller.mergeLatest({
+      turns: structuredClone(loaded.slice(-6)),
+      nextCursor: 'older',
+      snapshotSequence: 5
+    });
+    expect(
+      controller.mergeItem(
+        'run-1',
+        {
+          turnId: 'turn-1',
+          segmentId: 'turn-1:segment:0',
+          segmentIndex: 0,
+          itemId: 'tool-0',
+          kind: 'tool_call',
+          status: 'COMPLETED',
+          payload: { text: 'Complete exec output' }
+        },
+        2
+      )
+    ).toBe(true);
+    expect(turns.value[0]!.items[0]).toMatchObject({
+      status: 'COMPLETED',
+      payload: { text: 'Complete exec output' }
+    });
+    expect(turns.value).toHaveLength(7);
   });
 
   it('Preserves the older page cursor when a native history snapshot matches cached content', () => {

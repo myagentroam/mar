@@ -552,7 +552,7 @@ function selectFiles(event: Event): void {
   display: none;
 }
 
-@container (max-width: 840px) {
+@container (max-width: 680px) {
   .composer-hint:not(.is-submitting) {
     display: none;
   }
