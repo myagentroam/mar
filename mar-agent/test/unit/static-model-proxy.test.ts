@@ -100,6 +100,7 @@ const request = {
 describe('static model SOCKS5 connections', () => {
   it.each([
     ['HTTP_1_1', '127.0.0.1'],
+    ['HTTP_1_1', '::1'],
     ['HTTP_2', '127.0.0.1'],
     ['WEBSOCKET', '127.0.0.1'],
     ['HTTP_2', '::1'],
@@ -148,55 +149,61 @@ describe('static model SOCKS5 connections', () => {
     }
   );
 
-  it('routes Anthropic through SOCKS5 and never falls back to a reachable direct endpoint', async () => {
-    let directRequests = 0;
-    const target = createServer((incoming, response) => {
-      directRequests++;
-      expect(incoming.headers['x-api-key']).toBe('static-key');
-      incoming.resume();
-      incoming.on('end', () => {
-        response.writeHead(200, { 'content-type': 'text/event-stream' });
-        response.end(anthropicEvents.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
+  it.each(['127.0.0.1', '::1'] as const)(
+    'routes Anthropic through authenticated SOCKS5 on %s and never falls back to a reachable direct endpoint',
+    async (proxyHost) => {
+      let directRequests = 0;
+      const target = createServer((incoming, response) => {
+        directRequests++;
+        expect(incoming.headers['x-api-key']).toBe('static-key');
+        incoming.resume();
+        incoming.on('end', () => {
+          response.writeHead(200, { 'content-type': 'text/event-stream' });
+          response.end(
+            anthropicEvents.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')
+          );
+        });
       });
-    });
-    servers.push(target);
-    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
-    const address = target.address();
-    if (!address || typeof address === 'string') throw new Error('Missing fixture address');
-    const proxy = await startSocks5Proxy({
-      targetPort: address.port,
-      username: 'proxy-user',
-      password: 'proxy-pass'
-    });
-    servers.push(proxy.server);
-    const model = {
-      ...configuration(`http://model.internal:${address.port}`, proxy.url),
-      protocol: 'ANTHROPIC_MESSAGES' as const
-    };
-    expect(
-      await collect(
-        new AnthropicMessagesAdapter(model).start(
-          { ...request, retryState: { attempts: 0, maxAttempts: 1 } },
-          new AbortController().signal
+      servers.push(target);
+      await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+      const address = target.address();
+      if (!address || typeof address === 'string') throw new Error('Missing fixture address');
+      const proxy = await startSocks5Proxy({
+        listenHost: proxyHost,
+        targetPort: address.port,
+        username: 'proxy-user',
+        password: 'proxy-pass'
+      });
+      servers.push(proxy.server);
+      const model = {
+        ...configuration(`http://model.internal:${address.port}`, proxy.url),
+        protocol: 'ANTHROPIC_MESSAGES' as const
+      };
+      expect(
+        await collect(
+          new AnthropicMessagesAdapter(model).start(
+            { ...request, retryState: { attempts: 0, maxAttempts: 1 } },
+            new AbortController().signal
+          )
         )
-      )
-    ).toContainEqual(expect.objectContaining({ type: 'text.completed', text: 'Proxied' }));
-    expect(proxy.authentications).toEqual([{ username: 'proxy-user', password: 'proxy-pass' }]);
-    const failedProxyModel = {
-      ...model,
-      baseUrl: `http://127.0.0.1:${address.port}`,
-      socks5Url: new SecretValue(proxy.url.replace('proxy-pass', 'incorrect-pass'))
-    };
-    await expect(
-      collect(
-        new AnthropicMessagesAdapter(failedProxyModel).start(
-          { ...request, retryState: { attempts: 0, maxAttempts: 1 } },
-          new AbortController().signal
+      ).toContainEqual(expect.objectContaining({ type: 'text.completed', text: 'Proxied' }));
+      expect(proxy.authentications).toEqual([{ username: 'proxy-user', password: 'proxy-pass' }]);
+      const failedProxyModel = {
+        ...model,
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        socks5Url: new SecretValue(proxy.url.replace('proxy-pass', 'incorrect-pass'))
+      };
+      await expect(
+        collect(
+          new AnthropicMessagesAdapter(failedProxyModel).start(
+            { ...request, retryState: { attempts: 0, maxAttempts: 1 } },
+            new AbortController().signal
+          )
         )
-      )
-    ).rejects.toThrow();
-    expect(directRequests).toBe(1);
-  });
+      ).rejects.toThrow();
+      expect(directRequests).toBe(1);
+    }
+  );
 
   it('rejects failed proxy authentication instead of directly reaching Responses', async () => {
     process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
