@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue';
+import { ref, shallowRef, type Ref } from 'vue';
 import { conversationProcessGroupSchema } from '@myagentroam/protocol';
 import {
   CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT,
@@ -28,11 +28,31 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Compare immutable JSON projections without serializing unrelated history or large text. */
+function sameProjectionValue(previous: unknown, next: unknown): boolean {
+  if (previous === next) return true;
+  if (Array.isArray(previous))
+    return (
+      Array.isArray(next) &&
+      previous.length === next.length &&
+      previous.every((value, index) => sameProjectionValue(value, next[index]))
+    );
+  if (!record(previous) || !record(next)) return false;
+  // Optional fields explicitly set to undefined are absent from the wire representation.
+  const keys = Object.keys(previous).filter((key) => previous[key] !== undefined);
+  const nextKeys = Object.keys(next).filter((key) => next[key] !== undefined);
+  return (
+    keys.length === nextKeys.length &&
+    keys.every((key) => Object.hasOwn(next, key) && sameProjectionValue(previous[key], next[key]))
+  );
+}
+
 export function createConversationProjectionState(options: {
   readonly onRecentWindowOverflow: () => void;
   readonly limitHistory: (turns: readonly ConversationTurn[]) => ConversationTurn[];
 }) {
-  const turns = ref<ConversationTurn[]>([]);
+  // Projection updates replace immutable windows; deep proxies break history/cache identities.
+  const turns = shallowRef<ConversationTurn[]>([]);
   const nextCursor = ref<string | null>(null);
   const projection = createConversationProjectionService({ ...options, turns, nextCursor });
   return {
@@ -594,15 +614,28 @@ export function createConversationProjectionService(options: {
       .some((turn) => !previous.has(turn.id));
     const overflowed =
       appendsNewTurn && mergedTurns.length > CONVERSATION_RECENT_SEGMENT_BUFFER_LIMIT;
-    const nextTurns = options.limitHistory(
-      overflowed
-        ? limitRecentConversationSegments(mergedTurns, CONVERSATION_RECENT_SEGMENT_LIMIT)
-        : mergedTurns
-    );
-    const changed = JSON.stringify(priorTurns) !== JSON.stringify(nextTurns);
+    const nextTurns = options
+      .limitHistory(
+        overflowed
+          ? limitRecentConversationSegments(mergedTurns, CONVERSATION_RECENT_SEGMENT_LIMIT)
+          : mergedTurns
+      )
+      .map((turn) => {
+        const prior = previous.get(turn.id);
+        return prior !== undefined && sameProjectionValue(prior, turn) ? prior : turn;
+      });
+    const changed =
+      priorTurns.length !== nextTurns.length ||
+      priorTurns.some((turn, index) => turn !== nextTurns[index]);
     discardRemovedTurnSequences(mergedTurns, nextTurns);
     if (overflowed) options.nextCursor.value = null;
-    if (!overflowed && options.nextCursor.value === null && page.nextCursor !== null)
+    // A latest-window cursor cannot reopen history that an older loaded prefix exhausted.
+    if (
+      !overflowed &&
+      options.nextCursor.value === null &&
+      page.nextCursor !== null &&
+      nextTurns[0]?.id === page.turns[0]?.id
+    )
       options.nextCursor.value = page.nextCursor;
     // Compute the bounded projection before publishing. Unchanged confirmations must not
     // invalidate consumers, and observers must never receive an intermediate unbounded window.

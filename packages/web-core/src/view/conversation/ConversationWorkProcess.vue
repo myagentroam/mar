@@ -2,20 +2,18 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import MarIcon from '../common/MarIcon.vue';
+import ConversationProcessDuration from './ConversationProcessDuration.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   conversationProcessLabel,
-  conversationProcessDuration,
   type ConversationProcessBlock
 } from '../../util/conversation-work-process.js';
-import { preciseElapsedDurationLabel } from '../../util/time-presentation.js';
 import type { RunPerformance } from '@myagentroam/protocol';
 import { sessionPerformanceDetails } from '../../util/session-performance-presentation.js';
 
 const props = defineProps<{
   block: ConversationProcessBlock;
   synchronized: boolean;
-  now: number | undefined;
   performance?: RunPerformance | undefined;
 }>();
 const root = ref<HTMLElement>();
@@ -25,9 +23,6 @@ const open = computed(() => !props.block.groupId || (manualOpen.value ?? default
 // The scheduler reads the actual disclosure state, including manual and focus overrides.
 defineExpose({ isOpen: () => open.value });
 const statusLabel = computed(() => conversationProcessLabel(props.block, props.synchronized));
-const durationMs = computed(() =>
-  conversationProcessDuration(props.block, props.now, props.synchronized)
-);
 const performanceDetails = computed(() =>
   props.block.active && props.synchronized && props.block.runId === props.performance?.runId
     ? sessionPerformanceDetails(props.performance, true)
@@ -88,14 +83,7 @@ watch(open, async () => {
         <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
         <span class="process-activity-label">{{ statusLabel }}</span>
       </span>
-      <span v-if="durationMs !== undefined" class="process-duration"
-        >·
-        {{
-          translate('conversationActivity.step', {
-            value: preciseElapsedDurationLabel(durationMs)
-          })
-        }}</span
-      >
+      <ConversationProcessDuration :block="block" :synchronized="synchronized" />
       <span v-if="performanceDetails" class="process-performance">· {{ performanceDetails }}</span>
       <span v-if="block.partial" class="process-meta">{{
         translate('conversationProcess.partial')
@@ -161,12 +149,6 @@ watch(open, async () => {
 .process-meta {
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
-}
-.process-duration {
-  flex: none;
-  color: var(--mar-conversation-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 .process-performance {
   flex: 0 0 auto;

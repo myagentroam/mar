@@ -18,7 +18,7 @@ import {
 const INTERVAL_MS = 2_000;
 const TTL_MS = 45_000;
 const MAX_FAILURES = 3;
-const INITIAL_SEGMENT_LIMIT = 6;
+const SNAPSHOT_SEGMENT_LIMIT = 6;
 
 interface NativeSessionWatch {
   readonly observation: ConversationObservation;
@@ -55,7 +55,7 @@ export interface NativeSessionWatchOptions extends ConversationObservationOption
     session: NodeAgentSession,
     page: ConversationHistoryPage,
     unit: 'SEGMENT',
-    limit?: number
+    limit: number
   ) => unknown;
   readonly emitSession: (session: unknown) => void;
   readonly emitPage: (session: NodeAgentSession, page: ConversationHistoryPage) => void;
@@ -66,7 +66,9 @@ export interface NativeSessionWatchOptions extends ConversationObservationOption
   readonly log?: (event: string, fields: Record<string, unknown>) => void;
 }
 
-/** Owns shared native observation and page leases; history invalidation restarts reads, not leases. */
+/** Owns shared native observation and page leases; invalidation restarts reads, not leases.
+ * Segment snapshots stay bounded independently of internal history coverage.
+ */
 export class NativeSessionWatchService {
   private readonly watches = new Map<string, NativeSessionWatch>();
   private readonly leases = new Map<string, NativeSessionLease>();
@@ -444,7 +446,7 @@ export class NativeSessionWatchService {
       watch.observation.session = session;
       // Every Turn contributes at least one Segment, including an empty Turn.
       const update = await watch.observation.initial(
-        lease.unit === 'SEGMENT' ? INITIAL_SEGMENT_LIMIT : undefined
+        lease.unit === 'SEGMENT' ? SNAPSHOT_SEGMENT_LIMIT : undefined
       );
       if (this.leases.get(lease.ownerKey) !== lease || this.watches.get(session.id) !== watch)
         return;
@@ -456,10 +458,10 @@ export class NativeSessionWatchService {
       const page = update.page;
       const payload =
         lease.unit === 'SEGMENT'
-          ? projectInitialPage!(session, page, 'SEGMENT', INITIAL_SEGMENT_LIMIT)
+          ? projectInitialPage!(session, page, 'SEGMENT', SNAPSHOT_SEGMENT_LIMIT)
           : page;
       this.emitSnapshot(lease, session, payload);
-      this.releaseSnapshotPendingEvents(lease, page);
+      this.releaseSnapshotPendingEvents(lease, page, payload);
       const hydration = watch.observation.hydrate();
       if (hydration !== undefined)
         void hydration
@@ -536,7 +538,7 @@ export class NativeSessionWatchService {
       if (!lease.ready) continue;
       const payload =
         lease.unit === 'SEGMENT'
-          ? this.options.projectInitialPage?.(session, page, 'SEGMENT')
+          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', SNAPSHOT_SEGMENT_LIMIT)
           : page;
       if (payload === undefined) continue;
       this.options.emitWatchEvent?.({
@@ -565,12 +567,12 @@ export class NativeSessionWatchService {
       if (!lease.snapshotSent) continue;
       const payload =
         lease.unit === 'SEGMENT'
-          ? this.options.projectInitialPage?.(session, page, 'SEGMENT')
+          ? this.options.projectInitialPage?.(session, page, 'SEGMENT', SNAPSHOT_SEGMENT_LIMIT)
           : page;
       if (payload === undefined) continue;
       this.emitSnapshot(lease, session, payload);
       if (!releasePending) continue;
-      this.releaseSnapshotPendingEvents(lease, page);
+      this.releaseSnapshotPendingEvents(lease, page, payload);
     }
   }
 
@@ -609,7 +611,8 @@ export class NativeSessionWatchService {
 
   private releaseSnapshotPendingEvents(
     lease: NativeSessionLease,
-    page: ConversationHistoryPage
+    page: ConversationHistoryPage,
+    payload: unknown
   ): void {
     const candidateSequence = page.snapshotSequence;
     const snapshotSequence =
@@ -618,10 +621,35 @@ export class NativeSessionWatchService {
       candidateSequence >= 0
         ? candidateSequence
         : undefined;
+    const segmentIds =
+      lease.unit === 'SEGMENT' &&
+      isPlainRecord(payload) &&
+      payload.unit === 'SEGMENT' &&
+      Array.isArray(payload.segments)
+        ? new Set(
+            payload.segments.flatMap((segment) =>
+              isPlainRecord(segment) && typeof segment.id === 'string' ? [segment.id] : []
+            )
+          )
+        : undefined;
     lease.ready = true;
-    for (const event of lease.pendingEvents)
-      if (snapshotSequence === undefined || event.sequence > snapshotSequence)
+    for (const event of lease.pendingEvents) {
+      const content =
+        event.category === 'conversation' && isPlainRecord(event.payload)
+          ? isPlainRecord(event.payload.item)
+            ? event.payload.item
+            : isPlainRecord(event.payload.delta)
+              ? event.payload.delta
+              : undefined
+          : undefined;
+      // The full Turn high-water mark cannot cover an Item/Delta in an omitted Segment.
+      const outsideSnapshot =
+        segmentIds !== undefined &&
+        typeof content?.segmentId === 'string' &&
+        !segmentIds.has(content.segmentId);
+      if (snapshotSequence === undefined || event.sequence > snapshotSequence || outsideSnapshot)
         this.emitLeaseEvent(lease, event);
+    }
     lease.pendingEvents.length = 0;
   }
 

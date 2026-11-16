@@ -55,7 +55,7 @@ function turn(id: string, kinds: readonly string[]) {
 }
 
 describe('Node Conversation Segment', () => {
-  it('backfills all Segments of an observed Turn rather than truncating its earlier user inputs', async () => {
+  it('keeps observed snapshots bounded while earlier user inputs and Rewind boundaries remain paginated', async () => {
     let active = true;
     const session = {
       id: 'session-1',
@@ -111,9 +111,24 @@ describe('Node Conversation Segment', () => {
         payload: { session: { id: 'session-1', activity: 'IDLE' } }
       });
       await vi.waitFor(() => expect(snapshots).toHaveLength(2));
-      expect(snapshots[1]!.segments).toHaveLength(36);
-      expect(snapshots[1]!.segments[0]!.items[0]!.id).toBe('many-segments-0');
+      expect(snapshots[1]!.segments).toHaveLength(6);
+      expect(snapshots[1]!.segments[0]!.items[0]!.id).toBe('many-segments-60');
       expect(snapshots[1]!.segments.every((segment) => segment.rewind !== undefined)).toBe(true);
+      const loaded = [...snapshots[1]!.segments];
+      let cursor = snapshots[1]!.nextCursor;
+      for (let page = 0; cursor !== null && page < 10; page += 1) {
+        const older = await segments.read(session, { cursor, limit: 3 });
+        expect(older.segments).toHaveLength(3);
+        expect(older.segments.every((segment) => segment.rewind !== undefined)).toBe(true);
+        loaded.unshift(...older.segments);
+        cursor = older.nextCursor;
+      }
+      expect(cursor).toBeNull();
+      expect(loaded).toHaveLength(36);
+      expect(loaded.flatMap((segment) => segment.items.map(({ id }) => id))).toEqual(
+        original.items.map(({ id }) => id)
+      );
+      expect(snapshots).toHaveLength(2);
     } finally {
       watch.clear();
     }

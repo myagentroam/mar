@@ -3,10 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { NodeConnector } from '../../src/connector.js';
 import { composeConversationRuntimePage } from '../../src/service/conversation-history-service.js';
 import { NativeSessionWatchService } from '../../src/service/native-session-watch-service.js';
+import { ConversationSegmentService } from '../../src/service/conversation-segment-service.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { WorkbenchEventService } from '../../src/service/workbench-event-service.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
-import type { NodeEnvelope, WorkbenchEventCategory } from '@myagentroam/protocol';
+import type { ConversationHistoryPage } from '../../src/session/runner-native-session-parsers.js';
+import type {
+  ConversationSegmentPage,
+  NodeEnvelope,
+  WorkbenchEventCategory
+} from '@myagentroam/protocol';
 import type { ConversationHostingLifecycleService } from '../../src/service/conversation-hosting-lifecycle-service.js';
 
 describe('Node Workbench external session observation', () => {
@@ -403,6 +409,143 @@ describe('Node Workbench external session observation', () => {
     }
   });
 
+  it('bounds Segment snapshots through history hydration and handoff without losing Rewind metadata', async () => {
+    const session = {
+      id: 'session-bounded-segments',
+      externalSessionId: 'native-bounded-segments',
+      workspaceId: 'workspace-bounded-segments',
+      runner: 'codex'
+    } as NodeAgentSession;
+    const makeTurn = (id: string, count: number) => ({
+      id,
+      items: Array.from({ length: count }, (_, index) => [
+        {
+          id: `${id}-tool-${index}`,
+          kind: 'tool_call' as const,
+          payload: { text: 'x'.repeat(1024) }
+        },
+        {
+          id: `${id}-agent-${index}`,
+          kind: 'assistant_message' as const,
+          payload: { text: `${id}-${index}` }
+        }
+      ]).flat()
+    });
+    const current = {
+      ...makeTurn('current', 7),
+      runId: 'run-current',
+      rewind: { before: null as string | null, after: 'native-current' }
+    };
+    let active = true;
+    let history = {
+      source: 'official' as const,
+      turns: [
+        ...Array.from({ length: 4 }, (_, index) => makeTurn(`history-${index}`, 30)),
+        current
+      ],
+      nextCursor: null
+    };
+    const historyReady = Promise.withResolvers<void>();
+    const emitted: Array<{ type: string; payload?: ConversationSegmentPage }> = [];
+    let availablePage: ConversationHistoryPage | undefined;
+    const readOlder = vi.fn(
+      async (_target: NodeAgentSession, input: { cursor?: string; limit?: number }) => {
+        if (!availablePage) throw new Error('History is not ready');
+        const end = input.cursor === undefined ? availablePage.turns.length : Number(input.cursor);
+        const start = Math.max(0, end - (input.limit ?? 10));
+        return {
+          ...availablePage,
+          turns: availablePage.turns.slice(start, end),
+          nextCursor: start === 0 ? null : String(start)
+        };
+      }
+    );
+    const segments = new ConversationSegmentService(readOlder);
+    const service = createTestSessionWatch({
+      resolve: async () => session,
+      hasActiveRun: () => active,
+      refreshActivity: async () => undefined,
+      present: () => session,
+      readPage: async () =>
+        active ? { source: 'runtime', turns: [current], nextCursor: null } : history,
+      readHistoryPage: async () => {
+        await historyReady.promise;
+        return history;
+      },
+      projectInitialPage: (target, page, _unit, limit) => {
+        availablePage = page;
+        return segments.projectInitial(target, page, limit);
+      },
+      emitSession: vi.fn(),
+      emitPage: vi.fn(),
+      emitWatchEvent: (event) => emitted.push(event as (typeof emitted)[number])
+    });
+    const snapshots = () => emitted.filter((event) => event.type === 'watch.session.snapshot');
+    const assertLatestWindow = (before: string | null = null) => {
+      const page = snapshots().at(-1)!.payload!;
+      expect(page.unit).toBe('SEGMENT');
+      expect(page.segments.map((segment) => segment.id)).toEqual(
+        Array.from({ length: 6 }, (_, index) => `current:segment:${index + 1}`)
+      );
+      expect(page.nextCursor).toEqual(expect.any(String));
+      expect(page.segments.at(-1)!.rewind).toEqual({ before, after: 'native-current' });
+    };
+    try {
+      await service.operations()['session.watch']!({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        workbenchConnectionId: 'connection-bounded-segments',
+        watchId: 'watch-bounded-segments',
+        mode: 'initial',
+        unit: 'SEGMENT'
+      });
+      await vi.waitFor(() => expect(snapshots()).toHaveLength(1));
+      assertLatestWindow();
+
+      historyReady.resolve();
+      await vi.waitFor(() => expect(snapshots()).toHaveLength(2));
+      assertLatestWindow();
+      expect(readOlder).not.toHaveBeenCalled();
+      const older = await segments.read(session, {
+        cursor: snapshots().at(-1)!.payload!.nextCursor!,
+        limit: 3
+      });
+      expect(older.segments.map(({ id }) => id)).toEqual([
+        'history-3:segment:28',
+        'history-3:segment:29',
+        'current:segment:0'
+      ]);
+      expect(readOlder).toHaveBeenCalledTimes(2);
+      expect(older.nextCursor).toEqual(expect.any(String));
+      for (const segment of older.segments)
+        expect(segment.items[0]!.payload).toEqual({ text: 'x'.repeat(1024) });
+
+      active = false;
+      service.emitRealtime(session.id, {
+        sequence: 1,
+        category: 'session',
+        payload: { session: { id: session.id, activity: 'IDLE' } }
+      });
+      await vi.waitFor(() => expect(snapshots()).toHaveLength(3));
+      assertLatestWindow();
+
+      history = {
+        ...history,
+        turns: history.turns.map((turn) =>
+          turn.id === current.id
+            ? { ...current, rewind: { before: 'native-history-3', after: 'native-current' } }
+            : turn
+        )
+      };
+      await service.refresh(session.id);
+      expect(snapshots()).toHaveLength(4);
+      assertLatestWindow('native-history-3');
+    } finally {
+      historyReady.resolve();
+      service.clear();
+    }
+  });
+
   it('starting a Run during initial history read still combines history and the current Turn into one initial snapshot', async () => {
     const session = {
       id: 'session-initial-history-run-race',
@@ -550,6 +693,150 @@ describe('Node Workbench external session observation', () => {
       service.clear();
     }
   });
+
+  it.each(['initial', 'handoff'] as const)(
+    'replays queued Item and Delta updates outside the latest-six %s snapshot without duplicating covered updates',
+    async (phase) => {
+      const session = {
+        id: 'session-segment-coverage',
+        externalSessionId: 'native-segment-coverage',
+        workspaceId: 'workspace-segment-coverage',
+        runner: 'codex'
+      } as NodeAgentSession;
+      const turn = {
+        id: 'coverage-turn',
+        runId: 'coverage-run',
+        items: Array.from({ length: 7 }, (_, index) => [
+          {
+            id: `tool-${index}`,
+            kind: 'tool_call',
+            status: 'IN_PROGRESS',
+            payload: { text: 'Before' }
+          },
+          { id: `agent-${index}`, kind: 'assistant_message', payload: { text: 'Before' } }
+        ]).flat()
+      };
+      const finalPage = {
+        source: 'official' as const,
+        snapshotSequence: 5,
+        turns: [
+          {
+            ...turn,
+            items: turn.items.map((item) => ({
+              ...item,
+              status: 'COMPLETED',
+              payload: { text: item.id.startsWith('tool-') ? 'Updated tool' : 'Before delta' }
+            }))
+          }
+        ],
+        nextCursor: null
+      };
+      const ready = Promise.withResolvers<typeof finalPage>();
+      let active = phase === 'handoff';
+      const emitted: Array<{
+        type: string;
+        payload?: ConversationSegmentPage;
+        event?: { sequence: number };
+      }> = [];
+      const segments = new ConversationSegmentService(async () => {
+        throw new Error('Unexpected history pagination');
+      });
+      const service = createTestSessionWatch({
+        resolve: async () => session,
+        hasActiveRun: () => active,
+        refreshActivity: async () => undefined,
+        present: () => session,
+        readPage: async () =>
+          active
+            ? { source: 'runtime', snapshotSequence: 0, turns: [turn], nextCursor: null }
+            : ready.promise,
+        readHistoryPage: async () => ready.promise,
+        projectInitialPage: (target, page, _unit, limit) =>
+          segments.projectInitial(target, page, limit),
+        emitSession: vi.fn(),
+        emitPage: vi.fn(),
+        emitWatchEvent: (event) => emitted.push(event as (typeof emitted)[number])
+      });
+      const emitItem = (sequence: number, segmentIndex: number) =>
+        service.emitRealtime(session.id, {
+          sequence,
+          category: 'conversation',
+          payload: {
+            sessionId: session.id,
+            runId: turn.runId,
+            item: {
+              turnId: turn.id,
+              segmentId: `${turn.id}:segment:${segmentIndex}`,
+              segmentIndex,
+              itemId: `tool-${segmentIndex}`,
+              kind: 'tool_call',
+              status: 'COMPLETED',
+              payload: { text: 'Updated tool' }
+            }
+          }
+        });
+      const emitDelta = (sequence: number, segmentIndex: number) =>
+        service.emitRealtime(session.id, {
+          sequence,
+          category: 'conversation',
+          payload: {
+            sessionId: session.id,
+            delta: {
+              runId: turn.runId,
+              turnId: turn.id,
+              segmentId: `${turn.id}:segment:${segmentIndex}`,
+              segmentIndex,
+              itemId: `agent-${segmentIndex}`,
+              text: ' delta'
+            }
+          }
+        });
+      try {
+        await service.operations()['session.watch']!({
+          sessionId: session.id,
+          workspaceId: session.workspaceId,
+          workbenchConnectionId: `connection-coverage-${phase}`,
+          watchId: `watch-coverage-${phase}`,
+          mode: 'initial',
+          unit: 'SEGMENT'
+        });
+        if (phase === 'handoff') {
+          await vi.waitFor(() =>
+            expect(emitted.filter(({ type }) => type === 'watch.session.snapshot')).toHaveLength(1)
+          );
+          emitted.length = 0;
+          active = false;
+          service.emitRealtime(session.id, {
+            sequence: 1,
+            category: 'session',
+            payload: { session: { id: session.id, activity: 'IDLE' } }
+          });
+        }
+        emitItem(2, 0);
+        emitDelta(3, 0);
+        emitDelta(4, 6);
+        emitItem(5, 6);
+        emitDelta(6, 6);
+        ready.resolve(finalPage);
+        await vi.waitFor(() =>
+          expect(emitted.filter(({ type }) => type === 'watch.session.snapshot')).toHaveLength(1)
+        );
+        const snapshot = emitted.find(({ type }) => type === 'watch.session.snapshot')!.payload!;
+        expect(snapshot.snapshotSequence).toBe(5);
+        expect(snapshot.segments.map(({ id }) => id)).toEqual(
+          Array.from({ length: 6 }, (_, index) => `${turn.id}:segment:${index + 1}`)
+        );
+        expect(
+          emitted
+            .filter(({ type }) => type === 'watch.session.event')
+            .map(({ event }) => event!.sequence)
+        ).toEqual([2, 3, 6]);
+      } finally {
+        ready.resolve(finalPage);
+        service.clear();
+      }
+    }
+  );
 
   it('Runtime snapshot replays only buffered events not covered by snapshotSequence', async () => {
     const session = {

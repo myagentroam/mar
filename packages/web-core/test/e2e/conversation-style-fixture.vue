@@ -36,6 +36,13 @@ const touchDetails = new URL(location.href).searchParams.has('touch-details');
 const detailSurfaceFixture = new URL(location.href).searchParams.has('detail-surfaces');
 const previewFixture = new URL(location.href).searchParams.has('reasoning-preview');
 const performanceFixture = new URL(location.href).searchParams.has('live-performance');
+const clockIsolationFixture = new URL(location.href).searchParams.has('clock-isolation');
+let clockPayloadReads = 0;
+if (clockIsolationFixture)
+  Object.defineProperty(window, '__conversationClockPayloadReads', {
+    get: () => clockPayloadReads,
+    configurable: true
+  });
 const livePerformance = ref<{ runId: string; latencyMs: number; tokensPerSecond?: number }>();
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
@@ -158,7 +165,14 @@ const turns = ref<ConversationTurn[]>([
             processGroup: { id: 'preview-process', isStart: true },
             payload: {
               representation: 'visible_thinking',
-              sections: [{ text: `## ${previewText}: Full thinking detail\nSecond thinking line` }]
+              sections: [
+                {
+                  get text() {
+                    if (clockIsolationFixture) clockPayloadReads++;
+                    return `## ${previewText}: Full thinking detail\nSecond thinking line`;
+                  }
+                }
+              ]
             }
           }
         ]
@@ -599,7 +613,6 @@ function finishPreview() {
         sealed: false
       }"
       :synchronized="true"
-      :now="undefined"
       >Process content</ConversationWorkProcess
     >
     <ConversationTimeline
