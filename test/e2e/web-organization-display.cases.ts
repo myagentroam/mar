@@ -16,6 +16,7 @@ async function setup(page: Page, english: boolean): Promise<void> {
   );
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: true,

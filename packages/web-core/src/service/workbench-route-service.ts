@@ -18,10 +18,11 @@ interface WorkbenchRouteServiceOptions extends Omit<
 }
 
 export function createWorkbenchRouteService(options: WorkbenchRouteServiceOptions) {
-  const { restore, restoreSession, persist } = createWorkbenchSelectionPersistenceService({
-    ...options,
-    isWorkbenchActive: () => options.view.value === 'nodes'
-  });
+  const { restore, restoreSession, persist, bindStorage } =
+    createWorkbenchSelectionPersistenceService({
+      ...options,
+      isWorkbenchActive: () => options.view.value === 'nodes'
+    });
   const hostedConversationRoute = parseWorkbenchRoute(window.location).hostedConversation;
 
   function sync(): void {
@@ -68,5 +69,5 @@ export function createWorkbenchRouteService(options: WorkbenchRouteServiceOption
     captureMobileLayerRoute();
   }
 
-  return { restore, restoreSession, sync, hostedConversationRoute };
+  return { restore, restoreSession, sync, hostedConversationRoute, bindStorage };
 }

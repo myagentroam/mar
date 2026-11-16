@@ -414,6 +414,7 @@ test('Enterprise administrators choose child organizations for skill sources and
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -759,6 +760,7 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
     await page.route('**/api/auth/me', (route) =>
       json(route, {
         authenticated: true,
+        userId: 1,
         mustChangePassword: false,
         username: 'admin',
         isAdmin: true,

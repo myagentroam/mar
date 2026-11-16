@@ -20,7 +20,11 @@ describe('authentication generation boundaries', () => {
     let reject!: (error: unknown) => void;
     f.request.mockReturnValueOnce(new Promise((_, fail) => (reject = fail)));
     const oldRefresh = f.service.refresh();
-    f.request.mockResolvedValueOnce({ authenticated: true, mustChangePassword: false });
+    f.request.mockResolvedValueOnce({
+      authenticated: true,
+      userId: 101,
+      mustChangePassword: false
+    });
     await f.service.refresh();
     reject(new TypeError('Failed to fetch'));
     await oldRefresh;
@@ -33,7 +37,7 @@ describe('authentication generation boundaries', () => {
   it('does not restore the workbench after signing out during CSRF renewal', async () => {
     const f = authFixture();
     const renewal = deferred<string>();
-    f.request.mockResolvedValue({ authenticated: true, mustChangePassword: false });
+    f.request.mockResolvedValue({ authenticated: true, userId: 101, mustChangePassword: false });
     f.renew.mockReturnValueOnce(renewal.promise);
     const refresh = f.service.refresh();
     await vi.waitFor(() => expect(f.renew).toHaveBeenCalledOnce());
@@ -61,6 +65,7 @@ describe('authentication generation boundaries', () => {
       f.service.returnToLogin();
       response.resolve({
         authenticated: true,
+        userId: 101,
         mustChangePassword: false,
         csrfToken: 'revoked-csrf'
       });
@@ -80,6 +85,7 @@ describe('authentication generation boundaries', () => {
     f.request
       .mockResolvedValueOnce({
         authenticated: true,
+        userId: 101,
         mustChangePassword: false,
         csrfToken: 'password-csrf'
       })
@@ -110,6 +116,7 @@ describe('authentication generation boundaries', () => {
       recovery.resolve(undefined);
       nextResponse.resolve({
         authenticated: true,
+        userId: 102,
         mustChangePassword: false,
         csrfToken: 'new-login-csrf',
         locale: 'zh-CN'
@@ -125,7 +132,7 @@ describe('authentication generation boundaries', () => {
     async (result) => {
       const f = authFixture();
       const response = deferred<void>();
-      f.state.admin.value = { authenticated: true, mustChangePassword: false };
+      f.state.admin.value = { authenticated: true, userId: 101, mustChangePassword: false };
       f.request.mockImplementationOnce(async () => {
         await response.promise;
         if (result === 'failure') throw new Error('SESSION_REFRESH_FAILED');
@@ -144,7 +151,7 @@ describe('authentication generation boundaries', () => {
     const f = authFixture();
     const first = deferred<unknown>();
     const second = deferred<unknown>();
-    f.state.admin.value = { authenticated: true, mustChangePassword: false };
+    f.state.admin.value = { authenticated: true, userId: 101, mustChangePassword: false };
     f.request.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     const oldRefresh = f.service.refreshSessions();
     const newRefresh = f.service.refreshSessions();
@@ -159,7 +166,7 @@ describe('authentication generation boundaries', () => {
   it('does not repopulate the session list after signing out', async () => {
     const f = authFixture();
     const response = deferred<unknown>();
-    f.state.admin.value = { authenticated: true, mustChangePassword: false };
+    f.state.admin.value = { authenticated: true, userId: 101, mustChangePassword: false };
     f.request.mockReturnValueOnce(response.promise);
     const pending = f.service.refreshSessions();
     expect(f.service.view.adminSessionsRefreshing).toBe(true);

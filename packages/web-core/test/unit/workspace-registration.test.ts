@@ -22,6 +22,105 @@ function setup() {
 }
 
 describe('public workspace registration', () => {
+  it.each(['success', 'failure'] as const)(
+    'settles a pending registration independently of directory navigation: %s',
+    async (outcome) => {
+      let finish!: (value: unknown) => void;
+      let fail!: (error: Error) => void;
+      const submit = vi.fn(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          })
+      );
+      const error = vi.fn();
+      const onRegistered = vi.fn(async () => undefined);
+      const directory = {
+        homePath: '/',
+        currentPath: '/other',
+        parentPath: '/',
+        browseRoots: ['/'],
+        selectable: true,
+        entries: [],
+        truncated: false
+      };
+      const service = createWorkspaceRegistrationService({
+        targetNodeId: ref('node-a'),
+        submit,
+        request: async <T>() => ({ directory }) as T,
+        onRegistered,
+        notice: vi.fn(),
+        error,
+        errorMessage: String
+      });
+      service.path.value = '/original';
+      const pending = service.register();
+      await service.load('/other');
+      expect(service.directory.value).toEqual(directory);
+      expect(service.loading.value).toBe(true);
+      expect(submit).toHaveBeenCalledExactlyOnceWith(
+        { nodeId: 'node-a', path: '/original', preserveGitConfig: false },
+        undefined
+      );
+      const failure = new Error('REGISTRATION_FAILED');
+      if (outcome === 'success') finish({ workspace: { id: 'workspace-new' } });
+      else fail(failure);
+      await pending;
+      expect(service.loading.value).toBe(false);
+      if (outcome === 'success') {
+        expect(onRegistered).toHaveBeenCalledExactlyOnceWith('node-a', 'workspace-new');
+        expect(error).not.toHaveBeenCalled();
+      } else {
+        expect(error).toHaveBeenCalledExactlyOnceWith(expect.any(String), failure);
+        expect(onRegistered).not.toHaveBeenCalled();
+      }
+    }
+  );
+
+  it('does not let an old account registration settle the next account on the same Node', async () => {
+    let rejectOld!: (error: Error) => void;
+    let finishCurrent!: (value: unknown) => void;
+    const request = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectOld = reject;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishCurrent = resolve;
+          })
+      );
+    const onRegistered = vi.fn(async () => undefined);
+    const error = vi.fn();
+    const service = createWorkspaceRegistrationService({
+      targetNodeId: ref('node-a'),
+      request,
+      onRegistered,
+      notice: vi.fn(),
+      error,
+      errorMessage: String
+    });
+    service.path.value = '/account-a';
+    const old = service.register();
+    service.reset();
+    expect(service.loading.value).toBe(false);
+    service.path.value = '/account-b';
+    const current = service.register();
+    rejectOld(new Error('old registration failed'));
+    await old;
+    expect(service.loading.value).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    finishCurrent({ workspace: { id: 'workspace-b' } });
+    await current;
+    expect(onRegistered).toHaveBeenCalledExactlyOnceWith('node-a', 'workspace-b');
+    expect(service.loading.value).toBe(false);
+  });
+
   it('owns its pending state until the registration completes', async () => {
     let finish!: (value: unknown) => void;
     const service = createWorkspaceRegistrationService({

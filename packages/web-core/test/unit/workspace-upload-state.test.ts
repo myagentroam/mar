@@ -5,6 +5,7 @@ import { notificationsEnUS, notificationsZhCN } from '../../src/i18n/notificatio
 import { errorPresentationEnUS, errorPresentationZhCN } from '../../src/i18n/error-presentation.js';
 import { workspaceFileSha256 } from '../../src/util/workspace-file-checksum.js';
 import { createWorkbenchNotificationService } from '../../src/service/workbench-notification-service.js';
+import { createAccountStorage } from '../../src/service/account-storage-service.js';
 import {
   createWorkspaceUploadService,
   parseStoredWorkspaceUploads
@@ -53,6 +54,42 @@ describe('Web Workspace Upload State', () => {
     file: new File([], name),
     directory: '.',
     overwrite: false
+  });
+
+  it('clears account uploads through cancellation without closing the reusable owner or reviving recovery', async () => {
+    const oldCreate = gate<void>();
+    let created = 0;
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith('/uploads')) {
+        const uploadId = `upload-${++created}`;
+        if (created === 1) await oldCreate.promise;
+        return { upload: { uploadId, receivedBytes: 0, size: 0 } };
+      }
+      return { upload: { receivedBytes: 0 } };
+    });
+    const f = lifecycleFixture(request);
+    f.service.bindStorage(createAccountStorage(window.sessionStorage, 1));
+    f.service.queue([emptyUpload('old.txt')]);
+    await nextTick();
+    expect(f.storage.has('mar.account.v1.1.mar.workspace-upload-tasks')).toBe(true);
+    f.service.clear();
+    expect(f.storage.has('mar.account.v1.1.mar.workspace-upload-tasks')).toBe(false);
+    f.service.bindStorage(createAccountStorage(window.sessionStorage, 2));
+    f.service.restore();
+    expect(f.service.tasks.value).toEqual([]);
+    f.service.queue([emptyUpload('new.txt')]);
+    await vi.waitFor(() => expect(f.service.tasks.value[0]?.status).toBe('COMPLETED'));
+    f.onFilesChanged.mockClear();
+    f.onTaskChanged.mockClear();
+    oldCreate.resolve();
+    await nextTick();
+    await nextTick();
+    expect(f.service.tasks.value.map((task) => task.name)).toEqual(['new.txt']);
+    expect(f.onFilesChanged).not.toHaveBeenCalled();
+    expect(f.onTaskChanged).not.toHaveBeenCalled();
+    expect(request.mock.calls.some(([path]) => path.endsWith('/cancel'))).toBe(false);
+    expect(f.storage.has('mar.account.v1.1.mar.workspace-upload-tasks')).toBe(false);
+    f.service.dispose();
   });
 
   it('closes create gates and the queue on disposal without publishing or overwriting a new owner', async () => {

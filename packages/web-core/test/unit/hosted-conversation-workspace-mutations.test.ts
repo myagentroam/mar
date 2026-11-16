@@ -471,6 +471,223 @@ describe('Web Hosted Conversation Workspace Service', () => {
     });
   });
 
+  it.each(['preflight', 'create', 'chunk', 'complete'] as const)(
+    'does not continue an old account upload after clearing during %s',
+    async (stage) => {
+      const started = deferred<void>();
+      const release = deferred<void>();
+      const paths: string[] = [];
+      const upload = {
+        uploadId: 'upload-old',
+        conversationId: conversation.id,
+        name: 'note.txt',
+        mimeType: 'text/plain',
+        receivedBytes: 0,
+        size: 3,
+        status: 'UPLOADING'
+      };
+      const workspace = service(async (path) => {
+        paths.push(path);
+        if (
+          (stage === 'preflight' && path.endsWith('/preflight')) ||
+          (stage === 'create' && path.endsWith('/uploads')) ||
+          (stage === 'complete' && path.endsWith('/complete'))
+        ) {
+          started.resolve();
+          await release.promise;
+        }
+        if (path.endsWith('/preflight'))
+          return { files: [{ name: 'note.txt', status: 'READY' }] } as never;
+        if (path.endsWith('/uploads')) return { upload } as never;
+        if (stage === 'complete' && path.endsWith('/chunks'))
+          return { upload: { ...upload, receivedBytes: 3 } } as never;
+        if (stage === 'complete' && path.endsWith('/complete'))
+          return {
+            upload: {
+              ...upload,
+              receivedBytes: 3,
+              status: 'COMPLETED',
+              file: {
+                id: 'file-old',
+                conversationId: conversation.id,
+                category: 'UPLOAD',
+                relativePath: upload.name,
+                displayName: upload.name,
+                mimeType: upload.mimeType,
+                size: upload.size,
+                source: 'USER',
+                createdAt: 1,
+                updatedAt: 1
+              }
+            }
+          } as never;
+        throw new Error('OLD_ACCOUNT_REQUEST_CONTINUED');
+      });
+      workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+      const file = {
+        name: 'note.txt',
+        size: 3,
+        type: 'text/plain',
+        slice: () => ({
+          arrayBuffer: async () => {
+            if (stage === 'chunk') {
+              started.resolve();
+              await release.promise;
+            }
+            return Uint8Array.from([97, 98, 99]).buffer;
+          }
+        })
+      } as unknown as File;
+      const operation = workspace.uploadFile(file, 'old-account-upload').then(
+        () => 'COMPLETED',
+        (error: Error) => error.message
+      );
+      await started.promise;
+      workspace.clear();
+      workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+      const acceptedPaths = [...paths];
+      release.resolve();
+      expect(await operation).toBe('UPLOAD_CANCELLED');
+      expect(paths).toEqual(acceptedPaths);
+      expect(workspace.snapshot.value?.files).toEqual([]);
+    }
+  );
+
+  it('retains a pending upload creation identity for cancellation when its page is disposed', async () => {
+    const started = deferred<void>();
+    const release = deferred<void>();
+    const controller = new AbortController();
+    const paths: string[] = [];
+    const workspace = service(async (path, init) => {
+      paths.push(path);
+      if (path.endsWith('/preflight'))
+        return { files: [{ name: 'note.txt', status: 'READY' }] } as never;
+      if (path.endsWith('/uploads')) {
+        started.resolve();
+        await release.promise;
+        if (init?.signal?.aborted)
+          throw new DOMException('Creation response aborted', 'AbortError');
+        return {
+          upload: {
+            uploadId: 'upload-created',
+            conversationId: conversation.id,
+            name: 'note.txt',
+            mimeType: 'text/plain',
+            receivedBytes: 0,
+            size: 3,
+            status: 'UPLOADING'
+          }
+        } as never;
+      }
+      return undefined as never;
+    });
+    workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
+    const progress = vi.fn();
+    const pending = workspace.uploadFile(
+      { name: 'note.txt', size: 3, type: 'text/plain' } as File,
+      'disposed-page-upload',
+      progress,
+      controller.signal
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await started.promise;
+    controller.abort();
+    release.resolve();
+    await rejected;
+    expect(paths.map((path) => path.split('/').at(-1))).toEqual(['preflight', 'uploads', 'cancel']);
+    expect(progress).not.toHaveBeenCalled();
+  });
+
+  it('does not cancel an accepted upload completion when its page is disposed', async () => {
+    const controller = new AbortController();
+    const paths: string[] = [];
+    const file = {
+      id: 'file-accepted',
+      conversationId: conversation.id,
+      category: 'UPLOAD',
+      relativePath: 'empty.txt',
+      displayName: 'empty.txt',
+      mimeType: 'text/plain',
+      size: 0,
+      source: 'USER',
+      createdAt: 2,
+      updatedAt: 2
+    } as const;
+    const upload = {
+      uploadId: 'upload-accepted',
+      conversationId: conversation.id,
+      name: file.displayName,
+      mimeType: file.mimeType,
+      receivedBytes: 0,
+      size: 0,
+      status: 'UPLOADING'
+    } as const;
+    const workspace = service(async (path, init) => {
+      paths.push(path);
+      if (path.endsWith('/preflight'))
+        return { files: [{ name: file.displayName, status: 'READY' }] } as never;
+      if (path.endsWith('/uploads')) return { upload } as never;
+      if (path.endsWith('/complete')) {
+        controller.abort();
+        init?.signal?.throwIfAborted();
+        return { upload: { ...upload, status: 'COMPLETED', file } } as never;
+      }
+      throw new Error('UNEXPECTED_UPLOAD_REQUEST');
+    });
+    workspace.selectConversation('node-1', conversation.id, snapshot as never);
+
+    await expect(
+      workspace.uploadFile(
+        { name: file.displayName, size: file.size, type: file.mimeType } as File,
+        'accepted-completion',
+        undefined,
+        controller.signal
+      )
+    ).resolves.toMatchObject({ status: 'COMPLETED', file });
+    expect(paths.map((path) => path.split('/').at(-1))).toEqual([
+      'preflight',
+      'uploads',
+      'complete'
+    ]);
+    expect(workspace.snapshot.value?.files).toEqual([file]);
+  });
+
+  it('cancels before completion if the page is disposed by the final upload progress callback', async () => {
+    const controller = new AbortController();
+    const paths: string[] = [];
+    const workspace = service(async (path) => {
+      paths.push(path);
+      if (path.endsWith('/preflight'))
+        return { files: [{ name: 'empty.txt', status: 'READY' }] } as never;
+      if (path.endsWith('/uploads'))
+        return {
+          upload: {
+            uploadId: 'upload-cancelled',
+            conversationId: conversation.id,
+            name: 'empty.txt',
+            mimeType: 'text/plain',
+            receivedBytes: 0,
+            size: 0,
+            status: 'UPLOADING'
+          }
+        } as never;
+      if (path.endsWith('/cancel')) return undefined as never;
+      throw new Error('UNEXPECTED_UPLOAD_REQUEST');
+    });
+    workspace.selectConversation('node-1', conversation.id, snapshot as never);
+
+    await expect(
+      workspace.uploadFile(
+        { name: 'empty.txt', size: 0, type: 'text/plain' } as File,
+        'cancel-before-completion',
+        () => controller.abort(),
+        controller.signal
+      )
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(paths.map((path) => path.split('/').at(-1))).toEqual(['preflight', 'uploads', 'cancel']);
+    expect(workspace.snapshot.value?.files).toEqual([]);
+  });
+
   it('Uploads in preflight, creation, sequential chunk, and completion order, and strictly parses file reads', async () => {
     const requests: Array<{ path: string; init?: RequestInit }> = [];
     const uploadedFile = {
@@ -953,6 +1170,45 @@ describe('Hosted template changes', () => {
   };
   // Version is display metadata; admission and live state determine availability.
   const initial = { ...snapshot, nodeAppVersion: 'unknown' };
+  it.each(['quota', 'authentication'])(
+    'retires an account template change without unlocking a new change after an old %s failure',
+    async (kind) => {
+      const old = deferred<void>();
+      const current = deferred<void>();
+      const oldFailure =
+        kind === 'authentication'
+          ? new Error('Old authentication context')
+          : new ApiError('HOSTED_CONVERSATION_QUOTA_EXCEEDED', 'Old quota');
+      const request = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await old.promise;
+          throw oldFailure;
+        })
+        .mockImplementationOnce(async () => {
+          await current.promise;
+          throw new ApiError('HOSTED_CONVERSATION_QUOTA_EXCEEDED', 'New quota');
+        });
+      const workspace = service(request as HostedConversationRequest);
+      workspace.selectConversation('node-1', 'conversation-1', initial as never);
+      vi.spyOn(workspace.watchReady, 'value', 'get').mockReturnValue(true);
+      const previous = workspace.switchTemplate(target.id, template.id);
+      const previousResult = expect(previous).rejects.toBe(oldFailure);
+      workspace.clear();
+      workspace.selectConversation('node-1', 'conversation-1', initial as never);
+      expect(workspace.templateChanging.value).toBe(false);
+      const next = workspace.switchTemplate(target.id, template.id);
+      const nextResult = expect(next).rejects.toThrow('New quota');
+      old.resolve();
+      await previousResult;
+      expect(workspace.templateChanging.value).toBe(true);
+      expect(request).toHaveBeenCalledTimes(2);
+      current.resolve();
+      await nextResult;
+      expect(workspace.templateChanging.value).toBe(false);
+    }
+  );
+
   const changed = {
     ...initial,
     conversation: {

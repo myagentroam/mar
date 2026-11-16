@@ -6,9 +6,16 @@
  * Lifecycle activation follows all connections. Forward callbacks are event/action ports only;
  * constructors must not invoke them or read state from a later application aggregate.
  * Do not add shared writable state, flat forwarding APIs, or domain workflows here.
+ * Authentication transitions bind immutable account storage and invoke domain reset ports here;
+ * ordinary page disposal stays with each domain and preserves allowed refresh recovery.
  * Views consume explicit view contracts, not this factory's inferred return type.
  */
 import { createWorkbenchWatchRecovery } from './workbench-watch-coordinator.js';
+import {
+  ACCOUNT_STORAGE_KEY,
+  createAccountStorage,
+  unboundAccountStorage
+} from './account-storage-service.js';
 import type { WorkbenchShellView, WorkbenchSurfaceView } from '../view/workbench-contract.js';
 import { clearMessages, showMessage } from './message-feedback-service.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
@@ -137,6 +144,11 @@ const SESSION_WATCH_CONFIRMATION_TIMEOUT_MS = 45_000;
 
 const SESSION_WATCH_REQUEST_TIMEOUT_MS = 10_000;
 
+/** Composes one page's domain owners before installing lifecycle and starting authentication.
+ * Authentication alone decides account changes; this root binds storage and invokes domain cleanup.
+ * Domain services own data, cancellation and serialization; views own their mounted local resources.
+ * Do not add authentication decisions, upload algorithms or a second cleanup registry here.
+ */
 export function createWorkbenchPageController<
   ManagementSection extends string,
   RegistrationContext = void,
@@ -184,6 +196,10 @@ export function createWorkbenchPageController<
   });
 
   const navigationService = baseState.navigation;
+  const accountStorage = shallowRef(unboundAccountStorage);
+  let storageUserId: number | undefined;
+  provide(ACCOUNT_STORAGE_KEY, accountStorage);
+  baseState.notifications.bindStorage(unboundAccountStorage);
 
   let openNewSessionComposerShortcut = (): void => undefined;
   const {
@@ -229,7 +245,7 @@ export function createWorkbenchPageController<
   const selectedSessionId = sessionSelection.sessionId;
   const draftSessionOpen = sessionSelection.draftOpen;
   const draftTarget = sessionSelection.draftTarget;
-  const drafts = createSessionDraftService({ target: draftTarget });
+  const drafts = createSessionDraftService({ target: draftTarget, storage: unboundAccountStorage });
   const workbenchCapabilityService = createWorkbenchCapabilityService({
     workspaceTarget,
     onNodeConnected: (nodeId) => handleNodeConnected(nodeId, false),
@@ -588,6 +604,7 @@ export function createWorkbenchPageController<
   const workspaceTabs = workspaceTabService.tabs;
 
   const workbenchLayoutService = createWorkbenchLayoutService({
+    storage: { local: unboundAccountStorage, session: unboundAccountStorage },
     sidebarCollapsed,
     expandedNodeIds,
     nodeOrder,
@@ -934,6 +951,7 @@ export function createWorkbenchPageController<
   });
 
   const workspaceUploadService = createWorkspaceUploadService({
+    storage: unboundAccountStorage,
     workspaceTarget,
     csrfToken,
     request,
@@ -1067,13 +1085,14 @@ export function createWorkbenchPageController<
   const openHostedConversationTarget = hostedConversationSelection.openTarget;
   const clearHostedConversation = hostedConversationSelection.clear;
 
-  async function restoreHostedConversationRoute(): Promise<void> {
+  async function restoreHostedConversationRoute(generation: number): Promise<void> {
     const target = hostedConversationRoute;
-    if (target === undefined || view.value !== 'conversations') return;
     try {
+      if (target === undefined || view.value !== 'conversations') return;
       await hostedConversationSelection.restoreTarget(target, syncWorkbenchRoute);
     } finally {
-      restoringHostedConversationRoute.value = false;
+      if (generation === authenticationRestoreGeneration)
+        restoringHostedConversationRoute.value = false;
     }
   }
 
@@ -1093,6 +1112,7 @@ export function createWorkbenchPageController<
     request,
     renewCsrfToken,
     onAuthenticated: handleAuthenticated,
+    onAccountChanged: bindAccountStorage,
     invalidateRequests: () => {
       clearMessages();
       workbenchHttpService.invalidateAuthentication();
@@ -1210,7 +1230,7 @@ export function createWorkbenchPageController<
       return;
     await restoreWorkbenchRoute();
     if (generation !== authenticationRestoreGeneration) return;
-    await restoreHostedConversationRoute();
+    await restoreHostedConversationRoute(generation);
   }
 
   async function handleAuthenticated(): Promise<void> {
@@ -1229,23 +1249,70 @@ export function createWorkbenchPageController<
   }
 
   function handleSignedOut(): void {
+    // Disconnect persistent snapshots before clearing reactive Workspace state.
+    workbenchLayoutService.bindStorage({
+      local: unboundAccountStorage,
+      session: unboundAccountStorage
+    });
+    workbenchRouteService.bindStorage(unboundAccountStorage);
+    composerAttachmentService.clearAll();
+    submissionOwner.clear();
+    runnerInteractionService.reset();
+    composerReferenceService.cancelSearch();
+    composerReferenceService.close();
+    closeQuickOpenFile();
+    workspaceUploadService.clear();
+    workspaceUploadService.bindStorage(unboundAccountStorage);
+    drafts.clear();
+    drafts.bindStorage(unboundAccountStorage);
+    accountStorage.value = unboundAccountStorage;
+    storageUserId = undefined;
     workbenchAsideService.clear();
     clearMessages();
     authenticationRestoreGeneration += 1;
     void workbenchNotificationService.systemNotifications.invalidatePush();
     disposeWorkbenchNotifications();
+    workbenchNotificationService.notifications.value = [];
+    workbenchNotificationService.bindStorage(unboundAccountStorage);
     webUpdates.stop();
     watchCoordinator.current?.dispose();
-    hostedConversationWorkspace.clearSelectedConversation();
+    clearHostedConversation();
+    hostedConversationWorkspace.clear();
+    restoringHostedConversationRoute.value = false;
+    asidePane.clearSelection();
     directTransport.reset();
     closeWorkbenchLive();
     workbenchCapabilityService.resetResources();
     workbenchWorkspaceSelectionService.clear();
+    workspaceTreeService.clear();
+    workspaceTabService.restore([]);
+    terminalDocks.clear();
+    quickPromptService.clear();
+    composerSkillService.clear();
+    nodeRegistration.clear();
+    closeWorkspaceRegistration();
+    clearNodeDetails();
     retainNodeManifests(new Set());
     runnerProfileService.retainNodes(new Set());
     workspaceGit.clear();
     workspaceViewCacheService.clear();
-    drafts.clear();
+  }
+
+  function bindAccountStorage(userId: number): void {
+    if (storageUserId === userId) return;
+    const local = createAccountStorage(localStorage, userId);
+    const session = createAccountStorage(sessionStorage, userId);
+    storageUserId = userId;
+    accountStorage.value = local;
+    drafts.bindStorage(session);
+    workbenchLayoutService.bindStorage({ local, session });
+    workbenchRouteService.bindStorage(local);
+    workspaceUploadService.bindStorage(session);
+    workbenchNotificationService.bindStorage(local, local.physicalKey);
+    restoreWorkbenchState();
+    restoringHostedConversationRoute.value =
+      hostedConversationRoute !== undefined && view.value === 'conversations';
+    restoreWorkspaceUploads();
   }
 
   function persistWorkbenchState(): void {
@@ -1596,6 +1663,7 @@ export function createWorkbenchPageController<
   });
 
   const workbenchRouteService = createWorkbenchRouteService({
+    storage: unboundAccountStorage,
     nodes,
     sessions,
     workspaceTarget,

@@ -47,16 +47,17 @@ export function createRunnerUsageService(options: {
   }
 
   async function loadStatuses(nodeId: string): Promise<void> {
+    const owner = nodeDetails.value;
     try {
       const result = await options.request<{ statuses: readonly RunnerUsageStatus[] }>(
         `/api/runner-usage/status?nodeId=${encodeURIComponent(nodeId)}`
       );
-      if (nodeDetails.value?.id === nodeId) {
+      if (nodeDetails.value === owner && owner?.id === nodeId) {
         statuses.value = result.statuses;
         statusFailed.value = false;
       }
     } catch {
-      if (nodeDetails.value?.id === nodeId) {
+      if (nodeDetails.value === owner && owner?.id === nodeId) {
         statuses.value = [];
         statusFailed.value = true;
       }
@@ -85,9 +86,11 @@ export function createRunnerUsageService(options: {
       const result = await options.request<{ usage: RunnerUsage }>(
         `/api/runner-usage?nodeId=${encodeURIComponent(node.id)}&runner=${encodeURIComponent(runner)}`
       );
+      if (nodeDetails.value !== node) return;
       details.value = result.usage;
       usageOpen.value = true;
     } catch (error) {
+      if (nodeDetails.value !== node) return;
       options.error(
         translate('generated.runnerUsageService.unableToQueryUsage', {
           value0: options.errorMessage(error)
@@ -96,7 +99,7 @@ export function createRunnerUsageService(options: {
       );
       void loadStatuses(node.id);
     } finally {
-      loading.value = undefined;
+      if (nodeDetails.value === node) loading.value = undefined;
     }
   }
 
@@ -111,6 +114,9 @@ export function createRunnerUsageService(options: {
   }
 
   function clearNode(): void {
+    usageOpen.value = false;
+    details.value = undefined;
+    loading.value = undefined;
     detailsOpen.value = false;
     nodeDetails.value = undefined;
     statuses.value = undefined;

@@ -111,6 +111,7 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
       productCapabilities === undefined ? {} : await productCapabilities.capability(user.id);
     return reply.send({
       authenticated: true,
+      userId: user.id,
       mustChangePassword: user.mustChangePassword,
       username: username,
       isAdmin: user.isAdmin,
@@ -131,6 +132,7 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
       localePreferences === undefined ? 'zh-CN' : await localePreferences.locale(current.userId);
     return reply.send({
       authenticated: true,
+      userId: current.userId,
       mustChangePassword: current.mustChangePassword,
       username: current.username,
       isAdmin: current.isAdmin,
@@ -234,6 +236,7 @@ export function registerAuthenticationRoutes(input: AuthenticationRoutesOptions)
     reply.header('Set-Cookie', serializeSessionCookie(session.sessionId, secureCookies));
     return reply.send({
       authenticated: true,
+      userId: current.userId,
       mustChangePassword: false,
       username: current.username,
       isAdmin: current.isAdmin,

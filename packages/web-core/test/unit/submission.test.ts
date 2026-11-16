@@ -8,6 +8,31 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe('shared submission gate', () => {
+  it('clears admissions and timeouts without letting old completion or handoff affect the new lifecycle', () => {
+    vi.useFakeTimers();
+    const owner = createWorkbenchSubmissionOwner();
+    const target = { kind: 'workspace' as const, nodeId: 'node-1', workspaceId: 'workspace-1' };
+    const oldSlot = owner.forTarget(target);
+    const old = owner.bind(() => owner.forTarget(target));
+    const onTimeout = vi.fn();
+    const finishOld = old.begin('session:old', onTimeout)!;
+    owner.clear();
+    expect(old.pending.value).toBe(false);
+    expect(old.context.value).toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+    const currentSlot = owner.forTarget(target);
+    expect(currentSlot).not.toBe(oldSlot);
+    const current = owner.bind(() => currentSlot);
+    const finishCurrent = current.begin('session:new', undefined, null)!;
+    owner.transfer(oldSlot, currentSlot, 'old', 'new');
+    expect(finishOld()).toBe(false);
+    expect(current.pending.value).toBe(true);
+    vi.advanceTimersByTime(5_000);
+    expect(onTimeout).not.toHaveBeenCalled();
+    expect(current.pending.value).toBe(true);
+    finishCurrent();
+  });
+
   it('shares one admission by target while allowing different targets to submit', () => {
     const owner = createWorkbenchSubmissionOwner();
     const a = {},

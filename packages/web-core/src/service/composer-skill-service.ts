@@ -61,6 +61,7 @@ export function createComposerSkillService(options: {
         `/api/workspaces/${encodeURIComponent(workspaceId)}/effective-skills?nodeId=${encodeURIComponent(nodeId)}`
       )
       .then((result) => {
+        if (inflight.get(key) !== request$) return;
         const fetched = Array.isArray(result.skills) ? result.skills : [];
         cache.set(key, { skills: fetched, fetchedAt: now() });
         if (currentRequest === requestVersion && contextKey() === key) {
@@ -69,9 +70,11 @@ export function createComposerSkillService(options: {
         }
       })
       .catch(() => {
+        if (inflight.get(key) !== request$) return;
         if (currentRequest === requestVersion && contextKey() === key) failed.value = true;
       })
       .finally(() => {
+        if (inflight.get(key) !== request$) return;
         inflight.delete(key);
         if (currentRequest === requestVersion && contextKey() === key) loading.value = false;
       });
@@ -79,6 +82,14 @@ export function createComposerSkillService(options: {
   }
 
   return {
+    clear: () => {
+      requestVersion += 1;
+      cache.clear();
+      inflight.clear();
+      skills.value = [];
+      loading.value = false;
+      failed.value = false;
+    },
     skills: computed(() => skills.value),
     loading: computed(() => loading.value),
     failed: computed(() => failed.value),

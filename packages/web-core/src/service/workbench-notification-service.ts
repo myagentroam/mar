@@ -1,3 +1,4 @@
+import { unboundAccountStorage } from './account-storage-service.js';
 import {
   notificationCreatedSchema,
   notificationTargetReadSchema,
@@ -107,6 +108,7 @@ export type WorkbenchNotificationInput = (
 };
 
 export interface WorkbenchNotificationService {
+  bindStorage(storage: Storage, physicalKey?: (key: string) => string): void;
   readonly notifications: Ref<WorkbenchNotification[]>;
   readonly unreadCount: Readonly<Ref<number>>;
   readonly previewNotificationId: Readonly<Ref<string | undefined>>;
@@ -183,6 +185,7 @@ export function createWorkbenchNotificationService(
     readonly onNotificationClick?: (notification: WorkbenchNotification) => Promise<void>;
   } = {}
 ): WorkbenchNotificationService {
+  let storage: Storage = typeof localStorage === 'undefined' ? unboundAccountStorage : localStorage;
   const notifications = ref<WorkbenchNotification[]>([]);
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let loadGeneration = 0;
@@ -262,7 +265,7 @@ export function createWorkbenchNotificationService(
     const key = storageKey();
     if (key === undefined) return;
     try {
-      localStorage.setItem(
+      storage.setItem(
         key,
         JSON.stringify(
           notifications.value.filter(
@@ -295,7 +298,7 @@ export function createWorkbenchNotificationService(
     notifications.value = [];
     if (key === undefined) return;
     try {
-      const value = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
+      const value = JSON.parse(storage.getItem(key) ?? '[]') as unknown;
       if (!Array.isArray(value)) return;
       notifications.value = parseStoredWorkbenchNotifications(value)
         .filter(
@@ -308,7 +311,11 @@ export function createWorkbenchNotificationService(
         }));
       persist();
     } catch {
-      localStorage.removeItem(key);
+      try {
+        storage.removeItem(key);
+      } catch {
+        // A blocked store must not prevent the authenticated workspace from starting.
+      }
     }
   }
 
@@ -995,15 +1002,17 @@ export function createWorkbenchNotificationService(
     pendingScenes.clear();
     previewNotificationId.value = undefined;
     handledCreatedNotificationIds.clear();
-    notifications.value = notifications.value.filter(
-      (notification) => notification.source !== 'server'
-    );
+    notifications.value = [];
     recentRuns.value = [];
     if (sweepTimer !== undefined) clearInterval(sweepTimer);
     sweepTimer = undefined;
   }
 
   return {
+    bindStorage: (next: Storage, physicalKey: (key: string) => string = (key) => key) => {
+      storage = next;
+      systemNotifications.bindStorage(next, physicalKey);
+    },
     notifications,
     recentRuns,
     unreadCount,

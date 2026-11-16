@@ -13,22 +13,32 @@ export function createQuickPromptService(options: {
     if (inflight !== undefined) return inflight;
     loading.value = true;
     failed.value = false;
-    inflight = options
+    const operation = options
       .request<{ prompts: readonly QuickPrompt[] }>('/api/quick-prompts')
       .then((result) => {
+        if (inflight !== operation) return;
         prompts.value = Array.isArray(result.prompts) ? result.prompts : [];
       })
       .catch(() => {
+        if (inflight !== operation) return;
         failed.value = true;
       })
       .finally(() => {
+        if (inflight !== operation) return;
         loading.value = false;
         inflight = undefined;
       });
+    inflight = operation;
     return inflight;
   }
 
   return {
+    clear: () => {
+      inflight = undefined;
+      prompts.value = [];
+      loading.value = false;
+      failed.value = false;
+    },
     prompts: computed(() => prompts.value),
     loading: computed(() => loading.value),
     failed: computed(() => failed.value),

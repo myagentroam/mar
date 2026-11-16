@@ -7,6 +7,9 @@ import * as directRead from '../../src/service/workspace-direct-file-read-servic
 import * as directObject from '../../src/service/workspace-direct-object-url-service.js';
 import * as directDownload from '../../src/service/workspace-direct-download-stream-service.js';
 import * as draftOwner from '../../src/service/session-draft-service.js';
+import { createAccountStorage } from '../../src/service/account-storage-service.js';
+import * as attachmentOwner from '../../src/service/composer-attachment-service.js';
+import * as hostedSelectionOwner from '../../src/service/hosted-conversation-selection-service.js';
 import { createWorkbenchNavigationService } from '../../src/service/workbench-navigation-service.js';
 import { createWorkspaceFileTabService } from '../../src/service/workspace-file-tab-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
@@ -47,6 +50,7 @@ const captured = vi.hoisted(() => ({
   authenticated: undefined as
     Parameters<typeof createAdminAuthService>[0]['onAuthenticated'] | undefined,
   signedOut: undefined as Parameters<typeof createAdminAuthService>[0]['onSignedOut'] | undefined,
+  accountChanged: undefined as Parameters<typeof createAdminAuthService>[0]['onAccountChanged'],
   notificationOptions: undefined as Parameters<typeof createWorkbenchNotificationService>[1],
   waitForReady: vi.fn(async () => true),
   startWorkspace: vi.fn(async () => undefined),
@@ -370,6 +374,7 @@ vi.mock('../../src/service/admin-auth-service.js', async (original) => {
     createAdminAuthService: (options: Parameters<typeof module.createAdminAuthService>[0]) => {
       captured.authenticated = options.onAuthenticated;
       captured.signedOut = options.onSignedOut;
+      captured.accountChanged = options.onAccountChanged;
       return module.createAdminAuthService(options);
     }
   };
@@ -406,6 +411,12 @@ beforeEach(() => {
     Object.assign(new EventTarget(), {
       location,
       history,
+      get localStorage() {
+        return globalThis.localStorage;
+      },
+      get sessionStorage() {
+        return globalThis.sessionStorage;
+      },
       matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
     })
   );
@@ -431,9 +442,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function controller(pwaApplication?: PwaApplicationService) {
+function controller(pwaApplication?: PwaApplicationService, initialView: WorkbenchView = 'nodes') {
   const navigation = createWorkbenchNavigationService<WorkbenchView, SettingsSection, string>({
-    initialView: 'nodes',
+    initialView,
     initialSettingsSection: 'account',
     initialManagementSection: 'custom-system',
     opensMobileSidebar: (view) => view !== 'conversations'
@@ -459,10 +470,166 @@ function controller(pwaApplication?: PwaApplicationService) {
       })
     )
   );
+  captured.accountChanged?.(1);
   return { page, navigation, management };
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('finishes hosted route restoration when navigation leaves conversations before readiness', async () => {
+    window.location.search = '?view=conversations&node=host-node&conversation=old-conversation';
+    const { page, navigation } = controller(undefined, 'conversations');
+    expect(page.hosted.restoringHostedConversationRoute).toBe(true);
+    navigation.selectView('settings');
+    await captured.authenticated!();
+    expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+    navigation.selectView('conversations');
+    expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+  });
+
+  it('restarts hosted route restoration for a new account and ignores the previous settlement', async () => {
+    window.location.search = '?view=conversations&node=host-node&conversation=old-conversation';
+    let finishPrevious!: () => void;
+    let finishCurrent!: () => void;
+    const previous = new Promise<void>((resolve) => {
+      finishPrevious = resolve;
+    });
+    const current = new Promise<void>((resolve) => {
+      finishCurrent = resolve;
+    });
+    const restoreTarget = vi.fn().mockReturnValueOnce(previous).mockReturnValueOnce(current);
+    const clear = vi.fn();
+    const createSelection = hostedSelectionOwner.createHostedConversationSelectionService;
+    vi.spyOn(hostedSelectionOwner, 'createHostedConversationSelectionService').mockImplementation(
+      (options) => {
+        const owner = createSelection(options);
+        clear.mockImplementation(owner.clear);
+        return { ...owner, clear, restoreTarget };
+      }
+    );
+    const { page } = controller(undefined, 'conversations');
+    const previousRestoration = captured.authenticated!();
+    await vi.waitFor(() => expect(restoreTarget).toHaveBeenCalledTimes(1));
+    captured.signedOut!();
+    captured.accountChanged!(2);
+    expect(clear).toHaveBeenCalledOnce();
+    expect(page.hosted.restoringHostedConversationRoute).toBe(true);
+    const currentRestoration = captured.authenticated!();
+    await vi.waitFor(() => expect(restoreTarget).toHaveBeenCalledTimes(2));
+    finishPrevious();
+    await previousRestoration;
+    expect(page.hosted.restoringHostedConversationRoute).toBe(true);
+    finishCurrent();
+    await currentRestoration;
+    expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+    captured.accountChanged!(2);
+    expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+  });
+
+  it('hands the same Node and Workspace to the next account without drafts, attachments or late upload side effects', async () => {
+    function storage(): Storage {
+      const values = new Map<string, string>();
+      return {
+        get length() {
+          return values.size;
+        },
+        key: (index) => [...values.keys()][index] ?? null,
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => {
+          values.set(key, value);
+        },
+        removeItem: (key) => {
+          values.delete(key);
+        },
+        clear: () => values.clear()
+      };
+    }
+    const local = storage();
+    const session = storage();
+    vi.stubGlobal('localStorage', local);
+    vi.stubGlobal('sessionStorage', session);
+    let release!: () => void;
+    const createGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const paths: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input);
+      paths.push(path);
+      if (path === '/api/auth/login') {
+        const { username } = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({
+            authenticated: true,
+            userId: username === 'first' ? 1 : 2,
+            username,
+            mustChangePassword: false,
+            csrfToken: `csrf-${username}`
+          })
+        );
+      }
+      if (path.endsWith('/uploads')) {
+        await createGate;
+        return new Response(
+          JSON.stringify({ upload: { uploadId: 'old-upload', receivedBytes: 0, size: 5 } })
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          nodes: [],
+          workspaces: [],
+          sessions: [],
+          notifications: [],
+          recentRuns: []
+        })
+      );
+    });
+    const attachments = vi.spyOn(attachmentOwner, 'createComposerAttachmentService');
+    const created = vi.spyOn(draftOwner, 'createSessionDraftService');
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:first-account');
+    const { page } = controller();
+    const drafts = created.mock.results[0]!.value as ReturnType<
+      typeof draftOwner.createSessionDraftService
+    >;
+    const owner = attachments.mock.results[0]!.value as ReturnType<
+      typeof attachmentOwner.createComposerAttachmentService
+    >;
+    const target = { kind: 'workspace' as const, nodeId: node.id, workspaceId: 'shared-workspace' };
+    await page.identity.login({ username: 'first', password: 'password' });
+    const firstKey = page.identity.accountKey;
+    const slot = drafts.forTarget(target);
+    slot.input.value = 'Private first-account question';
+    slot.persist();
+    const pane = owner.forTarget(() => target);
+    pane.add([new File(['image'], 'private.png', { type: 'image/png' })]);
+    owner.openPreview(pane.attachments.value[0]!);
+    expect(paths.some((path) => path.endsWith('/uploads'))).toBe(true);
+    expect(
+      session.getItem('mar.account.v1.1.mar.workbench.draft.node-a.shared-workspace')
+    ).not.toBeNull();
+    try {
+      await page.identity.login({ username: 'second', password: 'password' });
+      expect(page.identity.admin.userId).toBe(2);
+      expect(page.identity.accountKey).not.toBe(firstKey);
+      expect(pane.attachments.value).toEqual([]);
+      expect(owner.preview.value).toBeUndefined();
+      expect(revoked).toHaveBeenCalledWith('blob:first-account');
+      expect(drafts.forTarget(target).input.value).toBe('');
+      expect(
+        session.getItem('mar.account.v1.1.mar.workbench.draft.node-a.shared-workspace')
+      ).toBeNull();
+      release();
+      await flushComponent();
+      expect(page.identity.admin.userId).toBe(2);
+      expect(paths.some((path) => /\/(cancel|complete)$/.test(path))).toBe(false);
+      expect(
+        session.getItem('mar.account.v1.2.mar.workbench.draft.node-a.shared-workspace')
+      ).toBeNull();
+    } finally {
+      release();
+    }
+  });
+
   it.each(
     (
       [
@@ -489,6 +656,7 @@ describe('Workbench controller composition behavior', () => {
         getItem: vi.fn((key: string) => values.get(key) ?? null),
         setItem: vi.fn((key: string, value: string) => void values.set(key, value)),
         removeItem: vi.fn((key: string) => void values.delete(key)),
+        clear: vi.fn(() => values.clear()),
         get length() {
           return values.size;
         },
@@ -635,7 +803,7 @@ describe('Workbench controller composition behavior', () => {
         await flushComponent();
         if (revoked) {
           const draftWrites = [...storage.setItem.mock.calls, ...storage.removeItem.mock.calls]
-            .map(([key]) => key)
+            .map(([key]) => key.replace('mar.account.v1.1.', ''))
             .filter(
               (key) =>
                 key.startsWith('mar.workbench.draft.') ||
@@ -649,10 +817,13 @@ describe('Workbench controller composition behavior', () => {
           storage.getItem.mockClear();
           drafts.forTarget(target);
           expect(storage.getItem).toHaveBeenCalledWith(
-            `mar.workbench.draft.${node.id}.${workspace.id}`
+            `mar.account.v1.1.mar.workbench.draft.${node.id}.${workspace.id}`
           );
         } else {
-          const restored = draftOwner.createSessionDraftService({ target: ref(target), storage });
+          const restored = draftOwner.createSessionDraftService({
+            target: ref(target),
+            storage: createAccountStorage(storage as Storage, 1)
+          });
           expect(restored.input.value).toBe(submission === 'message' ? '' : 'Pending input');
           expect(restored.queueEdit.value).toBeUndefined();
         }
@@ -662,7 +833,10 @@ describe('Workbench controller composition behavior', () => {
           });
           other.settlement.release();
           expect(
-            draftOwner.createSessionDraftService({ target: ref(other.target), storage }).input.value
+            draftOwner.createSessionDraftService({
+              target: ref(other.target),
+              storage: createAccountStorage(storage as Storage, 1)
+            }).input.value
           ).toBe('');
         }
       } finally {
@@ -689,6 +863,7 @@ describe('Workbench controller composition behavior', () => {
         getItem: vi.fn((key: string) => values.get(key) ?? null),
         setItem: vi.fn((key: string, value: string) => void values.set(key, value)),
         removeItem: vi.fn((key: string) => void values.delete(key)),
+        clear: vi.fn(() => values.clear()),
         get length() {
           return values.size;
         },
@@ -830,7 +1005,7 @@ describe('Workbench controller composition behavior', () => {
         await flushComponent();
         if (outcome === 'success') {
           const draftWriteKeys = [...storage.setItem.mock.calls, ...storage.removeItem.mock.calls]
-            .map(([key]) => key)
+            .map(([key]) => key.replace('mar.account.v1.1.', ''))
             .filter(
               (key) =>
                 key.startsWith('mar.workbench.draft.') ||
@@ -845,10 +1020,13 @@ describe('Workbench controller composition behavior', () => {
           storage.getItem.mockClear();
           drafts.forTarget(target);
           expect(storage.getItem).toHaveBeenCalledWith(
-            `mar.workbench.draft.${node.id}.${workspace.id}`
+            `mar.account.v1.1.mar.workbench.draft.${node.id}.${workspace.id}`
           );
         } else {
-          const restored = draftOwner.createSessionDraftService({ target: ref(target), storage });
+          const restored = draftOwner.createSessionDraftService({
+            target: ref(target),
+            storage: createAccountStorage(storage as Storage, 1)
+          });
           expect(restored.input.value).toBe(submission === 'message' ? '' : 'Pending input');
           expect(restored.queueEdit.value).toBeUndefined();
         }
@@ -860,7 +1038,10 @@ describe('Workbench controller composition behavior', () => {
           const invalidated =
             resource === 'node' && outcome === 'success' && other.target.nodeId === node.id;
           expect(
-            draftOwner.createSessionDraftService({ target: ref(other.target), storage }).input.value
+            draftOwner.createSessionDraftService({
+              target: ref(other.target),
+              storage: createAccountStorage(storage as Storage, 1)
+            }).input.value
           ).toBe(invalidated ? 'Other pending input' : '');
         }
       } finally {

@@ -64,7 +64,7 @@ test('Workspace upload page teardown cleans late creates without draining or ove
         __vue_app__: { unmount(): void };
       };
       root.__vue_app__.unmount();
-      return JSON.parse(sessionStorage.getItem('mar.workspace-upload-tasks')!);
+      return JSON.parse(sessionStorage.getItem('mar.account.v1.1.mar.workspace-upload-tasks')!);
     });
     expect(snapshot).toHaveLength(3);
     await expect(page.locator('.workbench')).toHaveCount(0);
@@ -72,7 +72,7 @@ test('Workspace upload page teardown cleans late creates without draining or ove
       { ...snapshot[0], status: 'INTERRUPTED', error: 'next-owner' }
     ]);
     await page.evaluate(
-      (value) => sessionStorage.setItem('mar.workspace-upload-tasks', value),
+      (value) => sessionStorage.setItem('mar.account.v1.1.mar.workspace-upload-tasks', value),
       nextOwnerSnapshot
     );
     release();
@@ -86,9 +86,11 @@ test('Workspace upload page teardown cleans late creates without draining or ove
     expect(cancels.sort()).toEqual(['one.txt', 'two.txt']);
     expect(chunks).toEqual([]);
     expect(completes).toEqual([]);
-    expect(await page.evaluate(() => sessionStorage.getItem('mar.workspace-upload-tasks'))).toBe(
-      nextOwnerSnapshot
-    );
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem('mar.account.v1.1.mar.workspace-upload-tasks')
+      )
+    ).toBe(nextOwnerSnapshot);
   } finally {
     release();
   }
@@ -218,21 +220,22 @@ test('Workspace upload restore before late cleanup failure preserves the warning
         })
       )
       .toEqual({ total: 2, open: 1 });
-    await page.getByRole('button', { name: '打开通知中心' }).click();
-    const transfer = page.getByRole('complementary', { name: '通知中心' });
+    await page.getByRole('button', { name: '会话与通知', exact: true }).click();
+    const transfer = page.getByRole('region', { name: '会话与通知', exact: true });
+    await transfer.getByRole('tab', { name: /通知/ }).click();
     const task = transfer.locator('.workbench-notification-upload');
     await expect(task).toHaveCount(1);
     await expect(task.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
     expect(
       await page.evaluate(
-        () => JSON.parse(sessionStorage.getItem('mar.workspace-upload-tasks')!)[0]
+        () => JSON.parse(sessionStorage.getItem('mar.account.v1.1.mar.workspace-upload-tasks')!)[0]
       )
     ).toMatchObject({ status: 'INTERRUPTED', cleanupUnconfirmed: false });
     releaseCleanup();
     await expect
       .poll(() =>
         page.evaluate(() =>
-          JSON.parse(sessionStorage.getItem('mar.workspace-upload-tasks') ?? '[]')
+          JSON.parse(sessionStorage.getItem('mar.account.v1.1.mar.workspace-upload-tasks') ?? '[]')
         )
       )
       .toEqual([
@@ -248,7 +251,8 @@ test('Workspace upload restore before late cleanup failure preserves the warning
     );
     await expect(task.getByRole('button', { name: '恢复', exact: true })).toBeVisible();
     await page.reload();
-    await page.getByRole('button', { name: '打开通知中心' }).click();
+    await page.getByRole('button', { name: '会话与通知', exact: true }).click();
+    await transfer.getByRole('tab', { name: /通知/ }).click();
     await expect(task).toContainText(
       '未能确认临时上传已清理，任务已保留。请重试或联系管理员核查节点。'
     );
@@ -260,7 +264,9 @@ test('Workspace upload restore before late cleanup failure preserves the warning
     );
     await expect(task).toHaveCount(0);
     await expect
-      .poll(() => page.evaluate(() => sessionStorage.getItem('mar.workspace-upload-tasks')))
+      .poll(() =>
+        page.evaluate(() => sessionStorage.getItem('mar.account.v1.1.mar.workspace-upload-tasks'))
+      )
       .toBeNull();
     expect(creates).toHaveLength(1);
     expect(forbidden).toEqual([]);
@@ -331,14 +337,17 @@ test('Workspace upload selection changes preserve the original target and normal
     await expect(
       page.locator('.workspace-tab[data-tab-id="node-1:workspace-2"]').getByRole('tab')
     ).toHaveAttribute('aria-selected', 'true');
-    const transfer = page.getByRole('complementary', { name: '通知中心' });
-    await page.getByRole('button', { name: '打开通知中心' }).click();
+    await page.getByRole('button', { name: '会话与通知', exact: true }).click();
+    const transfer = page.getByRole('region', { name: '会话与通知', exact: true });
+    await transfer.getByRole('tab', { name: /通知/ }).click();
     await expect(transfer).toBeVisible();
     release();
     await expect(transfer.getByText('文件上传完成', { exact: true })).toBeVisible();
     // Recovery storage only retains unfinished uploads; the notification proves completion.
     await expect
-      .poll(() => page.evaluate(() => sessionStorage.getItem('mar.workspace-upload-tasks')))
+      .poll(() =>
+        page.evaluate(() => sessionStorage.getItem('mar.account.v1.1.mar.workspace-upload-tasks'))
+      )
       .toBeNull();
     expect(creates).toEqual(['/api/workspaces/workspace-1/uploads']);
     expect(chunks).toEqual(['/api/workspaces/workspace-1/uploads/original-upload/chunks']);

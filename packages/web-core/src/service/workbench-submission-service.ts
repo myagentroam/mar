@@ -12,12 +12,13 @@ export function createWorkbenchSubmissionService() {
   const slot = {};
   return {
     ...owner.bind(() => slot),
+    clear: owner.clear,
     transferSession: (previousId: string, nextId: string) =>
       owner.transfer(slot, slot, previousId, nextId)
   };
 }
 
-/** Admission follows the existing target slot, even when its Pane or Session identity changes. */
+/** Owns admission tokens and timeouts across target handoffs; clear retires the current lifecycle. */
 export function createWorkbenchSubmissionOwner() {
   interface Group {
     readonly slots: Set<object>;
@@ -29,8 +30,9 @@ export function createWorkbenchSubmissionOwner() {
     active: boolean;
     timeout?: ReturnType<typeof setTimeout> | undefined;
   }
-  const groups = new WeakMap<object, Group>();
+  let groups = new WeakMap<object, Group>();
   const targets = new Map<string, object>();
+  const finishes = new Set<() => boolean>();
   const targetKeys = new WeakMap<object, string>();
   function forTarget(target: DraftTarget): object {
     const key = JSON.stringify([
@@ -74,10 +76,12 @@ export function createWorkbenchSubmissionOwner() {
         if (!token.active) return false;
         token.active = false;
         clearTimeout(token.timeout);
+        finishes.delete(finish);
         token.group.tokens.value = token.group.tokens.value.filter((item) => item !== token);
         return true;
       }
       current.tokens.value = [...current.tokens.value, token];
+      finishes.add(finish);
       if (timeoutMs !== null)
         token.timeout = setTimeout(() => {
           if (finish()) onTimeout?.();
@@ -125,5 +129,11 @@ export function createWorkbenchSubmissionOwner() {
     }
     revision.value += 1;
   }
-  return { bind, transfer, forTarget };
+  function clear(): void {
+    for (const finish of finishes) finish();
+    targets.clear();
+    groups = new WeakMap();
+    revision.value += 1;
+  }
+  return { bind, transfer, forTarget, clear };
 }

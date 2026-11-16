@@ -39,6 +39,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await page.route('**/api/auth/me', (route) =>
         json(route, {
           authenticated: true,
+          userId: 2,
           mustChangePassword: false,
           username: 'member',
           isAdmin: false,

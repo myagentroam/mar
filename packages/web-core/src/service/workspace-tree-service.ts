@@ -163,6 +163,12 @@ export function createWorkspaceTreeService(options: WorkspaceTreeStateOptions) {
   }
 
   return {
+    clear: () => {
+      restore([], {});
+      workspacesByNode.value = {};
+      revealTarget.value = undefined;
+      draggingWorkspace.value = undefined;
+    },
     expandedNodeIds,
     revealTarget,
     revealWorkspace,

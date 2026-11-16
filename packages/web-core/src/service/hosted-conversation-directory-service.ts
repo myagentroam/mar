@@ -186,6 +186,18 @@ export function createHostedConversationDirectoryService(options: {
     );
   }
   return {
+    clear: () => {
+      listSequence += 1;
+      loadMoreOperation += 1;
+      conversations.value = [];
+      directoryCursor = null;
+      hasMoreConversations.value = false;
+      conversationsLoaded.value = false;
+      loadingConversations.value = false;
+      loadingMoreConversations.value = false;
+      loadMoreConversationsError.value = undefined;
+      activityProjections.clear();
+    },
     conversations,
     hasMoreConversations,
     loadingConversations,

@@ -71,7 +71,7 @@ interface HostedConversationWorkspaceServiceOptions {
   readonly onWatchExpired?: () => void;
 }
 
-/** Owns the Node directory, selected hosted conversation, and its single page Watch lease. */
+/** Owns the Hosted directory, selection and single Watch; composes account-scoped submission and file lifecycles. */
 export function createHostedConversationWorkspaceService(
   options: HostedConversationWorkspaceServiceOptions
 ) {
@@ -896,7 +896,8 @@ export function createHostedConversationWorkspaceService(
       throw new Error('HOSTED_CONVERSATION_STATE_INVALID');
     const key = targetKey(context.nodeId, context.conversationId);
     const originalWatchId = selectedWatchId();
-    templateChanges.value.add(key);
+    const changes = templateChanges.value;
+    changes.add(key);
     try {
       const parsed = hostedConversationTemplateSwitchResultSchema.safeParse(
         await options.request<unknown>(`${conversationBasePath(context)}/template`, {
@@ -912,54 +913,63 @@ export function createHostedConversationWorkspaceService(
         parsed.data.template.id !== templateId
       )
         throw responseInvalid();
-      await refreshTemplateBinding(context, originalWatchId);
+      if (changes === templateChanges.value) await refreshTemplateBinding(context, originalWatchId);
     } catch (error) {
       const code = errorCode(error);
       if (
-        code === undefined ||
-        [
-          'HOSTED_CONVERSATION_TEMPLATE_CONFLICT',
-          'HOSTED_CONVERSATION_RESPONSE_INVALID',
-          'NODE_REQUEST_TIMEOUT',
-          'NODE_OFFLINE',
-          'NODE_SEND_FAILED',
-          'NODE_CONTROL_CLOSED',
-          'NODE_RESPONSE_INVALID',
-          'INTERNAL_ERROR',
-          'REQUEST_FAILED_500',
-          'REQUEST_FAILED_502',
-          'REQUEST_FAILED_503',
-          'REQUEST_FAILED_504'
-        ].includes(code)
+        changes === templateChanges.value &&
+        (code === undefined ||
+          [
+            'HOSTED_CONVERSATION_TEMPLATE_CONFLICT',
+            'HOSTED_CONVERSATION_RESPONSE_INVALID',
+            'NODE_REQUEST_TIMEOUT',
+            'NODE_OFFLINE',
+            'NODE_SEND_FAILED',
+            'NODE_CONTROL_CLOSED',
+            'NODE_RESPONSE_INVALID',
+            'INTERNAL_ERROR',
+            'REQUEST_FAILED_500',
+            'REQUEST_FAILED_502',
+            'REQUEST_FAILED_503',
+            'REQUEST_FAILED_504'
+          ].includes(code))
       )
         await refreshTemplateBinding(context, originalWatchId);
       throw error;
     } finally {
-      templateChanges.value.delete(key);
+      changes.delete(key);
     }
   }
 
-  const { deleteFile, readFile, contentUrl, uploadFile } = createHostedConversationFileService({
-    request: options.request,
-    requireContext: requireSelectedContext,
-    templateChanging: () => templateChanging.value,
-    removeFile: (context, fileId) => {
-      if (sameSelectedContext(context) && snapshot.value !== undefined)
-        replaceSnapshot({
-          ...snapshot.value,
-          files: snapshot.value.files.filter((file) => file.id !== fileId)
-        });
-    },
-    acceptFile: (context, file) => {
-      if (sameSelectedContext(context) && snapshot.value !== undefined) {
-        const files = new Map(snapshot.value.files.map((candidate) => [candidate.id, candidate]));
-        files.set(file.id, file);
-        replaceSnapshot({ ...snapshot.value, files: [...files.values()] });
+  const { deleteFile, readFile, contentUrl, uploadFile, clearUploads } =
+    createHostedConversationFileService({
+      request: options.request,
+      requireContext: requireSelectedContext,
+      templateChanging: () => templateChanging.value,
+      removeFile: (context, fileId) => {
+        if (sameSelectedContext(context) && snapshot.value !== undefined)
+          replaceSnapshot({
+            ...snapshot.value,
+            files: snapshot.value.files.filter((file) => file.id !== fileId)
+          });
+      },
+      acceptFile: (context, file) => {
+        if (sameSelectedContext(context) && snapshot.value !== undefined) {
+          const files = new Map(snapshot.value.files.map((candidate) => [candidate.id, candidate]));
+          files.set(file.id, file);
+          replaceSnapshot({ ...snapshot.value, files: [...files.values()] });
+        }
       }
-    }
-  });
+    });
 
   return {
+    clear: () => {
+      clearSelectedConversation();
+      directory.clear();
+      messageSubmission.clear();
+      templateChanges.value = new Set();
+      clearUploads();
+    },
     conversations,
     hasMoreConversations,
     loadingConversations,

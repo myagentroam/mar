@@ -47,6 +47,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.route('**/api/auth/me', (route) =>
       json(route, {
         authenticated: true,
+        userId: 1,
         mustChangePassword: false,
         username: 'admin',
         isAdmin: true,
@@ -176,6 +177,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.route('**/api/enterprise/users', (route) => json(route, { users: [] }));
     const admin = {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -294,6 +296,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
   let authenticated = false;
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: true,
@@ -668,6 +671,7 @@ test('Bulk Node upgrades span filters and pages, skip ineligible Nodes, and summ
   let authenticated = false;
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: true,
@@ -859,6 +863,7 @@ test('ADMIN can inspect other users personal resources in management while busin
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -938,6 +943,7 @@ test('ADMIN enables hosting only on organization Nodes and can disable existing 
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -1378,6 +1384,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -1769,6 +1776,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await mockPersonalResources(page);
     const admin = {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,
@@ -1846,6 +1854,7 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
   let authenticated = false;
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: true,
@@ -2169,6 +2178,7 @@ test('Enterprise user creation and password reset expose directly copyable tempo
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true,

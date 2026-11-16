@@ -92,6 +92,15 @@ describe('authentication persistence composition', () => {
       const first = await login();
       expect(first.statusCode).toBe(200);
       const firstToken = String(first.headers['set-cookie']).split(';')[0]!.split('=')[1]!;
+      const userId = database.findCurrentUserSession(firstToken)?.userId;
+      expect(first.json().userId).toBe(userId);
+      expect(userId).toEqual(expect.any(Number));
+      const me = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { cookie: `mar_user_session=${firstToken}` }
+      });
+      expect(me.json().userId).toBe(userId);
       // Equal timestamps use the existing database tie-break; assert the actual evicted hash.
       for (let index = 0; index < 5; index++) expect((await login()).statusCode).toBe(200);
       expect(nodeControl.closeUserTerminals).toHaveBeenCalledOnce();
@@ -111,6 +120,7 @@ describe('authentication persistence composition', () => {
         payload: { currentPassword: INITIAL_ADMIN_PASSWORD, password: INITIAL_ADMIN_PASSWORD }
       });
       expect(changed.statusCode).toBe(200);
+      expect(changed.json().userId).toBe(userId);
       expect(nodeControl.closeAllTerminals).toHaveBeenCalledOnce();
       expect(nodeControl.closeAllWorkbench).toHaveBeenCalledOnce();
       const cookie = String(changed.headers['set-cookie']).split(';')[0]!;
@@ -120,6 +130,26 @@ describe('authentication persistence composition', () => {
         headers: { cookie, 'x-csrf-token': changed.json().csrfToken }
       });
       expect(logout.statusCode).toBe(204);
+      const memberId = database.createUser({
+        username: 'account-b',
+        email: null,
+        nickname: null,
+        password: 'account-b-password'
+      });
+      const member = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { username: 'account-b', password: 'account-b-password' }
+      });
+      expect(member.statusCode).toBe(200);
+      expect(member.json().userId).toBe(memberId);
+      expect(memberId).not.toBe(userId);
+      const memberMe = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { cookie: String(member.headers['set-cookie']).split(';')[0]! }
+      });
+      expect(memberMe.json().userId).toBe(memberId);
       expect(nodeControl.closeUserTerminals).toHaveBeenLastCalledWith(
         hashOpaque(cookie.split('=')[1]!)
       );

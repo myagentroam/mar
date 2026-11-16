@@ -13,16 +13,21 @@ export function createNodeRegistrationService<Context>(options: {
 }) {
   const token = ref<string>();
   const pending = ref(false);
+  let operation: object | undefined;
   async function create(context?: Context): Promise<void> {
     if (pending.value) return;
     pending.value = true;
+    const owner = {};
+    operation = owner;
     try {
-      token.value = (
+      const result = (
         await (options.submit === undefined
           ? options.request<{ token: string }>('/api/node-registration-tokens', { method: 'POST' })
           : options.submit(options.request, context))
       ).token;
+      if (operation === owner) token.value = result;
     } catch (error) {
+      if (operation !== owner) return;
       options.notice(
         translate('generated.workbenchPageController.unableToCreateARegistrationToken', {
           value0: options.errorMessage(error)
@@ -31,10 +36,19 @@ export function createNodeRegistrationService<Context>(options: {
         error
       );
     } finally {
-      pending.value = false;
+      if (operation === owner) pending.value = false;
     }
   }
-  return { token: computed(() => token.value), pending: computed(() => pending.value), create };
+  return {
+    token: computed(() => token.value),
+    pending: computed(() => pending.value),
+    create,
+    clear: () => {
+      operation = undefined;
+      token.value = undefined;
+      pending.value = false;
+    }
+  };
 }
 
 export interface WorkbenchSettingsView<NodeRegistrationContext> {

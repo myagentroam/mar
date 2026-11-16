@@ -12,6 +12,7 @@ async function prepare(page: Page) {
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true

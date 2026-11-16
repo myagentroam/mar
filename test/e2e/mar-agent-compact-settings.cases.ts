@@ -108,6 +108,7 @@ async function mockMarAgentConsole(page: Page, english: boolean, identity: Ident
 
   const admin = {
     authenticated: true,
+    userId: 1,
     mustChangePassword: false,
     username: 'admin',
     isAdmin: identity.role === 'ADMIN',

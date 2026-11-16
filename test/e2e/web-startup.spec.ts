@@ -11,7 +11,7 @@ for (const resource of ['notifications', 'workbench-capabilities'] as const) {
       await page.addInitScript(() => {
         sessionStorage.setItem('mar.user.csrf-token', 'csrf-1');
         localStorage.setItem(
-          'mar.workbench.selection.v1',
+          'mar.account.v1.1.mar.workbench.selection.v1',
           JSON.stringify({
             workspace: { nodeId: 'node-1', workspaceId: 'workspace-1' },
             sessionId: 'session-1'
@@ -21,6 +21,7 @@ for (const resource of ['notifications', 'workbench-capabilities'] as const) {
       await page.route('**/api/auth/me', (route) =>
         json(route, {
           authenticated: true,
+          userId: 1,
           mustChangePassword: false,
           username: 'admin',
           isAdmin: true
@@ -68,6 +69,7 @@ test('does not resume a pending workbench restoration after authentication is re
   await page.route('**/api/auth/me', (route) =>
     json(route, {
       authenticated: true,
+      userId: 1,
       mustChangePassword: false,
       username: 'admin',
       isAdmin: true
