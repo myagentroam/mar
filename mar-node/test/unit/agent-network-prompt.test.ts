@@ -228,15 +228,14 @@ it.each([false, true])(
         'Requests for receipt-only replies and immediate agent_view calls solely to confirm receipt are usually unnecessary.'
       );
       expect(instructions).toContain(
-        'The parent automatically collects the latest unread public reply and terminal state from each observed direct child before its next natural model request.'
+        'The parent automatically collects replies and terminal state from its direct children before its next model request.'
       );
       expect(instructions).toContain(
-        'Usually reply in the child Session itself rather than sending duplicate progress or completion reports with agent_send.'
+        'Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent.'
       );
-      expect(instructions).toContain('when timely action or a decision is needed');
-      expect(instructions).toContain('a blocker, scope conflict or major risk');
-      expect(instructions).toContain('or when explicitly asked to report');
-      expect(instructions).toContain('Routine child updates usually need no reply');
+      expect(instructions).toContain('Parent-to-child guidance still uses agent_send.');
+      expect(instructions).not.toContain('Contact the parent proactively');
+      expect(instructions).not.toContain('or when explicitly asked to report');
       expect(instructions).toContain(
         'Updates are most useful when requested or when the recipient needs to decide or change course'
       );
@@ -289,14 +288,15 @@ it('selects delegation and lateral guidance independently and omits both during 
       'An accepted message normally needs no separate acknowledgment.',
       'Requests for receipt-only replies',
       'immediate agent_view calls solely to confirm receipt are usually unnecessary',
-      'The parent automatically collects the latest unread public reply and terminal state from each observed direct child',
-      'rather than sending duplicate progress or completion reports with agent_send',
-      'Sending to a non-child Agent does not subscribe to future updates',
-      'Contact the parent proactively when timely action or a decision is needed',
-      'Routine child updates usually need no reply'
+      'The parent automatically collects replies and terminal state from its direct children before its next model request.',
+      'Report progress, blockers, and results in your own Session rather than using agent_send to contact your parent.',
+      'Parent-to-child guidance still uses agent_send.',
+      'Sending to a non-child Agent does not subscribe to future updates'
     ]) {
       expect(instructions.split(guidance)).toHaveLength(expected[1] ? 2 : 1);
     }
+    expect(instructions).not.toContain('Contact the parent proactively');
+    expect(instructions).not.toContain('or when explicitly asked to report');
   }
   expect(test.requests).toHaveLength(1);
   expect(test.invoke).not.toHaveBeenCalled();
