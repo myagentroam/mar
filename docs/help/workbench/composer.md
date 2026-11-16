@@ -77,7 +77,7 @@ Prompt Tab 是手动触发操作，Composer Prediction（输入预测）用于�
 
 ### 启动前须知
 
-目标模式支持 MAR Agent、Codex、Claude Code 和 OpenCode 跨轮持续执行，自动续作不限制轮数。**进入模式会清除尚未执行的普通队列。MAR Agent 保留当前 Auto / 完全访问档位；其他 Agent 切换到各自免确认权限，结束或移除目标后不会自动恢复。** 请先确认目标、目录和权限边界，完成后在 Composer 手动改回需要的权限。
+目标模式支持 MAR Agent、Codex、Claude Code 和 OpenCode 跨轮持续执行，自动续作不限制轮数。进入、更新或退出目标模式保留普通待发消息及其顺序；单纯切换状态不恢复暂停队列，实际发送、停止与恢复仍按普通投递规则处理。**MAR Agent 保留当前 Auto / 完全访问档位；其他 Agent 切换到各自免确认权限，结束或移除目标后不会自动恢复。** 请先确认目标、目录和权限边界，完成后在 Composer 手动改回需要的权限。
 
 `/goal` 采用 MAR 兼容语义，由 Node 为四种 Agent 统一管理，不等同于 Codex 原生 Goal。裸命令进入待输入状态，`/goal <目标>` 设置或编辑目标，`/goal --clear` 移除目标，不提供原生 Goal 的暂停、恢复或预算控制；当前受管 Codex 执行中新建并完成的原生 Goal 也会结束此目标。
 

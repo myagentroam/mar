@@ -14,6 +14,47 @@ import type { RunnerSteerResult } from '../../src/runner/contracts.js';
 import type { ContinuousRunCoordinator } from '../../src/service/continuous-run-coordinator.js';
 
 describe('Node Workbench Manifest and command control', () => {
+  it('preserves ordinary paused queue items when entering and leaving pending Goal mode', async () => {
+    const database = new NodeDatabase(':memory:', 'node-goal-preserve-paused-queue');
+    const workspace = database.saveWorkspace({
+      path: await workspacePath('goal-preserve-paused-queue'),
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const connector = new NodeConnector({ reconnect: false, database });
+    const { runtime } = connector as unknown as { runtime: NodeRuntimeState };
+    const session = runtime.createAgentSession({
+      workspaceId: workspace.id,
+      cwd: workspace.path,
+      runner: 'mar-agent',
+      nativeControl: 'MAR_MANAGED'
+    });
+    const items = ['first', 'second'].map(
+      (id) =>
+        runtime.createQueueItem({
+          sessionId: session.id,
+          clientMessageId: id,
+          content: `Pending ${id}`,
+          initiatedByUserId: 42
+        }).item
+    );
+    runtime.pauseSessionQueue(session.id);
+    const queue = runtime.sessionQueue(session.id);
+    try {
+      for (const input of ['/goal', '/goal', '/goal --clear', '/goal']) {
+        await operation(connector, 'session.command.execute', {
+          sessionId: session.id,
+          commandId: 'goal',
+          input
+        });
+        expect(runtime.sessionQueue(session.id)).toEqual(queue);
+        expect(items.map((item) => runtime.getQueueItem(item.id))).toEqual(items);
+      }
+    } finally {
+      await connector.stop();
+    }
+  });
+
   it('starts a new Session and its Goal-owned initial message in one submission', async () => {
     const database = new NodeDatabase(':memory:', 'node-agent-goal-start');
     const workspace = database.saveWorkspace({

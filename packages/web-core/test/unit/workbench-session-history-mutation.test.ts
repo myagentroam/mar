@@ -217,6 +217,23 @@ describe('Session history mutations', () => {
     expect(f.submission.pending.value).toBe(false);
   });
 
+  it('rolls back history without filling or replacing the current Composer draft', async () => {
+    const f = fixture();
+    f.request.mockResolvedValueOnce({ session: source });
+    await expect(f.service.rollback(turn, user)).resolves.toEqual({
+      status: 'APPLIED',
+      session: source
+    });
+    expect(f.clear).toHaveBeenCalledExactlyOnceWith(source.id);
+    expect(f.open).toHaveBeenCalledExactlyOnceWith(source.id, {
+      preserveMobileWorkspaceSurface: true,
+      deferInitialScroll: true,
+      skipSaveCurrent: true
+    });
+    expect(f.fill).not.toHaveBeenCalled();
+    expect(f.draft()).toBe('Unsent source draft');
+  });
+
   it.each(['rewind', 'rollback'] as const)(
     '%s request failure preserves history and draft',
     async (operation) => {

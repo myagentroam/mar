@@ -19,7 +19,7 @@ test.afterAll(async () => {
 });
 
 for (const multipleInputs of [false, true]) {
-  test(`terminal Watch backfills old message actions and rollback ${multipleInputs ? 'within one long Turn' : 'across Turns'}`, async ({
+  test(`terminal Watch bounds recent message actions and supports older rollback after explicit reload ${multipleInputs ? 'within one long Turn' : 'across Turns'}`, async ({
     page
   }) => {
     const errors: string[] = [];
@@ -109,6 +109,7 @@ for (const multipleInputs of [false, true]) {
       readPage: async (_session, limit) => ({
         source: active ? 'runtime' : 'official',
         snapshotSequence: sequence,
+        nextCursor: !multipleInputs && count > limit ? String(count - limit) : null,
         turns: historyTurns(!active).slice(-limit)
       }),
       emitSession: () => undefined,
@@ -156,15 +157,31 @@ for (const multipleInputs of [false, true]) {
         category: 'session',
         payload: { session: { ...session, activity: 'IDLE' } }
       });
-      await expect(rewind).toHaveCount(initialCount);
-      await expect(rollback).toHaveCount(initialCount);
-      const old = multipleInputs ? historyTurns(false)[0]! : turn(5, false);
+      await expect(rewind).toHaveCount(6);
+      await expect(rollback).toHaveCount(6);
+      await expect(
+        page.getByText(`Input ${multipleInputs ? 6 : 0}`, { exact: true })
+      ).toBeVisible();
+      const old = multipleInputs ? historyTurns(false)[0]! : turn(initialCount - 5, false);
       watch.emitRealtime(session.id, {
         sequence: ++sequence,
         category: 'conversation',
         payload: { sessionId: session.id, turn: old, segments: conversationSegments(old) }
       });
       await Promise.all(deliveries.splice(0));
+      await expect(rewind).toHaveCount(6);
+      await expect(rollback).toHaveCount(6);
+      // A user-requested reload and history paging obtain authoritative older boundaries.
+      await page.reload();
+      const terminalIdentity = JSON.parse(
+        (await page.getByTestId('watch-identity').textContent())!
+      );
+      await watch.operations()['session.watch']!({ ...terminalIdentity, sessionId: session.id });
+      await expect(page.getByText(`Input ${initialCount - 6}`, { exact: true })).toBeVisible();
+      for (let index = initialCount - 9; index >= 0; index -= 3) {
+        await page.getByRole('button', { name: 'Load earlier', exact: true }).click();
+        await expect(page.getByText(`Input ${index}`, { exact: true })).toBeVisible();
+      }
       await expect(rewind).toHaveCount(initialCount);
       await expect(rollback).toHaveCount(initialCount);
       await page.route('**/api/agent-sessions/session-1/rollback', async (route) => {
@@ -178,8 +195,11 @@ for (const multipleInputs of [false, true]) {
         watch.invalidate(session.id);
         await route.fulfill({ json: { session } });
       });
+      await page.getByRole('textbox', { name: 'Draft' }).fill('Keep my unsent draft');
       await rollback.nth(5).click();
-      await expect(page.getByRole('textbox', { name: 'Draft' })).toHaveValue('Input 5');
+      await expect(page.getByRole('textbox', { name: 'Draft' })).toHaveValue(
+        'Keep my unsent draft'
+      );
       await expect(page.getByText('Input 4', { exact: true })).toBeVisible();
       await expect(page.getByText('Input 5', { exact: true })).toHaveCount(0);
       await expect(page.getByText(`Input ${initialCount - 1}`, { exact: true })).toHaveCount(0);
@@ -208,6 +228,7 @@ test('Rollback resets a second browser page immediately without losing its unsen
     createdAt: 1
   } as NodeAgentSession;
   let removed = false;
+  const rollbackResponse = Promise.withResolvers<void>();
   const watch = createTestSessionWatch({
     nodeId: () => 'node-1',
     nodeGeneration: () => 'generation-1',
@@ -264,6 +285,7 @@ test('Rollback resets a second browser page immediately without losing its unsen
       await watch.operations()['session.watch']!({ ...identity, sessionId: session.id });
       await expect(target.getByText('Input to roll back', { exact: true })).toBeVisible();
     }
+    await page.getByRole('textbox', { name: 'Draft' }).fill('Keep the initiating draft');
     await observer.getByRole('textbox', { name: 'Draft' }).fill('Keep my unsent input');
     await page.route('**/api/agent-sessions/session-1/rollback', async (route) => {
       expect(route.request().postDataJSON()).toMatchObject({
@@ -275,6 +297,7 @@ test('Rollback resets a second browser page immediately without losing its unsen
       watch.invalidate(session.id);
       // Exercise the real Watch-before-HTTP ordering, without a renewal or page reload.
       await expect(observer.getByText('Input to roll back', { exact: true })).toHaveCount(0);
+      await rollbackResponse.promise;
       await route.fulfill({ json: { session } });
     });
     await page
@@ -284,10 +307,16 @@ test('Rollback resets a second browser page immediately without losing its unsen
       })
       .click();
     await expect(page.getByText('Input to roll back', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('textbox', { name: 'Draft' })).toHaveValue('Input to roll back');
+    await expect(page.getByRole('textbox', { name: 'Draft' })).toHaveValue(
+      'Keep the initiating draft'
+    );
     await expect(observer.getByRole('textbox', { name: 'Draft' })).toHaveValue(
       'Keep my unsent input'
     );
+    await expect(page.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+    rollbackResponse.resolve();
+    // An unchanged draft is not a completion signal: wait for HTTP application and reopening.
+    await expect(page.getByRole('main')).toHaveAttribute('aria-busy', 'false');
     const nextTurn: NodeConversationTurn = {
       id: 'next-turn',
       sessionId: session.id,
@@ -330,7 +359,14 @@ test('Rollback resets a second browser page immediately without losing its unsen
       category: 'conversation',
       payload: {
         sessionId: session.id,
-        delta: { runId: 'next-run', itemId: 'next-assistant', text: 'continues', createdAt: 11 }
+        delta: {
+          runId: 'next-run',
+          itemId: 'next-assistant',
+          segmentId: conversationSegments(nextTurn)[0]!.id,
+          segmentIndex: 0,
+          text: 'continues',
+          createdAt: 11
+        }
       }
     });
     await Promise.all(deliveries.splice(0));
@@ -349,6 +385,7 @@ test('Rollback resets a second browser page immediately without losing its unsen
     }
     expect(errors).toEqual([]);
   } finally {
+    rollbackResponse.resolve();
     watch.clear();
     await Promise.all(deliveries);
     await observer.close();

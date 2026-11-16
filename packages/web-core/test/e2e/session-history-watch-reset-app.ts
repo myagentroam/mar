@@ -131,7 +131,7 @@ createTooltipApp(
         watch.stopSelectedSessionWatch();
       });
       return () =>
-        h('main', [
+        h('main', { 'aria-busy': mutation.pending.value }, [
           h('output', { 'data-testid': 'watch-identity' }, JSON.stringify(identity.value)),
           h(
             'button',

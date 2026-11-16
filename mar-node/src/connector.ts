@@ -1255,6 +1255,7 @@ export class NodeConnector {
         this.nativeSessionWatchService.invalidate(sessionId);
         this.promptCompletion.invalidateSession(workspaceId, sessionId);
       },
+      onHistoryMutationSettled: (sessionId) => this.continuousRunCoordinator.schedule(sessionId),
       invalidateWorkspaceSessions: (workspaceId) => {
         this.workspaceSessionService.invalidateCache(workspaceId);
         void this.workspaceWorkbenchService?.invalidateTopic(workspaceId, 'sessions');

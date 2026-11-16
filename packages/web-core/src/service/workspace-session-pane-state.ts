@@ -727,7 +727,7 @@ export function createWorkspaceSessionPaneState(options: {
         'current' | 'currentRevision' | 'beginSubmission' | 'draft'
       > & {
         readonly selectedSession: Readonly<Ref<Session | undefined>>;
-        readonly onDraftFilled: (text: string, operation: 'rewind' | 'rollback') => void;
+        readonly onDraftFilled: (text: string) => void;
       }
     ) => {
       const { selectedSession, onDraftFilled, ...shared } = history;
@@ -751,9 +751,9 @@ export function createWorkspaceSessionPaneState(options: {
           restore: (text) => {
             draft.input.value = text;
           },
-          fill: (text, operation) => {
+          fill: (text) => {
             draft.input.value = text;
-            onDraftFilled(text, operation);
+            onDraftFilled(text);
           }
         }
       });
