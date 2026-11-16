@@ -314,6 +314,60 @@ function installMainPane(page: ReturnType<typeof pageFixture>): void {
 }
 
 describe('Workbench surface composition behavior', () => {
+  it.each([false, true])(
+    'hides cached Workspace running indicators while offline and retains unread state (mobile=%s)',
+    async (mobileViewport) => {
+      const nodes = shallowReactive([
+        { id: 'node', connected: true },
+        { id: 'other-node', connected: true }
+      ]);
+      const activeRun = ref(true);
+      const page = extendPage(pageFixture(), {
+        application: { networkUnavailable: false },
+        layout: { mobileViewport },
+        resources: { nodes },
+        notifications: {
+          hasActiveWorkspaceRun: (nodeId: string, workspaceId: string) =>
+            activeRun.value && workspaceId === (nodeId === 'node' ? 'one' : 'other'),
+          hasUnreadWorkspace: () => true
+        }
+      });
+      const view = renderComponent(Surface, { page });
+      try {
+        const running = (nodeId: string, workspaceId: string) =>
+          view.findAll('tab-strip')[0]!.props['has-active-run'](nodeId, workspaceId);
+        expect(running('node', 'one')).toBe(true);
+        expect(running('node', 'two')).toBe(false);
+        expect(running('other-node', 'other')).toBe(true);
+        expect(running('unknown-node', 'other')).toBe(false);
+
+        Object.assign(page.application, { networkUnavailable: true });
+        await nextTick();
+        expect(running('node', 'one')).toBe(false);
+        expect(running('other-node', 'other')).toBe(false);
+        expect(nodes[0]!.connected).toBe(true);
+        expect(page.notifications.hasActiveWorkspaceRun('node', 'one')).toBe(true);
+        expect(view.findAll('tab-strip')[0]!.props['has-unread']('node', 'one')).toBe(true);
+
+        Object.assign(page.application, { networkUnavailable: false });
+        nodes[0] = { id: 'node', connected: false };
+        await nextTick();
+        expect(running('node', 'one')).toBe(false);
+        expect(running('other-node', 'other')).toBe(true);
+
+        nodes[0] = { id: 'node', connected: true };
+        await nextTick();
+        expect(running('node', 'one')).toBe(true);
+        activeRun.value = false;
+        await nextTick();
+        expect(running('node', 'one')).toBe(false);
+        expect(view.findAll('tab-strip')[0]!.props['has-unread']('node', 'one')).toBe(true);
+      } finally {
+        view.unmount();
+      }
+    }
+  );
+
   it.each(['zh-CN', 'en-US'] as const)(
     'shows the correct unavailable Files reason without requests in %s',
     async (locale) => {
