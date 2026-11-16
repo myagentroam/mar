@@ -83,6 +83,33 @@ describe('public model boundary', () => {
 });
 
 describe('model catalog', () => {
+  it.each([undefined, false, true])(
+    'preserves the explicit Smart Compact opt-in %s at both model boundaries',
+    (smartCompactEnabled) => {
+      const value = {
+        ...model,
+        ...(smartCompactEnabled === undefined ? {} : { smartCompactEnabled })
+      };
+      expect(
+        parseModelCatalog({ version: 1, models: [value] }).models[0]?.smartCompactEnabled
+      ).toBe(smartCompactEnabled);
+      expect(
+        normalizeRuntimeModelConfiguration({ ...value, apiKey: new SecretValue('secret') })
+          .smartCompactEnabled
+      ).toBe(smartCompactEnabled);
+    }
+  );
+
+  it('rejects a non-boolean Smart Compact opt-in at both model boundaries', () => {
+    const value = { ...model, smartCompactEnabled: 'true' };
+    expect(() => parseModelCatalog({ version: 1, models: [value] })).toThrow(
+      'Model catalog is invalid.'
+    );
+    expect(() =>
+      normalizeRuntimeModelConfiguration({ ...value, apiKey: new SecretValue('secret') })
+    ).toThrow('Model configuration is invalid.');
+  });
+
   it('uses native Responses configuration updates only for endpoints declaring the capability', () => {
     const responses = {
       ...model,

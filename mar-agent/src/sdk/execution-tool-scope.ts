@@ -145,7 +145,9 @@ export function createExecutionToolScope(input: {
       requestSmartCompact: () => {
         controller.signal.throwIfAborted();
         requestSmartCompaction(
-          roundSmartInput === smartInput() ? roundSmartInput : undefined,
+          selectedModel.smartCompactEnabled === true && roundSmartInput === smartInput()
+            ? roundSmartInput
+            : undefined,
           () => {
             // The Session owns this background operation, not the short-lived tool callback.
             operations.enter(

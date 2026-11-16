@@ -24,6 +24,25 @@ import { SessionLifecycleService } from '../../src/session/session-lifecycle-ser
 import { SessionMessageService } from '../../src/session/session-message-service.js';
 
 describe('Node MAR Agent runtime credentials', () => {
+  it.each([undefined, false, true])(
+    'normalizes Smart Compact %s at the SDK boundary',
+    (smartCompactEnabled) => {
+      const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });
+      const [model] = new MarAgentRuntimeModelFactory(control, () => 1_000).create(
+        [
+          {
+            ...runtimeModel(ticket('smart', 1_000)),
+            ...(smartCompactEnabled === undefined ? {} : { smartCompactEnabled })
+          }
+        ],
+        { runtimeScopeId: 'scope-1', executionId: 'execution-1' }
+      );
+      expect(sdkModelConfigurations([model!])[0]?.smartCompactEnabled).toBe(
+        smartCompactEnabled === true
+      );
+    }
+  );
+
   it('relays unknown nested model options safely through the SDK', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-node-model-options-'));
     const control = new RuntimeCredentialControlService({ send: () => {}, timeoutMs: 1_000 });
@@ -34,6 +53,7 @@ describe('Node MAR Agent runtime credentials', () => {
           {
             ...runtimeModel(ticket('options', 1_000)),
             gcEnabled: false,
+            smartCompactEnabled: true,
             unifiedCompact: true,
             responsesTransport: { transport: 'HTTP', httpVersion: '2', future: 'transport-secret' },
             responsesOptionalParameters: {
@@ -76,6 +96,7 @@ describe('Node MAR Agent runtime credentials', () => {
         });
         expect(received?.credentialProvider).toBe(provider);
         expect(received?.gcEnabled).toBe(false);
+        expect(received?.smartCompactEnabled).toBe(true);
         expect(received?.responsesTransport).toEqual({ transport: 'HTTP', httpVersion: '2' });
         expect(received?.responsesOptionalParameters).toEqual({
           reasoningEffort: true,

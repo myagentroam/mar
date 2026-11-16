@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-15
+lastUpdated: 2026-11-16
 ---
 
 # Configure and Use MAR Agent
@@ -61,7 +61,7 @@ The Node extension always uses a high-density Textual Continuation IR prompt; th
 
 MAR Agent schedules automatic compaction from the latest same-model context-input usage: at 85%, it generates a candidate in the background while the current task and tools continue; at 90%, it waits for that same compaction before the next model request. The conversation timeline updates one item through background generation, waiting, completion, failure, or cancellation. Background compaction does not end the active task or expose its private handoff summary. Messages and tool results produced after the snapshot remain after the compacted prefix. After a successful compaction, if a tail was retained, the Context indicator stays unknown until a foreground model request reports authoritative usage; with no retained tail, the existing `0 / window` reset baseline remains. Background Compact usage still counts toward costs but never replaces foreground context usage, Latency, or average output TPS.
 
-Smart Compaction can request the same background mechanism earlier, at a natural transition into sustained new work. With a valid same-model input watermark of at least 60% and below 90%, the runtime allows the main model to consider whether prior detailed context has low continuation value. It does not trigger for every topic change or one-off question, and it is not a guarantee that all history will fit without loss. Missing or invalidated usage skips this optional opportunity; fixed 85%/90% capacity protection remains independent. There is no extra switch or Enterprise license requirement, and the SDK and CLI use the same mechanism. Existing manual Compact controls and status displays are unchanged.
+Smart Compact is a separate system-wide switch in the same **Admin → MAR Agent Models → Advanced → Compact** panel, and is off by default. It does not require enabling or selecting the dedicated Compact model. When enabled, with a valid same-model input watermark of at least 60% and below 90%, the runtime allows the main model to consider whether prior detailed context has low continuation value and request the same background compaction earlier. It does not trigger for every topic change or one-off question, and it is not a guarantee that all history will fit without loss. Missing or invalidated usage skips this optional opportunity. Turning Smart Compact off disables only this optional early compaction; it does not affect manual Compact or the fixed 85%/90% automatic capacity safeguards. No Enterprise license is required, and the SDK and CLI use the same mechanism. Existing manual Compact controls and status displays are unchanged. Older Nodes without the `smartCompactControl` capability retain their existing behavior while the switch is on; with the switch off, they cannot guarantee that behavior is disabled and reject conversational and actual Plan executions with `CAPABILITY_VERSION_UNSUPPORTED`. Upgrade the Node to use the off setting. Manual Compact and commands that only toggle Plan state remain available.
 
 ## ChatGPT plan authorization
 

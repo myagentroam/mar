@@ -27,6 +27,7 @@ const refreshing = ref(false);
 const saving = ref(false);
 const models = ref<MarAgentModelSummary[]>([]);
 const draft = reactive<MarAgentCompactConfiguration>({
+  smartCompactEnabled: false,
   enabled: false,
   modelId: null,
   reasoningEffort: null
@@ -136,6 +137,15 @@ onBeforeUnmount(() => lifetime.abort());
       label-position="top"
       :disabled="!writable || busy || !ready"
     >
+      <el-form-item
+        :label="translate('marAgentModels.compactSmartEnabled')"
+        prop="smartCompactEnabled"
+      >
+        <div class="compact-smart-setting">
+          <el-switch v-model="draft.smartCompactEnabled" />
+          <p class="compact-smart-hint">{{ translate('marAgentModels.compactSmartHint') }}</p>
+        </div>
+      </el-form-item>
       <el-form-item :label="translate('marAgentModels.compactEnabled')" prop="enabled">
         <el-switch v-model="draft.enabled" />
       </el-form-item>
@@ -206,6 +216,16 @@ onBeforeUnmount(() => lifetime.abort());
 }
 .compact-settings :deep(.el-select) {
   width: 100%;
+}
+.compact-smart-setting {
+  display: grid;
+  gap: 0.5rem;
+}
+.compact-smart-hint {
+  color: var(--mar-text-muted);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.6;
+  margin: 0;
 }
 .compact-actions {
   display: flex;

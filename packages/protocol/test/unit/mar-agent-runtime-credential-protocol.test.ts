@@ -9,6 +9,7 @@ import {
   codexModelImportRequestSchema,
   codexModelImportResultSchema,
   marAgentModelTransportTestInputSchema,
+  marAgentCompactConfigurationSchema,
   marAgentModelTransportTestResultSchema,
   marAgentModelSummarySchema,
   marAgentNodeModelSummarySchema,
@@ -53,6 +54,61 @@ const ticket = {
   nonce: 'nonce-1',
   signature: 'a'.repeat(64)
 };
+
+describe('Smart Compact control', () => {
+  it('defaults legacy deployment settings to off and keeps the switch independent of dedicated compaction', () => {
+    const legacy = { enabled: false, modelId: null, reasoningEffort: null };
+    expect(marAgentCompactConfigurationSchema.parse(legacy)).toEqual({
+      ...legacy,
+      smartCompactEnabled: false
+    });
+    expect(
+      marAgentCompactConfigurationSchema.parse({ ...legacy, smartCompactEnabled: true })
+    ).toEqual({ ...legacy, smartCompactEnabled: true });
+    expect(
+      marAgentCompactConfigurationSchema.safeParse({ ...legacy, smartCompactEnabled: 'true' })
+        .success
+    ).toBe(false);
+  });
+
+  it.each([undefined, false, true])(
+    'accepts the explicit Node capability %s without requiring it on legacy Nodes',
+    (smartCompactControl) => {
+      const value = {
+        apiVersion: 1,
+        websocket: true,
+        httpVersions: ['1.1'],
+        ...(smartCompactControl === undefined ? {} : { smartCompactControl })
+      };
+      expect(marAgentRuntimeCredentialCapabilitySchema.parse(value).smartCompactControl).toBe(
+        smartCompactControl
+      );
+    }
+  );
+
+  it.each([undefined, false, true])(
+    'preserves runtime-only Smart Compact %s without making it model management state',
+    (smartCompactEnabled) => {
+      const value = {
+        ...baseModel,
+        credential: { type: 'INLINE_API_KEY', value: 'fixture' },
+        ...(smartCompactEnabled === undefined ? {} : { smartCompactEnabled })
+      };
+      expect(marAgentRuntimeModelConfigurationSchema.parse(value).smartCompactEnabled).toBe(
+        smartCompactEnabled
+      );
+      expect(marAgentStoredModelConfigurationSchema.safeParse(value).success).toBe(
+        smartCompactEnabled === undefined
+      );
+      expect(
+        marAgentRuntimeModelConfigurationSchema.safeParse({
+          ...value,
+          smartCompactEnabled: 'false'
+        }).success
+      ).toBe(false);
+    }
+  );
+});
 
 describe('Static model SOCKS5 configuration', () => {
   it('preserves private proxies in stored and runtime configurations but not public summaries', () => {
