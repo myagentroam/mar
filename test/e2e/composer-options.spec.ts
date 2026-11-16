@@ -32,6 +32,92 @@ async function expectMenuInsideViewport(menu: Locator) {
     .toBe(true);
 }
 
+for (const locale of ['en-US', 'zh-CN']) {
+  for (const running of [false, true]) {
+    test(`Composer keyboard hints use local width (${locale}, ${running ? 'running' : 'idle'})`, async ({
+      page
+    }, info) => {
+      await page.setViewportSize({ width: 1280, height: 844 });
+      for (const compact of [true, false]) {
+        await page.goto(
+          `${fixture.url}composer-options.html?short&locale=${locale}${running ? '&running' : ''}${running && compact ? '&empty' : ''}${compact ? '&compact-names&existing-session' : ''}&theme=${compact ? 'daylight' : 'vscode-dark-2026'}`
+        );
+        const toolbar = page.locator('.composer-toolbar');
+        const hint = toolbar.locator('.composer-keyboard-hint');
+        await expect(hint).toContainText(
+          locale === 'zh-CN' ? (running ? '排队' : '发送') : running ? 'to queue' : 'to send'
+        );
+        for (const width of [960, 840, 760, 681, 680, 560]) {
+          await toolbar.evaluate((element, width) => {
+            element.style.boxSizing = 'content-box';
+            element.style.width = `${width}px`;
+          }, width);
+          if (width > 680) await expect(hint).toBeVisible();
+          else await expect(hint).toBeHidden();
+          const layout = await toolbar.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const items = Array.from(
+              element.querySelectorAll<HTMLElement>(
+                '.composer-configuration, .composer-context-button, .composer-hint, .composer-stop-button, .composer-send-control'
+              )
+            )
+              .map((item) => item.getBoundingClientRect())
+              .filter((item) => item.width > 0);
+            return {
+              fits: items.every((item) => item.left >= rect.left && item.right <= rect.right + 1),
+              separated: items.every(
+                (item, index) => index === 0 || item.left >= items[index - 1]!.right
+              ),
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth
+            };
+          });
+          expect(layout.fits).toBe(true);
+          expect(layout.separated).toBe(true);
+          expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+          await expect(toolbar.locator('.composer-stop-button')).toHaveCount(running ? 1 : 0);
+          await expect(toolbar.locator('.composer-send-button')).toHaveCount(
+            running && compact ? 0 : 1
+          );
+          for (const button of await toolbar
+            .locator('.composer-send-button, .composer-stop-button')
+            .all()) {
+            await expect(button).toBeEnabled();
+            expect((await button.boundingBox())!.width).toBe(24);
+          }
+          if (compact && width === 760)
+            await toolbar.screenshot({
+              path: info.outputPath(`keyboard-hint-${locale}-${running ? 'running' : 'idle'}.png`)
+            });
+        }
+      }
+    });
+  }
+
+  test(`Composer keeps mobile hints hidden and submission feedback visible (${locale})`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`${fixture.url}composer-options.html?short&submitting&locale=${locale}`);
+    const toolbar = page.locator('.composer-toolbar');
+    for (const width of [840, 681, 680, 560]) {
+      await toolbar.evaluate((element, width) => {
+        element.style.boxSizing = 'content-box';
+        element.style.width = `${width}px`;
+      }, width);
+      await expect(toolbar.locator('.composer-keyboard-hint')).toBeHidden();
+      await expect(toolbar.locator('.composer-submitting')).toBeVisible();
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(
+      `${fixture.url}composer-options.html?short&compact-names&mobile&running&empty&locale=${locale}`
+    );
+    await expect(toolbar.locator('.composer-keyboard-hint')).toHaveCount(0);
+    await expect(toolbar.locator('.composer-stop-button')).toBeEnabled();
+    await expect(toolbar.locator('.composer-send-button')).toHaveCount(0);
+  });
+}
+
 for (const width of [1280, 390]) {
   for (const theme of ['daylight', 'vscode-dark-2026']) {
     test(`Composer action buttons keep balanced vertical space (${width}, ${theme})`, async ({
