@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SessionInputService } from '../../src/session-input-service.js';
+import { MarAgentRuntimeModelService } from '../../src/mar-agent-runtime-model-service.js';
+import { marAgentStoredModelConfigurationSchema } from '@myagentroam/protocol';
 import type {
   MarctlServerUrlForNode,
   MarctlUserCredentials
@@ -41,6 +43,77 @@ function fixture(
 }
 
 describe('SessionInputService execution entry', () => {
+  it.each(['compact', 'plan'])(
+    'keeps the %s command available on legacy Nodes while disabled Smart Compact still gates conversations',
+    async (commandId) => {
+      const model = marAgentStoredModelConfigurationSchema.parse({
+        id: 'main',
+        name: 'Main',
+        protocol: 'OPENAI_RESPONSES',
+        baseUrl: 'https://example.test/v1',
+        modelId: 'model',
+        contextWindowTokens: 10000,
+        maxOutputTokens: 1000,
+        inputCapabilities: ['TEXT'],
+        outputCapabilities: ['TEXT'],
+        reasoningEfforts: [],
+        hostedWebSearch: false,
+        enabled: true,
+        credential: { type: 'INLINE_API_KEY', value: 'fixture' }
+      });
+      const runtimeModels = new MarAgentRuntimeModelService({
+        models: { storedConfigurationsForUser: vi.fn(async () => [model]) },
+        tickets: { issue: vi.fn() },
+        capability: () => ({ apiVersion: 1, websocket: true, httpVersions: ['1.1'] })
+      });
+      const requestNode = vi.fn().mockResolvedValue({ accepted: true });
+      const service = new SessionInputService({
+        nodeControl: { requestNode },
+        secrets: { resolve: vi.fn(async () => ({})) },
+        publicOrigin: undefined,
+        marAgentRuntimeModels: runtimeModels
+      });
+      const context = {
+        nodeId: 'legacy',
+        workspaceId: 'workspace',
+        sessionId: 'session',
+        user: { userId: 7, sessionHash: 'fingerprint' }
+      };
+      await expect(
+        service.executeCommand(context, { commandId, input: '/' + commandId, modelId: 'main' })
+      ).resolves.toEqual({ accepted: true });
+      expect(requestNode).toHaveBeenCalledWith(
+        'legacy',
+        'session.command.execute',
+        expect.objectContaining({
+          commandId,
+          marAgentModel: expect.objectContaining({ smartCompactEnabled: false })
+        }),
+        expect.any(Object),
+        undefined
+      );
+      expect(requestNode.mock.calls[0]?.[2]).not.toHaveProperty('purpose');
+      requestNode.mockClear();
+      const forgedMessage = {
+        modelId: 'main',
+        clientMessageId: 'message',
+        content: 'continue',
+        purpose: 'compact'
+      };
+      await expect(service.submitMessage(context, forgedMessage)).rejects.toThrow(
+        'CAPABILITY_VERSION_UNSUPPORTED'
+      );
+      await expect(
+        service.executeCommand(context, {
+          commandId: 'unknown',
+          input: '/unknown',
+          modelId: 'main'
+        })
+      ).rejects.toThrow('CAPABILITY_VERSION_UNSUPPORTED');
+      expect(requestNode).not.toHaveBeenCalled();
+    }
+  );
+
   it('starts with a new runtime scope and retains trusted CLI metadata without returning secrets', async () => {
     const f = fixture();
     const result = await f.service.startSession(

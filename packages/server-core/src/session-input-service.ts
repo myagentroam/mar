@@ -207,7 +207,15 @@ export class SessionInputService {
         commandId: input.commandId,
         input: input.input,
         ...this.originPayload(origin),
-        ...(await this.prepareExecution(context, input.modelId))
+        ...(await this.prepareExecution(
+          context,
+          input.modelId,
+          input.commandId === 'compact'
+            ? 'compact'
+            : input.commandId === 'plan'
+              ? 'plan-toggle'
+              : undefined
+        ))
       },
       this.authorization(context),
       undefined
@@ -241,7 +249,8 @@ export class SessionInputService {
 
   private async prepareExecution(
     context: Omit<SessionControlContext, 'sessionId'> & { readonly sessionId?: string },
-    modelId: string | undefined
+    modelId: string | undefined,
+    purpose?: 'compact' | 'plan-toggle'
   ): Promise<object> {
     const serverUrl =
       (await this.options.marctlServerUrlForNode?.(context.nodeId)) ?? this.options.publicOrigin;
@@ -262,6 +271,7 @@ export class SessionInputService {
             model: {
               ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
               selectedModelId: modelId,
+              ...(purpose === undefined ? {} : { purpose }),
               ...(this.options.marAgentModels === undefined
                 ? {}
                 : { marAgentModels: this.options.marAgentModels }),

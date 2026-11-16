@@ -72,6 +72,7 @@ export const marAgentRuntimeCredentialCapabilitySchema = z
     contextGcControl: z.boolean().optional(),
     modelSocks5Proxy: z.boolean().optional(),
     unifiedCompactControl: z.boolean().optional(),
+    smartCompactControl: z.boolean().optional(),
     conversationModels: z.boolean().optional(),
     resourceInput: z.boolean().optional(),
     httpVersions: z
@@ -1017,6 +1018,7 @@ export const marAgentRuntimeModelConfigurationSchema = refineMarAgentModel(
       ...marAgentModelShape,
       baseUrl: z.string().url().max(2048),
       useResourceUrl: z.boolean().default(false),
+      smartCompactEnabled: z.boolean().optional(),
       credential: marAgentRuntimeCredentialSchema,
       socks5Url: modelSocks5UrlSchema.optional(),
       responsesToolNamespace: z
@@ -1073,6 +1075,7 @@ export type MarAgentRuntimeModelConfiguration = z.infer<
 export const marAgentCompactConfigurationSchema = z
   .object({
     enabled: z.boolean(),
+    smartCompactEnabled: z.boolean().default(false),
     modelId: boundedIdentifierSchema.nullable(),
     reasoningEffort: marAgentReasoningEffortSchema.nullable()
   })

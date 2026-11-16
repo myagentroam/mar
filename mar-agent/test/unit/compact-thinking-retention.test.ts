@@ -212,6 +212,7 @@ describe('Compact thinking tail through SDK and JSONL', () => {
           defaultReasoningEffort: 'medium',
           titleGeneration: false,
           hostedWebSearch: false,
+          smartCompactEnabled: trigger === 'smart',
           codeMode: false
         };
         const requests: ModelRequest[] = [];

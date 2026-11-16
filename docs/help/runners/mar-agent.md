@@ -1,6 +1,6 @@
 ---
 title: 配置和使用 MAR Agent
-lastUpdated: 2026-11-15
+lastUpdated: 2026-11-16
 ---
 
 # 配置和使用 MAR Agent
@@ -61,7 +61,7 @@ Node 扩展固定使用高密度 Textual Continuation IR 提示词，不提供�
 
 MAR Agent 根据最近一次同模型的上下文输入用量安排自动整理：达到 85% 后在后台生成候选，当前任务和工具继续运行；达到 90% 后会在下一次模型请求前等待同一整理完成。会话时间线在同一项中更新后台生成、等待、完成、失败或取消状态；后台整理不会使当前任务提前结束，也不会公开内部交接摘要。快照之后产生的消息和工具结果会保留在整理后的前缀之后。成功整理后若仍有保留尾部，Context 用量在下一次前台模型请求报告新用量前保持未知；没有保留尾部则沿用现有 `0 / window` 重置基线。后台 Compact 用量仍计入成本，但不覆盖前台上下文用量、Latency 或平均输出 TPS。
 
-Smart Compaction 可以在自然进入持续新工作阶段时提前请求同一后台整理机制。有效的同模型输入水位达到 60% 且低于 90% 时，Runtime 允许主模型判断旧阶段的详细上下文是否已失去主要续作价值；不会因每次切题或一次性问答就整理，也不保证无限历史无损保留。用量缺失或失效时跳过这次可选机会，固定 85%/90% 容量保护仍独立生效。无需额外开关或企业 License，SDK 与 CLI 使用同一机制；既有手动 Compact 入口和状态显示不变。
+Smart Compact 是独立的全局开关，位于同一 **管理 → MAR Agent 模型 → 高级 → Compact** 面板，默认关闭；无需启用或选择专用 Compact 模型。开启后，在有效的同模型输入水位达到 60% 且低于 90% 时，Runtime 允许主模型判断旧阶段的详细上下文是否已失去主要续作价值，并可提前请求同一后台整理机制；不会因每次切题或一次性问答就整理，也不保证无限历史无损保留。用量缺失或失效时跳过这次可选机会。关闭 Smart Compact 仅停用此可选提前整理，不影响手动 Compact，也不影响固定的 85%/90% 自动容量保护。无需企业 License，SDK 与 CLI 使用同一机制；既有手动 Compact 入口和状态显示不变。缺少 `smartCompactControl` capability 的旧 Node 在开关开启时仍按原行为执行；开关关闭时无法确认旧行为已停用，会以 `CAPABILITY_VERSION_UNSUPPORTED` 拒绝普通对话及实际 Plan 执行，升级 Node 后再试；手动 Compact 和仅切换 Plan 状态的命令仍可使用。
 
 ## ChatGPT 套餐授权
 
@@ -224,6 +224,8 @@ Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和
 `@myagentroam/agent` 可作为 TypeScript SDK 直接嵌入，也提供唯一命令 `maragent`。CLI 使用当前用户 HOME 下的 MAR 自有模型目录，不读取 Server 模型配置，也不会自动发现 Claude、Codex 或 OpenCode 配置。模型可配置为静态 API Key 或 `CODEX_AUTH_FILE` 凭据来源；仅当用户为当前命令显式传入 `--codex-auth-file PATH` 时，CLI 才只读加载该 Codex ChatGPT OAuth 文件。文件路径和 Token 不会写入模型目录、Session、日志或事件，CLI 也不会刷新或回写该文件。使用 `maragent --help` 查看运行、恢复、会话和模型管理命令。
 
 独立使用时先安装包，再用 `maragent models list` 检查当前账号的本地模型目录；模型登记与运行选项以 `maragent models --help` 和 `maragent --help` 为准。CLI 的命令和 Agent 工具以运行账号权限执行，先选用专用账号和可信工作目录，不要在生产目录试运行。
+
+独立 CLI 默认自动生成新会话标题，可用全局选项 `--no-auto-title` 关闭，或用 `--auto-title` 显式开启；恢复已有会话不重新生成。标题请求可能产生额外用量。`--format stream-json` 的 `model.usage` 事件提供按请求的原生用量快照，区分 conversation、compact 和 title；同一 recordId 只取最新 revision，不与 `usage.updated` 重复相加，缺失用量仍为未知。收到 SIGTERM 时，CLI 取消当前执行和标题请求并释放自己的会话资源，以 143 退出；SIGINT 取消以 130 退出。
 
 独立 CLI 默认加载 Subagent 扩展。新模型默认可用于对话，但不自动用于子会话；使用 `maragent models edit <id> --subagent-model` 显式启用，`--no-subagent-model` 关闭。子会话模型必须同时启用 conversation 和 subagent，用途可通过 `models list` 查看，也可在 `models add/edit` 中使用 `--conversation-model` 或 `--no-conversation-model` 设置。
 

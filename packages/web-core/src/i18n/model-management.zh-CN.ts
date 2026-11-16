@@ -16,6 +16,9 @@ export const modelManagementZhCN = {
     },
     compactHint:
       '此配置对系统内的 MAR Agent 生效。专用模型不可用或生成失败时，自动使用当前会话模型整理上下文。',
+    compactSmartEnabled: '启用 Smart Compact',
+    compactSmartHint:
+      '允许主模型在自然进入持续新工作阶段时提前请求整理。关闭不影响手动 Compact，也不影响 85%/90% 自动容量保护；无需启用或选择专用 Compact 模型。',
     compactEnabled: '启用专用 Compact 模型',
     compactModel: '模型',
     compactEffort: '思考强度',

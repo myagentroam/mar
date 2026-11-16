@@ -59,6 +59,7 @@ const modelFieldsSchema = z
     titleGeneration: z.boolean().optional().default(false),
     codeMode: z.boolean().optional().default(false),
     gcEnabled: z.boolean().optional(),
+    smartCompactEnabled: z.boolean().optional(),
     useResourceUrl: z.boolean().optional().default(false),
     fastMode: z.boolean().optional(),
     serviceTier: z.enum(['auto', 'default', 'flex', 'priority', 'fast', 'ultrafast']).optional(),

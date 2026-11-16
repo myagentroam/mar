@@ -10,6 +10,7 @@ import type { MarAgentModelService } from './mar-agent-model-service.js';
 const settingKey = 'mar_agent_compact';
 const defaults: MarAgentCompactConfiguration = {
   enabled: false,
+  smartCompactEnabled: false,
   modelId: null,
   reasoningEffort: null
 };
@@ -67,10 +68,11 @@ export class MarAgentCompactService {
   }
 
   async runtime(
-    models: readonly MarAgentRuntimeModelConfiguration[]
+    models: readonly MarAgentRuntimeModelConfiguration[],
+    snapshot?: MarAgentCompactConfiguration
   ): Promise<MarAgentRuntimeCompactConfiguration | undefined> {
     try {
-      const configuration = await this.read();
+      const configuration = snapshot ?? (await this.read());
       if (
         !configuration.enabled ||
         configuration.modelId === null ||

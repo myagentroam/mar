@@ -7,7 +7,6 @@ import {
 
 const RAW_MODEL_CONTEXT_PREVIEW_CHARACTERS = 256;
 const EXEC_INPUT_COMPLETE_CHARACTERS = 512;
-const EXEC_INPUT_PREVIEW_CHARACTERS = 256;
 const EXEC_OUTPUT_PREVIEW_CHARACTERS = 512;
 const CODE_MODE_OUTPUT_PREVIEW_CHARACTERS = 512;
 const GENERIC_OUTPUT_PREVIEW_CHARACTERS = 768;
@@ -290,33 +289,16 @@ export function contextGcExecInputReplacement(
   arguments_: unknown,
   toolName: string = 'exec'
 ): unknown {
-  if (!isRecord(arguments_))
-    return contextGcMarkup('terminal_exec_input', {
-      formatVersion: 3,
-      originalBytes: Buffer.byteLength(stableJson(arguments_))
-    });
-  const action =
-    typeof arguments_.action === 'string'
-      ? arguments_.action
-      : typeof arguments_.command === 'string'
-        ? 'start'
-        : toolName === 'exec_wait'
-          ? 'poll'
-          : 'unknown';
-  const original = stableJson(arguments_);
-  const retained: Record<string, unknown> = {
-    action,
-    contextGc: {
-      kind: 'terminal_exec_input',
-      formatVersion: 3,
-      originalBytes: Buffer.byteLength(original)
-    }
-  };
-  for (const key of ['cwd', 'processId', 'timeoutMs', 'yieldMs'] as const)
-    if (arguments_[key] !== undefined) retained[key] = arguments_[key];
-  if (typeof arguments_.command === 'string')
-    retainExecText(retained, 'command', arguments_.command);
-  if (typeof arguments_.data === 'string') retainExecText(retained, 'data', arguments_.data);
+  if (!isRecord(arguments_)) return arguments_;
+  // Historical projection only: preserve the call shape, never create a new executable call.
+  const retained = { ...arguments_ };
+  for (const key of ['command', 'data'] as const) {
+    const value = arguments_[key];
+    if (typeof value === 'string' && [...value].length > EXEC_INPUT_COMPLETE_CHARACTERS)
+      retained[key] = contextGcMarkup('terminal_exec_input', {
+        contextGc: `Historical ${toolName} ${key} content was reclaimed after the protection period. This placeholder is not executable input and must not be replayed.`
+      });
+  }
   return retained;
 }
 
@@ -484,19 +466,6 @@ function unicodeHeadTail(value: string, count: number): string {
   return `${characters.slice(0, count).join('')}\n...[context GC omitted middle]...\n${characters
     .slice(-count)
     .join('')}`;
-}
-
-function retainExecText(
-  retained: Record<string, unknown>,
-  key: 'command' | 'data',
-  value: string
-): void {
-  if ([...value].length <= EXEC_INPUT_COMPLETE_CHARACTERS) {
-    retained[key] = value;
-    return;
-  }
-  retained[`${key}Preview`] = unicodeHeadTail(value, EXEC_INPUT_PREVIEW_CHARACTERS);
-  retained[`${key}Bytes`] = Buffer.byteLength(value);
 }
 
 function lineCount(value: string): number {

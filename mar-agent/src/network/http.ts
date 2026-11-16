@@ -71,7 +71,7 @@ async function fetchHttpAttempt(
       ? http2Client(url)
       : attempt.httpVersion === '2'
         ? http2SocksClient(url, attempt.socks5Url, signal)
-        : new Socks5ProxyAgent(attempt.socks5Url);
+        : new Socks5ProxyAgent(attempt.socks5Url, { connect: socks5Http1Connector() });
   try {
     const response = await undiciFetch(url, {
       ...(attempt.request as Parameters<typeof undiciFetch>[1]),
@@ -454,6 +454,23 @@ function strictHttp2Connector(): ReturnType<typeof buildConnector> {
       }
       callback(null, socket);
     });
+}
+
+function socks5Http1Connector(): NonNullable<Socks5ProxyAgent.Options['connect']> {
+  const connector = buildConnector({});
+  return (options, callback) =>
+    connector(
+      {
+        ...options,
+        hostname: unbracketIpv6Host(options.hostname),
+        ...(options.host === undefined ? {} : { host: unbracketIpv6Host(options.host) })
+      },
+      callback
+    );
+}
+
+function unbracketIpv6Host(host: string): string {
+  return host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
 }
 
 function http2NegotiationError(): Error & { code: string } {

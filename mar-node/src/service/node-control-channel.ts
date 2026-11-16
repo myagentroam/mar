@@ -99,6 +99,10 @@ export class NodeControlChannel {
     });
     socket.on('pong', (payload) => {
       if (this.socket !== socket || !this.pendingPing?.equals(payload)) return;
+      if (this.livenessExpired()) {
+        this.expire(socket, 'NODE_CONTROL_HEARTBEAT_TIMEOUT');
+        return;
+      }
       this.pendingPing = undefined;
       this.recordPong();
     });
@@ -145,12 +149,7 @@ export class NodeControlChannel {
     const socket = this.socket;
     this.livenessTimer = setInterval(() => {
       if (this.socket !== socket || socket.readyState !== WebSocket.OPEN) return;
-      // Wall time includes suspend; monotonic time prevents clock rollback from extending liveness.
-      const elapsed = Math.max(
-        Date.now() - this.lastPongAt,
-        performance.now() - this.lastPongMonotonicAt
-      );
-      if (elapsed >= LIVENESS_TIMEOUT_MS) this.expire(socket, 'NODE_CONTROL_HEARTBEAT_TIMEOUT');
+      if (this.livenessExpired()) this.expire(socket, 'NODE_CONTROL_HEARTBEAT_TIMEOUT');
       else if (this.pendingPing === undefined) {
         this.pendingPing = Buffer.from(String(this.pingSequence++));
         socket.ping(this.pendingPing);
@@ -200,6 +199,15 @@ export class NodeControlChannel {
   private recordPong(): void {
     this.lastPongAt = Date.now();
     this.lastPongMonotonicAt = performance.now();
+  }
+
+  private livenessExpired(): boolean {
+    // Wall time includes suspend; monotonic time prevents clock rollback from extending liveness.
+    const elapsed = Math.max(
+      Date.now() - this.lastPongAt,
+      performance.now() - this.lastPongMonotonicAt
+    );
+    return elapsed >= LIVENESS_TIMEOUT_MS;
   }
 
   private clearConnectionTimers(): void {

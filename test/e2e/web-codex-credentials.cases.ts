@@ -1083,6 +1083,7 @@ test('Grok subscription catalog and model tests use only compatible Nodes', asyn
               apiVersion: 1,
               websocket: false,
               httpVersions: ['1.1'],
+              smartCompactControl: true,
               responsesOptionalParameters: true
             }
           }
@@ -1795,7 +1796,8 @@ test('Codex catalog conflicts require reconfirmation and model tests target comp
             marAgentRuntimeCredentials: {
               apiVersion: 1,
               websocket: true,
-              httpVersions: ['1.1', '2']
+              httpVersions: ['1.1', '2'],
+              smartCompactControl: true
             }
           }
         },

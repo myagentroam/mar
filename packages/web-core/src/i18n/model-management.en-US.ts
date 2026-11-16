@@ -16,6 +16,9 @@ export const modelManagementEnUS = {
     },
     compactHint:
       'This configuration applies to MAR Agent across the system. If the dedicated model is unavailable or generation fails, the current session model compacts the context instead.',
+    compactSmartEnabled: 'Enable Smart Compact',
+    compactSmartHint:
+      'Allows the main model to request earlier compaction at a natural transition into sustained new work. Turning this off does not affect manual Compact or the automatic 85%/90% capacity safeguards; the dedicated Compact model does not need to be enabled or selected.',
     compactEnabled: 'Enable dedicated Compact model',
     compactModel: 'Model',
     compactEffort: 'Reasoning effort',

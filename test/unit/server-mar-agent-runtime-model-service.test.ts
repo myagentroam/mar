@@ -54,6 +54,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue: vi.fn() },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1'],
         resourceInput: true
@@ -75,7 +76,12 @@ describe('Server MAR Agent runtime model service', () => {
         ])
       },
       tickets: { issue: vi.fn() },
-      capability: () => ({ apiVersion: 1, websocket: true, httpVersions: ['1.1'] })
+      capability: () => ({
+        apiVersion: 1,
+        smartCompactControl: true,
+        websocket: true,
+        httpVersions: ['1.1']
+      })
     });
     await expect(
       service.prepare({ userId: 7, nodeId: 'node', workspaceId: 'workspace' })
@@ -104,9 +110,22 @@ describe('Server MAR Agent runtime model service', () => {
     const service = new MarAgentRuntimeModelService({
       models: { storedConfigurationsForUser: available },
       tickets: { issue },
-      capability: () => ({ apiVersion: 1, websocket: true, httpVersions: ['1.1', '2'] }),
+      capability: () => ({
+        apiVersion: 1,
+        smartCompactControl: true,
+        websocket: true,
+        httpVersions: ['1.1', '2']
+      }),
       imageGeneration: { forUser: image },
-      compact: { runtime: compact },
+      compact: {
+        runtime: compact,
+        read: vi.fn(async () => ({
+          enabled: false,
+          smartCompactEnabled: false,
+          modelId: null,
+          reasoningEffort: null
+        }))
+      },
       id: () => 'completion-scope'
     });
     const result = await service.preparePromptCompletion({
@@ -160,7 +179,7 @@ describe('Server MAR Agent runtime model service', () => {
         }))
       },
       tickets: { issue: vi.fn() },
-      capability: () => undefined,
+      capability: () => ({ apiVersion: 1, smartCompactControl: true }),
       id: () => 'scope-1'
     });
     const result = await service.prepare({
@@ -217,6 +236,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1', '2'],
         resourceInput: true
@@ -286,7 +306,7 @@ describe('Server MAR Agent runtime model service', () => {
     const service = new MarAgentRuntimeModelService({
       models: { storedConfigurationsForUser: vi.fn(async () => [configured]) },
       tickets: { issue: vi.fn() },
-      capability: () => undefined,
+      capability: () => ({ apiVersion: 1, smartCompactControl: true }),
       id: () => 'scope-1'
     });
 
@@ -312,6 +332,7 @@ describe('Server MAR Agent runtime model service', () => {
     const createService = (
       capability: () => {
         apiVersion: 1;
+        smartCompactControl: true;
         websocket: boolean;
         httpVersions: ('1.1' | '2')[];
       }
@@ -334,6 +355,7 @@ describe('Server MAR Agent runtime model service', () => {
       });
     const supported = createService(() => ({
       apiVersion: 1,
+      smartCompactControl: true,
       websocket: true,
       httpVersions: ['1.1', '2']
     }));
@@ -354,6 +376,7 @@ describe('Server MAR Agent runtime model service', () => {
     await expect(
       createService(() => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: false,
         httpVersions: ['1.1', '2']
       })).prepare({
@@ -373,7 +396,7 @@ describe('Server MAR Agent runtime model service', () => {
         ])
       },
       tickets: { issue: vi.fn() },
-      capability: () => undefined
+      capability: () => ({ apiVersion: 1, smartCompactControl: true })
     });
 
     await expect(
@@ -407,6 +430,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1', '2']
       }),
@@ -455,6 +479,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: false,
         httpVersions: ['1.1']
       }),

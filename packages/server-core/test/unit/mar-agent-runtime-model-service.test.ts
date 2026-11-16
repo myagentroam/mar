@@ -33,6 +33,126 @@ function model(
 }
 
 describe('Server MAR Agent runtime model service', () => {
+  it('safely disables early compaction without blocking a supported main model when optional settings are unavailable', async () => {
+    const main = {
+      ...model('main', { type: 'INLINE_API_KEY', value: 'key' }),
+      responsesPreviousResponseId: false
+    };
+    const read = vi.fn(async () => {
+      throw new Error('MAR_AGENT_COMPACT_CONFIG_INVALID');
+    });
+    const runtime = vi.fn();
+    const service = new MarAgentRuntimeModelService({
+      models: { storedConfigurationsForUser: vi.fn(async () => [main]) },
+      tickets: { issue: vi.fn() },
+      compact: { read, runtime },
+      capability: () => ({
+        apiVersion: 1,
+        websocket: true,
+        httpVersions: ['1.1'],
+        smartCompactControl: true,
+        unifiedCompactControl: true
+      })
+    });
+    const snapshot = await service.prepare({ userId: 1, nodeId: 'node', workspaceId: 'workspace' });
+    expect(snapshot.models[0]?.smartCompactEnabled).toBe(false);
+    expect(snapshot.compact).toBeUndefined();
+    expect(read).toHaveBeenCalledOnce();
+    expect(runtime).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, false, true])(
+    'requires Smart Compact control %s only when early compaction must be disabled',
+    async (smartCompactControl) => {
+      const main = {
+        ...model('main', { type: 'INLINE_API_KEY', value: 'key' }),
+        responsesPreviousResponseId: false
+      };
+      const child = { ...main, id: 'child', name: 'child', subagentModel: true };
+      let smartCompactEnabled = false;
+      const read = vi.fn(async () => ({
+        enabled: false,
+        smartCompactEnabled,
+        modelId: null,
+        reasoningEffort: null
+      }));
+      const runtime = vi.fn();
+      const service = new MarAgentRuntimeModelService({
+        models: {
+          storedConfigurationsForUser: vi.fn(async () => [main, child]),
+          stored: vi.fn(async () => main)
+        },
+        tickets: { issue: vi.fn() },
+        compact: { read, runtime },
+        capability: () => ({
+          apiVersion: 1,
+          smartCompactControl,
+          unifiedCompactControl: true,
+          websocket: true,
+          httpVersions: ['1.1']
+        })
+      });
+      const context = {
+        userId: 1,
+        nodeId: 'node',
+        workspaceId: 'workspace',
+        selectedModelId: 'main'
+      };
+      if (smartCompactControl === true) {
+        const snapshot = await service.prepare(context);
+        expect(snapshot.model?.smartCompactEnabled).toBe(false);
+        expect(snapshot.models.map((m) => m.smartCompactEnabled)).toEqual([false, false]);
+        smartCompactEnabled = true;
+        expect((await service.prepare(context)).models.map((m) => m.smartCompactEnabled)).toEqual([
+          true,
+          true
+        ]);
+        expect(snapshot.models.map((m) => m.smartCompactEnabled)).toEqual([false, false]);
+        expect(read).toHaveBeenCalledTimes(2);
+      } else {
+        await expect(service.prepare(context)).rejects.toMatchObject({
+          message: 'CAPABILITY_VERSION_UNSUPPORTED',
+          publicMessage: expect.stringContaining('Upgrade this Node')
+        });
+        expect(runtime).not.toHaveBeenCalled();
+        smartCompactEnabled = true;
+        expect((await service.prepare(context)).models.map((m) => m.smartCompactEnabled)).toEqual([
+          true,
+          true
+        ]);
+      }
+      expect(runtime).toHaveBeenLastCalledWith(expect.any(Array), {
+        enabled: false,
+        smartCompactEnabled: true,
+        modelId: null,
+        reasoningEffort: null
+      });
+      expect(
+        (await service.prepareTest({ ...context, modelId: 'main' })).model.smartCompactEnabled
+      ).toBe(false);
+      expect((await service.preparePromptCompletion(context)).model.smartCompactEnabled).toBe(
+        false
+      );
+    }
+  );
+
+  it('does not silently enable Smart Compact for legacy Nodes when no deployment setting exists', async () => {
+    const issue = vi.fn();
+    const main = {
+      ...model('main', { type: 'CREDENTIAL_REF', credentialId: 'credential' }),
+      responsesPreviousResponseId: false
+    };
+    const service = new MarAgentRuntimeModelService({
+      models: { storedConfigurationsForUser: vi.fn(async () => [main]) },
+      tickets: { issue },
+      capability: () => undefined
+    });
+    await expect(
+      service.prepare({ userId: 1, nodeId: 'old-node', workspaceId: 'workspace' })
+    ).rejects.toThrow('CAPABILITY_VERSION_UNSUPPORTED');
+    expect(issue).not.toHaveBeenCalled();
+  });
+
   it('projects each model opt-in and omits dedicated Compact on Nodes without model control', async () => {
     const main = {
       ...model('main', { type: 'INLINE_API_KEY', value: 'key' }),
@@ -51,9 +171,18 @@ describe('Server MAR Agent runtime model service', () => {
         stored: vi.fn(async () => main)
       },
       tickets: { issue: vi.fn() },
-      compact: { runtime: compact },
+      compact: {
+        runtime: compact,
+        read: vi.fn(async () => ({
+          enabled: false,
+          smartCompactEnabled: false,
+          modelId: null,
+          reasoningEffort: null
+        }))
+      },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1'],
         unifiedCompactControl: supported
@@ -87,6 +216,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue: vi.fn() },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1'],
         contextGcControl: supported
@@ -105,7 +235,7 @@ describe('Server MAR Agent runtime model service', () => {
     });
   });
   it('requires Node SOCKS5 capability before projecting a configured model proxy', async () => {
-    const configured = {
+    const configured: MarAgentStoredModelConfiguration = {
       ...model('proxied', { type: 'INLINE_API_KEY', value: 'key' }),
       responsesPreviousResponseId: false,
       socks5Url: 'socks5://proxy-user:proxy-password@proxy.example.test:1080'
@@ -119,6 +249,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue: vi.fn() },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1'],
         modelSocks5Proxy: supportsModelSocks5Proxy
@@ -154,6 +285,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         conversationModels: supportsConversationModels,
         responsesHttpContinuation: true,
         websocket: true,
@@ -203,6 +335,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue: vi.fn() },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         websocket: true,
         httpVersions: ['1.1'],
         responsesHttpContinuation: supportsHttpContinuation
@@ -269,6 +402,7 @@ describe('Server MAR Agent runtime model service', () => {
         },
         capability: () => ({
           apiVersion: 1,
+          smartCompactControl: true,
           responsesHttpContinuation: true,
           websocket: true,
           httpVersions: ['1.1'],
@@ -319,6 +453,7 @@ describe('Server MAR Agent runtime model service', () => {
       },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         websocket: true,
         namespacedTools: supported,
@@ -364,6 +499,7 @@ describe('Server MAR Agent runtime model service', () => {
       },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         websocket: true,
         httpVersions: ['1.1']
@@ -415,6 +551,7 @@ describe('Server MAR Agent runtime model service', () => {
       },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         websocket: true,
         httpVersions: ['1.1', '2'],
@@ -452,6 +589,7 @@ describe('Server MAR Agent runtime model service', () => {
         tickets: { issue: vi.fn() },
         capability: () => ({
           apiVersion: 1,
+          smartCompactControl: true,
           responsesHttpContinuation: true,
           websocket: true,
           httpVersions: ['1.1', '2'],
@@ -502,7 +640,12 @@ describe('Server MAR Agent runtime model service', () => {
         }))
       },
       tickets: { issue: vi.fn() },
-      capability: () => undefined,
+      capability: () => ({
+        apiVersion: 1,
+        smartCompactControl: true,
+        websocket: true,
+        httpVersions: ['1.1']
+      }),
       id: () => 'scope-1'
     });
     const result = await service.prepare({
@@ -559,6 +702,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         resourceInput: true,
         websocket: true,
@@ -630,7 +774,12 @@ describe('Server MAR Agent runtime model service', () => {
     const service = new MarAgentRuntimeModelService({
       models: { storedConfigurationsForUser: vi.fn(async () => [configured]) },
       tickets: { issue: vi.fn() },
-      capability: () => undefined,
+      capability: () => ({
+        apiVersion: 1,
+        smartCompactControl: true,
+        websocket: true,
+        httpVersions: ['1.1']
+      }),
       id: () => 'scope-1'
     });
 
@@ -657,6 +806,7 @@ describe('Server MAR Agent runtime model service', () => {
     const createService = (
       capability: () => {
         apiVersion: 1;
+        smartCompactControl: true;
         websocket: boolean;
         httpVersions: ('1.1' | '2')[];
       }
@@ -679,6 +829,7 @@ describe('Server MAR Agent runtime model service', () => {
       });
     const supported = createService(() => ({
       apiVersion: 1,
+      smartCompactControl: true,
       responsesHttpContinuation: true,
       websocket: true,
       httpVersions: ['1.1', '2']
@@ -700,6 +851,7 @@ describe('Server MAR Agent runtime model service', () => {
     await expect(
       createService(() => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         websocket: false,
         httpVersions: ['1.1', '2']
@@ -720,7 +872,12 @@ describe('Server MAR Agent runtime model service', () => {
         ])
       },
       tickets: { issue: vi.fn() },
-      capability: () => undefined
+      capability: () => ({
+        apiVersion: 1,
+        smartCompactControl: true,
+        websocket: true,
+        httpVersions: ['1.1']
+      })
     });
 
     await expect(
@@ -754,6 +911,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         websocket: true,
         httpVersions: ['1.1', '2']
@@ -803,6 +961,7 @@ describe('Server MAR Agent runtime model service', () => {
       tickets: { issue },
       capability: () => ({
         apiVersion: 1,
+        smartCompactControl: true,
         responsesHttpContinuation: true,
         websocket: false,
         httpVersions: ['1.1']

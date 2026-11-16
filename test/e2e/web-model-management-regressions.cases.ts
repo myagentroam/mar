@@ -241,7 +241,9 @@ for (const english of [false, true]) {
             nodeVersion: 'v24.15.0',
             connected: true,
             disabled: false,
-            capabilities: { marAgentRuntimeCredentials: { apiVersion: 1 } }
+            capabilities: {
+              marAgentRuntimeCredentials: { apiVersion: 1, smartCompactControl: true }
+            }
           }
         ]
       })

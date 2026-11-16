@@ -20,6 +20,7 @@ export async function runtimeModelPayload(input: {
   readonly workspaceId: string;
   readonly sessionId?: string;
   readonly selectedModelId: string;
+  readonly purpose?: 'compact' | 'plan-toggle';
   readonly marAgentModels?: MarAgentModelService;
   readonly marAgentRuntimeModels?: MarAgentRuntimeModelService;
 }): Promise<Record<string, unknown>> {
@@ -29,7 +30,8 @@ export async function runtimeModelPayload(input: {
       nodeId: input.nodeId,
       workspaceId: input.workspaceId,
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      selectedModelId: input.selectedModelId
+      selectedModelId: input.selectedModelId,
+      ...(input.purpose === undefined ? {} : { purpose: input.purpose })
     });
     return {
       marAgentRuntimeScopeId: prepared.runtimeScopeId,

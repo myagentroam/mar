@@ -54,10 +54,29 @@ describe('MAR Agent compact configuration service', () => {
     const { service } = fixture(managed);
     await expect(service.read()).resolves.toEqual({
       enabled: false,
+      smartCompactEnabled: false,
       modelId: null,
       reasoningEffort: null
     });
   });
+
+  it.each([true, false])(
+    'persists Smart Compact %s independently of a dedicated model',
+    async (smartCompactEnabled) => {
+      const { service, settings, listManagedForUser } = fixture([]);
+      const configuration = {
+        enabled: false,
+        smartCompactEnabled,
+        modelId: null,
+        reasoningEffort: null
+      };
+      await expect(service.write(7, configuration)).resolves.toEqual(configuration);
+      expect(settings.get('mar_agent_compact')).toEqual(configuration);
+      await expect(service.read()).resolves.toEqual(configuration);
+      expect(listManagedForUser).not.toHaveBeenCalled();
+      await expect(service.runtime([])).resolves.toBeUndefined();
+    }
+  );
 
   it.each(['object', 'text', 'buffer'] as const)(
     'parses a stored strict configuration from %s',
@@ -72,7 +91,10 @@ describe('MAR Agent compact configuration service', () => {
             ? Buffer.from(JSON.stringify(configuration))
             : JSON.stringify(configuration)
       );
-      await expect(service.read()).resolves.toEqual(configuration);
+      await expect(service.read()).resolves.toEqual({
+        ...configuration,
+        smartCompactEnabled: false
+      });
     }
   );
 
@@ -132,24 +154,40 @@ describe('MAR Agent compact configuration service', () => {
   it('persists an enabled write for a managed enabled model and effort', async () => {
     const { service, execute, listManagedForUser, settings } = fixture(managed);
     const configuration = { enabled: true, modelId: 'coding-compact', reasoningEffort: 'high' };
-    await expect(service.write(7, configuration)).resolves.toEqual(configuration);
+    await expect(service.write(7, configuration)).resolves.toEqual({
+      ...configuration,
+      smartCompactEnabled: false
+    });
     expect(listManagedForUser).toHaveBeenCalledWith(7);
-    expect(settings.get('mar_agent_compact')).toEqual(configuration);
+    expect(settings.get('mar_agent_compact')).toEqual({
+      ...configuration,
+      smartCompactEnabled: false
+    });
     expect(execute.mock.calls.at(-1)![0]).toContain('ON DUPLICATE KEY UPDATE');
-    await expect(service.read()).resolves.toEqual(configuration);
+    await expect(service.read()).resolves.toEqual({ ...configuration, smartCompactEnabled: false });
   });
 
   it('keeps a disabled write without validating retained model identity', async () => {
     const { service, listManagedForUser, settings } = fixture([]);
     const configuration = { enabled: false, modelId: 'deleted-model', reasoningEffort: 'high' };
-    await expect(service.write(7, configuration)).resolves.toEqual(configuration);
+    await expect(service.write(7, configuration)).resolves.toEqual({
+      ...configuration,
+      smartCompactEnabled: false
+    });
     expect(listManagedForUser).not.toHaveBeenCalled();
-    expect(settings.get('mar_agent_compact')).toEqual(configuration);
-    await expect(service.read()).resolves.toEqual(configuration);
+    expect(settings.get('mar_agent_compact')).toEqual({
+      ...configuration,
+      smartCompactEnabled: false
+    });
+    await expect(service.read()).resolves.toEqual({ ...configuration, smartCompactEnabled: false });
   });
 
   it.each([
     ['unknown schema', { enabled: 'yes', modelId: null, reasoningEffort: null }],
+    [
+      'invalid Smart Compact',
+      { enabled: false, smartCompactEnabled: 'true', modelId: null, reasoningEffort: null }
+    ],
     ['enabled without model', { enabled: true, modelId: null, reasoningEffort: 'high' }],
     ['enabled without effort', { enabled: true, modelId: 'coding-compact', reasoningEffort: null }]
   ])('rejects a %s write', async (_name, raw) => {

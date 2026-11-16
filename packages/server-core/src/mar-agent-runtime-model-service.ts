@@ -17,7 +17,7 @@ export { MarAgentCompactService } from './mar-agent-compact-service.js';
 import type { MarAgentRuntimeCompactConfiguration } from '@myagentroam/protocol';
 
 interface MarAgentRuntimeModelServiceOptions {
-  readonly compact?: Pick<MarAgentCompactService, 'runtime'>;
+  readonly compact?: Pick<MarAgentCompactService, 'runtime' | 'read'>;
   readonly models: Pick<MarAgentModelService, 'storedConfigurationsForUser'> &
     Partial<Pick<MarAgentModelService, 'stored' | 'resourceInputEnabled'>>;
   readonly imageGeneration?: Pick<ImageGenerationConfigurationService, 'forUser'>;
@@ -32,6 +32,8 @@ interface RuntimeModelContext {
   readonly workspaceId: string;
   readonly sessionId?: string;
   readonly selectedModelId?: string;
+  /** Non-conversational commands cannot request Smart Compact. Never read from a client payload. */
+  readonly purpose?: 'compact' | 'plan-toggle';
 }
 
 interface ModelTransportTestContext {
@@ -48,6 +50,9 @@ export interface PreparedMarAgentRuntimeModels {
   readonly models: readonly MarAgentRuntimeModelConfiguration[];
 }
 
+/** Projects authorized models and deployment settings into one execution snapshot.
+ * Persistence remains with the model/settings services; Node and SDK own execution.
+ */
 export class MarAgentRuntimeModelService {
   readonly compact: MarAgentRuntimeModelServiceOptions['compact'];
   readonly #models: MarAgentRuntimeModelServiceOptions['models'];
@@ -78,6 +83,19 @@ export class MarAgentRuntimeModelService {
       throw new Error('MAR_AGENT_MODEL_DISABLED');
     const runtimeScopeId = this.#id();
     const capability = this.#capability(context.nodeId);
+    // Unavailable optional Compact settings cannot block a supported main model.
+    const compactSettings = await this.compact?.read().catch(() => undefined);
+    const smartCompactEnabled = compactSettings?.smartCompactEnabled ?? false;
+    if (
+      context.purpose !== 'compact' &&
+      context.purpose !== 'plan-toggle' &&
+      !smartCompactEnabled &&
+      capability?.smartCompactControl !== true
+    )
+      throw Object.assign(new Error('CAPABILITY_VERSION_UNSUPPORTED'), {
+        publicMessage:
+          'Upgrade this Node to apply the Smart Compact setting to MAR Agent executions.'
+      });
     if (capability?.contextGcControl !== true && stored.some((model) => model.gcEnabled === false))
       throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
     if (
@@ -115,11 +133,14 @@ export class MarAgentRuntimeModelService {
           : undefined,
         imageGeneration,
         capability,
-        resourceUrlsEnabled
+        resourceUrlsEnabled,
+        smartCompactEnabled
       )
     );
     const compact =
-      capability?.unifiedCompactControl === true ? await this.compact?.runtime(models) : undefined;
+      capability?.unifiedCompactControl === true && compactSettings !== undefined
+        ? await this.compact?.runtime(models, compactSettings)
+        : undefined;
     return {
       runtimeScopeId,
       ...(compact === undefined ? {} : { compact }),
@@ -289,7 +310,8 @@ function runtimeModel(
   ticket: RuntimeCredentialTicket | undefined,
   imageGeneration: MarAgentRuntimeModelConfiguration['imageGeneration'],
   capability: MarAgentRuntimeCredentialCapability | undefined,
-  resourceUrlsEnabled: boolean = true
+  resourceUrlsEnabled: boolean = true,
+  smartCompactEnabled: boolean = false
 ): MarAgentRuntimeModelConfiguration {
   if (model.socks5Url !== undefined && capability?.modelSocks5Proxy !== true)
     throw new Error('CAPABILITY_VERSION_UNSUPPORTED');
@@ -350,6 +372,7 @@ function runtimeModel(
     titleGeneration: model.titleGeneration,
     codeMode: model.codeMode,
     gcEnabled: model.gcEnabled ?? true,
+    smartCompactEnabled,
     unifiedCompact: model.unifiedCompact ?? false,
     ...(supportsTier ? { serviceTier } : {}),
     hostedWebSearch: model.hostedWebSearch,

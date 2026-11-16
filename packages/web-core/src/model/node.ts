@@ -54,6 +54,7 @@ export interface NodeSummary {
       readonly namespacedTools?: boolean;
       readonly responsesHttpContinuation?: boolean;
       readonly modelSocks5Proxy?: boolean;
+      readonly smartCompactControl?: boolean;
       readonly httpVersions: readonly ('1.1' | '2')[];
     };
   };

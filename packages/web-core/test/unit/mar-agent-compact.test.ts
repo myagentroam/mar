@@ -5,6 +5,7 @@ import { renderToString } from 'vue/server-renderer';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import CompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue';
 import UnitCompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue?unit-render';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
 import { createMarAgentCompactService } from '../../src/service/mar-agent-compact-service.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -15,6 +16,7 @@ vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: v
 
 const configuration: MarAgentCompactConfiguration = {
   enabled: true,
+  smartCompactEnabled: true,
   modelId: 'coding-compact',
   reasoningEffort: 'high'
 };
@@ -37,6 +39,17 @@ describe('MAR Agent compact web service', () => {
     expect(calls).toHaveBeenNthCalledWith(2, '/api/admin/mar-agent/models', { signal });
   });
 
+  it('defaults Smart Compact off when an older saved configuration omits the field', async () => {
+    const legacyConfiguration = { enabled: false, modelId: null, reasoningEffort: null };
+    const request = async <T>(path: string): Promise<T> =>
+      (path.endsWith('/compact') ? { configuration: legacyConfiguration } : { models: [] }) as T;
+    const service = createMarAgentCompactService(request);
+    await expect(service.load(new AbortController().signal)).resolves.toEqual({
+      configuration: { ...legacyConfiguration, smartCompactEnabled: false },
+      models: []
+    });
+  });
+
   it('saves a schema-normalised payload and parses the server response', async () => {
     const calls = vi.fn();
     const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -46,12 +59,20 @@ describe('MAR Agent compact web service', () => {
     const signal = new AbortController().signal;
     const service = createMarAgentCompactService(request);
     await expect(
-      service.save({ enabled: false, modelId: null, reasoningEffort: null }, signal)
+      service.save(
+        { enabled: false, smartCompactEnabled: true, modelId: null, reasoningEffort: null },
+        signal
+      )
     ).resolves.toEqual(configuration);
     expect(calls).toHaveBeenCalledWith('/api/admin/mar-agent/compact', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: false, modelId: null, reasoningEffort: null }),
+      body: JSON.stringify({
+        enabled: false,
+        smartCompactEnabled: true,
+        modelId: null,
+        reasoningEffort: null
+      }),
       signal
     });
   });
@@ -69,7 +90,7 @@ describe('MAR Agent compact web service', () => {
 });
 
 describe('MAR Agent compact settings form', () => {
-  it('keeps complete bilingual copy for the dedicated compaction model', () => {
+  it('keeps complete bilingual copy for both Compact controls', () => {
     expect(commonMessages['en-US'].marAgentModels.compactSave).toBe('Save');
     expect(commonMessages['zh-CN'].marAgentModels.compactSave).toBe('保存');
     for (const locale of ['zh-CN', 'en-US'] as const) {
@@ -77,6 +98,8 @@ describe('MAR Agent compact settings form', () => {
       for (const key of [
         'compactTab',
         'compactHint',
+        'compactSmartEnabled',
+        'compactSmartHint',
         'compactEnabled',
         'compactModel',
         'compactEffort',
@@ -101,6 +124,8 @@ describe('MAR Agent compact settings form', () => {
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
       expect(html).toContain(commonMessages[locale].marAgentModels.compactHint);
+      expect(html).toContain(commonMessages[locale].marAgentModels.compactSmartEnabled);
+      expect(html).toContain(commonMessages[locale].marAgentModels.compactSmartHint);
       expect(html).toContain(commonMessages[locale].marAgentModels.compactSave);
       expect(html).toContain('el-form');
     }
@@ -136,6 +161,9 @@ describe('MAR Agent compact settings form', () => {
         expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
         await flushComponent();
         expect(view.findAll('ElForm')[0]!.props.disabled).toBe(!writable);
+        const smartCompactSwitch = view.findAll('ElSwitch')[0]!;
+        await trigger(smartCompactSwitch, 'onUpdate:modelValue', false);
+        expect(view.findAll('ElSwitch')[1]!.props.modelValue).toBe(true);
         const model = view.findAll('ElSelect')[0]!;
         await trigger(model, 'onUpdate:modelValue', 'other-model');
         await trigger(model, 'onChange', 'other-model');
@@ -147,6 +175,7 @@ describe('MAR Agent compact settings form', () => {
         if (writable)
           expect(JSON.parse(String(writes[0]![1]!.body))).toEqual({
             enabled: true,
+            smartCompactEnabled: false,
             modelId: 'other-model',
             reasoningEffort: 'medium'
           });
@@ -229,6 +258,49 @@ describe('MAR Agent compact settings form', () => {
     release({ configuration, models: [] });
     await flushComponent();
     expect(request.mock.calls.every(([, init]) => init?.method !== 'PUT')).toBe(true);
+  });
+
+  it('keeps a Smart Compact draft and reports a failed save', async () => {
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.endsWith('/models'))
+        return {
+          models: [
+            {
+              id: 'coding-compact',
+              enabled: true,
+              reasoningEfforts: ['high'],
+              defaultReasoningEffort: 'high'
+            }
+          ]
+        };
+      if (init?.method === 'PUT') throw new Error('write failed');
+      return { configuration: { ...configuration, enabled: false } };
+    });
+    const view = renderComponent(
+      UnitCompactSettings,
+      { request, writable: true },
+      {},
+      {
+        validate: vi.fn(async () => true)
+      }
+    );
+    try {
+      await flushComponent();
+      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(
+        view.findAll('ElButton').find((button) => button.props.type === 'primary')!,
+        'onClick'
+      );
+      expect(request.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
+      expect(view.findAll('ElSwitch')[0]!.props.modelValue).toBe(false);
+      expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'error', expect.any(Error));
+      expect(showMessage).not.toHaveBeenCalledWith(
+        commonMessages['zh-CN'].marAgentModels.compactSaved,
+        'success'
+      );
+    } finally {
+      view.unmount();
+    }
   });
 
   it('keeps compact model policy outside system configuration', () => {

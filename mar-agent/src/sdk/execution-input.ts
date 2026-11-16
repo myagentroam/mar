@@ -44,7 +44,10 @@ export function createExecutionInput(input: {
     ReturnType<typeof createExecutionModelContext>,
     'recordEnvironment' | 'rememberInput'
   >;
-  model(): Pick<ResolvedModelConfiguration, 'inputCapabilities' | 'contextWindowTokens'>;
+  model(): Pick<
+    ResolvedModelConfiguration,
+    'inputCapabilities' | 'contextWindowTokens' | 'smartCompactEnabled'
+  >;
   tokens(): number | undefined;
   setSmartInput(value: SmartCompactionInput): void;
   withRecordProjection<T>(action: () => Promise<T>): Promise<T>;
@@ -105,6 +108,7 @@ export function createExecutionInput(input: {
       const smartPercent =
         tokens() === undefined ? undefined : (tokens()! * 100) / model().contextWindowTokens;
       const smartCompaction =
+        model().smartCompactEnabled === true &&
         mode !== 'compact' &&
         type === 'turn.user' &&
         metadata.inputSource === undefined &&
@@ -202,6 +206,7 @@ export function createExecutionInput(input: {
             const percent =
               tokens() === undefined ? undefined : (tokens()! * 100) / model().contextWindowTokens;
             const eligible =
+              model().smartCompactEnabled === true &&
               percent !== undefined &&
               percent >= AGENT_EXECUTION_POLICY.smartCompactionPercent &&
               percent < AGENT_EXECUTION_POLICY.automaticCompactionPercent;

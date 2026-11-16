@@ -36,6 +36,7 @@ const configuration: AgentModelConfiguration = {
   defaultReasoningEffort: 'medium',
   titleGeneration: false,
   hostedWebSearch: false,
+  smartCompactEnabled: true,
   codeMode: false
 };
 const agents: Agent[] = [];
@@ -52,7 +53,10 @@ function response(text: string, tokens: number): ModelEvent[] {
   ];
 }
 async function fixture(
-  script: (request: ModelRequest, index: number) => readonly ModelEvent[],
+  script: (
+    request: ModelRequest,
+    index: number
+  ) => readonly ModelEvent[] | Promise<readonly ModelEvent[]>,
   generate: ((signal: AbortSignal) => Promise<{ summary: string }>) | null = async () => ({
     summary: 'HANDOFF'
   }),
@@ -88,7 +92,7 @@ async function fixture(
       () => ({
         configuration: model,
         async *start(request) {
-          yield* script(request, requests.push(request));
+          yield* await script(request, requests.push(request));
         }
       })
     );
@@ -112,6 +116,124 @@ async function fixture(
 }
 
 describe('Smart Compaction', () => {
+  it.each([undefined, false])(
+    'does not grant new input eligibility or accept direct calls when the switch is %s',
+    async (smartCompactEnabled) => {
+      const f = await fixture(
+        (request, index) => {
+          if (index === 1) return response('seed', 6000);
+          if (index === 2)
+            return [
+              {
+                type: 'client_tool.call',
+                callId: 'disabled',
+                name: 'smart_compact',
+                arguments: {}
+              },
+              { type: 'completed', reason: 'tool_use' }
+            ];
+          expect(
+            request.messages.find((m) => m.callId === 'disabled' && m.role === 'tool')?.content
+          ).toContain('MAR_AGENT_SMART_COMPACT_DENIED');
+          return response('done', 6000);
+        },
+        undefined,
+        { ...configuration, smartCompactEnabled }
+      );
+      await f.session.run({ prompt: 'Seed' }).result();
+      expect(await f.session.run({ prompt: 'New phase' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(f.requests[1]!.messages.find((m) => m.content.startsWith('New phase'))?.content).toBe(
+        'New phase'
+      );
+      expect(f.generations()).toBe(0);
+      expect(await f.session.compact().result()).toMatchObject({ status: 'completed' });
+      expect(f.generations()).toBe(1);
+    }
+  );
+
+  it.each([false, true])(
+    'applies the switch %s when native steer becomes effective',
+    async (smartCompactEnabled) => {
+      let session: Awaited<ReturnType<typeof fixture>>['session'];
+      let executionId: string;
+      const f = await fixture(
+        async (request, index) => {
+          if (index === 1) return response('seed', 6000);
+          if (index === 2) {
+            expect(
+              await session.steer({
+                expectedExecutionId: executionId,
+                prompt: 'Inserted phase',
+                clientMessageId: 'inserted-phase'
+              })
+            ).toMatchObject({ status: 'accepted' });
+            return [
+              {
+                type: 'client_tool.call',
+                callId: 'read',
+                name: 'read',
+                arguments: { reads: [{ path: 'evidence.txt' }] }
+              },
+              { type: 'completed', reason: 'tool_use' }
+            ];
+          }
+          expect(
+            request.messages.find((m) => m.content.startsWith('Inserted phase'))?.content
+          ).toBe('Inserted phase' + (smartCompactEnabled ? '\n\n' + marker : ''));
+          return response('done', 6000);
+        },
+        undefined,
+        { ...configuration, smartCompactEnabled }
+      );
+      session = f.session;
+      await session.run({ prompt: 'Seed' }).result();
+      const execution = session.run({ prompt: 'Working' });
+      executionId = execution.executionId;
+      const result = await execution.result();
+      expect(result.status, JSON.stringify(result)).toBe('completed');
+      expect(f.requests).toHaveLength(3);
+      expect(f.generations()).toBe(0);
+    }
+  );
+
+  it('rejects Code Mode Smart Compact while disabled without weakening automatic protection', async () => {
+    const f = await fixture(
+      (request, index) => {
+        if (index === 1) return response('seed', 6000);
+        if (index === 2)
+          return [
+            {
+              type: 'client_tool.call',
+              callId: 'code',
+              name: 'code_exec',
+              arguments: { code: 'observe.result(await tools.smart_compact({}));' }
+            },
+            { type: 'completed', reason: 'tool_use' }
+          ];
+        if (index === 3) {
+          expect(
+            request.messages.find((m) => m.callId === 'code' && m.role === 'tool')?.content
+          ).toContain('MAR_AGENT_SMART_COMPACT_DENIED');
+          return response('done', 9000);
+        }
+        return response('after protection', 100);
+      },
+      undefined,
+      { ...configuration, codeMode: true, smartCompactEnabled: false }
+    );
+    await f.session.run({ prompt: 'Seed' }).result();
+    expect(await f.session.run({ prompt: 'New phase' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(f.generations()).toBe(1);
+    expect(await f.session.run({ prompt: 'Continue' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(f.requests.at(-1)!.messages.some((m) => m.content.includes('HANDOFF'))).toBe(true);
+  });
+
   function records(...rows: [string, Record<string, unknown>][]): SessionRecord[] {
     return rows.map(([type, payload], index) => ({
       schemaVersion: 1,

@@ -87,7 +87,12 @@ describe('MAR Agent compact management routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.json()).toEqual({
-      configuration: { enabled: false, modelId: null, reasoningEffort: null }
+      configuration: {
+        enabled: false,
+        smartCompactEnabled: false,
+        modelId: null,
+        reasoningEffort: null
+      }
     });
     expect(response.body).not.toMatch(/apiKey|credential|secret/iu);
   });
@@ -121,7 +126,12 @@ describe('MAR Agent compact management routes', () => {
 
   it('persists a valid write for a management admin and returns only the configuration', async () => {
     const { app, headers, settings } = fixture('admin');
-    const payload = { enabled: true, modelId: 'coding-compact', reasoningEffort: 'high' };
+    const payload = {
+      enabled: true,
+      smartCompactEnabled: true,
+      modelId: 'coding-compact',
+      reasoningEffort: 'high'
+    };
     const response = await app.inject({
       method: 'PUT',
       url: '/api/admin/mar-agent/compact',
