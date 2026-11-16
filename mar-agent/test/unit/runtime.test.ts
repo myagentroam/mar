@@ -142,11 +142,9 @@ class WorkflowAdapter implements ModelAdapter {
     if (this.calls === 1) {
       yield {
         type: 'client_tool.call',
-        callId: 'todo',
-        name: 'todo_write',
-        arguments: {
-          items: [{ id: 'one', step: 'Work', status: 'in_progress' }]
-        }
+        callId: 'sleep',
+        name: 'sleep',
+        arguments: { durationMs: 1 }
       };
       yield { type: 'completed', reason: 'tool_use' };
     } else if (this.calls === 2) {
@@ -176,27 +174,20 @@ class WorkflowAdapter implements ModelAdapter {
   }
 }
 
-class SessionTodoAdapter implements ModelAdapter {
+class SessionContinuationAdapter implements ModelAdapter {
   readonly configuration = model;
   calls = 0;
-  constructor(
-    private readonly items: readonly {
-      id: string;
-      step: string;
-      status: 'pending' | 'in_progress' | 'completed';
-    }[],
-    private readonly terminal: 'complete' | 'cancel' | 'fail' = 'complete'
-  ) {}
-  async *start(_request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
+  readonly requests: ModelRequest[] = [];
+  constructor(private readonly terminal: 'complete' | 'cancel' | 'fail' = 'complete') {}
+  async *start(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelEvent> {
+    this.requests.push(request);
     this.calls++;
     if (this.calls === 1) {
       yield {
         type: 'client_tool.call',
-        callId: 'todo',
-        name: 'todo_write',
-        arguments: {
-          items: this.items
-        }
+        callId: 'sleep',
+        name: 'sleep',
+        arguments: { durationMs: 1 }
       };
       yield { type: 'completed', reason: 'tool_use' };
       return;
@@ -1271,9 +1262,9 @@ class MaxOutputContinuationWithToolAdapter implements ModelAdapter {
     if (this.calls === 2) {
       yield {
         type: 'client_tool.call',
-        callId: 'todo-read',
-        name: 'todo_read',
-        arguments: {}
+        callId: 'sleep',
+        name: 'sleep',
+        arguments: { durationMs: 1 }
       };
       yield { type: 'completed', reason: 'max_output' };
       return;
@@ -2471,7 +2462,7 @@ describe('agent runtime', () => {
     await host.dispose();
   });
 
-  it('executes Todo through run and question only through the Plan tool loop', async () => {
+  it('executes question only through the Plan tool loop without registering Todo', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-workflow-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -2497,7 +2488,6 @@ describe('agent runtime', () => {
     expect(adapter.requests[0]?.tools.map((tool) => tool.name)).toContain('question');
     expect(events).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: 'todo.updated', revision: 1 }),
         expect.objectContaining({ type: 'user_input.requested' }),
         expect.objectContaining({ type: 'user_input.resolved' }),
         expect.objectContaining({
@@ -2518,129 +2508,118 @@ describe('agent runtime', () => {
       'question'
     );
     expect((await runHandle.result()).finalAnswer).toBe('selected');
+    for (const request of adapter.requests) {
+      expect(request.tools.map((tool) => tool.name)).not.toContain('todo_read');
+      expect(request.tools.map((tool) => tool.name)).not.toContain('todo_write');
+      expect(effectiveInstructions(request)).not.toContain('todo_read');
+      expect(effectiveInstructions(request)).not.toContain('todo_write');
+    }
     await agent.dispose();
   });
 
-  it('keeps Session Todo across cancellation, failure, later Execution, and Agent reopen', async () => {
+  it('preserves legacy Todo history across cancellation, failure and reopen without registering tools', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-session-todo-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
-    await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
-    const firstAdapter = new SessionTodoAdapter(
-      [{ id: 'inspect', step: 'Inspect implementation', status: 'in_progress' }],
-      'cancel'
-    );
-    const firstAgent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => firstAdapter
-    );
-    const session = await firstAgent.createSession({ workspace, title: 'Session Todo' });
-    const firstHandle = session.run({ prompt: 'start work' });
-    const firstEvents = [];
-    for await (const event of firstHandle) {
-      firstEvents.push(event);
-      if (event.type === 'todo.updated') firstHandle.cancel();
-    }
-    expect(await firstHandle.result()).toMatchObject({ status: 'cancelled' });
-    expect(firstEvents).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'todo.updated',
-          revision: 1,
-          items: [expect.objectContaining({ id: 'inspect', status: 'in_progress' })]
-        })
-      ])
-    );
-    await firstAgent.dispose();
-
-    const secondAdapter = new SessionTodoAdapter(
-      [
-        { id: 'inspect', step: 'Inspect implementation', status: 'completed' },
-        { id: 'fix', step: 'Implement requested change', status: 'in_progress' }
-      ],
-      'fail'
-    );
-    const secondAgent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => secondAdapter
-    );
-    const reopened = await secondAgent.openSession(session.id);
-    const secondHandle = reopened.run({
-      prompt: 'continue with one more change'
-    });
-    const secondEvents = [];
-    for await (const event of secondHandle) secondEvents.push(event);
-
-    expect(await secondHandle.result()).toMatchObject({
-      status: 'failed',
-      errorCode: 'MAR_AGENT_EXECUTION_FAILED'
-    });
-    expect(secondEvents).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'todo.updated',
-          revision: 2,
-          items: [
-            expect.objectContaining({ id: 'inspect', status: 'completed' }),
-            expect.objectContaining({ id: 'fix', status: 'in_progress' })
-          ]
-        })
-      ])
-    );
-    await secondAgent.dispose();
-
-    const thirdAdapter = new SessionTodoAdapter([
+    await mkdir(workspace);
+    const items = [
       { id: 'inspect', step: 'Inspect implementation', status: 'completed' },
       { id: 'fix', step: 'Implement requested change', status: 'completed' },
       { id: 'verify', step: 'Verify requested change', status: 'in_progress' }
-    ]);
-    const thirdAgent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => thirdAdapter
-    );
-    const resumed = await thirdAgent.openSession(session.id);
-    const thirdHandle = resumed.run({
-      prompt: 'continue after the failed execution'
-    });
-    const thirdEvents = [];
-    for await (const event of thirdHandle) thirdEvents.push(event);
-
-    expect(await thirdHandle.result()).toMatchObject({ status: 'completed' });
-    expect(thirdEvents).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'todo.updated',
-          revision: 3,
-          items: [
-            expect.objectContaining({ id: 'inspect', status: 'completed' }),
-            expect.objectContaining({ id: 'fix', status: 'completed' }),
-            expect.objectContaining({ id: 'verify', status: 'in_progress' })
-          ]
-        })
-      ])
-    );
-    await thirdAgent.dispose();
-
+    ];
     const store = await JsonlSessionStore.open(home);
-    const todoRecords = (await store.read(session.id)).filter(
-      (record) => record.type === 'todo.updated'
-    );
-    expect(
-      todoRecords.map((record) => (record.payload as { revision?: unknown }).revision)
-    ).toEqual([1, 2, 3]);
-    await store.close();
+    const stored = await store.createSession({ workspace, title: 'Legacy Session Todo' });
+    try {
+      for (const revision of [1, 2, 3]) {
+        await store.append(stored.id, {
+          type: 'todo.updated',
+          payload: { revision, items: items.slice(0, revision) }
+        });
+      }
+      await store.append(stored.id, {
+        type: 'model.context',
+        payload: {
+          role: 'tool_call',
+          name: 'todo_write',
+          callId: 'legacy-todo',
+          arguments: { items },
+          content: ''
+        }
+      });
+      await store.append(stored.id, {
+        type: 'model.context',
+        payload: {
+          role: 'tool',
+          name: 'todo_write',
+          callId: 'legacy-todo',
+          content: '{"revision":3,"count":3}'
+        }
+      });
+    } finally {
+      await store.close();
+    }
+
+    for (const terminal of ['cancel', 'fail', 'complete'] as const) {
+      const adapter = new SessionContinuationAdapter(terminal);
+      const agent = await createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace }),
+          models: [model]
+        },
+        () => adapter
+      );
+      try {
+        const session = await agent.openSession(stored.id);
+        const handle = session.run({ prompt: 'Continue the historical task.' });
+        const events = [];
+        for await (const event of handle) {
+          events.push(event);
+          if (terminal === 'cancel' && event.type === 'sleep.started') handle.cancel();
+        }
+        expect(await handle.result()).toMatchObject({
+          status:
+            terminal === 'cancel' ? 'cancelled' : terminal === 'fail' ? 'failed' : 'completed',
+          ...(terminal === 'fail' ? { errorCode: 'MAR_AGENT_EXECUTION_FAILED' } : {})
+        });
+        expect(events.some((event) => event.type === 'todo.updated')).toBe(false);
+        for (const request of adapter.requests) {
+          const names = request.tools.map((tool) => tool.name);
+          expect(names).not.toContain('todo_read');
+          expect(names).not.toContain('todo_write');
+        }
+        expect(adapter.requests[0]!.messages).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              role: 'tool_call',
+              name: 'todo_write',
+              callId: 'legacy-todo',
+              arguments: { items }
+            }),
+            expect.objectContaining({
+              role: 'tool',
+              name: 'todo_write',
+              callId: 'legacy-todo',
+              content: '{"revision":3,"count":3}'
+            })
+          ])
+        );
+      } finally {
+        await agent.dispose();
+      }
+      const reopened = await JsonlSessionStore.open(home);
+      try {
+        expect((await reopened.readExecutionState(stored.id)).todo).toEqual({ revision: 3, items });
+        const snapshots = (await reopened.read(stored.id)).filter(
+          (record) => record.type === 'todo.updated'
+        );
+        expect(
+          snapshots.map((record) => (record.payload as { revision: number }).revision)
+        ).toEqual([1, 2, 3]);
+      } finally {
+        await reopened.close();
+      }
+    }
   });
 
   it('restores a completed Plan as assistant context after reopening the session', async () => {

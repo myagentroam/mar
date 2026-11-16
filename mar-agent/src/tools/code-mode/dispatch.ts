@@ -108,7 +108,7 @@ export function createCodeToolDispatch(input: {
           ...(preview.truncated ? { summaryTruncated: true } : {}),
           ...(outputTruncation ? { outputTruncation } : {}),
           ...(data === undefined ? {} : { data: publicEventOutputData(data) }),
-          truncated: result.truncated === true || bounded.truncated || preview.truncated,
+          truncated: result.truncated === true || bounded.truncated,
           ...(result.artifacts ? { artifacts: result.artifacts } : {})
         });
         const { eventData: _eventData, eventSummary: _eventSummary, ...guestResult } = result;

@@ -506,7 +506,7 @@ describe('tool permission and wait context', () => {
 
 describe('Execution tool sources outside model tool handlers', () => {
   it.each(['prompt.compose', 'model.request'] as const)(
-    'uses real Todo and read sources in %s',
+    'uses real sleep and read sources without retired Todo tools in %s',
     async (key) => {
       let context!: SessionExtensionContext;
       let visited = 0;
@@ -525,18 +525,15 @@ describe('Execution tool sources outside model tool handlers', () => {
           value.hooks.intercept(key, async (input, call, next) => {
             visited++;
             const refs = value.tools.catalog();
-            expect(refs.some((ref) => ref.definition.name === 'todo_read')).toBe(true);
-            expect((await value.tools.check({ name: 'todo_read', arguments: {} })).available).toBe(
-              true
-            );
-            const todo = await value.tools.invoke({ name: 'todo_read', arguments: {} });
-            expect(todo.data).toMatchObject({ revision: 0, items: [] });
-            await value.tools.invoke({
-              name: 'todo_write',
-              arguments: {
-                items: [{ id: 'hook', step: 'Hook write', status: 'completed' }]
-              }
-            });
+            for (const name of ['todo_read', 'todo_write']) {
+              expect(refs.some((ref) => ref.definition.name === name)).toBe(false);
+              expect((await value.tools.check({ name, arguments: {} })).available).toBe(false);
+              await expect(value.tools.invoke({ name, arguments: {} })).rejects.toThrow(
+                /TOOL_NOT_AVAILABLE/
+              );
+            }
+            const sleep = await value.tools.invoke({ name: 'sleep', arguments: { durationMs: 1 } });
+            expect(sleep.data).toMatchObject({ durationMs: 1, wakeReason: 'elapsed' });
             const read = await value.tools.invoke({
               name: 'read',
               arguments: { reads: [{ path: 'input.txt' }] }
@@ -551,7 +548,7 @@ describe('Execution tool sources outside model tool handlers', () => {
       const handle = session.run({ prompt: 'hook' });
       expect((await handle.result()).status).toBe('completed');
       expect(visited).toBe(1);
-      expect(facts.map((fact) => fact.name)).toEqual(['todo_read', 'todo_write', 'read']);
+      expect(facts.map((fact) => fact.name)).toEqual(['sleep', 'read']);
       expect(new Set(facts.map((fact) => fact.executionId))).toEqual(new Set([handle.executionId]));
       expect(adapter.requests).toHaveLength(1);
       expect(
@@ -817,22 +814,33 @@ describe('Execution tool sources outside model tool handlers', () => {
             context = value;
             value.hooks.intercept('model.request', async (input, _call, next) => {
               if (runs++ === 0) {
-                old = value.tools.catalog().find((ref) => ref.definition.name === 'todo_read')!;
+                old = value.tools.catalog().find((ref) => ref.definition.name === 'sleep')!;
                 expect(
-                  (await value.tools.invoke({ name: 'todo_read', arguments: {}, ref: old })).data
+                  (
+                    await value.tools.invoke({
+                      name: 'sleep',
+                      arguments: { durationMs: 1 },
+                      ref: old
+                    })
+                  ).data
                 ).toBeDefined();
               } else {
                 expect(
-                  (await value.tools.check({ name: 'todo_read', arguments: {}, ref: old }))
-                    .available
+                  (
+                    await value.tools.check({
+                      name: 'sleep',
+                      arguments: { durationMs: 1 },
+                      ref: old
+                    })
+                  ).available
                 ).toBe(false);
                 await value.tools
-                  .invoke({ name: 'todo_read', arguments: {}, ref: old })
+                  .invoke({ name: 'sleep', arguments: { durationMs: 1 }, ref: old })
                   .catch(() => {
                     rejected = true;
                   });
                 expect(
-                  (await value.tools.invoke({ name: 'todo_read', arguments: {} })).data
+                  (await value.tools.invoke({ name: 'sleep', arguments: { durationMs: 1 } })).data
                 ).toBeDefined();
               }
               return next(input);
@@ -845,10 +853,11 @@ describe('Execution tool sources outside model tool handlers', () => {
     expect((await session.run({ prompt: 'first' }).result()).status).toBe('completed');
     expect(old).toBeDefined();
     expect(
-      (await context.tools.check({ name: 'todo_read', arguments: {}, ref: old })).available
+      (await context.tools.check({ name: 'sleep', arguments: { durationMs: 1 }, ref: old }))
+        .available
     ).toBe(false);
     await expect(
-      context.tools.invoke({ name: 'todo_read', arguments: {}, ref: old })
+      context.tools.invoke({ name: 'sleep', arguments: { durationMs: 1 }, ref: old })
     ).rejects.toThrow(/TOOL_NOT_AVAILABLE/);
     expect((await session.run({ prompt: 'next' }).result()).status).toBe('completed');
     expect(runs).toBe(2);
@@ -1463,11 +1472,12 @@ describe('Execution tool sources outside model tool handlers', () => {
             value.hooks.intercept('model.request', async (input, call, next) => {
               if (input.toolChoice === 'none') {
                 expect(
-                  (await value.tools.check({ name: 'todo_read', arguments: {} })).available
+                  (await value.tools.check({ name: 'sleep', arguments: { durationMs: 1 } }))
+                    .available
                 ).toBe(true);
                 expect(
-                  (await value.tools.invoke({ name: 'todo_read', arguments: {} })).data
-                ).toMatchObject({ items: [] });
+                  (await value.tools.invoke({ name: 'sleep', arguments: { durationMs: 1 } })).data
+                ).toMatchObject({ durationMs: 1 });
                 expect(call.executionId).toBeDefined();
                 compactChecked = true;
               }
@@ -1495,10 +1505,14 @@ describe('Execution tool sources outside model tool handlers', () => {
               if (input.toolChoice === 'none') {
                 compacts++;
                 expect(
-                  (await value.tools.check({ name: 'todo_read', arguments: {} })).available
+                  (await value.tools.check({ name: 'sleep', arguments: { durationMs: 1 } }))
+                    .available
                 ).toBe(true);
-                const result = await value.tools.invoke({ name: 'todo_read', arguments: {} });
-                expect(result.data).toMatchObject({ revision: 0, items: [] });
+                const result = await value.tools.invoke({
+                  name: 'sleep',
+                  arguments: { durationMs: 1 }
+                });
+                expect(result.data).toMatchObject({ durationMs: 1 });
                 expect(call.executionId).toBeDefined();
               }
               return next(input);

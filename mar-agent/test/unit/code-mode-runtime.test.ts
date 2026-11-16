@@ -773,7 +773,7 @@ describe('Code Mode SDK and protocol integration', () => {
     }
   );
 
-  it('refreshes persisted Todo state between Executions when no cell is still running', async () => {
+  it('keeps Todo absent from Code Mode before and after restoring legacy state', async () => {
     const { home, workspace } = await fixture();
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     const requests: ModelRequest[] = [];
@@ -786,10 +786,19 @@ describe('Code Mode SDK and protocol integration', () => {
             type: 'client_tool.call',
             name: 'code_exec',
             callId: `todo-${requests.length}`,
-            arguments:
-              requests.length === 1
-                ? 'observe.text(await tools.todo_write({items:[{id:"one",step:"Initial",status:"pending"}]}));'
-                : 'observe.text(await tools.todo_read());'
+            arguments: `
+              const names = ["todo_read", "todo_write"];
+              const output = { registered: catalog.tools().some((tool) => names.includes(tool.name)) };
+              for (const name of names) {
+                try {
+                  await tools[name](name === "todo_write" ? { items: [] } : {});
+                  output[name] = "available";
+                } catch (error) {
+                  output[name] = error.code;
+                }
+              }
+              observe.text(output);
+            `
           };
           yield { type: 'completed', reason: 'tool_use' };
         } else {
@@ -808,7 +817,9 @@ describe('Code Mode SDK and protocol integration', () => {
     );
     try {
       const session = await agent.createSession({ workspace, title: 'Todo restore' });
-      expect((await session.run({ prompt: 'Write the task.' }).result()).status).toBe('completed');
+      expect((await session.run({ prompt: 'Inspect available tools.' }).result()).status).toBe(
+        'completed'
+      );
       const store = await JsonlSessionStore.open(home);
       try {
         const release = await store.acquireSessionLease(session.id);
@@ -826,14 +837,22 @@ describe('Code Mode SDK and protocol integration', () => {
       } finally {
         await store.close();
       }
-      expect((await session.run({ prompt: 'Read current tasks.' }).result()).status).toBe(
-        'completed'
-      );
       expect(
-        requests[3]!.messages.find(
-          (message) => message.role === 'tool' && message.callId === 'todo-3'
-        )!.content
-      ).toContain('Restored');
+        (await session.run({ prompt: 'Inspect available tools after restoration.' }).result())
+          .status
+      ).toBe('completed');
+      for (const index of [1, 3]) {
+        const result = requests[index]!.messages.find(
+          (message) => message.role === 'tool' && message.callId === `todo-${index}`
+        )!;
+        expect(observedJSON(result.content)).toEqual({
+          registered: false,
+          todo_read: 'MAR_AGENT_TOOL_NOT_AVAILABLE',
+          todo_write: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
+        });
+        expect(effectiveInstructions(requests[index]!)).not.toContain('todo_read');
+        expect(effectiveInstructions(requests[index]!)).not.toContain('todo_write');
+      }
     } finally {
       await agent.dispose();
     }

@@ -8,8 +8,9 @@ import { executeQuestion, questionToolDefinition } from './agent/question.js';
 import { readToolDefinition } from './local/read.js';
 import type { ToolRuntimeContext } from './runtime-context.js';
 import { executeSkill, skillToolDefinition } from './agent/skill.js';
-import { executeTodoRead, todoReadToolDefinition } from './agent/todo-read.js';
-import { executeTodoWrite, todoWriteToolDefinition } from './agent/todo-write.js';
+// Deprecated Todo tools are not registered. Keep their implementation for legacy history.
+// import { executeTodoRead, todoReadToolDefinition } from './agent/todo-read.js';
+// import { executeTodoWrite, todoWriteToolDefinition } from './agent/todo-write.js';
 import { executeToolSearch, toolSearchToolDefinition } from './mcp/tool-search.js';
 import { viewImageToolDefinition } from './local/view-image.js';
 import { smartCompactToolDefinition, executeSmartCompact } from './agent/smart-compact.js';
@@ -26,8 +27,8 @@ export const BUILTIN_TOOL_DEFINITIONS: readonly ClientToolDefinition[] = [
   codeExecWaitToolDefinition,
   applyPatchToolDefinition,
   questionToolDefinition,
-  todoReadToolDefinition,
-  todoWriteToolDefinition,
+  // todoReadToolDefinition,
+  // todoWriteToolDefinition,
   smartCompactToolDefinition,
   sleepToolDefinition
 ];
@@ -46,7 +47,7 @@ export const AGENT_TOOL_HANDLERS: ReadonlyMap<string, RuntimeHandler> = new Map<
   ['sleep', executeSleep],
   ['smart_compact', executeSmartCompact],
   ['tool_search', executeToolSearch],
-  ['question', executeQuestion],
-  ['todo_read', (_arguments, context) => executeTodoRead(context)],
-  ['todo_write', executeTodoWrite]
+  // ['todo_read', (_arguments, context) => executeTodoRead(context)],
+  // ['todo_write', executeTodoWrite],
+  ['question', executeQuestion]
 ]);

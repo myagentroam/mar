@@ -63,8 +63,7 @@ export function publicHostedToolEvents(
     typeof output === 'string' ? output : output === undefined ? '' : JSON.stringify(output);
   const preview = toolEventSummary(text);
   const summary = preview.summary;
-  const truncated =
-    event.truncated === true || legacyOutput.sourcesTruncated === true || preview.truncated;
+  const truncated = event.truncated === true || legacyOutput.sourcesTruncated === true;
   const started: EventPayload = {
     type: 'tool.started',
     toolName,
@@ -89,7 +88,8 @@ export function publicHostedToolEvents(
         callId: event.itemId,
         code: 'HOSTED_TOOL_FAILED',
         message: summary || 'Hosted tool failed.',
-        truncated
+        truncated,
+        ...(preview.truncated ? { summaryTruncated: true } : {})
       }
     ];
   return [
@@ -100,7 +100,7 @@ export function publicHostedToolEvents(
       callId: event.itemId,
       summary,
       truncated,
-      ...(preview.truncated || event.truncated === true ? { summaryTruncated: true } : {}),
+      ...(preview.truncated ? { summaryTruncated: true } : {}),
       data: started.data!
     }
   ];

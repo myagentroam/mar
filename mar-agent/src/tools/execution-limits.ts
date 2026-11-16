@@ -14,6 +14,7 @@ export const TOOL_EXECUTION_LIMITS = Object.freeze({
   execMaxTimeoutMs: 3_600_000,
   execDefaultYieldMs: 10_000,
   execMaxYieldMs: 30_000,
+  execDefaultPollYieldMs: 60_000,
   execMaxPollYieldMs: 300_000,
   execTerminationGraceMs: 1_000,
   execDefaultMaxOutputBytes: 1_000_000,

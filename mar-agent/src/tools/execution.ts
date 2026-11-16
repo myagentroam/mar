@@ -220,7 +220,7 @@ export async function executeRoundTools(
         callId: call.callId,
         ...(parentCallId === undefined ? {} : { parentCallId }),
         summary: eventSummary.summary,
-        truncated: output.truncated === true || modelOutput.truncated || eventSummary.truncated,
+        truncated: output.truncated === true || modelOutput.truncated,
         ...(eventSummary.truncated ? { summaryTruncated: true } : {}),
         ...(outputTruncation ? { outputTruncation } : {}),
         ...(artifacts === undefined ? {} : { artifacts }),

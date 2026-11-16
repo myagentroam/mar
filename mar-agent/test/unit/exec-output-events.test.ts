@@ -12,6 +12,65 @@ import { answer, call, cleanupCoreFixtures, fixture } from './support/core-exten
 afterEach(cleanupCoreFixtures);
 
 describe('exec live output and model observation separation', () => {
+  it.each([
+    ['source', false],
+    ['source', true],
+    ['model budget', false],
+    ['model budget', true]
+  ] as const)(
+    'preserves %s truncation independently of a short summary (Code Mode: %s)',
+    async (kind, codeMode) => {
+      const extension: AgentExtension = {
+        id: 'result-truncation-probe',
+        apiVersion: '1.0',
+        attachSession(context) {
+          context.tools.register({
+            name: 'result_probe',
+            description: 'Return a result with a short public summary.',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            async execute() {
+              return {
+                content: kind === 'source' ? 'partial source' : 'long result line\n'.repeat(12_000),
+                eventSummary: 'Short public summary.',
+                truncated: kind === 'source'
+              };
+            }
+          });
+        }
+      };
+      const f = await fixture(
+        [extension],
+        (_request, index) =>
+          index === 0
+            ? codeMode
+              ? call('code_exec', { code: 'observe.result(await tools.result_probe({}));' })
+              : call('result_probe', {})
+            : answer(),
+        codeMode
+      );
+      const run = f.session.run({ prompt: 'Observe a partial result.' });
+      const events: AgentEvent[] = [];
+      for await (const event of run) events.push(event);
+      expect(await run.result()).toMatchObject({ status: 'completed' });
+      const complete = events.find(
+        (event) => event.type === 'tool.completed' && event.toolName === 'result_probe'
+      );
+      expect(complete).toMatchObject({ summary: 'Short public summary.', truncated: true });
+      expect(complete).not.toHaveProperty('summaryTruncated');
+      const history = await f.agent.sessionHistory(f.session.id);
+      expect(history.entries).toContainEqual(
+        expect.objectContaining({
+          kind: 'event',
+          event: expect.objectContaining({
+            toolName: 'result_probe',
+            summary: 'Short public summary.',
+            truncated: true
+          })
+        })
+      );
+    }
+  );
+
   it('preserves SOURCE when another observation is locally clipped', async () => {
     const extension: AgentExtension = {
       id: 'source-truncation-probe',
@@ -79,6 +138,7 @@ describe('exec live output and model observation separation', () => {
       (event) => event.type === 'tool.completed' && event.toolName === 'code_exec'
     );
     expect(complete).toMatchObject({
+      truncated: false,
       summaryTruncated: true,
       data: {
         observations: [
@@ -100,7 +160,10 @@ describe('exec live output and model observation separation', () => {
         entry.event.type === 'tool.completed' &&
         entry.event.toolName === 'code_exec'
     );
-    expect(persisted).toMatchObject({ kind: 'event', event: { summaryTruncated: true } });
+    expect(persisted).toMatchObject({
+      kind: 'event',
+      event: { truncated: false, summaryTruncated: true }
+    });
     expect(persisted?.kind === 'event' && 'outputTruncation' in persisted.event).toBe(false);
   });
   it('preserves a real public HEAD through event publication and Catalog history', async () => {

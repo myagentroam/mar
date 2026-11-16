@@ -117,8 +117,6 @@ describe('local workspace tools', () => {
 
   it('registers each built-in once without a built-in collaboration handler', () => {
     const names = BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.name);
-    const todoRead = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'todo_read')!;
-    const todoWrite = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'todo_write')!;
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual([
       'skill',
@@ -131,8 +129,6 @@ describe('local workspace tools', () => {
       'code_exec_wait',
       'apply_patch',
       'question',
-      'todo_read',
-      'todo_write',
       'smart_compact',
       'sleep'
     ]);
@@ -141,21 +137,13 @@ describe('local workspace tools', () => {
       'sleep',
       'smart_compact',
       'tool_search',
-      'question',
-      'todo_read',
-      'todo_write'
+      'question'
     ]);
     expect(names.some((name) => name.startsWith('agent_'))).toBe(false);
-    expect(todoRead.description).toContain(
-      'Do not read an empty or new Todo merely to decide whether straightforward bounded work needs one.'
-    );
-    expect(todoWrite.description).toContain(
-      'Use only after Todo has been chosen for coordination-heavy work'
-    );
-    expect(todoWrite.description).toContain('straightforward bounded work does not need it');
-    expect(todoWrite.description).toContain('after meaningful stage changes');
-    expect(todoWrite.description).toContain('same model response');
-    expect(todoWrite.description).toContain('only for Todo bookkeeping');
+    for (const name of ['todo_read', 'todo_write']) {
+      expect(names).not.toContain(name);
+      expect(AGENT_TOOL_HANDLERS.has(name)).toBe(false);
+    }
   });
 
   it('reads a validated image as transient multimodal content without exposing base64 in data', async () => {
@@ -1599,10 +1587,12 @@ describe('local workspace tools', () => {
   });
 
   it.each([
-    { options: {}, expected: 10_000 },
-    { options: { yieldMs: null }, expected: 10_000 },
+    { options: {}, expected: 60_000 },
+    { options: { yieldMs: null }, expected: 60_000 },
     { options: { yieldMs: 0 }, expected: 0 },
+    { options: { yieldMs: 10_000 }, expected: 10_000 },
     { options: { yieldMs: 30_000 }, expected: 30_000 },
+    { options: { yieldMs: 60_000 }, expected: 60_000 },
     { options: { yieldMs: 300_000 }, expected: 300_000 }
   ])('uses the poll wait window $expected for $options', async ({ options, expected }) => {
     const { root } = await fixture();
@@ -1637,7 +1627,12 @@ describe('local workspace tools', () => {
       expect(await poll).toMatchObject({ status: 'running' });
       const next = tool.execute({ action: 'poll', processId: started.processId });
       state.stdout.write('ready');
-      await vi.advanceTimersByTimeAsync(TOOL_EXECUTION_LIMITS.execDefaultYieldMs);
+      await vi.advanceTimersByTimeAsync(59_999);
+      const nextSettled = vi.fn();
+      void next.then(nextSettled);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(nextSettled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
       expect(await next).toMatchObject({
         status: 'running',
         stdout: 'ready',

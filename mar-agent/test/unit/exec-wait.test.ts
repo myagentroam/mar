@@ -728,32 +728,43 @@ describe('exec_wait', () => {
     });
   });
 
-  it('uses the shared default and five-minute wait limit without the start cap', () => {
+  it('uses separate start and poll defaults with a five-minute poll limit', () => {
     expect(execToolDefinition.inputSchema.properties.timeoutMs).toMatchObject({
       maximum: TOOL_EXECUTION_LIMITS.execMaxTimeoutMs,
       description: expect.stringContaining('Omitted means no process timeout')
     });
     expect(execToolDefinition.inputSchema.properties.timeoutMs).not.toHaveProperty('default');
+    expect(execToolDefinition.inputSchema.properties.yieldMs).toMatchObject({
+      default: 10_000,
+      maximum: 30_000
+    });
     expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
     expect(execWaitToolDefinition.inputSchema).toMatchObject({
       required: ['processId'],
       properties: {
         yieldMs: {
-          default: TOOL_EXECUTION_LIMITS.execDefaultYieldMs,
-          maximum: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs
+          default: 60_000,
+          maximum: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs,
+          description: expect.stringContaining('default 60000')
         }
       }
     });
     expect(execToolInput('exec_wait', { processId: 'p' })).toEqual({
       action: 'poll',
       processId: 'p',
-      yieldMs: 10_000
+      yieldMs: 60_000
     });
     expect(execToolInput('exec_wait', { processId: 'p', yieldMs: null })).toEqual({
       action: 'poll',
       processId: 'p',
-      yieldMs: 10_000
+      yieldMs: 60_000
     });
+    for (const yieldMs of [0, 10_000, 60_000])
+      expect(execToolInput('exec_wait', { processId: 'p', yieldMs })).toEqual({
+        action: 'poll',
+        processId: 'p',
+        yieldMs
+      });
     expect(execToolInput('exec_wait', { processId: 'p', yieldMs: 300_000 })).toEqual({
       action: 'poll',
       processId: 'p',
