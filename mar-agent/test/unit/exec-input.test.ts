@@ -72,7 +72,7 @@ describe('exec input diagnostics', () => {
     expect(execToolInput('exec_wait', { processId: 'p', action: null, yieldMs: null })).toEqual({
       action: 'poll',
       processId: 'p',
-      yieldMs: TOOL_EXECUTION_LIMITS.execDefaultYieldMs
+      yieldMs: 60_000
     });
     expect(execToolInput('exec_wait', { processId: 'p', yieldMs: 1e10 })).toMatchObject({
       yieldMs: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs

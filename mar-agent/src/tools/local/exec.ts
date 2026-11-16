@@ -141,8 +141,8 @@ export const execWaitToolDefinition: ClientToolDefinition = {
         type: 'integer',
         minimum: 0,
         maximum: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs,
-        default: TOOL_EXECUTION_LIMITS.execDefaultYieldMs,
-        description: `Poll wait window in milliseconds; default ${TOOL_EXECUTION_LIMITS.execDefaultYieldMs}, maximum ${TOOL_EXECUTION_LIMITS.execMaxPollYieldMs}. Zero returns immediately. Not a process timeout.`
+        default: TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs,
+        description: `Poll wait window in milliseconds; default ${TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs}, maximum ${TOOL_EXECUTION_LIMITS.execMaxPollYieldMs}. Zero returns immediately. Not a process timeout.`
       },
       data: { type: 'string', description: 'Required stdin data for write.' }
     },
@@ -212,7 +212,7 @@ export function parseExecInput(value: unknown): ExecInput {
     return {
       action,
       processId: input.processId,
-      yieldMs: yieldMs ?? TOOL_EXECUTION_LIMITS.execDefaultYieldMs
+      yieldMs: yieldMs ?? TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs
     };
   if (action === 'write') {
     if (typeof input.data !== 'string')

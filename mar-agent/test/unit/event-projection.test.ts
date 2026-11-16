@@ -33,25 +33,63 @@ describe('tool event summary projection', () => {
       expect(events[1]).toMatchObject({
         type: 'tool.completed',
         summary: length <= limit ? output : output.slice(0, limit - marker.length) + marker,
-        truncated: length > limit
+        truncated: false
       });
-      if (events[1]?.type === 'tool.completed')
+      expect(events[0]).not.toHaveProperty('truncated');
+      if (events[1]?.type === 'tool.completed') {
         expect(events[1].summary.length).toBeLessThanOrEqual(limit);
+        expect(events[1].summaryTruncated === true).toBe(length > limit);
+      }
     }
   );
 
-  it('does not label upstream truncation as summary truncation', () => {
-    expect(
-      publicHostedToolEvents({
+  it.each(['COMPLETED', 'FAILED'] as const)(
+    'does not label upstream truncation as summary truncation (%s)',
+    (status) => {
+      const events = publicHostedToolEvents({
         type: 'hosted_tool',
         itemId: 'hosted',
         kind: 'WEB_FETCH',
-        status: 'COMPLETED',
+        status,
         summary: {},
         output: 'partial upstream output',
         truncated: true
-      })[1]
-    ).toMatchObject({ summary: 'partial upstream output', truncated: true });
+      });
+      expect(events[1]).toMatchObject({
+        [status === 'COMPLETED' ? 'summary' : 'message']: 'partial upstream output',
+        truncated: true
+      });
+      expect(events[1]).not.toHaveProperty('summaryTruncated');
+    }
+  );
+
+  it.each(['COMPLETED', 'FAILED'] as const)(
+    'preserves both independent truncation facts when both apply (%s)',
+    (status) => {
+      const events = publicHostedToolEvents({
+        type: 'hosted_tool',
+        itemId: 'hosted',
+        kind: 'WEB_FETCH',
+        status,
+        summary: {},
+        output: 'x'.repeat(limit + 1),
+        truncated: true
+      });
+      expect(events[1]).toMatchObject({ truncated: true, summaryTruncated: true });
+    }
+  );
+
+  it('preserves incomplete source-list facts without marking a short summary as clipped', () => {
+    const events = publicHostedToolEvents({
+      type: 'hosted_tool',
+      itemId: 'hosted',
+      kind: 'WEB_SEARCH',
+      status: 'COMPLETED',
+      summary: { sourcesTruncated: true },
+      output: 'partial sources'
+    });
+    expect(events[1]).toMatchObject({ summary: 'partial sources', truncated: true });
+    expect(events[1]).not.toHaveProperty('summaryTruncated');
   });
 
   it('keeps the marker within the budget without splitting a Unicode character', () => {
@@ -67,7 +105,8 @@ describe('tool event summary projection', () => {
     expect(events[1]).toMatchObject({
       type: 'tool.failed',
       message: prefix + marker,
-      truncated: true
+      truncated: false,
+      summaryTruncated: true
     });
   });
 
@@ -136,7 +175,8 @@ describe('tool event summary projection', () => {
         for (const event of completions) {
           expect(event.summary).toContain(marker);
           expect(event.summary.length).toBeLessThanOrEqual(limit);
-          expect(event.truncated).toBe(true);
+          expect(event.truncated).toBe(false);
+          expect(event.summaryTruncated).toBe(true);
         }
         expect(completions.find((event) => event.toolName === 'exec')?.data).toMatchObject({
           stdout: 'x'.repeat(2500),
@@ -177,6 +217,8 @@ describe('tool event summary projection', () => {
           expect(durable.map((record) => (record.payload as { summary: string }).summary)).toEqual(
             completions.map((event) => event.summary)
           );
+          for (const record of durable)
+            expect(record.payload).toMatchObject({ truncated: false, summaryTruncated: true });
         } finally {
           await store.close();
         }

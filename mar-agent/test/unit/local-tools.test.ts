@@ -1587,10 +1587,12 @@ describe('local workspace tools', () => {
   });
 
   it.each([
-    { options: {}, expected: 10_000 },
-    { options: { yieldMs: null }, expected: 10_000 },
+    { options: {}, expected: 60_000 },
+    { options: { yieldMs: null }, expected: 60_000 },
     { options: { yieldMs: 0 }, expected: 0 },
+    { options: { yieldMs: 10_000 }, expected: 10_000 },
     { options: { yieldMs: 30_000 }, expected: 30_000 },
+    { options: { yieldMs: 60_000 }, expected: 60_000 },
     { options: { yieldMs: 300_000 }, expected: 300_000 }
   ])('uses the poll wait window $expected for $options', async ({ options, expected }) => {
     const { root } = await fixture();
@@ -1625,7 +1627,12 @@ describe('local workspace tools', () => {
       expect(await poll).toMatchObject({ status: 'running' });
       const next = tool.execute({ action: 'poll', processId: started.processId });
       state.stdout.write('ready');
-      await vi.advanceTimersByTimeAsync(TOOL_EXECUTION_LIMITS.execDefaultYieldMs);
+      await vi.advanceTimersByTimeAsync(59_999);
+      const nextSettled = vi.fn();
+      void next.then(nextSettled);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(nextSettled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
       expect(await next).toMatchObject({
         status: 'running',
         stdout: 'ready',

@@ -142,6 +142,7 @@ export type AgentEvent = AgentEventBase &
         message?: string;
         permissionStop?: import('../tools/permission-contract.js').PermissionStop;
         truncated?: boolean;
+        summaryTruncated?: boolean;
         outputTruncation?: 'HEAD' | 'SOURCE';
       }
     | {
