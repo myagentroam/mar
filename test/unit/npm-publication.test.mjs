@@ -26,6 +26,17 @@ import {
   sourceCommit
 } from '../support/npm-publication.mjs';
 
+test('publication workflow isolates concurrency by release unit', async () => {
+  const workflow = await readFile(
+    new URL('../../.github/workflows/npm-publish.yml', import.meta.url),
+    'utf8'
+  );
+  assert.match(
+    workflow,
+    /concurrency:\n  group: npm-publication-\$\{\{ inputs\.release_tag \}\}\n  cancel-in-progress: false/u
+  );
+});
+
 test('publication verifies original archives against the pinned source and lockfile', async (t) => {
   const input = await fixture(t);
   assert.deepEqual(
