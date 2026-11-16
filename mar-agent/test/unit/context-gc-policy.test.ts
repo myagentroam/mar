@@ -506,25 +506,24 @@ describe('context GC checkpoint eligibility across planner, runtime and store', 
 });
 
 describe('context GC high-water policy', () => {
-  it('keeps short exec input intact and long input recoverable without model-visible hashes', () => {
+  it('keeps short exec input intact and replaces long content under its original field', () => {
     expect(
       contextGcExecInputReplacement({
         command: 'printf short',
         cwd: '/workspace'
       })
-    ).toMatchObject({ action: 'start', command: 'printf short' });
+    ).toEqual({ command: 'printf short', cwd: '/workspace' });
 
     const command = `head-${'x'.repeat(1_000)}-tail`;
     const replacement = contextGcExecInputReplacement({ action: 'start', command }) as Record<
       string,
       unknown
     >;
-    expect(replacement).not.toHaveProperty('command');
-    expect(replacement.commandPreview).toContain('head-');
-    expect(replacement.commandPreview).toContain('-tail');
-    expect(replacement.commandBytes).toBe(Buffer.byteLength(command));
-    expect(replacement).not.toHaveProperty('commandSha256');
-    expect(replacement.contextGc).not.toHaveProperty('originalSha256');
+    expect(Object.keys(replacement).sort()).toEqual(['action', 'command']);
+    expect(replacement.action).toBe('start');
+    expect(replacement.command).toEqual(expect.stringContaining('not executable'));
+    expect(replacement.command).not.toContain('head-');
+    expect(replacement.command).not.toContain('-tail');
   });
 
   it('marks exec output preview completeness and retained line counts', () => {

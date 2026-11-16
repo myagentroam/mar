@@ -225,6 +225,8 @@ Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和
 
 独立使用时先安装包，再用 `maragent models list` 检查当前账号的本地模型目录；模型登记与运行选项以 `maragent models --help` 和 `maragent --help` 为准。CLI 的命令和 Agent 工具以运行账号权限执行，先选用专用账号和可信工作目录，不要在生产目录试运行。
 
+独立 CLI 默认自动生成新会话标题，可用全局选项 `--no-auto-title` 关闭，或用 `--auto-title` 显式开启；恢复已有会话不重新生成。标题请求可能产生额外用量。`--format stream-json` 的 `model.usage` 事件提供按请求的原生用量快照，区分 conversation、compact 和 title；同一 recordId 只取最新 revision，不与 `usage.updated` 重复相加，缺失用量仍为未知。收到 SIGTERM 时，CLI 取消当前执行和标题请求并释放自己的会话资源，以 143 退出；SIGINT 取消以 130 退出。
+
 独立 CLI 默认加载 Subagent 扩展。新模型默认可用于对话，但不自动用于子会话；使用 `maragent models edit <id> --subagent-model` 显式启用，`--no-subagent-model` 关闭。子会话模型必须同时启用 conversation 和 subagent，用途可通过 `models list` 查看，也可在 `models add/edit` 中使用 `--conversation-model` 或 `--no-conversation-model` 设置。
 
 SDK 最小示例使用一个兼容 OpenAI Responses 的端点。先按供应商的真实模型能力调整 URL、模型 ID 和 token 限制；设置 `MODEL_API_KEY`、`MODEL_BASE_URL`、`MODEL_ID`、`AGENT_HOME` 与 `WORKSPACE` 后运行。`session.run` 会发起真实模型请求，也可能执行工具；仅在有权限的隔离环境使用，密钥不要写入源文件或提交。

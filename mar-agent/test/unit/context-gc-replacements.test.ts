@@ -88,20 +88,43 @@ describe('context GC structured records and message placeholders', () => {
     });
   });
 
-  it('keeps current exec input metadata as an object', () => {
-    const input = { command: text, cwd: '/workspace', yieldMs: 12 };
+  it('preserves every original exec input field without synthesizing metadata or defaults', () => {
+    const input = { command: text, cwd: '/workspace', yieldMs: 12, login: false };
     const value = contextGcExecInputReplacement(input);
-    expect(value).toMatchObject({
-      action: 'start',
-      cwd: input.cwd,
-      yieldMs: 12,
-      contextGc: {
-        kind: 'terminal_exec_input',
-        originalBytes: expect.any(Number)
-      }
-    });
-    expect(value).toHaveProperty('command', text);
-    expect(value).not.toHaveProperty('contextGc.originalSha256');
+    expect(value).toEqual(input);
+  });
+
+  it.each([
+    { tool: 'exec', input: { command: 'head-' + 'x'.repeat(2_000) + '-tail', login: false } },
+    {
+      tool: 'exec_wait',
+      input: { processId: 'p_123456789012', action: 'write', data: 'x'.repeat(2_000), yieldMs: 0 }
+    }
+  ])(
+    'reclaims $tool text inside its original field without mutating the source',
+    ({ tool, input }) => {
+      const original = structuredClone(input);
+      const value = contextGcExecInputReplacement(input, tool) as Record<string, unknown>;
+      const key = 'command' in input ? 'command' : 'data';
+      expect(Object.keys(value).sort()).toEqual(Object.keys(input).sort());
+      expect(value[key]).toEqual(
+        expect.stringContaining('<mar_context_gc kind="terminal_exec_input"')
+      );
+      expect(value[key]).toEqual(expect.stringContaining('not executable'));
+      expect(value[key]).not.toContain('head-');
+      expect(value[key]).not.toContain('-tail');
+      expect(value[key]).not.toContain('x'.repeat(100));
+      for (const field of Object.keys(original))
+        if (field !== key) expect(value[field]).toEqual(original[field as keyof typeof original]);
+      expect(input).toEqual(original);
+    }
+  );
+
+  it('does not add an action to an exec_wait poll or change malformed input shape', () => {
+    const input = { processId: 'p_123456789012', yieldMs: 0 };
+    expect(contextGcExecInputReplacement(input, 'exec_wait')).toEqual(input);
+    for (const malformed of ['opaque input', null, 17, ['command']])
+      expect(contextGcExecInputReplacement(malformed)).toEqual(malformed);
   });
 
   it('preserves null exit codes and exec evidence in current JSON', () => {
@@ -191,8 +214,5 @@ describe('context GC structured records and message placeholders', () => {
       code: expect.stringContaining('<mar_context_gc kind="completed_code_mode_input"')
     });
     expect((value as { code: string }).code).toContain('&lt;message&gt; &amp;');
-    expect(contextGcExecInputReplacement('opaque input')).toContain(
-      '<mar_context_gc kind="terminal_exec_input"'
-    );
   });
 });

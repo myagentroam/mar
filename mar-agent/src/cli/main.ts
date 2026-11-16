@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// CLI composition root: owns terminal I/O, auxiliary titles and final Agent disposal.
+// Execution semantics and Session resources remain SDK-owned, including on signal cancellation.
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { stdin, stdout } from 'node:process';
@@ -27,8 +29,8 @@ import { TerminalInput, TerminalInputClosed } from './terminal-input.js';
 const HELP = `maragent - MAR coding agent
 
 Usage:
-  maragent [--model ID] [--reasoning-effort EFFORT] [--codex-auth-file PATH]
-  maragent run <prompt> [--permission-mode auto|full-access] [--reasoning-effort EFFORT] [--format text|json|stream-json] [--codex-auth-file PATH]
+  maragent [--model ID] [--reasoning-effort EFFORT] [--auto-title|--no-auto-title] [--codex-auth-file PATH]
+  maragent run <prompt> [--permission-mode auto|full-access] [--reasoning-effort EFFORT] [--format text|json|stream-json] [--auto-title|--no-auto-title] [--codex-auth-file PATH]
   maragent resume [sessionId] [--reasoning-effort EFFORT] [--codex-auth-file PATH]
   maragent sessions list|delete <sessionId>
   maragent models list|add|edit|remove|test [id] [--default-reasoning-effort EFFORT] [--conversation-model|--no-conversation-model] [--subagent-model|--no-subagent-model] [--code-mode|--no-code-mode] [--fast-mode|--no-fast-mode] [--codex-auth-file PATH]
@@ -350,6 +352,7 @@ async function main() {
       'The deprecated --access option only accepts full-access.'
     );
   const format = takeOption(arguments_, '--format') ?? 'text';
+  const autoTitle = booleanFlag(arguments_, '--auto-title', '--no-auto-title', true);
   const command = arguments_[0];
   const selectedModel = catalog.models.find(
     (model) => model.id === modelId && model.enabled && model.conversationModel !== false
@@ -369,6 +372,13 @@ async function main() {
   const host = new LocalAgentHost({
     homeDirectory: home,
     workspace,
+    ...(format === 'stream-json'
+      ? {
+          modelUsage: (usage: import('../model/usage.js').ModelUsageObservation) => {
+            stdout.write(`${JSON.stringify({ type: 'model.usage', ...usage })}\n`);
+          }
+        }
+      : {}),
     question: async (request, signal) => {
       if (!stdin.isTTY)
         throw new AgentError(
@@ -403,6 +413,7 @@ async function main() {
     extensions: [subagent],
     ...(modelId === undefined ? {} : { defaultModelId: modelId })
   });
+  let removeInterruptHandlers: (() => void) | undefined;
   try {
     if (command === 'sessions' && arguments_[1] === 'list') {
       stdout.write(
@@ -442,16 +453,27 @@ async function main() {
     let activeHandle: ExecutionHandle | undefined;
     let titleController: AbortController | undefined;
     let titleTask: Promise<string | undefined> | undefined;
-    let interrupts = 0;
-    const interrupt = () => {
-      interrupts++;
+    let closing = false;
+    let signalExitCode: number | undefined;
+    const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
+      if (signal === 'SIGTERM' || !activeHandle) {
+        closing = true;
+        terminal.close();
+      }
       if (activeHandle) activeHandle.cancel();
-      else terminal.close();
       titleController?.abort();
-      process.exitCode = 130;
-      if (interrupts > 1) activeHandle?.cancel();
+      if (signalExitCode === undefined || signal === 'SIGTERM')
+        signalExitCode = signal === 'SIGTERM' ? 143 : 130;
+      process.exitCode = signalExitCode;
     };
-    process.on('SIGINT', interrupt);
+    const onSigint = () => interrupt('SIGINT');
+    const onSigterm = () => interrupt('SIGTERM');
+    process.on('SIGINT', onSigint);
+    process.on('SIGTERM', onSigterm);
+    removeInterruptHandlers = () => {
+      process.off('SIGINT', onSigint);
+      process.off('SIGTERM', onSigterm);
+    };
     try {
       do {
         if (interactive) {
@@ -471,9 +493,10 @@ async function main() {
         };
         const runInput: RunInput = { ...executionOptions, prompt: invocation.prompt };
         const metadata =
-          !resumeId && invocation.mode !== 'compact'
+          autoTitle && !resumeId && invocation.mode !== 'compact'
             ? await agent.getSession(session.id).catch(() => undefined)
             : undefined;
+        if (closing) break;
         titleController = new AbortController();
         titleTask = undefined;
         const handle =
@@ -493,8 +516,22 @@ async function main() {
                 runtime.models.find((model) => model.enabled && model.conversationModel !== false)!
                   .id,
               prompt: invocation.prompt,
-              signal: titleController.signal
+              signal: titleController.signal,
+              onModelUsage: (usage) =>
+                host.modelUsage?.({
+                  ...usage,
+                  sessionId: session.id,
+                  executionId: handle.executionId,
+                  purpose: 'title',
+                  agentRole: 'root'
+                })
             }).catch(() => undefined);
+          if (
+            event.type === 'execution.completed' ||
+            event.type === 'execution.cancelled' ||
+            event.type === 'execution.failed'
+          )
+            activeHandle = undefined;
           if (format === 'stream-json') stdout.write(`${JSON.stringify(event)}\n`);
           else if (event.type === 'message.delta') stdout.write(event.delta);
         }
@@ -510,7 +547,6 @@ async function main() {
             })
             .catch(() => undefined);
         titleController = undefined;
-        activeHandle = undefined;
         if (format === 'json') stdout.write(`${JSON.stringify(result)}\n`);
         else if (format === 'text')
           stdout.write(
@@ -518,18 +554,22 @@ async function main() {
               ? `\nNot executed (${result.permissionStop.action}): ${result.permissionStop.reason}\n${result.permissionStop.action === 'ask' ? 'Reply with allow or a scoped instruction to continue.\n' : ''}`
               : '\n'
           );
-        if (!interactive && result.permissionStop)
+        if (signalExitCode === undefined && !interactive && result.permissionStop)
           process.exitCode = result.permissionStop.action === 'ask' ? 3 : 1;
-        if (result.status !== 'completed') process.exitCode = cliExitCode(result.errorCode);
-      } while (interactive);
+        if (signalExitCode === undefined && result.status !== 'completed')
+          process.exitCode = cliExitCode(result.errorCode);
+      } while (interactive && !closing);
     } finally {
       titleController?.abort();
       await titleTask;
-      process.off('SIGINT', interrupt);
     }
   } finally {
     terminal.close();
-    await agent.dispose();
+    try {
+      await agent.dispose();
+    } finally {
+      removeInterruptHandlers?.();
+    }
   }
 }
 
@@ -609,5 +649,6 @@ function parseExecutionInvocation(input: string): {
 main().catch((error: unknown) => {
   const diagnostic = describeAgentError(error, 'MAR_AGENT_CLI_FAILED', 'CLI command failed.');
   process.stderr.write(`${diagnostic.code}: ${diagnostic.message}\n`);
-  process.exitCode = cliExitCode(diagnostic.code);
+  if (process.exitCode !== 130 && process.exitCode !== 143)
+    process.exitCode = cliExitCode(diagnostic.code);
 });
