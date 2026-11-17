@@ -34,9 +34,10 @@ const agentWaitText = computed(() => {
             :class="{ 'agent-list-status--running': target.status === 'RUNNING' }"
             >{{ agentTargetStatus(target.status) }}</span
           >
-          <span v-tooltip="target.title" class="mar-conversation-list-content agent-list-title">{{
-            target.title
-          }}</span>
+          <span class="mar-conversation-list-content mar-conversation-list-leading">
+            <span class="mar-conversation-list-bullet" aria-hidden="true" />
+            <span v-tooltip="target.title" class="agent-list-title">{{ target.title }}</span>
+          </span>
         </li>
       </ul>
       <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">
@@ -110,6 +111,7 @@ const agentWaitText = computed(() => {
   color: var(--el-color-success);
 }
 .agent-list-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

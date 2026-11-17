@@ -23,6 +23,7 @@ describe('Agent operation card projection', () => {
     );
     expect(html).toContain('<ul');
     expect(html.match(/<li\b/gu)).toHaveLength(3);
+    expect(html.match(/class="mar-conversation-list-bullet"/gu)).toHaveLength(3);
     expect(html).toContain('Review &lt;layout&gt;');
     expect(html).toContain('Unknown status');
     expect(html).not.toContain('<a');

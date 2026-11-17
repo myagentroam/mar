@@ -127,6 +127,43 @@ for (const [width, theme, locale] of [
     await expect(agents).toContainText('Review native tool details');
     await expect(agents.locator('a, button')).toHaveCount(0);
     await expect(tasks.locator('li')).toHaveCount(3);
+    for (const list of [tasks, agents]) {
+      await expect(list.getByRole('checkbox')).toHaveCount(0);
+      const muted = await list.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-conversation-muted)';
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      for (const row of await list.locator('li').all()) {
+        const bullet = row.locator('.mar-conversation-list-bullet');
+        await expect(bullet).toHaveCount(1);
+        await expect(bullet).toHaveAttribute('aria-hidden', 'true');
+        await expect(bullet).toHaveJSProperty('tabIndex', -1);
+        await expect(bullet).toHaveCSS('width', '3px');
+        await expect(bullet).toHaveCSS('height', '3px');
+        await expect(bullet).toHaveCSS('background-color', muted);
+        await expect(bullet).toHaveCSS('pointer-events', 'none');
+        await expect(row.locator('.mar-conversation-list-leading > svg')).toHaveCount(0);
+        await expect(row).toHaveCSS('border-bottom-width', '0px');
+        const alignment = await row.evaluate((element) => {
+          const bullet = element
+            .querySelector('.mar-conversation-list-bullet')!
+            .getBoundingClientRect();
+          const label = element.querySelector('.agent-markdown, .agent-list-title')!;
+          const text = label.getBoundingClientRect();
+          const lineHeight = parseFloat(getComputedStyle(label).lineHeight);
+          return {
+            precedesText: bullet.right <= text.left,
+            offset: Math.abs(bullet.y + bullet.height / 2 - text.y - lineHeight / 2)
+          };
+        });
+        expect(alignment.precedesText).toBe(true);
+        expect(alignment.offset).toBeLessThan(1);
+      }
+    }
     const taskDetail = process.locator('.task-list .conversation-content-detail');
     const fileDetail = process.locator(
       '.conversation-file-change-details .conversation-content-detail'
@@ -237,7 +274,7 @@ for (const [width, theme, locale] of [
     await expect(page.getByTestId('opened-file')).toHaveText(
       JSON.stringify(['list-regression.md', false])
     );
-    const agentTitle = agents.locator('.mar-conversation-list-content').nth(1);
+    const agentTitle = agents.locator('.agent-list-title').nth(1);
     const fullTitle =
       'Check regression coverage: ' + 'Desktop, mobile, clipboard and keyboard checks. '.repeat(4);
     await expect(agentTitle).toHaveText(fullTitle);
