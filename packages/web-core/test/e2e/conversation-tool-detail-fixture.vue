@@ -16,6 +16,8 @@ const integrated = new URL(location.href).searchParams.has('timeline');
 const listLayout = new URL(location.href).searchParams.has('list-layout');
 const listDesign = new URL(location.href).searchParams.has('list-design');
 const fileCards = new URL(location.href).searchParams.has('file-cards');
+const longFileName = `conversation-tool-detail-fixture-${'long-name-'.repeat(12)}preview.vue`;
+const longFilePath = `C:\\workspace\\packages\\web-core\\test\\e2e\\${longFileName}`;
 const openedFile = ref('');
 const openedChange = ref('');
 const designTasks = [
@@ -63,7 +65,7 @@ const listSamples: ConversationItem[] = [
                 }
               })
             ),
-            { path: 'C:\\workspace\\docs\\design-notes.md', change: 'RENAMED' },
+            { path: longFilePath, change: 'RENAMED' },
             {
               path: 'assets/illustrations/line\nbreak/pelican.png',
               change: 'MODIFIED',

@@ -2084,13 +2084,15 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-file-change-status {
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 1 / 3;
+  align-self: center;
   justify-self: end;
 }
 
 .conversation-file-change-stats {
   grid-column: 4;
-  grid-row: 1;
+  grid-row: 1 / 3;
+  align-self: center;
   display: inline-flex;
   flex: 0 0 auto;
   gap: 0.4rem;
@@ -2150,7 +2152,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-file-change-button {
-  grid-column: 1 / -1;
+  grid-column: 1 / 3;
   grid-row: 1 / 3;
   display: grid;
   grid-template-columns: subgrid;
@@ -2180,14 +2182,20 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-file-change-name {
   grid-column: 2;
   grid-row: 1;
-  min-width: 0;
 }
 
 .conversation-file-change-path {
-  grid-column: 2 / -1;
+  grid-column: 2;
   grid-row: 2;
-  min-width: 0;
   color: var(--mar-text-tertiary);
+}
+
+.conversation-file-change-name,
+.conversation-file-change-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conversation-file-change-button:hover {

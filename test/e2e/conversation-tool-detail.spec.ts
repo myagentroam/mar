@@ -235,6 +235,24 @@ for (const [width, theme] of [
     await heading.click();
     const rows = files.locator('li');
     await expect(rows).toHaveCount(5);
+    const longFileName = `conversation-tool-detail-fixture-${'long-name-'.repeat(12)}preview.vue`;
+    const longFilePath = `C:\\workspace\\packages\\web-core\\test\\e2e\\${longFileName}`;
+    const centers = await rows.evaluateAll((elements) =>
+      elements.flatMap((row) => {
+        const file = row.querySelector('.conversation-file-change-button')!.getBoundingClientRect();
+        return [
+          ...row.querySelectorAll(
+            '.conversation-file-change-status, .conversation-file-change-stats'
+          )
+        ]
+          .filter((element) => element.textContent!.trim().length > 0)
+          .map((element) => {
+            const bounds = element.getBoundingClientRect();
+            return Math.abs(bounds.y + bounds.height / 2 - file.y - file.height / 2);
+          });
+      })
+    );
+    expect(centers.every((difference) => difference < 1)).toBe(true);
     await expect(
       files.getByRole('button', { name: 'Copy public record', exact: true })
     ).toHaveCount(0);
@@ -242,7 +260,7 @@ for (const [width, theme] of [
       'pelican.svg',
       'preview.ts',
       'preview.ts',
-      'design-notes.md',
+      longFileName,
       'pelican.png'
     ]);
     await expect(rows.locator('.file-type-icon')).toHaveCount(5);
@@ -250,12 +268,24 @@ for (const [width, theme] of [
       'assets/illustrations/pelican.svg',
       'src/preview.ts',
       'src/preview.ts',
-      'C:\\workspace\\docs\\design-notes.md',
+      longFilePath,
       'assets/illustrations/line\nbreak/pelican.png'
     ]);
     await expect(rows.first().locator('.change-additions')).toHaveText('+144');
     await expect(rows.first().locator('.change-deletions')).toHaveText('-0');
     await expect(rows.nth(3).locator('.conversation-file-change-stats')).toBeEmpty();
+    for (const selector of ['.conversation-file-change-name', '.conversation-file-change-path']) {
+      const text = rows.nth(3).locator(selector);
+      await expect(text).toHaveCSS('white-space', 'nowrap');
+      await expect(text).toHaveCSS('text-overflow', 'ellipsis');
+      const geometry = await text.evaluate((element) => ({
+        clipped: element.scrollWidth > element.clientWidth + 1,
+        height: element.getBoundingClientRect().height,
+        lineHeight: parseFloat(getComputedStyle(element).lineHeight)
+      }));
+      expect(geometry.clipped).toBe(true);
+      expect(geometry.height).toBeCloseTo(geometry.lineHeight, 0);
+    }
     await expect(rows.nth(4).locator('.conversation-file-change-note')).toBeVisible();
     for (const index of [0, 1, 2]) {
       await rows.nth(index).getByRole('button').click();
@@ -265,16 +295,15 @@ for (const [width, theme] of [
     }
     await expect(page.getByTestId('opened-file')).toBeEmpty();
     await rows.nth(3).getByRole('button').click();
-    await expect(page.getByTestId('opened-file')).toHaveText(
-      JSON.stringify(['C:\\workspace\\docs\\design-notes.md', false])
-    );
+    await expect(page.getByTestId('opened-file')).toHaveText(JSON.stringify([longFilePath, false]));
     await rows
       .nth(3)
       .getByRole('button')
       .click({ modifiers: ['Control'] });
-    await expect(page.getByTestId('opened-file')).toHaveText(
-      JSON.stringify(['C:\\workspace\\docs\\design-notes.md', true])
-    );
+    await expect(page.getByTestId('opened-file')).toHaveText(JSON.stringify([longFilePath, true]));
+    await page.mouse.move(0, 0);
+    await rows.nth(3).getByRole('button').hover();
+    await expect(page.getByRole('tooltip')).toContainText(longFilePath);
     await rows.nth(4).getByRole('button').click();
     await expect(page.getByTestId('opened-file')).toHaveText(
       JSON.stringify(['assets/illustrations/line\nbreak/pelican.png', false])
