@@ -39,10 +39,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(geometry.top).toBeGreaterThan(0);
     expect(geometry.bottom).toBeCloseTo(geometry.top, 1);
     expect(parseFloat(geometry.radius)).toBeGreaterThan(0);
+    const rail = (await page.locator('.activity-rail').boundingBox())!;
     const buttons = page.locator('.activity-rail nav > button');
     for (const button of await buttons.all()) {
       const bounds = (await button.boundingBox())!;
-      const rail = (await page.locator('.activity-rail').boundingBox())!;
       expect(bounds.width).toBeCloseTo(bounds.height, 1);
       expect(bounds.x - rail.x).toBeCloseTo(rail.x + rail.width - bounds.x - bounds.width, 1);
       expect(bounds.x).toBeGreaterThan(rail.x);
@@ -51,11 +51,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       path: testInfo.outputPath(`resource-sidebar-${theme}.png`),
       clip: { x: 0, y: 0, width: Math.ceil(geometry.left + geometry.width), height: 900 }
     });
-    await page.getByRole('button', { name: 'Toggle resource sidebar', exact: true }).click();
+    const logo = page.getByTestId('workbench-brand').getByRole('img');
+    await expect(logo).toBeVisible();
+    const logoBounds = (await logo.boundingBox())!;
+    expect(logoBounds.x + logoBounds.width / 2).toBeCloseTo(rail.x + rail.width / 2, 1);
+    const toggle = page.getByRole('button', { name: 'Toggle resource sidebar', exact: true });
+    await toggle.click();
     await expect(tree).toBeHidden();
-    await page.getByRole('button', { name: 'Toggle resource sidebar', exact: true }).click();
+    expect(await logo.boundingBox()).toEqual(logoBounds);
+    await toggle.click();
     await expect(tree).toBeVisible();
     await expect.poll(() => sidebarGeometry(tree)).toEqual(geometry);
+    expect(await logo.boundingBox()).toEqual(logoBounds);
 
     await page.route('**/api/**', (route) =>
       route.fulfill({ json: { items: [], nextCursor: null } })

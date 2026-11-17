@@ -662,8 +662,8 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   await expect(page.locator('html')).toHaveClass(/console-ui/);
   await expect(page.locator('html')).toHaveCSS('font-size', '17.6px');
   await expect(page.locator('html')).toHaveCSS('--el-font-size-small', '14px');
-  await expect(page.getByTestId('workbench-brand')).toHaveCSS('width', '52px');
-  await expect(page.locator('.activity-rail')).toHaveCSS('width', '52px');
+  await expect(page.getByTestId('workbench-brand')).toHaveCSS('width', '61px');
+  await expect(page.locator('.activity-rail')).toHaveCSS('width', '61px');
   const navigationBounds = await page
     .getByRole('button', { name: '工作', exact: true })
     .evaluate((button) => {

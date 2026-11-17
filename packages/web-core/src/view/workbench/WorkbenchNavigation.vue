@@ -190,10 +190,7 @@ function openBlankMenu(event: MouseEvent): void {
 </script>
 
 <template>
-  <header
-    :class="['workbench-brand', { collapsed: sidebarCollapsed }]"
-    data-testid="workbench-brand"
-  >
+  <header class="workbench-brand" data-testid="workbench-brand">
     <a
       v-tooltip="$t('common.productVersion', { version: webVersion })"
       class="brand-home-link"
@@ -415,22 +412,10 @@ function openBlankMenu(event: MouseEvent): void {
 .workbench-brand {
   position: fixed;
   z-index: 5;
-  inset: 0 auto auto 0;
   display: flex;
-  width: var(--mar-workbench-sidebar-total-width);
   height: var(--mar-sidebar-header-height);
   align-items: center;
-  gap: 10px;
   background: var(--mar-bg-chrome);
-  padding: 0 18px;
-  overflow: hidden;
-}
-
-.workbench-brand.collapsed {
-  width: var(--mar-activity-rail-width);
-  gap: 0;
-  overflow: hidden;
-  padding: 0 8px;
 }
 
 .brand-home-link {
@@ -576,13 +561,6 @@ function openBlankMenu(event: MouseEvent): void {
     font-size: 16px;
   }
 
-  .workbench-brand {
-    transition:
-      width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),
-      padding var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
-  }
-
-  .console-shell:has(.workspace-tree-resize.dragging) .workbench-brand,
   .console-shell:has(.workspace-tree-resize.dragging) .workspace-tree {
     transition: none;
   }
@@ -701,14 +679,6 @@ function openBlankMenu(event: MouseEvent): void {
     border-top: 0;
     border-bottom: 1px solid var(--mar-border-default);
     border-right: 0;
-    padding: 0 12px;
-  }
-}
-
-@media (max-width: 767px) {
-  .workbench-brand.collapsed {
-    width: 100%;
-    gap: 0;
     padding: 0 12px;
   }
 }
@@ -875,7 +845,6 @@ function openBlankMenu(event: MouseEvent): void {
 <style scoped>
 @media (prefers-reduced-motion: reduce) {
   .workspace-tree,
-  .workbench-brand,
   .sidebar-scrim {
     transition: none;
   }
