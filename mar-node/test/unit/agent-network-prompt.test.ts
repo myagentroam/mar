@@ -131,8 +131,10 @@ it.each([false, true])(
   'provides file preview guidance independently of Agent Network (%s)',
   async (networkEnabled) => {
     const test = await fixture(false, undefined, [], undefined, networkEnabled);
-    const guidance =
-      'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview.';
+    const guidance = [
+      'Use Markdown links with absolute paths for key files.',
+      'For key deliverables, list their links as bullets in a separate section at the end of the final response.'
+    ].join('\n');
     for (const mode of ['run', 'plan', 'compact'] as const) {
       const composed = await test.context.prompts.composeDefault({ mode, tools: ['read'] });
       expect(composed.sections.filter((section) => section.id === 'mar.node.file-links')).toEqual([
