@@ -1417,7 +1417,10 @@ function stepDuration(item: ConversationItem): string | undefined {
                   >
                     {{ task.status }}
                   </span>
-                  <div class="task-list-content mar-conversation-list-content">
+                  <div
+                    class="task-list-content mar-conversation-list-content mar-conversation-list-leading"
+                  >
+                    <span class="mar-conversation-list-bullet" aria-hidden="true" />
                     <AgentMarkdown
                       :content="task.text"
                       v-bind="workspaceRoot === undefined ? {} : { workspaceRoot }"

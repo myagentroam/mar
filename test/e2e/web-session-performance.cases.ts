@@ -116,6 +116,16 @@ async function expectMetricsAndInfoOnSameLine(metrics: Locator, info: Locator) {
     )
   ).toBeLessThanOrEqual(2);
   expect(infoBounds!.x).toBeGreaterThanOrEqual(metricsBounds!.x + metricsBounds!.width);
+  expect(infoBounds!.height).toBeLessThanOrEqual(metricsBounds!.height);
+  const iconBounds = await info.locator('[data-mar-icon="info"]').boundingBox();
+  expect(iconBounds).not.toBeNull();
+  const textSize = await metrics.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  expect(iconBounds!.height).toBeLessThanOrEqual(textSize);
+  expect(
+    Math.abs(iconBounds!.y + iconBounds!.height / 2 - (infoBounds!.y + infoBounds!.height / 2))
+  ).toBeLessThanOrEqual(1);
 }
 
 async function publishRun(

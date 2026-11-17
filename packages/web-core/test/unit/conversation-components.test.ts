@@ -1262,6 +1262,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       ]
     });
     expect(html.match(/class="tool-detail-copy\b/gu)).toHaveLength(1);
+    expect(html.match(/class="mar-conversation-list-bullet"/gu)).toHaveLength(1);
     expect(html).toContain(locale === 'en-US' ? 'Copy public record' : '复制公开记录');
     expect(html).toContain('Keep **task Markdown**');
     expect(html).not.toContain('detail-preview');
@@ -1273,6 +1274,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       turns: [conversationTurn([conversationItem('empty-tasks', 'todo_list', { items: [] })])]
     });
     expect(html.match(/data-mar-icon="task-list"/gu)).toHaveLength(1);
+    expect(html).not.toContain('mar-conversation-list-bullet');
     expect(html).not.toContain('data-mar-icon="chevron-right"');
     expect(html).not.toContain('task-list-items');
     expect(html).not.toContain('tool-detail-copy');
