@@ -319,6 +319,23 @@ function closeStandaloneFileWindow(): void {
   padding: 1rem;
 }
 
+@media (min-width: 768px) {
+  .console-shell:not(.console-shell--gate) {
+    isolation: isolate;
+  }
+
+  .console-shell:not(.console-shell--gate)::before {
+    content: '';
+    position: fixed;
+    z-index: -1;
+    inset: 8px 8px 8px calc(var(--mar-activity-rail-width) + 8px);
+    border: 1px solid var(--mar-border-subtle);
+    border-radius: var(--mar-radius-surface);
+    background: var(--mar-bg-panel);
+    pointer-events: none;
+  }
+}
+
 .workspace-upload-input {
   display: none;
 }

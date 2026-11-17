@@ -198,13 +198,6 @@ function openBlankMenu(event: MouseEvent): void {
     >
       <img :src="logoIcon" :alt="$t('common.productName')" />
     </a>
-    <div class="brand-copy">
-      <div class="brand-heading">
-        <strong>{{ $t('common.productName') }}</strong>
-        <span class="brand-version">{{ webVersion }}</span>
-      </div>
-      <span>{{ $t('navigation.brandSummary') }}</span>
-    </div>
   </header>
   <aside class="activity-rail" :aria-label="$t('navigation.main')">
     <nav :aria-label="$t('navigation.main')">
@@ -434,10 +427,6 @@ function openBlankMenu(event: MouseEvent): void {
   padding: 0 8px;
 }
 
-.workbench-brand.collapsed .brand-copy {
-  display: none;
-}
-
 .brand-home-link {
   display: block;
   flex: 0 0 auto;
@@ -455,40 +444,6 @@ function openBlankMenu(event: MouseEvent): void {
   height: var(--mar-brand-logo-size);
   flex: 0 0 auto;
   object-fit: contain;
-}
-
-.brand-copy {
-  display: grid;
-  min-width: 0;
-  gap: 0.25rem;
-}
-
-.brand-heading {
-  display: flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  line-height: 1.2;
-}
-
-.brand-heading strong {
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.brand-copy .brand-version {
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 400;
-  line-height: 1.2;
-  letter-spacing: normal;
-}
-
-.brand-copy span {
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.2;
 }
 
 .activity-rail nav {
@@ -648,12 +603,37 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail {
-    border-right: 1px solid var(--mar-border-subtle);
+    border-right: 0;
+    background: var(--mar-bg-page);
   }
 
   .workbench-brand {
+    inset: 8px auto auto 0;
+    width: var(--mar-activity-rail-width);
+    justify-content: center;
+    border-right: 0;
+    border-bottom: 0;
+    background: var(--mar-bg-page);
+    padding: 0;
+  }
+
+  .workspace-tree {
+    box-sizing: border-box;
+    inset: 9px auto 9px calc(var(--mar-activity-rail-width) + 9px);
+    width: calc(var(--mar-workbench-sidebar-width) - 9px);
+    border: 0;
     border-right: 1px solid var(--mar-border-subtle);
-    border-bottom: 1px solid var(--mar-border-subtle);
+    border-radius: calc(var(--mar-radius-surface) - 1px) 0 0 calc(var(--mar-radius-surface) - 1px);
+    background: var(--mar-bg-panel);
+  }
+
+  .workspace-tree.collapsed {
+    border: 0;
+  }
+
+  .documentation-link {
+    top: calc(9px + (var(--mar-workbench-header-height) - var(--mar-utility-control-size)) / 2);
+    right: 16px;
   }
 }
 
@@ -742,12 +722,6 @@ function openBlankMenu(event: MouseEvent): void {
     width: 100%;
     gap: 0;
     padding: 0 12px;
-  }
-}
-
-@media (max-width: 767px) {
-  .brand-copy {
-    display: none;
   }
 }
 

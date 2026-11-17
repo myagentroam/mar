@@ -16,7 +16,9 @@ describe('enterprise Web package boundary', () => {
         for (const stored of [null, '', 'unknown-theme', 'daylight', 'vscode-dark-2026']) {
           const attributes = new Map<string, string>();
           const classes = new Set<string>();
-          const themeColor = { content: '#ffffff' };
+          const themeColor = {
+            content: read(entry).match(/name="theme-color" content="([^"]+)"/u)![1]
+          };
           runInNewContext(script!, {
             location: { pathname },
             localStorage: { getItem: () => stored },
@@ -29,14 +31,20 @@ describe('enterprise Web package boundary', () => {
             }
           });
 
-          const dark = pathname.startsWith('/console') && stored !== 'daylight';
+          const dark = stored !== 'daylight';
           expect(attributes.get('data-theme')).toBe(dark ? 'vscode-dark-2026' : undefined);
           expect(classes.has('dark')).toBe(dark);
-          expect(themeColor.content).toBe(dark ? '#0e1116' : '#ffffff');
+          expect(themeColor.content).toBe(dark ? '#14181e' : '#f7f9fd');
         }
       }
     }
   );
+
+  it('uses the default page background for PWA launch colors', () => {
+    const manifest = JSON.parse(read('mar-web-console/public/manifest.webmanifest'));
+    expect(manifest.theme_color).toBe('#14181e');
+    expect(manifest.background_color).toBe(manifest.theme_color);
+  });
 
   it('uses a private workspace implementation with a thin application entry', () => {
     const app = JSON.parse(read('mar-web-console/package.json'));

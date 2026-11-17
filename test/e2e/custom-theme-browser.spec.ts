@@ -1158,8 +1158,18 @@ test('theme choices apply immediately without replacing an unsaved draft', async
 }, testInfo) => {
   const options = page.locator('.theme-option');
   const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
+  const expectChromeOnPage = async () => {
+    const background = await page
+      .locator('body')
+      .evaluate((element) => getComputedStyle(element).backgroundColor);
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      'content',
+      resolvedColorToHex(background)
+    );
+  };
   await expect(page.locator('.theme-settings').getByRole('table')).toHaveCount(0);
   await expect(options.first().getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+  await expectChromeOnPage();
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     for (const option of [options.nth(1), options.first()]) {
@@ -1188,22 +1198,27 @@ test('theme choices apply immediately without replacing an unsaved draft', async
     .getByRole('button', { name: /^Inspect /u })
     .click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expectChromeOnPage();
   await options.nth(1).getByRole('button', { name: 'Apply theme', exact: true }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/u);
   expect(await page.evaluate(() => localStorage.getItem('mar.theme'))).toBe('daylight');
+  await expectChromeOnPage();
   await useThemeMenu(page, options.first(), 'Duplicate');
   const saved = JSON.stringify({
     version: 1,
     name: 'Violet',
-    colors: { '--mar-color-brand': '#c792ea' }
+    colors: { '--mar-color-brand': '#c792ea', '--mar-bg-page': '#302435' }
   });
   await editor.fill(saved);
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+  await expectChromeOnPage();
   const violet = options.filter({ hasText: 'Violet' });
   await violet.getByRole('button', { name: 'Apply theme', exact: true }).click();
   await expect(violet.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+  await expectChromeOnPage();
   await page.reload();
   await expect(violet.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
+  await expectChromeOnPage();
   expect(
     await page.evaluate(() => document.documentElement.style.getPropertyValue('--mar-color-brand'))
   ).toBe('#c792ea');
@@ -1213,6 +1228,7 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   await expect(editor).toHaveValue(saved + ' ');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('mar.theme'))).toBe('vscode-dark-2026');
+  await expectChromeOnPage();
   await page.screenshot({
     path: testInfo.outputPath('theme-selector.png'),
     fullPage: true,

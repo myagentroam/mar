@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   createThemePreferenceService,
+  CUSTOM_THEMES_STORAGE_KEY,
   parseStoredThemePreference,
   THEME_STORAGE_KEY
 } from '../../src/service/theme-preference-service';
@@ -41,11 +42,14 @@ it('defines every shared font role and Element Plus status shade consumed by com
   }
 });
 
-function stubBrowserEnvironment() {
+function stubBrowserEnvironment(
+  pageColors = { 'vscode-dark-2026': '#14181e', daylight: '#f7f9fd' }
+) {
   const storage = new Map<string, string>();
   const classes = new Set<string>();
   const attributes = new Map<string, string>();
   const themeColorAttributes = new Map<string, string>();
+  const styles = new Map<string, string>();
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
@@ -53,6 +57,10 @@ function stubBrowserEnvironment() {
   });
   vi.stubGlobal('document', {
     documentElement: {
+      style: {
+        setProperty: (name: string, value: string) => styles.set(name, value),
+        removeProperty: (name: string) => styles.delete(name)
+      },
       classList: {
         add: (name: string) => classes.add(name),
         remove: (name: string) => classes.delete(name),
@@ -69,6 +77,13 @@ function stubBrowserEnvironment() {
           }
         : null
   });
+  vi.stubGlobal('getComputedStyle', () => ({
+    getPropertyValue: (name: string) =>
+      styles.get(name) ??
+      (name === '--mar-bg-page'
+        ? pageColors[attributes.has('data-theme') ? 'vscode-dark-2026' : 'daylight']
+        : '')
+  }));
   return { storage, classes, attributes, themeColorAttributes };
 }
 
@@ -114,7 +129,7 @@ describe('Web theme preference', () => {
       expect(service.theme.value).toBe('vscode-dark-2026');
       expect(attributes.get('data-theme')).toBe('vscode-dark-2026');
       expect(classes.has('dark')).toBe(true);
-      expect(themeColorAttributes.get('content')).toBe('#0e1116');
+      expect(themeColorAttributes.get('content')).toBe('#14181e');
       expect(storage.get(THEME_STORAGE_KEY)).toBe(stored ?? undefined);
     }
   );
@@ -141,7 +156,7 @@ describe('Web theme preference', () => {
     expect(storage.get(THEME_STORAGE_KEY)).toBe('vscode-dark-2026');
     expect(attributes.get('data-theme')).toBe('vscode-dark-2026');
     expect(classes.has('dark')).toBe(true);
-    expect(themeColorAttributes.get('content')).toBe('#0e1116');
+    expect(themeColorAttributes.get('content')).toBe('#14181e');
 
     service.setTheme('daylight');
     expect(service.theme.value).toBe('daylight');
@@ -149,5 +164,33 @@ describe('Web theme preference', () => {
     expect(attributes.has('data-theme')).toBe(false);
     expect(classes.has('dark')).toBe(false);
     expect(themeColorAttributes.get('content')).toBe('#f7f9fd');
+  });
+
+  it('keeps PWA chrome on the applied page color through built-in and custom theme changes', () => {
+    const pageColors = { 'vscode-dark-2026': '#182026', daylight: '#eff3f8' };
+    const { themeColorAttributes, storage } = stubBrowserEnvironment(pageColors);
+    const service = createThemePreferenceService((theme) => ({
+      '--mar-bg-page': pageColors[theme]
+    }));
+    expect(themeColorAttributes.get('content')).toBe(pageColors['vscode-dark-2026']);
+    service.setTheme('daylight');
+    expect(themeColorAttributes.get('content')).toBe(pageColors.daylight);
+
+    const source = (color: string) => JSON.stringify({ colors: { '--mar-bg-page': color } });
+    const custom = service.saveCustomTheme(source('#284038'));
+    expect(themeColorAttributes.get('content')).toBe(pageColors.daylight);
+    service.setTheme(custom.id);
+    expect(themeColorAttributes.get('content')).toBe('#284038');
+    service.saveCustomTheme(source('#dce8df'), custom.id);
+    expect(themeColorAttributes.get('content')).toBe('#dce8df');
+
+    const restored = createThemePreferenceService((theme) => ({
+      '--mar-bg-page': pageColors[theme]
+    }));
+    expect(restored.theme.value).toBe(custom.id);
+    expect(themeColorAttributes.get('content')).toBe('#dce8df');
+    expect(storage.get(CUSTOM_THEMES_STORAGE_KEY)).toContain(custom.id);
+    restored.deleteCustomTheme(custom.id);
+    expect(themeColorAttributes.get('content')).toBe(pageColors['vscode-dark-2026']);
   });
 });
