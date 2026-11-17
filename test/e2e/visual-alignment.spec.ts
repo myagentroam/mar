@@ -957,6 +957,46 @@ test('Shared tooltip follows keyboard focus on real tree rows and workspace tabs
   await expect(page.locator('.mar-tooltip:visible')).toHaveText('Workspace one');
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Workspace header toggle keeps hover and focus inset from the divider: ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.goto(
+      `${fixture.url}workspace-tabs.html?locale=en-US&placement=header&layout=dynamic&theme=${theme}`
+    );
+    const toggle = page.getByRole('button', { name: 'Collapse sidebar', exact: true });
+    for (const expanded of [true, false]) {
+      const button = page.locator('.workbench-tree-toggle');
+      await expect(button).toHaveAttribute('aria-expanded', String(expanded));
+      await button.hover();
+      await expect(button).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const spacing = await button.evaluate((element) => {
+        const button = element.getBoundingClientRect();
+        const header = element.closest('header')!.getBoundingClientRect();
+        return {
+          left: button.left - header.left,
+          top: button.top - header.top,
+          bottom: header.bottom - button.bottom
+        };
+      });
+      expect(spacing.left).toBeGreaterThanOrEqual(4);
+      expect(spacing.top).toBeGreaterThanOrEqual(4);
+      expect(spacing.bottom).toBeGreaterThanOrEqual(4);
+      await button.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(button).toBeFocused();
+      await expect(button).not.toHaveCSS('outline-style', 'none');
+      await page.locator('.workbench-header').screenshot({
+        path: testInfo.outputPath(`header-toggle-${expanded ? 'expanded' : 'collapsed'}.png`)
+      });
+      await button.click();
+    }
+    await expect(toggle).toBeVisible();
+  });
+}
+
 test('Workspace header tabs scroll horizontally without vertical overflow or clipped labels', async ({
   page
 }, testInfo) => {
