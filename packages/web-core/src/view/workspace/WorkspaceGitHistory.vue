@@ -573,20 +573,6 @@ button.file-explorer-utility-button:disabled {
   min-width: 0;
 }
 
-.history-filter :deep(.el-select__wrapper) {
-  min-height: 26px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  padding-inline: 6px;
-}
-
-.history-filter :deep(.el-select__wrapper:hover),
-.history-filter :deep(.el-select__wrapper.is-focused) {
-  background: var(--mar-fill-hover);
-  box-shadow: none;
-}
-
 button.history-refresh {
   --mar-action-icon-size: 14px;
   width: 24px;
