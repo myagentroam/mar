@@ -585,8 +585,6 @@ function onLinkClick(event: MouseEvent): void {
   border: 0;
   border-radius: 0 0 var(--mar-radius-control) var(--mar-radius-control);
   background: transparent;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .agent-markdown :deep(.agent-markdown-code-copy) {

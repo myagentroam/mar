@@ -224,7 +224,7 @@ if (markdownBlocksFixture) {
               '```typescript',
               '// Preserve original whitespace when copying.',
               'type Task = { title: string; completed: boolean };',
-              'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-must-wrap-in-the-conversation-without-changing-the-original-copied-code";',
+              'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-stays-on-one-source-line-without-changing-the-original-copied-code";',
               '',
               'export function pendingTitles(tasks: Task[]): string[] {',
               '  return tasks.filter((task) => !task.completed).map((task) => task.title);',

@@ -10,7 +10,7 @@ test.afterAll(async () => fixture?.close());
 const source = [
   '// Preserve original whitespace when copying.',
   'type Task = { title: string; completed: boolean };',
-  'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-must-wrap-in-the-conversation-without-changing-the-original-copied-code";',
+  'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-stays-on-one-source-line-without-changing-the-original-copied-code";',
   '',
   'export function pendingTitles(tasks: Task[]): string[] {',
   '  return tasks.filter((task) => !task.completed).map((task) => task.title);',
@@ -20,7 +20,7 @@ const source = [
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
-    test(`Conversation code headers, original copy and automatic wrapping at ${width}px ${theme}`, async ({
+    test(`Conversation code headers, original copy and local scrolling at ${width}px ${theme}`, async ({
       page
     }, testInfo) => {
       await page.setViewportSize({ width, height: 1000 });
@@ -61,7 +61,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(block.locator('pre code')).toHaveText(source);
       const geometry = await block.evaluate((element) => {
         const pre = element.querySelector('pre')!;
-        const code = pre.querySelector('code')!;
         const heading = element.querySelector('.agent-markdown-code-header')!;
         const action = element.querySelector('[data-code-copy]')!;
         return {
@@ -76,8 +75,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             .getBoundingClientRect().left,
           scrollWidth: pre.scrollWidth,
           clientWidth: pre.clientWidth,
-          codeHeight: code.getBoundingClientRect().height,
-          lineHeight: parseFloat(getComputedStyle(code).lineHeight),
+          scrollHeight: pre.scrollHeight,
+          clientHeight: pre.clientHeight,
           pageWidth: document.documentElement.scrollWidth,
           viewport: document.documentElement.clientWidth
         };
@@ -86,12 +85,34 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(geometry.actionRight).toBeLessThan(geometry.blockRight);
       expect(geometry.languageLeft).toBeCloseTo(geometry.contentLeft, 1);
       expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewport);
-      await expect(block.locator('pre')).toHaveCSS('white-space', 'pre-wrap');
-      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
-      if (width === 390)
-        expect(geometry.codeHeight).toBeGreaterThan(
-          source.split('\n').length * geometry.lineHeight
-        );
+      const pre = block.locator('pre');
+      await expect(pre).toHaveCSS('white-space', 'pre');
+      await expect(pre).toHaveCSS('overflow-x', 'auto');
+      expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+      expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight + 1);
+      if (width === 1280) {
+        const shortCode = await blocks
+          .nth(1)
+          .locator('pre')
+          .evaluate((element) => ({
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth
+          }));
+        expect(shortCode.scrollWidth).toBeLessThanOrEqual(shortCode.clientWidth + 1);
+      }
+      const headerBefore = await header.boundingBox();
+      const copyBefore = await copy.boundingBox();
+      expect(
+        await pre.evaluate((element) => {
+          element.scrollLeft = element.scrollWidth;
+          return element.scrollLeft;
+        })
+      ).toBeGreaterThan(0);
+      expect((await header.boundingBox())!.x).toBeCloseTo(headerBefore!.x, 1);
+      expect((await copy.boundingBox())!.x).toBeCloseTo(copyBefore!.x, 1);
+      await pre.evaluate((element) => {
+        element.scrollLeft = 0;
+      });
       const keywordColor = await block
         .locator('.hljs-keyword')
         .first()
