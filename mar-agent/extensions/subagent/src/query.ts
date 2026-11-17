@@ -30,7 +30,7 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
           : await agent
               .listSessions({
                 parentSessionId: context.sessionId,
-                ...(input.limit === undefined ? {} : { limit: input.limit }),
+                limit: input.limit ?? 10,
                 ...(input.cursor === undefined ? {} : { cursor: input.cursor })
               })
               .then((page) => ({
@@ -97,7 +97,7 @@ export function registerQueryTools(context: SessionExtensionContext, agent: Agen
         title: session.title,
         parentSessionId: session.source.parentSessionId ?? null,
         modelId: session.modelId,
-        reasoningEffort: session.reasoningEffort,
+        effort: session.reasoningEffort,
         lastActivityAt: session.lastActivityAt,
         ...(history
           ? {

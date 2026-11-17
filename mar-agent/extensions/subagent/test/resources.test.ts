@@ -19,7 +19,7 @@ it('projects all live children before at most sixteen recent terminal children',
     workspace: 'work',
     source: { parentSessionId: 'parent' },
     subscribe: () => ({ activeExecutionId: 'live-execution', unsubscribe() {} })
-  } as AgentLiveSession;
+  } as unknown as AgentLiveSession;
   let provider!: ExtensionSessionContextProvider;
   const agent = {
     observeSessionExecutions: () => ({ sessions: [active], unsubscribe() {} }),

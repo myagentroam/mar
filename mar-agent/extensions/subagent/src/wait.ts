@@ -20,6 +20,7 @@ import {
   type ChildSnapshot
 } from './snapshot.js';
 import { modelWaitAgent } from './wait-output.js';
+import { modelStatus } from './model-contract.js';
 
 export type WaitInput = {
   agentId?: string | undefined;
@@ -208,7 +209,6 @@ export function registerWait(
     inputSchema: {
       type: 'object',
       properties: {
-        agentId: { type: ['string', 'null'], minLength: 1 },
         agentIds: {
           type: ['array', 'null'],
           minItems: 1,
@@ -225,13 +225,12 @@ export function registerWait(
     async execute(raw, call) {
       const value = raw as { [K in keyof WaitInput]: WaitInput[K] | null };
       const input: WaitInput = {
-        agentId: value.agentId ?? undefined,
         agentIds: value.agentIds ?? undefined,
         mode: value.mode ?? undefined,
         waitFor: value.waitFor ?? undefined,
         waitMs: value.waitMs ?? undefined
       };
-      return waitForChild(
+      const result = await waitForChild(
         context,
         agent,
         observations,
@@ -241,6 +240,10 @@ export function registerWait(
         observations,
         history
       );
+      return {
+        content: result.content,
+        data: JSON.parse(result.content) as Record<string, unknown>
+      };
     }
   });
 }
@@ -437,7 +440,7 @@ export async function waitForChild(
             for (const release of releases) release();
           };
         },
-        waitMs: mode === 'model' ? Math.max(10000, duration) : duration,
+        waitMs: duration,
         signal: call.signal,
         ...(mode === 'model' ? { interrupt: call.waitInterrupt } : {})
       });
@@ -544,16 +547,42 @@ export async function waitForChild(
             .map((value) => value.item.session.id)
         };
     if (mode === 'native') return { data, content: JSON.stringify(data) };
-    const modelAgents = agents.map((item) =>
-      modelWaitAgent(item, Math.floor(34000 / agents.length))
-    );
-    const modelData = single
-      ? {
-          ...modelAgents[0],
-          waitFor,
-          ...(groupOutcome === 'interrupted' ? { waitOutcome: 'interrupted', reason: 'steer' } : {})
-        }
-      : { ...data, agents: modelAgents };
+    const modelAgents = agents.map((item) => {
+      const {
+        executionId: _executionId,
+        description: _description,
+        role: _role,
+        modelId: _modelId,
+        modelName: _modelName,
+        reasoningEffort: _effort,
+        extensionId: _extensionId,
+        turnId: _turnId,
+        receipt: fact,
+        ...snapshot
+      } = { turnId: undefined, ...item };
+      return modelWaitAgent(
+        {
+          ...snapshot,
+          status: modelStatus(item.status),
+          ...(fact ? { receipt: { status: fact.status } } : {})
+        },
+        Math.floor(34000 / agents.length)
+      );
+    });
+    const modelData = {
+      waitFor,
+      waitOutcome: groupOutcome,
+      ...(groupOutcome === 'interrupted' ? { reason: 'steer' } : {}),
+      ...(!single
+        ? {
+            mode: input.mode ?? 'any',
+            pendingAgentIds: values
+              .filter((value) => !value.ready)
+              .map((value) => value.item.session.id)
+          }
+        : {}),
+      agents: modelAgents
+    };
     return { data, content: JSON.stringify(modelData) };
   } finally {
     for (const item of targets) item.close();

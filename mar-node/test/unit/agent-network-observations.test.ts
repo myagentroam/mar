@@ -22,6 +22,91 @@ function observationPayload(content: string) {
 }
 
 describe('live Agent Network observations', () => {
+  it('retains ten updates per relationship across executions and reports eviction until acknowledged', async () => {
+    const network = new AgentNetworkObservations();
+    const parent = network.attach('parent');
+    for (let index = 0; index < 10; index++)
+      publish(network, 'parent', 'child', 'message', `message-${index}`, `execution-${index}`);
+    const withinLimit = parent.capture('child', 'execution-0');
+    expect(withinLimit).toBeDefined();
+    expect(withinLimit).not.toHaveProperty('omittedUpdates');
+    publish(network, 'parent', 'child', 'message', 'message-10', 'execution-10');
+    publish(network, 'parent', 'sibling', 'message', 'Independent report');
+    expect(parent.capture('child', 'execution-0')).toBeUndefined();
+    const [first, sibling] = await parent.collect(new AbortController().signal);
+    expect(observationPayload(first!.content)).toMatchObject({
+      executionId: 'execution-1',
+      omittedUpdates: 1,
+      hasMoreUpdates: true,
+      updates: [{ value: 'message-1' }]
+    });
+    expect(sibling!.content).toContain('Independent report');
+    expect(observationPayload(sibling!.content)).not.toHaveProperty('omittedUpdates');
+    expect((await parent.collect(new AbortController().signal))[0]!.content).toBe(first!.content);
+    first!.acknowledge();
+    sibling!.acknowledge();
+    expect(parent.capture('child')?.omittedUpdates).toBeUndefined();
+    // An old acknowledgment must not clear a new overflow notice.
+    for (const index of [11, 12])
+      publish(network, 'parent', 'child', 'message', `message-${index}`, `execution-${index}`);
+    first!.acknowledge();
+    const [next] = await parent.collect(new AbortController().signal);
+    expect(observationPayload(next!.content)).toMatchObject({
+      executionId: 'execution-3',
+      omittedUpdates: 1
+    });
+    next!.acknowledge();
+    for (let index = 4; index <= 12; index++) {
+      const [item] = await parent.collect(new AbortController().signal);
+      const payload = observationPayload(item!.content);
+      expect(payload.executionId).toBe(`execution-${index}`);
+      expect(payload).not.toHaveProperty('omittedUpdates');
+      if (index === 12) expect(payload).not.toHaveProperty('hasMoreUpdates');
+      item!.acknowledge();
+    }
+    expect(await parent.collect(new AbortController().signal)).toEqual([]);
+    parent.close();
+  });
+
+  it('preserves overflow facts arriving between capture and acknowledgment', async () => {
+    const network = new AgentNetworkObservations();
+    const parent = network.attach('parent');
+    for (let index = 0; index < 11; index++)
+      publish(network, 'parent', 'child', 'message', `message-${index}`);
+    const snapshot = parent.capture('child')!;
+    expect(snapshot).toMatchObject({ omittedUpdates: 1 });
+    publish(network, 'parent', 'child', 'message', 'newest');
+    snapshot.acknowledge();
+    snapshot.acknowledge();
+    const [remaining] = await parent.collect(new AbortController().signal);
+    expect(observationPayload(remaining!.content)).toMatchObject({ omittedUpdates: 1 });
+    expect(remaining!.content).toContain('newest');
+    remaining!.acknowledge();
+    expect(await parent.collect(new AbortController().signal)).toEqual([]);
+    parent.close();
+  });
+
+  it('bounds file-only execution caches and reports evicted updates without reviving their result', () => {
+    const network = new AgentNetworkObservations();
+    const parent = network.attach('parent');
+    for (let index = 0; index < 11; index++) {
+      network.publish({
+        parentId: 'parent',
+        childId: 'child',
+        runId: 'run-1',
+        executionId: `execution-${index}`,
+        kind: 'files',
+        paths: [`file-${index}`]
+      });
+    }
+    // A later terminal must not resurrect an evicted execution's file snapshot.
+    publish(network, 'parent', 'child', 'terminal', 'SUCCEEDED', 'execution-0');
+    const evicted = parent.capture('child', 'execution-0');
+    expect(evicted?.result).toBeUndefined();
+    expect(evicted?.omittedUpdates).toBe(1);
+    parent.close();
+  });
+
   it.each([false, true])(
     'reports automatic continuation across executions without widening explicit capture (new Run=%s)',
     async (newRun) => {
@@ -79,6 +164,65 @@ describe('live Agent Network observations', () => {
     }
   );
 
+  it('does not evict retained message records to make room for file-only caches', async () => {
+    const network = new AgentNetworkObservations();
+    const parent = network.attach('parent');
+    network.publish({
+      parentId: 'parent',
+      childId: 'child',
+      runId: 'run',
+      executionId: 'reported',
+      kind: 'message',
+      value: 'Decision required',
+      final: true
+    });
+    network.publish({
+      parentId: 'parent',
+      childId: 'child',
+      runId: 'run',
+      executionId: 'reported',
+      kind: 'terminal',
+      value: 'SUCCEEDED'
+    });
+    for (let index = 0; index < 12; index++)
+      network.publish({
+        parentId: 'parent',
+        childId: 'child',
+        runId: 'run',
+        executionId: `files-${index}`,
+        kind: 'files',
+        paths: [`file-${index}`]
+      });
+    const [item] = await parent.collect(new AbortController().signal);
+    expect(item!.content).toContain('Decision required');
+    expect(observationPayload(item!.content).omittedUpdates).toBeGreaterThan(0);
+    item!.acknowledge();
+    parent.close();
+  });
+
+  it('keeps overflow separate from execution identity after a complete update group was evicted', () => {
+    const network = new AgentNetworkObservations();
+    const parent = network.attach('parent');
+    for (let index = 0; index < 11; index++)
+      network.publish({
+        parentId: 'parent',
+        childId: 'child',
+        runId: 'run',
+        executionId: `execution-${index}`,
+        kind: 'message',
+        value: `message-${index}`
+      });
+    expect(parent.capture('child', 'execution-0')).toBeUndefined();
+    const evicted = parent.captureOmissions('child');
+    expect(evicted).toMatchObject({ omittedUpdates: 1 });
+    expect(evicted).not.toHaveProperty('executionId');
+    evicted!.acknowledge();
+    expect(parent.captureOmissions('child')).toBeUndefined();
+    expect(parent.capture('child')!.updates).toHaveLength(1);
+    expect(parent.capture('child')).not.toHaveProperty('omittedUpdates');
+    parent.close();
+  });
+
   it('retains earlier final replies instead of treating every final as the summary', async () => {
     const network = new AgentNetworkObservations();
     const parent = network.attach('parent');
@@ -120,7 +264,8 @@ describe('live Agent Network observations', () => {
       }
       const delivered: string[] = [];
       const summaries: string[] = [];
-      for (let batch = 0; batch < expected.length; batch++) {
+      const retained = expected.slice(terminal ? -8 : -10);
+      for (let batch = 0; batch < retained.length; batch++) {
         const [item] = await parent.collect(new AbortController().signal);
         if (!item) break;
         expect(Buffer.byteLength(item.content)).toBeLessThanOrEqual(32768);
@@ -128,8 +273,10 @@ describe('live Agent Network observations', () => {
           item.content.slice('<mar_subagent_update>\n'.length, -'\n</mar_subagent_update>'.length)
         );
         expect(payload).not.toHaveProperty('updatesTruncated');
-        if (batch < expected.length - 1) expect(payload.hasMoreUpdates).toBe(true);
+        if (batch < retained.length - 1) expect(payload.hasMoreUpdates).toBe(true);
         else expect(payload).not.toHaveProperty('hasMoreUpdates');
+        if (batch === 0) expect(payload.omittedUpdates).toBe(expected.length - retained.length);
+        else expect(payload).not.toHaveProperty('omittedUpdates');
         if (payload.summary) summaries.push(payload.summary);
         for (const update of payload.updates) {
           expect(update).not.toHaveProperty('truncated');
@@ -138,7 +285,7 @@ describe('live Agent Network observations', () => {
         expect((await parent.collect(new AbortController().signal))[0]!.content).toBe(item.content);
         item.acknowledge();
       }
-      expect(delivered).toEqual(expected);
+      expect(delivered).toEqual(retained);
       expect(summaries).toEqual(terminal ? ['Final summary'] : []);
       expect(await parent.collect(new AbortController().signal)).toEqual([]);
       parent.close();

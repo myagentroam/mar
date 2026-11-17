@@ -12,6 +12,7 @@ import type {
 } from '@myagentroam/agent/extensions';
 import type { SessionObservations } from './observations.js';
 import type { StartAdmission } from './start.js';
+import { modelReceipt } from './model-contract.js';
 import { publicChildSnapshot } from './snapshot.js';
 import { historicalExecutionStatus } from './history.js';
 
@@ -94,7 +95,8 @@ export function registerControlTools(
         call,
         'model'
       );
-      return { data, content: JSON.stringify(data) };
+      const projected = modelReceipt('send', data);
+      return { data: projected, content: JSON.stringify(projected) };
     }
   });
   context.tools.register({
@@ -105,16 +107,16 @@ export function registerControlTools(
     inputSchema: {
       type: 'object',
       properties: {
-        agentId: { type: 'string', minLength: 1 },
-        executionId: { type: 'string', minLength: 1 }
+        agentId: { type: 'string', minLength: 1 }
       },
       required: ['agentId'],
       additionalProperties: false
     },
     async execute(value, call) {
-      const input = value as { agentId: string; executionId?: string };
-      const data = await stopChild(context, agent, observations, input, call);
-      return { data, content: JSON.stringify(data) };
+      const input = value as { agentId: string };
+      const data = await stopChild(context, agent, observations, input, call, 'model');
+      const projected = modelReceipt('stop', data);
+      return { data: projected, content: JSON.stringify(projected) };
     }
   });
 }
@@ -245,13 +247,14 @@ export async function sendChild(
   return data;
 }
 
-/** Stop through the Session owner; native callers use their own observation cursor. */
+/** Stop through the Session owner; only native receipts consume their returned observations. */
 export async function stopChild(
   context: SessionExtensionContext,
   agent: Agent,
   observations: SessionObservations,
   input: { agentId: string; executionId?: string },
-  call: ExtensionOperationContext
+  call: ExtensionOperationContext,
+  mode: 'model' | 'native'
 ) {
   const { child, session } = await target(agent, context.sessionId, input.agentId);
   if (!child) throw new AgentError('MAR_AGENT_SUBAGENT_NOT_FOUND', 'Session is not available.');
@@ -281,6 +284,6 @@ export async function stopChild(
     ...publicChildSnapshot(observations.snapshot(session.id, current.activeExecutionId)),
     ...(observation?.updates.length ? { updates: observation.updates } : {})
   };
-  observation?.acknowledge();
+  if (mode === 'native') observation?.acknowledge();
   return data;
 }

@@ -34,7 +34,7 @@ export function validateAgentWaitOptions(input: {
 /** One deadline and one notification subscription, with Session-scoped consumption. */
 export async function waitForAgentTargets(input: {
   readonly targets: readonly AgentWaitTarget[];
-  readonly observations: Pick<ParentObservations, 'capture' | 'subscribe'>;
+  readonly observations: Pick<ParentObservations, 'capture' | 'captureOmissions' | 'subscribe'>;
   readonly waitFor?: 'message' | 'completion';
   readonly mode?: 'any' | 'all';
   readonly waitMs?: number;
@@ -69,6 +69,7 @@ export async function waitForAgentTargets(input: {
       state,
       executionId,
       observation,
+      omission: observations.captureOmissions(target.agentId),
       terminal,
       ready: terminal || (input.waitFor === 'message' && message)
     };
@@ -123,33 +124,39 @@ export async function waitForAgentTargets(input: {
           values[0]!
       ]
     : values;
-  const agents = selected.map(({ target, executionId, state, observation, terminal, ready }) => {
-    const waitOutcome = snapshot
-      ? 'snapshot'
-      : terminal
-        ? 'completion'
-        : ready
-          ? 'message'
-          : outcome === 'timeout'
-            ? 'timeout'
-            : outcome === 'interrupted'
-              ? 'interrupted'
-              : 'snapshot';
-    const include = !snapshot && (ready || outcome === 'timeout' || outcome === 'interrupted');
-    const projection = include && terminal ? observation?.result : undefined;
-    const updates = include ? observation?.updates : undefined;
-    if (include) observation?.acknowledge();
-    return {
-      agentId: target.agentId,
-      runId: target.runId,
-      ...(executionId === undefined ? {} : { executionId }),
-      status: state.status,
-      waitOutcome,
-      ...(include && observation?.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
-      ...projection,
-      ...(updates?.length ? { updates } : {})
-    };
-  });
+  const agents = selected.map(
+    ({ target, executionId, state, observation, omission, terminal, ready }) => {
+      const waitOutcome = snapshot
+        ? 'snapshot'
+        : terminal
+          ? 'completion'
+          : ready
+            ? 'message'
+            : outcome === 'timeout'
+              ? 'timeout'
+              : outcome === 'interrupted'
+                ? 'interrupted'
+                : 'snapshot';
+      const include = !snapshot && (ready || outcome === 'timeout' || outcome === 'interrupted');
+      const projection = include && terminal ? observation?.result : undefined;
+      const updates = include ? observation?.updates : undefined;
+      if (include) {
+        observation?.acknowledge();
+        omission?.acknowledge();
+      }
+      return {
+        agentId: target.agentId,
+        runId: target.runId,
+        ...(executionId === undefined ? {} : { executionId }),
+        status: state.status,
+        waitOutcome,
+        ...(include && observation?.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
+        ...(include && omission ? { omittedUpdates: omission.omittedUpdates } : {}),
+        ...projection,
+        ...(updates?.length ? { updates } : {})
+      };
+    }
+  );
   const ready = values.filter((value) => value.ready);
   const groupOutcome =
     outcome === 'ready'

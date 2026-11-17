@@ -154,14 +154,28 @@ for (const [width, theme, locale] of [
             .getBoundingClientRect();
           const label = element.querySelector('.agent-markdown, .agent-list-title')!;
           const text = label.getBoundingClientRect();
-          const lineHeight = parseFloat(getComputedStyle(label).lineHeight);
+          const status = element
+            .querySelector('.mar-conversation-list-marker')!
+            .getBoundingClientRect();
           return {
             precedesText: bullet.right <= text.left,
-            offset: Math.abs(bullet.y + bullet.height / 2 - text.y - lineHeight / 2)
+            offset: Math.abs(bullet.y + bullet.height / 2 - text.y - text.height / 2),
+            statusOffset: Math.abs(bullet.y + bullet.height / 2 - status.y - status.height / 2)
           };
         });
         expect(alignment.precedesText).toBe(true);
         expect(alignment.offset).toBeLessThan(1);
+        expect(alignment.statusOffset).toBeLessThan(1);
+      }
+      if (list === tasks) {
+        const text = tasks.locator('.agent-markdown').first();
+        expect(
+          await text.evaluate(
+            (element) =>
+              element.getBoundingClientRect().height /
+              parseFloat(getComputedStyle(element).lineHeight)
+          )
+        ).toBeGreaterThan(1.5);
       }
     }
     const taskDetail = process.locator('.task-list .conversation-content-detail');

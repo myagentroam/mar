@@ -533,7 +533,14 @@ export function nativeSubagentService(
                     'Agent target is invalid.'
                   );
                 return run(async (call) => {
-                  const result = await stopChild(context, agent, observations, input, call);
+                  const result = await stopChild(
+                    context,
+                    agent,
+                    observations,
+                    input,
+                    call,
+                    'native'
+                  );
                   const child = await agent.getSession(input.agentId);
                   return {
                     ...result,

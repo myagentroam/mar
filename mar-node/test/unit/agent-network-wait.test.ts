@@ -214,6 +214,54 @@ describe('Agent Network waiting', () => {
     expect(f.observations.capture('one')).toBeUndefined();
   });
 
+  it('keeps a captured terminal result when later executions overflow during a group wait', async () => {
+    const f = fixture();
+    const waiting = waitForAgentTargets({ ...f, mode: 'all' });
+    const identity = {
+      parentId: 'parent',
+      childId: 'one',
+      runId: 'run-one',
+      executionId: 'execution-one'
+    };
+    f.network.publish({ ...identity, kind: 'files', paths: ['done.ts'] });
+    f.network.publish({ ...identity, kind: 'message', value: 'Original conclusion', final: true });
+    f.states.set('one', 'SUCCEEDED');
+    f.publish('one', 'terminal', 'SUCCEEDED');
+    for (let index = 0; index < 11; index++)
+      f.publish('one', 'message', `later-${index}`, `later-execution-${index}`);
+    f.states.set('two', 'SUCCEEDED');
+    f.publish('two', 'terminal', 'SUCCEEDED');
+    expect(await waiting).toMatchObject({
+      agents: [
+        {
+          agentId: 'one',
+          status: 'SUCCEEDED',
+          summary: 'Original conclusion',
+          changedFiles: ['done.ts'],
+          omittedUpdates: 3
+        },
+        { agentId: 'two', status: 'SUCCEEDED' }
+      ]
+    });
+    expect(f.observations.captureOmissions('one')).toBeUndefined();
+    expect(f.observations.capture('one')!.updates[0]!.value).toBe('later-1');
+    f.observations.close();
+  });
+
+  it('delivers relationship omissions without inventing a snapshot for an evicted execution', async () => {
+    const f = fixture();
+    for (let index = 0; index < 11; index++)
+      f.publish('one', 'message', `later-${index}`, `later-execution-${index}`);
+    f.states.set('one', 'SUCCEEDED');
+    const result = await waitForAgentTargets({ ...f, targets: [f.targets[0]!], single: true });
+    expect(result).toMatchObject({ agentId: 'one', status: 'SUCCEEDED', omittedUpdates: 1 });
+    expect(result).not.toHaveProperty('updates');
+    expect(result).not.toHaveProperty('summary');
+    expect(f.observations.capture('one', 'execution-one')).toBeUndefined();
+    expect(f.observations.capture('one')!.updates[0]!.value).toBe('later-1');
+    f.observations.close();
+  });
+
   it('takes a non-consuming zero-wait snapshot', async () => {
     const f = fixture();
     f.publish('one', 'message', 'unread');
@@ -226,6 +274,47 @@ describe('Agent Network waiting', () => {
       ]
     });
     expect(f.observations.wake.pending()).toBe(true);
+  });
+
+  it('keeps omitted-update counts through a zero snapshot until a consuming wait acknowledges them', async () => {
+    const f = fixture();
+    for (let index = 0; index < 11; index++) f.publish('one', 'message', `update-${index}`);
+    const target = [f.targets[0]!];
+    const snapshot = await waitForAgentTargets({
+      ...f,
+      targets: target,
+      single: true,
+      waitFor: 'message',
+      waitMs: 0
+    });
+    expect(snapshot).toMatchObject({ status: 'RUNNING', waitOutcome: 'snapshot' });
+    expect(snapshot).not.toHaveProperty('omittedUpdates');
+    expect(snapshot).not.toHaveProperty('updates');
+
+    const first = await waitForAgentTargets({
+      ...f,
+      targets: target,
+      single: true,
+      waitFor: 'message',
+      waitMs: 1000
+    });
+    expect(first).toMatchObject({
+      waitOutcome: 'message',
+      omittedUpdates: 1,
+      hasMoreUpdates: true,
+      updates: [{ value: 'update-1' }]
+    });
+
+    const next = await waitForAgentTargets({
+      ...f,
+      targets: target,
+      single: true,
+      waitFor: 'message',
+      waitMs: 1000
+    });
+    expect(next).toMatchObject({ updates: [{ value: 'update-2' }] });
+    expect(next).not.toHaveProperty('omittedUpdates');
+    f.observations.close();
   });
 
   it('waits for a newly admitted Run before its Execution exists without consuming an older turn', async () => {

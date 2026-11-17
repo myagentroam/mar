@@ -5,6 +5,7 @@ import { registerStart, StartAdmission } from './start.js';
 import { registerControlTools } from './control.js';
 import { registerWait } from './wait.js';
 import { registerQueryTools } from './query.js';
+import { assertModelArguments } from './model-contract.js';
 import { nativeSubagentService, SUBAGENT_NATIVE_SERVICE } from './native.js';
 import { childResources } from './resources.js';
 import { sharedSessionHistory } from './history.js';
@@ -122,6 +123,14 @@ export function createSubagentExtension(options: SubagentExtensionOptions): Agen
         registerControlTools(context, agent, observations, warmObservations, admission);
         registerWait(context, agent, observations, history);
         registerQueryTools(context, agent);
+        context.hooks.intercept(
+          'tool.invoke',
+          (input, _call, next) => {
+            assertModelArguments(input);
+            return next(input);
+          },
+          { reentry: 'allow' }
+        );
         context.hooks.intercept('prompt.sections', (input, _call, next) =>
           next({
             ...input,

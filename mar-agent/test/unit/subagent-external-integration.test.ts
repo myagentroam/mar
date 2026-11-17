@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Agent } from '../../src/index.js';
+import type { Agent, AgentEvent, AgentSession } from '../../src/index.js';
 import {
   createSubagentExtension,
   SUBAGENT_NATIVE_SERVICE,
@@ -13,6 +13,39 @@ import { LocalAgentHost } from '../../src/host.js';
 import { childResources } from '../../extensions/subagent/src/resources.js';
 
 afterEach(cleanupCoreFixtures);
+
+// Transport identity assertions belong at the SDK authority, not in model-facing receipts.
+async function parentInputReceipt(agent: Agent, child: AgentSession, parentId: string) {
+  // A replacement can be registered before its first persisted input is visible.
+  return vi.waitFor(
+    async () => {
+      const snapshot = child.subscribe(() => {});
+      let executionId = snapshot.activeExecutionId ?? snapshot.terminalEvent?.executionId;
+      snapshot.unsubscribe();
+      if (!executionId) {
+        const last = (await agent.sessionHistory(child.id)).entries.findLast(
+          (entry) =>
+            entry.kind === 'event' &&
+            [
+              'execution.started',
+              'execution.completed',
+              'execution.failed',
+              'execution.cancelled'
+            ].includes(entry.event.type)
+        );
+        if (last?.kind === 'event') executionId = last.event.executionId;
+      }
+      if (!executionId) throw new Error('Missing child execution');
+      const receipt = await agent.sessionInputReceipt(child.id, {
+        executionId,
+        source: { sessionId: parentId, extensionId: 'subagent', actors: ['model', 'code-mode'] }
+      });
+      if (!receipt) throw new Error('Missing attributed parent input');
+      return { ...receipt, messageId: receipt.clientMessageId };
+    },
+    { timeout: 1000, interval: 5 }
+  );
+}
 
 it('allows all six delegation tools in the live cell catalog and executes a programmatic call', async () => {
   let agent!: Agent;
@@ -344,6 +377,75 @@ it('discovers an active child without reopening finished historical children', a
   expect(later?.content).toContain(finished.id);
 });
 
+it.each([
+  ['agent_start', { title: 'Child', prompt: 'task', role: 'general-purpose' }],
+  ['agent_start', { title: 'Child', content: 'task', reasoningEffort: 'high' }],
+  ['agent_wait', { agentId: 'child' }],
+  ['agent_stop', { agentId: 'child', executionId: 'execution' }]
+] as const)(
+  'rejects retired model arguments for %s without reaching Session operations',
+  async (name, input) => {
+    let agent!: Agent;
+    const setup = await fixture(
+      [createSubagentExtension({ agent: () => agent })],
+      (_request, index) => (index === 0 ? call(name, input) : answer())
+    );
+    agent = setup.agent;
+    const opened = vi.spyOn(agent, 'openSession');
+    const execution = setup.session.run({ prompt: 'Reject obsolete arguments.' });
+    const events = (async () => {
+      const all = [];
+      for await (const event of execution) all.push(event);
+      return all;
+    })();
+    expect((await execution.result()).status).toBe('completed');
+    expect(await events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool.failed',
+        toolName: name,
+        code: 'MAR_AGENT_TOOL_INPUT_INVALID'
+      })
+    );
+    expect(opened).not.toHaveBeenCalled();
+  }
+);
+
+it.each([
+  ['agent_wait', { agentId: 'child', waitMs: 0 }],
+  ['agent_stop', { agentId: 'child', executionId: 'execution' }]
+] as const)(
+  'rejects retired %s arguments in Code Mode before opening a target',
+  async (name, input) => {
+    let agent!: Agent;
+    const setup = await fixture(
+      [createSubagentExtension({ agent: () => agent })],
+      (_request, index) =>
+        index === 0
+          ? call('code_exec', {
+              code: `try { await tools.${name}(${JSON.stringify(input)}); } catch (error) { observe.text(error.code); }`
+            })
+          : answer(),
+      true
+    );
+    agent = setup.agent;
+    const opened = vi.spyOn(agent, 'openSession');
+    const execution = setup.session.run({ prompt: 'Reject obsolete programmatic arguments.' });
+    const events = (async () => {
+      const all = [];
+      for await (const event of execution) all.push(event);
+      return all;
+    })();
+    expect((await execution.result()).status).toBe('completed');
+    const completed = (await events).find(
+      (event) => event.type === 'tool.completed' && event.toolName === 'code_exec'
+    );
+    expect(completed?.type).toBe('tool.completed');
+    if (completed?.type === 'tool.completed')
+      expect(completed.summary).toContain('MAR_AGENT_TOOL_INPUT_INVALID');
+    expect(opened).not.toHaveBeenCalled();
+  }
+);
+
 it('starts an eligible direct child through the independent extension', async () => {
   let agent!: Agent;
   const {
@@ -355,7 +457,7 @@ it('starts an eligible direct child through the independent extension', async ()
       ? call('agent_start', {
           title: 'Inspect',
           description: 'Inspect',
-          prompt: 'Inspect the file',
+          content: 'Inspect the file',
           role: 'general-purpose'
         })
       : answer()
@@ -419,7 +521,7 @@ it('starts an eligible child from a real Code Mode cell with the supplied title'
     (_request, index) =>
       index === 0
         ? call('code_exec', {
-            code: "const result = await tools.agent_start({title:'  Programmatic child  ',prompt:'inspect',role:'general-purpose'}); observe.text(result.data.agentId);"
+            code: "const result = await tools.agent_start({title:'  Programmatic child  ',content:'inspect',role:'general-purpose'}); observe.text(result.data.agentId);"
           })
         : answer(),
     true
@@ -456,7 +558,7 @@ it.each([undefined, '', '   '])(
         index === 0
           ? call('agent_start', {
               ...(title === undefined ? {} : { title }),
-              prompt: 'child',
+              content: 'child',
               role: 'general-purpose'
             })
           : answer()
@@ -499,7 +601,7 @@ it('allows a child to delegate to a grandchild but rejects a fourth level before
       return call('agent_start', {
         title: `depth-${level}`,
         description: `depth-${level}`,
-        prompt: level === 'one' ? 'depth-two' : level === 'two' ? 'depth-three' : 'depth-four',
+        content: level === 'one' ? 'depth-two' : level === 'two' ? 'depth-three' : 'depth-four',
         role: 'general-purpose'
       });
     }
@@ -548,7 +650,7 @@ it('rejects an ineligible model before creating a child', async () => {
         ? call('agent_start', {
             title: 'Inspect',
             description: 'Inspect',
-            prompt: 'Inspect the file',
+            content: 'Inspect the file',
             role: 'general-purpose'
           })
         : answer()
@@ -577,7 +679,7 @@ it.each(['agent_send', 'agent_stop', 'agent_wait', 'agent_view'] as const)(
       (_request, index) =>
         index === 0
           ? call(name, {
-              agentId: foreignId,
+              ...(name === 'agent_wait' ? { agentIds: [foreignId] } : { agentId: foreignId }),
               ...(name === 'agent_send' ? { content: 'message' } : {}),
               ...(name === 'agent_view' ? { includeHistory: true } : {})
             })
@@ -672,9 +774,9 @@ it('rejects an unsupported explicit child effort before creating a Session', asy
         ? call('agent_start', {
             title: 'Inspect',
             description: 'Inspect',
-            prompt: 'Inspect',
+            content: 'Inspect',
             role: 'general-purpose',
-            reasoningEffort: 'ultra'
+            effort: 'ultra'
           })
         : answer()
   );
@@ -757,7 +859,7 @@ it('explicitly waits on a finished child using persisted terminal history withou
       text.includes('wait for child') &&
       !request.messages.some((message) => message.role === 'tool')
     )
-      return call('agent_wait', { agentId: childId });
+      return call('agent_wait', { agentIds: [childId] });
     return answer();
   });
   agent = setup.agent;
@@ -781,8 +883,7 @@ it('explicitly waits on a finished child using persisted terminal history withou
   );
   if (completed?.type !== 'tool.completed') throw new Error('Wait receipt missing');
   expect(JSON.parse(completed.summary)).toMatchObject({
-    agentId: childId,
-    status: 'completed',
+    agents: [{ agentId: childId, status: 'SUCCEEDED' }],
     waitFor: 'completion',
     waitOutcome: 'completion'
   });
@@ -795,7 +896,7 @@ it.each([0, 1])('rejects a wait for a child which has never run (waitMs=%i)', as
   const setup = await fixture([createSubagentExtension({ agent: () => agent })], (request) =>
     request.messages.some((message) => message.role === 'tool')
       ? answer()
-      : call('agent_wait', { agentId: childId, waitMs })
+      : call('agent_wait', { agentIds: [childId], waitMs })
   );
   agent = setup.agent;
   const child = await agent.createSession({
@@ -941,7 +1042,7 @@ it('waits for the fixed live child execution and returns its cancellation', asyn
     if (text.includes('wait parent'))
       return request.messages.some((message) => message.role === 'tool')
         ? answer()
-        : call('agent_wait', { agentId: childId });
+        : call('agent_wait', { agentIds: [childId] });
     return call('sleep', { durationMs: 300000 });
   });
   agent = setup.agent;
@@ -975,9 +1076,7 @@ it('waits for the fixed live child execution and returns its cancellation', asyn
   );
   if (completed?.type !== 'tool.completed') throw new Error('Wait receipt missing');
   expect(JSON.parse(completed.summary)).toMatchObject({
-    agentId: childId,
-    executionId: childRun.executionId,
-    status: 'cancelled',
+    agents: [{ agentId: childId, status: 'CANCELLED' }],
     waitOutcome: 'completion',
     waitFor: 'completion'
   });
@@ -1025,21 +1124,12 @@ it.each(['append', 'replace'] as const)(
     );
     expect(completed?.type).toBe('tool.completed');
     if (completed?.type !== 'tool.completed') throw new Error('Send receipt missing');
-    const receipt = JSON.parse(completed.summary) as {
-      agentId: string;
-      executionId: string;
-      delivery: string;
-      messageId: string;
-      turnId: string;
-      deliveryStatus: string;
-    };
-    expect(receipt).toMatchObject({
+    expect(JSON.parse(completed.summary)).toEqual({
       agentId: childId,
-      delivery: delivery === 'append' ? 'accepted' : 'started',
-      messageId: expect.any(String),
-      turnId: expect.any(String),
-      deliveryStatus: 'accepted'
+      message: { status: 'accepted' }
     });
+    const receipt = await parentInputReceipt(agent, child, setup.session.id);
+    expect(receipt).toMatchObject({ messageId: expect.any(String), turnId: expect.any(String) });
     expect(await childRun.result()).toMatchObject(
       delivery === 'append' ? { status: 'completed', finalAnswer: 'done' } : { status: 'cancelled' }
     );
@@ -1104,13 +1194,11 @@ it('continues an idle child through its existing Session and history', async () 
     throw new Error(
       `Send receipt missing: ${JSON.stringify(collected.filter((event) => event.type.startsWith('tool.')))}`
     );
-  expect(JSON.parse(receipt.summary)).toMatchObject({ agentId: childId, delivery: 'started' });
-  expect(JSON.parse(receipt.summary)).toMatchObject({
-    messageId: expect.any(String),
-    turnId: expect.any(String),
-    deliveryStatus: 'accepted'
+  expect(JSON.parse(receipt.summary)).toEqual({
+    agentId: childId,
+    message: { status: 'accepted' }
   });
-  const executionId = JSON.parse(receipt.summary).executionId as string;
+  const { executionId } = await parentInputReceipt(agent, child, setup.session.id);
   const result = child.joinExecution(executionId);
   if (result) expect(await result).toMatchObject({ status: 'completed' });
   const history = await agent.sessionHistory(childId);
@@ -1131,7 +1219,7 @@ it('recovers a proven input receipt for a cold child after an Agent restart', as
     action = undefined;
     if (next === 'send')
       return call('agent_send', { agentId: childId, content: 'Continue the child.' });
-    if (next === 'wait') return call('agent_wait', { agentId: childId, waitMs: 0 });
+    if (next === 'wait') return call('agent_wait', { agentIds: [childId], waitMs: 0 });
     return answer();
   });
   agent = setup.agent;
@@ -1155,11 +1243,11 @@ it('recovers a proven input receipt for a cold child after an Agent restart', as
     (event) => event.type === 'tool.completed' && event.toolName === 'agent_send'
   );
   if (sentEvent?.type !== 'tool.completed') throw new Error('Missing send receipt');
-  const receipt = JSON.parse(sentEvent.summary) as {
-    messageId: string;
-    executionId: string;
-    turnId: string;
-  };
+  expect(JSON.parse(sentEvent.summary)).toEqual({
+    agentId: childId,
+    message: { status: 'accepted' }
+  });
+  const receipt = await parentInputReceipt(agent, child, setup.session.id);
   const execution = child.joinExecution(receipt.executionId);
   if (execution) await execution;
   const parentId = setup.session.id;
@@ -1186,6 +1274,7 @@ it('recovers a proven input receipt for a cold child after an Agent restart', as
     () => setup.adapter
   );
   try {
+    const receiptLookup = vi.spyOn(agent, 'sessionInputReceipt');
     const parent = await agent.openSession(parentId);
     action = 'wait';
     const waiting = parent.run({ prompt: 'inspect receipt' });
@@ -1199,10 +1288,10 @@ it('recovers a proven input receipt for a cold child after an Agent restart', as
       (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
     );
     if (waited?.type !== 'tool.completed') throw new Error('Missing wait result');
-    expect(JSON.parse(waited.summary).receipt).toMatchObject({
+    expect(JSON.parse(waited.summary).agents[0].receipt).toEqual({ status: 'applied' });
+    expect(receiptLookup).toHaveBeenCalledWith(childId, {
       clientMessageId: receipt.messageId,
-      executionId: receipt.executionId,
-      status: 'applied'
+      executionId: receipt.executionId
     });
     childId = userChild.id;
     action = 'wait';
@@ -1217,7 +1306,7 @@ it('recovers a proven input receipt for a cold child after an Agent restart', as
       (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
     );
     if (otherWait?.type !== 'tool.completed') throw new Error('Missing other wait result');
-    expect(JSON.parse(otherWait.summary)).not.toHaveProperty('receipt');
+    expect(JSON.parse(otherWait.summary).agents[0]).not.toHaveProperty('receipt');
   } finally {
     await agent.dispose();
   }
@@ -1243,7 +1332,7 @@ it('does not replace a parent send receipt with another client or user input in 
       action = undefined;
       if (next === 'send')
         return call('agent_send', { agentId: childId, content: 'Parent input.' });
-      if (next === 'wait') return call('agent_wait', { agentId: childId, waitMs: 0 });
+      if (next === 'wait') return call('agent_wait', { agentIds: [childId], waitMs: 0 });
       return request.messages.some((message) => message.content.includes('hold child'))
         ? call('sleep', { durationMs: 300000 })
         : answer();
@@ -1276,7 +1365,11 @@ it('does not replace a parent send receipt with another client or user input in 
     (event) => event.type === 'tool.completed' && event.toolName === 'agent_send'
   );
   if (delivered?.type !== 'tool.completed') throw new Error('Missing parent send');
-  const receipt = JSON.parse(delivered.summary) as { messageId: string };
+  expect(JSON.parse(delivered.summary)).toEqual({
+    agentId: childId,
+    message: { status: 'accepted' }
+  });
+  const receipt = await parentInputReceipt(agent, child, setup.session.id);
   const other = await clients
     .get(setup.session.id)!
     .message({ agentId: childId, message: 'Other client input.' });
@@ -1304,6 +1397,7 @@ it('does not replace a parent send receipt with another client or user input in 
     () => setup.adapter
   );
   try {
+    const receiptLookup = vi.spyOn(agent, 'sessionInputReceipt');
     const parent = await agent.openSession(parentId);
     action = 'wait';
     const waiting = parent.run({ prompt: 'inspect' });
@@ -1317,8 +1411,10 @@ it('does not replace a parent send receipt with another client or user input in 
       (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
     );
     if (waited?.type !== 'tool.completed') throw new Error('Missing wait result');
-    expect(JSON.parse(waited.summary).receipt).toMatchObject({
-      clientMessageId: receipt.messageId
+    expect(JSON.parse(waited.summary).agents[0].receipt).toEqual({ status: 'applied' });
+    expect(receiptLookup).toHaveBeenCalledWith(childId, {
+      clientMessageId: receipt.messageId,
+      executionId: receipt.executionId
     });
   } finally {
     await agent.dispose();
@@ -1338,7 +1434,7 @@ it('restores the caller receipt after a programmatic send and Agent restart', as
       const args =
         next === 'send'
           ? { agentId: childId, content: 'Programmatic input.' }
-          : { agentId: childId, waitMs: 0 };
+          : { agentIds: [childId], waitMs: 0 };
       return call('code_exec', {
         code: `const result = await tools.agent_${next}(${JSON.stringify(args)}); observe.text(JSON.stringify(result.data));`
       });
@@ -1370,7 +1466,11 @@ it('restores the caller receipt after a programmatic send and Agent restart', as
     const cell = JSON.parse(completed.summary) as { observations: Array<{ value: string }> };
     return JSON.parse(cell.observations[0]!.value);
   };
-  const sent = (await invoke(setup.session, 'send')) as { messageId: string; executionId: string };
+  expect(await invoke(setup.session, 'send')).toEqual({
+    agentId: childId,
+    message: { status: 'accepted' }
+  });
+  const sent = await parentInputReceipt(agent, child, setup.session.id);
   const execution = child.joinExecution(sent.executionId);
   if (execution) await execution;
   const parentId = setup.session.id;
@@ -1385,12 +1485,14 @@ it('restores the caller receipt after a programmatic send and Agent restart', as
     () => setup.adapter
   );
   try {
+    const receiptLookup = vi.spyOn(agent, 'sessionInputReceipt');
     const parent = await agent.openSession(parentId);
     expect(await invoke(parent, 'wait')).toMatchObject({
-      receipt: {
-        clientMessageId: sent.messageId,
-        executionId: sent.executionId
-      }
+      agents: [{ agentId: childId, receipt: { status: 'applied' } }]
+    });
+    expect(receiptLookup).toHaveBeenCalledWith(childId, {
+      clientMessageId: sent.messageId,
+      executionId: sent.executionId
     });
   } finally {
     await agent.dispose();
@@ -1445,7 +1547,9 @@ it('chooses the latest created cold child for an untargeted wait after an older 
       (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
     );
     if (completed?.type !== 'tool.completed') throw new Error('Missing wait result');
-    expect(JSON.parse(completed.summary)).toMatchObject({ agentId: newer.id, status: 'completed' });
+    expect(JSON.parse(completed.summary)).toMatchObject({
+      agents: [{ agentId: newer.id, status: 'SUCCEEDED' }]
+    });
   } finally {
     await agent.dispose();
   }
@@ -1455,7 +1559,7 @@ it('uses real Session activity order for the sixteen recent child resources', as
   let agent!: Agent;
   const setup = await fixture([createSubagentExtension({ agent: () => agent })], () => answer());
   agent = setup.agent;
-  const children = [];
+  const children: AgentSession[] = [];
   for (let index = 0; index < 17; index++) {
     const child = await agent.createSession({
       workspace: setup.home,
@@ -1495,7 +1599,7 @@ it('projects a real child final answer and changed file from public history', as
     if (text.includes('inspect child result'))
       return request.messages.some((message) => message.role === 'tool')
         ? answer()
-        : call('agent_wait', { agentId: childId });
+        : call('agent_wait', { agentIds: [childId] });
     if (!request.messages.some((message) => message.role === 'tool'))
       return call('apply_patch', {
         input: '*** Begin Patch\n*** Add File: child-created.txt\n+child content\n*** End Patch'
@@ -1537,10 +1641,13 @@ it('projects a real child final answer and changed file from public history', as
     );
     if (receipt?.type !== 'tool.completed') throw new Error('Missing wait receipt');
     expect(JSON.parse(receipt.summary)).toMatchObject({
-      status: 'completed',
-      summary: 'Finished child work.',
-      changedFiles: [expect.stringContaining('child-created.txt')],
-      turnId: expect.any(String)
+      agents: [
+        {
+          status: 'SUCCEEDED',
+          summary: 'Finished child work.',
+          changedFiles: [expect.stringContaining('child-created.txt')]
+        }
+      ]
     });
   } finally {
     await agent.dispose();
@@ -1615,12 +1722,12 @@ it.each(['completed', 'cancelled'] as const)(
         (event) => event.type === 'tool.completed' && event.toolName === 'agent_send'
       );
       if (receipt?.type !== 'tool.completed') throw new Error('Missing resume receipt');
-      const result = JSON.parse(receipt.summary) as {
-        agentId: string;
-        delivery: string;
-        executionId: string;
-      };
-      expect(result).toMatchObject({ agentId: childId, delivery: 'started' });
+      expect(JSON.parse(receipt.summary)).toEqual({
+        agentId: childId,
+        message: { status: 'accepted' }
+      });
+      const child = await agent.openSession(childId);
+      const result = await parentInputReceipt(agent, child, rootId);
       const parentRequest = setup.adapter.requests.find((request) =>
         request.messages.some(
           (message) => message.role === 'user' && message.content === 'parent restart'
@@ -1643,7 +1750,7 @@ it.each(['completed', 'cancelled'] as const)(
   }
 );
 
-it.each(['single', 'default', 'group'] as const)(
+it.each(['explicit', 'default'] as const)(
   'accepts nullable optional wait fields in the assembled extension (%s)',
   async (selection) => {
     let agent!: Agent;
@@ -1654,8 +1761,7 @@ it.each(['single', 'default', 'group'] as const)(
       );
       if (isParent && !request.messages.some((message) => message.role === 'tool'))
         return call('agent_wait', {
-          agentId: selection === 'single' ? childId : null,
-          agentIds: selection === 'group' ? [childId] : null,
+          agentIds: selection === 'explicit' ? [childId] : null,
           mode: null,
           waitFor: null,
           waitMs: 0
@@ -1681,14 +1787,14 @@ it.each(['single', 'default', 'group'] as const)(
     );
     if (completed?.type !== 'tool.completed') throw new Error('Missing wait result');
     expect(JSON.parse(completed.summary)).toMatchObject(
-      selection === 'group'
+      selection === 'explicit'
         ? {
             mode: 'any',
             waitFor: 'completion',
             waitOutcome: 'snapshot',
             agents: [{ agentId: childId }]
           }
-        : { agentId: childId, waitFor: 'completion', waitOutcome: 'snapshot' }
+        : { agents: [{ agentId: childId }], waitFor: 'completion', waitOutcome: 'snapshot' }
     );
   }
 );
@@ -1783,11 +1889,18 @@ it('stops the exact live direct-child Execution and waits for cleanup', async ()
   if (completed?.type !== 'tool.completed') throw new Error('Stop receipt missing');
   expect(JSON.parse(completed.summary)).toMatchObject({
     agentId: childId,
-    executionId: childRun.executionId,
-    status: 'cancelled'
+    cancel: { executionStatus: 'CANCELLED' }
   });
   expect(await childRun.result()).toMatchObject({ status: 'cancelled' });
   expect(child.joinExecution(childRun.executionId)).toBeUndefined();
+  expect(
+    setup.adapter.requests.some((request) =>
+      request.messages.some(
+        (message) =>
+          message.content.includes('<mar_subagent_update>') && message.content.includes(childId)
+      )
+    )
+  ).toBe(true);
   subscription.unsubscribe();
 });
 
@@ -1823,7 +1936,6 @@ it('returns the latest terminal status when the model stops an idle child', asyn
   if (completed?.type !== 'tool.completed') throw new Error('Stop receipt missing');
   expect(JSON.parse(completed.summary)).toMatchObject({
     agentId: childId,
-    executionId: childRun.executionId,
-    status: 'completed'
+    cancel: { executionStatus: 'SUCCEEDED' }
   });
 });

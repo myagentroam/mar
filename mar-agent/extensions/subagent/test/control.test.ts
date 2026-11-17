@@ -125,7 +125,7 @@ it('waits for a failed opening to settle before starting its replacement', async
   expect(test.child.run).not.toHaveBeenCalled();
   test.completion.resolve({ status: 'failed', executionId: 'old' } as ExecutionResult);
   await expect(operation).resolves.toMatchObject({
-    data: { delivery: 'started', executionId: 'new' }
+    data: { agentId: 'child', message: { status: 'accepted' } }
   });
   expect(test.child.run).toHaveBeenCalledOnce();
   expect(test.acknowledge).toHaveBeenCalledOnce();
@@ -144,7 +144,7 @@ it.each(['completed', 'failed'] as const)(
     expect(test.child.cancel).not.toHaveBeenCalled();
     test.completion.resolve({ status } as ExecutionResult);
     await expect(operation).resolves.toMatchObject({
-      data: { delivery: 'started', executionId: 'new' }
+      data: { agentId: 'child', message: { status: 'accepted' } }
     });
     expect(test.child.run).toHaveBeenCalledOnce();
     expect(test.acknowledge).toHaveBeenCalledOnce();

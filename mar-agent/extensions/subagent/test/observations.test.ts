@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentSession } from '@myagentroam/agent';
 import { SessionObservations } from '../src/observations.js';
 
-function event(type: 'message.completed', text: string): AgentEvent {
+function event(
+  type: 'message.completed',
+  text: string
+): Extract<AgentEvent, { type: 'message.completed' }> {
   return {
     type,
     text,
@@ -209,7 +212,7 @@ describe('warm Session observations', () => {
         listener = next;
         return { activeExecutionId: 'execution', unsubscribe() {} };
       }
-    } as AgentSession;
+    } as unknown as AgentSession;
     const observations = new SessionObservations();
     observations.observe(session);
     const permissionStop = {
@@ -339,7 +342,7 @@ describe('warm Session observations', () => {
         listener = callback;
         return { activeExecutionId: 'execution', unsubscribe };
       }
-    } as AgentSession;
+    } as unknown as AgentSession;
     const observations = new SessionObservations();
     observations.observe(session);
     listener(event('message.completed', 'first'));
@@ -361,7 +364,7 @@ describe('warm Session observations', () => {
         listener = callback;
         return { unsubscribe };
       }
-    } as AgentSession;
+    } as unknown as AgentSession;
     const observations = new SessionObservations();
     observations.observe(session);
     listener({

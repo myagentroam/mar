@@ -492,6 +492,8 @@ export class AgentNetworkService {
         observations: {
           capture: (id, executionId) =>
             (directChildren.has(id) ? parent : temporary)?.capture(id, executionId),
+          captureOmissions: (id) =>
+            (directChildren.has(id) ? parent : temporary)?.captureOmissions(id),
           subscribe: (listener) => {
             const unsubscribeParent = directChildren.size ? parent?.subscribe(listener) : undefined;
             const unsubscribeTemporary = temporary?.subscribe(listener);

@@ -143,6 +143,8 @@ Node Agent Network 不设置旧的 16 个创建或并发限制；独立 SDK Suba
 
 子 Agent 的未读公开消息与新终态会在父 Agent 下一次正常模型请求前自动送达，包括原生 Extension API 创建的直接子 Agent；父 Agent 无需反复使用 message wait 检查进展。自动送达不唤醒空闲父 Agent，也不延迟正常最终回复；交付所必需的结果仍应在结束前主动汇合，真正阻塞时仍可使用 `agent_wait`。自动送达与模型的显式等待共享已读位置，因此已经送达的正文或终态证据不会在后续等待中重复返回。子 Agent 的内容是待核验的上下文，不是新的用户指令或授权。
 
+Node 为每个父子观察关系保留最近 10 条未读更新，跨执行统一计数；超限移除最旧记录，并通过 `omittedUpdates` 报告自上次确认以来的遗漏数量。该计数属于父子观察关系，不表示某一次执行丢失了相同数量的消息。提示随观察结果确认后清除，完整公开历史仍可按需读取；窗口不保证无限保留全部未读内容。
+
 Node 原生 `agent_send` 使用 `delivery` 参数，取值为 `STEER` 或 `QUEUE`。携带正文时，省略该参数默认使用 `STEER`；纯 Goal 更新或审批操作不受影响，公共消息接口和 CLI 的默认值不变。其他 Runner 使用 `marctl agents send <id> --steer -m <text>`。及时沟通建议优先使用 STEER；QUEUE 更适合用户或接收方明确要求延后的输入。输入要等当前工作和前面的队列项结束后才消费，有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
 
 消息被接受后，通常无需另外回复或索取收悉确认，也不必仅为确认收到而立即查看会话。主、子 Agent 建议并行推进有意义且不重叠的工作；没有其他本地工作可做，且需要结果解除阻塞或收尾时，再考虑等待。必要的任务结果、澄清、阻塞、冲突和决策信息仍应正常交付。
@@ -228,6 +230,8 @@ Web 会话将整次 `code_exec` 展示为命令卡，保留原始 JavaScript 和
 独立 CLI 默认自动生成新会话标题，可用全局选项 `--no-auto-title` 关闭，或用 `--auto-title` 显式开启；恢复已有会话不重新生成。标题请求可能产生额外用量。`--format stream-json` 的 `model.usage` 事件提供按请求的原生用量快照，区分 conversation、compact 和 title；同一 recordId 只取最新 revision，不与 `usage.updated` 重复相加，缺失用量仍为未知。收到 SIGTERM 时，CLI 取消当前执行和标题请求并释放自己的会话资源，以 143 退出；SIGINT 取消以 130 退出。
 
 独立 CLI 默认加载 Subagent 扩展。新模型默认可用于对话，但不自动用于子会话；使用 `maragent models edit <id> --subagent-model` 显式启用，`--no-subagent-model` 关闭。子会话模型必须同时启用 conversation 和 subagent，用途可通过 `models list` 查看，也可在 `models add/edit` 中使用 `--conversation-model` 或 `--no-conversation-model` 设置。
+
+独立 CLI 的模型工具 `agent_start` 使用 `content` 与可选 `effort`；`agent_wait` 仅使用 `agentIds`，单目标也传数组，并统一返回 `agents` 数组。正数 `waitMs` 按实际传入值等待，没有隐含下限；`0` 只读取快照、不消费未读。`agent_stop` 只接受目标 `agentId`，停止不会将尚未交付的报告标为已读。SDK 原生接口仍使用自身的 `prompt`、`reasoningEffort` 与等待参数；独立扩展的角色、模型发现及 append/replace 投递语义保持不变。
 
 SDK 最小示例使用一个兼容 OpenAI Responses 的端点。先按供应商的真实模型能力调整 URL、模型 ID 和 token 限制；设置 `MODEL_API_KEY`、`MODEL_BASE_URL`、`MODEL_ID`、`AGENT_HOME` 与 `WORKSPACE` 后运行。`session.run` 会发起真实模型请求，也可能执行工具；仅在有权限的隔离环境使用，密钥不要写入源文件或提交。
 
