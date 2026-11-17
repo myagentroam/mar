@@ -822,7 +822,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             expect(tabBounds.x).toBeGreaterThanOrEqual(bounds.x);
             expect(tabBounds.x + tabBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width);
           }
-          const items = await strip.locator('.tab-strip-item').evaluateAll((elements) =>
+          const items = await strip.locator('.mar-tab-strip-item').evaluateAll((elements) =>
             elements.map((element) => {
               const bounds = element.getBoundingClientRect();
               return {
@@ -834,12 +834,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             })
           );
           for (let index = 1; index < items.length; index += 1) {
-            // Both layouts join adjacent tabs at a single shared border, without a gap.
-            expect(items[index]!.left).toBeCloseTo(
-              items[index - 1]!.right - items[index]!.border,
-              1
-            );
-            expect(items[index]!.bottom).toBeCloseTo(bounds.y + bounds.height, 1);
+            expect(items[index]!.left - items[index - 1]!.right).toBeGreaterThanOrEqual(4);
+            expect(bounds.y + bounds.height - items[index]!.bottom).toBeGreaterThanOrEqual(4);
           }
         }
         await inspector.screenshot({ path: testInfo.outputPath('inspector-tabs.png') });
@@ -1119,7 +1115,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(button).toHaveCSS('background-color', actionHover.background);
         await expect(button).toHaveCSS('outline-width', '2px');
       }
-      const strip = page.locator('.workbench-aside-tabs .tab-strip');
+      const strip = page.locator('.workbench-aside-tabs .mar-tab-strip');
       await expect(strip.getByRole('tab')).toHaveCount(4);
       expect(await strip.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(
         true

@@ -28,7 +28,7 @@ import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');
 const query = new URLSearchParams(window.location.search);
-if (query.has('toolbar-loading')) {
+if (query.has('toolbar-loading') || query.has('tab-style-preview')) {
   themePreferenceService().setTheme(
     query.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
   );
@@ -64,7 +64,7 @@ function pageHandleFor(id: number): ReturnType<typeof createPageHandle> {
 }
 
 function createTabs(): WorkspaceFileTab[] {
-  return Array.from({ length: 12 }, (_, index) => ({
+  return Array.from({ length: query.has('tab-style-preview') ? 3 : 12 }, (_, index) => ({
     id: index + 1,
     identity: String(index),
     kind: previewKind ?? 'WORKTREE_TEXT',
@@ -403,6 +403,34 @@ createTooltipApp({
                 registerPageHandle(handle: unknown): void;
               }) => {
                 registerPageHandle(pageHandleFor(tab.id));
+                if (query.has('tab-style-preview'))
+                  return h(TextFilePage, {
+                    file: {
+                      path: tab.path,
+                      encoding: 'utf-8',
+                      content: [
+                        '# Workspace verification',
+                        '',
+                        'Shared tabs keep the working surface calm and readable.',
+                        '',
+                        '## Checks',
+                        '',
+                        '- Cached sessions restore immediately.',
+                        '- Selected tabs use the shared theme palette.',
+                        '- Keyboard focus stays independently visible.'
+                      ].join('\n'),
+                      size: 286,
+                      revision: 'revision-1',
+                      truncated: false
+                    },
+                    active: isActive,
+                    style: isActive ? undefined : 'display: none',
+                    kind: 'text',
+                    downloading: false,
+                    targetLine: undefined,
+                    writeEnabled: true,
+                    saveFile: async () => 'revision-2'
+                  });
                 return h(
                   Frame,
                   {

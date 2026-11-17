@@ -143,7 +143,7 @@ defineExpose({ root });
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid var(--mar-border-strong);
+  border-bottom: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
   padding: 0.3rem 1rem;
 }

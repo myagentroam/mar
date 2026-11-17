@@ -77,7 +77,7 @@ function activate(id: string | number): void {
     :aria-label="translate('activityCenter.title')"
   >
     <MarTab
-      class="activity-tabs"
+      class="activity-tabs mar-tab-header"
       size="small"
       activation-mode="automatic"
       :items="tabs"
@@ -87,7 +87,7 @@ function activate(id: string | number): void {
       @activate="activate"
     >
       <template #label="{ item }">
-        <span>{{ item.label }}</span>
+        <span class="mar-tab-label">{{ item.label }}</span>
         <span
           v-if="item.id === 'notifications' && service.unreadCount.value > 0"
           class="activity-unread-count mar-activity-count-badge"
@@ -154,10 +154,7 @@ function activate(id: string | number): void {
   max-height: none;
 }
 .activity-tabs {
-  --mar-tab-strip-active-bg: var(--mar-fill-selection);
   flex: none;
-  border-bottom: 1px solid var(--mar-border-strong);
-  background: var(--mar-bg-subtle);
 }
 .activity-tabpanel {
   display: flex;

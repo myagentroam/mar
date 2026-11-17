@@ -254,7 +254,7 @@ for (const width of [1280, 390]) {
           row.getBoundingClientRect().right - row.nextElementSibling!.getBoundingClientRect().left
         );
       });
-      expect(overlap).toBeCloseTo(1, 1);
+      expect(overlap).toBeLessThanOrEqual(-4);
       await notifications.focus();
       for (const key of ['ArrowLeft', 'End', 'Home', 'ArrowRight']) {
         const target = key === 'ArrowLeft' || key === 'Home' ? recent : notifications;
@@ -266,6 +266,14 @@ for (const width of [1280, 390]) {
       }
       await expect(tabs.locator('.activity-unread-count')).toHaveText('30');
       await tabs.screenshot({ path: testInfo.outputPath(`activity-tabs-${width}-${theme}.png`) });
+      await recent.click();
+      await recent.evaluate((element) => (element as HTMLElement).blur());
+      await page.mouse.move(width - 1, 849);
+      await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+      await page.screenshot({
+        path: testInfo.outputPath(`activity-panel-${width}-${theme}.png`),
+        animations: 'disabled'
+      });
     });
 
     test(`Activity notification badges share dimensions at ${width}px ${theme}`, async ({

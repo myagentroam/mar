@@ -312,9 +312,9 @@ for (const [language, theme, width] of [
       await expect(session).toHaveCSS('font-size', width < 768 ? '11px' : '12px');
       await expect(session).toHaveCSS('font-weight', '500');
       const geometry = await session.evaluate((element) => {
-        const item = element.closest('.tab-strip-item')!;
+        const item = element.closest('.mar-tab-strip-item')!;
         const label = element.querySelector('.workbench-aside-label')!;
-        const close = item.querySelector('.tab-strip-close')!;
+        const close = item.querySelector('.mar-tab-strip-close')!;
         const strip = item.closest('[role="tablist"]')!;
         return {
           width: item.getBoundingClientRect().width,
@@ -341,13 +341,13 @@ for (const [language, theme, width] of [
       expect(geometry.width).toBeLessThanOrEqual(geometry.limit);
       expect(geometry.truncated).toBe(true);
       expect(geometry.closeFits).toBe(true);
-      expect(geometry.headerHeight).toBeLessThanOrEqual(32);
+      expect(geometry.headerHeight).toBe(40);
       expect(geometry.tabHeight).toBe(28);
       expect(geometry.activity.afterTitle).toBe(true);
       expect(geometry.activity.beforeClose).toBe(true);
       expect(geometry.activity.centerOffset).toBeLessThan(1);
       const seams = await tabs.evaluate((element) => {
-        const items = Array.from(element.querySelectorAll<HTMLElement>('.tab-strip-item'));
+        const items = Array.from(element.querySelectorAll<HTMLElement>('.mar-tab-strip-item'));
         return items.slice(1).flatMap((item, index) => {
           const previous = items[index]!;
           if (previous.nextElementSibling !== item) return [];
@@ -355,13 +355,13 @@ for (const [language, theme, width] of [
         });
       });
       expect(seams.length).toBeGreaterThan(0);
-      for (const overlap of seams) expect(overlap).toBeCloseTo(1, 1);
+      for (const overlap of seams) expect(overlap).toBeLessThanOrEqual(-4);
       const borders = await tabs.evaluate((element) => ({
         strip: getComputedStyle(element).borderBottomWidth,
         header: getComputedStyle(element.closest('header')!).borderBottomWidth
       }));
       expect(borders).toEqual({ strip: '0px', header: '1px' });
-      const colors = await tabs.evaluate((element, theme) => {
+      const colors = await tabs.evaluate((element) => {
         const probe = document.createElement('span');
         element.append(probe);
         const resolve = (token: string) => {
@@ -372,14 +372,13 @@ for (const [language, theme, width] of [
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
           selected: resolve('--mar-fill-selection'),
-          divider: resolve(theme === 'light' ? '--mar-border-subtle' : '--mar-border-strong'),
-          tabBorder: resolve(theme === 'light' ? '--mar-border-default' : '--mar-border-strong'),
-          strongBorder: resolve('--mar-border-strong'),
+          divider: resolve('--mar-border-subtle'),
+          tabBorder: resolve('--mar-border-default'),
           success: resolve('--el-color-success')
         };
         probe.remove();
         return result;
-      }, theme);
+      });
       await expect(session).toHaveCSS('color', colors.primary);
       const aside = page.locator('.workbench-aside');
       await expect(aside).toHaveCSS('border-inline-start-width', '1px');
@@ -388,19 +387,33 @@ for (const [language, theme, width] of [
         'border-bottom-color',
         colors.divider
       );
-      for (const item of await tabs.locator('.tab-strip-item').all()) {
+      for (const item of await tabs.locator('.mar-tab-strip-item').all()) {
         await expect(item).toHaveCSS('border-top-width', '1px');
-        await expect(item).toHaveCSS('border-top-color', colors.tabBorder);
-        await expect(item).toHaveCSS('border-bottom-width', '0px');
+        await expect(item).toHaveCSS(
+          'border-top-color',
+          (await item.getAttribute('class'))!.includes('is-active')
+            ? colors.tabBorder
+            : 'rgba(0, 0, 0, 0)'
+        );
+        await expect(item).toHaveCSS('border-bottom-width', '1px');
+        for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right'])
+          await expect(item).toHaveCSS(`border-${corner}-radius`, '6px');
+        const inset = await item.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const strip = element.closest('[role="tablist"]')!.getBoundingClientRect();
+          return { top: box.top - strip.top, bottom: strip.bottom - box.bottom };
+        });
+        expect(inset.top).toBeGreaterThanOrEqual(4);
+        expect(inset.bottom).toBeGreaterThanOrEqual(4);
       }
-      await expect(tabs.locator('.tab-strip-separator')).toHaveCSS(
+      await expect(tabs.locator('.mar-tab-strip-separator')).toHaveCSS(
         'background-color',
         colors.divider
       );
-      const genericItems = page.locator('#generic-tabs-tablist .tab-strip-item');
+      const genericItems = page.locator('#generic-tabs-tablist .mar-tab-strip-item');
       await expect(genericItems).toHaveCount(3);
-      for (const item of await genericItems.all())
-        await expect(item).toHaveCSS('border-top-color', colors.strongBorder);
+      await expect(genericItems.first()).toHaveCSS('border-top-color', colors.tabBorder);
+      await expect(genericItems.nth(1)).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
       await expect(session.locator('..')).toHaveCSS('background-color', colors.selected);
       await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
       const activity = session.locator('.workbench-aside-activity');
@@ -408,16 +421,15 @@ for (const [language, theme, width] of [
       await expect(dot).toBeVisible();
       await expect(dot).toHaveCSS('background-color', colors.success);
       await expect(activity).toHaveCSS('overflow', 'visible');
-      const glow = await dot.evaluate((element) => {
+      const marker = await dot.evaluate((element) => {
         const style = getComputedStyle(element);
         return { shadow: style.boxShadow, animation: style.animationName };
       });
-      expect(glow.shadow).not.toBe('none');
-      expect(glow.animation).not.toBe('none');
+      expect(marker).toEqual({ shadow: 'none', animation: 'none' });
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(dot).toHaveCSS('animation-name', 'none');
       await expect(dot).toHaveCSS('background-color', colors.success);
-      await expect(dot).toHaveCSS('box-shadow', glow.shadow);
+      await expect(dot).toHaveCSS('box-shadow', 'none');
       await session.hover();
       await expect(page.locator('.mar-tooltip:visible')).toContainText(await session.innerText());
       await page.locator('.workbench-aside').screenshot({
@@ -428,9 +440,9 @@ for (const [language, theme, width] of [
         'aria-selected',
         'true'
       );
-      const nestedTab = aside.locator('#nested-files-tablist .tab-strip-item');
+      const nestedTab = aside.locator('#nested-files-tablist .mar-tab-strip-item');
       await expect(nestedTab).toHaveCount(1);
-      await expect(nestedTab).toHaveCSS('border-top-color', colors.strongBorder);
+      await expect(nestedTab).toHaveCSS('border-top-color', colors.tabBorder);
       await page.locator('.workbench-aside').screenshot({
         path: test.info().outputPath(`aside-tools-${language}-${theme}-${width}.png`)
       });
@@ -477,7 +489,7 @@ for (const width of [1280, 390]) {
         expect(
           await tabs.evaluate((el) => (el as HTMLElement).offsetHeight - el.clientHeight)
         ).toBe(0);
-        await expect(page.locator('.workbench-aside-header')).toHaveJSProperty('offsetHeight', 32);
+        await expect(page.locator('.workbench-aside-header')).toHaveJSProperty('offsetHeight', 40);
         await expect(host).toHaveClass(/can-scroll-previous/);
         const controls = host.locator('.mar-tab-scroll');
         await expect(controls).toHaveCount(2);
@@ -496,6 +508,7 @@ for (const width of [1280, 390]) {
             await controls.first().evaluate((el) => getComputedStyle(el).backgroundColor)
           ).not.toBe('rgba(0, 0, 0, 0)');
           await page.mouse.move(0, 100);
+          await page.keyboard.press('Tab');
           await controls.first().focus();
           await expect(tooltip).toBeVisible();
           await page.keyboard.press('Escape');
@@ -506,6 +519,7 @@ for (const width of [1280, 390]) {
           await expect(selected).toHaveAttribute('aria-selected', 'true');
           await expect(controls.last()).toBeEnabled();
           await page.mouse.move(0, 100);
+          await page.keyboard.press('Tab');
           await controls.last().focus();
           await expect(tooltip).toHaveText(
             theme === 'custom' ? '向右浏览标签' : 'Browse next tabs'
@@ -561,7 +575,7 @@ for (const width of [1280, 390]) {
         await expect
           .poll(() =>
             selected.evaluate((el) => {
-              const item = el.closest('.tab-strip-item')!.getBoundingClientRect();
+              const item = el.closest('.mar-tab-strip-item')!.getBoundingClientRect();
               const viewport = el.closest('[role="tablist"]')!.getBoundingClientRect();
               return item.left >= viewport.left - 1 && item.right <= viewport.right + 1;
             })
@@ -585,7 +599,7 @@ test('Aside uses shared tabs for tool, session and stable Terminal surfaces', as
   try {
     await page.goto(`${fixture.url}workbench-aside.html`);
     const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
-    await expect(tabs.locator('.tab-strip-separator')).toHaveCount(1);
+    await expect(tabs.locator('.mar-tab-strip-separator')).toHaveCount(1);
     for (const tab of await tabs.getByRole('tab').all()) {
       expect(
         await tab.evaluate((el) => {
@@ -730,8 +744,8 @@ test('Aside tool tabs keep balanced label spacing on touch screens', async ({ br
           await expect(tabs.getByRole('tab').last()).toHaveCSS('font-size', '11px');
           const spacing = await tabs.getByRole('tab').evaluateAll((elements) =>
             elements.flatMap((element) => {
-              const item = element.closest('.tab-strip-item')!;
-              if (item.querySelector('.tab-strip-close')) return [];
+              const item = element.closest('.mar-tab-strip-item')!;
+              if (item.querySelector('.mar-tab-strip-close')) return [];
               const bounds = item.getBoundingClientRect();
               const label = element.lastElementChild!.getBoundingClientRect();
               return [

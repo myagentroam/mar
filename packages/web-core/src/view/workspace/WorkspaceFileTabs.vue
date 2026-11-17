@@ -298,7 +298,7 @@ defineExpose({
       :role="props.presentation === 'window' ? 'region' : undefined"
       :aria-label="translate('generated.filePreviewDialog.filePreviewTabs')"
     >
-      <header class="workspace-file-tab-header">
+      <header class="workspace-file-tab-header mar-tab-header">
         <MarTab
           class="workspace-file-tab-list"
           :id-prefix="tabPrefix"
@@ -374,18 +374,8 @@ defineExpose({
 .workspace-file-tab-header {
   position: relative;
   z-index: 1;
-  display: flex;
-  height: 32px;
-  min-height: 32px;
-  flex: 0 0 32px;
-  align-items: center;
-  border-bottom: 1px solid var(--mar-border-strong);
-  background: var(--mar-bg-subtle);
+  align-items: stretch;
   color: var(--mar-text-secondary);
-}
-
-:global(html[data-theme='vscode-dark-2026']) .workspace-file-tab-header {
-  background: var(--mar-bg-page);
 }
 
 .workspace-file-window-close {
@@ -402,6 +392,7 @@ defineExpose({
 
 .workspace-file-window-close {
   flex: 0 0 24px;
+  align-self: center;
   margin-inline: 0.25rem;
 }
 
@@ -423,12 +414,6 @@ defineExpose({
 }
 
 @media (max-width: 767px) {
-  .workspace-file-tab-header {
-    height: 40px;
-    min-height: 40px;
-    flex: 0 0 40px;
-  }
-
   .workspace-file-window-close {
     width: 36px;
     min-width: 36px;
