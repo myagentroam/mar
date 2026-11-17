@@ -24,10 +24,7 @@ export function marAgentRuntimeExtensionSource(state: MarAgentCompactState): Ext
                       text:
                         input.facts?.mode === 'compact'
                           ? null
-                          : [
-                              'Use Markdown links with absolute paths for key files.',
-                              'For key deliverables, list their links as bullets in a separate section at the end of the final response.'
-                            ].join('\n')
+                          : 'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview.'
                     }
                   ]
                 })
