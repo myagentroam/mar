@@ -35,6 +35,30 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('Agent Network waiting', () => {
+  it('keeps explicit wait scoped to its execution while a later execution is unread', async () => {
+    const f = fixture();
+    f.publish('one', 'message', 'Earlier execution done');
+    f.states.set('one', 'SUCCEEDED');
+    f.publish('one', 'terminal', 'SUCCEEDED');
+    f.network.publish({
+      parentId: 'parent',
+      childId: 'one',
+      runId: 'later-run',
+      executionId: 'later-execution',
+      kind: 'message',
+      value: 'Decision needed in the later execution'
+    });
+    const result = await waitForAgentTargets({ ...f, targets: [f.targets[0]!], single: true });
+    expect(result).toMatchObject({ executionId: 'execution-one', status: 'SUCCEEDED' });
+    expect(result).not.toHaveProperty('hasMoreUpdates');
+    expect(JSON.stringify(result)).not.toContain('Decision needed');
+    const [remaining] = await f.observations.collect(new AbortController().signal);
+    expect(remaining!.content).toContain('Decision needed');
+    remaining!.acknowledge();
+    expect(await f.observations.collect(new AbortController().signal)).toEqual([]);
+    f.observations.close();
+  });
+
   it('returns the earliest unread report and leaves later reports for automatic collection', async () => {
     const f = fixture();
     for (const text of ['Decision: choose A or B', 'A second detail', 'Waiting for guidance'])
