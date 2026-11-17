@@ -32,6 +32,7 @@ import ConversationRecordIcon from './ConversationRecordIcon.vue';
 import ConversationToolDetail from './tool-detail/ConversationToolDetail.vue';
 import ConversationDetailPreview from './ConversationDetailPreview.vue';
 import ConversationRecordCopy from './ConversationRecordCopy.vue';
+import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import {
   conversationWorkProcessProjection,
   conversationWorkProcessVisibleBlocks,
@@ -504,6 +505,10 @@ function turnActive(turn: ConversationTurn): boolean {
     : ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL'].includes(turn.status);
 }
 
+function fileChangeName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+}
+
 function hasConversationDetail(item: ConversationItem): boolean {
   return conversationItemDetail(item.kind, item.payload).length > 0;
 }
@@ -570,6 +575,13 @@ watch(
   }
 );
 const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
+// Live observations have one presentation target, never every historical segment of a Run.
+const performanceBlockId = computed(
+  () =>
+    processBlocks.value
+      .filter((block) => block.groupId && block.runId === props.performance?.runId)
+      .at(-1)?.id
+);
 
 function stepDuration(item: ConversationItem): string | undefined {
   const duration = completedStepDuration(item);
@@ -602,7 +614,7 @@ function stepDuration(item: ConversationItem): string | undefined {
       :ref="(instance) => setProcessView(block.id, instance)"
       :block="block"
       :synchronized="synchronized"
-      :performance="performance"
+      :performance="block.id === performanceBlockId ? performance : undefined"
       class="conversation-turn"
     >
       <article
@@ -927,15 +939,9 @@ function stepDuration(item: ConversationItem): string | undefined {
             </summary>
             <div
               v-if="groupedItemDisclosure[displayItem.id]"
-              class="mar-conversation-detail-body conversation-content-detail conversation-list-detail"
+              class="mar-conversation-detail-body conversation-content-detail"
             >
-              <ConversationRecordCopy
-                :record="displayItem.items"
-                @copy="(text, done) => emit('copy', text, done)"
-              />
-              <ul
-                class="conversation-file-change-list mar-conversation-detail-list mar-conversation-detail-list--with-meta"
-              >
+              <ul class="conversation-file-change-list mar-conversation-detail-list">
                 <li
                   v-for="(entry, index) in conversationFileChangeEntries(displayItem.items)"
                   :key="entry.sourceId ?? `${index}:${entry.status}:${entry.path}`"
@@ -958,7 +964,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                         }
                       )
                     "
-                    class="conversation-file-change-button mar-conversation-list-content"
+                    class="conversation-file-change-button"
                     type="button"
                     :aria-label="
                       translate(
@@ -982,7 +988,14 @@ function stepDuration(item: ConversationItem): string | undefined {
                           )
                     "
                   >
-                    {{ entry.path }}
+                    <FileTypeIcon
+                      class="conversation-file-change-icon"
+                      :name="fileChangeName(entry.path)"
+                    />
+                    <span class="conversation-file-change-name">{{
+                      fileChangeName(entry.path)
+                    }}</span>
+                    <span class="conversation-file-change-path">{{ entry.path }}</span>
                   </button>
                   <span
                     v-tooltip="{
@@ -1390,7 +1403,9 @@ function stepDuration(item: ConversationItem): string | undefined {
                 :record="displayItem.item"
                 @copy="(text, done) => emit('copy', text, done)"
               />
-              <ul class="task-list-items mar-conversation-detail-list">
+              <ul
+                class="task-list-items mar-conversation-detail-list mar-conversation-detail-list--status-end"
+              >
                 <li
                   v-for="(task, index) in taskListItems(displayItem.item.payload)"
                   :key="index"
@@ -1636,10 +1651,6 @@ function stepDuration(item: ConversationItem): string | undefined {
 .conversation-list-detail {
   position: relative;
   --mar-conversation-detail-end: calc(var(--mar-utility-control-size) + 1rem);
-}
-
-.mar-conversation-detail-list--with-meta {
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
 }
 
 .conversation-run-duration,
@@ -2072,8 +2083,25 @@ details.conversation-record-group[open] > details:last-child {
   font-family: var(--mar-font-mono);
 }
 
-.conversation-file-change-stats {
+.conversation-file-change-list {
+  grid-template-columns: 1.125rem minmax(0, 1fr) max-content max-content;
+}
+
+.conversation-file-change-list > li {
+  row-gap: 0.0625rem;
+}
+
+.conversation-file-change-status {
   grid-column: 3;
+  grid-row: 1 / 3;
+  align-self: center;
+  justify-self: end;
+}
+
+.conversation-file-change-stats {
+  grid-column: 4;
+  grid-row: 1 / 3;
+  align-self: center;
   display: inline-flex;
   flex: 0 0 auto;
   gap: 0.4rem;
@@ -2088,9 +2116,10 @@ details.conversation-record-group[open] > details:last-child {
   color: var(--mar-color-danger-text);
 }
 .conversation-file-change-note {
-  grid-column: 2;
+  grid-column: 2 / -1;
+  grid-row: 3;
   color: var(--el-text-color-secondary);
-  font-size: var(--mar-font-size-meta);
+  font-size: inherit;
 }
 
 .task-list-status.task-list-status--in-progress {
@@ -2132,29 +2161,59 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-file-change-button {
-  grid-column: 2;
+  grid-column: 1 / 3;
+  grid-row: 1 / 3;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-template-rows: subgrid;
+  align-items: start;
   min-width: 0;
   max-width: 100%;
   border: 0;
   border-radius: 4px;
   background: transparent;
   padding: 0;
-  color: inherit;
+  color: var(--mar-conversation-text);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 2px;
   overflow-wrap: anywhere;
   word-break: normal;
 }
 
-.conversation-file-change-button:hover,
-.conversation-file-change-button:focus-visible {
+.conversation-file-change-icon {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: center;
+  font-size: 1.125rem;
+}
+
+.conversation-file-change-name {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.conversation-file-change-path {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--mar-text-tertiary);
+}
+
+.conversation-file-change-name,
+.conversation-file-change-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-file-change-button:hover {
   color: var(--mar-color-brand-text);
-  text-decoration-color: currentColor;
-  outline: none;
+}
+
+.conversation-file-change-button:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: 2px;
 }
 
 .user-input-card {
@@ -2330,26 +2389,6 @@ details.conversation-record-group[open] > details:last-child {
 @media (max-width: 767px) {
   .conversation-timeline {
     --conversation-item-inset: 8px;
-  }
-
-  .conversation-file-change-list li {
-    grid-template-columns: minmax(0, 1fr) max-content;
-    row-gap: 2px;
-  }
-
-  .conversation-file-change-status {
-    justify-self: start;
-    grid-row: 1;
-  }
-
-  .conversation-file-change-stats {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .conversation-file-change-button {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
 
   .conversation-message-action {

@@ -1,4 +1,4 @@
-import { modelUsageGrantSchema } from './model-usage.js';
+import { modelUsageGrantSchema, usageCountSchema } from './model-usage.js';
 import { personalGitRuntimeSchema } from './git-identity.js';
 import { z } from 'zod';
 import { fileChangeDiffSchema } from './tool-result-resource.js';
@@ -1704,14 +1704,29 @@ export const runEventSchema = z.object({
 });
 export type RunEvent = z.infer<typeof runEventSchema>;
 
-/** Ephemeral metrics for the currently observed model request, never a history item. */
+/** One normalized request's reported usage, replaced atomically, never zero-filled. */
+export const runPerformanceUsageSchema = z
+  .object({
+    inputTokens: usageCountSchema.optional(),
+    outputTokens: usageCountSchema.optional(),
+    cacheReadTokens: usageCountSchema.optional()
+  })
+  .refine((value) => Object.values(value).some((count) => count !== undefined));
+
+/** Independent latest observations for the active Run, never a history item. */
 export const runPerformanceSchema = z
   .object({
     runId: z.string().min(1).max(128),
     latencyMs: z.number().int().nonnegative().optional(),
-    tokensPerSecond: z.number().finite().nonnegative().optional()
+    tokensPerSecond: z.number().finite().nonnegative().optional(),
+    usage: runPerformanceUsageSchema.optional()
   })
-  .refine((value) => value.latencyMs !== undefined || value.tokensPerSecond !== undefined);
+  .refine(
+    (value) =>
+      value.latencyMs !== undefined ||
+      value.tokensPerSecond !== undefined ||
+      value.usage !== undefined
+  );
 export type RunPerformance = z.infer<typeof runPerformanceSchema>;
 
 /**

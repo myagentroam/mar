@@ -110,6 +110,7 @@ for (const [width, theme, locale] of [
     page
   }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
+    await grantClipboardPermissions(page.context());
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline&list-layout&theme=${theme}&locale=${locale}`
     );
@@ -198,8 +199,25 @@ for (const [width, theme, locale] of [
       );
       expect(sizes.every((size) => size.weight === '400')).toBe(true);
       expect(sizes.some((size) => size.clipped)).toBe(false);
-      if (width >= 768)
-        expect(sizes.every((size) => Math.abs(size.width - sizes[0]!.width) < 0.5)).toBe(true);
+      if (list !== files) {
+        const rows = await list.locator('li').evaluateAll((elements) =>
+          elements.map((element) => {
+            const marker = element
+              .querySelector('.mar-conversation-list-marker')!
+              .getBoundingClientRect();
+            const content = element
+              .querySelector('.mar-conversation-list-content')!
+              .getBoundingClientRect();
+            return {
+              right: marker.right,
+              followsContent: marker.left >= content.right,
+              center: Math.abs(marker.y + marker.height / 2 - content.y - content.height / 2)
+            };
+          })
+        );
+        expect(rows.every((row) => row.followsContent && row.center < 1)).toBe(true);
+        expect(rows.every((row) => Math.abs(row.right - rows[0]!.right) < 0.5)).toBe(true);
+      }
       const bounds = await list.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
@@ -207,29 +225,186 @@ for (const [width, theme, locale] of [
         .poll(() => list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
         .toBe(true);
     }
-    await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
+    await expect(fileDetail.locator('button')).toHaveCount(6);
+    await expect(fileDetail.locator('.tool-detail-copy')).toHaveCount(0);
+    await expect(process.locator('.tool-detail-copy')).toHaveCount(2);
+    const taskContent = tasks.locator('.task-list-content').first();
+    await expect(taskContent).toHaveCSS('white-space', 'normal');
+    expect(
+      await taskContent.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)
+    ).toBe(true);
+    await taskContent.getByRole('link', { name: 'Review fixture' }).click();
+    await expect(page.getByTestId('opened-file')).toHaveText(
+      JSON.stringify(['list-regression.md', false])
+    );
+    const agentTitle = agents.locator('.mar-conversation-list-content').nth(1);
+    const fullTitle =
+      'Check regression coverage: ' + 'Desktop, mobile, clipboard and keyboard checks. '.repeat(4);
+    await expect(agentTitle).toHaveText(fullTitle);
+    await expect(agentTitle).toHaveCSS('text-overflow', 'ellipsis');
+    expect(await agentTitle.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+      true
+    );
+    await agentTitle.scrollIntoViewIfNeeded();
+    await expect(agentTitle).toBeInViewport();
+    await page.mouse.move(0, 0);
+    await agentTitle.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(fullTitle);
+    const agentCopy = agentGroup.getByRole('button', {
+      name: locale === 'en-US' ? 'Copy public record' : '复制公开记录',
+      exact: true
+    });
+    await agentCopy.click();
+    await expect(page.getByTestId('copied')).toContainText(fullTitle);
+    await copy.click();
+    await expect(page.getByTestId('copied')).toContainText('Long task content wraps naturally.');
+    await page.mouse.move(0, 0);
     await process.screenshot({
       path: testInfo.outputPath(`task-file-lists-${width}-${locale}.png`)
     });
   });
 }
 
-test('copies loaded file-change records without flattening their public fields', async ({
-  page
-}) => {
-  await grantClipboardPermissions(page.context());
-  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&list-layout`);
-  const process = page.locator('[data-process-id="process"]');
-  await process.locator('.process-heading').click();
-  const files = process.locator('.conversation-file-change-details');
-  await files.locator('> summary').click();
-  await files.getByRole('button', { name: 'Copy public record', exact: true }).click();
-  expect(JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))).toMatchObject([
-    { id: 'list-files', kind: 'file_change', payload: { changes: expect.any(Array) } }
-  ]);
-  const records = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
-  expect(records[0].payload.changes).toHaveLength(6);
-});
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`file-change cards retain paths, distinct changes and navigation without copy at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&list-layout&file-cards&theme=${theme}`
+    );
+    const process = page.locator('[data-process-id="process"]');
+    await process.locator('.process-heading').click();
+    const files = process.locator('.conversation-file-change-details');
+    const heading = files.locator(':scope > summary');
+    await expect(files.locator('.conversation-file-change-list')).toHaveCount(0);
+    await heading.click();
+    const rows = files.locator('li');
+    await expect(rows).toHaveCount(5);
+    const longFileName = `conversation-tool-detail-fixture-${'long-name-'.repeat(12)}preview.vue`;
+    const longFilePath = `C:\\workspace\\packages\\web-core\\test\\e2e\\${longFileName}`;
+    const centers = await rows.evaluateAll((elements) =>
+      elements.flatMap((row) => {
+        const file = row.querySelector('.conversation-file-change-button')!.getBoundingClientRect();
+        return [
+          ...row.querySelectorAll(
+            '.conversation-file-change-status, .conversation-file-change-stats'
+          )
+        ]
+          .filter((element) => element.textContent!.trim().length > 0)
+          .map((element) => {
+            const bounds = element.getBoundingClientRect();
+            return Math.abs(bounds.y + bounds.height / 2 - file.y - file.height / 2);
+          });
+      })
+    );
+    expect(centers.every((difference) => difference < 1)).toBe(true);
+    await expect(
+      files.getByRole('button', { name: 'Copy public record', exact: true })
+    ).toHaveCount(0);
+    await expect(rows.locator('.conversation-file-change-name')).toHaveText([
+      'pelican.svg',
+      'preview.ts',
+      'preview.ts',
+      longFileName,
+      'pelican.png'
+    ]);
+    await expect(rows.locator('.file-type-icon')).toHaveCount(5);
+    await expect(rows.locator('.conversation-file-change-path')).toHaveText([
+      'assets/illustrations/pelican.svg',
+      'src/preview.ts',
+      'src/preview.ts',
+      longFilePath,
+      'assets/illustrations/line\nbreak/pelican.png'
+    ]);
+    await expect(rows.first().locator('.change-additions')).toHaveText('+144');
+    await expect(rows.first().locator('.change-deletions')).toHaveText('-0');
+    await expect(rows.nth(3).locator('.conversation-file-change-stats')).toBeEmpty();
+    for (const selector of ['.conversation-file-change-name', '.conversation-file-change-path']) {
+      const text = rows.nth(3).locator(selector);
+      await expect(text).toHaveCSS('white-space', 'nowrap');
+      await expect(text).toHaveCSS('text-overflow', 'ellipsis');
+      const geometry = await text.evaluate((element) => ({
+        clipped: element.scrollWidth > element.clientWidth + 1,
+        height: element.getBoundingClientRect().height,
+        lineHeight: parseFloat(getComputedStyle(element).lineHeight)
+      }));
+      expect(geometry.clipped).toBe(true);
+      expect(geometry.height).toBeCloseTo(geometry.lineHeight, 0);
+    }
+    await expect(rows.nth(4).locator('.conversation-file-change-note')).toBeVisible();
+    for (const index of [0, 1, 2]) {
+      await rows.nth(index).getByRole('button').click();
+      await expect(page.getByTestId('opened-change')).toHaveText(
+        `00000000-0000-4000-8000-00000000000${index}`
+      );
+    }
+    await expect(page.getByTestId('opened-file')).toBeEmpty();
+    await rows.nth(3).getByRole('button').click();
+    await expect(page.getByTestId('opened-file')).toHaveText(JSON.stringify([longFilePath, false]));
+    await rows
+      .nth(3)
+      .getByRole('button')
+      .click({ modifiers: ['Control'] });
+    await expect(page.getByTestId('opened-file')).toHaveText(JSON.stringify([longFilePath, true]));
+    await page.mouse.move(0, 0);
+    await rows.nth(3).getByRole('button').hover();
+    await expect(page.getByRole('tooltip')).toContainText(longFilePath);
+    await rows.nth(4).getByRole('button').click();
+    await expect(page.getByTestId('opened-file')).toHaveText(
+      JSON.stringify(['assets/illustrations/line\nbreak/pelican.png', false])
+    );
+    const firstFile = rows.first().getByRole('button');
+    await firstFile.press('Enter');
+    await expect(page.getByTestId('opened-change')).toHaveText(
+      '00000000-0000-4000-8000-000000000000'
+    );
+    await expect(firstFile).toBeFocused();
+    await expect(firstFile).toHaveCSS('outline-style', 'solid');
+    const name = rows.first().locator('.conversation-file-change-name');
+    const path = rows.first().locator('.conversation-file-change-path');
+    await expect(name).toHaveCSS('font-size', '12px');
+    await expect(name).toHaveCSS('font-weight', '400');
+    const colors = await files.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-text-tertiary)';
+      element.append(probe);
+      const path = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        name: getComputedStyle(element.querySelector('.mar-conversation-detail-body')!).color,
+        path
+      };
+    });
+    await expect(name).toHaveCSS('color', colors.name);
+    await expect(path).toHaveCSS('color', colors.path);
+    const positions = await rows.first().evaluate((row) => {
+      const name = row.querySelector('.conversation-file-change-name')!.getBoundingClientRect();
+      const path = row.querySelector('.conversation-file-change-path')!.getBoundingClientRect();
+      return { nameX: name.x, pathX: path.x, nameBottom: name.bottom, pathY: path.y };
+    });
+    expect(positions.nameX).toBeCloseTo(positions.pathX, 0);
+    expect(positions.pathY).toBeGreaterThanOrEqual(positions.nameBottom);
+    await expectUnclippedDetail(files);
+    await expect
+      .poll(() => files.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.mouse.move(0, 0);
+    await files.screenshot({
+      path: testInfo.outputPath(`file-changes-final-${width}-${theme}.png`)
+    });
+    await heading.click();
+    await expect(files.locator('li')).toHaveCount(0);
+    await heading.click();
+    await expect(files.locator('li')).toHaveCount(5);
+  });
+}
 
 for (const [width, theme] of [
   [1280, 'dark'],
@@ -247,7 +422,7 @@ for (const [width, theme] of [
     await agents.locator('.conversation-record-group > summary').click();
     await agents.locator('.conversation-tool-detail > summary').click();
     await expect(process.locator('.mar-conversation-detail-list')).toHaveCount(3);
-    await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
+    await expect(process.locator('.tool-detail-copy')).toHaveCount(2);
     await process.screenshot({ path: testInfo.outputPath(`unified-lists-${width}-${theme}.png`) });
   });
 }
@@ -535,6 +710,23 @@ for (const variant of [
     const preview = file.locator('.detail-preview-window');
     const more = file.getByRole('button', { name: variant.more, exact: true });
     await expect(more).toBeVisible();
+    await expect(more.locator('svg')).toHaveCount(1);
+    await expect(more).toHaveCSS('border-top-width', '0px');
+    await expect(more).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const toggleColor = await more.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-conversation-muted)';
+      element.append(probe);
+      const rest = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-conversation-text)';
+      const hover = getComputedStyle(probe).color;
+      probe.remove();
+      return { rest, hover };
+    });
+    await expect(more).toHaveCSS('color', toggleColor.rest);
+    const collapsedIcon = await more
+      .locator('svg')
+      .evaluate((element) => getComputedStyle(element).transform);
     await expect(more).toHaveAttribute('aria-expanded', 'false');
     await expect(file.locator('pre')).toContainText('Returned line 40');
     await expect(file.locator('pre')).not.toContainText('[Truncated]');
@@ -550,13 +742,21 @@ for (const variant of [
       path: testInfo.outputPath(`detail-preview-${variant.width}.png`),
       fullPage: true
     });
+    await more.hover();
+    await expect(more).toHaveCSS('color', toggleColor.hover);
+    await expect(more).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await file.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
     const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
     expect(copied.payload.output.blocks[0].text).toContain('Returned line 40');
-    await more.focus();
+    await page.keyboard.press('Tab');
+    await expect(more).toBeFocused();
+    await expect(more).toHaveCSS('outline-width', '1px');
     await page.keyboard.press('Enter');
     const less = file.getByRole('button', { name: variant.less, exact: true });
     await expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      await less.locator('svg').evaluate((element) => getComputedStyle(element).transform)
+    ).not.toBe(collapsedIcon);
     await expect(preview).toHaveCSS('max-height', 'none');
     await less.click();
     await expect(more).toHaveAttribute('aria-expanded', 'false');

@@ -15,7 +15,45 @@ function publish(
   network.publish({ parentId, childId, runId: 'run-1', executionId, kind, value });
 }
 
+function observationPayload(content: string) {
+  return JSON.parse(
+    content.slice('<mar_subagent_update>\n'.length, -'\n</mar_subagent_update>'.length)
+  );
+}
+
 describe('live Agent Network observations', () => {
+  it.each([false, true])(
+    'reports automatic continuation across executions without widening explicit capture (new Run=%s)',
+    async (newRun) => {
+      const network = new AgentNetworkObservations();
+      const parent = network.attach('parent');
+      publish(network, 'parent', 'child', 'message', 'Earlier execution done');
+      publish(network, 'parent', 'child', 'terminal', 'SUCCEEDED');
+      network.publish({
+        parentId: 'parent',
+        childId: 'child',
+        runId: newRun ? 'run-2' : 'run-1',
+        executionId: 'execution-2',
+        kind: 'message',
+        value: 'Decision needed in the next execution'
+      });
+      expect(parent.capture('child', 'execution-1')).not.toHaveProperty('hasMoreUpdates');
+      const [first] = await parent.collect(new AbortController().signal);
+      expect(observationPayload(first!.content)).toMatchObject({
+        executionId: 'execution-1',
+        hasMoreUpdates: true
+      });
+      expect(first!.content).not.toContain('Decision needed');
+      first!.acknowledge();
+      const [next] = await parent.collect(new AbortController().signal);
+      expect(next!.content).toContain('Decision needed');
+      expect(observationPayload(next!.content)).not.toHaveProperty('hasMoreUpdates');
+      next!.acknowledge();
+      expect(await parent.collect(new AbortController().signal)).toEqual([]);
+      parent.close();
+    }
+  );
+
   it.each([false, true])(
     'retains an unread decision request before a later reply (final=%s)',
     async (final) => {
@@ -419,20 +457,54 @@ describe('live Agent Network observations', () => {
     expect(parent.wake.pending()).toBe(false);
   });
 
-  it('combines a target execution into one item and leaves unselected targets unread', async () => {
+  it.each([8, 9, 17])(
+    'continues batches across %i child targets without imposing a child limit',
+    async (count) => {
+      const network = new AgentNetworkObservations();
+      const parent = network.attach('parent');
+      publish(network, 'parent', 'child-0', 'message', 'body');
+      publish(network, 'parent', 'child-0', 'terminal', 'SUCCEEDED');
+      for (let index = 1; index < count; index++)
+        publish(network, 'parent', `child-${index}`, 'message', `body-${index}`);
+      const delivered: string[] = [];
+      for (let offset = 0; offset < count; offset += 8) {
+        const batch = await parent.collect(new AbortController().signal);
+        expect(batch).toHaveLength(Math.min(8, count - offset));
+        if (offset === 0) {
+          expect(batch[0]!.content).toContain('body');
+          expect(batch[0]!.content).toContain('SUCCEEDED');
+        }
+        for (const item of batch) {
+          const payload = observationPayload(item.content);
+          if (count - offset > 8) expect(payload.hasMoreAgents).toBe(true);
+          else expect(payload).not.toHaveProperty('hasMoreAgents');
+          expect(payload).not.toHaveProperty('hasMoreUpdates');
+          delivered.push(payload.agentId);
+        }
+        batch.forEach((item) => item.acknowledge());
+      }
+      expect(delivered).toEqual(Array.from({ length: count }, (_, index) => `child-${index}`));
+      expect(await parent.collect(new AbortController().signal)).toEqual([]);
+      parent.close();
+    }
+  );
+
+  it('keeps batch continuation visible when only the first candidate is installed', async () => {
     const network = new AgentNetworkObservations();
     const parent = network.attach('parent');
-    publish(network, 'parent', 'child-0', 'message', 'body');
-    publish(network, 'parent', 'child-0', 'terminal', 'SUCCEEDED');
-    for (let index = 1; index < 9; index++)
+    for (let index = 0; index < 9; index++)
       publish(network, 'parent', `child-${index}`, 'message', `body-${index}`);
     const first = await parent.collect(new AbortController().signal);
-    expect(first).toHaveLength(8);
-    expect(first[0]!.content).toContain('body');
-    expect(first[0]!.content).toContain('SUCCEEDED');
-    first.forEach((item) => item.acknowledge());
-    const last = await parent.collect(new AbortController().signal);
-    expect(last).toHaveLength(1);
-    expect(last[0]!.content).toContain('child-8');
+    expect(first.every((item) => observationPayload(item.content).hasMoreAgents === true)).toBe(
+      true
+    );
+    first[0]!.acknowledge();
+    const next = await parent.collect(new AbortController().signal);
+    expect(next).toHaveLength(8);
+    expect(next.some((item) => observationPayload(item.content).agentId === 'child-8')).toBe(true);
+    expect(next.every((item) => !('hasMoreAgents' in observationPayload(item.content)))).toBe(true);
+    next.forEach((item) => item.acknowledge());
+    expect(await parent.collect(new AbortController().signal)).toEqual([]);
+    parent.close();
   });
 });

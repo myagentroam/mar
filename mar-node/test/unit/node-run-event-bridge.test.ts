@@ -26,6 +26,7 @@ describe('Node Run event bridge', () => {
     expect(emit.mock.calls).toEqual([
       ['execution-1', 'run.started', { startedAt: 100 }, 'STARTING'],
       ['execution-1', 'run.running', {}, 'RUNNING'],
+      ['execution-1', 'run.usage', { inputTokens: 10 }],
       ['execution-1', 'conversation.item', { id: 'item-1' }, undefined],
       ['execution-1', 'run.completed', {}, 'SUCCEEDED']
     ]);

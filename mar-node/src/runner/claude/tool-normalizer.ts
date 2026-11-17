@@ -19,10 +19,15 @@ import {
   type RunnerUsageValues
 } from '../../service/runner-usage-tracker.js';
 
+/** Owns Claude request usage, native compaction purpose and parent-tool attribution. */
 export class ClaudeUsageNormalizer {
   private readonly tracker: RunnerUsageTracker;
   private readonly messages = new Map<string, { id: string; values: RunnerUsageValues }>();
-  constructor(identity: string, publish: (value: RunnerUsageFact) => void) {
+  constructor(
+    identity: string,
+    publish: (value: RunnerUsageFact) => void,
+    private readonly compact = false
+  ) {
     this.tracker = new RunnerUsageTracker(identity, publish);
   }
   observe(value: unknown): void {
@@ -38,7 +43,7 @@ export class ClaudeUsageNormalizer {
     const usage = record(message?.usage ?? event?.usage);
     let values: RunnerUsageValues = {
       ...(previous?.id === id ? previous.values : {}),
-      purpose: 'conversation',
+      purpose: this.compact ? 'compact' : 'conversation',
       agentRole: parent ? 'subagent' : 'root',
       ...(typeof message?.model === 'string'
         ? { actualModel: message.model, modelConfigurationId: message.model }

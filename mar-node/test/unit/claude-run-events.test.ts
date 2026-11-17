@@ -255,6 +255,103 @@ describe('Claude events and approvals', () => {
     }
   );
 
+  it('sends Claude /compact usage to accounting without publishing performance', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-claude-compact-'));
+    const workspace = join(home, 'workspace');
+    await mkdir(workspace);
+    const database = new NodeDatabase(':memory:', 'node-1');
+    database.saveWorkspace({
+      id: 'workspace-1',
+      path: workspace,
+      kind: 'DIRECTORY',
+      gitSummary: null
+    });
+    const stream = publicConversationStream();
+    const next = stream.next.bind(stream);
+    stream.next = async (...args) => {
+      const result = await next(...args);
+      if (result.done || result.value.type !== 'assistant') return result;
+      return {
+        ...result,
+        value: {
+          ...result.value,
+          message: {
+            ...result.value.message,
+            id: 'claude-compact-usage',
+            model: 'claude-test-model',
+            stop_reason: 'end_turn',
+            usage: {
+              input_tokens: 100,
+              cache_read_input_tokens: 60,
+              cache_creation_input_tokens: 10,
+              output_tokens: 8
+            },
+            content: [{ type: 'text', text: 'Compacted summary' }]
+          }
+        } as never
+      };
+    };
+    const connector = new NodeConnector({
+      reconnect: false,
+      database,
+      capabilities: capabilities(),
+      claudeClient: new ClaudeAgentSdkAdapter(bindings(() => stream))
+    });
+    const sent = attachSocket(connector);
+    const internals = connector as unknown as {
+      executeNodeOperation(operation: string, input: unknown): Promise<{ session: { id: string } }>;
+      runEventService: { emit(...args: unknown[]): void };
+      modelUsage: { record(runId: string, payload: unknown): void };
+    };
+    const emitted = vi.spyOn(internals.runEventService, 'emit');
+    const recordUsage = vi.spyOn(internals.modelUsage, 'record');
+    try {
+      const { session } = await internals.executeNodeOperation('session.create', {
+        workspaceId: 'workspace-1',
+        runner: 'claude-code',
+        cwd: workspace
+      });
+      await internals.executeNodeOperation('session.message', {
+        sessionId: session.id,
+        clientMessageId: 'compact-usage',
+        content: '/compact'
+      });
+      await vi.waitFor(() =>
+        expect(emitted.mock.calls.some(([, type]) => type === 'run.completed')).toBe(true)
+      );
+
+      expect(recordUsage).toHaveBeenCalledOnce();
+      expect(recordUsage.mock.calls[0]?.[1]).toMatchObject({
+        purpose: 'compact',
+        agentRole: 'root',
+        state: 'succeeded',
+        inputTokens: '170',
+        outputTokens: '8',
+        cacheReadTokens: '60',
+        cacheWriteTokens: '10'
+      });
+      expect(
+        emitted.mock.calls.some(
+          ([, type, payload]) =>
+            type === 'run.performance' &&
+            (payload as Record<string, unknown> | undefined)?.usage !== undefined
+        )
+      ).toBe(false);
+      expect(
+        sent
+          .filter((message) => message.type === 'workbench.event')
+          .map((message) => message.payload.payload as Record<string, unknown>)
+          .some(
+            (payload) =>
+              (payload?.performance as Record<string, unknown> | undefined)?.usage !== undefined
+          )
+      ).toBe(false);
+    } finally {
+      await connector.stop();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
   it('normalizes command and structured file tools inside the Claude Runner', () => {
     expect(
       normalizeClaudeTool('Bash', { command: 'pwd' }, '/workspace', false, false)

@@ -13,7 +13,6 @@ import WorkspaceSessionTreeButton from '../workspace/WorkspaceSessionTreeButton.
 import ConversationHeader from '../conversation/ConversationHeader.vue';
 import ConversationScroll from '../conversation/ConversationScroll.vue';
 import ConversationTimeline from '../conversation/ConversationTimeline.vue';
-import SessionPerformanceInfo from '../conversation/SessionPerformanceInfo.vue';
 import ComposerQueue from '../composer/ComposerQueue.vue';
 import ComposerToolbar from '../composer/ComposerToolbar.vue';
 import ComposerAttachments from '../composer/ComposerAttachments.vue';
@@ -183,9 +182,6 @@ onBeforeUnmount(() => {
           @rollback="controller.rollbackConversation"
           @decide-approval="controller.approvals.decideApproval"
         />
-        <template #status>
-          <SessionPerformanceInfo :performance="performance" />
-        </template>
       </ConversationScroll>
       <ConversationComposer
         ref="composer"

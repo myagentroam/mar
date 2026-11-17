@@ -1,6 +1,10 @@
 import { sessionGroup } from '../session/session-presentation-service.js';
 import type { RunEvent, WorkbenchEventCategory } from '@myagentroam/protocol';
-import { permissionStopSchema, runPerformanceSchema } from '@myagentroam/protocol';
+import {
+  permissionStopSchema,
+  runPerformanceSchema,
+  runPerformanceUsageSchema
+} from '@myagentroam/protocol';
 import type { NodeAgentSession } from '../session/contracts.js';
 import type { RunnerExecutionStatus } from '../runner/contracts.js';
 import { NodeMetrics, nodeLog } from '../operational.js';
@@ -46,6 +50,10 @@ export interface RunEventServiceOptions {
   }) => void;
 }
 
+/**
+ * Projects normalized execution and request facts. Runtime owns lifecycle, metrics and
+ * request ordering; this service owns text coalescing timers, never native usage or attribution.
+ */
 export class RunEventService {
   private readonly pendingText = new Map<
     string,
@@ -55,6 +63,10 @@ export class RunEventService {
   constructor(private readonly options: RunEventServiceOptions) {}
 
   emit(runId: string, eventType: string, payload: unknown, status?: RunnerExecutionStatus): void {
+    if (eventType === 'run.usage') {
+      this.emitRequestUsage(runId, payload);
+      return;
+    }
     if (eventType === 'run.performance') {
       const run = this.options.runtime.getRun(runId);
       if (run === undefined || !isPlainRecord(payload)) return;
@@ -83,6 +95,51 @@ export class RunEventService {
     }
     this.flushText(runId);
     this.emitNow(runId, eventType, payload, status);
+  }
+
+  /** Projects normalized request facts before accounting; ordering belongs to Runtime. */
+  private emitRequestUsage(id: string, payload: unknown): void {
+    if (
+      !isPlainRecord(payload) ||
+      payload.purpose !== 'conversation' ||
+      payload.agentRole !== 'root' ||
+      typeof payload.requestId !== 'string' ||
+      payload.requestId.length === 0 ||
+      payload.requestId.length > 256 ||
+      typeof payload.revision !== 'number' ||
+      !Number.isSafeInteger(payload.revision) ||
+      payload.revision < 1 ||
+      !['running', 'succeeded', 'failed', 'cancelled', 'interrupted'].some(
+        (state) => state === payload.state
+      )
+    )
+      return;
+    const parsed =
+      payload.state === 'running'
+        ? undefined
+        : runPerformanceUsageSchema.safeParse({
+            inputTokens: payload.inputTokens,
+            outputTokens: payload.outputTokens,
+            cacheReadTokens: payload.cacheReadTokens
+          });
+    const usage = parsed?.success ? parsed.data : undefined;
+    if (
+      !this.options.runtime.updateRunRequestUsage(
+        id,
+        {
+          requestId: payload.requestId,
+          revision: payload.revision
+        },
+        usage
+      )
+    )
+      return;
+    const run = this.options.runtime.getRun(id)!;
+    this.flushText(id);
+    this.emitWorkbench('conversation', {
+      sessionId: run.sessionId,
+      performance: { runId: run.id, usage }
+    });
   }
 
   private emitWorkbench(category: WorkbenchEventCategory, payload: unknown): void {

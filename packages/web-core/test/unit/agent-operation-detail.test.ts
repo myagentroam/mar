@@ -19,7 +19,7 @@ describe('Agent operation card projection', () => {
             { title: 'Unknown status' }
           ]
         }
-      })
+      }).directive('tooltip', {})
     );
     expect(html).toContain('<ul');
     expect(html.match(/<li\b/gu)).toHaveLength(3);
@@ -55,7 +55,7 @@ describe('Agent operation card projection', () => {
                   })),
                   wait: { waitFor: 'message', mode: 'all', waitMs }
                 }
-              })
+              }).directive('tooltip', {})
             );
             expect(html).toContain(`message · all · ${expected}`);
             expect(html.split(expected)).toHaveLength(2);

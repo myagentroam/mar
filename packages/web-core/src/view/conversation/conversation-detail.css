@@ -55,6 +55,27 @@
   overflow-wrap: anywhere;
 }
 
+.mar-conversation-detail-list--status-end {
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.mar-conversation-detail-list--status-end .mar-conversation-list-row {
+  align-items: center;
+  padding-block: 0.25rem;
+}
+
+.mar-conversation-detail-list--status-end .mar-conversation-list-marker {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+}
+
+.mar-conversation-detail-list--status-end .mar-conversation-list-content {
+  grid-column: 1;
+  grid-row: 1;
+}
+
 .mar-conversation-detail-body .mar-conversation-detail-text {
   margin: 0;
   padding: 0;

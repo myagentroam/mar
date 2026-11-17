@@ -8,9 +8,20 @@ import { goalMessage } from './support/localized-fixture-data.js';
 
 import ConversationTimeline from '../../src/view/conversation/ConversationTimeline.vue';
 
+type ToolDetailFixtureItem = Omit<ConversationItem, 'payload'> & {
+  payload: Record<string, unknown>;
+};
+
 const integrated = new URL(location.href).searchParams.has('timeline');
 const listLayout = new URL(location.href).searchParams.has('list-layout');
 const listDesign = new URL(location.href).searchParams.has('list-design');
+const fileCards = new URL(location.href).searchParams.has('file-cards');
+const longFileName = `conversation-tool-detail-fixture-${'long-name-'.repeat(12)}preview.vue`;
+const longFilePath = `C:\\workspace\\packages\\web-core\\test\\e2e\\${longFileName}`;
+const openedFile = ref('');
+const openedChange = ref('');
+const longAgentTitle =
+  'Check regression coverage: ' + 'Desktop, mobile, clipboard and keyboard checks. '.repeat(4);
 const designTasks = [
   'Review the list layout and status hierarchy',
   'Verify clipboard and collapsed-state behavior',
@@ -26,7 +37,7 @@ const listSamples: ConversationItem[] = [
       items: ['PENDING', 'IN_PROGRESS', 'COMPLETED'].map((status, index) => ({
         text: listDesign
           ? designTasks[index]
-          : `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)}`,
+          : `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)} [Review fixture](./list-regression.md)`,
         status
       }))
     }
@@ -37,16 +48,40 @@ const listSamples: ConversationItem[] = [
     status: 'COMPLETED',
     processGroup: { id: 'process' },
     payload: {
-      changes: ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED'].map(
-        (change) => ({
-          path: listDesign
-            ? `src/conversation/${change.toLowerCase()}.ts`
-            : `src/nested/long-path-for-layout-check/${change.toLowerCase()}.ts`,
-          change,
-          additions: 12,
-          deletions: 3
-        })
-      )
+      changes: fileCards
+        ? [
+            ...['assets/illustrations/pelican.svg', 'src/preview.ts', 'src/preview.ts'].map(
+              (path, index) => ({
+                path,
+                change: index === 0 ? 'ADDED' : 'MODIFIED',
+                additions: index === 0 ? 144 : 18,
+                deletions: index === 0 ? 0 : 6,
+                changeId: `00000000-0000-4000-8000-00000000000${index}`,
+                diff: {
+                  status: 'available',
+                  source: 'TOOL_CHANGE',
+                  resourceRef: `00000000-0000-4000-8000-00000000001${index}`,
+                  format: 'unified-diff',
+                  byteSize: 120,
+                  sha256: '0'.repeat(64)
+                }
+              })
+            ),
+            { path: longFilePath, change: 'RENAMED' },
+            {
+              path: 'assets/illustrations/line\nbreak/pelican.png',
+              change: 'MODIFIED',
+              diff: { status: 'unavailable', reason: 'binary' }
+            }
+          ]
+        : ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED', 'COPIED', 'TYPE_CHANGED'].map((change) => ({
+            path: listDesign
+              ? `src/conversation/${change.toLowerCase()}.ts`
+              : `src/nested/long-path-for-layout-check/${change.toLowerCase()}.ts`,
+            change,
+            additions: 12,
+            deletions: 3
+          }))
     }
   },
   {
@@ -62,7 +97,11 @@ const listSamples: ConversationItem[] = [
         detail: {},
         targets: [
           { agentId: 'review', title: 'Review native tool details', status: 'RUNNING' },
-          { agentId: 'tests', title: 'Check regression coverage', status: 'IDLE' },
+          {
+            agentId: 'tests',
+            title: listDesign ? 'Check regression coverage' : longAgentTitle,
+            status: 'IDLE'
+          },
           { agentId: 'docs', title: 'Verify documentation links', status: 'SUCCEEDED' }
         ]
       }
@@ -176,7 +215,7 @@ if (longPreview)
 const failed = ref(false);
 const copyError = ref(false);
 const copied = ref('');
-const command = ref<ConversationItem>({
+const command = ref<ToolDetailFixtureItem>({
   id: 'exec-a',
   kind: 'command_execution',
   status: 'IN_PROGRESS',
@@ -214,7 +253,7 @@ if (new URL(location.href).searchParams.has('long')) {
     }
   };
 }
-const detailSamples: ConversationItem[] = [
+const detailSamples: ToolDetailFixtureItem[] = [
   {
     id: 'generic',
     kind: 'tool_call',
@@ -927,6 +966,8 @@ function finish() {
       </button>
     </template>
     <output data-testid="copied">{{ copied }}</output>
+    <output v-if="fileCards || listLayout" data-testid="opened-file">{{ openedFile }}</output>
+    <output v-if="fileCards" data-testid="opened-change">{{ openedChange }}</output>
     <ConversationTimeline
       v-if="integrated"
       :turns="turns"
@@ -943,6 +984,9 @@ function finish() {
       :node-ready="false"
       :rewind-enabled="false"
       :rollback-enabled="false"
+      :tool-change-enabled="fileCards"
+      @open-file="(path, line, column, external) => (openedFile = JSON.stringify([path, external]))"
+      @open-file-change="(entry) => (openedChange = entry.changeId ?? '')"
       @copy="copy"
     />
     <template v-else>

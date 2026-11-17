@@ -299,17 +299,25 @@ export class ParentObservations implements ExtensionSessionContextProvider {
 
   collect(signal: AbortSignal): ReturnType<ExtensionSessionContextProvider['collect']> {
     signal.throwIfAborted();
-    const children = [...new Set([...this.#items.values()].map((item) => item.childId))].slice(
-      0,
-      8
-    );
-    return children.map((childId) => {
+    const pending = [...this.#items.values()];
+    const children = [...new Set(pending.map((item) => item.childId))];
+    const batch = children.slice(0, 8);
+    return batch.map((childId) => {
       const snapshot = this.captureBatch(childId, undefined, Infinity)!;
+      // Automatic collection follows child Sessions; explicit capture stays execution-scoped.
+      const hasMoreUpdates =
+        snapshot.hasMoreUpdates ||
+        pending.some(
+          (item) =>
+            item.childId === childId &&
+            (item.runId !== snapshot.runId || item.executionId !== snapshot.executionId)
+        );
       const content = boundedObservation({
         agentId: snapshot.childId,
         runId: snapshot.runId,
         executionId: snapshot.executionId,
-        ...(snapshot.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
+        ...(hasMoreUpdates ? { hasMoreUpdates: true } : {}),
+        ...(batch.length < children.length ? { hasMoreAgents: true } : {}),
         ...snapshot.result,
         updates: snapshot.updates.map((item) => ({
           kind: item.kind,
@@ -444,6 +452,7 @@ function boundedObservation(input: {
   runId: string;
   executionId: string;
   hasMoreUpdates?: boolean;
+  hasMoreAgents?: boolean;
   summary?: string;
   summaryTruncated?: boolean;
   turnId?: string;
@@ -503,6 +512,7 @@ function boundedObservation(input: {
       runId: boundedUtf8(data.runId, 512).value,
       executionId: boundedUtf8(data.executionId, 512).value,
       ...(data.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
+      ...(data.hasMoreAgents ? { hasMoreAgents: true } : {}),
       detailsTruncated: true
     };
     return `<mar_subagent_update>\n${escapedJson(fallback)}\n</mar_subagent_update>`;
