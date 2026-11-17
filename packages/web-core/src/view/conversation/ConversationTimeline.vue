@@ -1136,7 +1136,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               "
               @click.stop="emit('rewind', turn, displayItem.item)"
             >
-              <MarIcon name="undo" />
+              <MarIcon name="branch" />
             </button>
             <button
               v-tooltip="translate('generated.conversationTimeline.rollbackConversation')"
@@ -1149,7 +1149,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               "
               @click.stop="emit('rollback', turn, displayItem.item)"
             >
-              <MarIcon name="back" />
+              <MarIcon name="undo" />
             </button>
           </div>
         </template>
@@ -1222,7 +1222,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               :aria-label="translate('generated.conversationTimeline.createSessionBranchAfterTurn')"
               @click.stop="emit('rewind', turn, displayItem.item)"
             >
-              <MarIcon name="undo" />
+              <MarIcon name="branch" />
             </button>
           </div>
         </template>

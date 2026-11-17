@@ -113,33 +113,68 @@ for (const locale of ['en-US', 'zh-CN']) {
   for (const width of [1280, 390]) {
     test(`Session branch actions distinguish Rewind from Rollback in ${locale} at ${width}px`, async ({
       page
-    }) => {
+    }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${fixture.url}conversation-style.html?history-actions=1&language=${locale}`);
       const labels =
         locale === 'zh-CN'
-          ? ['从此消息之前创建会话分支', '从此轮结束处创建会话分支', '回退当前会话']
+          ? [
+              '从此消息之前创建会话分支',
+              '从此轮结束处创建会话分支',
+              '回退当前会话',
+              '永久删除此用户消息及其后的对话记录'
+            ]
           : [
               'Create a session branch before this message',
               'Create a session branch after this turn',
-              'Roll back this conversation'
+              'Roll back this conversation',
+              'Permanently delete this user message and all later conversation history'
             ];
-      for (const [index, kind] of ['user_message', 'assistant_message'].entries()) {
-        const message = page.locator(`.conversation-item.${kind}`);
-        const branch = message.getByRole('button', { name: labels[index]!, exact: true });
-        await expect(branch).toBeVisible();
-        await branch.hover();
-        await expect(page.locator('[role="tooltip"]:visible')).toHaveText(labels[index]!);
-        await expect(branch).not.toHaveAttribute('title');
+      for (const theme of ['daylight', 'vscode-dark-2026']) {
+        await page.goto(
+          `${fixture.url}conversation-style.html?history-actions=1&language=${locale}&theme=${theme}`
+        );
+        for (const [index, kind] of ['user_message', 'assistant_message'].entries()) {
+          const message = page.locator(`.conversation-item.${kind}`);
+          const branch = message.getByRole('button', { name: labels[index]!, exact: true });
+          await expect(branch).toBeVisible();
+          const glyph = branch.locator('[data-mar-icon="branch"]');
+          await expect(glyph).toBeVisible();
+          await expect(glyph.locator('circle')).toHaveCount(3);
+          await expect(glyph).toHaveAttribute('fill', 'none');
+          const geometry = await glyph.evaluate((element) => {
+            const svg = element as SVGSVGElement;
+            const box = svg.getBBox();
+            const style = getComputedStyle(svg);
+            const halfStroke = parseFloat(style.strokeWidth) / 2;
+            return {
+              min: Math.min(box.x, box.y) - halfStroke,
+              max: Math.max(box.x + box.width, box.y + box.height) + halfStroke,
+              color: style.color,
+              stroke: style.stroke
+            };
+          });
+          expect(geometry.min).toBeGreaterThan(0);
+          expect(geometry.max).toBeLessThan(24);
+          expect(geometry.stroke).toBe(geometry.color);
+          await branch.hover();
+          await expect(page.locator('[role="tooltip"]:visible')).toHaveText(labels[index]!);
+          await expect(branch).not.toHaveAttribute('title');
+        }
+        const rollback = page
+          .locator('.conversation-item.user_message')
+          .getByRole('button', { name: labels[3]!, exact: true });
+        await expect(rollback.locator('[data-mar-icon="undo"]')).toBeVisible();
+        await rollback.hover();
+        await expect(page.locator('[role="tooltip"]:visible')).toHaveText(labels[2]!);
+        await expect(
+          page
+            .locator('.conversation-item.assistant_message')
+            .getByRole('button', { name: labels[3]!, exact: true })
+        ).toHaveCount(0);
+        await page.locator('.conversation-timeline').screenshot({
+          path: testInfo.outputPath(`history-actions-${theme}.png`)
+        });
       }
-      const rollback = page
-        .locator('.conversation-item.user_message [data-mar-icon="back"]')
-        .locator('..');
-      await rollback.hover();
-      await expect(page.locator('[role="tooltip"]:visible')).toHaveText(labels[2]!);
-      await expect(
-        page.locator('.conversation-item.assistant_message [data-mar-icon="back"]')
-      ).toHaveCount(0);
     });
   }
 }

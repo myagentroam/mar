@@ -2914,6 +2914,43 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
   });
 
+  it.each(['user_message', 'assistant_message'])(
+    'distinguishes branch and rollback icons on %s actions',
+    async (kind) => {
+      const html = await render(ConversationTimeline, {
+        ...timelineProps,
+        rewindEnabled: true,
+        rollbackEnabled: true,
+        turns: [
+          conversationTurn([conversationItem('message-1', kind, { text: 'History boundary' })], {
+            rewind: { before: 'before-1', after: 'after-1' }
+          })
+        ]
+      });
+      const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/gu) ?? [];
+      const branchLabel = i18n.global.t(
+        kind === 'user_message'
+          ? 'generated.conversationTimeline.createSessionBranchBeforeMessage'
+          : 'generated.conversationTimeline.createSessionBranchAfterTurn'
+      );
+      const branch = buttons.find((button) => button.includes(`aria-label="${branchLabel}"`));
+      expect(branch).toBeDefined();
+      expect(branch).toContain('data-mar-icon="branch"');
+      expect(branch).not.toContain('data-mar-icon="undo"');
+      const rollbackLabel = i18n.global.t(
+        'generated.conversationTimeline.rollbackConversationBeforeThisMessage'
+      );
+      const rollback = buttons.find((button) => button.includes(`aria-label="${rollbackLabel}"`));
+      if (kind === 'user_message') {
+        expect(rollback).toBeDefined();
+        expect(rollback).toContain('data-mar-icon="undo"');
+        expect(rollback).not.toContain('data-mar-icon="branch"');
+      } else {
+        expect(rollback).toBeUndefined();
+      }
+    }
+  );
+
   it('renders optional attachment and generated-image previews through the dialog boundary', async () => {
     const attachment = {
       id: 'attachment-1',
