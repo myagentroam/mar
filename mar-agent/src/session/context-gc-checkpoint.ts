@@ -4,6 +4,9 @@ import { inlineMediaGcAnchored, parseInlineMediaGc } from './inline-media.js';
 import { buildContextGcProtection, contextGcProtectionMature } from './context-gc-protection.js';
 import {
   completedTodoWrite,
+  todoWriteForCall,
+  isTodoRead,
+  isTodoWrite,
   todoInputReplacement,
   todoSnapshotReplacement,
   visibleTodoSnapshot
@@ -320,11 +323,13 @@ export function validateContextGcCheckpoint(
             Math.max(replacement.target.sequence, item.evidenceSequence)
           )
         : [Math.max(replacement.target.sequence, ...evidence)];
-    if (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'todo_write') {
-      const terminal = records.find(
-        (item) => completedTodoWrite(item)?.callId === replacement.callId
-      );
-      if (terminal) anchors[0] = Math.max(anchors[0]!, terminal.sequence);
+    if (
+      replacement.kind === 'TOOL_CALL_INPUT' &&
+      ['todo_write', 'todo'].includes(replacement.toolName)
+    ) {
+      const source = recordsBySequence.get(replacement.target.sequence)!;
+      const own = todoWriteForCall(records, source);
+      if (own) anchors[0] = Math.max(anchors[0]!, own.record.sequence);
     }
     if (
       (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'code_exec') ||
@@ -565,15 +570,18 @@ function replacementMatchesRecords(
       )
     );
   }
-  if (replacement.kind === 'TOOL_CALL_INPUT' && replacement.toolName === 'todo_write') {
-    const own = records.find((item) => completedTodoWrite(item)?.callId === replacement.callId);
-    const original = own && completedTodoWrite(own);
+  if (
+    replacement.kind === 'TOOL_CALL_INPUT' &&
+    isTodoWrite(replacement.toolName, source.payload.arguments)
+  ) {
+    const original = todoWriteForCall(records, source);
     const successorRecord = recordsBySequence.get(replacement.evidenceSequence);
-    const successor = successorRecord && completedTodoWrite(successorRecord);
+    const successor = successorRecord && completedTodoWrite(successorRecord, records);
     const args = source.payload.arguments;
     return (
       original !== undefined &&
       successor !== undefined &&
+      successorRecord!.sequence > original.record.sequence &&
       successor.revision > original.revision &&
       isRecord(args) &&
       Array.isArray(args.items) &&
@@ -769,24 +777,27 @@ function replacementMatchesRecords(
         ) && successors.some((item) => item.sequence === replacement.evidenceSequence)
       );
     }
-    if (replacement.toolName === 'todo_read') {
+    if (replacement.toolName === 'todo_read' || replacement.toolName === 'todo') {
       const original = successfulToolEvidence(
         records,
         recordsBySequence,
         source.sequence,
-        'todo_read',
+        replacement.toolName,
         replacement.callId
       );
       const successorRecord = recordsBySequence.get(replacement.evidenceSequence);
-      const successor = successorRecord && completedTodoWrite(successorRecord);
+      const successor = successorRecord && completedTodoWrite(successorRecord, records);
       const snapshot =
         typeof source.payload.content === 'string'
           ? visibleTodoSnapshot(source.payload.content)
           : undefined;
       return (
         original !== undefined &&
+        isRecord(original.call.payload) &&
+        isTodoRead(replacement.toolName, original.call.payload.arguments) &&
         snapshot !== undefined &&
         successor !== undefined &&
+        successorRecord!.sequence > original.completed.sequence &&
         successor.revision > snapshot.revision &&
         replacement.replacementContent ===
           todoSnapshotReplacement(snapshot.revision, snapshot.count, successor.revision)
@@ -1518,7 +1529,8 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
         value.toolName === 'exec' ||
         value.toolName === 'exec_wait' ||
         value.toolName === 'code_exec' ||
-        value.toolName === 'todo_write') &&
+        value.toolName === 'todo_write' ||
+        value.toolName === 'todo') &&
       value.target.toolName === value.toolName &&
       Array.isArray(value.providerAliasTargets) &&
       value.providerAliasTargets.every(
@@ -1599,6 +1611,7 @@ function isContextGcReplacement(value: unknown): value is ContextGcReplacement {
       isNonemptyString(value.toolName) &&
       (value.toolName === 'skill' ||
         value.toolName === 'todo_read' ||
+        value.toolName === 'todo' ||
         value.toolName === 'tool_search' ||
         isGenericContextGcTool(value.toolName)) &&
       (value.target.toolName === undefined || value.target.toolName === value.toolName) &&

@@ -128,6 +128,7 @@ export type AgentEvent = AgentEventBase &
           | import('../tools/contracts.js').ReadEventData
           | import('../tools/contracts.js').ViewImageResult
           | import('../tools/contracts.js').SleepResult
+          | import('../tools/contracts.js').TodoSnapshot
           | Readonly<Record<string, unknown>>
           | import('./public-tool-metadata.js').PublicToolMetadata;
       }

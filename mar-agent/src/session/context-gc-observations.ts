@@ -1,5 +1,10 @@
 import type { SessionRecord } from './store/types.js';
-import { completedTodoWrite, todoInputReplacement } from './context-gc-todo.js';
+import {
+  completedTodoWrite,
+  isTodoWrite,
+  todoInputReplacement,
+  todoWriteForCall
+} from './context-gc-todo.js';
 import { terminalExecLifecycles, type ContextGcExecFact } from './context-gc-exec-lifecycle.js';
 import {
   contextGcPatchResultFromCompletedPayload,
@@ -319,23 +324,21 @@ export function retainedCodeInputs(
         return [{ callId: call.callId, toolName: call.toolName, input: summary }];
     }
     if (
-      call.toolName === 'todo_write' &&
+      isTodoWrite(call.toolName, actualInput) &&
       todoEvidenceMature &&
       isRecord(actualInput) &&
       Array.isArray(actualInput.items)
     ) {
-      const originalRecord = records.find(
-        (item) => completedTodoWrite(item)?.callId === call.callId
-      );
-      const original = originalRecord && completedTodoWrite(originalRecord);
+      const original = todoWriteForCall(records, record);
       const successor =
         original &&
         records
           .flatMap((item) => {
-            const fact = completedTodoWrite(item);
+            const fact = completedTodoWrite(item, records);
             return fact &&
+              item.sequence > original.record.sequence &&
               fact.revision > original.revision &&
-              todoEvidenceMature(originalRecord!, item)
+              todoEvidenceMature(original.record, item)
               ? [{ record: item, ...fact }]
               : [];
           })

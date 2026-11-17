@@ -773,7 +773,7 @@ describe('Code Mode SDK and protocol integration', () => {
     }
   );
 
-  it('keeps Todo absent from Code Mode before and after restoring legacy state', async () => {
+  it('keeps legacy Todo names absent from Code Mode before and after restoring legacy state', async () => {
     const { home, workspace } = await fixture();
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     const requests: ModelRequest[] = [];
@@ -788,7 +788,10 @@ describe('Code Mode SDK and protocol integration', () => {
             callId: `todo-${requests.length}`,
             arguments: `
               const names = ["todo_read", "todo_write"];
-              const output = { registered: catalog.tools().some((tool) => names.includes(tool.name)) };
+              const output = {
+                registered: catalog.tools().some((tool) => names.includes(tool.name)),
+                todoAvailable: catalog.tools().some((tool) => tool.name === 'todo')
+              };
               for (const name of names) {
                 try {
                   await tools[name](name === "todo_write" ? { items: [] } : {});
@@ -847,6 +850,7 @@ describe('Code Mode SDK and protocol integration', () => {
         )!;
         expect(observedJSON(result.content)).toEqual({
           registered: false,
+          todoAvailable: true,
           todo_read: 'MAR_AGENT_TOOL_NOT_AVAILABLE',
           todo_write: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
         });

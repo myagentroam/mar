@@ -129,6 +129,7 @@ describe('local workspace tools', () => {
       'code_exec_wait',
       'apply_patch',
       'question',
+      'todo',
       'smart_compact',
       'sleep'
     ]);
@@ -137,6 +138,7 @@ describe('local workspace tools', () => {
       'sleep',
       'smart_compact',
       'tool_search',
+      'todo',
       'question'
     ]);
     expect(names.some((name) => name.startsWith('agent_'))).toBe(false);

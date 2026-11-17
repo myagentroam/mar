@@ -244,6 +244,7 @@ export function isGenericContextGcTool(toolName: string): boolean {
       'web_fetch',
       'skill',
       'question',
+      'todo',
       'todo_read',
       'todo_write',
       'tool_search'

@@ -32,9 +32,11 @@ export function buildToolGroups(
   };
   for (const [index, message] of messages.entries()) {
     const record = sources[index]!;
-    if (message.role === 'tool_call' && message.callId && message.name)
-      group(message.callId, message.name).call = { message, record };
-    else if (message.role === 'tool' && message.callId)
+    if (message.role === 'tool_call' && message.callId && message.name) {
+      const current = group(message.callId, message.name);
+      current.toolName = message.name;
+      current.call = { message, record };
+    } else if (message.role === 'tool' && message.callId)
       group(message.callId).result = { message, record };
     else if (message.role === 'provider') {
       const callId = providerToolCallId(message);
@@ -48,6 +50,13 @@ export function buildToolGroups(
     const toolName = record.payload.toolName;
     if (typeof callId !== 'string' || typeof toolName !== 'string') continue;
     const current = group(callId, toolName);
+    if (
+      current.call &&
+      (record.sequence <= current.call.record.sequence ||
+        record.executionId !== current.call.record.executionId ||
+        toolName !== current.toolName)
+    )
+      continue;
     if (type === 'tool.completed') current.completed = record;
     else if (type === 'tool.failed') current.failed = record;
   }

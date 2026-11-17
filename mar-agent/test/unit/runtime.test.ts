@@ -2462,7 +2462,7 @@ describe('agent runtime', () => {
     await host.dispose();
   });
 
-  it('executes question only through the Plan tool loop without registering Todo', async () => {
+  it('executes question only through Plan while exposing one unified Todo tool', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-workflow-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -2509,6 +2509,7 @@ describe('agent runtime', () => {
     );
     expect((await runHandle.result()).finalAnswer).toBe('selected');
     for (const request of adapter.requests) {
+      expect(request.tools.map((tool) => tool.name)).toContain('todo');
       expect(request.tools.map((tool) => tool.name)).not.toContain('todo_read');
       expect(request.tools.map((tool) => tool.name)).not.toContain('todo_write');
       expect(effectiveInstructions(request)).not.toContain('todo_read');
@@ -2517,7 +2518,7 @@ describe('agent runtime', () => {
     await agent.dispose();
   });
 
-  it('preserves legacy Todo history across cancellation, failure and reopen without registering tools', async () => {
+  it('preserves legacy Todo history across cancellation, failure and reopen without registering legacy tools', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-session-todo-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -2585,6 +2586,7 @@ describe('agent runtime', () => {
         expect(events.some((event) => event.type === 'todo.updated')).toBe(false);
         for (const request of adapter.requests) {
           const names = request.tools.map((tool) => tool.name);
+          expect(names).toContain('todo');
           expect(names).not.toContain('todo_read');
           expect(names).not.toContain('todo_write');
         }

@@ -462,6 +462,7 @@ export class CodeModeTool {
             'exec',
             'exec_wait',
             'apply_patch',
+            'todo',
             'todo_read',
             'todo_write',
             'agent_start',
@@ -628,6 +629,7 @@ export class CodeModeTool {
                 truncated: output.truncated === true,
                 data: [
                   'apply_patch',
+                  'todo',
                   'todo_read',
                   'todo_write',
                   'agent_start',

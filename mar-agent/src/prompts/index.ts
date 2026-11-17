@@ -38,14 +38,9 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
 
 export function buildSystemPromptSections(input: SystemPromptInput): readonly PromptPart[] {
   const toolNames = new Set(input.tools);
-  const hasLongRunningCapability = [
-    'exec',
-    'todo_read',
-    'todo_write',
-    'agent_start',
-    'agent_wait',
-    'agent_stop'
-  ].some((name) => toolNames.has(name));
+  const hasLongRunningCapability = ['exec', 'todo', 'agent_start', 'agent_wait', 'agent_stop'].some(
+    (name) => toolNames.has(name)
+  );
 
   const values: readonly (readonly [string, string])[] = [
     ['identity', identityPrompt()],

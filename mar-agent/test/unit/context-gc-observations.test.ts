@@ -6,6 +6,7 @@ import {
 } from '../../src/session/code-observation-projection.js';
 import type { ModelMessage } from '../../src/model/contracts.js';
 import type { SessionRecord } from '../../src/session/store/index.js';
+import { completedTodoWrite, todoWriteForCall } from '../../src/session/context-gc-todo.js';
 import {
   codeObservationEvidence,
   retainedCodeInputs
@@ -502,216 +503,349 @@ describe('Code Mode observation GC parity', () => {
       ).toBeDefined();
     }
   );
-  it('summarizes a superseded Todo input only when creating the whole-cell replacement', () => {
+  it('does not treat unified Todo reads or unproven completions as write evidence', () => {
     const f = records();
-    const items = Array.from({ length: 30 }, (_, i) => ({
-      id: `old-${i}`,
-      step: 'OLD_TASK '.repeat(70),
-      status: 'pending'
-    }));
-    const input = { items };
-    const cell = modelContext(f.add, {
-      role: 'tool_call',
-      callId: 'cell-todo',
-      name: 'code_exec',
-      content: '',
-      arguments: { code: 'task '.repeat(5000) }
+    const readStarted = f.add('tool.started', {
+      toolName: 'todo',
+      callId: 'read',
+      input: { action: 'read' }
     });
-    f.add('tool.started', {
-      type: 'tool.started',
-      toolName: 'todo_write',
-      callId: 'old-write',
-      parentCallId: 'cell-todo',
-      input
-    });
-    f.add('tool.completed', {
+    const completion = f.add('tool.completed', {
       type: 'tool.completed',
-      toolName: 'todo_write',
-      callId: 'old-write',
-      parentCallId: 'cell-todo',
-      truncated: false,
-      data: { revision: 1, items }
-    });
-    f.add('tool.completed', {
-      type: 'tool.completed',
-      toolName: 'code_exec',
-      callId: 'cell-todo',
-      truncated: false,
-      data: { cellId: 'cell-todo', status: 'completed' }
-    });
-    const observations: CodeObservation[] = [
-      {
-        type: 'tool_result',
-        id: 'todo-result',
-        outcome: 'completed',
-        source: { callId: 'old-write', toolName: 'todo_write', input },
-        result: { content: '{"revision":1,"count":30}' }
-      }
-    ];
-    modelContext(f.add, {
-      role: 'tool',
-      callId: 'cell-todo',
-      name: 'code_exec',
-      observations,
-      content: renderObservations(observations),
-      calls: [
-        {
-          callId: 'old-write',
-          toolName: 'todo_write',
-          input,
-          status: 'completed',
-          result: { content: '{"revision":1,"count":30}' }
-        }
-      ]
-    });
-    f.add('tool.completed', {
-      type: 'tool.completed',
-      toolName: 'todo_write',
-      callId: 'unseen',
-      truncated: false,
+      toolName: 'todo',
+      callId: 'read',
       data: { revision: 2, items: [] }
     });
-    for (let i = 0; i < 10; i++) {
-      f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
-      f.add('model.context', {
-        role: 'provider',
-        content: '',
-        provider: 'OPENAI_RESPONSES',
-        providerModelId: 'coding',
-        item: { type: 'reasoning', id: `cell-todo-${i}`, encrypted_content: 'opaque', summary: [] }
-      });
-      f.add('usage.updated', {
-        type: 'usage.updated',
-        inputTokens: 6000,
-        contextInputTokens: 6000,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0
-      });
-      f.add('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
-    }
-    const selected = plan(f.values);
-    const replacement = selected?.draft.replacements.find(
-      (item) => item.kind === 'TOOL_CALL_INPUT' && item.target.sequence === cell.sequence
-    );
-    expect(replacement).toBeDefined();
-    expect(JSON.stringify(replacement)).toContain('supersededByRevision');
-    expect(JSON.stringify(replacement)).not.toContain('OLD_TASK');
+    expect(completedTodoWrite(completion, f.values)).toBeUndefined();
     expect(
-      validateContextGcCheckpoint(
-        f.values,
-        f.add('context.gc.completed', {
-          ...selected!.draft,
-          checkpointId: 'cell-todo',
-          generation: 1
-        })
-      )
-    ).toBeDefined();
-  });
-  it('uses successful Todo revisions to retire old input and snapshot without exposing unseen items', () => {
-    const f = records();
-    const firstItems = [{ id: 'old', step: 'OLD_TODO '.repeat(2000), status: 'pending' }];
-    const laterItems = [{ id: 'next', step: 'UNOBSERVED_NEW_TODO', status: 'pending' }];
-    const writeCall = modelContext(f.add, {
-      role: 'tool_call',
-      callId: 'w1',
-      name: 'todo_write',
-      content: '',
-      arguments: { items: firstItems }
-    });
-    f.add('tool.completed', {
-      type: 'tool.completed',
-      toolName: 'todo_write',
-      callId: 'w1',
-      truncated: false,
-      data: { revision: 1, items: firstItems }
-    });
-    modelContext(f.add, {
-      role: 'tool',
-      name: 'todo_write',
-      callId: 'w1',
-      content: JSON.stringify({ revision: 1, count: 1 })
-    });
-    modelContext(f.add, {
-      role: 'tool_call',
-      callId: 'r1',
-      name: 'todo_read',
-      content: '',
-      arguments: {}
-    });
-    f.add('tool.completed', {
-      type: 'tool.completed',
-      toolName: 'todo_read',
-      callId: 'r1',
-      truncated: false,
-      data: { revision: 1, items: firstItems }
-    });
-    const oldRead = modelContext(f.add, {
-      role: 'tool',
-      name: 'todo_read',
-      callId: 'r1',
-      content: JSON.stringify({ revision: 1, items: firstItems })
-    });
-    const latestCall = modelContext(f.add, {
-      role: 'tool_call',
-      callId: 'w2',
-      name: 'todo_write',
-      content: '',
-      arguments: { items: laterItems }
-    });
-    f.add('tool.completed', {
-      type: 'tool.completed',
-      toolName: 'todo_write',
-      callId: 'w2',
-      truncated: false,
-      data: { revision: 2, items: laterItems }
-    });
-    for (let i = 0; i < 10; i++) {
-      f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
-      f.add('model.context', {
-        role: 'provider',
-        content: '',
-        provider: 'OPENAI_RESPONSES',
-        providerModelId: 'coding',
-        item: { type: 'reasoning', id: `todo-${i}`, encrypted_content: 'opaque', summary: [] }
-      });
-      f.add('usage.updated', {
-        type: 'usage.updated',
-        inputTokens: 6000,
-        contextInputTokens: 6000,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0
-      });
-      f.add('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
-    }
-    const selected = plan(f.values);
-    expect(selected).toBeDefined();
-    expect(selected!.draft.replacements).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'TOOL_CALL_INPUT',
-          toolName: 'todo_write',
-          target: expect.objectContaining({ sequence: writeCall.sequence })
-        }),
-        expect.objectContaining({
-          kind: 'TOOL_OUTPUT',
-          toolName: 'todo_read',
-          target: expect.objectContaining({ sequence: oldRead.sequence })
-        })
+      completedTodoWrite(completion, [
+        {
+          ...readStarted,
+          executionId: 'previous-execution',
+          payload: { toolName: 'todo', callId: 'read', input: { action: 'write' } }
+        },
+        ...f.values
       ])
-    );
+    ).toBeUndefined();
+    const started = f.add('tool.started', {
+      toolName: 'todo',
+      callId: 'write',
+      input: { action: 'write', items: [] }
+    });
+    const written = f.add('tool.completed', {
+      type: 'tool.completed',
+      toolName: 'todo',
+      callId: 'write',
+      data: { revision: 3, items: [] }
+    });
+    expect(completedTodoWrite(written, f.values)).toEqual({ callId: 'write', revision: 3 });
     expect(
-      selected!.draft.replacements.some(
-        (replacement) => replacement.target.sequence === latestCall.sequence
-      )
-    ).toBe(false);
-    expect(JSON.stringify(selected!.draft.replacements)).not.toContain('UNOBSERVED_NEW_TODO');
+      completedTodoWrite({ ...written, executionId: 'another-execution' }, f.values)
+    ).toBeUndefined();
     expect(
-      validateContextGcCheckpoint(
-        f.values,
-        f.add('context.gc.completed', { ...selected!.draft, checkpointId: 'todo', generation: 1 })
+      completedTodoWrite(
+        written,
+        f.values.filter((record) => record !== started)
       )
-    ).toBeDefined();
+    ).toBeUndefined();
   });
+
+  it('resolves the latest invocation when one Execution reuses a Todo call ID across actions', () => {
+    const f = records();
+    for (const action of ['read', 'write', 'read']) {
+      f.add('tool.started', { toolName: 'todo', callId: 'reused', input: { action } });
+      const completed = f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'todo',
+        callId: 'reused',
+        data: { revision: 2, items: [] }
+      });
+      expect(completedTodoWrite(completed, f.values)).toEqual(
+        action === 'write' ? { callId: 'reused', revision: 2 } : undefined
+      );
+    }
+  });
+
+  it('does not borrow a later successful Todo invocation for an earlier failed call', () => {
+    const f = records();
+    const invoke = () => {
+      const call = f.add('model.context', {
+        role: 'tool_call',
+        callId: 'reused',
+        name: 'todo',
+        arguments: { action: 'write', items: [] }
+      });
+      f.add('tool.started', { toolName: 'todo', callId: 'reused', input: { action: 'write' } });
+      return call;
+    };
+    const failed = invoke();
+    f.add('tool.failed', { type: 'tool.failed', toolName: 'todo', callId: 'reused' });
+    const successful = invoke();
+    f.add('tool.started', {
+      toolName: 'todo',
+      callId: 'reused',
+      parentCallId: 'other-cell',
+      input: { action: 'read' }
+    });
+    const completed = f.add('tool.completed', {
+      type: 'tool.completed',
+      toolName: 'todo',
+      callId: 'reused',
+      data: { revision: 4, items: [] }
+    });
+    expect(todoWriteForCall(f.values, failed)).toBeUndefined();
+    expect(todoWriteForCall(f.values, successful)).toEqual({
+      record: completed,
+      callId: 'reused',
+      revision: 4
+    });
+  });
+
+  it.each([false, true])(
+    'summarizes a superseded Todo input only in the whole-cell replacement (unified=%s)',
+    (unified) => {
+      const writeName = unified ? 'todo' : 'todo_write';
+      const f = records();
+      const items = Array.from({ length: 30 }, (_, i) => ({
+        id: `old-${i}`,
+        step: 'OLD_TASK '.repeat(70),
+        status: 'pending'
+      }));
+      const input = { ...(unified ? { action: 'write' } : {}), items };
+      const cell = modelContext(f.add, {
+        role: 'tool_call',
+        callId: 'cell-todo',
+        name: 'code_exec',
+        content: '',
+        arguments: { code: 'task '.repeat(5000) }
+      });
+      f.add('tool.started', {
+        type: 'tool.started',
+        toolName: writeName,
+        callId: 'old-write',
+        parentCallId: 'cell-todo',
+        input
+      });
+      f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: writeName,
+        callId: 'old-write',
+        parentCallId: 'cell-todo',
+        truncated: false,
+        data: { revision: 1, items }
+      });
+      f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: 'code_exec',
+        callId: 'cell-todo',
+        truncated: false,
+        data: { cellId: 'cell-todo', status: 'completed' }
+      });
+      const observations: CodeObservation[] = [
+        {
+          type: 'tool_result',
+          id: 'todo-result',
+          outcome: 'completed',
+          source: { callId: 'old-write', toolName: writeName, input },
+          result: { content: '{"revision":1,"count":30}' }
+        }
+      ];
+      modelContext(f.add, {
+        role: 'tool',
+        callId: 'cell-todo',
+        name: 'code_exec',
+        observations,
+        content: renderObservations(observations),
+        calls: [
+          {
+            callId: 'old-write',
+            toolName: writeName,
+            input,
+            status: 'completed',
+            result: { content: '{"revision":1,"count":30}' }
+          }
+        ]
+      });
+      if (unified)
+        f.add('tool.started', {
+          type: 'tool.started',
+          toolName: writeName,
+          callId: 'unseen',
+          input: { action: 'write' }
+        });
+      f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: writeName,
+        callId: 'unseen',
+        truncated: false,
+        data: { revision: 2, items: [] }
+      });
+      for (let i = 0; i < 10; i++) {
+        f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        f.add('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: {
+            type: 'reasoning',
+            id: `cell-todo-${i}`,
+            encrypted_content: 'opaque',
+            summary: []
+          }
+        });
+        f.add('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        f.add('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+      const selected = plan(f.values);
+      const replacement = selected?.draft.replacements.find(
+        (item) => item.kind === 'TOOL_CALL_INPUT' && item.target.sequence === cell.sequence
+      );
+      expect(replacement).toBeDefined();
+      expect(JSON.stringify(replacement)).toContain('supersededByRevision');
+      expect(JSON.stringify(replacement)).not.toContain('OLD_TASK');
+      expect(
+        validateContextGcCheckpoint(
+          f.values,
+          f.add('context.gc.completed', {
+            ...selected!.draft,
+            checkpointId: 'cell-todo',
+            generation: 1
+          })
+        )
+      ).toBeDefined();
+    }
+  );
+  it.each([false, true])(
+    'uses successful Todo revisions to retire old input and snapshot (unified=%s)',
+    (unified) => {
+      const writeName = unified ? 'todo' : 'todo_write';
+      const readName = unified ? 'todo' : 'todo_read';
+      const f = records();
+      const firstItems = [{ id: 'old', step: 'OLD_TODO '.repeat(2000), status: 'pending' }];
+      const laterItems = [{ id: 'next', step: 'UNOBSERVED_NEW_TODO', status: 'pending' }];
+      const writeCall = modelContext(f.add, {
+        role: 'tool_call',
+        callId: 'w1',
+        name: writeName,
+        content: '',
+        arguments: { ...(unified ? { action: 'write' } : {}), items: firstItems }
+      });
+      if (unified)
+        f.add('tool.started', {
+          type: 'tool.started',
+          toolName: writeName,
+          callId: 'w1',
+          input: { action: 'write' }
+        });
+      f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: writeName,
+        callId: 'w1',
+        truncated: false,
+        data: { revision: 1, items: firstItems }
+      });
+      modelContext(f.add, {
+        role: 'tool',
+        name: writeName,
+        callId: 'w1',
+        content: JSON.stringify({ revision: 1, count: 1 })
+      });
+      modelContext(f.add, {
+        role: 'tool_call',
+        callId: 'r1',
+        name: readName,
+        content: '',
+        arguments: unified ? { action: 'read' } : {}
+      });
+      f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: readName,
+        callId: 'r1',
+        truncated: false,
+        data: { revision: 1, items: firstItems }
+      });
+      const oldRead = modelContext(f.add, {
+        role: 'tool',
+        name: readName,
+        callId: 'r1',
+        content: JSON.stringify({ revision: 1, items: firstItems })
+      });
+      const latestCall = modelContext(f.add, {
+        role: 'tool_call',
+        callId: 'w2',
+        name: writeName,
+        content: '',
+        arguments: { ...(unified ? { action: 'write' } : {}), items: laterItems }
+      });
+      if (unified)
+        f.add('tool.started', {
+          type: 'tool.started',
+          toolName: writeName,
+          callId: 'w2',
+          input: { action: 'write' }
+        });
+      f.add('tool.completed', {
+        type: 'tool.completed',
+        toolName: writeName,
+        callId: 'w2',
+        truncated: false,
+        data: { revision: 2, items: laterItems }
+      });
+      for (let i = 0; i < 10; i++) {
+        f.add('model.attempt', { purpose: 'EXECUTION', state: 'STARTED' });
+        f.add('model.context', {
+          role: 'provider',
+          content: '',
+          provider: 'OPENAI_RESPONSES',
+          providerModelId: 'coding',
+          item: { type: 'reasoning', id: `todo-${i}`, encrypted_content: 'opaque', summary: [] }
+        });
+        f.add('usage.updated', {
+          type: 'usage.updated',
+          inputTokens: 6000,
+          contextInputTokens: 6000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0
+        });
+        f.add('model.attempt', { purpose: 'EXECUTION', state: 'SUCCEEDED' });
+      }
+      const selected = plan(f.values);
+      expect(selected).toBeDefined();
+      expect(selected!.draft.replacements).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'TOOL_CALL_INPUT',
+            toolName: writeName,
+            target: expect.objectContaining({ sequence: writeCall.sequence })
+          }),
+          expect.objectContaining({
+            kind: 'TOOL_OUTPUT',
+            toolName: readName,
+            target: expect.objectContaining({ sequence: oldRead.sequence })
+          })
+        ])
+      );
+      expect(
+        selected!.draft.replacements.some(
+          (replacement) => replacement.target.sequence === latestCall.sequence
+        )
+      ).toBe(false);
+      expect(JSON.stringify(selected!.draft.replacements)).not.toContain('UNOBSERVED_NEW_TODO');
+      expect(
+        validateContextGcCheckpoint(
+          f.values,
+          f.add('context.gc.completed', { ...selected!.draft, checkpointId: 'todo', generation: 1 })
+        )
+      ).toBeDefined();
+    }
+  );
   it('reclaims a read item only after a later visible read fully covers its range', () => {
     const f = records();
     const read = (id: string, startLine: number, endLine: number, previewComplete: boolean) => {
