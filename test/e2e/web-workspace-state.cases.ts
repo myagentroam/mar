@@ -3746,8 +3746,7 @@ for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
     await tree.getByRole('button', { name: /node-1/ }).click();
     for (let index = 1; index <= 3; index++)
       await tree.getByRole('button', { name: `project-${index}`, exact: true }).click();
-    const tab = (index: number) =>
-      page.getByRole('tab', { name: `project-${index} node-1`, exact: true });
+    const tab = (index: number) => page.getByRole('tab', { name: `project-${index}`, exact: true });
     const colors = (index: number) =>
       tab(index)
         .locator('..')
@@ -3756,15 +3755,17 @@ for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
           image: getComputedStyle(element).backgroundImage,
           text: getComputedStyle(element.querySelector('button')!).color
         }));
+    await expect(tab(1).locator('.workspace-tab-node')).toHaveText('node-1');
     await tab(1).click({ button: 'right' });
     await page.getByRole('menuitem', { name: '固定', exact: true }).click();
     const pin = tab(1).locator('..');
     await expect(pin).toHaveClass(/sticky-pinned/);
     await page.mouse.move(0, 0);
     expect(await colors(1)).toEqual(await colors(2));
-    expect(await pin.evaluate((element) => getComputedStyle(element, '::after').content)).toBe(
-      'none'
+    const separatorWidths = await pin.evaluate((element) =>
+      ['::before', '::after'].map((pseudo) => getComputedStyle(element, pseudo).borderRightWidth)
     );
+    expect(separatorWidths).toEqual(['0px', '0px']);
     await tab(1).hover();
     const hoverColors = await colors(1);
     await tab(2).hover();
@@ -3780,6 +3781,10 @@ for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
     await page.getByRole('menuitem', { name: '固定', exact: true }).click();
     await page.mouse.move(0, 0);
     const tabList = page.locator('.workspace-tabs');
+    await page.screenshot({
+      path: test.info().outputPath(`workspace-shell-${theme}.png`),
+      animations: 'disabled'
+    });
     await expect(tabList).toHaveCSS('padding-left', '2px');
     await expect(page.locator('.workbench-tree-toggle')).toHaveCSS('width', '26px');
     await tabList.evaluate((element) => {
@@ -3791,16 +3796,15 @@ for (const theme of ['daylight', 'vscode-dark-2026'] as const) {
     const mask = await pin.evaluate((element) => {
       const style = getComputedStyle(element, '::before');
       return {
-        width: style.borderRightWidth,
-        color: style.borderRightColor,
+        width: Number.parseFloat(style.width),
+        tabWidth: element.getBoundingClientRect().width,
+        color: style.backgroundColor,
         backdrop: getComputedStyle(document.querySelector('.workbench-header')!).backgroundColor,
-        radius: style.borderTopRightRadius,
         pointerEvents: style.pointerEvents
       };
     });
-    expect(mask.width).toBe('3px');
+    expect(mask.width).toBeGreaterThan(mask.tabWidth);
     expect(mask.color).toBe(mask.backdrop);
-    expect(mask.radius).toBe('9px');
     expect(mask.pointerEvents).toBe('none');
     await page.locator('.workspace-tabs').screenshot({
       path: test.info().outputPath(`uniform-pinned-tabs-${theme}.png`),

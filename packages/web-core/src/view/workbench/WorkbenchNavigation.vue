@@ -20,6 +20,7 @@ import WorkbenchActivityCenter from './WorkbenchActivityCenter.vue';
 import WebPerformanceIndicator from './WebPerformanceIndicator.vue';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
 import WorkspaceTree from '../workspace/WorkspaceTree.vue';
+import WorkbenchSidebarPanel from './WorkbenchSidebarPanel.vue';
 import PanelResizeHandle from './PanelResizeHandle.vue';
 import { WORKBENCH_PANEL_LIMITS } from '../../service/workbench-layout-service.js';
 import type { NodeSummary, Workspace, WorkspaceTarget } from '../../model/workbench.js';
@@ -30,8 +31,11 @@ import type { MobileUtilityPanel } from '../../service/workbench-navigation-serv
 
 const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
-const treeElement = ref<HTMLElement>();
+const sidebarPanel = ref<InstanceType<typeof WorkbenchSidebarPanel>>();
+const treeElement = computed(() => sidebarPanel.value?.element);
 const mobilePanelTarget = ref<HTMLElement>();
+// Persisted sidebar widths include the shell inset outside the measured tree.
+const sidebarInset = 9;
 
 const props = defineProps<{
   readonly webVersion: string;
@@ -284,10 +288,12 @@ function openBlankMenu(event: MouseEvent): void {
     :name="mobileViewport ? 'mobile-menu' : 'desktop-menu'"
     @after-leave="finishMenuLeave"
   >
-    <aside
+    <WorkbenchSidebarPanel
       v-show="mobileViewport ? mobileSidebarOpen : view !== 'conversations'"
-      ref="treeElement"
-      :class="['workspace-tree', { collapsed: sidebarCollapsed, 'mobile-open': mobileSidebarOpen }]"
+      ref="sidebarPanel"
+      :collapsed="sidebarCollapsed"
+      class="workspace-tree"
+      :class="{ 'mobile-open': mobileSidebarOpen }"
       :inert="mobileViewport && !mobileSidebarOpen"
       :aria-label="menuLabel"
       tabindex="-1"
@@ -380,17 +386,17 @@ function openBlankMenu(event: MouseEvent): void {
           </button>
         </nav>
       </template>
-    </aside>
+    </WorkbenchSidebarPanel>
   </Transition>
   <PanelResizeHandle
     v-if="view === 'nodes' && !sidebarCollapsed && !mobileViewport"
     class="workspace-tree-resize"
     :target="treeElement"
     :label="$t('generated.panelResize.workspaceTree')"
-    :min="WORKBENCH_PANEL_LIMITS.sidebar.min"
-    :max="WORKBENCH_PANEL_LIMITS.sidebar.max"
+    :min="WORKBENCH_PANEL_LIMITS.sidebar.min - sidebarInset"
+    :max="WORKBENCH_PANEL_LIMITS.sidebar.max - sidebarInset"
     :direction="1"
-    @resize="emit('resizeSidebar', $event)"
+    @resize="emit('resizeSidebar', $event + sidebarInset)"
   />
 </template>
 
@@ -537,12 +543,7 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 .workspace-tree {
-  position: fixed;
-  z-index: 3;
-  inset: var(--mar-sidebar-header-height) auto 0 var(--mar-activity-rail-width);
-  width: var(--mar-workbench-sidebar-width);
   overflow: auto;
-  border-right: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-panel);
 }
 
@@ -581,10 +582,6 @@ function openBlankMenu(event: MouseEvent): void {
       padding var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
   }
 
-  .workspace-tree {
-    transition: width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
-  }
-
   .console-shell:has(.workspace-tree-resize.dragging) .workbench-brand,
   .console-shell:has(.workspace-tree-resize.dragging) .workspace-tree {
     transition: none;
@@ -603,32 +600,22 @@ function openBlankMenu(event: MouseEvent): void {
   }
 
   .activity-rail {
+    --mar-rail-item-height: calc(var(--mar-activity-rail-width) - 8px);
+    box-sizing: border-box;
+    width: calc(var(--mar-activity-rail-width) + 9px);
+    padding-inline: calc((9px + 4px) / 2);
     border-right: 0;
     background: var(--mar-bg-page);
   }
 
   .workbench-brand {
     inset: 8px auto auto 0;
-    width: var(--mar-activity-rail-width);
+    width: calc(var(--mar-activity-rail-width) + 9px);
     justify-content: center;
     border-right: 0;
     border-bottom: 0;
     background: var(--mar-bg-page);
     padding: 0;
-  }
-
-  .workspace-tree {
-    box-sizing: border-box;
-    inset: 9px auto 9px calc(var(--mar-activity-rail-width) + 9px);
-    width: calc(var(--mar-workbench-sidebar-width) - 9px);
-    border: 0;
-    border-right: 1px solid var(--mar-border-subtle);
-    border-radius: calc(var(--mar-radius-surface) - 1px) 0 0 calc(var(--mar-radius-surface) - 1px);
-    background: var(--mar-bg-panel);
-  }
-
-  .workspace-tree.collapsed {
-    border: 0;
   }
 
   .documentation-link {
@@ -639,7 +626,8 @@ function openBlankMenu(event: MouseEvent): void {
 
 .workspace-tree-resize {
   position: fixed;
-  top: 0;
+  top: 9px;
+  bottom: 9px;
   left: calc(var(--mar-workbench-sidebar-total-width) - 4px);
 }
 

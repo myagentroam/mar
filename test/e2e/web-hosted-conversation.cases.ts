@@ -1422,7 +1422,6 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     })
   ).toBeVisible();
   const workbenchHeader = page.locator('.workbench-header');
-  const workbenchBrand = page.locator('.workbench-brand');
   const breadcrumb = workbenchHeader.locator('.breadcrumb');
   await expect(breadcrumb).toContainText('对话');
   await expect(breadcrumb).toContainText('审查发布变更');
@@ -1439,7 +1438,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     historyHeaderBox,
     historyTitleBox,
     historyCreateButtonBox,
-    workbenchBrandBox,
+    workbenchBox,
     headerToggleBox
   ] = await Promise.all([
     workbenchHeader.boundingBox(),
@@ -1447,7 +1446,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     historyHeader.boundingBox(),
     historyHeader.getByRole('heading', { name: '对话历史' }).boundingBox(),
     historyCreateButton.boundingBox(),
-    workbenchBrand.boundingBox(),
+    page.locator('.workbench').boundingBox(),
     workbenchHeader.locator('.workbench-tree-toggle').boundingBox()
   ]);
   expect(breadcrumbBox?.x ?? 0).toBeGreaterThan(
@@ -1463,8 +1462,10 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     ),
     0
   );
-  expect(historyHeaderBox?.y).toBeCloseTo(
-    (workbenchBrandBox?.y ?? 0) + (workbenchBrandBox?.height ?? 0),
+  expect(historyHeaderBox?.y).toBeCloseTo(workbenchBox?.y ?? 0, 0);
+  const historyBox = (await page.locator('.hosted-conversation-history').boundingBox())!;
+  expect(historyBox.y + historyBox.height).toBeCloseTo(
+    (workbenchBox?.y ?? 0) + (workbenchBox?.height ?? 0),
     0
   );
   const historyTitleTopSpace = (historyTitleBox?.y ?? 0) - (historyHeaderBox?.y ?? 0);
@@ -1517,21 +1518,17 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
       };
     });
   const expandedHostedLayout = await hostedLayout();
-  expect(expandedHostedLayout.workbenchLeft).toBeCloseTo(expandedHostedLayout.brandWidth, 0);
+  expect(expandedHostedLayout.brandWidth).toBeCloseTo(expandedHostedLayout.railWidth, 0);
   expect(expandedHostedLayout.historyLeft).toBeCloseTo(expandedHostedLayout.railWidth, 0);
   expect(expandedHostedLayout.historyRight).toBeCloseTo(expandedHostedLayout.workbenchLeft, 0);
   expect(expandedHostedLayout.mainLeft).toBeCloseTo(expandedHostedLayout.workbenchLeft, 0);
-  expect(expandedHostedLayout.toggleLeft).toBeGreaterThanOrEqual(expandedHostedLayout.brandWidth);
+  expect(expandedHostedLayout.toggleLeft).toBeGreaterThanOrEqual(
+    expandedHostedLayout.workbenchLeft
+  );
   expect(expandedHostedLayout.breadcrumbLeft).toBeGreaterThan(expandedHostedLayout.toggleRight);
   await collapseSidebarButton.click();
   const expandSidebarButton = page.getByRole('button', { name: '展开侧栏' });
   await expect(expandSidebarButton).toBeVisible();
-  await expect
-    .poll(async () => {
-      const layout = await hostedLayout();
-      return Math.abs(layout.brandWidth - layout.railWidth);
-    })
-    .toBeLessThanOrEqual(1);
   // A collapsed partition may retain its one-pixel divider, but no readable history surface.
   await expect.poll(async () => (await hostedLayout()).historyWidth).toBeLessThanOrEqual(1);
   const collapsedHostedLayout = await hostedLayout();
@@ -1540,7 +1537,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(
     page.locator('.hosted-conversation-history .history-open').first()
   ).not.toBeInViewport();
-  expect(collapsedHostedLayout.mainLeft).toBeCloseTo(collapsedHostedLayout.railWidth, 0);
+  expect(collapsedHostedLayout.mainLeft).toBeCloseTo(collapsedHostedLayout.workbenchLeft, 0);
   expect(collapsedHostedLayout.mainLeft).toBeLessThan(expandedHostedLayout.mainLeft);
   expect(collapsedHostedLayout.filesRight).toBeCloseTo(expandedHostedLayout.filesRight, 0);
   expect(collapsedHostedLayout.toggleLeft - collapsedHostedLayout.workbenchLeft).toBeCloseTo(
@@ -1567,6 +1564,23 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(page.locator('#hosted-pane-conversation .conversation-header')).toHaveCount(0);
   const history = page.locator('.hosted-conversation-history');
   const historyRows = history.locator('.history-list article');
+  const captureHostedThemes = async (layout: 'desktop' | 'mobile') => {
+    const originalTheme = await page.locator('html').getAttribute('data-theme');
+    for (const theme of ['daylight', 'vscode-dark-2026']) {
+      await page.locator('html').evaluate((element, value) => {
+        element.dataset.theme = value;
+      }, theme);
+      await page.screenshot({
+        path: test.info().outputPath(`hosted-shell-${layout}-${theme}.png`),
+        animations: 'disabled'
+      });
+    }
+    await page.locator('html').evaluate((element, value) => {
+      if (value === null) delete element.dataset.theme;
+      else element.dataset.theme = value;
+    }, originalTheme);
+  };
+  await captureHostedThemes('desktop');
   await expect(history.locator('.history-more-button')).toHaveCount(0);
   await historyRows.first().hover();
   await expect(history.locator('.history-more-button')).toHaveCount(1);
@@ -2150,6 +2164,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   });
   expect(hostedDrawerStyle).toEqual(standardDrawerStyle);
   expect(hostedScrimStyle).toEqual(standardScrimStyle);
+  await captureHostedThemes('mobile');
   const initialHostedScrimBox = await hostedScrim.boundingBox();
   expect(initialHostedScrimBox).not.toBeNull();
   await page.mouse.click(

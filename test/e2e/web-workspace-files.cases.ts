@@ -633,6 +633,16 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       expect(treeBounds!.y).toBe(bounds!.y);
       expect(bounds!.x - treeBounds!.x - treeBounds!.width).toBe(0);
       expect(treeBounds!.y + treeBounds!.height).toBe(bounds!.y + bounds!.height);
+      const resizeBounds = await page.locator('.workspace-tree-resize').boundingBox();
+      expect(resizeBounds).not.toBeNull();
+      expect(resizeBounds!.y).toBe(treeBounds!.y);
+      expect(resizeBounds!.y + resizeBounds!.height).toBe(treeBounds!.y + treeBounds!.height);
+      const asideResizeBounds = await page.locator('.workbench-aside-resize').boundingBox();
+      expect(asideResizeBounds).not.toBeNull();
+      expect(asideResizeBounds!.y).toBeGreaterThanOrEqual(bounds!.y);
+      expect(asideResizeBounds!.y + asideResizeBounds!.height).toBeLessThanOrEqual(
+        bounds!.y + bounds!.height
+      );
       for (const selector of [
         '.workspace-aside',
         '.workbench-aside-header',
@@ -646,7 +656,27 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       }
       await page.locator('.workbench-header').click({ position: { x: 240, y: 20 } });
       await page.screenshot({ path: testInfo.outputPath(`workbench-shell-${theme}-${width}.png`) });
+      await page.locator('.workspace-tree-resize').hover();
+      await page.screenshot({
+        path: testInfo.outputPath(`workbench-resize-hover-${theme}-${width}.png`)
+      });
     }
+    const tree = page.locator('.workspace-tree');
+    const resize = page.locator('.workspace-tree-resize');
+    const initialTreeWidth = (await tree.boundingBox())!.width;
+    const handleBounds = (await resize.boundingBox())!;
+    await page.mouse.move(handleBounds.x + 3, handleBounds.y + 80);
+    await page.mouse.down();
+    await page.mouse.move(handleBounds.x + 43, handleBounds.y + 80);
+    await expect.poll(async () => (await tree.boundingBox())!.width).toBe(initialTreeWidth + 40);
+    await page.mouse.up();
+    await resize.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await tree.boundingBox())!.width).toBe(initialTreeWidth + 50);
+    await page.keyboard.press('Home');
+    await expect(tree).toHaveCSS('width', '211px');
+    await page.keyboard.press('End');
+    await expect(tree).toHaveCSS('width', '411px');
     await page.locator('.console-shell').evaluate((element) => {
       (element as HTMLElement).style.setProperty('--mar-radius-surface', '16px');
     });
