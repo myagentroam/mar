@@ -10,9 +10,13 @@ import {
   type RunnerUsageFact
 } from '../../service/runner-usage-tracker.js';
 
+/** Owns native OpenCode request usage and purpose; shared consumers never inspect native events. */
 export class OpenCodeUsageNormalizer {
   private readonly tracker: RunnerUsageTracker;
-  private readonly messages = new Map<string, { model?: string; provider?: string }>();
+  private readonly messages = new Map<
+    string,
+    { model?: string; provider?: string; compact: boolean }
+  >();
   constructor(identity: string, publish: (value: RunnerUsageFact) => void) {
     this.tracker = new RunnerUsageTracker(identity, publish);
   }
@@ -29,6 +33,7 @@ export class OpenCodeUsageNormalizer {
       Number(record(info.time)?.created) >= startedAt
     )
       this.messages.set(info.id, {
+        compact: info.summary === true,
         ...(typeof info.modelID === 'string' ? { model: info.modelID } : {}),
         ...(typeof info.providerID === 'string' ? { provider: info.providerID } : {})
       });
@@ -55,7 +60,7 @@ export class OpenCodeUsageNormalizer {
     this.tracker.snapshot(
       part.id,
       {
-        purpose: 'conversation',
+        purpose: model.compact ? 'compact' : 'conversation',
         agentRole: 'root',
         ...(model.model ? { actualModel: model.model, modelConfigurationId: model.model } : {}),
         ...(model.provider ? { provider: model.provider } : {}),

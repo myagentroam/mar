@@ -22,12 +22,13 @@ export function createWorkbenchPerformanceService(options: {
     const parsed = runPerformanceSchema.safeParse(payload);
     if (parsed.success)
       current.value = {
-        ...(current.value?.runId === parsed.data.runId ? current.value : {}),
+        ...current.value,
         runId: parsed.data.runId,
         ...(parsed.data.latencyMs === undefined ? {} : { latencyMs: parsed.data.latencyMs }),
         ...(parsed.data.tokensPerSecond === undefined
           ? {}
-          : { tokensPerSecond: parsed.data.tokensPerSecond })
+          : { tokensPerSecond: parsed.data.tokensPerSecond }),
+        ...(parsed.data.usage === undefined ? {} : { usage: parsed.data.usage })
       };
   }
 

@@ -26,6 +26,15 @@ import type {
 
 type RuntimeRunEvent = Omit<NodeRunEvent, 'id'>;
 
+interface RunPerformanceState {
+  value?: RunPerformance;
+  requests?: {
+    executionId: string;
+    entries: Map<string, { order: number; revision: number }>;
+    usageOrder: number;
+  };
+}
+
 export interface AgentSessionLookup {
   getAgentSessionById(id: string): NodeAgentSession | undefined;
   findAgentSessionByExternalSession(
@@ -73,7 +82,7 @@ export class NodeRuntimeState {
   private static readonly MAX_COMPLETED_TURNS_PER_SESSION = 10;
   private readonly sessions = new Map<string, NodeAgentSession>();
   private readonly runs = new Map<string, NodeAgentRun>();
-  private readonly runPerformance = new Map<string, RunPerformance>();
+  private readonly runPerformance = new Map<string, RunPerformanceState>();
   private readonly recentUserMessages = new Map<string, string>();
   private readonly messageSubmissions = new Map<
     string,
@@ -923,23 +932,60 @@ export class NodeRuntimeState {
   }
   /** Only the current execution may replace an active Run's ephemeral metrics. */
   updateRunPerformance(id: string, performance: RunPerformance): boolean {
-    const run = this.getRun(id);
-    if (run === undefined || terminal(run.status) || performance.runId !== run.id) return false;
-    if (id !== run.id && this.currentExecutionId(run.id) !== id) return false;
-    this.runPerformance.set(run.id, {
-      ...this.runPerformance.get(run.id),
+    const run = this.performanceRun(id);
+    if (run === undefined || performance.runId !== run.id) return false;
+    const state = this.runPerformance.get(run.id) ?? {};
+    state.value = {
+      ...state.value,
       runId: performance.runId,
       ...(performance.latencyMs === undefined ? {} : { latencyMs: performance.latencyMs }),
       ...(performance.tokensPerSecond === undefined
         ? {}
-        : { tokensPerSecond: performance.tokensPerSecond })
-    });
+        : { tokensPerSecond: performance.tokensPerSecond }),
+      ...(performance.usage === undefined ? {} : { usage: { ...performance.usage } })
+    };
+    this.runPerformance.set(run.id, state);
     return true;
   }
+
+  /** Revision/order markers share the transient metrics' Run and execution lifetime. */
+  updateRunRequestUsage(
+    id: string,
+    request: { readonly requestId: string; readonly revision: number },
+    usage: RunPerformance['usage']
+  ): boolean {
+    const run = this.performanceRun(id);
+    if (run === undefined) return false;
+    const state = this.runPerformance.get(run.id) ?? {};
+    const executionId = this.currentExecutionId(run.id) ?? run.id;
+    if (state.requests?.executionId !== executionId)
+      state.requests = { executionId, entries: new Map(), usageOrder: -1 };
+    this.runPerformance.set(run.id, state);
+    const requests = state.requests;
+    let entry = requests.entries.get(request.requestId);
+    if (entry !== undefined && request.revision <= entry.revision) return false;
+    if (entry === undefined) {
+      entry = { order: requests.entries.size, revision: request.revision };
+      requests.entries.set(request.requestId, entry);
+    } else entry.revision = request.revision;
+    if (usage === undefined || entry.order < requests.usageOrder) return false;
+    requests.usageOrder = entry.order;
+    return this.updateRunPerformance(id, { runId: run.id, usage });
+  }
+
+  private performanceRun(id: string): NodeAgentRun | undefined {
+    const run = this.getRun(id);
+    return run === undefined ||
+      terminal(run.status) ||
+      (id !== run.id && this.currentExecutionId(run.id) !== id)
+      ? undefined
+      : run;
+  }
+
   sessionPerformance(sessionId: string): RunPerformance | undefined {
     const run = this.activeSessionRun(sessionId);
-    const performance = run === undefined ? undefined : this.runPerformance.get(run.id);
-    return performance === undefined ? undefined : { ...performance };
+    const performance = run === undefined ? undefined : this.runPerformance.get(run.id)?.value;
+    return performance === undefined ? undefined : structuredClone(performance);
   }
   findMessageRun(sessionId: string, clientMessageId: string): NodeAgentRun | undefined {
     const submission = this.messageSubmissions.get(`${sessionId}\u0000${clientMessageId}`);

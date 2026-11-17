@@ -11,7 +11,7 @@ interface NodeRunEventBridgeOptions {
   readonly send: (type: string, payload: unknown, replyTo?: string) => void;
 }
 
-/** Bridges process-local Run state to normalized control and Workbench events. */
+/** Routes normalized Runner facts; owns no history, attribution, or native token semantics. */
 export class NodeRunEventBridge {
   constructor(private readonly options: NodeRunEventBridgeOptions) {}
 
@@ -37,6 +37,7 @@ export class NodeRunEventBridge {
   ): void {
     if (eventType === 'run.started') this.options.bindModelUsage?.(runId);
     if (eventType === 'run.usage') {
+      this.options.events.emit(runId, eventType, payload);
       this.options.modelUsage?.(runId, payload);
       return;
     }

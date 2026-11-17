@@ -19,6 +19,40 @@ function fixture() {
 }
 
 describe('Selected Workspace session performance', () => {
+  it('updates timing independently and replaces request usage as one group without mixing requests', () => {
+    const { service } = fixture();
+    try {
+      const usage = { inputTokens: '24000', outputTokens: '1280', cacheReadTokens: '19200' };
+      service.receive('session', { runId: 'run', latencyMs: 6180, tokensPerSecond: 52.4, usage });
+      service.receive('session', { runId: 'run', latencyMs: 100 });
+      expect(service.current.value).toEqual({
+        runId: 'run',
+        latencyMs: 100,
+        tokensPerSecond: 52.4,
+        usage
+      });
+      service.receive('session', { runId: 'run', usage: { inputTokens: '100' } });
+      expect(service.current.value).toEqual({
+        runId: 'run',
+        latencyMs: 100,
+        tokensPerSecond: 52.4,
+        usage: { inputTokens: '100' }
+      });
+      service.receive('session', { runId: 'run', tokensPerSecond: 0 });
+      expect(service.current.value?.usage).toEqual({ inputTokens: '100' });
+      service.receive('session', { runId: 'run', usage: {} });
+      expect(service.current.value?.usage).toEqual({ inputTokens: '100' });
+      service.receive('session', { runId: 'new-run', latencyMs: 50 });
+      expect(service.current.value).toEqual({
+        runId: 'new-run',
+        latencyMs: 50,
+        tokensPerSecond: 0,
+        usage: { inputTokens: '100' }
+      });
+    } finally {
+      service.dispose();
+    }
+  });
   it('restores active metrics through a fresh Watch after switching back and rejects stale snapshots', async () => {
     const f = fixture();
     const requests: Record<string, unknown>[] = [];
@@ -81,11 +115,15 @@ describe('Selected Workspace session performance', () => {
       ).toBe(false);
       expect(f.service.current.value).toBeUndefined();
       const watchId = requests[1]?.watchId;
-      controller.handleEvent(
-        snapshot(watchId, { runId: 'run', latencyMs: 80, tokensPerSecond: 42 })
-      );
+      const restored = {
+        runId: 'run',
+        latencyMs: 80,
+        tokensPerSecond: 42,
+        usage: { inputTokens: '24000', outputTokens: '1280', cacheReadTokens: '19200' }
+      };
+      controller.handleEvent(snapshot(watchId, restored));
       await reopened;
-      expect(f.service.current.value).toEqual({ runId: 'run', latencyMs: 80, tokensPerSecond: 42 });
+      expect(f.service.current.value).toEqual(restored);
       controller.handleEvent(snapshot(watchId, { runId: 'run', latencyMs: -1 }));
       expect(f.service.current.value?.latencyMs).toBe(80);
       controller.handleEvent(snapshot(watchId));
@@ -113,7 +151,11 @@ describe('Selected Workspace session performance', () => {
       service.receive('session', { runId: 'run', tokensPerSecond: 0 });
       expect(service.current.value).toEqual({ runId: 'run', latencyMs: 80, tokensPerSecond: 0 });
       service.receive('session', { runId: 'new-run', latencyMs: 10 });
-      expect(service.current.value).toEqual({ runId: 'new-run', latencyMs: 10 });
+      expect(service.current.value).toEqual({
+        runId: 'new-run',
+        latencyMs: 10,
+        tokensPerSecond: 0
+      });
     } finally {
       service.dispose();
     }

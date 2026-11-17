@@ -234,8 +234,10 @@ export class ClaudeManagedRunController<TAttachment extends ClaudeRunnerImageAtt
     const toolKinds = new Map<string, PublicConversationItem['kind']>();
     const toolInputs = new Map<string, { name: string; input: unknown; inputTruncated: boolean }>();
     const knownSubagents = new Map<string, string>();
-    const usage = new ClaudeUsageNormalizer(runId, (value) =>
-      this.host.emit(runId, 'run.usage', value)
+    const usage = new ClaudeUsageNormalizer(
+      runId,
+      (value) => this.host.emit(runId, 'run.usage', value),
+      contextCompactionItemId !== undefined
     );
     const finish = (
       status: RunnerExecutionStatus,

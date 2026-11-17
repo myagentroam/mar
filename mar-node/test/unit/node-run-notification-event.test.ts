@@ -352,6 +352,35 @@ describe('Node Run notification attachment events', () => {
     service.clear();
   });
 
+  it('replaces usage atomically while keeping the three independent metric groups and immutable snapshots', () => {
+    const { runtime, service, createRun, startExecution } = fixture();
+    const run = createRun('request-usage');
+    const execution = startExecution(run.id);
+    const usage = { inputTokens: '24000', outputTokens: '1280', cacheReadTokens: '19200' };
+    service.emit(execution.id, 'run.performance', { latencyMs: 420, tokensPerSecond: 42, usage });
+    service.emit(execution.id, 'run.performance', { latencyMs: 80 });
+    expect(runtime.sessionPerformance(run.sessionId)).toEqual({
+      runId: run.id,
+      latencyMs: 80,
+      tokensPerSecond: 42,
+      usage
+    });
+    const copy = runtime.sessionPerformance(run.sessionId)!;
+    copy.usage!.inputTokens = '999';
+    expect(runtime.sessionPerformance(run.sessionId)?.usage?.inputTokens).toBe('24000');
+    usage.outputTokens = '999';
+    expect(runtime.sessionPerformance(run.sessionId)?.usage?.outputTokens).toBe('1280');
+    service.emit(execution.id, 'run.performance', { usage: { inputTokens: '100' } });
+    service.emit(execution.id, 'run.performance', { tokensPerSecond: 0 });
+    expect(runtime.sessionPerformance(run.sessionId)).toEqual({
+      runId: run.id,
+      latencyMs: 80,
+      tokensPerSecond: 0,
+      usage: { inputTokens: '100' }
+    });
+    service.clear();
+  });
+
   it('replaces active Run metrics, isolates sessions, and clears at every terminal status', () => {
     for (const status of ['SUCCEEDED', 'FAILED', 'INTERRUPTED'] as const) {
       const { runtime, service, createRun, startExecution, events } = fixture();

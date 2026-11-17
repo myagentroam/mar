@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import MarIcon from '../common/MarIcon.vue';
 import ConversationProcessDuration from './ConversationProcessDuration.vue';
+import SessionPerformanceInfo from './SessionPerformanceInfo.vue';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   conversationProcessLabel,
@@ -24,10 +25,13 @@ const open = computed(() => !props.block.groupId || (manualOpen.value ?? default
 // The scheduler reads the actual disclosure state, including manual and focus overrides.
 defineExpose({ isOpen: () => open.value });
 const statusLabel = computed(() => conversationProcessLabel(props.block, props.synchronized));
+const observedPerformance = computed(() =>
+  props.synchronized && props.block.runId === props.performance?.runId
+    ? props.performance
+    : undefined
+);
 const performanceDetails = computed(() =>
-  props.block.active && props.synchronized && props.block.runId === props.performance?.runId
-    ? sessionPerformanceDetails(props.performance, true)
-    : ''
+  sessionPerformanceDetails(observedPerformance.value, true)
 );
 function updateDefault() {
   if (
@@ -68,28 +72,33 @@ watch(open, async () => {
     >
       {{ block.preview.text }}
     </p>
-    <button
-      v-if="block.groupId"
-      type="button"
-      class="process-heading"
-      :class="{ 'has-performance': performanceDetails }"
-      :aria-expanded="open"
-      @click="manualOpen = !open"
-    >
-      <MarIcon name="chevron-right" class="process-chevron" :class="{ 'is-open': open }" />
-      <span
-        class="process-meta process-activity"
-        :class="{ 'is-active': block.active && synchronized }"
+    <div v-if="block.groupId" class="process-heading-row">
+      <button
+        type="button"
+        class="process-heading"
+        :aria-expanded="open"
+        @click="manualOpen = !open"
       >
-        <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
-        <span class="process-activity-label">{{ statusLabel }}</span>
-      </span>
-      <ConversationProcessDuration :block="block" :synchronized="synchronized" />
-      <span v-if="performanceDetails" class="process-performance">· {{ performanceDetails }}</span>
-      <span v-if="block.partial" class="process-meta">{{
-        translate('conversationProcess.partial')
-      }}</span>
-    </button>
+        <MarIcon name="chevron-right" class="process-chevron" :class="{ 'is-open': open }" />
+        <span
+          class="process-meta process-activity"
+          :class="{ 'is-active': block.active && synchronized }"
+        >
+          <BusyIndicator v-if="block.active && synchronized" class="process-activity-indicator" />
+          <span class="process-activity-label">{{ statusLabel }}</span>
+        </span>
+        <ConversationProcessDuration :block="block" :synchronized="synchronized" />
+        <span v-if="block.partial" class="process-meta">{{
+          translate('conversationProcess.partial')
+        }}</span>
+      </button>
+      <div v-if="observedPerformance" class="process-metrics">
+        <span v-if="performanceDetails" class="process-performance"
+          >· {{ performanceDetails }}</span
+        >
+        <SessionPerformanceInfo :performance="observedPerformance" />
+      </div>
+    </div>
     <div
       class="process-body"
       :class="{ 'is-collapsed': !open }"
@@ -108,14 +117,22 @@ watch(open, async () => {
 .process-content {
   min-width: 0;
 }
+.process-heading-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: var(--conversation-record-gap, 8px);
+  padding-inline: var(--conversation-item-inset, 12px);
+}
 .process-heading {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: var(--conversation-record-gap, 8px);
-  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  padding: 4px var(--conversation-item-inset, 12px);
+  padding: 4px 0;
   border: 0;
   background: transparent;
   color: var(--mar-conversation-text);
@@ -151,15 +168,22 @@ watch(open, async () => {
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
 }
+.process-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--mar-font-size-body);
+  line-height: 20px;
+}
 .process-performance {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
   color: var(--mar-conversation-muted);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-}
-.process-heading.has-performance {
-  flex-wrap: wrap;
 }
 .process-summary {
   margin: 0;

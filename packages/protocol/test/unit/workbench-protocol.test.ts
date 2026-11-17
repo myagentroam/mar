@@ -301,6 +301,8 @@ describe('Workbench protocol contracts', () => {
     for (const metrics of [
       { latencyMs: 0 },
       { tokensPerSecond: 0 },
+      { usage: { inputTokens: '24000', outputTokens: '1280', cacheReadTokens: '19200' } },
+      { usage: { outputTokens: '0' } },
       { latencyMs: 420, tokensPerSecond: 42 }
     ])
       expect(runPerformanceSchema.safeParse({ runId: 'run', ...metrics }).success).toBe(true);
@@ -313,7 +315,11 @@ describe('Workbench protocol contracts', () => {
       { ttftMs: 1.5 },
       { tokensPerSecond: -1 },
       { tokensPerSecond: Infinity },
-      { tokensPerSecond: NaN }
+      { tokensPerSecond: NaN },
+      { usage: {} },
+      { usage: { inputTokens: '-1' } },
+      { usage: { inputTokens: '1.5' } },
+      { usage: { outputTokens: 12 } }
     ])
       expect(runPerformanceSchema.safeParse({ runId: 'run', ...metrics }).success).toBe(false);
     expect(runPerformanceSchema.parse({ runId: 'run', latencyMs: 1, outputTokens: 8 })).toEqual({

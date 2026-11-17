@@ -1940,7 +1940,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(info).toContain('session-performance-info');
     expect(info).toContain('mar-icon-button mar-icon-action');
     expect(info).toContain('420 ms');
-    expect(info).toContain('42.0 token/s');
+    expect(info).toContain('TPS: 42.0');
     expect(info).toContain(
       i18n.global.t('generated.conversationTimeline.providerOutputTps', { value: '42.0' })
     );
@@ -1957,7 +1957,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
   });
 
-  it('shows live session metrics only on the matching active process', async () => {
+  it('shows live session metrics on the last matching process and retains them at completion', async () => {
     const item = {
       ...conversationItem('tool', 'tool_call', { toolName: 'Read' }, 'IN_PROGRESS'),
       processGroup: { id: 'active-process', isStart: true as const }
@@ -1979,16 +1979,20 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       performance: { runId: 'run-1', latencyMs: 900, tokensPerSecond: 0 }
     });
     expect(updated).toContain('900 ms');
-    expect(updated).toContain('0.0 token/s');
+    expect(updated).toContain('TPS: 0.0');
     expect(updated).not.toContain('420 ms');
+    expect(updated.match(/class="session-performance-info /g)).toHaveLength(1);
+    const completed = await render(ConversationTimeline, {
+      ...props,
+      performance: { runId: 'run-1', latencyMs: 420 },
+      runs: [{ id: 'run-1', status: 'SUCCEEDED' }],
+      turns: [conversationTurn([{ ...item, status: 'COMPLETED' }])]
+    });
+    expect(completed).toContain('420 ms');
+    expect(completed).toContain('session-performance-info');
     for (const overrides of [
       { performance: { runId: 'other', latencyMs: 420 } },
-      { performance: { runId: 'run-1', latencyMs: 420 }, synchronized: false },
-      {
-        performance: { runId: 'run-1', latencyMs: 420 },
-        runs: [{ id: 'run-1', status: 'SUCCEEDED' }],
-        turns: [conversationTurn([{ ...item, status: 'COMPLETED' }])]
-      }
+      { performance: { runId: 'run-1', latencyMs: 420 }, synchronized: false }
     ]) {
       const html = await render(ConversationTimeline, { ...props, ...overrides });
       expect(html).not.toContain('420 ms');

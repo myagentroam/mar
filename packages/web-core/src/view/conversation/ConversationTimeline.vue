@@ -575,6 +575,13 @@ watch(
   }
 );
 const synchronized = computed(() => props.synchronized ?? (props.nodeReady && !props.initializing));
+// Live observations have one presentation target, never every historical segment of a Run.
+const performanceBlockId = computed(
+  () =>
+    processBlocks.value
+      .filter((block) => block.groupId && block.runId === props.performance?.runId)
+      .at(-1)?.id
+);
 
 function stepDuration(item: ConversationItem): string | undefined {
   const duration = completedStepDuration(item);
@@ -607,7 +614,7 @@ function stepDuration(item: ConversationItem): string | undefined {
       :ref="(instance) => setProcessView(block.id, instance)"
       :block="block"
       :synchronized="synchronized"
-      :performance="performance"
+      :performance="block.id === performanceBlockId ? performance : undefined"
       class="conversation-turn"
     >
       <article
