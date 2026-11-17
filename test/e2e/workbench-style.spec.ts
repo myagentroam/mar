@@ -834,8 +834,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             })
           );
           for (let index = 1; index < items.length; index += 1) {
-            expect(items[index]!.left - items[index - 1]!.right).toBeGreaterThanOrEqual(4);
-            expect(bounds.y + bounds.height - items[index]!.bottom).toBeGreaterThanOrEqual(4);
+            expect(items[index]!.left).toBeCloseTo(
+              items[index - 1]!.right - items[index]!.border,
+              1
+            );
+            expect(items[index]!.bottom).toBeCloseTo(bounds.y + bounds.height, 1);
           }
         }
         await inspector.screenshot({ path: testInfo.outputPath('inspector-tabs.png') });

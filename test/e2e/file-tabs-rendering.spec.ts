@@ -13,7 +13,7 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
-    test(`File tabs and title share quiet borders with inset selection in ${theme} at ${width}px`, async ({
+    test(`File tabs and title retain joined top-rounded tabs with quiet borders in ${theme} at ${width}px`, async ({
       page
     }, testInfo) => {
       const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
@@ -35,7 +35,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           };
           const result = {
             divider: resolve('--mar-border-subtle'),
-            selected: resolve('--mar-fill-selection'),
+            selected: resolve('--mar-bg-page'),
             border: resolve('--mar-border-default'),
             focus: resolve('--mar-color-brand')
           };
@@ -50,15 +50,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         );
         const selected = active.locator('..');
         await expect(selected).toHaveCSS('background-color', colors.selected);
-        await expect(selected).toHaveCSS('border-color', colors.border);
-        await expect(selected).toHaveCSS('border-radius', '6px');
+        for (const edge of ['top', 'left', 'right'])
+          await expect(selected).toHaveCSS(`border-${edge}-color`, colors.border);
+        await expect(selected).toHaveCSS('border-bottom-width', '0px');
+        for (const edge of ['left', 'right']) {
+          await expect(selected).toHaveCSS(`border-top-${edge}-radius`, '6px');
+          await expect(selected).toHaveCSS(`border-bottom-${edge}-radius`, '0px');
+        }
         const inset = await selected.evaluate((element) => {
           const box = element.getBoundingClientRect();
           const header = element.closest('header')!.getBoundingClientRect();
           return { top: box.top - header.top, bottom: header.bottom - box.bottom };
         });
-        expect(inset.top).toBeGreaterThanOrEqual(4);
-        expect(inset.bottom).toBeGreaterThanOrEqual(4);
+        expect(inset.top).toBe(3);
+        expect(inset.bottom).toBe(1);
+        await expect(header).toHaveJSProperty('offsetHeight', width < 768 ? 40 : 32);
         await active.focus();
         await expect(active).toHaveCSS('outline-color', colors.focus);
         await expect(active).toHaveCSS('outline-width', '2px');

@@ -341,7 +341,7 @@ for (const [language, theme, width] of [
       expect(geometry.width).toBeLessThanOrEqual(geometry.limit);
       expect(geometry.truncated).toBe(true);
       expect(geometry.closeFits).toBe(true);
-      expect(geometry.headerHeight).toBe(40);
+      expect(geometry.headerHeight).toBe(32);
       expect(geometry.tabHeight).toBe(28);
       expect(geometry.activity.afterTitle).toBe(true);
       expect(geometry.activity.beforeClose).toBe(true);
@@ -355,7 +355,7 @@ for (const [language, theme, width] of [
         });
       });
       expect(seams.length).toBeGreaterThan(0);
-      for (const overlap of seams) expect(overlap).toBeLessThanOrEqual(-4);
+      for (const overlap of seams) expect(overlap).toBeCloseTo(1, 1);
       const borders = await tabs.evaluate((element) => ({
         strip: getComputedStyle(element).borderBottomWidth,
         header: getComputedStyle(element.closest('header')!).borderBottomWidth
@@ -389,22 +389,19 @@ for (const [language, theme, width] of [
       );
       for (const item of await tabs.locator('.mar-tab-strip-item').all()) {
         await expect(item).toHaveCSS('border-top-width', '1px');
-        await expect(item).toHaveCSS(
-          'border-top-color',
-          (await item.getAttribute('class'))!.includes('is-active')
-            ? colors.tabBorder
-            : 'rgba(0, 0, 0, 0)'
-        );
-        await expect(item).toHaveCSS('border-bottom-width', '1px');
-        for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right'])
-          await expect(item).toHaveCSS(`border-${corner}-radius`, '6px');
+        await expect(item).toHaveCSS('border-top-color', colors.tabBorder);
+        await expect(item).toHaveCSS('border-bottom-width', '0px');
+        for (const edge of ['left', 'right']) {
+          await expect(item).toHaveCSS(`border-top-${edge}-radius`, '6px');
+          await expect(item).toHaveCSS(`border-bottom-${edge}-radius`, '0px');
+        }
         const inset = await item.evaluate((element) => {
           const box = element.getBoundingClientRect();
           const strip = element.closest('[role="tablist"]')!.getBoundingClientRect();
           return { top: box.top - strip.top, bottom: strip.bottom - box.bottom };
         });
-        expect(inset.top).toBeGreaterThanOrEqual(4);
-        expect(inset.bottom).toBeGreaterThanOrEqual(4);
+        expect(inset.top).toBe(3);
+        expect(inset.bottom).toBe(0);
       }
       await expect(tabs.locator('.mar-tab-strip-separator')).toHaveCSS(
         'background-color',
@@ -413,7 +410,7 @@ for (const [language, theme, width] of [
       const genericItems = page.locator('#generic-tabs-tablist .mar-tab-strip-item');
       await expect(genericItems).toHaveCount(3);
       await expect(genericItems.first()).toHaveCSS('border-top-color', colors.tabBorder);
-      await expect(genericItems.nth(1)).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+      await expect(genericItems.nth(1)).toHaveCSS('border-top-color', colors.tabBorder);
       await expect(session.locator('..')).toHaveCSS('background-color', colors.selected);
       await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
       const activity = session.locator('.workbench-aside-activity');
@@ -489,7 +486,7 @@ for (const width of [1280, 390]) {
         expect(
           await tabs.evaluate((el) => (el as HTMLElement).offsetHeight - el.clientHeight)
         ).toBe(0);
-        await expect(page.locator('.workbench-aside-header')).toHaveJSProperty('offsetHeight', 40);
+        await expect(page.locator('.workbench-aside-header')).toHaveJSProperty('offsetHeight', 32);
         await expect(host).toHaveClass(/can-scroll-previous/);
         const controls = host.locator('.mar-tab-scroll');
         await expect(controls).toHaveCount(2);

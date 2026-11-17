@@ -374,6 +374,8 @@ defineExpose({
 .workspace-file-tab-header {
   position: relative;
   z-index: 1;
+  height: 32px;
+  flex: 0 0 32px;
   align-items: stretch;
   color: var(--mar-text-secondary);
 }
@@ -414,6 +416,12 @@ defineExpose({
 }
 
 @media (max-width: 767px) {
+  .workspace-file-tab-header {
+    height: 40px;
+    min-height: 40px;
+    flex: 0 0 40px;
+  }
+
   .workspace-file-window-close {
     width: 36px;
     min-width: 36px;

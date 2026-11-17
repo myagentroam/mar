@@ -154,6 +154,7 @@ function activate(id: string | number): void {
   max-height: none;
 }
 .activity-tabs {
+  --mar-tab-strip-active-bg: var(--mar-fill-selection);
   flex: none;
 }
 .activity-tabpanel {

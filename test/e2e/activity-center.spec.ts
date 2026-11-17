@@ -254,7 +254,7 @@ for (const width of [1280, 390]) {
           row.getBoundingClientRect().right - row.nextElementSibling!.getBoundingClientRect().left
         );
       });
-      expect(overlap).toBeLessThanOrEqual(-4);
+      expect(overlap).toBeCloseTo(1, 1);
       await notifications.focus();
       for (const key of ['ArrowLeft', 'End', 'Home', 'ArrowRight']) {
         const target = key === 'ArrowLeft' || key === 'Home' ? recent : notifications;

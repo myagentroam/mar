@@ -308,6 +308,9 @@ onBeforeUnmount(() => {
   border-inline-start: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-page);
 }
+.workbench-aside-header {
+  --mar-tab-strip-active-bg: var(--mar-fill-selection);
+}
 .workbench-aside-back {
   display: grid;
   width: 30px;
