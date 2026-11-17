@@ -32,6 +32,8 @@ const documentationAvailable = useDocumentationAvailability();
 const locale = localePreferenceService().locale;
 const treeElement = ref<HTMLElement>();
 const mobilePanelTarget = ref<HTMLElement>();
+// Persisted sidebar widths include the shell inset outside the measured tree.
+const sidebarInset = 9;
 
 const props = defineProps<{
   readonly webVersion: string;
@@ -387,10 +389,10 @@ function openBlankMenu(event: MouseEvent): void {
     class="workspace-tree-resize"
     :target="treeElement"
     :label="$t('generated.panelResize.workspaceTree')"
-    :min="WORKBENCH_PANEL_LIMITS.sidebar.min"
-    :max="WORKBENCH_PANEL_LIMITS.sidebar.max"
+    :min="WORKBENCH_PANEL_LIMITS.sidebar.min - sidebarInset"
+    :max="WORKBENCH_PANEL_LIMITS.sidebar.max - sidebarInset"
     :direction="1"
-    @resize="emit('resizeSidebar', $event)"
+    @resize="emit('resizeSidebar', $event + sidebarInset)"
   />
 </template>
 
@@ -639,7 +641,8 @@ function openBlankMenu(event: MouseEvent): void {
 
 .workspace-tree-resize {
   position: fixed;
-  top: 0;
+  top: 9px;
+  bottom: 9px;
   left: calc(var(--mar-workbench-sidebar-total-width) - 4px);
 }
 
