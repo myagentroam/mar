@@ -452,6 +452,34 @@ describe('Shared workbench shell', () => {
     }
   });
 
+  it.each([
+    ['en-US', false],
+    ['en-US', true],
+    ['zh-CN', false],
+    ['zh-CN', true]
+  ] as const)(
+    'renders the sidebar panel toggle in %s with collapsed=%s',
+    async (locale, sidebarCollapsed) => {
+      localePreferenceService().setLocale(locale);
+      const html = await renderComponent(WorkbenchHeader, {
+        mobileViewport: false,
+        view: 'nodes',
+        sidebarCollapsed,
+        settingsSection: 'account',
+        managementSection: 'overview',
+        settingsItems: [],
+        managementItems: [],
+        conversationTitle: undefined
+      });
+      const label =
+        commonMessages[locale].navigation[sidebarCollapsed ? 'expandSidebar' : 'collapseSidebar'];
+      expect(html).toContain(`aria-label="${label}"`);
+      expect(html).toContain(`aria-expanded="${!sidebarCollapsed}"`);
+      expect(html).toContain('data-mar-icon="sidebar"');
+      expect(html).not.toContain('data-mar-icon="menu"');
+    }
+  );
+
   it.each(['en-US', 'zh-CN'] as const)(
     'renders host-provided management labels without private page IDs: %s',
     async (locale) => {

@@ -35,8 +35,7 @@ const emit = defineEmits<{
       type="button"
       @click="emit('toggleSidebar')"
     >
-      <MarIcon name="menu" v-if="sidebarCollapsed" />
-      <MarIcon name="menu" v-else />
+      <MarIcon name="sidebar" />
     </button>
     <div
       v-if="view === 'conversations' && conversationTitle"

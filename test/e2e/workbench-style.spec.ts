@@ -342,6 +342,7 @@ for (const scenario of [
   {
     width: 1280,
     locale: 'en-US',
+    theme: 'daylight',
     copy: 'Copy absolute path',
     relative: 'Copy relative path',
     refresh: 'Refresh files'
@@ -349,6 +350,7 @@ for (const scenario of [
   {
     width: 390,
     locale: 'zh-CN',
+    theme: 'vscode-dark-2026',
     copy: '复制绝对路径',
     relative: '复制相对路径',
     refresh: '刷新文件'
@@ -356,7 +358,7 @@ for (const scenario of [
 ]) {
   test(`File tree copies absolute paths for files, folders and the root at ${scenario.width}px`, async ({
     page
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width: scenario.width, height: 900 });
     await grantClipboardPermissions(page.context());
     await page.route('**/api/workspaces/workspace/**', (route) =>
@@ -372,7 +374,9 @@ for (const scenario of [
         }
       })
     );
-    await page.goto(`${fixture.url}workbench-style.html?file-root=1&locale=${scenario.locale}`);
+    await page.goto(
+      `${fixture.url}workbench-style.html?file-root=1&locale=${scenario.locale}&theme=${scenario.theme}`
+    );
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
     const feedback = inspector.getByLabel('File operation feedback');
     await inspector.getByRole('button', { name: scenario.refresh, exact: true }).click();
@@ -389,6 +393,34 @@ for (const scenario of [
     ]) {
       await test.step(`Copy ${path}`, async () => {
         await menu(path!);
+        const relativeAction = page.getByRole('menuitem', { name: scenario.relative, exact: true });
+        const absoluteAction = page.getByRole('menuitem', { name: scenario.copy, exact: true });
+        await expect(relativeAction.locator('[data-mar-icon="path-relative"]')).toBeVisible();
+        await expect(absoluteAction.locator('[data-mar-icon="path-absolute"]')).toBeVisible();
+        if (path === '.') {
+          const relativeGlyph = relativeAction.locator('svg');
+          await expect(relativeGlyph.locator('circle')).toHaveCount(1);
+          await expect(absoluteAction.locator('circle')).toHaveCount(0);
+          const geometry = await relativeGlyph.evaluate((element) => {
+            const svg = element as SVGSVGElement;
+            const dot = svg.querySelector('circle')!.getBBox();
+            const slash = svg.querySelectorAll('path')[1]!;
+            const halfStroke = parseFloat(getComputedStyle(slash).strokeWidth) / 2;
+            const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+            return {
+              dotDiameter: dot.width * scale,
+              gap: (slash.getBBox().x - halfStroke - dot.x - dot.width) * scale,
+              stroke: getComputedStyle(slash).stroke,
+              foreground: getComputedStyle(svg).color
+            };
+          });
+          expect(geometry.dotDiameter).toBeGreaterThanOrEqual(1.2);
+          expect(geometry.gap).toBeGreaterThanOrEqual(0.5);
+          expect(geometry.stroke).toBe(geometry.foreground);
+          await absoluteAction.locator('..').screenshot({
+            path: testInfo.outputPath('copy-path-icons.png')
+          });
+        }
         await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(absolute);
         await expect(feedback).toHaveAttribute('data-type', 'info');
@@ -422,6 +454,11 @@ for (const scenario of [
       'aria-disabled',
       'true'
     );
+    await expect(
+      page
+        .getByRole('menuitem', { name: scenario.copy, exact: true })
+        .locator('[data-mar-icon="path-absolute"]')
+    ).toBeVisible();
     await expect(
       page.getByRole('menuitem', { name: scenario.relative, exact: true })
     ).not.toHaveAttribute('aria-disabled', 'true');
