@@ -198,7 +198,7 @@ for (const [width, theme, locale] of [
       );
       expect(sizes.every((size) => size.weight === '400')).toBe(true);
       expect(sizes.some((size) => size.clipped)).toBe(false);
-      if (width >= 768)
+      if (width >= 768 && list !== files)
         expect(sizes.every((size) => Math.abs(size.width - sizes[0]!.width) < 0.5)).toBe(true);
       const bounds = await list.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
@@ -207,29 +207,126 @@ for (const [width, theme, locale] of [
         .poll(() => list.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
         .toBe(true);
     }
-    await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
+    await expect(fileDetail.locator('button')).toHaveCount(6);
+    await expect(fileDetail.locator('.tool-detail-copy')).toHaveCount(0);
+    await expect(process.locator('.tool-detail-copy')).toHaveCount(2);
     await process.screenshot({
       path: testInfo.outputPath(`task-file-lists-${width}-${locale}.png`)
     });
   });
 }
 
-test('copies loaded file-change records without flattening their public fields', async ({
-  page
-}) => {
-  await grantClipboardPermissions(page.context());
-  await page.goto(`${fixture.url}conversation-tool-detail.html?timeline&list-layout`);
-  const process = page.locator('[data-process-id="process"]');
-  await process.locator('.process-heading').click();
-  const files = process.locator('.conversation-file-change-details');
-  await files.locator('> summary').click();
-  await files.getByRole('button', { name: 'Copy public record', exact: true }).click();
-  expect(JSON.parse(await page.evaluate(() => navigator.clipboard.readText()))).toMatchObject([
-    { id: 'list-files', kind: 'file_change', payload: { changes: expect.any(Array) } }
-  ]);
-  const records = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
-  expect(records[0].payload.changes).toHaveLength(6);
-});
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`file-change cards retain paths, distinct changes and navigation without copy at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?timeline&list-layout&file-cards&theme=${theme}`
+    );
+    const process = page.locator('[data-process-id="process"]');
+    await process.locator('.process-heading').click();
+    const files = process.locator('.conversation-file-change-details');
+    const heading = files.locator(':scope > summary');
+    await expect(files.locator('.conversation-file-change-list')).toHaveCount(0);
+    await heading.click();
+    const rows = files.locator('li');
+    await expect(rows).toHaveCount(5);
+    await expect(
+      files.getByRole('button', { name: 'Copy public record', exact: true })
+    ).toHaveCount(0);
+    await expect(rows.locator('.conversation-file-change-name')).toHaveText([
+      'pelican.svg',
+      'preview.ts',
+      'preview.ts',
+      'design-notes.md',
+      'pelican.png'
+    ]);
+    await expect(rows.locator('.file-type-icon')).toHaveCount(5);
+    await expect(rows.locator('.conversation-file-change-path')).toHaveText([
+      'assets/illustrations/pelican.svg',
+      'src/preview.ts',
+      'src/preview.ts',
+      'C:\\workspace\\docs\\design-notes.md',
+      'assets/illustrations/line\nbreak/pelican.png'
+    ]);
+    await expect(rows.first().locator('.change-additions')).toHaveText('+144');
+    await expect(rows.first().locator('.change-deletions')).toHaveText('-0');
+    await expect(rows.nth(3).locator('.conversation-file-change-stats')).toBeEmpty();
+    await expect(rows.nth(4).locator('.conversation-file-change-note')).toBeVisible();
+    for (const index of [0, 1, 2]) {
+      await rows.nth(index).getByRole('button').click();
+      await expect(page.getByTestId('opened-change')).toHaveText(
+        `00000000-0000-4000-8000-00000000000${index}`
+      );
+    }
+    await expect(page.getByTestId('opened-file')).toBeEmpty();
+    await rows.nth(3).getByRole('button').click();
+    await expect(page.getByTestId('opened-file')).toHaveText(
+      JSON.stringify(['C:\\workspace\\docs\\design-notes.md', false])
+    );
+    await rows
+      .nth(3)
+      .getByRole('button')
+      .click({ modifiers: ['Control'] });
+    await expect(page.getByTestId('opened-file')).toHaveText(
+      JSON.stringify(['C:\\workspace\\docs\\design-notes.md', true])
+    );
+    await rows.nth(4).getByRole('button').click();
+    await expect(page.getByTestId('opened-file')).toHaveText(
+      JSON.stringify(['assets/illustrations/line\nbreak/pelican.png', false])
+    );
+    const firstFile = rows.first().getByRole('button');
+    await firstFile.press('Enter');
+    await expect(page.getByTestId('opened-change')).toHaveText(
+      '00000000-0000-4000-8000-000000000000'
+    );
+    await expect(firstFile).toBeFocused();
+    await expect(firstFile).toHaveCSS('outline-style', 'solid');
+    const name = rows.first().locator('.conversation-file-change-name');
+    const path = rows.first().locator('.conversation-file-change-path');
+    await expect(name).toHaveCSS('font-size', '12px');
+    await expect(name).toHaveCSS('font-weight', '400');
+    const colors = await files.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-text-tertiary)';
+      element.append(probe);
+      const path = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        name: getComputedStyle(element.querySelector('.mar-conversation-detail-body')!).color,
+        path
+      };
+    });
+    await expect(name).toHaveCSS('color', colors.name);
+    await expect(path).toHaveCSS('color', colors.path);
+    const positions = await rows.first().evaluate((row) => {
+      const name = row.querySelector('.conversation-file-change-name')!.getBoundingClientRect();
+      const path = row.querySelector('.conversation-file-change-path')!.getBoundingClientRect();
+      return { nameX: name.x, pathX: path.x, nameBottom: name.bottom, pathY: path.y };
+    });
+    expect(positions.nameX).toBeCloseTo(positions.pathX, 0);
+    expect(positions.pathY).toBeGreaterThanOrEqual(positions.nameBottom);
+    await expectUnclippedDetail(files);
+    await expect
+      .poll(() => files.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.mouse.move(0, 0);
+    await files.screenshot({
+      path: testInfo.outputPath(`file-changes-final-${width}-${theme}.png`)
+    });
+    await heading.click();
+    await expect(files.locator('li')).toHaveCount(0);
+    await heading.click();
+    await expect(files.locator('li')).toHaveCount(5);
+  });
+}
 
 for (const [width, theme] of [
   [1280, 'dark'],
@@ -247,7 +344,7 @@ for (const [width, theme] of [
     await agents.locator('.conversation-record-group > summary').click();
     await agents.locator('.conversation-tool-detail > summary').click();
     await expect(process.locator('.mar-conversation-detail-list')).toHaveCount(3);
-    await expect(process.locator('.tool-detail-copy')).toHaveCount(3);
+    await expect(process.locator('.tool-detail-copy')).toHaveCount(2);
     await process.screenshot({ path: testInfo.outputPath(`unified-lists-${width}-${theme}.png`) });
   });
 }

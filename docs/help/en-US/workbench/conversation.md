@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-16
+lastUpdated: 2026-11-17
 ---
 
 # Conversations, Tools, and Notifications
@@ -33,7 +33,7 @@ When an Agent request or model call finally fails, the error card shows the HTTP
 
 Task lists start expanded; click the heading to collapse or reopen them. Each work process shows its latest task snapshot with the original item statuses and content. File changes, plans, and image-generation text keep their existing actions; image thumbnails retain their separate preview.
 
-Task lists and Agent queries provide a top-right button to copy the current public record. File-change lists copy the loaded original public records in that group without fetching more history.
+Task lists and Agent queries provide a top-right button to copy the current public record. File-change lists do not provide a copy button.
 
 ## Inspect this file change
 
