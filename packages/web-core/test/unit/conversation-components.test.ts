@@ -1011,6 +1011,50 @@ afterEach(() => {
 describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)', (locale) => {
   beforeEach(() => localePreferenceService().setLocale(locale));
 
+  it('omits the default user heading and its container without interpreting ordinary text', async () => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [
+        conversationTurn([
+          conversationItem('plain-user', 'user_message', { text: 'You /goal Review' })
+        ])
+      ]
+    });
+    expect(html).not.toContain('conversation-item-heading');
+    expect(html).toContain('You /goal Review');
+    expect(html).toContain('conversation-message');
+    expect(html).toContain('conversation-message-action mar-icon-button mar-icon-action');
+  });
+
+  it.each([
+    { source: 'SCHEDULED', text: 'Scheduled input' },
+    { text: '<mar_restart />Restarted input' },
+    { text: serializeComposerTag('mar_goal_start', { objective: 'Review the result' }) },
+    { text: serializeComposerTag('mar_goal_continue', { objective: 'Review the result' }) }
+  ])('preserves special input headings for %j', async (payload) => {
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      turns: [conversationTurn([conversationItem('special-user', 'user_message', payload)])]
+    });
+    expect(html).toContain('conversation-item-heading');
+    expect(html).toContain(conversationItemLabel('user_message', payload));
+    expect(html).not.toContain('mar_goal_');
+    expect(html).not.toContain('mar_restart');
+  });
+
+  it('preserves a sharer identity even when its name equals the default user label', async () => {
+    const name = i18n.global.t('generated.conversationPresentation.you');
+    const html = await render(ConversationTimeline, {
+      ...timelineProps,
+      sharerName: name,
+      turns: [
+        conversationTurn([conversationItem('owner', 'user_message', { text: 'Shared input' })])
+      ]
+    });
+    expect(html).toContain('conversation-item-heading');
+    expect(html).toMatch(new RegExp('<strong[^>]*>' + name + '</strong>'));
+  });
+
   it.each([true, false])('renders channel attribution for share view: %s', async (shared) => {
     const channel = serializeComposerTag('mar_channel', {
       source: 'WEB_SHARE',
@@ -1899,7 +1943,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     }
   });
 
-  it('keeps user identity and copy controls without repeating assistant headings', async () => {
+  it('keeps message identity and copy controls without default role headings', async () => {
     const html = await render(ConversationTimeline, {
       ...timelineProps,
       turns: [
@@ -1913,7 +1957,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(
       html.match(/class="conversation-message-action mar-icon-button mar-icon-action\b/gu)
     ).toHaveLength(2);
-    expect(html.match(/class="conversation-item-heading"/gu)).toHaveLength(1);
+    expect(html).not.toContain('class="conversation-item-heading"');
+    expect(html).toContain('User text');
     expect(html).toContain('Assistant text');
     for (const kind of ['user_message', 'assistant_message'])
       expect(html).toContain(

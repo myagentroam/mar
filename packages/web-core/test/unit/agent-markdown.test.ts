@@ -159,7 +159,9 @@ it('keeps 80 mounted markdown entries cached across equivalent-identity parent u
   function markdownNodes(): HostNode[] {
     const found: HostNode[] = [];
     const visit = (node: HostNode) => {
-      if (node.props.get('class') === 'agent-markdown') found.push(node);
+      const classes = node.props.get('class');
+      if (typeof classes === 'string' && classes.split(' ').includes('agent-markdown'))
+        found.push(node);
       for (const child of node.children) visit(child);
     };
     visit(container);
@@ -337,10 +339,13 @@ describe('AgentMarkdown code block copy button', () => {
     localePreferenceService().setLocale(originalLocale);
   });
 
-  it('wraps fenced code blocks with a bottom-right copy button and preserves code text', async () => {
+  it('places the language and copy action above fenced code without changing its text', async () => {
     const html = await render('说明：\n\n```js\nconst value = 1;\n```\n\n行内 `code`。');
 
     expect(html).toContain('class="agent-markdown-code"');
+    expect(html).toMatch(
+      /class="agent-markdown-code-header">.*class="agent-markdown-code-language">js<\/span>.*data-code-copy.*<\/div><pre>/u
+    );
     expect(html).toContain('data-code-block');
     expect(html).toContain('data-code-copy');
     expect(html).toContain('agent-markdown-code-copy mar-icon-button mar-icon-action');
@@ -355,7 +360,32 @@ describe('AgentMarkdown code block copy button', () => {
     const html = await render('```unknownlang\nplain text\n```');
 
     expect(html.match(/data-code-copy/gu)).toHaveLength(1);
+    expect(html).toContain('class="agent-markdown-code-language">unknownlang</span>');
     expect(stripTags(html)).toContain('plain text');
+  });
+
+  it.each(['zh-CN', 'en-US'] as const)(
+    'labels untyped fences in %s without guessing a language',
+    async (locale) => {
+      localePreferenceService().setLocale(locale);
+      const html = await render('```\n  const text = "<script>";\n```');
+      expect(html).toContain(
+        `class="agent-markdown-code-language">${i18n.global.t('generated.conversationTimeline.codeBlock')}</span>`
+      );
+      expect(html).toContain('  const text = &quot;&lt;script&gt;&quot;;');
+      expect(html).not.toContain('hljs-keyword');
+    }
+  );
+
+  it('escapes the declared language and keeps highlighted code inside the code body', async () => {
+    const html = await render(
+      '```<img onerror=alert(1)>\nplain text\n```\n\n```ts extra-options\nconst value = "safe";\n```'
+    );
+    expect(html).toContain('class="agent-markdown-code-language">&lt;img</span>');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('class="agent-markdown-code-language">ts</span>');
+    expect(html).toContain('<span class="hljs-keyword">const</span>');
+    expect(html).toContain('<span class="hljs-string">&quot;safe&quot;</span>');
   });
 
   it('does not add a copy button for inline code', async () => {

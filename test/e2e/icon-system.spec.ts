@@ -1809,8 +1809,8 @@ for (const theme of ['dark', 'light'])
       await expect(page.locator('.agent-markdown-code-copy [data-mar-icon="copy"]')).toHaveCount(1);
       const codeCopy = page.locator('.agent-markdown-code-copy');
       await codeCopy.hover();
-      await expect(codeCopy).toHaveCSS('width', mobile ? '36px' : '24px');
-      await expect(codeCopy).toHaveCSS('height', mobile ? '36px' : '24px');
+      await expect(codeCopy).toHaveCSS('width', mobile ? '28px' : '24px');
+      await expect(codeCopy).toHaveCSS('height', mobile ? '28px' : '24px');
       await codeCopy.locator('..').screenshot({
         path: testInfo.outputPath(
           `code-action-density-${theme}-${mobile ? 'mobile' : 'desktop'}.png`

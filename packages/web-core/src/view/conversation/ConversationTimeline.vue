@@ -104,11 +104,14 @@ interface UserInputQuestion {
 type UserInputAnswer = string | readonly string[];
 
 function messageHeading(payload: unknown) {
+  const input = composerMessagePresentation(payload);
+  const label =
+    props.sharerName ??
+    (input.restarted || input.scheduled || input.goal
+      ? conversationItemLabel('user_message', payload)
+      : undefined);
   return (
-    composerMessageSource(composerMessagePresentation(payload)) ?? {
-      label: props.sharerName ?? conversationItemLabel('user_message', payload),
-      title: undefined
-    }
+    composerMessageSource(input) ?? (label === undefined ? undefined : { label, title: undefined })
   );
 }
 
@@ -1031,14 +1034,14 @@ function stepDuration(item: ConversationItem): string | undefined {
           </div>
         </template>
         <template v-else-if="displayItem.item.kind === 'user_message'">
-          <div class="conversation-item-heading">
+          <div v-if="messageHeading(displayItem.item.payload)" class="conversation-item-heading">
             <strong
               v-tooltip="{
-                content: messageHeading(displayItem.item.payload).title,
-                disabled: !messageHeading(displayItem.item.payload).title
+                content: messageHeading(displayItem.item.payload)?.title,
+                disabled: !messageHeading(displayItem.item.payload)?.title
               }"
-              :aria-description="messageHeading(displayItem.item.payload).title"
-              >{{ messageHeading(displayItem.item.payload).label }}</strong
+              :aria-description="messageHeading(displayItem.item.payload)?.title"
+              >{{ messageHeading(displayItem.item.payload)?.label }}</strong
             >
           </div>
           <MessageReferenceTags

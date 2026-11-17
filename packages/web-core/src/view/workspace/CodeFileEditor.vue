@@ -10,6 +10,7 @@ import { keymap, Decoration, EditorView } from '@codemirror/view';
 import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
+import '../common/code-syntax-theme.css';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { FileReference } from '@myagentroam/code-navigation';
 import { translate } from '../../service/locale-preference-service.js';
@@ -619,7 +620,7 @@ onBeforeUnmount(() => {
 });
 </script>
 
-<template><div ref="host" class="code-file-editor" /></template>
+<template><div ref="host" class="code-file-editor mar-code-syntax" /></template>
 
 <style scoped>
 .code-file-editor {
@@ -653,20 +654,6 @@ onBeforeUnmount(() => {
   --mar-editor-search-match-border: #d6bd58;
   --mar-editor-search-match-active: #f2c94c;
   --mar-editor-search-match-active-border: #bd8e16;
-  --mar-editor-keyword: #0000ff;
-  --mar-editor-control-keyword: #af00db;
-  --mar-editor-variable: #001080;
-  --mar-editor-property: #001080;
-  --mar-editor-function: #795e26;
-  --mar-editor-type: #267f99;
-  --mar-editor-string: #a31515;
-  --mar-editor-number: #098658;
-  --mar-editor-comment: #008000;
-  --mar-editor-regexp: #811f3f;
-  --mar-editor-operator: #1f1f1f;
-  --mar-editor-invalid: #cd3131;
-  --mar-editor-heading: #0451a5;
-  --mar-editor-link: #0000ff;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -690,20 +677,6 @@ onBeforeUnmount(() => {
   --mar-editor-search-match-border: #9ebf6e;
   --mar-editor-search-match-active: #b7651d;
   --mar-editor-search-match-active-border: #f0a35b;
-  --mar-editor-keyword: #569cd6;
-  --mar-editor-control-keyword: #c586c0;
-  --mar-editor-variable: #9cdcfe;
-  --mar-editor-property: #9cdcfe;
-  --mar-editor-function: #dcdcaa;
-  --mar-editor-type: #4ec9b0;
-  --mar-editor-string: #ce9178;
-  --mar-editor-number: #b5cea8;
-  --mar-editor-comment: #6a9955;
-  --mar-editor-regexp: #d16969;
-  --mar-editor-operator: #d4d4d4;
-  --mar-editor-invalid: #f44747;
-  --mar-editor-heading: #569cd6;
-  --mar-editor-link: #4daafc;
 }
 
 .code-file-editor :deep(.cm-editor) {
