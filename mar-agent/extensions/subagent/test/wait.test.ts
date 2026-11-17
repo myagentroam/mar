@@ -5,7 +5,27 @@ import type {
   SessionExtensionContext
 } from '@myagentroam/agent/extensions';
 import { SessionObservations } from '../src/observations.js';
-import { registerWait, waitForChild } from '../src/wait.js';
+import { waitForChild, type WaitInput } from '../src/wait.js';
+
+// Lifecycle tests inspect domain facts; model-facing receipts are covered by model-contract.test.ts.
+function domainWait(
+  context: SessionExtensionContext,
+  agent: Agent,
+  observations: SessionObservations
+) {
+  return (
+    input: object,
+    call: object
+  ): Promise<{ data: Record<string, unknown>; content: string }> =>
+    waitForChild(
+      context,
+      agent,
+      observations,
+      input as WaitInput,
+      call as ExtensionOperationContext,
+      'model'
+    );
+}
 
 function setup(full = false) {
   const listeners = new Set<(event: AgentEvent) => void>();
@@ -34,18 +54,12 @@ function setup(full = false) {
     getSession: async (id: keyof typeof summaries) => summaries[id],
     openSession: async () => session
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations(full);
   observations.observe(session);
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   const emit = (type: AgentEvent['type'], details: Record<string, unknown> = {}) => {
     const event = {
       type,
@@ -124,17 +138,11 @@ it('selects the newest surviving creation for a cold default wait, not the most 
     }),
     sessionInputReceipt: async () => undefined
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations();
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   expect(
     (await execute({ waitMs: 0 }, { signal: new AbortController().signal })).data
   ).toMatchObject({ agentId: 'newest', status: 'completed' });
@@ -204,16 +212,10 @@ it('returns the owner receipt without consuming unread updates in a zero snapsho
     openSession: async () => session,
     sessionInputReceipt: vi.fn(async () => facts)
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
-  registerWait(context, agent, test.observations);
+  const execute = domainWait(context, agent, test.observations);
   expect(
     (await execute({ agentId: 'child', waitMs: 0 }, { signal: new AbortController().signal })).data
   ).toMatchObject({ receipt: facts });
@@ -243,18 +245,12 @@ function setupReceiptWait(executionId: string) {
     openSession: async () => session,
     sessionInputReceipt
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations();
   observations.observe(session);
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   const emit = (type: AgentEvent['type'], details: Record<string, unknown> = {}) => {
     const event = {
       type,
@@ -401,21 +397,12 @@ function groupSetup() {
     }),
     openSession: async (id: string) => sessions.get(id)!
   } as unknown as Agent;
-  let execute!: (
-    input: object,
-    call: object
-  ) => Promise<{ data: Record<string, unknown>; content: string }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations();
   for (const session of sessions.values()) observations.observe(session);
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   const emit = (id: string, type: AgentEvent['type'], executionId = active.get(id)!) => {
     const event = {
       type,
@@ -587,21 +574,22 @@ it.each([
   test.observations.close();
 });
 
-it('returns partial progress at the positive wait floor and consumes only that snapshot', async () => {
+it('honors the supplied positive wait duration and consumes only the returned progress', async () => {
   vi.useFakeTimers();
   const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
   const test = groupSetup();
   try {
     test.emit('a', 'message.completed');
     const result = test.execute(
-      { agentIds: ['a', 'b'], mode: 'all', waitMs: 1 },
+      { agentIds: ['a', 'b'], mode: 'all', waitMs: 37 },
       { signal: new AbortController().signal }
     );
-    await vi.waitFor(() => expect(test.listeners.get('b')?.size).toBe(2));
-    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(test.listeners.get('b')?.size).toBe(2);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 37);
+    await vi.advanceTimersByTimeAsync(36);
     expect(test.observations.capture('a', 'a-first')?.updates).toBeDefined();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(1);
     expect((await result).data).toMatchObject({
       waitOutcome: 'timeout',
       pendingAgentIds: ['a', 'b'],
@@ -623,7 +611,10 @@ it('returns partial progress at the positive wait floor and consumes only that s
 });
 
 it('retries a historical terminal lookup after a transient read failure', async () => {
-  const session = { id: 'child', subscribe: () => ({ unsubscribe() {} }) } as AgentSession;
+  const session = {
+    id: 'child',
+    subscribe: () => ({ unsubscribe() {} })
+  } as unknown as AgentSession;
   const history = vi
     .fn()
     .mockRejectedValueOnce(new Error('temporary history failure'))
@@ -640,17 +631,11 @@ it('retries a historical terminal lookup after a transient read failure', async 
     openSession: async () => session,
     sessionHistory: history
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations();
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   const input = { agentId: 'child', waitMs: 0 };
   const call = { signal: new AbortController().signal };
   await expect(execute(input, call)).rejects.toThrow('temporary history failure');
@@ -663,7 +648,10 @@ it('retries a historical terminal lookup after a transient read failure', async 
 });
 
 it('restores the latest cold terminal across history pages without mixing earlier Executions', async () => {
-  const session = { id: 'child', subscribe: () => ({ unsubscribe() {} }) } as AgentSession;
+  const session = {
+    id: 'child',
+    subscribe: () => ({ unsubscribe() {} })
+  } as unknown as AgentSession;
   const history = vi.fn(async (_id: string, input: { cursor?: string }) => {
     if (!input.cursor)
       return {
@@ -708,17 +696,11 @@ it('restores the latest cold terminal across history pages without mixing earlie
     openSession: async () => session,
     sessionHistory: history
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations();
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   const call = { signal: new AbortController().signal };
   expect((await execute({ agentId: 'child' }, call)).data).toMatchObject({
     executionId: 'latest',
@@ -732,7 +714,10 @@ it('restores the latest cold terminal across history pages without mixing earlie
 });
 
 it('does not consume a cold terminal if cancelled while loading an older history page', async () => {
-  const session = { id: 'child', subscribe: () => ({ unsubscribe() {} }) } as AgentSession;
+  const session = {
+    id: 'child',
+    subscribe: () => ({ unsubscribe() {} })
+  } as unknown as AgentSession;
   let release!: () => void;
   let entered!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -775,17 +760,11 @@ it('does not consume a cold terminal if cancelled while loading an older history
       };
     }
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
   const context = {
-    sessionId: 'parent',
-    tools: {
-      register(tool: { execute: typeof execute }) {
-        execute = tool.execute;
-      }
-    }
+    sessionId: 'parent'
   } as unknown as SessionExtensionContext;
   const observations = new SessionObservations();
-  registerWait(context, agent, observations);
+  const execute = domainWait(context, agent, observations);
   const controller = new AbortController();
   const pending = execute({ agentId: 'child' }, { signal: controller.signal });
   await loading;
@@ -801,7 +780,10 @@ it('does not consume a cold terminal if cancelled while loading an older history
 it.each(['ask', 'deny'] as const)(
   'restores a historical %s permission stop from its own execution',
   async (action) => {
-    const session = { id: 'child', subscribe: () => ({ unsubscribe() {} }) } as AgentSession;
+    const session = {
+      id: 'child',
+      subscribe: () => ({ unsubscribe() {} })
+    } as unknown as AgentSession;
     const permissionStop = {
       action,
       reason: 'Confirm action.',
@@ -848,17 +830,11 @@ it.each(['ask', 'deny'] as const)(
         ]
       })
     } as unknown as Agent;
-    let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
     const context = {
-      sessionId: 'parent',
-      tools: {
-        register(tool: { execute: typeof execute }) {
-          execute = tool.execute;
-        }
-      }
+      sessionId: 'parent'
     } as unknown as SessionExtensionContext;
     const observations = new SessionObservations();
-    registerWait(context, agent, observations);
+    const execute = domainWait(context, agent, observations);
     const call = { signal: new AbortController().signal };
     const snapshot = (await execute({ agentId: 'child', waitMs: 0 }, call)).data;
     expect(snapshot).toMatchObject({
@@ -895,7 +871,10 @@ it('does not replay a terminal already consumed by automatic collection', async 
   const collected = test.observations.collect(new AbortController().signal);
   expect(collected).toHaveLength(1);
   collected[0]!.acknowledge();
-  const session = { id: 'child', subscribe: () => ({ unsubscribe() {} }) } as AgentSession;
+  const session = {
+    id: 'child',
+    subscribe: () => ({ unsubscribe() {} })
+  } as unknown as AgentSession;
   const agent = {
     sessionInputReceipt: async () => undefined,
     getSession: async (id: string) => ({
@@ -919,16 +898,8 @@ it('does not replay a terminal already consumed by automatic collection', async 
       ]
     })
   } as unknown as Agent;
-  let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
-  registerWait(
-    {
-      sessionId: 'parent',
-      tools: {
-        register(tool: { execute: typeof execute }) {
-          execute = tool.execute;
-        }
-      }
-    } as unknown as SessionExtensionContext,
+  const execute = domainWait(
+    { sessionId: 'parent' } as SessionExtensionContext,
     agent,
     test.observations
   );
@@ -948,7 +919,10 @@ it.each([
 ] as const)(
   'does not attribute an older permission stop to a newer %s execution',
   async (newType) => {
-    const session = { id: 'child', subscribe: () => ({ unsubscribe() {} }) } as AgentSession;
+    const session = {
+      id: 'child',
+      subscribe: () => ({ unsubscribe() {} })
+    } as unknown as AgentSession;
     const permissionStop = {
       action: 'ask',
       reason: 'Old stop.',
@@ -978,17 +952,11 @@ it.each([
         ]
       })
     } as unknown as Agent;
-    let execute!: (input: object, call: object) => Promise<{ data: Record<string, unknown> }>;
     const context = {
-      sessionId: 'parent',
-      tools: {
-        register(tool: { execute: typeof execute }) {
-          execute = tool.execute;
-        }
-      }
+      sessionId: 'parent'
     } as unknown as SessionExtensionContext;
     const observations = new SessionObservations();
-    registerWait(context, agent, observations);
+    const execute = domainWait(context, agent, observations);
     const result = execute(
       { agentId: 'child', waitMs: 0 },
       { signal: new AbortController().signal }

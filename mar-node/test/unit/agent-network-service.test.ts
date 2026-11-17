@@ -281,6 +281,30 @@ describe('Agent Network send and stop', () => {
     }
   );
 
+  it('forwards and acknowledges relationship omissions through the shared wait entry', async () => {
+    const f = fixture();
+    for (let index = 0; index < 11; index++) f.publish(`update ${index}`);
+    expect(
+      await f.service.wait(f.actor, {
+        agentIds: [f.target.id],
+        waitFor: 'message',
+        waitMs: 1
+      })
+    ).toMatchObject({
+      agents: [
+        {
+          agentId: f.target.id,
+          omittedUpdates: 1,
+          updates: [{ kind: 'message', value: 'update 1' }],
+          hasMoreUpdates: true
+        }
+      ]
+    });
+    expect(f.parent.captureOmissions(f.target.id)).toBeUndefined();
+    expect(f.parent.capture(f.target.id)?.updates[0]?.value).toBe('update 2');
+    f.parent.close();
+  });
+
   it('does not subscribe to a non-child for a zero-duration snapshot', async () => {
     const f = fixture(null);
     const watch = vi.spyOn(f.observations, 'watchExecutions');

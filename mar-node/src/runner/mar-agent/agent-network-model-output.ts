@@ -60,6 +60,7 @@ function projectAgent(
       'status',
       'waitOutcome',
       'hasMoreUpdates',
+      'omittedUpdates',
       'summary',
       'summaryTruncated',
       'changedFilesTruncated',
@@ -109,6 +110,7 @@ function projectAgent(
       'status',
       'waitOutcome',
       'hasMoreUpdates',
+      'omittedUpdates',
       'errorCode',
       'errorMessage'
     ]),

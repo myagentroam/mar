@@ -5,6 +5,10 @@ type WaitAgent = {
   executionId?: string;
   status: string;
   waitOutcome: string;
+  errorCode?: string;
+  errorMessage?: string;
+  receipt?: { readonly status: string };
+  permissionStop?: { readonly action: string; readonly reason: string };
   summary?: string;
   summaryTruncated?: boolean;
   changedFiles?: string[];
@@ -18,6 +22,8 @@ export function modelWaitAgent<T extends WaitAgent>(
   maximumBytes: number
 ): T & {
   detailsTruncated?: boolean;
+  summaryTruncated?: boolean;
+  changedFilesTruncated?: boolean;
 } {
   const result = {
     ...agent,
@@ -63,6 +69,17 @@ export function modelWaitAgent<T extends WaitAgent>(
     ...(agent.executionId ? { executionId: agent.executionId } : {}),
     status: agent.status,
     waitOutcome: agent.waitOutcome,
+    ...(agent.errorCode ? { errorCode: boundedUtf8(agent.errorCode, 512).value } : {}),
+    ...(agent.errorMessage ? { errorMessage: boundedUtf8(agent.errorMessage, 1000).value } : {}),
+    ...(agent.receipt ? { receipt: { status: agent.receipt.status } } : {}),
+    ...(agent.permissionStop
+      ? {
+          permissionStop: {
+            action: agent.permissionStop.action,
+            reason: boundedUtf8(agent.permissionStop.reason, 1000).value
+          }
+        }
+      : {}),
     detailsTruncated: true
   } as T & {
     detailsTruncated: boolean;

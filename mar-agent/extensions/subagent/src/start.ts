@@ -8,6 +8,7 @@ import type {
   ExtensionOperationContext,
   SessionExtensionContext
 } from '@myagentroam/agent/extensions';
+import { modelReceipt } from './model-contract.js';
 
 export interface StartInput {
   readonly description: string;
@@ -81,28 +82,47 @@ export function registerStart(
       properties: {
         title: { type: 'string', minLength: 1, maxLength: 80 },
         description: { type: 'string', minLength: 1, maxLength: 80 },
-        prompt: { type: 'string', minLength: 1 },
+        content: { type: 'string', minLength: 1 },
         role: { type: 'string', enum: ['general-purpose', 'explore'] },
         modelId: { type: 'string', minLength: 1 },
-        reasoningEffort: {
+        effort: {
           type: 'string',
           enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']
         }
       },
-      required: ['title', 'prompt', 'role'],
+      required: ['title', 'content'],
       additionalProperties: false
     },
     async execute(raw, call) {
-      const input = raw as Omit<StartInput, 'description'> & { description?: string };
+      const input = raw as {
+        title: string;
+        content: string;
+        description?: string;
+        role?: StartInput['role'];
+        modelId?: string;
+        effort?: AgentReasoningEffort;
+      };
       const { data } = await startChild(
         context,
         agent,
         admission,
-        { ...input, description: input.description ?? input.title ?? '' },
+        {
+          title: input.title,
+          description: input.description ?? input.title,
+          prompt: input.content,
+          role: input.role ?? 'general-purpose',
+          ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
+          ...(input.effort === undefined ? {} : { reasoningEffort: input.effort })
+        },
         call,
         'model'
       );
-      return { content: JSON.stringify(data), data, eventData: { agentId: data.agentId } };
+      const projected = modelReceipt('start', data);
+      return {
+        content: JSON.stringify(projected),
+        data: projected,
+        eventData: { agentId: data.agentId }
+      };
     }
   });
 }

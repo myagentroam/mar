@@ -76,6 +76,8 @@ export interface AgentObservationSnapshot {
   readonly executionId: string;
   readonly firstRevision: number;
   readonly hasMoreUpdates?: true;
+  /** Updates evicted from this relationship since its last confirmed observation. */
+  readonly omittedUpdates?: number;
   readonly result?: Omit<ResultProjection, 'revision' | 'summaryRevision'>;
   readonly updates: readonly {
     readonly kind: 'message' | 'terminal';
@@ -168,6 +170,7 @@ export class AgentNetworkObservations {
 export class ParentObservations implements ExtensionSessionContextProvider {
   readonly #items = new Map<string, Observation>();
   readonly #results = new Map<string, ResultProjection>();
+  readonly #omissions = new Map<string, { total: number; acknowledged: number }>();
   readonly #listeners = new Set<(snapshot?: AgentObservationSnapshot) => void>();
   readonly #wakeListeners = new Set<() => void>();
   #revision = 0;
@@ -207,6 +210,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
         wakes: false
       }
     );
+    this.trim(input.childId);
     return true;
   }
 
@@ -259,7 +263,10 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       }
       this.#results.set(resultKey, result);
     }
-    if (kind === 'files') return;
+    if (kind === 'files') {
+      this.trim(childId);
+      return;
+    }
     const { value } = input;
     const bounded = boundedUtf8(value, 2_000);
     const key = JSON.stringify([
@@ -269,6 +276,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       kind,
       ...(kind === 'message' ? [revision] : [])
     ]);
+    this.#items.delete(key);
     this.#items.set(key, {
       revision,
       childId,
@@ -279,6 +287,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       truncated: bounded.truncated,
       ...(input.final ? { final: true } : {})
     });
+    this.trim(childId);
     const terminalSnapshot = kind === 'terminal' ? this.capture(childId, executionId) : undefined;
     for (const listener of [...this.#listeners]) {
       try {
@@ -317,6 +326,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
         runId: snapshot.runId,
         executionId: snapshot.executionId,
         ...(hasMoreUpdates ? { hasMoreUpdates: true } : {}),
+        ...(snapshot.omittedUpdates ? { omittedUpdates: snapshot.omittedUpdates } : {}),
         ...(batch.length < children.length ? { hasMoreAgents: true } : {}),
         ...snapshot.result,
         updates: snapshot.updates.map((item) => ({
@@ -337,6 +347,21 @@ export class ParentObservations implements ExtensionSessionContextProvider {
     return this.captureBatch(childId, executionId, 1);
   }
 
+  /** Loss is relationship-scoped, never evidence about a particular execution. */
+  captureOmissions(childId: string) {
+    const notice = this.#omissions.get(childId);
+    if (!notice) return undefined;
+    const through = notice.total;
+    return {
+      omittedUpdates: through - notice.acknowledged,
+      acknowledge: () => {
+        if (this.#omissions.get(childId) !== notice) return;
+        notice.acknowledged = Math.max(notice.acknowledged, through);
+        if (notice.acknowledged === notice.total) this.#omissions.delete(childId);
+      }
+    };
+  }
+
   private captureBatch(
     childId: string,
     executionId: string | undefined,
@@ -355,6 +380,8 @@ export class ParentObservations implements ExtensionSessionContextProvider {
     }
     const first = group[0]?.[1];
     if (!first) return undefined;
+    const notice = this.captureOmissions(childId);
+    const omittedUpdates = notice?.omittedUpdates;
     const resultKey = JSON.stringify([childId, first.runId, first.executionId]);
     const stored = group.some(([, item]) => item.kind === 'terminal')
       ? this.#results.get(resultKey)
@@ -400,6 +427,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
       executionId: first.executionId,
       firstRevision: Math.min(...delivered.map(([, item]) => item.revision)),
       ...(delivered.length < group.length ? { hasMoreUpdates: true as const } : {}),
+      ...(omittedUpdates ? { omittedUpdates } : {}),
       ...(result === undefined ? {} : { result }),
       updates: delivered
         .filter(([key]) => key !== coveredFinal?.[0])
@@ -418,8 +446,45 @@ export class ParentObservations implements ExtensionSessionContextProvider {
         }
         if (terminalAcknowledged && this.#results.get(resultKey)?.revision === resultRevision)
           this.#results.delete(resultKey);
+        notice?.acknowledge();
       }
     };
+  }
+
+  /** Bound each relationship across executions, including result-only file snapshots. */
+  private trim(childId: string): void {
+    const entries = [...this.#items].filter(([, item]) => item.childId === childId);
+    const removedResults = new Set<string>();
+    let omitted = 0;
+    for (const [key, item] of entries.slice(0, Math.max(0, entries.length - 10))) {
+      this.#items.delete(key);
+      removedResults.add(JSON.stringify([childId, item.runId, item.executionId]));
+      omitted++;
+    }
+    const retainedResults = new Set(
+      [...this.#items.values()]
+        .filter((item) => item.childId === childId)
+        .map((item) => JSON.stringify([childId, item.runId, item.executionId]))
+    );
+    for (const key of removedResults) if (!retainedResults.has(key)) this.#results.delete(key);
+    const prefix = JSON.stringify([childId]).slice(0, -1) + ',';
+    const results = [...this.#results]
+      .filter(([key]) => key.startsWith(prefix))
+      .sort(
+        (a, b) =>
+          Number(retainedResults.has(b[0])) - Number(retainedResults.has(a[0])) ||
+          b[1].revision - a[1].revision
+      );
+    for (const [key] of results.slice(10)) {
+      this.#results.delete(key);
+      // File-only snapshots do not wake the parent; their omissions accompany the next reply.
+      omitted++;
+    }
+    if (omitted) {
+      const notice = this.#omissions.get(childId) ?? { total: 0, acknowledged: 0 };
+      notice.total += omitted;
+      this.#omissions.set(childId, notice);
+    }
   }
 
   close(): void {
@@ -427,6 +492,7 @@ export class ParentObservations implements ExtensionSessionContextProvider {
     this.#closed = true;
     this.#items.clear();
     this.#results.clear();
+    this.#omissions.clear();
     this.#listeners.clear();
     this.#wakeListeners.clear();
     this.detach();
@@ -452,6 +518,7 @@ function boundedObservation(input: {
   runId: string;
   executionId: string;
   hasMoreUpdates?: boolean;
+  omittedUpdates?: number;
   hasMoreAgents?: boolean;
   summary?: string;
   summaryTruncated?: boolean;
@@ -512,6 +579,7 @@ function boundedObservation(input: {
       runId: boundedUtf8(data.runId, 512).value,
       executionId: boundedUtf8(data.executionId, 512).value,
       ...(data.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
+      ...(data.omittedUpdates ? { omittedUpdates: data.omittedUpdates } : {}),
       ...(data.hasMoreAgents ? { hasMoreAgents: true } : {}),
       detailsTruncated: true
     };

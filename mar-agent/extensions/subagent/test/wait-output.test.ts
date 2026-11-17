@@ -46,3 +46,28 @@ it('retains complete summaries when the group fits and marks truncated file list
   expect(model.changedFiles!.length).toBeLessThan(200);
   expect(agent.changedFiles).toHaveLength(200);
 });
+
+it('preserves actionable failure, permission and receipt states in the compact fallback', () => {
+  const agent = {
+    agentId: 'child',
+    status: 'FAILED',
+    waitOutcome: 'completion',
+    errorCode: 'TEST_FAILURE',
+    errorMessage: 'error'.repeat(4000),
+    receipt: { status: 'applied' },
+    permissionStop: { action: 'ask', reason: 'permission'.repeat(4000) }
+  };
+  const result = modelWaitAgent(agent, 4250);
+  expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(4250);
+  expect(result).toMatchObject({
+    detailsTruncated: true,
+    agentId: 'child',
+    status: 'FAILED',
+    errorCode: 'TEST_FAILURE',
+    receipt: { status: 'applied' },
+    permissionStop: { action: 'ask' }
+  });
+  expect(result.errorMessage!.length).toBeLessThan(agent.errorMessage.length);
+  expect(result.permissionStop!.reason.length).toBeLessThan(agent.permissionStop.reason.length);
+  expect(agent.permissionStop.reason).toHaveLength(40000);
+});

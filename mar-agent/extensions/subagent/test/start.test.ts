@@ -8,14 +8,14 @@ function setup() {
   const input = {
     title: 'Child',
     description: 'Child',
-    prompt: 'Do work',
+    content: 'Do work',
     role: 'general-purpose'
   };
   const model = {
     id: 'model',
     conversationModel: true,
     subagentModel: true,
-    reasoningEfforts: [],
+    reasoningEfforts: ['low', 'high'],
     defaultReasoningEffort: undefined
   };
   const run = vi.fn(() => ({
@@ -47,6 +47,26 @@ function setup() {
   };
   return { execute, input, call, controller, createSession, run, model };
 }
+
+it('maps content and effort to the native request and defaults only the standalone role', async () => {
+  const test = setup();
+  const { role: _role, ...input } = test.input;
+  const result = await test.execute({ ...input, effort: 'high' }, test.call);
+  expect(result.data).toEqual({
+    agentId: 'child',
+    start: { status: 'accepted', executionStatus: 'RUNNING' }
+  });
+  expect(test.run).toHaveBeenCalledWith(
+    expect.objectContaining({
+      prompt: expect.stringContaining('Do work'),
+      modelId: 'model',
+      reasoningEffort: 'high'
+    })
+  );
+  expect(test.createSession).toHaveBeenCalledWith(
+    expect.objectContaining({ source: expect.objectContaining({ role: 'general-purpose' }) })
+  );
+});
 
 it.each([undefined, '', '   '])(
   'rejects an absent or blank title before child creation: %s',
@@ -81,7 +101,10 @@ it('reports the real unstarted child when cancellation races with creation', asy
   await entered.promise;
   test.controller.abort(new Error('cancelled during create'));
   release.resolve();
-  expect((await pending).data).toMatchObject({ agentId: 'child', status: 'not-started' });
+  expect((await pending).data).toMatchObject({
+    agentId: 'child',
+    start: { status: 'failed', code: 'MAR_AGENT_SUBAGENT_START_FAILED' }
+  });
   expect(test.run).not.toHaveBeenCalled();
 });
 
@@ -93,8 +116,7 @@ it('revalidates child model eligibility after creation and does not launch an in
   });
   expect((await test.execute(test.input, test.call)).data).toMatchObject({
     agentId: 'child',
-    status: 'not-started',
-    errorCode: 'MAR_AGENT_MODEL_DISABLED'
+    start: { status: 'failed', code: 'MAR_AGENT_MODEL_DISABLED' }
   });
   expect(test.run).not.toHaveBeenCalled();
 });

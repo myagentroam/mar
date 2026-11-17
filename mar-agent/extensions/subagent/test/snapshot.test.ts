@@ -35,7 +35,7 @@ it.each(['execution.failed', 'execution.cancelled'] as const)(
     const observations = new SessionObservations();
     observations.observe({
       id: 'child',
-      subscribe(listener) {
+      subscribe(listener: (event: AgentEvent) => void) {
         receive = listener;
         return { activeExecutionId: 'execution', unsubscribe() {} };
       }

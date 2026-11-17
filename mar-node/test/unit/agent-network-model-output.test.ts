@@ -13,6 +13,7 @@ it('bounds the model projection fairly while preserving the Node result', () => 
       status: 'SUCCEEDED',
       waitOutcome: 'completion',
       summary,
+      omittedUpdates: 3,
       hasMoreUpdates: true,
       changedFiles: Array.from({ length: 200 }, (_, i) => `src/${n}/${i}-${'x'.repeat(100)}.ts`)
     }))
@@ -23,12 +24,14 @@ it('bounds the model projection fairly while preserving the Node result', () => 
   expect(output.agents.map((item) => item.agentId)).toEqual(
     input.agents.map((item) => item.agentId)
   );
+  expect(output.agents.every((item) => item.omittedUpdates === 3)).toBe(true);
   expect(output.agents.every((item) => 'summaryTruncated' in item)).toBe(true);
   expect(output.agents.every((item) => item.hasMoreUpdates === true)).toBe(true);
   expect(output.agents.every((item) => !('runId' in item) && !('executionId' in item))).toBe(true);
   expect(
     input.agents.every((item) => item.summary === summary && item.changedFiles.length === 200)
   ).toBe(true);
+  expect(input.agents.every((item) => item.omittedUpdates === 3)).toBe(true);
 });
 
 it('preserves partial and unknown operation outcomes without nested audit receipts', () => {
@@ -131,6 +134,7 @@ it('wraps implicit child selection in agents and preserves messages, files and i
     changedFiles: ['src/task.ts'],
     changedFilesTruncated: true,
     hasMoreUpdates: true,
+    omittedUpdates: 4,
     updates: [{ kind: 'message', value: 'A decision is needed', truncated: false }]
   };
   expect(agentNetworkModelOutput('wait', input)).toEqual({
@@ -145,6 +149,7 @@ it('wraps implicit child selection in agents and preserves messages, files and i
         changedFiles: ['src/task.ts'],
         changedFilesTruncated: true,
         hasMoreUpdates: true,
+        omittedUpdates: 4,
         updates: input.updates
       }
     ]
@@ -174,4 +179,23 @@ it('bounds unread message text without losing terminal state or invalidating Uni
   });
   expect(JSON.stringify(output)).not.toContain('�');
   expect(input.agents[0]!.updates[0]!.truncated).toBe(false);
+});
+
+it('preserves omitted-update counts when oversized agent details fall back to a compact wait result', () => {
+  const input = {
+    agentId: 'child-' + 'x'.repeat(40_000),
+    status: 'RUNNING',
+    waitOutcome: 'message',
+    omittedUpdates: 19,
+    updates: [{ kind: 'message', value: 'detail'.repeat(10_000), truncated: false }]
+  };
+  const output = agentNetworkModelOutput('wait', input) as {
+    agents: Array<Record<string, unknown>>;
+  };
+  expect(output.agents[0]).toMatchObject({
+    status: 'RUNNING',
+    waitOutcome: 'message',
+    omittedUpdates: 19,
+    detailsTruncated: true
+  });
 });
