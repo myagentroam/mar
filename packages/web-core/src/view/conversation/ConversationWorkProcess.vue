@@ -121,9 +121,12 @@ watch(open, async () => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   column-gap: var(--conversation-record-gap, 8px);
   padding-inline: var(--conversation-item-inset, 12px);
+  border-radius: var(--mar-radius-control);
 }
 .process-heading {
   display: flex;
@@ -144,11 +147,11 @@ watch(open, async () => {
   border-radius: var(--mar-radius-control);
 }
 @media (hover: hover) and (pointer: fine) {
-  .process-heading:hover {
+  .process-heading-row:hover {
     background-color: var(--mar-fill-row-hover);
   }
 }
-.process-heading:active {
+.process-heading-row:active {
   background-color: var(--mar-fill-row-hover);
 }
 .process-heading:focus-visible {

@@ -105,6 +105,15 @@ function conversationSegments(sessionId: string, runs: readonly ReturnType<typeo
   return [historySegment(sessionId), ...runs.map((run) => runSegment(sessionId, run))];
 }
 
+async function expectFullWidthProcessHeading(process: Locator) {
+  const processBounds = await process.boundingBox();
+  const rowBounds = await process.locator('.process-heading-row').boundingBox();
+  expect(processBounds).not.toBeNull();
+  expect(rowBounds).not.toBeNull();
+  expect(rowBounds!.x).toBeCloseTo(processBounds!.x, 1);
+  expect(rowBounds!.width).toBeCloseTo(processBounds!.width, 1);
+}
+
 async function expectMetricsAndInfoOnSameLine(metrics: Locator, info: Locator) {
   const metricsBounds = await metrics.boundingBox();
   const infoBounds = await info.boundingBox();
@@ -243,7 +252,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
   }, testInfo) => {
     test.setTimeout(60_000);
     const initialRuns = await openSessionPerformancePage(page, theme, {
-      width: 1280,
+      width: 1920,
       height: 900
     });
     const initialRun = initialRuns[0]!;
@@ -276,6 +285,49 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     await expect(inline).toContainText('Latency: 420 ms · TPS: 42.0');
     await expect(inline).not.toContainText(/Input:|Output:|Cache Hit Rate:/u);
     await expectMetricsAndInfoOnSameLine(inline, info);
+    await expectFullWidthProcessHeading(latestBlock);
+
+    const headingRow = latestBlock.locator('.process-heading-row');
+    await heading.hover();
+    await expect
+      .poll(() => headingRow.evaluate((element) => getComputedStyle(element).backgroundColor))
+      .not.toBe('rgba(0, 0, 0, 0)');
+    const rowHoverBackground = await headingRow.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    );
+    expect(await heading.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+      'rgba(0, 0, 0, 0)'
+    );
+    const rowBounds = await headingRow.boundingBox();
+    const headingBounds = await heading.boundingBox();
+    const infoBounds = await info.boundingBox();
+    expect(rowBounds).not.toBeNull();
+    expect(headingBounds).not.toBeNull();
+    expect(infoBounds).not.toBeNull();
+    expect(rowBounds!.height).toBeLessThanOrEqual(headingBounds!.height);
+    expect(infoBounds!.x + infoBounds!.width).toBeLessThanOrEqual(rowBounds!.x + rowBounds!.width);
+    await page.screenshot({
+      path: testInfo.outputPath(`session-performance-row-${theme}.png`),
+      animations: 'disabled'
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expectFullWidthProcessHeading(latestBlock);
+    await expectMetricsAndInfoOnSameLine(inline, info);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await heading.hover();
+    await page.screenshot({
+      path: testInfo.outputPath(`session-performance-row-narrow-${theme}.png`),
+      animations: 'disabled'
+    });
+    await info.hover();
+    expect(await headingRow.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+      rowHoverBackground
+    );
+    expect(await info.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+      'rgba(0, 0, 0, 0)'
+    );
 
     const buttonIsIndependent = await info.evaluate(
       (element) =>
@@ -436,6 +488,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
         await expect(mobileInfo).toBeVisible();
         await expect(mobileMetrics).toContainText('Latency: 420 ms · TPS: 42.0');
         await expectMetricsAndInfoOnSameLine(mobileMetrics, mobileInfo);
+        await expectFullWidthProcessHeading(mobileBlock);
         expect(mobileRun.id).toBe(initialPerformance.runId);
         await expect
           .poll(() => mobilePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
