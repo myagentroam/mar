@@ -110,6 +110,7 @@ for (const [width, theme, locale] of [
     page
   }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
+    await grantClipboardPermissions(page.context());
     await page.goto(
       `${fixture.url}conversation-tool-detail.html?timeline&list-layout&theme=${theme}&locale=${locale}`
     );
@@ -198,8 +199,25 @@ for (const [width, theme, locale] of [
       );
       expect(sizes.every((size) => size.weight === '400')).toBe(true);
       expect(sizes.some((size) => size.clipped)).toBe(false);
-      if (width >= 768 && list !== files)
-        expect(sizes.every((size) => Math.abs(size.width - sizes[0]!.width) < 0.5)).toBe(true);
+      if (list !== files) {
+        const rows = await list.locator('li').evaluateAll((elements) =>
+          elements.map((element) => {
+            const marker = element
+              .querySelector('.mar-conversation-list-marker')!
+              .getBoundingClientRect();
+            const content = element
+              .querySelector('.mar-conversation-list-content')!
+              .getBoundingClientRect();
+            return {
+              right: marker.right,
+              followsContent: marker.left >= content.right,
+              center: Math.abs(marker.y + marker.height / 2 - content.y - content.height / 2)
+            };
+          })
+        );
+        expect(rows.every((row) => row.followsContent && row.center < 1)).toBe(true);
+        expect(rows.every((row) => Math.abs(row.right - rows[0]!.right) < 0.5)).toBe(true);
+      }
       const bounds = await list.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
@@ -210,6 +228,37 @@ for (const [width, theme, locale] of [
     await expect(fileDetail.locator('button')).toHaveCount(6);
     await expect(fileDetail.locator('.tool-detail-copy')).toHaveCount(0);
     await expect(process.locator('.tool-detail-copy')).toHaveCount(2);
+    const taskContent = tasks.locator('.task-list-content').first();
+    await expect(taskContent).toHaveCSS('white-space', 'normal');
+    expect(
+      await taskContent.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)
+    ).toBe(true);
+    await taskContent.getByRole('link', { name: 'Review fixture' }).click();
+    await expect(page.getByTestId('opened-file')).toHaveText(
+      JSON.stringify(['list-regression.md', false])
+    );
+    const agentTitle = agents.locator('.mar-conversation-list-content').nth(1);
+    const fullTitle =
+      'Check regression coverage: ' + 'Desktop, mobile, clipboard and keyboard checks. '.repeat(4);
+    await expect(agentTitle).toHaveText(fullTitle);
+    await expect(agentTitle).toHaveCSS('text-overflow', 'ellipsis');
+    expect(await agentTitle.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+      true
+    );
+    await agentTitle.scrollIntoViewIfNeeded();
+    await expect(agentTitle).toBeInViewport();
+    await page.mouse.move(0, 0);
+    await agentTitle.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(fullTitle);
+    const agentCopy = agentGroup.getByRole('button', {
+      name: locale === 'en-US' ? 'Copy public record' : '复制公开记录',
+      exact: true
+    });
+    await agentCopy.click();
+    await expect(page.getByTestId('copied')).toContainText(fullTitle);
+    await copy.click();
+    await expect(page.getByTestId('copied')).toContainText('Long task content wraps naturally.');
+    await page.mouse.move(0, 0);
     await process.screenshot({
       path: testInfo.outputPath(`task-file-lists-${width}-${locale}.png`)
     });
@@ -661,6 +710,23 @@ for (const variant of [
     const preview = file.locator('.detail-preview-window');
     const more = file.getByRole('button', { name: variant.more, exact: true });
     await expect(more).toBeVisible();
+    await expect(more.locator('svg')).toHaveCount(1);
+    await expect(more).toHaveCSS('border-top-width', '0px');
+    await expect(more).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const toggleColor = await more.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-conversation-muted)';
+      element.append(probe);
+      const rest = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-conversation-text)';
+      const hover = getComputedStyle(probe).color;
+      probe.remove();
+      return { rest, hover };
+    });
+    await expect(more).toHaveCSS('color', toggleColor.rest);
+    const collapsedIcon = await more
+      .locator('svg')
+      .evaluate((element) => getComputedStyle(element).transform);
     await expect(more).toHaveAttribute('aria-expanded', 'false');
     await expect(file.locator('pre')).toContainText('Returned line 40');
     await expect(file.locator('pre')).not.toContainText('[Truncated]');
@@ -676,13 +742,21 @@ for (const variant of [
       path: testInfo.outputPath(`detail-preview-${variant.width}.png`),
       fullPage: true
     });
+    await more.hover();
+    await expect(more).toHaveCSS('color', toggleColor.hover);
+    await expect(more).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await file.getByRole('button', { name: /Copy public record|复制公开记录/ }).click();
     const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
     expect(copied.payload.output.blocks[0].text).toContain('Returned line 40');
-    await more.focus();
+    await page.keyboard.press('Tab');
+    await expect(more).toBeFocused();
+    await expect(more).toHaveCSS('outline-width', '1px');
     await page.keyboard.press('Enter');
     const less = file.getByRole('button', { name: variant.less, exact: true });
     await expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      await less.locator('svg').evaluate((element) => getComputedStyle(element).transform)
+    ).not.toBe(collapsedIcon);
     await expect(preview).toHaveCSS('max-height', 'none');
     await less.click();
     await expect(more).toHaveAttribute('aria-expanded', 'false');

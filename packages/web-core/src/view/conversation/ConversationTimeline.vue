@@ -1396,7 +1396,9 @@ function stepDuration(item: ConversationItem): string | undefined {
                 :record="displayItem.item"
                 @copy="(text, done) => emit('copy', text, done)"
               />
-              <ul class="task-list-items mar-conversation-detail-list">
+              <ul
+                class="task-list-items mar-conversation-detail-list mar-conversation-detail-list--status-end"
+              >
                 <li
                   v-for="(task, index) in taskListItems(displayItem.item.payload)"
                   :key="index"

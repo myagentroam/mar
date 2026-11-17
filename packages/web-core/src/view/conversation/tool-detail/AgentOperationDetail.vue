@@ -19,7 +19,10 @@ const agentWaitText = computed(() => {
 <template>
   <div class="agent-detail">
     <template v-if="agentDetail.action === 'LIST'">
-      <ul v-if="agentDetail.targets.length" class="mar-conversation-detail-list">
+      <ul
+        v-if="agentDetail.targets.length"
+        class="mar-conversation-detail-list mar-conversation-detail-list--status-end"
+      >
         <li
           v-for="(target, index) in agentDetail.targets"
           :key="index"
@@ -31,7 +34,9 @@ const agentWaitText = computed(() => {
             :class="{ 'agent-list-status--running': target.status === 'RUNNING' }"
             >{{ agentTargetStatus(target.status) }}</span
           >
-          <span class="mar-conversation-list-content">{{ target.title }}</span>
+          <span v-tooltip="target.title" class="mar-conversation-list-content agent-list-title">{{
+            target.title
+          }}</span>
         </li>
       </ul>
       <p v-if="agentDetail.targets.length === 0" class="agent-detail-text">
@@ -103,6 +108,11 @@ const agentWaitText = computed(() => {
   border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
   background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
   color: var(--el-color-success);
+}
+.agent-list-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .agent-detail-row {
   display: flex;

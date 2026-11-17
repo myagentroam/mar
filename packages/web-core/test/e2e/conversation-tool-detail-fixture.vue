@@ -20,6 +20,8 @@ const longFileName = `conversation-tool-detail-fixture-${'long-name-'.repeat(12)
 const longFilePath = `C:\\workspace\\packages\\web-core\\test\\e2e\\${longFileName}`;
 const openedFile = ref('');
 const openedChange = ref('');
+const longAgentTitle =
+  'Check regression coverage: ' + 'Desktop, mobile, clipboard and keyboard checks. '.repeat(4);
 const designTasks = [
   'Review the list layout and status hierarchy',
   'Verify clipboard and collapsed-state behavior',
@@ -35,7 +37,7 @@ const listSamples: ConversationItem[] = [
       items: ['PENDING', 'IN_PROGRESS', 'COMPLETED'].map((status, index) => ({
         text: listDesign
           ? designTasks[index]
-          : `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)}`,
+          : `Verify ${status}: ${'Long task content wraps naturally. '.repeat(4)} [Review fixture](./list-regression.md)`,
         status
       }))
     }
@@ -95,7 +97,11 @@ const listSamples: ConversationItem[] = [
         detail: {},
         targets: [
           { agentId: 'review', title: 'Review native tool details', status: 'RUNNING' },
-          { agentId: 'tests', title: 'Check regression coverage', status: 'IDLE' },
+          {
+            agentId: 'tests',
+            title: listDesign ? 'Check regression coverage' : longAgentTitle,
+            status: 'IDLE'
+          },
           { agentId: 'docs', title: 'Verify documentation links', status: 'SUCCEEDED' }
         ]
       }
@@ -960,7 +966,7 @@ function finish() {
       </button>
     </template>
     <output data-testid="copied">{{ copied }}</output>
-    <output v-if="fileCards" data-testid="opened-file">{{ openedFile }}</output>
+    <output v-if="fileCards || listLayout" data-testid="opened-file">{{ openedFile }}</output>
     <output v-if="fileCards" data-testid="opened-change">{{ openedChange }}</output>
     <ConversationTimeline
       v-if="integrated"

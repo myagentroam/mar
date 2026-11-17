@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
+import MarIcon from '../common/MarIcon.vue';
 
 const contentId = useId();
 const content = ref<HTMLElement>();
@@ -44,7 +45,13 @@ onBeforeUnmount(() => observer?.disconnect());
       :aria-expanded="expanded"
       :aria-controls="contentId"
       @click.stop="expanded = !expanded"
-      >{{
+    >
+      <MarIcon
+        name="chevron-down"
+        class="detail-preview-toggle-icon"
+        :class="{ 'is-expanded': expanded }"
+        aria-hidden="true"
+      />{{
         translate(
           expanded ? 'toolPresentation.detail.showLess' : 'toolPresentation.detail.showMore'
         )
@@ -64,12 +71,22 @@ onBeforeUnmount(() => observer?.disconnect());
   overflow: hidden;
 }
 .detail-preview-toggle {
+  --el-button-hover-link-text-color: var(--mar-conversation-text);
+  --el-button-active-color: var(--mar-conversation-text);
   margin: 0.375rem 0 0;
   padding: 0;
+  border: 0;
+  background: transparent;
   height: auto;
   font: inherit;
   font-weight: 400;
-  color: var(--mar-text-secondary);
+  color: var(--mar-conversation-muted);
+}
+.detail-preview-toggle-icon {
+  margin-inline-end: 0.25rem;
+}
+.detail-preview-toggle-icon.is-expanded {
+  transform: rotate(180deg);
 }
 .detail-preview-toggle:focus-visible {
   outline: 1px solid var(--mar-color-brand);
