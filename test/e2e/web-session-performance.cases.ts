@@ -323,26 +323,35 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     await expect(updatedBlocks.nth(1).locator('.session-performance-info')).toHaveCount(0);
     await expect(updatedBlocks.nth(2).locator('.session-performance-info')).toHaveCount(0);
     await expect(newestInfo).toHaveCount(1);
-    await expect(newestBlock.locator('.process-performance')).toContainText(
-      'Latency: 500 ms · TPS: 24.0'
+    await expect(newestBlock.locator('.process-performance')).toHaveText('· TPS: 24.0');
+    await expect(newestInfo).not.toHaveAttribute(
+      'aria-label',
+      /Latency:|Input:|Output:|Cache Hit Rate:/u
     );
-    const newestTooltip = page.getByRole('tooltip').filter({ hasText: 'Latency: 500 ms' });
+    const newestTooltip = page.getByRole('tooltip').filter({ hasText: 'TPS: 24.0' });
     await newestBlock.locator('.process-heading').focus();
     await page.keyboard.press('Tab');
     await expect(newestInfo).toBeFocused();
-    await expect(newestTooltip).toHaveText(
-      'Latency: 500 ms · TPS: 24.0\nInput: 24,000 · Output: 1,280 · Cache Hit Rate: 80.0%'
+    await expect(newestTooltip).toHaveText('TPS: 24.0');
+
+    await emitMockSessionEvent(page, 'conversation', {
+      sessionId: 'session-1',
+      performance: { runId: newerRun.id, latencyMs: 700 }
+    });
+    await expect(newestBlock.locator('.process-performance')).toContainText(
+      'Latency: 700 ms · TPS: 24.0'
     );
+    await expect(newestTooltip).toHaveText('Latency: 700 ms · TPS: 24.0');
 
     await emitMockSessionEvent(page, 'conversation', {
       sessionId: 'session-1',
       performance: { runId: newerRun.id, usage: { inputTokens: '30000' } }
     });
     await expect(newestBlock.locator('.process-performance')).toContainText(
-      'Latency: 500 ms · TPS: 24.0'
+      'Latency: 700 ms · TPS: 24.0'
     );
     await expect(newestTooltip).toHaveText(
-      'Latency: 500 ms · TPS: 24.0\nInput: 30,000 · Output: — · Cache Hit Rate: —'
+      'Latency: 700 ms · TPS: 24.0\nInput: 30,000 · Output: — · Cache Hit Rate: —'
     );
     const completedRun = {
       ...newerRun,
@@ -354,10 +363,10 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     await emitMockSessionEvent(page, 'run', { run: completedRun });
     await expect(newestInfo).toBeVisible();
     await expect(newestBlock.locator('.process-performance')).toContainText(
-      'Latency: 500 ms · TPS: 24.0'
+      'Latency: 700 ms · TPS: 24.0'
     );
     await expect(newestTooltip).toHaveText(
-      'Latency: 500 ms · TPS: 24.0\nInput: 30,000 · Output: — · Cache Hit Rate: —'
+      'Latency: 700 ms · TPS: 24.0\nInput: 30,000 · Output: — · Cache Hit Rate: —'
     );
 
     await page.locator('.session-list .session-link').nth(1).click();
@@ -384,7 +393,7 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
     await expect(secondSessionTooltip).toHaveText(
       'Input: 100 · Output: 20 · Cache Hit Rate: 80.0%'
     );
-    await expect(secondSessionInfo).not.toHaveAttribute('aria-label', /500 ms|24\.0|Latency:/u);
+    await expect(secondSessionInfo).not.toHaveAttribute('aria-label', /700 ms|24\.0|Latency:/u);
     await expect(page.locator('.process-performance')).toHaveCount(0);
     await page.locator('.session-list .session-link').first().click();
     await expect(page.getByText('History session-1', { exact: true })).toBeVisible();

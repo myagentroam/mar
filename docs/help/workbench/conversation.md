@@ -59,7 +59,7 @@ Rewind 不修改原会话，也不回滚 Workspace 文件。Working、消息提�
 
 Latency 是输入或最近一批 Tool Result 到首个有效模型响应的等待时间，不包含已观察到的客户端工具执行与审批等待。MAR Agent 在 SDK 模型请求边界观测；Claude Code、Codex 和 OpenCode 的观测包含 Runner、IPC 与网络开销。四种 Runner 仅在取得同请求权威输出 Token 和有效生成区间时提供平均输出 TPS，不从正文长度或整个工具链耗时估算，也不代表纯模型服务端推理速度。
 
-Latency、TPS、Input／Output／Cache Hit Rate 三组独立覆盖。持续查看同一会话时，新请求、分段或 Run 的 Latency 不清空最近的 TPS 与用量；新用量整组替换，不混入其他请求的缺失字段。计时与用量可能来自不同请求。最后分段结束后当前页面可保留最终值，指标不写入会话历史。切换会话、工作区、Node 或模式后清除；切回仍在运行的会话或刷新页面，由原有 Watch 恢复当前 Run 已收到的指标。Node 重启或 Run 结束后重新进入不恢复。
+Latency、TPS、Input／Output／Cache Hit Rate 三组在同一 Run 内独立覆盖。新请求、分段或同一 Run 续作时的 Latency 不清空该 Run 最近的 TPS 与用量；新 Run 的首个有效性能事件替换旧 Run 的整份指标，尚未取得的组不显示。新用量整组替换，不混入其他请求的缺失字段。计时与用量可能来自不同请求，但必须属于同一 Run。最后分段结束后当前页面可保留最终值，指标不写入会话历史。切换会话、工作区、Node 或模式后清除；切回仍在运行的会话或刷新页面，由原有 Watch 恢复当前 Run 已收到的指标。Node 重启或 Run 结束后重新进入不恢复。
 
 ## 清空 MAR Agent 会话历史
 

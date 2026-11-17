@@ -45,14 +45,37 @@ describe('Selected Workspace session performance', () => {
       service.receive('session', { runId: 'new-run', latencyMs: 50 });
       expect(service.current.value).toEqual({
         runId: 'new-run',
-        latencyMs: 50,
-        tokensPerSecond: 0,
-        usage: { inputTokens: '100' }
+        latencyMs: 50
       });
     } finally {
       service.dispose();
     }
   });
+  it.each([{ latencyMs: 0 }, { tokensPerSecond: 24 }, { usage: { inputTokens: '30000' } }])(
+    'does not inherit any old Run groups when the new Run first reports %j',
+    (metrics) => {
+      const live = fixture();
+      const fresh = fixture();
+      try {
+        live.service.receive('session', {
+          runId: 'previous-run',
+          latencyMs: 500,
+          tokensPerSecond: 42,
+          usage: { inputTokens: '24000', outputTokens: '1280', cacheReadTokens: '19200' }
+        });
+        live.service.receive('session', { runId: 'new-run', usage: {} });
+        expect(live.service.current.value?.runId).toBe('previous-run');
+        const firstObservation = { runId: 'new-run', ...metrics };
+        live.service.receive('session', firstObservation);
+        fresh.service.receive('session', firstObservation);
+        expect(live.service.current.value).toEqual(firstObservation);
+        expect(live.service.current.value).toEqual(fresh.service.current.value);
+      } finally {
+        live.service.dispose();
+        fresh.service.dispose();
+      }
+    }
+  );
   it('restores active metrics through a fresh Watch after switching back and rejects stale snapshots', async () => {
     const f = fixture();
     const requests: Record<string, unknown>[] = [];
@@ -97,12 +120,18 @@ describe('Selected Workspace session performance', () => {
       }
     });
     try {
+      f.service.receive('session', {
+        runId: 'previous-run',
+        latencyMs: 500,
+        tokensPerSecond: 24,
+        usage: { inputTokens: '24000' }
+      });
       const initial = controller.beginSelectedSessionWatch('session');
       await vi.waitFor(() => expect(requests).toHaveLength(1));
       const previousWatchId = requests[0]?.watchId;
       controller.handleEvent(snapshot(previousWatchId, { runId: 'run', latencyMs: 420 }));
       await initial;
-      expect(f.service.current.value?.latencyMs).toBe(420);
+      expect(f.service.current.value).toEqual({ runId: 'run', latencyMs: 420 });
       controller.stopSelectedSessionWatch();
       f.sessionId.value = 'other';
       expect(f.service.current.value).toBeUndefined();
@@ -153,8 +182,7 @@ describe('Selected Workspace session performance', () => {
       service.receive('session', { runId: 'new-run', latencyMs: 10 });
       expect(service.current.value).toEqual({
         runId: 'new-run',
-        latencyMs: 10,
-        tokensPerSecond: 0
+        latencyMs: 10
       });
     } finally {
       service.dispose();

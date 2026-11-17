@@ -1,7 +1,7 @@
 import { ref, watch, type Ref } from 'vue';
 import { runPerformanceSchema, type RunPerformance } from '@myagentroam/protocol';
 
-/** Performance survives only while the same Workspace session stays selected. */
+/** Retains independent observations within one Run of the selected Workspace session. */
 export function createWorkbenchPerformanceService(options: {
   readonly view: Readonly<Ref<string>>;
   readonly nodeId: Readonly<Ref<string | undefined>>;
@@ -22,7 +22,7 @@ export function createWorkbenchPerformanceService(options: {
     const parsed = runPerformanceSchema.safeParse(payload);
     if (parsed.success)
       current.value = {
-        ...current.value,
+        ...(current.value?.runId === parsed.data.runId ? current.value : {}),
         runId: parsed.data.runId,
         ...(parsed.data.latencyMs === undefined ? {} : { latencyMs: parsed.data.latencyMs }),
         ...(parsed.data.tokensPerSecond === undefined
