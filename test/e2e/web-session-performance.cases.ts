@@ -122,7 +122,8 @@ async function expectMetricsAndInfoOnSameLine(metrics: Locator, info: Locator) {
   const textSize = await metrics.evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).fontSize)
   );
-  expect(iconBounds!.height).toBeLessThanOrEqual(textSize);
+  expect(iconBounds!.width).toBeCloseTo(textSize - 2, 1);
+  expect(iconBounds!.height).toBeCloseTo(textSize - 2, 1);
   expect(
     Math.abs(iconBounds!.y + iconBounds!.height / 2 - (infoBounds!.y + infoBounds!.height / 2))
   ).toBeLessThanOrEqual(1);
