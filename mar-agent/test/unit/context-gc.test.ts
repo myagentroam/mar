@@ -37,13 +37,16 @@ function records() {
     payload: unknown,
     input: { executionId?: string; turnId?: string } = {}
   ) => {
+    // Tool lifecycle events carry the same Execution identity as modelContext.
+    const executionId = input.executionId ?? (type.startsWith('tool.') ? 'execution' : undefined);
+    const turnId = input.turnId ?? (type.startsWith('tool.') ? 'turn' : undefined);
     const record: SessionRecord = {
       recordId: `record-${++sequence}`,
       sequence,
       timestamp: new Date(1_800_000_000_000 + sequence).toISOString(),
       sessionId: 'session',
-      ...(input.executionId === undefined ? {} : { executionId: input.executionId }),
-      ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+      ...(executionId === undefined ? {} : { executionId }),
+      ...(turnId === undefined ? {} : { turnId }),
       type,
       payload
     };
@@ -1437,12 +1440,13 @@ describe('context GC planner', () => {
       const selected = plan(fixture.values);
       expect(selected?.stage).toBe('UNIFIED');
       if (waitTool === 'exec_wait') {
+        // The retained input preserves exec_wait's implicit default poll action.
         expect(selected?.draft.replacements).toContainEqual(
           expect.objectContaining({
             kind: 'TOOL_CALL_INPUT',
             toolName: 'exec_wait',
             callId: 'exec-poll',
-            replacementArguments: expect.objectContaining({ action: 'poll', processId })
+            replacementArguments: { processId, yieldMs: 10 }
           })
         );
       }

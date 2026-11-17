@@ -55,7 +55,7 @@ export type ContextGcReplacement =
     }
   | {
       readonly kind: 'TOOL_CALL_INPUT';
-      readonly toolName: 'apply_patch' | 'exec' | 'exec_wait' | 'code_exec' | 'todo_write';
+      readonly toolName: 'apply_patch' | 'exec' | 'exec_wait' | 'code_exec' | 'todo_write' | 'todo';
       readonly callId: string;
       readonly target: ContextGcTarget;
       readonly replacementArguments: unknown;

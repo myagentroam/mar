@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -398,6 +398,8 @@ describe('Node Agent Network owner integration', () => {
         runId: 'run',
         executionId: 'execution'
       };
+      network.publish({ ...identity, kind: 'message', value: 'Blocker: choose A or B' });
+      network.publish({ ...identity, kind: 'message', value: 'Waiting for guidance' });
       network.publish({
         ...identity,
         kind: 'message',
@@ -413,6 +415,8 @@ describe('Node Agent Network owner integration', () => {
       expect(update).toBeDefined();
       expect(Buffer.byteLength(update!.content)).toBeLessThanOrEqual(32768);
       expect(update!.content).toContain('"summaryTruncated":true');
+      expect(update!.content).toContain('Blocker: choose A or B');
+      expect(update!.content).toContain('Waiting for guidance');
       expect(observer.capture('child')).toBeUndefined();
     } finally {
       observer.close();
@@ -456,7 +460,7 @@ describe('Node Agent Network owner integration', () => {
               callId: 'patch',
               name: 'apply_patch',
               arguments: {
-                patch: '*** Begin Patch\n*** Add File: changed.txt\n+content\n*** End Patch'
+                input: '*** Begin Patch\n*** Add File: changed.txt\n+content\n*** End Patch'
               }
             };
             yield { type: 'completed', reason: 'tool_use' };
@@ -508,6 +512,7 @@ describe('Node Agent Network owner integration', () => {
         summary: 'Finished child work.',
         changedFiles: [expect.stringContaining('changed.txt')]
       });
+      expect(await readFile(join(directory, 'changed.txt'), 'utf8')).toBe('content\n');
       parent.close();
     } finally {
       await agent.dispose();

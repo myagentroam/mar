@@ -645,9 +645,10 @@ describe('Agent Network send and stop', () => {
     });
   });
 
-  it('keeps null Goal unchanged and acknowledges only versions before accepted delivery', async () => {
+  it('keeps null Goal unchanged without consuming reports before or during delivery', async () => {
     const f = fixture();
     f.publish('old');
+    f.publish('another old report');
     f.message.mockImplementation(async () => {
       f.publish('during delivery');
       return { delivery: 'ACCEPTED' };
@@ -660,10 +661,41 @@ describe('Agent Network send and stop', () => {
     expect(result).toMatchObject({ message: { status: 'accepted' } });
     expect(f.setGoal).not.toHaveBeenCalled();
     expect(f.observe).toHaveBeenCalledOnce();
-    expect((await f.parent.collect(new AbortController().signal))[0]!.content).toContain(
-      'during delivery'
-    );
+    const [remaining] = await f.parent.collect(new AbortController().signal);
+    expect(remaining!.content).toContain('old');
+    expect(remaining!.content).toContain('during delivery');
+    expect(remaining!.content).toContain('another old report');
+    remaining!.acknowledge();
+    expect(await f.parent.collect(new AbortController().signal)).toEqual([]);
   });
+
+  it.each([undefined, { objective: 'new' }])(
+    'preserves unread batches when sending guidance with Goal %j',
+    async (goal) => {
+      const f = fixture();
+      const reports = Array.from({ length: 4 }, (_, index) => `${index}:` + '<'.repeat(1900));
+      for (const report of reports) f.publish(report);
+      const messages = (content: string) =>
+        JSON.parse(
+          content.slice('<mar_subagent_update>\n'.length, -'\n</mar_subagent_update>'.length)
+        ).updates.map((update: { value: string }) => update.value);
+      const [first] = await f.parent.collect(new AbortController().signal);
+      const received: string[] = messages(first!.content);
+      expect(received).toEqual([reports[0]]);
+      first!.acknowledge();
+      expect(
+        await f.service.send(f.actor, { agentId: 'child', content: 'Continue independently', goal })
+      ).toMatchObject({ message: { status: 'accepted' } });
+      for (let batch = 1; batch < reports.length; batch++) {
+        const [item] = await f.parent.collect(new AbortController().signal);
+        expect(item).toBeDefined();
+        received.push(...messages(item!.content));
+        item!.acknowledge();
+      }
+      expect(received).toEqual(reports);
+      expect(await f.parent.collect(new AbortController().signal)).toEqual([]);
+    }
+  );
 
   it('does not consume unread data if combined Goal submission becomes uncertain', async () => {
     const f = fixture();
@@ -752,6 +784,7 @@ describe('Agent Network send and stop', () => {
 
   it('stops by Session identity alone and reports Goal cleanup without execution metadata', async () => {
     const f = fixture();
+    f.publish('unread report');
     const result = await f.service.stop(f.actor, { agentId: 'child' });
     expect(f.stop).toHaveBeenCalledWith(f.actor, f.target);
     expect(result).toMatchObject({
@@ -759,6 +792,9 @@ describe('Agent Network send and stop', () => {
       cancel: { status: 'accepted' },
       goal: { status: 'cleared' }
     });
+    expect(f.parent.capture('child')?.updates).toEqual([
+      expect.objectContaining({ value: 'unread report' })
+    ]);
     expect(result).not.toHaveProperty('executionId');
   });
 

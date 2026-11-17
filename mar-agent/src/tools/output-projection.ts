@@ -16,6 +16,7 @@ import type {
 import { TOOL_EXECUTION_LIMITS } from './execution-limits.js';
 import type { ToolRuntimeImage } from './runtime-context.js';
 import type { SleepResult } from './agent/sleep.js';
+import { todoItemsFromSnapshot, type TodoSnapshot } from '../session/todo.js';
 import { publicToolMetadata, type PublicToolMetadata } from '../runtime/public-tool-metadata.js';
 import type { ModelImage } from '../model/image.js';
 /** Copy an explicitly public JSON object without exposing the full tool result. */
@@ -266,9 +267,19 @@ export function structuredToolEventData(
   | ReadEventData
   | ViewImageResult
   | SleepResult
+  | TodoSnapshot
   | PublicToolMetadata
   | undefined {
   if (!isRecord(value)) return undefined;
+  if (toolName === 'todo') {
+    const items = todoItemsFromSnapshot(value);
+    return Number.isSafeInteger(value.revision) && (value.revision as number) >= 0 && items
+      ? {
+          revision: value.revision as number,
+          items: items.map(({ id, step, status }) => ({ id, step, status }))
+        }
+      : undefined;
+  }
   const metadata = publicToolMetadata(toolName, value);
   if (metadata !== undefined) return metadata;
   if (
@@ -349,7 +360,7 @@ export function structuredToolEventData(
             calls: value.calls.filter(
               (entry) =>
                 isRecord(entry) &&
-                ['apply_patch', 'todo_read', 'todo_write'].includes(String(entry.toolName))
+                ['apply_patch', 'todo', 'todo_read', 'todo_write'].includes(String(entry.toolName))
             ) as NonNullable<CodeCellEventData['calls']>
           }
         : {}),
@@ -360,7 +371,9 @@ export function structuredToolEventData(
                 isRecord(entry) &&
                 entry.type === 'tool_result' &&
                 isRecord(entry.source) &&
-                ['apply_patch', 'todo_read', 'todo_write'].includes(String(entry.source.toolName))
+                ['apply_patch', 'todo', 'todo_read', 'todo_write'].includes(
+                  String(entry.source.toolName)
+                )
             ) as NonNullable<CodeCellEventData['observations']>
           }
         : {})

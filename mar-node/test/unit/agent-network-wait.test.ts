@@ -35,6 +35,57 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('Agent Network waiting', () => {
+  it('returns the earliest unread report and leaves later reports for automatic collection', async () => {
+    const f = fixture();
+    for (const text of ['Decision: choose A or B', 'A second detail', 'Waiting for guidance'])
+      f.publish('one', 'message', text);
+    const result = await waitForAgentTargets({
+      ...f,
+      targets: [f.targets[0]!],
+      single: true,
+      waitFor: 'message',
+      waitMs: 1000
+    });
+    expect(result).toMatchObject({
+      hasMoreUpdates: true,
+      updates: [{ kind: 'message', value: 'Decision: choose A or B' }]
+    });
+    const [remaining] = await f.observations.collect(new AbortController().signal);
+    expect(remaining!.content).not.toContain('Decision: choose A or B');
+    expect(remaining!.content).toContain('A second detail');
+    expect(remaining!.content).toContain('Waiting for guidance');
+    expect(remaining!.content).not.toContain('hasMoreUpdates');
+    remaining!.acknowledge();
+    expect(await f.observations.collect(new AbortController().signal)).toEqual([]);
+    f.observations.close();
+  });
+
+  it('deduplicates only the final reply represented by the returned summary', async () => {
+    const f = fixture();
+    for (const value of ['Decision in earlier final', 'Latest final'])
+      f.network.publish({
+        parentId: 'parent',
+        childId: 'one',
+        runId: 'run-one',
+        executionId: 'execution-one',
+        kind: 'message',
+        value,
+        final: true
+      });
+    f.states.set('one', 'SUCCEEDED');
+    f.publish('one', 'terminal', 'SUCCEEDED');
+    const result = await waitForAgentTargets({ ...f, targets: [f.targets[0]!], single: true });
+    expect(result).toMatchObject({ summary: 'Latest final' });
+    expect(result).toMatchObject({
+      updates: [
+        { kind: 'message', value: 'Decision in earlier final', final: true },
+        { kind: 'terminal', value: 'SUCCEEDED' }
+      ]
+    });
+    expect(await f.observations.collect(new AbortController().signal)).toEqual([]);
+    f.observations.close();
+  });
+
   it.each([1, 1000])(
     'uses the requested %i ms deadline without a hidden minimum',
     async (waitMs) => {

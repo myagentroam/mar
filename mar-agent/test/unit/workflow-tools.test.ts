@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { restoreTodoStore, TodoStore } from '../../src/tools/agent/todo.js';
 import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
 import { execToolDefinition, execWaitToolDefinition } from '../../src/tools/local/exec.js';
-import { executeTodoWrite, todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
+import { executeTodo, todoToolDefinition } from '../../src/tools/agent/todo-tool.js';
+import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 import { executeQuestion, questionToolDefinition } from '../../src/tools/agent/question.js';
 import { AGENT_TOOL_HANDLERS, BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
 import type { ToolRuntimeContext } from '../../src/tools/runtime-context.js';
@@ -64,7 +65,7 @@ describe('workflow tools', () => {
       'hunk match conflicts identify the affected path and hunk'
     );
     expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_PARTIAL');
-    expect(todoWriteToolDefinition.description).toContain(
+    expect(todoToolDefinition.description).toContain(
       'Do not retain completed items from an earlier objective'
     );
   });
@@ -91,8 +92,8 @@ describe('workflow tools', () => {
   });
 
   it('writes restored Todo directly and publishes each replacement snapshot', async () => {
-    expect(todoWriteToolDefinition.inputSchema.required).toEqual(['items']);
-    expect(todoWriteToolDefinition.inputSchema.properties).not.toHaveProperty('expectedRevision');
+    expect(todoToolDefinition.inputSchema.required).toEqual(['action']);
+    expect(todoToolDefinition.inputSchema.properties).not.toHaveProperty('expectedRevision');
     const emit = vi.fn(async () => undefined);
     const context = {
       todo: TodoStore.restore({
@@ -103,10 +104,15 @@ describe('workflow tools', () => {
     } as unknown as ToolRuntimeContext;
     const items = [{ id: 'new', step: 'New objective', status: 'in_progress' }];
 
-    const written = await executeTodoWrite({ items }, context);
+    const read = await executeTodo({ action: 'read' }, context);
+    expect(read.data).toEqual(context.todo.read());
+    expect(JSON.parse(read.content)).toEqual(read.data);
+    expect(await executeTodo({ action: 'read', items: null }, context)).toEqual(read);
+    expect(emit).not.toHaveBeenCalled();
+    const written = await executeTodo({ action: 'write', items }, context);
     expect(JSON.parse(written.content)).toEqual({ revision: 8, count: 1 });
     expect(written.data).toEqual({ revision: 8, items });
-    const cleared = await executeTodoWrite({ items: [] }, context);
+    const cleared = await executeTodo({ action: 'write', items: [] }, context);
     expect(JSON.parse(cleared.content)).toEqual({ revision: 9, count: 0 });
     expect(cleared.data).toEqual({ revision: 9, items: [] });
     expect(emit.mock.calls).toEqual([
@@ -140,23 +146,58 @@ describe('workflow tools', () => {
     });
   });
 
-  it('strictly validates Todo tool inputs at runtime', async () => {
+  it('validates Todo handler inputs before any mutation', async () => {
+    const emit = vi.fn(async () => undefined);
     const context = {
       todo: new TodoStore(),
-      emit: async () => undefined
-    } as never;
-    for (const operation of [
-      () => executeTodoWrite(undefined, context),
-      () => executeTodoWrite({}, context),
-      () => executeTodoWrite({ items: 'invalid' }, context),
-      () => executeTodoWrite({ items: [], unknown: true }, context),
-      () => executeTodoWrite({ items: [], expectedRevision: 0 }, context),
-      () =>
-        executeTodoWrite({ items: [{ id: '   ', step: 'Do work', status: 'pending' }] }, context)
-    ])
-      await expect(operation()).rejects.toMatchObject({
+      emit
+    } as unknown as ToolRuntimeContext;
+    const item = { id: 'a', step: 'Do work', status: 'pending' };
+    for (const input of [
+      undefined,
+      null,
+      [],
+      {},
+      { items: [] },
+      { action: 'invalid' },
+      { action: 'read', items: [] },
+      { action: 'read', unexpected: true },
+      { action: 'write' },
+      { action: 'write', items: null },
+      { action: 'write', items: 'invalid' },
+      { action: 'write', items: [], unknown: true },
+      { action: 'write', items: [], expectedRevision: 0 },
+      { action: 'write', items: [{ ...item, id: '   ' }] },
+      { action: 'write', items: [{ ...item, id: 'a'.repeat(129) }] },
+      { action: 'write', items: [{ ...item, step: '   ' }] },
+      {
+        action: 'write',
+        items: [{ ...item, step: 'x'.repeat(TOOL_EXECUTION_LIMITS.todoMaxTextCharacters + 1) }]
+      },
+      { action: 'write', items: [{ ...item, status: 'cancelled' }] },
+      { action: 'write', items: [{ ...item, unexpected: true }] },
+      { action: 'write', items: [item, item] },
+      {
+        action: 'write',
+        items: [
+          { ...item, status: 'in_progress' },
+          { ...item, id: 'b', status: 'in_progress' }
+        ]
+      },
+      {
+        action: 'write',
+        items: Array.from({ length: TOOL_EXECUTION_LIMITS.todoMaxItems + 1 }, (_, index) => ({
+          ...item,
+          id: String(index)
+        }))
+      }
+    ]) {
+      await expect(executeTodo(input, context)).rejects.toMatchObject({
         code: 'MAR_AGENT_TOOL_INPUT_INVALID'
       });
+      expect(context.todo.read()).toEqual({ revision: 0, items: [] });
+      expect(emit).not.toHaveBeenCalled();
+    }
   });
 
   it('rejects question options that are not structured choices', async () => {

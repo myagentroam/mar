@@ -1,6 +1,7 @@
 import { contextGcTargetKey } from '../../session/context-gc-checkpoint.js';
 import {
   completedTodoWrite,
+  isTodoRead,
   todoInputReplacement,
   todoSnapshotReplacement,
   visibleTodoSnapshot
@@ -162,21 +163,21 @@ export function collectToolOutputCandidates(
     if (candidateSavings(candidate) > 0) eligible.push(candidate);
   }
   const writes = input.records.flatMap((record) => {
-    const fact = completedTodoWrite(record);
+    const fact = completedTodoWrite(record, input.records);
     return fact ? [{ record, ...fact }] : [];
   });
   for (const group of groups.values()) {
     if (group.failed || !group.completed || !group.call || group.call.message.role !== 'tool_call')
       continue;
-    const ownWrite = completedTodoWrite(group.completed);
+    const ownWrite = completedTodoWrite(group.completed, input.records);
     const snapshot =
-      group.toolName === 'todo_read' && group.result?.message.role === 'tool'
+      isTodoRead(group.toolName, group.call.message.arguments) &&
+      group.result?.message.role === 'tool'
         ? visibleTodoSnapshot(group.result.message.content)
         : undefined;
-    const currentRevision =
-      group.toolName === 'todo_write' ? ownWrite?.revision : snapshot?.revision;
+    const currentRevision = ownWrite?.revision ?? snapshot?.revision;
     if (currentRevision === undefined) continue;
-    const targetEntry = group.toolName === 'todo_write' ? group.call : group.result;
+    const targetEntry = ownWrite ? group.call : group.result;
     if (!targetEntry) continue;
     const target = targetFor(targetEntry.record, targetEntry.message);
     if (!target || existingTargets.has(contextGcTargetKey(target))) continue;
@@ -184,6 +185,7 @@ export function collectToolOutputCandidates(
       .filter(
         (write) =>
           write.revision > currentRevision &&
+          write.record.sequence > group.completed!.sequence &&
           contextGcProtectionMature(
             input.protection!.after(
               Math.max(target.sequence, group.completed!.sequence, write.record.sequence)
@@ -197,12 +199,12 @@ export function collectToolOutputCandidates(
       Math.max(target.sequence, group.completed.sequence, evidenceSequence)
     ).rollouts;
     let replacement: ContextCandidate['replacements'][number];
-    if (group.toolName === 'todo_write') {
+    if (ownWrite && (group.toolName === 'todo_write' || group.toolName === 'todo')) {
       const args = group.call.message.arguments;
       if (!isRecord(args) || !Array.isArray(args.items)) continue;
       replacement = {
         kind: 'TOOL_CALL_INPUT',
-        toolName: 'todo_write',
+        toolName: group.toolName,
         callId: group.callId,
         target,
         replacementArguments: todoInputReplacement(
@@ -219,7 +221,7 @@ export function collectToolOutputCandidates(
       if (!snapshot) continue;
       replacement = {
         kind: 'TOOL_OUTPUT',
-        toolName: 'todo_read',
+        toolName: group.toolName,
         callId: group.callId,
         target,
         replacementContent: todoSnapshotReplacement(

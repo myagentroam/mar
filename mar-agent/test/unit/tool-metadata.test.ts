@@ -4,6 +4,21 @@ import {
   structuredToolEventData
 } from '../../src/tools/output-projection.js';
 
+it('publishes full Todo snapshots without leaking unknown fields or clipping large lists', () => {
+  const items = Array.from({ length: 32 }, (_, index) => ({
+    id: String(index),
+    step: 'Task '.repeat(100).trim(),
+    status: 'pending'
+  }));
+  expect(structuredToolEventData('todo', { revision: 3, items, privateField: 'hidden' })).toEqual({
+    revision: 3,
+    items
+  });
+  expect(
+    structuredToolEventData('todo', { revision: 3, items: [{ id: 'invalid' }] })
+  ).toBeUndefined();
+});
+
 it('publishes bounded READ source clipping independently of model and summary limits', () => {
   const data = structuredToolEventData('read', { mode: 'batch', results: [], truncated: true });
   expect(publicOutputTruncation('read', data)).toBe('SOURCE');

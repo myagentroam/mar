@@ -10,7 +10,7 @@ import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
 import { questionToolDefinition } from '../../src/tools/agent/question.js';
 import { skillToolDefinition } from '../../src/tools/agent/skill.js';
 import { readToolDefinition } from '../../src/tools/local/read.js';
-import { todoWriteToolDefinition } from '../../src/tools/agent/todo-write.js';
+import { todoToolDefinition } from '../../src/tools/agent/todo-tool.js';
 import { buildEnvironmentContext } from '../../src/prompts/core.js';
 import { retainedSessionResourcesSnapshot } from '../../src/prompts/resources.js';
 
@@ -114,14 +114,14 @@ describe('system prompt', () => {
         'agent_wait',
         'agent_send',
         'agent_stop',
-        'todo_write'
+        'todo'
       ],
       directTools: ['code_exec', 'skill', 'agent_start', 'agent_wait', 'agent_send', 'agent_stop']
     });
     expect(prompt).toContain(
       'Available client tools: code_exec, skill, agent_start, agent_wait, agent_send, agent_stop.'
     );
-    expect(prompt).toContain('Code Mode Only: read, exec, apply_patch, todo_write');
+    expect(prompt).toContain('Code Mode Only: read, exec, apply_patch, todo');
     expect(prompt).toContain('only as tools.NAME inside code_exec');
     expect(prompt).toContain('tool descriptions and schemas');
     expect(prompt).not.toContain('call skill before generic tools');
@@ -193,8 +193,7 @@ describe('system prompt', () => {
         'exec',
         'apply_patch',
         'question',
-        'todo_read',
-        'todo_write',
+        'todo',
         'agent_start',
         'agent_wait',
         'agent_stop'
@@ -418,7 +417,7 @@ describe('system prompt', () => {
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: ['read', 'exec', 'apply_patch', 'todo_read', 'todo_write']
+      tools: ['read', 'exec', 'apply_patch', 'todo']
     }).toLowerCase();
 
     expect(normalized).toContain('do not repeat completed work');
@@ -427,10 +426,10 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('use todo only when coordination');
     expect(normalized).not.toContain('do not make a single-step plan');
     expect(normalized).not.toContain('expectedrevision');
-    expect(todoWriteToolDefinition.description).not.toContain('expectedRevision');
-    expect(todoWriteToolDefinition.description).toContain('same model response');
-    expect(todoWriteToolDefinition.description).toContain('meaningful stage changes');
-    expect(todoWriteToolDefinition.description).toContain('materially different objective');
+    expect(todoToolDefinition.description).not.toContain('expectedRevision');
+    expect(todoToolDefinition.description).toContain('same response');
+    expect(todoToolDefinition.description).toContain('meaningful stage changes');
+    expect(todoToolDefinition.description).toContain('materially different objective');
   });
 
   it('does not impose authoring phases or sizes based on the available writing tool', () => {

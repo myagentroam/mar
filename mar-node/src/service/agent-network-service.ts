@@ -277,7 +277,6 @@ export class AgentNetworkService {
         message: { status: 'not_attempted' }
       };
     signal?.throwIfAborted();
-    const captured = this.options.observations.get(actor.sessionId)?.captureBeforeSend(session.id);
     const message = hasMessage
       ? {
           clientMessageId: input.clientMessageId ?? randomUUID(),
@@ -296,7 +295,6 @@ export class AgentNetworkService {
           goal.kind === 'set' ? message : undefined,
           signal
         );
-        if (goal.kind === 'set' && message) captured?.acknowledge();
       } catch (error) {
         const current = this.options.goal(session.id);
         if (sameGoal(current, previous) && input.approval === undefined) throw error;
@@ -329,7 +327,6 @@ export class AgentNetworkService {
     signal?.throwIfAborted();
     try {
       const result = await this.options.message(actor, session, message, signal);
-      captured?.acknowledge();
       return {
         agentId: session.id,
         ...approvalReceipt,

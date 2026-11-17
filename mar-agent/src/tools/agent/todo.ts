@@ -7,7 +7,7 @@ import {
 } from '../../session/todo.js';
 export type { TodoItem, TodoSnapshot } from '../../session/todo.js';
 
-/** @deprecated Retained for legacy Session Todo restoration, not new model workflows. */
+/** Owns the Session Todo snapshot and revision across Executions and restored history. */
 export class TodoStore {
   #revision = 0;
   #items: TodoItem[] = [];

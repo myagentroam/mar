@@ -137,12 +137,7 @@ export async function waitForAgentTargets(input: {
               : 'snapshot';
     const include = !snapshot && (ready || outcome === 'timeout' || outcome === 'interrupted');
     const projection = include && terminal ? observation?.result : undefined;
-    const updates =
-      include && projection?.summary && !projection.summaryTruncated
-        ? observation?.updates.filter((update) => !update.final)
-        : include
-          ? observation?.updates
-          : undefined;
+    const updates = include ? observation?.updates : undefined;
     if (include) observation?.acknowledge();
     return {
       agentId: target.agentId,
@@ -150,6 +145,7 @@ export async function waitForAgentTargets(input: {
       ...(executionId === undefined ? {} : { executionId }),
       status: state.status,
       waitOutcome,
+      ...(include && observation?.hasMoreUpdates ? { hasMoreUpdates: true } : {}),
       ...projection,
       ...(updates?.length ? { updates } : {})
     };
