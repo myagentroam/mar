@@ -114,6 +114,8 @@ function renderWorkspaceTabs() {
     ? h(
         WorkbenchHeader,
         {
+          // Match the desktop header surface supplied by WorkbenchSurface.
+          style: { background: 'var(--mar-bg-panel)' },
           mobileViewport: false,
           view: 'nodes',
           sidebarCollapsed: sidebarCollapsed.value,

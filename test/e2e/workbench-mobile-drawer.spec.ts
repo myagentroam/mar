@@ -45,7 +45,10 @@ test('Desktop activity panels cover resize handles without disabling uncovered d
   await page.mouse.up();
   await expect(panel).toBeVisible();
 
-  const uncoveredY = panelBounds.y + panelBounds.height + 3;
+  // The panel may reach the viewport bottom; use the exposed handle above it.
+  const uncoveredY = handleBounds.y + (panelBounds.y - handleBounds.y) / 2;
+  expect(uncoveredY).toBeGreaterThan(handleBounds.y);
+  expect(uncoveredY).toBeLessThan(panelBounds.y);
   expect(uncoveredY).toBeLessThan(handleBounds.y + handleBounds.height);
   await page.mouse.move(x, uncoveredY);
   await page.mouse.down();

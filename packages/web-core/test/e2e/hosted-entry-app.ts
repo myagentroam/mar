@@ -95,22 +95,33 @@ if (existing) {
 createTooltipApp({
   render: () =>
     workspacePage
-      ? h(HostedConversationWorkspacePage, {
-          workspace,
-          request,
-          connected: true,
-          mobileViewport: matchMedia('(max-width: 767px)').matches,
-          mobileHistoryOpen: false,
-          sidebarCollapsed: false,
-          restoringRoute: false,
-          routeTarget: undefined,
-          hasUnreadConversation: () => false,
-          clearConversation: workspace.clearSelectedConversation,
-          selectConversation: async (conversation: HostedConversationSummary) => {
-            workspace.selectConversation(conversation.nodeId, conversation.id);
-            await workspace.restartSelectedConversationWatch();
-          }
-        })
+      ? h(
+          'main',
+          {
+            // Hosted content occupies the workbench, beside its fixed desktop sidebar.
+            style: matchMedia('(max-width: 767px)').matches
+              ? 'display:flex;height:100dvh'
+              : 'display:flex;height:calc(100dvh - 18px);margin:9px 9px 9px var(--mar-workbench-sidebar-total-width)'
+          },
+          [
+            h(HostedConversationWorkspacePage, {
+              workspace,
+              request,
+              connected: true,
+              mobileViewport: matchMedia('(max-width: 767px)').matches,
+              mobileHistoryOpen: new URL(location.href).searchParams.has('history-open'),
+              sidebarCollapsed: new URL(location.href).searchParams.has('sidebar-collapsed'),
+              restoringRoute: false,
+              routeTarget: undefined,
+              hasUnreadConversation: () => false,
+              clearConversation: workspace.clearSelectedConversation,
+              selectConversation: async (conversation: HostedConversationSummary) => {
+                workspace.selectConversation(conversation.nodeId, conversation.id);
+                await workspace.restartSelectedConversationWatch();
+              }
+            })
+          ]
+        )
       : existing
         ? h('main', { style: 'padding: 1rem; max-width: 54rem; margin: 6rem auto;' }, [
             h(HostedConversationComposer, {

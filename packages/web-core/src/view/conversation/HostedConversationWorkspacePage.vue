@@ -10,6 +10,7 @@ import { createMobileSurfaceFocusService } from '../../service/mobile-surface-fo
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import WorkbenchSidebarPanel from '../workbench/WorkbenchSidebarPanel.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import type {
   ConversationFileProjection,
@@ -995,8 +996,9 @@ onBeforeUnmount(() => {
       ></button>
     </Transition>
 
-    <aside
+    <WorkbenchSidebarPanel
       id="hosted-pane-history"
+      :collapsed="sidebarCollapsed"
       tabindex="-1"
       class="hosted-conversation-history"
       :class="{ 'mobile-open': mobileViewport && mobileHistoryOpen }"
@@ -1198,7 +1200,7 @@ onBeforeUnmount(() => {
           </el-button>
         </div>
       </div>
-    </aside>
+    </WorkbenchSidebarPanel>
 
     <main
       id="hosted-pane-conversation"
@@ -1536,10 +1538,6 @@ onBeforeUnmount(() => {
 .hosted-conversation-history[hidden],
 .hosted-conversation-files[hidden] {
   display: none;
-}
-
-.hosted-conversation-history {
-  border-right: 1px solid var(--mar-border-medium);
 }
 
 .hosted-conversation-files {
@@ -2060,27 +2058,6 @@ onBeforeUnmount(() => {
 .hosted-conversation-scrim,
 .hosted-mobile-files-button {
   display: none;
-}
-
-@media (min-width: 768px) {
-  .hosted-conversation-history {
-    position: fixed;
-    z-index: 3;
-    inset: var(--mar-sidebar-header-height) auto 0 var(--mar-activity-rail-width);
-    width: var(--mar-workbench-sidebar-width);
-    background: var(--mar-bg-subtle);
-    transition:
-      width var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse),
-      visibility 0s;
-  }
-
-  .hosted-workspace.history-collapsed .hosted-conversation-history {
-    width: 0;
-    overflow: hidden;
-    visibility: hidden;
-    pointer-events: none;
-    transition-delay: 0s, var(--mar-motion-duration-collapse);
-  }
 }
 
 @media (max-width: 1023px) {

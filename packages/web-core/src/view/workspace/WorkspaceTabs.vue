@@ -560,7 +560,7 @@ function activate(tab: WorkspaceTab): void {
 }
 
 .workspace-tab-strip-header {
-  --workspace-tab-base-bg: var(--mar-bg-chrome);
+  --workspace-tab-base-bg: var(--mar-bg-panel);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -663,7 +663,7 @@ function activate(tab: WorkspaceTab): void {
   min-width: 124px;
   max-width: 236px;
   border-radius: var(--mar-radius-selection);
-  background: var(--workspace-tab-base-bg);
+  background: transparent;
   touch-action: pan-y;
   user-select: none;
 }
