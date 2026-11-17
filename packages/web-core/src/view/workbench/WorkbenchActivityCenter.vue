@@ -142,11 +142,7 @@ onMounted(() => {
     keys: activityToggleKeys,
     when: () => true,
     execute: (event) => {
-      if (!event.repeat) {
-        if (!props.mobileMode && !desktopOpen.value)
-          trigger.value?.querySelector('button')?.focus();
-        toggle();
-      }
+      if (!event.repeat) toggle();
       return 'HANDLED';
     }
   });
