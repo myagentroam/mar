@@ -543,12 +543,12 @@ defineExpose({ reveal });
                     }}</el-dropdown-item
                   >
                   <el-dropdown-item command="COPY_PATH"
-                    ><MarIcon name="copy" />{{
+                    ><MarIcon name="path-relative" />{{
                       translate('generated.workspaceFileTree.copyRelativePath')
                     }}</el-dropdown-item
                   >
                   <el-dropdown-item command="COPY_ABSOLUTE_PATH" :disabled="!rootPath"
-                    ><MarIcon name="copy" />{{
+                    ><MarIcon name="path-absolute" />{{
                       translate('generated.workspaceFileTree.copyAbsolutePath')
                     }}</el-dropdown-item
                   >

@@ -1,0 +1,34 @@
+/* Shared syntax palette for the file editor and static Markdown code, not editor surfaces. */
+.mar-code-syntax {
+  --mar-editor-keyword: #0000ff;
+  --mar-editor-control-keyword: #af00db;
+  --mar-editor-variable: #001080;
+  --mar-editor-property: #001080;
+  --mar-editor-function: #795e26;
+  --mar-editor-type: #267f99;
+  --mar-editor-string: #a31515;
+  --mar-editor-number: #098658;
+  --mar-editor-comment: #008000;
+  --mar-editor-regexp: #811f3f;
+  --mar-editor-operator: #1f1f1f;
+  --mar-editor-invalid: #cd3131;
+  --mar-editor-heading: #0451a5;
+  --mar-editor-link: #0000ff;
+}
+
+html[data-theme='vscode-dark-2026'] .mar-code-syntax {
+  --mar-editor-keyword: #569cd6;
+  --mar-editor-control-keyword: #c586c0;
+  --mar-editor-variable: #9cdcfe;
+  --mar-editor-property: #9cdcfe;
+  --mar-editor-function: #dcdcaa;
+  --mar-editor-type: #4ec9b0;
+  --mar-editor-string: #ce9178;
+  --mar-editor-number: #b5cea8;
+  --mar-editor-comment: #6a9955;
+  --mar-editor-regexp: #d16969;
+  --mar-editor-operator: #d4d4d4;
+  --mar-editor-invalid: #f44747;
+  --mar-editor-heading: #569cd6;
+  --mar-editor-link: #4daafc;
+}

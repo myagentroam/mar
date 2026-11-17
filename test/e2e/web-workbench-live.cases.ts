@@ -662,7 +662,7 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   await expect(page.locator('html')).toHaveClass(/console-ui/);
   await expect(page.locator('html')).toHaveCSS('font-size', '17.6px');
   await expect(page.locator('html')).toHaveCSS('--el-font-size-small', '14px');
-  await expect(page.getByTestId('workbench-brand')).toHaveCSS('width', '296px');
+  await expect(page.getByTestId('workbench-brand')).toHaveCSS('width', '52px');
   await expect(page.locator('.activity-rail')).toHaveCSS('width', '52px');
   const navigationBounds = await page
     .getByRole('button', { name: '工作', exact: true })
@@ -687,7 +687,7 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   expect(
     Math.abs(navigationBounds.contentCenter - navigationBounds.railCenter)
   ).toBeLessThanOrEqual(1);
-  await expect(page.locator('.workspace-tree')).toHaveCSS('width', '244px');
+  await expect(page.locator('.workspace-tree')).toHaveCSS('width', '235px');
   await expect(page.locator('.workbench-header')).toHaveCSS('height', '44px');
   const helpLink = page.getByRole('link', { name: '帮助' });
   await expect(helpLink).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -774,7 +774,12 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   await page.getByRole('button', { name: '设置', exact: true }).click();
   const settingsPanel = page.locator('.settings-panel').first();
   await expect(settingsPanel).toHaveCSS('border-top-width', '0px');
-  await expect(settingsPanel).toHaveCSS('max-width', '960px');
+  await expect(settingsPanel).toHaveCSS('max-width', 'none');
+  const settingsWidth = await settingsPanel.evaluate((element) => ({
+    panel: element.getBoundingClientRect().width,
+    content: element.closest('.settings-content')!.getBoundingClientRect().width
+  }));
+  expect(settingsWidth.panel).toBe(settingsWidth.content);
   await expect(page.locator('.account-summary')).toHaveCSS('font-size', '14px');
   await page.getByRole('button', { name: '快捷键', exact: true }).click();
   await expect(page.locator('.shortcut-list dd').first()).toHaveCSS('font-size', '14px');

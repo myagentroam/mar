@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
-import 'highlight.js/styles/github.css';
+import './code-syntax-theme.css';
 import { localePreferenceService, translate } from '../../service/locale-preference-service.js';
 import { workspaceFileTarget } from '../../util/file-preview.js';
 import { TOOLTIP_SERVICE_KEY } from '../../service/tooltip-service.js';
@@ -55,7 +55,11 @@ const defaultFenceRenderer = renderer.renderer.rules.fence ?? (() => '');
 renderer.renderer.rules.fence = (tokens, index, options, environment, self) => {
   const rendered = defaultFenceRenderer(tokens, index, options, environment, self);
   const label = renderer.utils.escapeHtml(translate('generated.conversationTimeline.copyCode'));
-  return `<div class="agent-markdown-code" data-code-block>${rendered}<button type="button" class="agent-markdown-code-copy mar-icon-button mar-icon-action" data-code-copy aria-label="${label}">${copyIconSvg}${checkIconSvg}</button></div>`;
+  const language = renderer.utils.escapeHtml(
+    renderer.utils.unescapeAll(tokens[index]!.info).trim().split(/\s+/u)[0] ||
+      translate('generated.conversationTimeline.codeBlock')
+  );
+  return `<div class="agent-markdown-code" data-code-block><div class="agent-markdown-code-header"><span class="agent-markdown-code-language">${language}</span><button type="button" class="agent-markdown-code-copy mar-icon-button mar-icon-action" data-code-copy aria-label="${label}">${copyIconSvg}${checkIconSvg}</button></div>${rendered}</div>`;
 };
 
 renderer.core.ruler.after('linkify', 'workspace-file-locations', (state) => {
@@ -314,7 +318,12 @@ function onLinkClick(event: MouseEvent): void {
 </script>
 
 <template>
-  <div ref="markdownRoot" class="agent-markdown" v-html="html" @click="onMarkdownClick"></div>
+  <div
+    ref="markdownRoot"
+    class="agent-markdown mar-code-syntax"
+    v-html="html"
+    @click="onMarkdownClick"
+  ></div>
 </template>
 
 <style scoped>
@@ -544,56 +553,50 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 .agent-markdown :deep(.agent-markdown-code) {
-  position: relative;
   margin: 0.8rem 0;
+  min-width: 0;
+  border: 1px solid var(--mar-border-default);
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-fill-subtle);
+}
+
+.agent-markdown :deep(.agent-markdown-code-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--mar-border-default);
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.5;
+}
+
+.agent-markdown :deep(.agent-markdown-code-language) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-markdown :deep(.agent-markdown-code > pre) {
   margin: 0;
+  padding: 0.75rem;
+  border: 0;
+  border-radius: 0 0 var(--mar-radius-control) var(--mar-radius-control);
+  background: transparent;
 }
 
 .agent-markdown :deep(.agent-markdown-code-copy) {
-  position: absolute;
-  right: 0.35rem;
-  bottom: 0.35rem;
   display: inline-flex;
+  flex: none;
   width: var(--mar-utility-control-size);
   height: var(--mar-utility-control-size);
   align-items: center;
   justify-content: center;
   padding: 0;
   border-radius: var(--mar-radius-control);
-  opacity: 0;
-  transition:
-    opacity 0.12s ease,
-    color 0.12s ease;
-}
-
-.agent-markdown :deep(.agent-markdown-code:hover > .agent-markdown-code-copy),
-.agent-markdown :deep(.agent-markdown-code-copy:focus-visible) {
-  opacity: 1;
-}
-
-.agent-markdown :deep(.agent-markdown-code-copy[data-copied='true']) {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .agent-markdown :deep(.agent-markdown-code-copy) {
-    opacity: 1;
-  }
-}
-
-@media (max-width: 767px) {
-  .agent-markdown :deep(.agent-markdown-code-copy) {
-    width: 36px;
-    height: 36px;
-    opacity: 1;
-  }
-
-  .agent-markdown :deep(pre) {
-    padding-bottom: 44px;
-  }
+  transition: color 0.12s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -616,5 +619,63 @@ function onLinkClick(event: MouseEvent): void {
 .agent-markdown
   :deep(.agent-markdown-code-copy[data-copied='true'] .agent-markdown-code-icon--check) {
   display: block;
+}
+
+/* Keep syntax scoped above legacy global hljs themes, including asynchronously loaded Diff CSS. */
+.agent-markdown
+  :deep(pre code :is(.hljs-keyword, .hljs-name, .hljs-selector-tag, .hljs-meta .hljs-keyword)) {
+  color: var(--mar-editor-keyword);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-variable, .hljs-template-variable)) {
+  color: var(--mar-editor-variable);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-attr, .hljs-attribute, .hljs-property)) {
+  color: var(--mar-editor-property);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-title, .hljs-title.function_)) {
+  color: var(--mar-editor-function);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-type, .hljs-built_in, .hljs-title.class_)) {
+  color: var(--mar-editor-type);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-string, .hljs-meta .hljs-string)) {
+  color: var(--mar-editor-string);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet)) {
+  color: var(--mar-editor-number);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-comment, .hljs-quote, .hljs-doctag)) {
+  color: var(--mar-editor-comment);
+}
+
+.agent-markdown :deep(pre code .hljs-regexp) {
+  color: var(--mar-editor-regexp);
+}
+
+.agent-markdown :deep(pre code :is(.hljs-operator, .hljs-punctuation, .hljs-subst)) {
+  color: var(--mar-editor-operator);
+}
+
+.agent-markdown :deep(pre code .hljs-section) {
+  color: var(--mar-editor-heading);
+}
+
+.agent-markdown :deep(pre code .hljs-link) {
+  color: var(--mar-editor-link);
+}
+
+.agent-markdown :deep(pre code .hljs-emphasis) {
+  font-style: italic;
+}
+
+.agent-markdown :deep(pre code .hljs-strong) {
+  font-weight: 600;
 }
 </style>

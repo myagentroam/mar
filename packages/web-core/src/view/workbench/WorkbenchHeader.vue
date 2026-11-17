@@ -35,8 +35,7 @@ const emit = defineEmits<{
       type="button"
       @click="emit('toggleSidebar')"
     >
-      <MarIcon name="menu" v-if="sidebarCollapsed" />
-      <MarIcon name="menu" v-else />
+      <MarIcon name="sidebar" />
     </button>
     <div
       v-if="view === 'conversations' && conversationTitle"
@@ -82,7 +81,6 @@ const emit = defineEmits<{
 
 .workbench-header.workspace-tabs-active {
   gap: 0;
-  padding-left: 0;
 }
 
 .workbench-tree-toggle {

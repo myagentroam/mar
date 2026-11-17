@@ -101,18 +101,24 @@ test('Activity clicks toggle the custom panel and pointer movement keeps its sel
   await expect(panel).toHaveCount(0);
 });
 
-test('Activity shortcuts toggle the panel without displaying a tooltip', async ({ page }) => {
+test('Activity shortcuts toggle the panel without moving focus or displaying a tooltip', async ({
+  page
+}) => {
   const { entry, panel } = await prepareActivityInteraction(page);
-  await page.getByRole('textbox', { name: 'Background input' }).focus();
+  const input = page.getByRole('textbox', { name: 'Background input' });
+  await input.focus();
   for (const shortcut of ['Control+Shift+E', 'Meta+Shift+E']) {
     await page.keyboard.press(shortcut);
     await page.clock.runFor(500);
     await expect(panel).toBeVisible();
-    await expect(entry).toBeFocused();
+    await expect(input).toBeFocused();
+    await expect(entry).not.toBeFocused();
+    expect(await entry.evaluate((element) => element.matches(':focus-visible'))).toBe(false);
     await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
     await page.keyboard.press(shortcut);
     await page.clock.runFor(500);
     await expect(panel).toHaveCount(0);
+    await expect(input).toBeFocused();
   }
   await entry.hover();
   await page.clock.runFor(500);
@@ -124,6 +130,31 @@ test('Activity shortcuts toggle the panel without displaying a tooltip', async (
   await page.keyboard.press('Escape');
   await page.clock.runFor(500);
   await expect(panel).toHaveCount(0);
+  await expect(input).toBeFocused();
+});
+
+test('Activity Tab navigation retains a visible focus ring and keyboard activation', async ({
+  page
+}) => {
+  const { entry, panel } = await prepareActivityInteraction(page);
+  await entry.focus();
+  await page.keyboard.press('Tab');
+  await expect(entry).not.toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(entry).toBeFocused();
+  expect(await entry.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+  await expect(entry).toHaveCSS('outline-style', 'solid');
+  await expect(entry).toHaveCSS('outline-width', '2px');
+  for (const key of ['Enter', 'Space']) {
+    await page.keyboard.press(key);
+    await page.clock.runFor(500);
+    await expect(panel).toBeVisible();
+    await expect(entry).toBeFocused();
+    await page.keyboard.press('Escape');
+    await page.clock.runFor(500);
+    await expect(panel).toHaveCount(0);
+    await expect(entry).toBeFocused();
+  }
 });
 
 test('Activity pointer movement cannot reopen panels after Escape or layout changes', async ({
@@ -266,6 +297,14 @@ for (const width of [1280, 390]) {
       }
       await expect(tabs.locator('.activity-unread-count')).toHaveText('30');
       await tabs.screenshot({ path: testInfo.outputPath(`activity-tabs-${width}-${theme}.png`) });
+      await recent.click();
+      await recent.evaluate((element) => (element as HTMLElement).blur());
+      await page.mouse.move(width - 1, 849);
+      await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+      await page.screenshot({
+        path: testInfo.outputPath(`activity-panel-${width}-${theme}.png`),
+        animations: 'disabled'
+      });
     });
 
     test(`Activity notification badges share dimensions at ${width}px ${theme}`, async ({

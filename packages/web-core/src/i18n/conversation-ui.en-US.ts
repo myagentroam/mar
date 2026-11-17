@@ -286,6 +286,7 @@ export const conversationUiEnUS = {
       performanceCacheHitRate: 'Cache Hit Rate: {value}',
       outputTokens: 'Output tokens: {value}',
       copyCode: 'Copy code',
+      codeBlock: 'Code',
       copiedMessage: 'Message copied',
       copiedCode: 'Code copied',
       copyCodeFailed: 'Unable to copy the code. Check browser clipboard permissions.'

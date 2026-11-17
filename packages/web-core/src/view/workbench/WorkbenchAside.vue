@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
       :gesture-key="mode"
       @resize="emit('resize', $event)"
     />
-    <header class="workbench-aside-header">
+    <header class="workbench-aside-header mar-tab-header">
       <button
         v-if="mobile"
         type="button"
@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
         @close="close"
       >
         <template #label="{ item }">
-          <span class="workbench-aside-label">{{ item.label }}</span>
+          <span class="workbench-aside-label mar-tab-label">{{ item.label }}</span>
           <span
             v-if="entries.find((entry) => entry.id === item.id)?.active"
             class="workbench-aside-activity mar-session-activity running"
@@ -305,29 +305,11 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-inline-start: 1px solid var(--mar-border-strong);
+  border-inline-start: 1px solid var(--mar-border-subtle);
   background: var(--mar-bg-page);
 }
 .workbench-aside-header {
   --mar-tab-strip-active-bg: var(--mar-fill-selection);
-  display: flex;
-  flex: none;
-  min-height: 32px;
-  min-width: 0;
-  border-bottom: 1px solid var(--mar-border-strong);
-  background: var(--mar-bg-subtle);
-}
-html:not([data-theme]) .workbench-aside {
-  border-inline-start-color: var(--mar-border-subtle);
-}
-html:not([data-theme]) .workbench-aside-header {
-  border-bottom-color: var(--mar-border-subtle);
-}
-html:not([data-theme]) .workbench-aside-header :deep(.tab-strip-item) {
-  border-color: var(--mar-border-default);
-}
-html:not([data-theme]) .workbench-aside-header :deep(.tab-strip-separator) {
-  background: var(--mar-border-subtle);
 }
 .workbench-aside-back {
   display: grid;
@@ -358,10 +340,6 @@ html:not([data-theme]) .workbench-aside-header :deep(.tab-strip-separator) {
 }
 .workbench-aside-label {
   flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   text-align: center;
 }
 </style>

@@ -47,6 +47,7 @@ const livePerformance = ref<{ runId: string; latencyMs: number; tokensPerSecond?
 const spacingFixture = new URL(location.href).searchParams.has('group-spacing');
 const readFilesFixture = new URL(location.href).searchParams.has('read-files');
 const historyActionsFixture = new URL(location.href).searchParams.has('history-actions');
+const markdownBlocksFixture = new URL(location.href).searchParams.has('markdown-blocks');
 const fileChangeResultFixture = new URL(location.href).searchParams.has('file-change-result');
 const resultOpenedFile = ref('');
 const previewRunStatus = ref<'RUNNING' | 'SUCCEEDED'>('RUNNING');
@@ -204,6 +205,58 @@ const turns = ref<ConversationTurn[]>([
         : items
   }
 ]);
+if (markdownBlocksFixture) {
+  localePreferenceService().setLocale(
+    new URL(location.href).searchParams.get('language') === 'zh-CN' ? 'zh-CN' : 'en-US'
+  );
+  turns.value = [
+    {
+      ...turns.value[0]!,
+      items: [
+        { ...items[0]!, payload: { text: '把待办任务的标题提取出来，并给出验证命令。' } },
+        {
+          id: 'markdown-reply',
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload: {
+            text: [
+              '下面的函数保留尚未完成的任务，返回它们的标题。行内代码 `task.title` 保持原来的样式。',
+              '```typescript',
+              '// Preserve original whitespace when copying.',
+              'type Task = { title: string; completed: boolean };',
+              'const docs = "https://example.invalid/documentation/a-very-long-unbroken-path-that-stays-on-one-source-line-without-changing-the-original-copied-code";',
+              '',
+              'export function pendingTitles(tasks: Task[]): string[] {',
+              '  return tasks.filter((task) => !task.completed).map((task) => task.title);',
+              '}',
+              '```',
+              '',
+              '未声明语言的代码块使用通用标签，仍可完整复制：',
+              '```',
+              'pnpm --dir packages/web-core exec vitest run test/unit/agent-markdown.test.ts',
+              '```'
+            ].join('\n')
+          }
+        }
+      ]
+    }
+  ];
+}
+function replaceMarkdownReply() {
+  turns.value = turns.value.map((turn) => ({
+    ...turn,
+    items: turn.items.map((item) =>
+      item.id === 'markdown-reply'
+        ? {
+            ...item,
+            payload: {
+              text: '```<img onerror=alert(1)>\n<script>window.markdownExecuted = true<\/script>\n```\n\n```ts\nconst next = "updated";\n```'
+            }
+          }
+        : item
+    )
+  }));
+}
 if (fileChangeResultFixture) {
   const base = { ...turns.value[0]!, turnId: 'file-result-round', status: 'RUNNING' as const };
   turns.value = [
@@ -542,7 +595,10 @@ function finishPreview() {
     >
       Update performance
     </button>
-    <section v-if="!historyActionsFixture" aria-label="Notifications fixture">
+    <section
+      v-if="!historyActionsFixture && !markdownBlocksFixture"
+      aria-label="Notifications fixture"
+    >
       <WorkbenchActivityCenter :service="notifications" :uploads="[]" :status-label="String" />
       <ThemePreview name="Fixture preview" :colors="previewColors" />
       <output data-testid="notification-loads">{{ notificationLoads }}</output>
@@ -590,6 +646,7 @@ function finishPreview() {
       >
     </section>
     <ConversationHeader
+      v-if="!markdownBlocksFixture"
       :session="{
         id: 'session-fixture',
         workspaceId: 'workspace',
@@ -604,6 +661,7 @@ function finishPreview() {
       :session-title="() => 'Review session'"
     />
     <ConversationWorkProcess
+      v-if="!markdownBlocksFixture"
       :block="{
         id: 'process',
         groupId: 'process',
@@ -705,7 +763,22 @@ function finishPreview() {
     <button v-if="previewFixture" data-testid="finish-reasoning-process" @click="finishPreview">
       Finish process
     </button>
-    <button data-testid="toggle-following" @click="following = !following">Toggle following</button>
+    <button
+      v-if="!markdownBlocksFixture"
+      data-testid="toggle-following"
+      @click="following = !following"
+    >
+      Toggle following
+    </button>
+    <template v-if="markdownBlocksFixture">
+      <button data-testid="markdown-chinese" @click="localePreferenceService().setLocale('zh-CN')">
+        Chinese
+      </button>
+      <button data-testid="markdown-english" @click="localePreferenceService().setLocale('en-US')">
+        English
+      </button>
+      <button data-testid="markdown-replace" @click="replaceMarkdownReply">Replace reply</button>
+    </template>
     <template v-if="fileChangeResultFixture">
       <output data-testid="result-opened-file">{{ resultOpenedFile }}</output>
       <button data-testid="finish-file-result" @click="finishFileChangeResult">Finish round</button>
@@ -716,7 +789,7 @@ function finishPreview() {
         Start next round
       </button>
     </template>
-    <section class="scroll-sample">
+    <section v-if="!markdownBlocksFixture" class="scroll-sample">
       <ConversationScroll
         :has-older="false"
         :loading-initial="false"
@@ -733,7 +806,7 @@ function finishPreview() {
       </ConversationScroll>
     </section>
     <ConversationComposer
-      v-if="!readFilesFixture && !detailSurfaceFixture"
+      v-if="!readFilesFixture && !detailSurfaceFixture && !markdownBlocksFixture"
       v-model:input="input"
       placeholder="Message"
       :working="true"

@@ -101,6 +101,142 @@
   outline-offset: 2px;
 }
 
+.mar-tab-header {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  min-height: 32px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--mar-border-subtle);
+  background: var(--mar-bg-subtle);
+}
+
+.mar-tab {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.mar-tab.is-small {
+  height: auto;
+}
+
+.mar-tab-scroll {
+  --mar-action-icon-size: 14px;
+  flex: 0 0 20px;
+  width: 20px;
+  min-width: 20px;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  cursor: pointer;
+}
+
+.mar-tab-strip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  gap: 0;
+  padding: 3px 4px 0;
+}
+
+.mar-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.mar-tab-strip.is-small {
+  --mar-tab-strip-item-height: 28px;
+  --mar-tab-strip-close-size: 24px;
+  --mar-tab-font-size: var(--mar-font-size-meta);
+  height: auto;
+  padding-block: 3px 0;
+  font-weight: 500;
+}
+
+.mar-tab-strip-item {
+  display: inline-flex;
+  flex-shrink: 0;
+  min-width: 0;
+  height: var(--mar-tab-strip-item-height, auto);
+  max-width: min(15rem, 100%);
+  box-sizing: border-box;
+  align-items: center;
+  border: 1px solid var(--mar-border-default);
+  border-bottom: 0;
+  border-radius: var(--mar-radius-selection) var(--mar-radius-selection) 0 0;
+  background: var(--mar-bg-subtle);
+  color: var(--mar-text-secondary);
+}
+
+.mar-tab-strip-separator {
+  align-self: center;
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 5px;
+  background: var(--mar-border-subtle);
+}
+
+.mar-tab-strip-tab {
+  display: inline-flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--mar-tab-font-size, var(--mar-font-size-navigation));
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0 0.5rem;
+}
+
+.mar-tab-strip.is-small .mar-tab-strip-tab {
+  gap: 0.35rem;
+  justify-content: center;
+}
+
+.mar-tab-strip-tab:not(:last-child) {
+  padding-inline-end: 0.25rem;
+}
+
+.mar-tab-label {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mar-tab-strip-item.is-active {
+  background: var(--mar-tab-strip-active-bg, var(--mar-bg-page));
+  color: var(--mar-text-primary);
+}
+
+.mar-tab-strip-item:not(.is-active):has(.mar-tab-strip-tab:enabled):hover {
+  background: var(--mar-fill-row-hover);
+  color: var(--mar-text-primary);
+}
+
+.mar-tab-strip-item + .mar-tab-strip-item {
+  margin-inline-start: -1px;
+}
+
+.mar-tab-strip-tab:focus-visible {
+  outline: 2px solid var(--mar-color-brand);
+  outline-offset: -2px;
+}
+
 .mar-tab-close {
   --mar-action-icon-size: 14px;
   display: grid;
@@ -112,7 +248,7 @@
   border: 0;
   border-radius: var(--mar-radius-control);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--mar-font-size-navigation);
 }
 
 .mar-tab-close:focus-visible {
@@ -148,6 +284,38 @@
 }
 
 @media (max-width: 767px) {
+  .mar-tab-scroll {
+    display: none;
+  }
+  .mar-tab .mar-tab-strip:not(:focus-within) {
+    --mar-tab-fade-start: 0px;
+    --mar-tab-fade-end: 100%;
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--mar-tab-fade-start),
+      #000 var(--mar-tab-fade-end),
+      transparent
+    );
+  }
+  .mar-tab.can-scroll-previous .mar-tab-strip {
+    --mar-tab-fade-start: 12px;
+  }
+  .mar-tab.can-scroll-next .mar-tab-strip {
+    --mar-tab-fade-end: calc(100% - 12px);
+  }
+  .mar-tab-strip-item {
+    height: var(--mar-tab-strip-item-height, 36px);
+    min-height: var(--mar-tab-strip-item-height, 36px);
+  }
+  .mar-tab-label {
+    max-width: 120px;
+  }
+  .mar-tab-strip-close {
+    width: var(--mar-tab-strip-close-size, 36px);
+    min-width: var(--mar-tab-strip-close-size, 36px);
+    height: var(--mar-tab-strip-close-size, 36px);
+  }
   .mar-detail-descriptions .el-descriptions__label {
     width: 92px;
     max-width: 28%;

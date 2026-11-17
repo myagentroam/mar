@@ -13,6 +13,81 @@ async function captureScreenshot(page: Page, name: string): Promise<void> {
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
+    test(`File tabs and title retain joined top-rounded tabs with quiet borders in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+      try {
+        await page.setViewportSize({ width, height: 850 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.goto(
+          `${fixture.url}file-tabs.html?presentation=window&tab-style-preview&theme=${theme}`
+        );
+        const header = page.locator('.workspace-file-tab-header');
+        const tabs = header.getByRole('tablist');
+        const active = tabs.getByRole('tab').first();
+        const colors = await header.evaluate((element) => {
+          const probe = document.createElement('span');
+          element.append(probe);
+          const resolve = (token: string) => {
+            probe.style.color = `var(${token})`;
+            return getComputedStyle(probe).color;
+          };
+          const result = {
+            divider: resolve('--mar-border-subtle'),
+            selected: resolve('--mar-bg-page'),
+            border: resolve('--mar-border-default'),
+            focus: resolve('--mar-color-brand')
+          };
+          probe.remove();
+          return result;
+        });
+        await expect(header).toHaveCSS('border-bottom-color', colors.divider);
+        const frame = page.locator('.workspace-file-page-frame:visible');
+        await expect(frame.locator('.file-preview-header')).toHaveCSS(
+          'border-bottom-color',
+          colors.divider
+        );
+        const selected = active.locator('..');
+        await expect(selected).toHaveCSS('background-color', colors.selected);
+        for (const edge of ['top', 'left', 'right'])
+          await expect(selected).toHaveCSS(`border-${edge}-color`, colors.border);
+        await expect(selected).toHaveCSS('border-bottom-width', '0px');
+        for (const edge of ['left', 'right']) {
+          await expect(selected).toHaveCSS(`border-top-${edge}-radius`, '6px');
+          await expect(selected).toHaveCSS(`border-bottom-${edge}-radius`, '0px');
+        }
+        const inset = await selected.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const header = element.closest('header')!.getBoundingClientRect();
+          return { top: box.top - header.top, bottom: header.bottom - box.bottom };
+        });
+        expect(inset.top).toBe(3);
+        expect(inset.bottom).toBe(1);
+        await expect(header).toHaveJSProperty('offsetHeight', width < 768 ? 40 : 32);
+        await active.focus();
+        await expect(active).toHaveCSS('outline-color', colors.focus);
+        await expect(active).toHaveCSS('outline-width', '2px');
+        await expect(selected).toHaveCSS('background-color', colors.selected);
+        await expect(frame.locator('.cm-content')).toBeVisible();
+        await expect(frame.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
+        await active.evaluate((element) => (element as HTMLElement).blur());
+        await page.mouse.move(width - 1, 849);
+        await frame.locator('.cm-content').evaluate((element) => (element as HTMLElement).blur());
+        await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+        await page.screenshot({
+          path: testInfo.outputPath(`file-tabs-${width}-${theme}.png`),
+          animations: 'disabled'
+        });
+      } finally {
+        await fixture.close();
+      }
+    });
+  }
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
     test(`file toolbar icons replace rather than accompany loading in ${theme} at ${width}px`, async ({
       page
     }) => {
@@ -1175,7 +1250,7 @@ for (const [width, action] of [
         let exitAnimation: Animation | undefined;
         let exitStartedAt: number | null = null;
         element.addEventListener('animationstart', (event) => {
-          if (event.target !== element) return;
+          if (!(event instanceof AnimationEvent) || event.target !== element) return;
           const state = document.documentElement.dataset;
           state.fileTabsExitCount = String(element.querySelectorAll('[role="tab"]').length);
           state.fileTabsExitInert = String(
@@ -1183,9 +1258,12 @@ for (const [width, action] of [
           );
           exitAnimation = element
             .getAnimations()
-            .find((animation) => animation.effect?.target === element);
+            .find(
+              (animation) =>
+                animation.effect instanceof KeyframeEffect && animation.effect.target === element
+            );
           const now = document.timeline.currentTime;
-          exitStartedAt = now;
+          exitStartedAt = typeof now === 'number' ? now : null;
           state.fileTabsExitAnimationName = event.animationName;
           state.fileTabsExitStartElapsedTime = String(event.elapsedTime);
           state.fileTabsExitStartTimelineTime = String(now);
@@ -1207,7 +1285,7 @@ for (const [width, action] of [
           );
         });
         element.addEventListener('animationcancel', (event) => {
-          if (event.target !== element) return;
+          if (!(event instanceof AnimationEvent) || event.target !== element) return;
           const state = document.documentElement.dataset;
           const now = document.timeline.currentTime;
           state.fileTabsExitCancelled = 'true';
@@ -1215,7 +1293,7 @@ for (const [width, action] of [
           state.fileTabsExitCancelElapsedTime = String(event.elapsedTime);
           state.fileTabsExitCancelTimelineTime = String(now);
           state.fileTabsExitCancelTimelineDelta = String(
-            now !== null && exitStartedAt !== null ? now - exitStartedAt : null
+            typeof now === 'number' && exitStartedAt !== null ? now - exitStartedAt : null
           );
           state.fileTabsExitCancelAnimationStartTime = String(exitAnimation?.startTime ?? null);
           state.fileTabsExitCancelAnimationCurrentTime = String(exitAnimation?.currentTime ?? null);

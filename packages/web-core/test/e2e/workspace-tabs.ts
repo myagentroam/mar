@@ -11,6 +11,7 @@ import { themePreferenceService } from '../../src/service/theme-preference-servi
 
 const activeTabId = ref('node-1:workspace-1');
 const connected = ref(true);
+const sidebarCollapsed = ref(false);
 const parameters = new URLSearchParams(location.search);
 const locale = parameters.get('locale');
 const theme = parameters.get('theme');
@@ -115,7 +116,8 @@ function renderWorkspaceTabs() {
         {
           mobileViewport: false,
           view: 'nodes',
-          sidebarCollapsed: false,
+          sidebarCollapsed: sidebarCollapsed.value,
+          onToggleSidebar: () => (sidebarCollapsed.value = !sidebarCollapsed.value),
           settingsSection: 'account',
           managementSection: '',
           settingsItems: [],

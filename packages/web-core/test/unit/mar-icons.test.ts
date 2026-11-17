@@ -61,6 +61,27 @@ describe('shared MAR icons', () => {
     expect(iconShapes.administration).not.toEqual(iconShapes.adjustments);
   });
 
+  it('distinguishes relative and absolute folder paths without replacing generic copy', async () => {
+    expect(iconShapes).toHaveProperty('path-relative');
+    expect(iconShapes).toHaveProperty('path-absolute');
+    const relative = await renderToString(
+      createSSRApp(MarIcon, { name: 'path-relative', size: 16 })
+    );
+    const absolute = await renderToString(
+      createSSRApp(MarIcon, { name: 'path-absolute', size: 16 })
+    );
+    expect(relative).toContain('data-mar-icon="path-relative"');
+    expect(absolute).toContain('data-mar-icon="path-absolute"');
+    expect(relative.match(/<circle\b/g)).toHaveLength(1);
+    expect(relative).toContain('fill="currentColor" stroke="none"');
+    expect(absolute).not.toContain('<circle');
+    const outline = relative.match(/<path\b[^>]*>/)?.[0];
+    expect(outline).toEqual(expect.any(String));
+    expect(absolute.match(/<path\b[^>]*>/)?.[0]).toBe(outline);
+    expect(relative).not.toContain('data-mar-icon="copy"');
+    expect(absolute).not.toContain('data-mar-icon="copy"');
+  });
+
   it('distinguishes the session hierarchy from collections and copying', () => {
     expect(iconShapes['session-tree']).toEqual(expect.any(String));
     expect(iconShapes['session-tree']).not.toEqual(iconShapes.collection);

@@ -44,7 +44,7 @@ let pendingClose: { id: string | number; index: number } | undefined;
 
 function revealTab(tab: HTMLElement | undefined): void {
   const list = root.value;
-  const item = tab?.closest('.tab-strip-item');
+  const item = tab?.closest('.mar-tab-strip-item');
   if (list === undefined || item === null || item === undefined) return;
   const bounds = item.getBoundingClientRect();
   const viewport = list.getBoundingClientRect();
@@ -56,7 +56,9 @@ function revealCurrentTab(): void {
   const list = root.value;
   if (list === undefined) return;
   const focused = list.contains(document.activeElement)
-    ? document.activeElement?.closest('.tab-strip-item')?.querySelector<HTMLElement>('[role="tab"]')
+    ? document.activeElement
+        ?.closest('.mar-tab-strip-item')
+        ?.querySelector<HTMLElement>('[role="tab"]')
     : undefined;
   revealTab(focused ?? list.querySelector<HTMLElement>('[aria-selected="true"]') ?? undefined);
 }
@@ -77,7 +79,7 @@ function observeTabs(): void {
   if (resizeObserver === undefined || list === undefined) return;
   resizeObserver.disconnect();
   resizeObserver.observe(list);
-  for (const item of list.querySelectorAll('.tab-strip-item')) resizeObserver.observe(item);
+  for (const item of list.querySelectorAll('.mar-tab-strip-item')) resizeObserver.observe(item);
 }
 
 function scrollTabs(direction: number): void {
@@ -205,7 +207,7 @@ watch(
     </button>
     <nav
       ref="root"
-      class="tab-strip"
+      class="mar-tab-strip"
       :id="`${idPrefix}-tablist`"
       :class="{ 'is-small': size === 'small' }"
       role="tablist"
@@ -215,11 +217,11 @@ watch(
       @focusout="!root?.contains($event.relatedTarget as Node | null) && (focusedId = activeId)"
     >
       <template v-for="item in items" :key="item.id">
-        <span v-if="item.separatorBefore" class="tab-strip-separator" aria-hidden="true" />
-        <div class="tab-strip-item" :class="[itemClass, { 'is-active': item.id === activeId }]">
+        <span v-if="item.separatorBefore" class="mar-tab-strip-separator" aria-hidden="true" />
+        <div class="mar-tab-strip-item" :class="[itemClass, { 'is-active': item.id === activeId }]">
           <button
             v-tooltip="item.description ?? item.label"
-            class="tab-strip-tab"
+            class="mar-tab-strip-tab"
             :class="tabClass"
             type="button"
             role="tab"
@@ -236,13 +238,13 @@ watch(
             "
           >
             <slot name="label" :item="item"
-              ><span>{{ item.label }}</span></slot
+              ><span class="mar-tab-label">{{ item.label }}</span></slot
             >
           </button>
           <button
             v-if="item.closeLabel"
             v-tooltip="item.closeLabel"
-            class="mar-icon-button mar-icon-action mar-icon-action--inline mar-tab-close tab-strip-close"
+            class="mar-icon-button mar-icon-action mar-icon-action--inline mar-tab-close mar-tab-strip-close"
             :class="closeClass"
             type="button"
             :disabled="item.closeDisabled"
@@ -268,144 +270,3 @@ watch(
     </button>
   </div>
 </template>
-
-<style scoped>
-.mar-tab {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-}
-.mar-tab.is-small {
-  height: auto;
-}
-.mar-tab-scroll {
-  --mar-action-icon-size: 14px;
-  flex: 0 0 20px;
-  width: 20px;
-  min-width: 20px;
-  height: auto;
-  padding: 0;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  background: transparent;
-  color: var(--mar-text-secondary);
-}
-.tab-strip {
-  display: flex;
-  min-width: 0;
-  height: 100%;
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  gap: 0;
-  padding: 3px 4px 0;
-}
-.tab-strip::-webkit-scrollbar {
-  display: none;
-}
-.tab-strip.is-small {
-  --mar-tab-strip-item-height: 28px;
-  --mar-tab-strip-close-size: 24px;
-  --mar-tab-font-size: var(--mar-font-size-meta);
-  height: auto;
-  padding-block: 3px 0;
-  font-weight: 500;
-}
-.tab-strip-item {
-  display: inline-flex;
-  flex-shrink: 0;
-  min-width: 0;
-  height: var(--mar-tab-strip-item-height, auto);
-  max-width: min(15rem, 100%);
-  box-sizing: border-box;
-  align-items: center;
-  border: 1px solid var(--mar-border-strong);
-  border-bottom: 0;
-  border-radius: var(--mar-radius-selection) var(--mar-radius-selection) 0 0;
-  background: var(--mar-bg-subtle);
-  color: var(--mar-text-secondary);
-}
-.tab-strip-separator {
-  align-self: center;
-  flex: none;
-  width: 1px;
-  height: 18px;
-  margin: 0 5px;
-  background: var(--mar-border-strong);
-}
-.tab-strip-tab {
-  display: inline-flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  align-items: center;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--mar-tab-font-size, var(--mar-font-size-navigation));
-  overflow: hidden;
-  cursor: pointer;
-  padding: 0 0.5rem;
-}
-.tab-strip.is-small .tab-strip-tab {
-  gap: 0.35rem;
-  justify-content: center;
-}
-.tab-strip-tab:not(:last-child) {
-  padding-inline-end: 0.25rem;
-}
-.tab-strip-tab > span {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tab-strip-item.is-active {
-  background: var(--mar-tab-strip-active-bg, var(--mar-bg-page));
-  color: var(--mar-text-primary);
-}
-.tab-strip-item:not(.is-active):hover {
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-.tab-strip-item + .tab-strip-item {
-  margin-inline-start: -1px;
-}
-@media (max-width: 767px) {
-  .mar-tab-scroll {
-    display: none;
-  }
-  .mar-tab .tab-strip:not(:focus-within) {
-    --mar-tab-fade-start: 0px;
-    --mar-tab-fade-end: 100%;
-    mask-image: linear-gradient(
-      to right,
-      transparent,
-      #000 var(--mar-tab-fade-start),
-      #000 var(--mar-tab-fade-end),
-      transparent
-    );
-  }
-  .mar-tab.can-scroll-previous .tab-strip {
-    --mar-tab-fade-start: 12px;
-  }
-  .mar-tab.can-scroll-next .tab-strip {
-    --mar-tab-fade-end: calc(100% - 12px);
-  }
-  .tab-strip-item {
-    height: var(--mar-tab-strip-item-height, 36px);
-    min-height: var(--mar-tab-strip-item-height, 36px);
-  }
-  .tab-strip-tab > span {
-    max-width: 120px;
-  }
-  .tab-strip-close {
-    width: var(--mar-tab-strip-close-size, 36px);
-    min-width: var(--mar-tab-strip-close-size, 36px);
-    height: var(--mar-tab-strip-close-size, 36px);
-  }
-}
-</style>

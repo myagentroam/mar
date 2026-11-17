@@ -573,23 +573,4 @@ button.file-explorer-utility-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
-
-:deep(.el-input__wrapper) {
-  min-height: 26px;
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 6px;
-  background: var(--mar-bg-subtle);
-  box-shadow: none;
-  padding: 1px 7px;
-}
-
-:deep(.el-input__inner) {
-  font-size: var(--mar-font-size-input);
-}
-
-:deep(.el-input__wrapper.is-focus),
-:deep(.el-input__wrapper:focus-within) {
-  background: var(--mar-bg-panel);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
-}
 </style>

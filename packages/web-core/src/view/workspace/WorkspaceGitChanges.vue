@@ -505,7 +505,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .git-worktrees {
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--mar-border-strong);
+  border-bottom: 1px solid var(--mar-border-subtle);
   padding: 0.15rem 2px 0.4rem;
 }
 
@@ -571,7 +571,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .git-worktrees-truncated {
   margin: 0;
-  border-bottom: 1px solid var(--mar-border-strong);
+  border-bottom: 1px solid var(--mar-border-subtle);
   padding: 0.25rem 2px 0.4rem;
   color: var(--mar-text-tertiary);
   font-size: var(--mar-font-size-meta);

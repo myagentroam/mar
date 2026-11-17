@@ -1,5 +1,5 @@
 import { grantClipboardPermissions } from './support/clipboard.js';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
@@ -8,6 +8,116 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await fixture?.close();
 });
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [1280, 390]) {
+    test(`Workbench filters use standard controls in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route('**/api/workspaces/workspace/**', async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith('/git/refs')) await route.fulfill({ json: { refs: [] } });
+        else if (path.endsWith('/git/fetch'))
+          await route.fulfill({ json: { fetchFailed: false, updated: false } });
+        else if (path.endsWith('/git/history'))
+          await route.fulfill({ json: { commits: [], nextCursor: null } });
+        else if (path.endsWith('/changes'))
+          await route.fulfill({
+            json: {
+              changes: [],
+              repositories: [
+                {
+                  repositoryPath: '',
+                  repositoryName: 'my-agent-roam',
+                  source: 'ROOT',
+                  current: true,
+                  branch: 'main',
+                  status: 'CLEAN',
+                  locked: false,
+                  prunable: false,
+                  changes: []
+                }
+              ]
+            }
+          });
+        else await route.fulfill({ json: { files: { entries: [], nextCursor: null } } });
+      });
+      await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
+      const inspector = page.getByRole('region', { name: 'Inspector fixture' });
+      const files = inspector.locator('.file-display-filter');
+      const standard = page.locator('.workspace-picker-filter');
+      const appearance = (input: Locator) =>
+        input.locator('.el-input__wrapper').evaluate(async (wrapper) => {
+          await Promise.all(wrapper.getAnimations().map((animation) => animation.finished));
+          const style = getComputedStyle(wrapper);
+          return {
+            border: style.border,
+            radius: style.borderRadius,
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            height: style.height,
+            padding: style.padding,
+            font: getComputedStyle(wrapper.querySelector('input')!).fontSize
+          };
+        });
+      await page.mouse.move(0, 0);
+      const normal = await appearance(standard);
+      expect(normal.shadow).not.toBe('none');
+      await standard.hover();
+      const hover = await appearance(standard);
+      await standard.locator('input').focus();
+      const focused = await appearance(standard);
+      expect(focused.border).toBe(normal.border);
+      expect(focused.shadow).not.toBe(normal.shadow);
+      expect(focused.background).toBe(normal.background);
+
+      for (const [name, input] of [
+        ['files', files],
+        ['resources', page.locator('.workspace-tree-filter .el-input')],
+        ['sessions', page.locator('.session-search .el-input')],
+        ['content', inspector.locator('.content-search .el-input')]
+      ] as const) {
+        if (name === 'content')
+          await inspector.getByRole('tab', { name: 'Search', exact: true }).click();
+        await input.scrollIntoViewIfNeeded();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await page.mouse.move(0, 0);
+        await expect.poll(() => appearance(input)).toEqual(normal);
+        await input.hover();
+        await expect.poll(() => appearance(input)).toEqual(hover);
+        const textbox = input.locator('input');
+        await textbox.focus();
+        await expect(textbox).toBeFocused();
+        await expect.poll(() => appearance(input)).toEqual(focused);
+        await textbox.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(textbox).toBeFocused();
+        await input.screenshot({ path: testInfo.outputPath(`${name}-filter-focused.png`) });
+      }
+      const query = inspector.getByRole('textbox', { name: 'Search file contents', exact: true });
+      await query.fill('kept search draft');
+      await expect(query).toHaveValue('kept search draft');
+      await inspector.getByRole('tab', { name: 'Git Changes', exact: true }).click();
+      await inspector.getByRole('tab', { name: 'Git History', exact: true }).click();
+      await expect(inspector.locator('.git-history .mar-empty')).toBeVisible();
+      await expect(inspector.locator('.git-history .git-fetch-notice')).toHaveCount(0);
+      await expect(inspector.locator('.history-filter').first()).toContainText('my-agent-roam');
+      const historyFilters = inspector.locator('.history-filter .el-select__wrapper');
+      await expect(historyFilters).toHaveCount(2);
+      for (const filter of await historyFilters.all()) {
+        await expect(filter).toHaveCSS('background-color', normal.background);
+        await expect(filter).toHaveCSS('border-radius', normal.radius);
+        await expect(filter).toHaveCSS('box-shadow', normal.shadow);
+        await filter.locator('input').focus();
+        await expect(filter).toHaveCSS('box-shadow', focused.shadow);
+      }
+      await inspector.screenshot({ path: testInfo.outputPath('history-standard-filters.png') });
+      await inspector.getByRole('tab', { name: 'Search', exact: true }).click();
+      await expect(query).toHaveValue('kept search draft');
+    });
+  }
+}
 
 test('late-mounted Files reveals the selected virtual row without taking focus', async ({
   page
@@ -232,6 +342,7 @@ for (const scenario of [
   {
     width: 1280,
     locale: 'en-US',
+    theme: 'daylight',
     copy: 'Copy absolute path',
     relative: 'Copy relative path',
     refresh: 'Refresh files'
@@ -239,6 +350,7 @@ for (const scenario of [
   {
     width: 390,
     locale: 'zh-CN',
+    theme: 'vscode-dark-2026',
     copy: '复制绝对路径',
     relative: '复制相对路径',
     refresh: '刷新文件'
@@ -246,7 +358,7 @@ for (const scenario of [
 ]) {
   test(`File tree copies absolute paths for files, folders and the root at ${scenario.width}px`, async ({
     page
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width: scenario.width, height: 900 });
     await grantClipboardPermissions(page.context());
     await page.route('**/api/workspaces/workspace/**', (route) =>
@@ -262,7 +374,9 @@ for (const scenario of [
         }
       })
     );
-    await page.goto(`${fixture.url}workbench-style.html?file-root=1&locale=${scenario.locale}`);
+    await page.goto(
+      `${fixture.url}workbench-style.html?file-root=1&locale=${scenario.locale}&theme=${scenario.theme}`
+    );
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
     const feedback = inspector.getByLabel('File operation feedback');
     await inspector.getByRole('button', { name: scenario.refresh, exact: true }).click();
@@ -279,6 +393,34 @@ for (const scenario of [
     ]) {
       await test.step(`Copy ${path}`, async () => {
         await menu(path!);
+        const relativeAction = page.getByRole('menuitem', { name: scenario.relative, exact: true });
+        const absoluteAction = page.getByRole('menuitem', { name: scenario.copy, exact: true });
+        await expect(relativeAction.locator('[data-mar-icon="path-relative"]')).toBeVisible();
+        await expect(absoluteAction.locator('[data-mar-icon="path-absolute"]')).toBeVisible();
+        if (path === '.') {
+          const relativeGlyph = relativeAction.locator('svg');
+          await expect(relativeGlyph.locator('circle')).toHaveCount(1);
+          await expect(absoluteAction.locator('circle')).toHaveCount(0);
+          const geometry = await relativeGlyph.evaluate((element) => {
+            const svg = element as SVGSVGElement;
+            const dot = svg.querySelector('circle')!.getBBox();
+            const slash = svg.querySelectorAll('path')[1]!;
+            const halfStroke = parseFloat(getComputedStyle(slash).strokeWidth) / 2;
+            const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+            return {
+              dotDiameter: dot.width * scale,
+              gap: (slash.getBBox().x - halfStroke - dot.x - dot.width) * scale,
+              stroke: getComputedStyle(slash).stroke,
+              foreground: getComputedStyle(svg).color
+            };
+          });
+          expect(geometry.dotDiameter).toBeGreaterThanOrEqual(1.2);
+          expect(geometry.gap).toBeGreaterThanOrEqual(0.5);
+          expect(geometry.stroke).toBe(geometry.foreground);
+          await absoluteAction.locator('..').screenshot({
+            path: testInfo.outputPath('copy-path-icons.png')
+          });
+        }
         await page.getByRole('menuitem', { name: scenario.copy, exact: true }).click();
         await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(absolute);
         await expect(feedback).toHaveAttribute('data-type', 'info');
@@ -312,6 +454,11 @@ for (const scenario of [
       'aria-disabled',
       'true'
     );
+    await expect(
+      page
+        .getByRole('menuitem', { name: scenario.copy, exact: true })
+        .locator('[data-mar-icon="path-absolute"]')
+    ).toBeVisible();
     await expect(
       page.getByRole('menuitem', { name: scenario.relative, exact: true })
     ).not.toHaveAttribute('aria-disabled', 'true');
@@ -822,7 +969,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             expect(tabBounds.x).toBeGreaterThanOrEqual(bounds.x);
             expect(tabBounds.x + tabBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width);
           }
-          const items = await strip.locator('.tab-strip-item').evaluateAll((elements) =>
+          const items = await strip.locator('.mar-tab-strip-item').evaluateAll((elements) =>
             elements.map((element) => {
               const bounds = element.getBoundingClientRect();
               return {
@@ -834,7 +981,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             })
           );
           for (let index = 1; index < items.length; index += 1) {
-            // Both layouts join adjacent tabs at a single shared border, without a gap.
             expect(items[index]!.left).toBeCloseTo(
               items[index - 1]!.right - items[index]!.border,
               1
@@ -1119,7 +1265,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(button).toHaveCSS('background-color', actionHover.background);
         await expect(button).toHaveCSS('outline-width', '2px');
       }
-      const strip = page.locator('.workbench-aside-tabs .tab-strip');
+      const strip = page.locator('.workbench-aside-tabs .mar-tab-strip');
       await expect(strip.getByRole('tab')).toHaveCount(4);
       expect(await strip.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(
         true

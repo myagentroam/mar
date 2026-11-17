@@ -7,8 +7,6 @@ export type { ThemePreference } from '../model/custom-theme.js';
 
 export const THEME_STORAGE_KEY = 'mar.theme';
 export const CUSTOM_THEMES_STORAGE_KEY = 'mar.customThemes';
-const LIGHT_THEME_COLOR = '#f7f9fd';
-const DARK_THEME_COLOR = '#0e1116';
 
 export interface ThemePreferenceService {
   readonly theme: Ref<ThemePreference>;
@@ -33,16 +31,13 @@ export function parseStoredThemePreference(
 
 function applyThemePreference(theme: ThemePreference): void {
   const root = document.documentElement;
-  const themeColor = document.querySelector?.<HTMLMetaElement>('meta[name="theme-color"]');
   if (theme === 'vscode-dark-2026') {
     root.setAttribute('data-theme', theme);
     root.classList.add('dark');
-    themeColor?.setAttribute('content', DARK_THEME_COLOR);
     return;
   }
   root.removeAttribute('data-theme');
   root.classList.remove('dark');
-  themeColor?.setAttribute('content', LIGHT_THEME_COLOR);
 }
 
 export function createThemePreferenceService(
@@ -81,10 +76,12 @@ export function createThemePreferenceService(
     applyThemePreference(baseTheme.value);
     for (const [token, color] of Object.entries(colors))
       document.documentElement.style.setProperty(token, color);
-    if (colors['--mar-bg-page'])
-      document
-        .querySelector?.('meta[name=theme-color]')
-        ?.setAttribute('content', colors['--mar-bg-page']);
+    document
+      .querySelector?.('meta[name="theme-color"]')
+      ?.setAttribute(
+        'content',
+        getComputedStyle(document.documentElement).getPropertyValue('--mar-bg-page').trim()
+      );
   }
   function setTheme(next: ThemePreference): void {
     const resolved = parseStoredThemePreference(next, customThemes.value);

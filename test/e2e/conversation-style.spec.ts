@@ -109,6 +109,38 @@ test('Process duration ticks do not reproject the conversation body', async ({ p
   );
 });
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [800, 1280]) {
+    test(`Sidebar panel icon stays stable while toggling in ${theme} at ${width}px`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(
+        `${fixture.url}conversation-style.html?history-actions=1&language=en-US&theme=${theme}`
+      );
+      const toggle = page.locator('.workbench-tree-toggle');
+      const glyph = toggle.locator('[data-mar-icon="sidebar"]');
+      await expect(glyph).toBeVisible();
+      await expect(glyph.locator('rect')).toHaveCount(1);
+      await expect(glyph).toHaveAttribute('fill', 'none');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(toggle).toHaveAccessibleName('Collapse sidebar');
+      const graphic = await glyph.innerHTML();
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(toggle).toHaveAccessibleName('Expand sidebar');
+      expect(await glyph.innerHTML()).toBe(graphic);
+      await toggle.press('Space');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(toggle).toHaveAccessibleName('Collapse sidebar');
+      expect(await glyph.innerHTML()).toBe(graphic);
+      await page.locator('.workbench-header').screenshot({
+        path: testInfo.outputPath('sidebar-panel-toggle.png')
+      });
+    });
+  }
+}
+
 for (const locale of ['en-US', 'zh-CN']) {
   for (const width of [1280, 390]) {
     test(`Session branch actions distinguish Rewind from Rollback in ${locale} at ${width}px`, async ({

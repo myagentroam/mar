@@ -274,6 +274,7 @@ export const conversationUiZhCN = {
       performanceCacheHitRate: 'Cache Hit Rate: {value}',
       outputTokens: '输出 Token：{value}',
       copyCode: '复制代码',
+      codeBlock: '代码',
       copiedMessage: '消息已复制',
       copiedCode: '代码已复制',
       copyCodeFailed: '无法复制代码，请检查浏览器剪贴板权限。'

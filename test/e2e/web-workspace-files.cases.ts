@@ -529,6 +529,157 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
   }
 });
 
+for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+  test(`Workbench shell unifies navigation and the inset work surface in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await mockConsoleApi(
+      page,
+      'MANAGED',
+      ['history.read', 'turn.start'],
+      [],
+      'GIT_WORKSPACE',
+      true
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/console');
+    await page.getByRole('button', { name: '进入控制台' }).click();
+    await page.getByRole('button', { name: '工作', exact: true }).click();
+    await page
+      .locator('.workspace-tree')
+      .getByRole('button', { name: /node-1/ })
+      .click();
+    await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+    await expect(page.getByRole('treeitem', { name: 'src/main.ts', exact: true })).toBeVisible();
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute('data-theme', value),
+      theme
+    );
+    const colors = await page.locator('.console-shell').evaluate((element) => {
+      const style = getComputedStyle(element);
+      const probe = document.createElement('span');
+      element.append(probe);
+      probe.style.backgroundColor = 'var(--mar-bg-panel)';
+      const panel = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const frame = getComputedStyle(element, '::before');
+      return {
+        body: style.backgroundColor,
+        panel,
+        frame: {
+          background: frame.backgroundColor,
+          radius: frame.borderRadius,
+          border: frame.borderTopWidth,
+          top: frame.top,
+          right: frame.right,
+          bottom: frame.bottom,
+          left: frame.left
+        }
+      };
+    });
+    expect(colors.frame).toEqual({
+      background: colors.panel,
+      radius: '12px',
+      border: '1px',
+      top: '8px',
+      right: '8px',
+      bottom: '8px',
+      left: '60px'
+    });
+    if (theme === 'vscode-dark-2026') {
+      expect(colors.body).toBe('rgb(20, 24, 30)');
+      expect(colors.panel).toBe('rgb(28, 34, 43)');
+    }
+    for (const selector of ['.workbench-brand', '.activity-rail']) {
+      await expect(page.locator(selector)).toHaveCSS('background-color', colors.body);
+      await expect(page.locator(selector)).toHaveCSS('border-right-width', '0px');
+    }
+    await expect(page.locator('.workbench-brand')).toHaveCSS('border-bottom-width', '0px');
+    await expect(page.locator('.workbench-brand img')).toBeVisible();
+    await expect(page.locator('.workbench-brand')).not.toContainText('MyAgentRoam');
+    await expect(page.locator('.workbench-brand')).toHaveCSS('width', '52px');
+    await expect(page.locator('.workspace-tree')).toHaveCSS('border-radius', '11px 0px 0px 11px');
+    await expect(page.locator('.workspace-tree')).toHaveCSS('border-right-width', '1px');
+    for (const selector of [
+      '.workbench',
+      '.workspace-tree',
+      '.workbench-header',
+      '.conversation-sidebar',
+      '.conversation-panel',
+      '.workbench-aside'
+    ]) {
+      await expect(page.locator(selector)).toHaveCSS('background-color', colors.panel);
+    }
+    await expect(page.locator('.workbench')).toHaveCSS('border-radius', '0px 11px 11px 0px');
+    await expect(page.locator('.workbench')).toHaveCSS('border-left-width', '0px');
+    await expect(page.locator('.session-layout')).toHaveCSS('padding-bottom', '8px');
+    await expect(page.locator('.session-layout')).toHaveCSS('padding-left', '0px');
+    await expect(page.locator('.session-layout')).toHaveCSS('padding-right', '0px');
+    const asideTabs = page.locator('.workbench-aside-header');
+    await expect(asideTabs).toHaveCSS('border-bottom-width', '1px');
+    await expect(asideTabs.locator('.mar-tab-strip-item.is-active')).toHaveCSS(
+      'border-radius',
+      '6px 6px 0px 0px'
+    );
+    for (const width of [1280, 1920]) {
+      await page.setViewportSize({ width, height: width === 1280 ? 800 : 1080 });
+      const bounds = await page.locator('.workbench').boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.y).toBe(9);
+      expect(width - bounds!.x - bounds!.width).toBe(9);
+      expect((width === 1280 ? 800 : 1080) - bounds!.y - bounds!.height).toBe(9);
+      const treeBounds = await page.locator('.workspace-tree').boundingBox();
+      expect(treeBounds).not.toBeNull();
+      expect(treeBounds!.y).toBe(bounds!.y);
+      expect(bounds!.x - treeBounds!.x - treeBounds!.width).toBe(0);
+      expect(treeBounds!.y + treeBounds!.height).toBe(bounds!.y + bounds!.height);
+      for (const selector of [
+        '.workspace-aside',
+        '.workbench-aside-header',
+        '.workbench-aside-tabs'
+      ]) {
+        const tabBounds = await page.locator(selector).boundingBox();
+        expect(tabBounds).not.toBeNull();
+        expect(
+          Math.abs(bounds!.x + bounds!.width - tabBounds!.x - tabBounds!.width)
+        ).toBeLessThanOrEqual(1);
+      }
+      await page.locator('.workbench-header').click({ position: { x: 240, y: 20 } });
+      await page.screenshot({ path: testInfo.outputPath(`workbench-shell-${theme}-${width}.png`) });
+    }
+    await page.locator('.console-shell').evaluate((element) => {
+      (element as HTMLElement).style.setProperty('--mar-radius-surface', '16px');
+    });
+    expect(
+      await page
+        .locator('.console-shell')
+        .evaluate((element) => getComputedStyle(element, '::before').borderRadius)
+    ).toBe('16px');
+    await expect(page.locator('.workspace-tree')).toHaveCSS('border-radius', '15px 0px 0px 15px');
+    await expect(page.locator('.workbench')).toHaveCSS('border-radius', '0px 15px 15px 0px');
+    const toggle = page.locator('.workbench-tree-toggle');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.workbench')).toHaveCSS('margin-left', '61px');
+    await expect(page.locator('.workbench')).toHaveCSS('border-radius', '15px');
+    await expect(page.locator('.workspace-tree')).toHaveCSS('width', '0px');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await page.locator('.console-shell').evaluate((element) => {
+      (element as HTMLElement).style.removeProperty('--mar-radius-surface');
+    });
+    await expect(page.locator('.workbench')).toHaveCSS('border-radius', '0px 11px 11px 0px');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('.workbench')).toHaveCSS('margin-left', '0px');
+    await expect(page.locator('.workbench')).toHaveCSS('border-radius', '0px');
+    expect(
+      await page
+        .locator('.console-shell')
+        .evaluate((element) => getComputedStyle(element, '::before').content)
+    ).toBe('none');
+  });
+}
+
 test('File navigation uses rounded selection and the editor fills its surface with themed text selection', async ({
   page
 }, testInfo) => {
@@ -591,8 +742,8 @@ test('File navigation uses rounded selection and the editor fills its surface wi
   await expect(page.locator('.workbench-brand')).toHaveCSS('height', '44px');
   const brandFits = await page.locator('.workbench-brand').evaluate((element) => {
     const header = element.getBoundingClientRect();
-    const copy = element.querySelector('.brand-copy')!.getBoundingClientRect();
-    return copy.top >= header.top && copy.bottom <= header.bottom;
+    const logo = element.querySelector('img')!.getBoundingClientRect();
+    return logo.top >= header.top && logo.bottom <= header.bottom;
   });
   expect(brandFits).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('aligned-workbench-header.png') });
