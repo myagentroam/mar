@@ -19,7 +19,7 @@ import {
   ref,
   watch
 } from 'vue';
-import type { Workspace } from '../../model/workbench.js';
+import type { Session, Workspace } from '../../model/workbench.js';
 import type { WorkbenchSurfaceView } from '../workbench-contract.js';
 import { errorMessage, hostedConversationTitle } from '../../util/workbench-presentation.js';
 import WorkspaceFileWorkbench from '../workspace/WorkspaceFileWorkbench.vue';
@@ -29,6 +29,10 @@ import WorkspaceContentSearch from '../workspace/WorkspaceContentSearch.vue';
 import WorkspaceFilesPanel from '../workspace/WorkspaceFilesPanel.vue';
 import WorkspaceHtmlBrowser from '../workspace/WorkspaceHtmlBrowser.vue';
 import WorkspaceSessionList from '../../view/workspace/WorkspaceSessionList.vue';
+import WorkspaceSessionActionsMenu from '../workspace/WorkspaceSessionActionsMenu.vue';
+import SessionPromptDialog from '../workspace/SessionPromptDialog.vue';
+import SessionScheduleDialog from '../workspace/SessionScheduleDialog.vue';
+import SessionShareDialog from '../workspace/SessionShareDialog.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionCleanupDialog from '../../view/workspace/WorkspaceSessionCleanupDialog.vue';
 import WorkspaceTabs from '../../view/workspace/WorkspaceTabs.vue';
@@ -196,6 +200,7 @@ const treePopup = ref<{
   sessionId: string;
   anchor: HTMLElement;
   title: string;
+  placement: 'bottom-start' | 'bottom-end';
 }>();
 function closeSessionTree(restoreFocus = false): void {
   const previous = treePopup.value;
@@ -206,14 +211,19 @@ function closeSessionTree(restoreFocus = false): void {
       if (previous.anchor.isConnected) previous.anchor.focus();
     });
 }
-function showSessionTree(sessionId: string, anchor: HTMLElement, title: string): void {
+function showSessionTree(
+  sessionId: string,
+  anchor: HTMLElement,
+  title: string,
+  placement: 'bottom-start' | 'bottom-end' = 'bottom-start'
+): void {
   const target = props.page.selection.workspaceTarget;
   if (!target || !props.page.aside.asideSupported) return;
   if (treePopup.value?.anchor === anchor) {
     closeSessionTree(true);
     return;
   }
-  treePopup.value = { ...target, sessionId, anchor, title };
+  treePopup.value = { ...target, sessionId, anchor, title, placement };
   props.page.sessionList.setSessionTreeAnchor(sessionId);
 }
 function openAsideTarget(target: {
@@ -226,6 +236,54 @@ function openAsideTarget(target: {
     props.page.layout.openMobileWorkspaceSurface('inspector');
   return accepted;
 }
+function openSessionInPane(sessionId: string, destination: 'aside' | 'main'): boolean {
+  const workspace = props.page.selection.workspaceTarget;
+  if (!workspace || !props.page.aside.asideSupported) return false;
+  const target = { ...workspace, sessionId };
+  if (destination === 'aside') return openAsideTarget(target);
+  void props.page.selection.openSessionGroupTarget(target);
+  return true;
+}
+
+// The workbench owns dialogs opened from either Chats or a conversation pane.
+const sessionDialog = ref<{
+  kind: 'share' | 'prompt' | 'schedule';
+  session: Session;
+  nodeId: string;
+  workspaceId: string;
+}>();
+function openSessionDialog(kind: 'share' | 'prompt' | 'schedule', session: Session): void {
+  const target = props.page.selection.workspaceTarget;
+  if (target?.workspaceId === session.workspaceId)
+    sessionDialog.value = { kind, session, ...target };
+}
+watch(
+  () => [
+    props.page.selection.workspaceTarget?.nodeId,
+    props.page.selection.workspaceTarget?.workspaceId,
+    props.page.application.view
+  ],
+  () => (sessionDialog.value = undefined)
+);
+
+function titleMenuBindings(session: Session) {
+  const { sessionList, aside, resources } = props.page;
+  return {
+    session,
+    sessions: sessionList.visibleWorkspaceSessions,
+    canNavigate: aside.asideSupported,
+    navigationDisabled: sessionList.mutationLoading || !resources.nodeReady,
+    canDelete: sessionList.canDeleteSession(session),
+    mutating: sessionList.mutationLoading,
+    onOpen: openSessionInPane,
+    onPin: (pinned: boolean) => sessionList.setSessionPinned(session, pinned),
+    onMovePin: (direction: 'up' | 'down') => sessionList.movePinnedSession(session, direction),
+    onRename: () => sessionList.renameSession(session),
+    onDialog: (kind: 'share' | 'prompt' | 'schedule') => openSessionDialog(kind, session),
+    onDelete: () => sessionList.deleteSession(session)
+  };
+}
+
 function openSessionFromTree(sessionId: string, destination: 'aside' | 'main'): void {
   const popup = treePopup.value;
   const current = props.page.selection.workspaceTarget;
@@ -236,13 +294,7 @@ function openSessionFromTree(sessionId: string, destination: 'aside' | 'main'): 
     popup.workspaceId !== current.workspaceId
   )
     return;
-  const target = { nodeId: popup.nodeId, workspaceId: popup.workspaceId, sessionId };
-  if (destination === 'aside') {
-    if (openAsideTarget(target)) closeSessionTree(false);
-  } else {
-    void props.page.selection.openSessionGroupTarget(target);
-    closeSessionTree(false);
-  }
+  if (openSessionInPane(sessionId, destination)) closeSessionTree(false);
 }
 watch(
   () => [
@@ -540,6 +592,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             "
             @create="page.selection.openNewSessionComposer"
             @open="page.selection.openSessionFromList"
+            @open-main="(id) => openSessionInPane(id, 'main')"
+            @open-dialog="openSessionDialog"
             @rename="page.sessionList.renameSession"
             @pin="page.sessionList.setSessionPinned"
             @move-pin="page.sessionList.movePinnedSession"
@@ -556,6 +610,35 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :cleanup="cleanupWorkspaceSessions"
             @update:model-value="updateCleanupDialogOpen"
           />
+          <SessionShareDialog
+            v-if="sessionDialog?.kind === 'share'"
+            :key="sessionDialog.session.id"
+            :target="{
+              nodeId: sessionDialog.nodeId,
+              workspaceId: sessionDialog.workspaceId,
+              sessionId: sessionDialog.session.id
+            }"
+            :request="page.identity.request"
+            @close="sessionDialog = undefined"
+          />
+          <SessionPromptDialog
+            v-else-if="sessionDialog?.kind === 'prompt'"
+            :key="sessionDialog.session.id"
+            :node-id="sessionDialog.nodeId"
+            :session-id="sessionDialog.session.id"
+            :request="page.identity.request"
+            @close="sessionDialog = undefined"
+          />
+          <SessionScheduleDialog
+            v-else-if="sessionDialog?.kind === 'schedule'"
+            :key="sessionDialog.session.id"
+            :model-value="true"
+            :session="sessionDialog.session"
+            :node-id="sessionDialog.nodeId"
+            :workspace-id="sessionDialog.workspaceId"
+            :request="page.identity.request"
+            @update:model-value="($event) => !$event && (sessionDialog = undefined)"
+          />
           <WorkspaceSessionPane
             :controller="page.mainPaneController"
             :aside-ready="page.aside.asideState?.active !== undefined"
@@ -563,11 +646,16 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :tree-open-session-id="treePopup?.sessionId"
             :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
             :tree-status="treeStatus"
-            @open-tree="showSessionTree"
+            @open-tree="(id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')"
+            @open-session="openSessionInPane"
             @open-surface="openPaneSurface"
             @preview-attachment="page.interactions.openAttachmentPreview"
             @reload="page.sessionList.reloadSelectedSession"
-          />
+          >
+            <template #session-menu="{ session }">
+              <WorkspaceSessionActionsMenu v-bind="titleMenuBindings(session)" />
+            </template>
+          </WorkspaceSessionPane>
           <WorkspaceFileWorkbench
             :quote-target-for="page.files.quoteTargetFor"
             :key="`${page.selection.workspaceTarget?.nodeId}:${page.selection.workspaceTarget?.workspaceId}`"
@@ -768,11 +856,18 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :tree-open-session-id="treePopup?.sessionId"
                     :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
                     :tree-status="treeStatus"
-                    @open-tree="showSessionTree"
+                    @open-tree="
+                      (id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')
+                    "
+                    @open-session="openSessionInPane"
                     @open-surface="openPaneSurface"
                     @preview-attachment="page.interactions.openAttachmentPreview"
                     @reload="page.aside.reloadAsideSession"
-                  />
+                  >
+                    <template #session-menu="{ session }">
+                      <WorkspaceSessionActionsMenu v-bind="titleMenuBindings(session)" />
+                    </template>
+                  </WorkspaceSessionPane>
                 </template>
                 <template #terminal>
                   <div ref="terminalMount" class="aside-terminal-mount" />
@@ -913,6 +1008,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       v-if="treePopup"
       :key="treePopup.sessionId"
       :anchor="treePopup.anchor"
+      :placement="treePopup.placement"
       :session-id="treePopup.sessionId"
       :title="treePopup.title"
       :tree="page.sessionList.sessionNavigationSnapshot?.tree"

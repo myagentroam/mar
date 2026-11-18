@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { showMessage } from '../../service/message-feedback-service.js';
-
+import { ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
 import { sessionIsDraft } from '../../util/session-presentation.js';
+import MarIcon from '../common/MarIcon.vue';
+import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
 
 defineProps<{
   readonly session: Session | undefined;
@@ -11,31 +12,62 @@ defineProps<{
   readonly filesReady: boolean;
   readonly terminalReady: boolean;
   readonly asideReady?: boolean;
+  readonly sessionNavigationAvailable?: boolean;
   readonly contentSearchReady: boolean;
   readonly runnerIcon: (runner: RunnerId) => string;
   readonly sessionTitle: (session: Session) => string;
 }>();
 
 const emit = defineEmits<{
+  openSession: [sessionId: string, destination: 'aside' | 'main'];
   openSurface: [surface: 'sessions' | 'inspector' | 'terminal'];
+  openTree: [sessionId: string, anchor: HTMLElement];
 }>();
-
-async function copySessionId(sessionId: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(sessionId);
-    showMessage(translate('generated.conversationHeader.sessionIdCopied'), 'info');
-  } catch {
-    showMessage(translate('generated.conversationHeader.copySessionIdFailed'), 'error');
-  }
-}
+const titleButton = ref<HTMLButtonElement>();
 </script>
 
 <template>
   <header
     :class="['conversation-header', { 'conversation-header-draft': sessionIsDraft(session) }]"
   >
-    <div class="conversation-header-title">
-      <div class="conversation-title-row">
+    <div class="conversation-header-title" role="heading" aria-level="2">
+      <el-dropdown
+        v-if="session && !sessionIsDraft(session)"
+        :key="session.id"
+        class="conversation-title-dropdown"
+        popper-class="conversation-title-menu"
+        placement="bottom-start"
+        trigger="click"
+        @command="$event === 'tree' && titleButton && emit('openTree', session.id, titleButton)"
+      >
+        <button
+          ref="titleButton"
+          type="button"
+          class="conversation-title-button conversation-title-row mar-icon-action"
+        >
+          <img
+            :src="runnerIcon(session.runner)"
+            :data-runner="session.runner"
+            alt=""
+            aria-hidden="true"
+            class="mar-runner-brand-icon conversation-title-runner-icon"
+          />
+          <span class="conversation-title-text" v-tooltip="sessionTitle(session)">{{
+            sessionTitle(session)
+          }}</span>
+          <MarIcon name="chevron-down" aria-hidden="true" />
+        </button>
+        <template #dropdown>
+          <slot name="session-menu" :session="session">
+            <SessionNavigationMenu
+              :session-id="session.id"
+              :can-navigate="sessionNavigationAvailable === true"
+              @open="(id, destination) => emit('openSession', id, destination)"
+            />
+          </slot>
+        </template>
+      </el-dropdown>
+      <span v-else class="conversation-title-row">
         <img
           :src="runnerIcon(session?.runner ?? runner)"
           :data-runner="session?.runner ?? runner"
@@ -43,58 +75,38 @@ async function copySessionId(sessionId: string): Promise<void> {
           aria-hidden="true"
           class="mar-runner-brand-icon conversation-title-runner-icon"
         />
-        <h2
-          v-tooltip="{
-            content: sessionIsDraft(session)
-              ? translate('generated.conversationHeader.newSession')
-              : sessionTitle(session!),
-            touch: true
-          }"
+        <span
+          class="conversation-title-text"
+          v-tooltip="{ content: translate('generated.conversationHeader.newSession'), touch: true }"
         >
-          {{
-            sessionIsDraft(session)
-              ? translate('generated.conversationHeader.newSession2')
-              : sessionTitle(session!)
-          }}
-        </h2>
-      </div>
-      <p v-if="session && !sessionIsDraft(session)" class="conversation-session-id">
-        <button
-          class="mar-text-action conversation-session-id-copy"
-          v-tooltip="
-            translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
-          "
-          type="button"
-          :aria-label="
-            translate('generated.conversationHeader.copySessionId', { sessionId: session.id })
-          "
-          @click="copySessionId(session.id)"
-        >
-          <code>{{ session.id }}</code>
-        </button>
-        <slot name="tree" :session-id="session.id" />
-      </p>
+          {{ translate('generated.conversationHeader.newSession2') }}
+        </span>
+      </span>
     </div>
+    <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
     <div
       class="mobile-conversation-tools"
+      role="group"
       :aria-label="translate('generated.conversationHeader.workspaceTools')"
     >
       <button
-        class="mar-text-action"
+        class="mar-icon-button mar-icon-action mobile-conversation-tool"
         type="button"
+        v-tooltip="translate('generated.conversationHeader.openSessionList')"
         :aria-label="translate('generated.conversationHeader.openSessionList')"
         @click="emit('openSurface', 'sessions')"
       >
-        {{ translate('generated.conversationHeader.sessions') }}
+        <MarIcon name="menu" />
       </button>
       <button
-        class="mar-text-action"
         v-if="asideReady || filesReady || terminalReady"
+        class="mar-icon-button mar-icon-action mobile-conversation-tool"
         type="button"
+        v-tooltip="translate('generated.conversationHeader.openAside')"
         :aria-label="translate('generated.conversationHeader.openAside')"
         @click="emit('openSurface', 'inspector')"
       >
-        {{ translate('generated.conversationHeader.more') }}
+        <MarIcon name="split" />
       </button>
     </div>
   </header>
@@ -108,147 +120,85 @@ async function copySessionId(sessionId: string): Promise<void> {
 
 .conversation-header {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  min-height: 49px;
-  border-bottom: 1px solid var(--mar-border-subtle);
-  padding: 0.42rem 0.8rem;
-}
-
-.conversation-header > div {
-  min-width: 0;
+  gap: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  background: var(--mar-conversation-canvas);
 }
 
 .conversation-header-title {
-  display: grid;
-  gap: 0.05rem;
+  min-width: 0;
+  max-inline-size: min(70%, 32rem);
+  margin: 0;
+  font-size: var(--mar-font-size-body);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.conversation-title-dropdown {
+  max-width: 100%;
+  vertical-align: middle;
 }
 
 .conversation-title-row {
   display: flex;
   min-width: 0;
+  min-height: 2rem;
   align-items: center;
-  gap: 0.32rem;
+  gap: 0.38rem;
+  padding-inline: 0.35rem;
+  color: var(--mar-text-primary);
 }
 
-.conversation-header h2 {
-  margin: 0;
+.conversation-title-button {
+  max-width: 100%;
+  font: inherit;
+}
+
+.conversation-title-button :deep(svg) {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--mar-text-secondary);
+}
+
+.conversation-title-text {
   min-width: 0;
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
-  font-size: var(--mar-font-size-body);
-}
-
-.conversation-header-draft {
-  justify-content: flex-start;
-}
-
-.conversation-header-draft > div {
-  flex: 0 1 auto;
-}
-
-.conversation-header-draft .conversation-title-row h2 {
-  flex: 0 0 auto;
-  max-width: none;
-  overflow: visible;
-  text-overflow: clip;
 }
 
 .mobile-conversation-tools {
   display: none;
 }
 
-.conversation-session-id {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.25rem;
-  margin: 0.18rem 0 0;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-}
-
-:global(.conversation-session-id code) {
-  display: block;
-  overflow: hidden;
-  color: inherit;
-  font-family: var(--mar-font-mono);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation-session-id-copy {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  border: 0;
-  border-radius: 3px;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  text-align: start;
-}
-
-@media (min-width: 768px) {
-  .conversation-header {
-    padding-block: 0.25rem;
-  }
-
-  .conversation-header h2 {
-    line-height: 1.25;
-  }
-
-  .conversation-session-id {
-    margin-block-start: 0;
-  }
-}
-
 @media (max-width: 767px) {
   .conversation-header {
-    min-height: 47px;
-    gap: 0.4rem;
-    padding: 0.32rem 0.55rem;
+    justify-content: flex-start;
   }
 
-  .conversation-header-title {
-    flex: 1 1 auto;
+  .conversation-title-row {
+    min-height: 36px;
   }
-}
 
-@media (max-width: 767px) {
-  .conversation-session-id-copy:focus-visible {
-    outline-offset: -2px;
-  }
-}
-
-@media (max-width: 767px) {
   .mobile-conversation-tools {
     display: flex;
-    flex: 0 0 auto;
+    flex: none;
     align-items: center;
-    gap: 0.2rem;
-    margin-left: auto;
+    gap: 0.25rem;
+    margin-inline-start: auto;
   }
-}
 
-@media (max-width: 767px) {
-  .mobile-conversation-tools button {
+  .mobile-conversation-tool {
     display: inline-flex;
-    min-height: 36px;
+    flex: none;
+    width: 36px;
+    height: 36px;
     align-items: center;
     justify-content: center;
-    gap: 0.2rem;
-    border: 0;
-    border-radius: var(--mar-radius-control);
-    padding: 0.25rem 0.42rem;
-    font: inherit;
-    font-size: var(--mar-font-size-body);
   }
 }
 </style>

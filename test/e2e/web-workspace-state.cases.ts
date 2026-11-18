@@ -489,20 +489,34 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   const { queries, legacyTreeReads } = await prepareDescendantTree(page);
   const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
   const header = main.locator('.conversation-header');
-  const copyId = header.locator('.conversation-session-id-copy');
+  const title = header.locator('.conversation-title-button');
   const treeButton = main.getByRole('button', { name: '查看会话树' });
-  await expect(copyId).toHaveText('tree-1');
-  const [headerBox, titleBox, copyBox, treeBox] = await Promise.all([
+  await expect(header).not.toContainText('tree-1');
+  await expect(header).toHaveCSS('border-bottom-width', '0px');
+  const scroll = main.locator('.conversation-scroll');
+  await expect(scroll).toHaveCSS(
+    'padding-top',
+    await page
+      .locator('html')
+      .evaluate((el) => `${parseFloat(getComputedStyle(el).fontSize) / 2}px`)
+  );
+  await expect(header).toHaveCSS(
+    'background-color',
+    await main
+      .locator('.conversation-scroll')
+      .evaluate((el) => getComputedStyle(el).backgroundColor)
+  );
+  const [headerBox, titleBox, treeBox] = await Promise.all([
     header.boundingBox(),
-    header.getByRole('heading').boundingBox(),
-    copyId.boundingBox(),
+    title.boundingBox(),
     treeButton.boundingBox()
   ]);
-  if (!headerBox || !titleBox || !copyBox || !treeBox) throw new Error('Missing header geometry');
+  if (!headerBox || !titleBox || !treeBox) throw new Error('Missing header geometry');
   expect(headerBox.height).toBeLessThanOrEqual(52);
-  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(Math.min(copyBox.y, treeBox.y));
+  expect(treeBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
+  expect(treeBox.y + treeBox.height / 2).toBeCloseTo(titleBox.y + titleBox.height / 2, 0);
   expect(treeBox.y + treeBox.height).toBeLessThan(headerBox.y + headerBox.height);
-  await header.screenshot({
+  await main.screenshot({
     path: test.info().outputPath('conversation-header-desktop.png'),
     animations: 'disabled'
   });
@@ -546,7 +560,81 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await page.getByRole('menuitem', { name: '在主工作面打开' }).click();
   await expect(page.getByText('正文 tree-3', { exact: true })).toBeVisible();
   await expect(tree).toHaveCount(0);
+  await page.locator('.workspace-aside .conversation-title-button').click();
+  await page.getByRole('menuitem', { name: '在主工作面打开' }).click();
+  await expect(page.locator('.workspace-grid > .conversation-panel')).toContainText('正文 tree-2');
   expect(legacyTreeReads()).toBe(0);
+});
+
+test('Mobile session title opens its actions without overlapping the session tree', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareDescendantTree(page);
+  const header = page.locator('.conversation-header');
+  const title = header.locator('.conversation-title-button');
+  const tree = header.getByRole('button', { name: '查看会话树' });
+  const tools = header.locator('.mobile-conversation-tools');
+  await expect(tools.getByRole('button')).toHaveCount(2);
+  await expect(tools.locator('[data-mar-icon]')).toHaveCount(2);
+  const icons = await tools
+    .locator('[data-mar-icon]')
+    .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-mar-icon')));
+  expect(icons).toEqual(['menu', 'split']);
+  const [titleBounds, treeBounds, toolsBounds] = await Promise.all([
+    title.boundingBox(),
+    tree.boundingBox(),
+    tools.boundingBox()
+  ]);
+  const titleGap = treeBounds!.x - (titleBounds!.x + titleBounds!.width);
+  expect(titleGap).toBeGreaterThanOrEqual(0);
+  expect(titleGap).toBeLessThan(12);
+  expect(treeBounds!.x + treeBounds!.width).toBeLessThanOrEqual(toolsBounds!.x);
+  const scroll = page.locator(
+    '.conversation-header + .conversation-scroll-region .conversation-scroll'
+  );
+  await expect(scroll.getByText('正文 tree-1', { exact: true })).toBeVisible();
+  const topInset = await scroll.evaluate(
+    (element) =>
+      parseFloat(getComputedStyle(element).paddingBlockStart) /
+      parseFloat(getComputedStyle(document.documentElement).fontSize)
+  );
+  expect(topInset).toBeCloseTo(0.5);
+  await page.screenshot({
+    path: testInfo.outputPath('conversation-header-mobile.png'),
+    animations: 'disabled'
+  });
+  await title.click();
+  const titleMenu = page.locator('.conversation-title-menu');
+  const actions = titleMenu.getByRole('menuitem');
+  await expect(actions.getByText('复制会话 ID', { exact: true })).toBeVisible();
+  const titleActions = await actions.allTextContents();
+  await expect(tree).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('conversation-title-menu-mobile.png'),
+    animations: 'disabled'
+  });
+  await titleMenu.getByRole('menuitem', { name: '查看会话树' }).click();
+  await expect(page.locator('.session-tree-popup')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await header.getByRole('button', { name: '打开会话列表' }).click();
+  const listRow = page.locator('[data-session-id="tree-1"]');
+  await listRow.hover();
+  await listRow.locator('.session-more-button').click();
+  const rowMenu = page.locator('.session-action-menu:visible');
+  await expect(rowMenu.getByRole('menuitem')).toHaveText(titleActions);
+  await rowMenu.getByRole('menuitem', { name: '在主工作面打开' }).click();
+  await expect(title).toBeVisible();
+  await title.click();
+  await titleMenu.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '重命名会话' }).getByRole('textbox')).toHaveValue(
+    '树会话 1'
+  );
+  await page.getByRole('dialog').getByRole('button', { name: '取消' }).click();
+  await title.click();
+  await titleMenu.getByRole('menuitem', { name: '在侧栏打开' }).click();
+  await expect(page.locator('.workspace-aside')).toContainText('正文 tree-1');
+  await expect(page.locator('.workspace-aside .conversation-title-button')).toBeVisible();
 });
 
 test('sidebar opens the current Main in Aside and keeps its title during Main selection', async ({
@@ -1055,6 +1143,17 @@ for (const width of [390, 1600]) {
     page
   }) => {
     await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => {
+      let copied = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          readText: async () => copied,
+          writeText: async (text: string) => {
+            copied = text;
+          }
+        }
+      });
+    });
     await prepareDescendantTree(page);
     const main = page.locator('.workspace-grid > .conversation-panel');
     await main.getByRole('button', { name: '查看会话树' }).click();
@@ -1127,7 +1226,13 @@ for (const width of [390, 1600]) {
     } finally {
       releaseStart();
     }
-    await expect(main.getByRole('button', { name: '复制会话 ID：tree-4' })).toBeVisible();
+    await expect(main.getByText('First reply', { exact: true })).toBeVisible();
+    await main.getByRole('button', { name: 'First message saved', exact: true }).click();
+    await page
+      .locator('.conversation-title-menu:visible')
+      .getByRole('menuitem', { name: '复制会话 ID', exact: true })
+      .click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('tree-4');
     await expect(main.locator('.conversation-header')).toHaveAttribute('data-retained', 'main');
     await expect(composer).toHaveAttribute('data-retained', 'input');
     await expect(main).toHaveAttribute('data-detached', 'false');

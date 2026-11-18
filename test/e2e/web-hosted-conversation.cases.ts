@@ -18,6 +18,17 @@ for (const destination of ['conversations', 'settings'] as const) {
   test(`Late draft creation respects ${destination} navigation and resumes one ordinary Watch`, async ({
     page
   }) => {
+    await page.addInitScript(() => {
+      let copied = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          readText: async () => copied,
+          writeText: async (text: string) => {
+            copied = text;
+          }
+        }
+      });
+    });
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
     await page.route(
       '**/api/nodes/node-1/conversation-templates/template-1/model-options',
@@ -122,9 +133,12 @@ for (const destination of ['conversations', 'settings'] as const) {
     expect(ordinaryWatches).toHaveLength(0);
     expect(hostedWatches).toEqual(hostedBefore);
     await page.getByRole('button', { name: '工作', exact: true }).click();
-    await expect(
-      page.getByRole('button', { name: `复制会话 ID：${created.id}`, exact: true })
-    ).toBeVisible();
+    await page.locator('.workspace-grid > .conversation-panel .conversation-title-button').click();
+    await page
+      .locator('.conversation-title-menu:visible')
+      .getByRole('menuitem', { name: '复制会话 ID', exact: true })
+      .click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(created.id);
     await expect
       .poll(() => ordinaryWatches.filter((watch) => watch['mode'] === 'initial').length)
       .toBe(1);

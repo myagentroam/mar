@@ -1103,21 +1103,18 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   const existingSessionTitle =
     (await existingSession.locator('strong').textContent())?.trim() ?? '';
   await existingSession.click();
-  await expect(page.locator('.conversation-header h2')).toHaveText(existingSessionTitle);
+  const conversationHeader = page.locator('.conversation-header');
+  await expect(conversationHeader.getByRole('heading')).toHaveText(existingSessionTitle);
   await expect(page.locator('.conversation-title-runner-icon')).toHaveAttribute(
     'data-runner',
     'codex'
   );
-  await expect(page.locator('.conversation-session-id')).toHaveText('session-1');
-  await expect(page.locator('.conversation-session-id button')).toHaveAttribute(
-    'title',
-    /session-1/u
-  );
-  await expect(page.locator('.conversation-session-id code')).toHaveCSS('font-size', '12.1px');
-  await expect(page.locator('.conversation-session-id code')).toHaveCSS(
-    'color',
-    'rgb(98, 115, 134)'
-  );
+  await expect(conversationHeader).not.toContainText('session-1');
+  await expect(conversationHeader).toHaveCSS('border-bottom-width', '0px');
+  const conversationTitle = conversationHeader.getByRole('button', { name: existingSessionTitle });
+  await conversationTitle.click();
+  await expect(page.getByRole('menuitem', { name: '复制会话 ID' })).toBeVisible();
+  await conversationTitle.click();
   await expect(managedStatus).toHaveCount(2);
   await expect(page.locator('.session-link-content').first()).toHaveCSS('display', 'grid');
   await expect(page.locator('.session-link').first()).toHaveCSS('min-height', '34px');
@@ -1125,8 +1122,8 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   const firstSessionTitle = page.locator('.session-link-content strong').first();
   await expect(firstSessionTitle).toHaveAttribute('title', existingSessionTitle);
   await expect(firstSessionTitle).toHaveCSS('text-overflow', 'ellipsis');
-  await expect(page.locator('.conversation-header h2')).toHaveAttribute(
-    'title',
+  await conversationHeader.locator('.conversation-title-text').hover();
+  await expect(page.locator('.mar-tooltip[role="tooltip"]:visible')).toHaveText(
     existingSessionTitle
   );
   await expect(page.locator('.session-title-row .mar-runner-brand-icon')).toHaveAttribute(

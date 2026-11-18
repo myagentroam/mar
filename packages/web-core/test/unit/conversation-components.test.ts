@@ -1439,13 +1439,14 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('conversation-header-draft');
     expect(html).toContain('data-runner="mar-agent"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.newSession'));
-    expect(html).toContain(i18n.global.t('generated.conversationHeader.sessions'));
-    expect(html).toContain(i18n.global.t('generated.conversationHeader.more'));
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.openSessionList'));
+    expect(html).toContain('data-mar-icon="menu"');
+    expect(html).toContain('data-mar-icon="split"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openFiles'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openTerminal'));
     expect(html).not.toContain('must not render for draft');
-    expect(html).not.toContain('conversation-session-id');
+    expect(html).not.toContain('conversation-title-button');
   });
 
   it('renders a native session title and only the capability buttons supplied by its host', async () => {
@@ -1466,14 +1467,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(html).toContain('Original session title');
-    expect(html).toMatch(/<code(?:\s[^>]*)?>session-1<\/code>/u);
+    expect(html).not.toMatch(/>session-1</u);
     expect(html).not.toContain('mar-session-activity');
-    expect(html).toContain(
-      `aria-label="${i18n.global.t('generated.conversationHeader.copySessionId', {
-        sessionId: 'session-1'
-      })}"`
-    );
-    expect(html).toContain(i18n.global.t('generated.conversationHeader.sessions'));
+    expect(html).toContain('conversation-title-button');
+    expect(html).toContain('data-mar-icon="chevron-down"');
+    expect(html).toContain(i18n.global.t('generated.conversationHeader.openSessionList'));
+    expect(html).toContain('data-mar-icon="menu"');
+    expect(html).not.toContain('data-mar-icon="split"');
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.files'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openAside'));
@@ -1508,11 +1508,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       sessionTitle: () => 'Session'
     });
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
-    expect(html).toContain(i18n.global.t('generated.conversationHeader.more'));
+    expect(html).toContain('data-mar-icon="split"');
   });
 
   it.each(['ready', 'failed'] as const)(
-    'keeps the tree icon accessible without a tooltip (%s)',
+    'keeps a localized label and tooltip on the tree icon (%s)',
     async (status) => {
       const tooltipValues: unknown[] = [];
       const html = await render(
@@ -1533,7 +1533,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
         undefined,
         tooltipValues
       );
-      expect(tooltipValues).toEqual([]);
+      expect(tooltipValues).toEqual([i18n.global.t('sessionGroups.tree')]);
       expect(html).toContain(`aria-label="${i18n.global.t('sessionGroups.tree')}"`);
       expect(html).toContain('aria-description=');
     }
@@ -1613,7 +1613,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     });
 
     expect(managed).toContain('Session title');
-    expect(managed).toContain('conversation-session-id');
+    expect(managed).toContain('conversation-title-button');
     expect(managed).not.toContain('mar-session-activity');
     expect(idle).not.toContain('mar-session-activity');
   });
