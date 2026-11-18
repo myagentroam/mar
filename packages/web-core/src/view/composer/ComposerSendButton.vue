@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
 
+// Owns the mobile send gesture and its compatibility-click guard.
 const props = defineProps<{
   disabled?: boolean;
   submitting?: boolean;
@@ -21,6 +22,7 @@ let pointerId: number | undefined;
 let pointerTarget: HTMLButtonElement | undefined;
 let startY = 0;
 let suppressClick = false;
+let expireDetachedTouch: (() => void) | undefined;
 
 function resetGesture(): void {
   if (holdTimer !== undefined) clearTimeout(holdTimer);
@@ -94,10 +96,19 @@ function trackTouchRelease(button: HTMLButtonElement, id: number): void {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const clear = (): void => {
     if (timeout !== undefined) clearTimeout(timeout);
+    expireDetachedTouch = undefined;
     document.removeEventListener('click', onClick, capture);
     document.removeEventListener('pointerdown', onNextPress, capture);
     document.removeEventListener('pointerup', onRelease, capture);
     document.removeEventListener('pointercancel', onCancel, capture);
+  };
+  const scheduleExpiry = (): void => {
+    if (timeout !== undefined) clearTimeout(timeout);
+    timeout = setTimeout(clear, 500);
+  };
+  expireDetachedTouch = () => {
+    // A detached touch may still release and click, or never finish at all.
+    if (timeout === undefined) scheduleExpiry();
   };
   const onNextPress = (event: PointerEvent): void => {
     if (!event.isPrimary) return;
@@ -108,7 +119,7 @@ function trackTouchRelease(button: HTMLButtonElement, id: number): void {
   const onRelease = (event: PointerEvent): void => {
     if (event.pointerId !== id) return;
     document.removeEventListener('pointerup', onRelease, capture);
-    timeout = setTimeout(clear, 500);
+    scheduleExpiry();
     if (pointerId !== id) return;
     // A release retargeted outside the button ends the hold but must not send.
     if (event.composedPath().includes(button)) onPointerUp(event);
@@ -161,7 +172,10 @@ watch(
   cancelGesture,
   { flush: 'sync' }
 );
-onBeforeUnmount(cancelGesture);
+onBeforeUnmount(() => {
+  cancelGesture();
+  expireDetachedTouch?.();
+});
 </script>
 
 <template>
