@@ -880,20 +880,8 @@ onBeforeUnmount(() => {
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>
-        <span
-          v-if="canReplaceCurrent || (mobileViewport && inputHasContent)"
-          class="hosted-replace-hint"
-          role="status"
-        >
-          {{
-            translate(
-              mobileViewport
-                ? canReplaceCurrent
-                  ? 'composerSend.holdHint'
-                  : 'composerSend.holdSendHint'
-                : 'hostedConversations.replaceCurrentHint'
-            )
-          }}
+        <span v-if="!mobileViewport && canReplaceCurrent" class="hosted-replace-hint" role="status">
+          {{ translate('hostedConversations.replaceCurrentHint') }}
         </span>
         <span v-if="submitting" class="composer-submitting" role="status">{{
           translate('workbench.sending')
@@ -1187,8 +1175,7 @@ onBeforeUnmount(() => {
     grid-column: 5;
   }
 
-  .hosted-model-unavailable,
-  .hosted-replace-hint {
+  .hosted-model-unavailable {
     grid-column: 1 / -1;
   }
 

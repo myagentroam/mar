@@ -152,9 +152,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   }, info) => {
     await page.setViewportSize({ width: 320, height: 700 });
     const ui = await openWorkspace(page, `&theme=${theme}&locale=zh-CN`);
-    await expect(page.locator('.composer-steer-discovery')).toHaveText(
-      '上滑插入消息，越过输入框顶部取消。'
-    );
+    const gestureDescription = '上滑插入消息，越过输入框顶部取消。';
+    await expect(page.getByText(gestureDescription, { exact: true })).toHaveCount(0);
+    await expect(ui.button).toHaveAccessibleDescription(gestureDescription);
     const sendBounds = await ui.button.boundingBox();
     const stopBounds = await page.locator('.composer-stop-button').boundingBox();
     expect(sendBounds!.x + sendBounds!.width).toBeLessThanOrEqual(320);
@@ -349,6 +349,11 @@ for (const idle of [false, true]) {
       const draft = page.locator('textarea.composer-input');
       await draft.fill('Hosted follow-up');
       const button = page.getByRole('button', { name: idle ? 'Send' : 'Steer', exact: true });
+      const gestureDescription = idle
+        ? 'Slide up, then release to send. Move above the Composer to cancel.'
+        : 'Slide up to steer. Move above the Composer to cancel.';
+      await expect(page.getByText(gestureDescription, { exact: true })).toHaveCount(0);
+      await expect(button).toHaveAccessibleDescription(gestureDescription);
       const touch = await touchButton(page, button);
       await expect(draft).toBeFocused();
       const hint = page.locator('.composer-steer-hint');
@@ -375,6 +380,14 @@ test('Hosted mobile steering also retains a directly tappable action', async ({ 
   await expect(page.getByRole('status', { name: 'Submitted intents' })).toHaveText(
     'REPLACE_CURRENT'
   );
+});
+
+test('Hosted desktop retains the Ctrl+Enter steering hint while running', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto(`${fixture.url}workbench-style.html?hosted-gesture=1&desktop-composer=1`);
+  await expect(
+    page.getByText('While working, press Ctrl+Enter to steer with this message.', { exact: true })
+  ).toBeVisible();
 });
 
 test('Desktop mouse clicks retain ordinary sending without arming a touch gesture', async ({
