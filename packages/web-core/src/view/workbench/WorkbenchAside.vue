@@ -309,10 +309,8 @@ onBeforeUnmount(() => {
   background: var(--mar-bg-panel);
 }
 .workbench-aside-header {
-  --mar-tab-strip-item-bg: transparent;
   --mar-tab-strip-active-bg: var(--mar-bg-panel);
   border-bottom-color: var(--mar-workbench-divider);
-  background: var(--mar-bg-page);
 }
 .workbench-aside-back {
   display: grid;

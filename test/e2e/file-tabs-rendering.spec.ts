@@ -36,6 +36,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const result = {
             divider: resolve('--mar-border-subtle'),
             selected: resolve('--mar-bg-page'),
+            track: resolve(
+              getComputedStyle(element).colorScheme === 'dark'
+                ? '--mar-bg-chrome'
+                : '--mar-bg-subtle'
+            ),
             border: resolve('--mar-border-default'),
             focus: resolve('--mar-color-brand')
           };
@@ -43,6 +48,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           return result;
         });
         await expect(header).toHaveCSS('border-bottom-color', colors.divider);
+        await expect(header).toHaveCSS('background-color', colors.track);
+        const inactive = tabs.getByRole('tab', { selected: false }).first().locator('..');
+        await expect(inactive).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         const frame = page.locator('.workspace-file-page-frame:visible');
         await expect(frame.locator('.file-preview-header')).toHaveCSS(
           'border-bottom-color',

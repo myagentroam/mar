@@ -373,7 +373,9 @@ for (const [language, theme, width] of [
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
           panel: resolve('--mar-bg-panel'),
-          track: resolve('--mar-bg-page'),
+          track: resolve(
+            getComputedStyle(element).colorScheme === 'dark' ? '--mar-bg-chrome' : '--mar-bg-subtle'
+          ),
           divider: resolve('--mar-border-subtle'),
           mediumBorder: resolve('--mar-border-medium'),
           tabBorder: resolve('--mar-border-default'),
