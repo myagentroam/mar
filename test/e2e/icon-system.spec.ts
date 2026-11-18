@@ -1825,7 +1825,7 @@ for (const theme of ['dark', 'light'])
         );
       });
       expect(buttonGap).toBeGreaterThanOrEqual(5);
-      await expect(create).toHaveCSS('border-top-width', '0px');
+      await expect(create).toHaveCSS('border-top-width', '1px');
       await expect(create).toHaveCSS('height', '32px');
       const layout = await create.evaluate((button) => {
         const row = button.parentElement!;
@@ -1843,15 +1843,26 @@ for (const theme of ['dark', 'light'])
       expect(layout.right).toBeCloseTo(0, 0);
       expect(layout.gap).toBeCloseTo(layout.expectedGap, 0);
       expect(layout.gap).toBeGreaterThan(0);
-      const fill = await create.evaluate((button) => {
+      const { fill, border } = await create.evaluate((button) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-fill-row-hover)';
         button.append(probe);
-        const color = getComputedStyle(probe).color;
+        const resolveColor = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const colors = {
+          fill: resolveColor('--mar-fill-row-hover'),
+          border: resolveColor('--mar-border-default')
+        };
         probe.remove();
-        return color;
+        return colors;
       });
       await expect(create).toHaveCSS('background-color', fill);
+      await expect(create).toHaveCSS('border-top-color', border);
+      await expect(page.locator('.session-search .el-input__wrapper')).not.toHaveCSS(
+        'background-color',
+        fill
+      );
       await page
         .locator('.conversation-sidebar')
         .first()

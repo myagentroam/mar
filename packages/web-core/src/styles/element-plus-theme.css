@@ -272,10 +272,10 @@ html.console-ui
 html.console-ui .el-button.mar-soft-button {
   --el-button-text-color: var(--mar-text-primary);
   --el-button-bg-color: var(--mar-fill-row-hover);
+  --el-button-border-color: var(--mar-border-default);
   --el-button-hover-bg-color: var(--mar-fill-selection);
   --el-button-disabled-bg-color: var(--mar-fill-subtle);
   justify-content: flex-start;
-  border: 0;
   border-radius: var(--mar-radius-control);
   padding-inline: var(--mar-compact-option-padding-inline);
 }
