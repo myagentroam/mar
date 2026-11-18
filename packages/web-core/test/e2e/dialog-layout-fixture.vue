@@ -19,6 +19,7 @@ import { ElMessageBox } from '../../src/service/message-box-service.js';
 
 const kind = new URLSearchParams(location.search).get('kind') ?? 'workspace';
 const open = ref(false);
+const focusDestination = ref<HTMLButtonElement>();
 const registrationPath = ref('');
 const pendingDirectoryName = ref('');
 const registeredPath = ref('');
@@ -179,6 +180,7 @@ function showMessageBox(): void {
   />
   <button v-else-if="kind === 'message'" @click="showMessageBox">Open content</button>
   <button v-else @click="open = true">Open content</button>
+  <button v-if="kind === 'focus-return'" ref="focusDestination">Continue workflow</button>
 
   <WorkspaceSessionCleanupDialog
     v-if="kind === 'cleanup' && open"
@@ -283,13 +285,16 @@ function showMessageBox(): void {
     <output aria-label="Registered path">{{ registeredPath }}</output>
   </template>
   <el-dialog
-    v-if="open && ['table', 'form', 'short', 'fullscreen', 'centered'].includes(kind)"
+    v-if="
+      open && ['table', 'form', 'short', 'fullscreen', 'centered', 'focus-return'].includes(kind)
+    "
     v-model="open"
     title="Content dialog"
     width="min(640px, calc(100vw - 32px))"
     :fullscreen="kind === 'fullscreen'"
     :align-center="kind === 'centered'"
     append-to-body
+    @close-auto-focus="focusDestination?.focus()"
   >
     <el-table v-if="kind === 'table'" :data="entries">
       <el-table-column prop="name" label="Name" />
