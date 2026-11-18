@@ -252,7 +252,7 @@
     "mkdn": "markdown",
     "rmd": "markdown",
     "qmd": "markdown",
-    "txt": "text",
+    "txt": "txt",
     "text": "text",
     "rst": "text",
     "adoc": "text",
@@ -912,6 +912,10 @@
       "light": "#d32778",
       "dark": "#ff79b0"
     },
+    "graphite": {
+      "light": "#526171",
+      "dark": "#9daab9"
+    },
     "orange": {
       "light": "#c54b0b",
       "dark": "#ff945b"
@@ -1069,6 +1073,9 @@
     },
     "markdown": {
       "accent": "blue"
+    },
+    "txt": {
+      "accent": "graphite"
     },
     "text": {
       "accent": "slate"

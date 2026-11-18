@@ -18,7 +18,10 @@ test('File tree renders bundled MAR file and folder icons by default in both col
       const file = tree.locator('[data-file-path="notes.txt"] .mar-file-icon');
       await expect(folder).toHaveCSS('color', expectedFolderColor);
       await expect(folder.locator('use')).toHaveAttribute('href', /#mar-file-dir$/u);
-      await expect(file.locator('use')).toHaveAttribute('href', /#mar-file-text$/u);
+      await expect(file.locator('use')).toHaveAttribute('href', /#mar-file-txt$/u);
+      await expect
+        .poll(() => file.locator('use').evaluate((node: SVGUseElement) => node.getBBox().width))
+        .toBeGreaterThan(0);
       for (const [path, id] of [
         ['.agents', 'dir'],
         ['dist', 'dir'],

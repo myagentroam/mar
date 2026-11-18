@@ -31,6 +31,9 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
     ['docs/AGENTS.md', 'agent'],
     ['CLAUDE.local.md', 'agent'],
     ['*.py', 'python'],
+    ['pasted-text.txt', 'txt'],
+    ['illustrations.svg', 'vector'],
+    ['screenshot.png', 'image'],
     ['.py', 'fallback'],
     ['.prompt.md', 'markdown'],
     ['*.prompt.md', 'prompt'],
@@ -54,6 +57,11 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
     'href',
     /#mar-file-python$/u
   );
+  await search.fill('pasted-text.txt');
+  await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(82, 97, 113)');
+  await resolved.locator('.icon-sample').screenshot({ path: testInfo.outputPath('txt-light.png') });
+  await search.fill('illustrations.svg');
+  await resolved.locator('.icon-sample').screenshot({ path: testInfo.outputPath('svg-light.png') });
   await search.fill('AGENTS.md');
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(0, 105, 232)');
   await page.getByLabel('Color theme').selectOption('vscode-dark-2026');
@@ -62,6 +70,11 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(189, 150, 255)');
   await search.fill('src/');
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(117, 195, 255)');
+  await search.fill('pasted-text.txt');
+  await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(157, 170, 185)');
+  await resolved.locator('.icon-sample').screenshot({ path: testInfo.outputPath('txt-dark.png') });
+  await search.fill('illustrations.svg');
+  await resolved.locator('.icon-sample').screenshot({ path: testInfo.outputPath('svg-dark.png') });
   expect(requests).toEqual([]);
   await search.fill('AGENTS.md');
   await page.screenshot({ path: testInfo.outputPath('mar-icons-preview-dark.png') });
