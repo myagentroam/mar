@@ -7,6 +7,39 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#14181e" />
+    <script>
+      {
+        const root = document.documentElement;
+        let scheme = 'vscode-dark-2026';
+        let background;
+        try {
+          const themeId = localStorage.getItem('mar.theme');
+          if (themeId === 'daylight') {
+            scheme = themeId;
+          } else if (themeId?.startsWith('custom:')) {
+            const cached = JSON.parse(localStorage.getItem('mar.themeBootstrap') ?? 'null');
+            if (
+              cached?.themeId === themeId &&
+              (cached.scheme === 'daylight' || cached.scheme === 'vscode-dark-2026') &&
+              typeof cached.background === 'string' &&
+              /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/iu.test(cached.background)
+            ) {
+              scheme = cached.scheme;
+              background = cached.background;
+            }
+          }
+        } catch {
+          // Missing, blocked, or invalid storage leaves the built-in defaults in place.
+        }
+        if (scheme === 'vscode-dark-2026') {
+          root.setAttribute('data-theme', scheme);
+          root.classList.add('dark');
+        }
+        if (background) root.style.setProperty('--mar-bootstrap-bg', background);
+        document.querySelector('meta[name="theme-color"]').content =
+          background ?? (scheme === 'daylight' ? '#f7f9fd' : '#14181e');
+      }
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="MyAgentRoam" />
@@ -14,24 +47,13 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/app-icon-192.png?v=logo-20261011" />
     <title>My Agent Roam</title>
-    <script>
-      try {
-        if (localStorage.getItem('mar.theme') !== 'daylight') {
-          document.documentElement.setAttribute('data-theme', 'vscode-dark-2026');
-          document.documentElement.classList.add('dark');
-          document.querySelector('meta[name="theme-color"]').content = '#14181e';
-        } else {
-          document.querySelector('meta[name="theme-color"]').content = '#f7f9fd';
-        }
-      } catch {}
-    </script>
     <style>
       .mar-bootstrap {
         position: fixed;
         inset: 0;
         display: grid;
         place-items: center;
-        background: var(--mar-bg-page, #f7f9fd);
+        background: var(--mar-bootstrap-bg, var(--mar-bg-page, #f7f9fd));
         opacity: 1;
         z-index: 9999;
       }
@@ -64,7 +86,7 @@
       }
 
       html[data-theme='vscode-dark-2026'] .mar-bootstrap {
-        background: var(--mar-bg-page, #14181e);
+        background: var(--mar-bootstrap-bg, var(--mar-bg-page, #14181e));
       }
 
       html[data-theme='vscode-dark-2026'] .mar-bootstrap__trace {

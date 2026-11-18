@@ -128,6 +128,117 @@ test.beforeEach(async ({ page }) => {
   await page.goto(`${fixture.url}custom-theme.html`);
 });
 
+test('console bootstrap keeps the saved custom page color before and after theme initialization', async ({
+  page
+}) => {
+  const consoleHtml = await readFile(
+    new URL('../../mar-web-console/index.html', import.meta.url),
+    'utf8'
+  );
+  const consoleUrl = new URL('/theme-bootstrap-test', fixture.url).href;
+  await page.route(consoleUrl, (route) =>
+    route.fulfill({ contentType: 'text/html', body: consoleHtml })
+  );
+  let initializeTheme = false;
+  await page.route('**/src/main.ts', (route) =>
+    initializeTheme
+      ? route.fulfill({
+          contentType: 'text/javascript',
+          body: 'import "/packages/web-core/test/e2e/custom-theme-app.ts";'
+        })
+      : route.abort()
+  );
+
+  // Seed only the preference and source. The theme service must create the startup snapshot.
+  await page.evaluate(() => {
+    const id = 'custom:light-startup';
+    const source = JSON.stringify({
+      version: 1,
+      name: 'Light startup',
+      colors: { '--mar-bg-page': '#f1f5e9' }
+    });
+    localStorage.setItem('mar.theme', id);
+    localStorage.setItem('mar.customThemes', JSON.stringify([{ id, source }]));
+  });
+  const active = page
+    .locator('.theme-option')
+    .filter({ hasText: 'Light startup' })
+    .getByRole('button', { name: 'Active', exact: true });
+  await page.reload();
+  await expect(active).toBeDisabled();
+
+  const root = page.locator('html');
+  const bootstrap = page.locator('#mar-bootstrap');
+  const meta = page.locator('meta[name="theme-color"]');
+  await page.goto(consoleUrl);
+  await expect(root).not.toHaveClass(/\bdark\b/u);
+  await expect(bootstrap).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(meta).toHaveAttribute('content', '#f1f5e9');
+
+  initializeTheme = true;
+  await page.reload();
+  await expect(active).toBeDisabled();
+  await expect(root).not.toHaveClass(/\bdark\b/u);
+  expect(
+    await root.evaluate((element) => element.style.getPropertyValue('--mar-bootstrap-bg'))
+  ).toBe('');
+  await expect(bootstrap).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(241, 245, 233)');
+  await expect(meta).toHaveAttribute('content', '#f1f5e9');
+});
+
+test('console bootstrap ignores missing, invalid, and mismatched theme snapshots', async ({
+  page
+}) => {
+  const consoleHtml = await readFile(
+    new URL('../../mar-web-console/index.html', import.meta.url),
+    'utf8'
+  );
+  const consoleUrl = new URL('/theme-bootstrap-test', fixture.url).href;
+  await page.route(consoleUrl, (route) =>
+    route.fulfill({ contentType: 'text/html', body: consoleHtml })
+  );
+  await page.route('**/src/main.ts', (route) => route.abort());
+  const light = { themeId: 'custom:light', scheme: 'daylight', background: '#f1f5e9' };
+  const dark = { themeId: 'custom:dark', scheme: 'vscode-dark-2026', background: '#242d38' };
+  const cases = [
+    { themeId: 'custom:light', snapshot: null },
+    { themeId: 'custom:light', snapshot: '{' },
+    { themeId: 'custom:light', snapshot: JSON.stringify(dark) },
+    { themeId: 'custom:light', snapshot: JSON.stringify({ ...light, scheme: 'unknown' }) },
+    {
+      themeId: 'custom:light',
+      snapshot: JSON.stringify({ ...light, background: 'var(--mar-bg-panel)' })
+    },
+    { themeId: 'custom:dark', snapshot: JSON.stringify(dark), expected: '#242d38' },
+    { themeId: 'daylight', snapshot: JSON.stringify(dark), expected: '#f7f9fd' },
+    { themeId: null, snapshot: JSON.stringify(light) }
+  ];
+  for (const { themeId, snapshot, expected = '#14181e' } of cases) {
+    await page.evaluate(
+      ({ themeId, snapshot }) => {
+        if (themeId) localStorage.setItem('mar.theme', themeId);
+        else localStorage.removeItem('mar.theme');
+        if (snapshot) localStorage.setItem('mar.themeBootstrap', snapshot);
+        else localStorage.removeItem('mar.themeBootstrap');
+      },
+      { themeId, snapshot }
+    );
+    await page.goto(consoleUrl);
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', expected);
+    expect(await page.locator('html').evaluate((root) => root.classList.contains('dark'))).toBe(
+      themeId !== 'daylight'
+    );
+    expect(
+      resolvedColorToHex(
+        await page
+          .locator('#mar-bootstrap')
+          .evaluate((element) => getComputedStyle(element).backgroundColor)
+      )
+    ).toBe(expected);
+  }
+});
+
 test('Message, Dialog, MessageBox and Drawer close controls share the icon action surface', async ({
   page
 }, testInfo) => {
