@@ -1,0 +1,12 @@
+.mar-session-list-title {
+  color: var(--mar-text-secondary);
+}
+
+button[aria-current='page'] .mar-session-list-title {
+  color: var(--mar-text-primary);
+}
+
+.mar-session-list-title > strong {
+  font-size: var(--mar-font-size-body);
+  font-weight: 400;
+}

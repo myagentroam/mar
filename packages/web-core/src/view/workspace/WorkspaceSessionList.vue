@@ -15,6 +15,7 @@ import { createEffectiveWorkspaceSkillService } from '../../service/effective-wo
 import { createMcpCenterService } from '../../service/mcp-center-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
+import '../common/session-list-title.css';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import WorkspaceSessionActionsMenu from './WorkspaceSessionActionsMenu.vue';
 
@@ -493,7 +494,7 @@ function submitSessionSearch(): void {
             @click="openSession(session.id)"
           >
             <span class="session-link-content">
-              <span class="session-title-row">
+              <span class="session-title-row mar-session-list-title">
                 <img
                   :src="runnerIcon(session.runner)"
                   :data-runner="session.runner"
@@ -930,8 +931,6 @@ function submitSessionSearch(): void {
   flex: 1;
   max-width: 100%;
   overflow: hidden;
-  font-size: var(--mar-font-size-body);
-  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -941,11 +940,6 @@ function submitSessionSearch(): void {
   min-width: 0;
   align-items: center;
   gap: 0.4rem;
-  color: var(--mar-text-secondary);
-}
-
-.session-link[aria-current='page'] .session-title-row {
-  color: var(--mar-text-primary);
 }
 
 .session-link-content {
