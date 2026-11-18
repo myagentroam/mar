@@ -4398,17 +4398,37 @@ test('Workspace registration uses an independent action target and cancellation 
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '工作', exact: true }).click();
   const tree = page.locator('.workspace-tree');
+  const welcome = page.getByRole('heading', { name: '选择一个工作区', exact: true });
+  const dialog = page.getByRole('dialog', { name: '登记工作区' });
+  const nodeWithoutWorkspaces = tree.getByRole('button', { name: /node-2/ });
+  await expect(welcome).toBeVisible();
+  await nodeWithoutWorkspaces.click();
+  await expect(welcome).toBeVisible();
+  await nodeWithoutWorkspaces.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '添加工作区', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await expect(welcome).toBeVisible();
+  await expect.poll(() => directoryTarget).toBe('node-2');
+  await dialog.locator('.el-dialog__headerbtn').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(welcome).toBeVisible();
+  directoryTarget = null;
   await tree.getByRole('button', { name: /node-1/ }).click();
   await tree.getByRole('button', { name: 'project', exact: true }).click();
   const composer = page.getByRole('textbox', { name: '输入消息' });
   await composer.fill('保留当前草稿');
   await tree.getByRole('button', { name: /node-2/ }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: '添加工作区', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '登记工作区' });
   await expect(dialog).toBeVisible();
   await expect.poll(() => directoryTarget).toBe('node-2');
   const candidate = dialog.getByRole('button', { name: 'candidate', exact: true });
   const other = dialog.getByRole('button', { name: 'other', exact: true });
+  const candidateRow = dialog.getByRole('listitem').filter({
+    has: page.getByRole('button', { name: 'candidate', exact: true })
+  });
+  const otherRow = dialog.getByRole('listitem').filter({
+    has: page.getByRole('button', { name: 'other', exact: true })
+  });
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const theme of ['daylight', 'vscode-dark-2026']) {
@@ -4430,13 +4450,13 @@ test('Workspace registration uses an independent action target and cancellation 
         probe.remove();
         return { selected, color, hover };
       });
-      await expect(candidate).toHaveCSS('background-color', colors.selected);
+      await expect(candidateRow).toHaveCSS('background-color', colors.selected);
       await expect(candidate).toHaveCSS('color', colors.color);
       await expect(candidate).toHaveCSS('border-radius', '6px');
       await candidate.hover();
-      await expect(candidate).toHaveCSS('background-color', colors.selected);
+      await expect(candidateRow).toHaveCSS('background-color', colors.selected);
       await other.hover();
-      await expect(other).toHaveCSS('background-color', colors.hover);
+      await expect(otherRow).toHaveCSS('background-color', colors.hover);
     }
   }
   const selection = await page.evaluate(() =>

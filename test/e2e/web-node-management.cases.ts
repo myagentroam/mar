@@ -674,6 +674,8 @@ test('Node and workspace management show resource names and use default controls
   await page.getByRole('button', { name: '进入控制台' }).click();
   await expect(page.getByText(/还没有绑定节点？前往节点管理创建注册密钥/)).toBeVisible();
   await page.getByRole('button', { name: '前往节点管理' }).click();
+  await expect(page.getByRole('cell', { name: '研发节点', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '注册节点', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '工作区管理' }).click();
   await expect(page.getByRole('cell', { name: '研发节点', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '节点管理' }).click();
@@ -682,11 +684,14 @@ test('Node and workspace management show resource names and use default controls
   const details = page.getByRole('dialog', { name: '节点详情' });
   await expect(details).toContainText('node-1');
   await details.getByRole('button', { name: '关闭', exact: true }).click();
-  const deleteButton = page
+  const deleteButtons = page
     .locator('.resource-management-panel')
     .getByRole('button', { name: '删除', exact: true });
-  await expect(deleteButton).not.toHaveClass(/el-button--small/);
-  await expect(deleteButton).toBeDisabled();
+  await expect(deleteButtons).not.toHaveCount(0);
+  for (const button of await deleteButtons.all()) {
+    await expect(button).not.toHaveClass(/el-button--small/);
+    await expect(button).toBeDisabled();
+  }
   expect(deletes).toEqual([]);
 });
 
