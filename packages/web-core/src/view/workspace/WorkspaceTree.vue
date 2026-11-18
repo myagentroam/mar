@@ -15,6 +15,7 @@ const props = defineProps<{
   readonly expandedNodeIds: readonly string[];
   readonly workspaceTarget: WorkspaceTarget | undefined;
   readonly revealTarget?: WorkspaceTarget | undefined;
+  readonly claimRevealScroll?: (target: WorkspaceTarget) => boolean;
   readonly visible?: boolean;
   readonly draggingWorkspace: { readonly nodeId: string; readonly workspaceId: string } | undefined;
   readonly mobileViewport: boolean;
@@ -224,12 +225,15 @@ function scrollToRevealedWorkspace(): void {
   }
   if (movingBranches.size > 0) return;
   pendingReveal = false;
-  if (props.visible === false || revealGroupName.value === undefined) return;
+  const target = props.revealTarget;
+  if (props.visible === false || target === undefined || revealGroupName.value === undefined)
+    return;
   const row = tree?.querySelector<HTMLElement>(
     '.workspace-branches li.selected > .workspace-branch-button'
   );
-  if (row?.getClientRects().length)
-    row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  // Claim only when rendered, so a reveal deferred until reopening can still run.
+  if (!row?.getClientRects().length || props.claimRevealScroll?.(target) === false) return;
+  row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
 }
 
 watch(

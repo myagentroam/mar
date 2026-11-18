@@ -68,20 +68,32 @@ const props = defineProps<{
 
 const displayView = ref(props.view);
 const displayUtility = ref(props.mobileUtilityPanel);
+let scrolledRevealTarget: WorkspaceTarget | undefined;
+function claimRevealScroll(target: WorkspaceTarget): boolean {
+  if (scrolledRevealTarget === target) return false;
+  scrolledRevealTarget = target;
+  return true;
+}
 const scrollPositions = new Map<string, number>();
 const displayKey = computed(() => displayUtility.value ?? displayView.value);
+const sidebarVisible = computed(() =>
+  props.mobileViewport
+    ? props.mobileSidebarOpen
+    : props.sidebarContentVisible && props.view !== 'conversations'
+);
 function finishMenuLeave(): void {
   displayView.value = props.view;
   displayUtility.value = props.mobileUtilityPanel;
 }
 watch(
-  [() => props.view, () => props.mobileUtilityPanel, () => props.mobileSidebarOpen],
-  async (_next, previous) => {
+  [() => props.view, () => props.mobileUtilityPanel, sidebarVisible],
+  async ([, , visible], [, , wasVisible]) => {
     const body = treeElement.value;
-    if (body && previous[2]) scrollPositions.set(displayKey.value, body.scrollTop);
-    if (props.mobileViewport && !props.mobileSidebarOpen) return;
+    if (body && wasVisible) scrollPositions.set(displayKey.value, body.scrollTop);
+    if (props.mobileViewport && !visible) return;
     displayView.value = props.view;
     displayUtility.value = props.mobileUtilityPanel;
+    if (!visible) return;
     await nextTick();
     if (treeElement.value) treeElement.value.scrollTop = scrollPositions.get(displayKey.value) ?? 0;
   }
@@ -324,6 +336,7 @@ function openBlankMenu(event: MouseEvent): void {
           :nodes="nodes"
           :expanded-node-ids="expandedNodeIds"
           :reveal-target="workspaceTreeRevealTarget"
+          :claim-reveal-scroll="claimRevealScroll"
           :visible="mobileViewport ? mobileSidebarOpen : !sidebarCollapsed"
           :workspace-target="workspaceTarget"
           :dragging-workspace="draggingWorkspace"

@@ -17,6 +17,7 @@ import { createWorkbenchNotificationService } from '../../src/service/workbench-
 import type { WorkspaceUploadTask } from '../../src/service/workspace-upload-service.js';
 import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import type { WorkbenchView } from '../../src/util/workbench-route.js';
+import type { SettingsSection } from '../../src/model/settings.js';
 import type {
   ComposerAttachment,
   NodeSummary,
@@ -121,6 +122,22 @@ const imageOpen = ref(false);
 const draft = ref('Keep this draft');
 const previewQuery = new URLSearchParams(location.search);
 const treeRevealFixture = previewQuery.has('tree-reveal');
+const settingsItems: { id: SettingsSection; label: string }[] = [
+  { id: 'account', label: 'Account' }
+];
+if (previewQuery.has('sidebar-scroll')) {
+  settingsItems.push(
+    { id: 'usage', label: 'Usage' },
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'custom-themes', label: 'Custom themes' },
+    { id: 'notifications', label: 'Notifications' },
+    { id: 'quick-prompts', label: 'Quick prompts' },
+    { id: 'personal-instructions', label: 'Personal instructions' },
+    { id: 'git', label: 'Git' },
+    { id: 'shortcuts', label: 'Shortcuts' },
+    { id: 'about', label: 'About' }
+  );
+}
 const treeGroupName = previewQuery.get('tree-group-name') ?? 'Team';
 const tree = createWorkspaceTreeService({ persist: () => undefined });
 const treeTarget = ref<WorkspaceTarget>({ nodeId: 'node', workspaceId: 'plain' });
@@ -220,7 +237,7 @@ onBeforeUnmount(() => {
         { id: 'settings', label: translate('navigation.settings') }
       ]"
       settings-section="account"
-      :settings-items="[{ id: 'account', label: 'Account' }]"
+      :settings-items="settingsItems"
       management-section="system"
       :management-items="[{ id: 'system', label: 'System' }]"
       :sidebar-collapsed="navigation.sidebarCollapsed.value"

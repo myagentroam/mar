@@ -50,6 +50,72 @@ test('The diagnostics footer leaves the settings button reachable in a short des
   await expect(settings).toHaveAttribute('aria-current', 'page');
 });
 
+for (const layout of ['desktop', 'mobile']) {
+  test(`Workbench sidebars retain independent scroll positions on ${layout}`, async ({ page }) => {
+    const mobile = layout === 'mobile';
+    await page.setViewportSize({ width: mobile ? 390 : 1280, height: 300 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(
+      `${fixture.url}workbench-mobile-drawer.html?tree-reveal&sidebar-scroll&locale=en-US`
+    );
+
+    const rail = page.locator('.activity-rail');
+    const work = rail.getByRole('button', { name: 'Work', exact: true });
+    const settings = rail.getByRole('button', { name: 'Settings', exact: true });
+    const sidebar = page.locator('.workspace-tree');
+    const scrollTop = () => sidebar.evaluate((element) => element.scrollTop);
+    const scrollToBottom = () =>
+      sidebar.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        return element.scrollTop;
+      });
+
+    const plainTab = page.getByRole('tab', { name: 'Plain', exact: true });
+    const plainWorkspace = sidebar.getByRole('button', { name: '/plain', exact: true });
+    await plainTab.click();
+    if (mobile) await work.click();
+    await expect(plainWorkspace).toBeInViewport();
+    await expect(sidebar.getByRole('button', { name: '/folder-34', exact: true })).toBeVisible();
+    const workOffset = await scrollToBottom();
+    expect(workOffset).toBeGreaterThan(0);
+
+    await settings.click();
+    const settingsMenu = sidebar.getByRole('navigation', { name: 'Settings menu' });
+    await expect(settingsMenu).toBeVisible();
+    await expect.poll(scrollTop).toBe(0);
+    await settingsMenu.getByRole('button', { name: 'About', exact: true }).scrollIntoViewIfNeeded();
+    await expect.poll(scrollTop).toBeGreaterThan(0);
+    const settingsOffset = await scrollTop();
+    expect(settingsOffset).not.toBe(workOffset);
+
+    await work.click();
+    await expect.poll(scrollTop).toBe(workOffset);
+    if (!mobile) {
+      await expect(plainWorkspace).not.toBeInViewport();
+      await plainTab.click();
+      await expect(plainWorkspace).toBeInViewport();
+    }
+    await settings.click();
+    await expect.poll(scrollTop).toBe(settingsOffset);
+
+    if (mobile) await settings.click();
+    else await rail.getByRole('button', { name: 'Chat', exact: true }).click();
+    await expect(sidebar).toBeHidden();
+    await settings.click();
+    await expect(sidebar).toBeVisible();
+    await expect.poll(scrollTop).toBe(settingsOffset);
+
+    if (!mobile) {
+      const toggle = page.getByRole('button', { name: 'Toggle resource sidebar' });
+      await toggle.click();
+      await expect(sidebar).toBeHidden();
+      await toggle.click();
+      await expect(sidebar).toBeVisible();
+      await expect.poll(scrollTop).toBe(settingsOffset);
+    }
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Desktop diagnostics shares the rail button geometry and hover in ${theme}`, async ({
     page
