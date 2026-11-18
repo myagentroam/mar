@@ -284,7 +284,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             template,
             turns: [],
             historyNextCursor: null,
-            files: [],
+            files: [
+              {
+                id: 'file-1',
+                conversationId: chats[0]!.id,
+                category: 'OUTPUT',
+                relativePath: 'assets/reports/summary.txt',
+                displayName: 'summary.txt',
+                mimeType: 'text/plain',
+                size: 10,
+                source: 'AGENT',
+                createdAt: timestamp,
+                updatedAt: timestamp
+              }
+            ],
             models: [],
             run: null,
             error: null,
@@ -330,7 +343,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(create).toHaveCSS('border-top-width', '1px');
     await expect(create).toHaveCSS('height', '32px');
     await expectCreateAlignedToSearch();
-    const { fill, border } = await create.evaluate((button) => {
+    const { fill, border, folderColor } = await create.evaluate((button) => {
       const probe = document.createElement('span');
       button.append(probe);
       const resolveColor = (token: string) => {
@@ -339,7 +352,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       };
       const colors = {
         fill: resolveColor('--mar-fill-row-hover'),
-        border: resolveColor('--mar-border-default')
+        border: resolveColor('--mar-border-default'),
+        folderColor: resolveColor('--mar-text-tertiary')
       };
       probe.remove();
       return colors;
@@ -367,6 +381,36 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.keyboard.press('Tab');
     await expect(create).toBeFocused();
 
+    const files = page.locator('.hosted-conversation-files');
+    const assets = files.getByRole('button', { name: /folder “assets”$/u });
+    const reports = files.getByRole('button', { name: /folder “assets\/reports”$/u });
+    const summary = files.getByRole('button', { name: 'assets/reports/summary.txt', exact: true });
+    await expect(assets).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(assets.locator('svg[data-mar-icon="folder"]')).toHaveCSS('color', folderColor);
+    await expect(assets).toHaveAttribute('aria-expanded', 'false');
+    await expect(reports).toHaveCount(0);
+    await assets.hover();
+    await expect(assets).toHaveCSS('background-color', fill);
+    await page.addStyleTag({ content: ':root { --mar-motion-duration-collapse: 600ms; }' });
+    await assets.click();
+    await expect(files.locator('.file-branch-enter-active')).toHaveCSS(
+      'transition-property',
+      'grid-template-rows'
+    );
+    await expect(assets.locator('svg[data-mar-icon="folder-open"]')).toBeVisible();
+    await expect(reports).toHaveAttribute('aria-expanded', 'false');
+    await reports.click();
+    await expect(summary).toBeVisible();
+    await expect(assets.locator('.file-directory-chevron')).toHaveCSS(
+      'transform',
+      'matrix(0, 1, -1, 0, 0, 0)'
+    );
+    await page.mouse.move(1, 1);
+    await files.screenshot({ path: testInfo.outputPath(`hosted-file-tree-${theme}.png`) });
+    await assets.click();
+    await expect(files.locator('.file-branch-leave-active')).toHaveAttribute('inert', '');
+    await expect(summary).toHaveCount(0);
+
     await page.goto(
       `${fixture.url}hosted-entry.html?workspace-page&sidebar-collapsed&theme=${theme}`
     );
@@ -388,6 +432,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(searchControl).not.toHaveCSS('background-color', fill);
     await expectCreateAlignedToSearch();
     await page.screenshot({ path: testInfo.outputPath(`hosted-history-mobile-${theme}.png`) });
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}hosted-entry.html?existing&workspace-page&theme=${theme}`);
+    await page.locator('.hosted-mobile-files-button').click();
+    await expect(assets.locator('.file-directory-chevron')).toHaveCSS('transition-duration', '0s');
+    await assets.click();
+    await reports.click();
+    await expect(summary).toBeVisible();
+    await files.screenshot({ path: testInfo.outputPath(`hosted-file-tree-mobile-${theme}.png`) });
+    await assets.click();
+    await expect(summary).toHaveCount(0);
   });
 
   for (const placement of ['header', 'body']) {

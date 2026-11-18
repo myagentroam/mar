@@ -7,6 +7,7 @@ const intents = ref<string[]>([]);
 const composer = ref<InstanceType<typeof HostedConversationComposer>>();
 const quoteSelection = new URL(location.href).searchParams.has('quote-selection');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
+const desktopComposer = new URL(location.href).searchParams.has('desktop-composer');
 const snapshot = shallowRef({
   nodeAppVersion: '0.11.31',
   conversation: {
@@ -61,7 +62,7 @@ const workspace = {
       ref="composer"
       :workspace="workspace as never"
       :connected="true"
-      :mobile-viewport="true"
+      :mobile-viewport="!desktopComposer"
       :readonly="false"
       readonly-reason=""
     />

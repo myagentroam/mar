@@ -2,6 +2,7 @@ import { createApp, type Component } from 'vue';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import App from './App.vue';
 import { tooltipPlugin } from './directive/tooltip.js';
+import { elementPlusDialogFocusPlugin } from './service/element-plus-dialog-focus.js';
 import { i18n } from './service/locale-preference-service.js';
 import {
   createPwaApplicationService,
@@ -32,6 +33,7 @@ export function bootstrapConsole(composition: ConsoleComposition) {
   app.provide(PWA_APPLICATION_SERVICE_KEY, pwa);
   app.use(i18n);
   app.use(tooltipPlugin);
+  app.use(elementPlusDialogFocusPlugin);
   app.mount('#app');
 
   const startPwa = () => void pwa.start();

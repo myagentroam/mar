@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- Generated as preview.html by generate-preview.mjs; edit the template and source assets. -->
+<html lang="en" class="console-ui" data-theme="daylight">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAR File Icons Preview</title>
+    <!-- inline-styles -->
+  </head>
+  <body>
+    <!-- inline-artwork -->
+    <main>
+      <header>
+        <p class="eyebrow">MAR / DEVELOPMENT</p>
+        <h1>MAR File Icons</h1>
+        <p>Inspect the bundled icons at 16px and 32px without changing your console preferences.</p>
+      </header>
+      <search class="controls">
+        <div>
+          <label for="filename">File name or extension</label>
+          <input
+            type="search"
+            id="filename"
+            aria-describedby="query-hint"
+            placeholder="AGENTS.md, *.py, src/"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+          />
+          <small id="query-hint"
+            >Use *.ext for an extension or a trailing slash for a folder.</small
+          >
+        </div>
+        <div>
+          <label for="appearance">Color theme</label>
+          <select id="appearance">
+            <option value="daylight">Light</option>
+            <option value="vscode-dark-2026">Dark</option>
+          </select>
+        </div>
+      </search>
+      <section id="lookup" aria-labelledby="lookup-title" hidden>
+        <h2 id="lookup-title">Resolved icon</h2>
+        <div id="resolved"></div>
+      </section>
+      <section aria-labelledby="catalog-title">
+        <h2 id="catalog-title">Icon catalog</h2>
+        <p id="count" role="status"></p>
+        <ul id="catalog" aria-labelledby="catalog-title"></ul>
+      </section>
+    </main>
+    <!-- inline-script -->
+  </body>
+</html>

@@ -40,4 +40,10 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
   width: var(--mar-action-icon-size);
   height: var(--mar-action-icon-size);
 }
+
+@media (max-width: 767px) {
+  .session-performance-info {
+    --mar-action-icon-size: calc(var(--mar-font-size-body) - 1px);
+  }
+}
 </style>

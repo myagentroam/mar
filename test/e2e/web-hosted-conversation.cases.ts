@@ -559,7 +559,7 @@ test('Returning to a selected hosted conversation reconciles only its unread not
   await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
     json(route, { models: snapshot.models, defaultModelId: 'model-1' })
   );
-  await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+  await page.route('**/api/hosted-conversations?limit=20', (route) =>
     json(route, { items: [conversation], nextCursor: null })
   );
   await page.route('**/api/conversation-templates', (route) =>
@@ -954,6 +954,115 @@ test('Hosted conversation entry aligns compact controls across languages and vie
   });
 });
 
+test('Hosted reply images appear inline and open previews only for projected files', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const turn = snapshot.turns[0]!;
+  const reply = {
+    ...turn.items[1]!,
+    payload: {
+      text: [
+        '![Output chart](/workspace/output/chart.svg)',
+        '![Relative chart](chart.svg)',
+        '![Template chart](/workspace/chart.svg)',
+        '![Private chart](/tmp/private.svg)'
+      ].join('\n\n'),
+      format: 'markdown',
+      model: 'model-1'
+    }
+  };
+  const chart = {
+    ...snapshot.files[0]!,
+    id: 'file-chart',
+    relativePath: 'chart.svg',
+    displayName: 'chart.svg',
+    mimeType: 'image/svg+xml'
+  };
+  const contentPath =
+    '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-chart/content';
+  let imageWidth = 16;
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+  );
+  await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+    json(route, { items: [conversation], nextCursor: null })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    json(route, { templates: [snapshot.template] })
+  );
+  await page.route('**/api/nodes/node-1/hosted-conversations/conversation-1/watch', (route) =>
+    fulfillMockHostedConversationWatch(page, route, conversation.id, {
+      ...snapshot,
+      historyNextCursor: null,
+      turns: [{ ...turn, items: [reply] }],
+      files: []
+    })
+  );
+  await page.route(`**${contentPath}*`, (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      headers: { 'x-mar-image-resized': '0' },
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="${imageWidth}" height="8"/>`
+    })
+  );
+  const rawRequests: string[] = [];
+  await page.route(/\/(?:workspace\/(?:output\/)?chart|tmp\/private)\.svg$/u, (route) => {
+    rawRequests.push(route.request().url());
+    return route.abort();
+  });
+
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  const markdown = page.locator('.agent-markdown').filter({ hasText: 'Private chart' });
+  await expect(markdown).toContainText('Output chart');
+  await expect(markdown).toContainText('Private chart');
+  await expect(markdown.locator('img')).toHaveCount(0);
+
+  await emitMockHostedConversationEvent(page, {
+    conversationId: conversation.id,
+    kind: 'files',
+    files: [chart],
+    error: null
+  });
+  const thumbnail = markdown.getByRole('img', { name: 'Output chart' });
+  const thumbnailUrl = `${contentPath}?revision=${chart.updatedAt}-${chart.size}&maxWidth=320&maxHeight=240`;
+  await expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
+  await expect(markdown.getByRole('img', { name: 'Relative chart' })).toHaveAttribute(
+    'src',
+    thumbnailUrl
+  );
+  await expect(markdown.getByRole('img')).toHaveCount(2);
+  await expect(markdown).toContainText('Template chart');
+  await expect
+    .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(16);
+  const previewResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === contentPath &&
+      new URL(response.url()).searchParams.get('maxWidth') === '2560' &&
+      response.ok()
+  );
+  await thumbnail.click();
+  const preview = page.getByRole('dialog', { name: 'Output chart', exact: true });
+  await expect(preview).toBeVisible();
+  await previewResponse;
+  await expect.poll(() => preview.locator('img').evaluate((image) => image.naturalWidth)).toBe(16);
+  await page.keyboard.press('Escape');
+  await expect(preview).toBeHidden();
+
+  imageWidth = 32;
+  await emitMockHostedConversationEvent(page, {
+    conversationId: conversation.id,
+    kind: 'files',
+    files: [{ ...chart, updatedAt: chart.updatedAt + 1 }],
+    error: null
+  });
+  await expect.poll(() => thumbnail.evaluate((image) => image.naturalWidth)).toBe(32);
+  expect(rawRequests).toEqual([]);
+});
+
 test('Hosted file deletion preserves files published by Watch before the HTTP response', async ({
   page
 }) => {
@@ -971,11 +1080,14 @@ test('Hosted file deletion preserves files published by Watch before the HTTP re
     relativePath: 'watch-added.txt',
     displayName: 'watch-added.txt'
   };
-  await page.route('**/api/hosted-conversations?limit=20', (route) =>
+  await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
     json(route, { items: [conversation], nextCursor: null })
   );
   await page.route('**/api/conversation-templates', (route) =>
     json(route, { templates: [snapshot.template] })
+  );
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
   );
   await page.route('**/api/nodes/node-1/hosted-conversations/conversation-1/watch', (route) =>
     fulfillMockHostedConversationWatch(page, route, conversation.id, {
@@ -1429,6 +1541,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await expect(workbenchHeader.locator('.conversation-heading-subtitle')).toHaveCount(0);
   const historyHeader = page.locator('.history-header');
   const filesHeader = page.locator('.files-header');
+  const historySearch = page.locator('.history-search-row');
   const historyCreateButton = page
     .locator('.hosted-conversation-history')
     .getByRole('button', { name: '新建对话', exact: true });
@@ -1437,6 +1550,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     breadcrumbBox,
     historyHeaderBox,
     historyTitleBox,
+    historySearchBox,
     historyCreateButtonBox,
     workbenchBox,
     headerToggleBox
@@ -1445,6 +1559,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     breadcrumb.boundingBox(),
     historyHeader.boundingBox(),
     historyHeader.getByRole('heading', { name: '对话历史' }).boundingBox(),
+    historySearch.boundingBox(),
     historyCreateButton.boundingBox(),
     page.locator('.workbench').boundingBox(),
     workbenchHeader.locator('.workbench-tree-toggle').boundingBox()
@@ -1474,9 +1589,13 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     (historyHeaderBox?.height ?? 0) -
     ((historyTitleBox?.y ?? 0) + (historyTitleBox?.height ?? 0));
   expect(Math.abs(historyTitleTopSpace - historyTitleBottomSpace)).toBeLessThanOrEqual(1);
-  const historyTitleToCreateButtonSpace =
-    (historyCreateButtonBox?.y ?? 0) - ((historyTitleBox?.y ?? 0) + (historyTitleBox?.height ?? 0));
-  expect(Math.abs(historyTitleTopSpace - historyTitleToCreateButtonSpace)).toBeLessThanOrEqual(1);
+  const historyTitleToSearchSpace =
+    (historySearchBox?.y ?? 0) - ((historyTitleBox?.y ?? 0) + (historyTitleBox?.height ?? 0));
+  expect(Math.abs(historyTitleTopSpace - historyTitleToSearchSpace)).toBeLessThanOrEqual(1);
+  expect(historyCreateButtonBox!.y - (historySearchBox!.y + historySearchBox!.height)).toBeCloseTo(
+    8,
+    0
+  );
   expect((historyTitleBox?.x ?? 0) - (historyHeaderBox?.x ?? 0)).toBeCloseTo(20, 0);
   await expect(historyHeader).toHaveClass(/mar-sidebar-heading.*session-heading.*history-header/);
   await expect(historyHeader).toHaveCSS('padding-top', '12px');
@@ -1608,9 +1727,15 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await page.unroute(directoryUrl, delayRefresh);
   const diagnostics = page.locator('.web-performance-indicator');
   await diagnostics.hover();
-  const utilityHoverColor = await diagnostics.evaluate(
-    (element) => getComputedStyle(element).color
-  );
+  const utilityHoverColor = await diagnostics.evaluate((element) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--mar-text-primary)';
+    element.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  await expect(diagnostics).toHaveCSS('color', utilityHoverColor);
   await historyRefresh.hover();
   await expect(historyRefresh).toHaveCSS('color', utilityHoverColor);
   await page.mouse.move(600, 5);

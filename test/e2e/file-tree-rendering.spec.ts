@@ -1,6 +1,38 @@
 import { expect, test } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test('File tree renders bundled MAR file and folder icons by default in both color themes', async ({
+  page
+}, testInfo) => {
+  const fixture = await startCustomThemeFixture();
+  try {
+    await page.goto(`${fixture.url}file-tree.html`);
+    for (const [theme, expectedFolderColor] of [
+      ['vscode-dark-2026', 'rgb(117, 195, 255)'],
+      ['daylight', 'rgb(0, 118, 229)']
+    ] as const) {
+      await page.evaluate((value) => localStorage.setItem('mar.theme', value), theme);
+      await page.reload();
+      const tree = page.getByRole('tree');
+      const folder = tree.locator('[data-file-path="."] .mar-file-icon');
+      const file = tree.locator('[data-file-path="notes.txt"] .mar-file-icon');
+      await expect(folder).toHaveCSS('color', expectedFolderColor);
+      await expect(folder.locator('use')).toHaveAttribute('href', /#mar-file-dir$/u);
+      await expect(file.locator('use')).toHaveAttribute('href', /#mar-file-text$/u);
+      await page.getByRole('button', { name: 'Rename', exact: true }).click();
+      const symbol = file.locator('use');
+      await expect(symbol).toHaveAttribute('href', /#mar-file-ts$/u);
+      await expect
+        .poll(() => symbol.evaluate((node: SVGUseElement) => node.getBBox().width))
+        .toBeGreaterThan(0);
+      expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBeNull();
+      await tree.screenshot({ path: testInfo.outputPath(`mar-file-tree-${theme}.png`) });
+    }
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('File tree updates rendered rows, permissions and locale while keeping its virtual layout bounded', async ({
   page
 }) => {

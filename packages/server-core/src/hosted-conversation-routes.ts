@@ -90,7 +90,11 @@ const FILE_CONTENT_QUERY_SCHEMA = z
   .object({
     download: z.literal('1').optional(),
     maxWidth: z.string().optional(),
-    maxHeight: z.string().optional()
+    maxHeight: z.string().optional(),
+    revision: z
+      .string()
+      .regex(/^\d{1,16}-\d{1,16}$/u)
+      .optional()
   })
   .strict();
 const FILE_CONTENT_CHUNK_BYTES = 512 * 1024;
@@ -664,7 +668,7 @@ export function registerHostedConversationRoutes(input: HostedRouteDependencies)
 
   app.get<{
     Params: { nodeId: string; conversationId: string; fileId: string };
-    Querystring: { download?: string } & ImagePreviewQuery;
+    Querystring: { download?: string; revision?: string } & ImagePreviewQuery;
   }>(
     '/api/nodes/:nodeId/hosted-conversations/:conversationId/files/:fileId/content',
     async (request, reply) => {

@@ -33,9 +33,20 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await page.getByRole('option', { name, exact: true }).click();
     };
     await openAppearance();
-    await expect(select).toContainText('Material');
-    await expect(preview.locator('.material-file-icon svg')).toBeVisible();
+    await expect(select).toContainText(messages.settings.iconThemeMar);
+    const marIcon = preview.locator('.mar-file-icon svg');
+    await expect(marIcon).toBeVisible();
+    // A visible wrapper is not enough: the bundled external symbol must resolve and draw.
+    await expect
+      .poll(() =>
+        marIcon
+          .locator('use')
+          .first()
+          .evaluate((el: SVGUseElement) => el.getBBox().width)
+      )
+      .toBeGreaterThan(0);
     expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBeNull();
+    await preview.screenshot({ path: testInfo.outputPath(`mar-file-icons-${locale}.png`) });
 
     await choose('Seti');
     await expect(preview.locator('.seti-file-icon')).toBeVisible();
@@ -88,6 +99,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await openAppearance();
     await expect(select).toContainText('Material');
     await expect(preview.locator('.material-file-icon svg')).toBeVisible();
+    await choose(messages.settings.iconThemeMar);
+    await expect(marIcon).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('mar');
+    await page.reload();
+    await openAppearance();
+    await expect(select).toContainText(messages.settings.iconThemeMar);
+    await expect(marIcon).toBeVisible();
     expect(pageErrors).toEqual([]);
     expect(apiRequests).toEqual([]);
   });

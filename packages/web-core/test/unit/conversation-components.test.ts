@@ -1557,10 +1557,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     const slots = {
       tree: () =>
         h(WorkspaceSessionTreeButton, {
-          nodeId: 'node',
-          workspaceId: 'workspace',
           sessionId: 'child',
-          request: async () => ({})
+          open: false,
+          status: 'idle'
         })
     };
     const child = await render(

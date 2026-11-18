@@ -193,6 +193,7 @@ for (const [locale, width] of [
       else await page.mouse.click(4, 4);
       await expect(ui.dialog).toHaveCount(0);
       await expect(ui.create).toBeFocused();
+      if (close === 'escape') await expect(ui.create).toHaveCSS('outline-style', 'none');
     }
     await ui.create.click();
     await expect(ui.dialog.locator('.el-form-item__error')).toHaveCount(0);

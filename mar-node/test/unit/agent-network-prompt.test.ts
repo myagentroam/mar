@@ -132,7 +132,7 @@ it.each([false, true])(
   async (networkEnabled) => {
     const test = await fixture(false, undefined, [], undefined, networkEnabled);
     const guidance =
-      'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview.';
+      'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview. To display an image inline, use Markdown image syntax: `![description](/absolute/path/to/image.png)`.';
     for (const mode of ['run', 'plan', 'compact'] as const) {
       const composed = await test.context.prompts.composeDefault({ mode, tools: ['read'] });
       expect(composed.sections.filter((section) => section.id === 'mar.node.file-links')).toEqual([

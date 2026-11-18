@@ -93,6 +93,56 @@ async function visit(page: Page, kind: string, theme = 'daylight'): Promise<void
   await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&theme=${theme}`);
 }
 
+for (const [kind, title] of [
+  ['short', 'Content dialog'],
+  ['message', 'Long confirmation']
+] as const) {
+  test(`${kind} Escape restores focus without adding an outline to a pointer-opened trigger`, async ({
+    page
+  }) => {
+    await visit(page, kind);
+    const trigger = page.getByRole('button', { name: 'Open content' });
+    const dialog = page.getByRole('dialog', { name: title });
+
+    await trigger.click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toHaveCSS('outline-style', 'none');
+
+    await visit(page, kind);
+    await page.keyboard.press('Tab');
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(trigger).not.toHaveCSS('outline-style', 'none');
+  });
+}
+
+test('Dialog focus return does not first refocus the opener when the dialog moves focus explicitly', async ({
+  page
+}) => {
+  await visit(page, 'focus-return');
+  const trigger = page.getByRole('button', { name: 'Open content' });
+  const dialog = page.getByRole('dialog', { name: 'Content dialog' });
+  await trigger.click();
+  await expect(dialog.locator(':focus')).toHaveCount(1);
+  await trigger.evaluate((button) =>
+    button.addEventListener('focus', () => button.setAttribute('data-refocused', 'true'))
+  );
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Continue workflow' })).toBeFocused();
+  await expect(trigger).not.toHaveAttribute('data-refocused', 'true');
+});
+
 test('Dialog and MessageBox titles use the panel title size', async ({ page }) => {
   for (const [viewport, theme] of [
     [viewports[0]!, 'daylight'],

@@ -1,13 +1,10 @@
-import {
-  buildHostedConversationFileTree,
-  visibleHostedConversationFileTreeRows
-} from '../../src/service/hosted-conversation-file-tree-service.js';
+import { buildHostedConversationFileTree } from '../../src/service/hosted-conversation-file-tree-service.js';
 
 import { describe, expect, it } from 'vitest';
 type ConversationFileProjection = Parameters<typeof buildHostedConversationFileTree>[0][number];
 
 describe('Hosted conversation file tree', () => {
-  it('Merge related files into a directory tree by relative path and collapse directories by default', () => {
+  it('groups related files by relative path with directories first and sorted children', () => {
     const file = (id: string, relativePath: string): ConversationFileProjection => ({
       id,
       conversationId: 'conversation-1',
@@ -33,30 +30,18 @@ describe('Hosted conversation file tree', () => {
       ['DIRECTORY', 'reports'],
       ['FILE', 'notes.txt']
     ]);
-    expect(
-      visibleHostedConversationFileTreeRows(tree, () => false).map((row) => [
-        row.node.kind,
-        row.node.path,
-        row.depth
-      ])
-    ).toEqual([
-      ['DIRECTORY', 'assets', 0],
-      ['DIRECTORY', 'reports', 0],
-      ['FILE', 'notes.txt', 0]
-    ]);
-    expect(
-      visibleHostedConversationFileTreeRows(
-        tree,
-        (path) => path === 'reports' || path === 'reports/2026'
-      ).map((row) => [row.node.kind, row.node.path, row.depth])
-    ).toEqual([
-      ['DIRECTORY', 'assets', 0],
-      ['DIRECTORY', 'reports', 0],
-      ['DIRECTORY', 'reports/2026', 1],
-      ['FILE', 'reports/2026/q1.txt', 2],
-      ['FILE', 'reports/2026/q2.txt', 2],
-      ['FILE', 'reports/summary.txt', 1],
-      ['FILE', 'notes.txt', 0]
-    ]);
+    expect(tree[1]).toMatchObject({
+      children: [
+        {
+          kind: 'DIRECTORY',
+          path: 'reports/2026',
+          children: [
+            { kind: 'FILE', path: 'reports/2026/q1.txt' },
+            { kind: 'FILE', path: 'reports/2026/q2.txt' }
+          ]
+        },
+        { kind: 'FILE', path: 'reports/summary.txt' }
+      ]
+    });
   });
 });

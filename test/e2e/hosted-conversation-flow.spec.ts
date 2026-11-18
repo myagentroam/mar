@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createSocket } from 'node:dgram';
-import { readFileSync } from 'node:fs';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import {
@@ -460,7 +459,10 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       adminDiskSession.sessionId
     );
     const generatedImagesDirectory = join(generatedImageSessionDirectory, 'generated_images');
-    const previousImageBytes = Buffer.from('previous hosted generated image');
+    const previousImageBytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
     await mkdir(generatedImagesDirectory, { recursive: true, mode: 0o700 });
     await writeFile(join(generatedImagesDirectory, 'previous.png'), previousImageBytes);
     await writeFile(
@@ -532,6 +534,12 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
       eof: true
     });
     expect(Buffer.from(projectedImageRead.content, 'base64')).toEqual(previousImageBytes);
+    const projectedImagePreview = await admin.context.get(
+      `/api/nodes/${nodeId}/hosted-conversations/${adminConversation.id}/files/${projectedImage.id}/content?revision=${projectedImage.updatedAt}-${projectedImage.size}&maxWidth=320&maxHeight=240`
+    );
+    expect(projectedImagePreview.status()).toBe(200);
+    expect(projectedImagePreview.headers()['content-type']).toBe('image/webp');
+    expect((await projectedImagePreview.body()).subarray(8, 12).toString('ascii')).toBe('WEBP');
     await expect(readFile(join(generatedImagesDirectory, 'previous.png'))).resolves.toEqual(
       previousImageBytes
     );
@@ -980,20 +988,16 @@ test('Real Server and Node cover template publication, user isolation, Run-bound
 function startNodeConnector(configPath: string, hostedImageSeed?: HostedImageSeed): NodeProcess {
   const source = `
     import { NodeConnector } from './mar-node/src/connector.ts';
+    import { unavailableCapabilities } from './mar-node/src/capabilities.ts';
     const hostedImageSeed = process.argv[2] === undefined
       ? undefined
       : JSON.parse(process.argv[2]);
     const connector = new NodeConnector({
       configPath: process.argv[1],
       capabilities: {
+        ...unavailableCapabilities(),
         platform: 'linux',
         architecture: 'x64',
-        nodeAppVersion: process.env.MAR_TEST_NODE_VERSION,
-        nodeVersion: process.version,
-        codex: { available: false },
-        claudeCode: { available: false },
-        openCode: { available: false },
-        marAgent: { available: true, version: process.env.MAR_TEST_NODE_VERSION }
       },
       conversationHostingProbe: async () => ({ available: true, version: '0.11.1' }),
       reconnect: false
@@ -1035,12 +1039,7 @@ function startNodeConnector(configPath: string, hostedImageSeed?: HostedImageSee
     ],
     {
       cwd: process.cwd(),
-      env: {
-        ...isolatedRunnerEnvironment(join(dirname(configPath), 'runner-home'), process.env),
-        MAR_TEST_NODE_VERSION: (
-          JSON.parse(readFileSync('mar-node/package.json', 'utf8')) as { version: string }
-        ).version
-      },
+      env: isolatedRunnerEnvironment(join(dirname(configPath), 'runner-home'), process.env),
       stdio: ['ignore', 'pipe', 'pipe']
     }
   );

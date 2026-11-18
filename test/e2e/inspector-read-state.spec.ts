@@ -93,6 +93,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       ]) {
         const panel = page.getByTestId(action.panel);
         const directoryPicker = action.panel === 'directory-refresh';
+        const htmlPreview = action.panel === 'html-refresh';
         if (directoryPicker)
           await panel.getByRole('button', { name: 'Open directory picker' }).click();
         const refresh = panel.locator(action.selector).first();
@@ -115,6 +116,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await expect(refresh).not.toHaveAttribute('aria-busy', 'true');
           await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
           await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
+          if (htmlPreview) {
+            await expect(
+              panel.frameLocator('iframe').getByText('Preview', { exact: true })
+            ).toBeVisible();
+            if (failed) await expect(panel.getByRole('alert')).toBeVisible();
+            else await expect(panel.getByRole('alert')).toHaveCount(0);
+          }
           pending = undefined;
         }
         if (directoryPicker) {

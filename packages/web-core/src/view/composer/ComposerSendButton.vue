@@ -19,7 +19,9 @@ const cancelling = ref(false);
 const gestureEnabled = computed(() => props.mobileViewport && !props.disabled && !props.submitting);
 let holdTimer: ReturnType<typeof setTimeout> | undefined;
 let pointerId: number | undefined;
-let pointerTarget: HTMLButtonElement | undefined;
+let awaitingTouchStart = false;
+let touchId: number | undefined;
+let gestureTarget: HTMLButtonElement | undefined;
 let startY = 0;
 let suppressClick = false;
 let expireDetachedTouch: (() => void) | undefined;
@@ -28,9 +30,11 @@ function resetGesture(): void {
   if (holdTimer !== undefined) clearTimeout(holdTimer);
   holdTimer = undefined;
   const previousId = pointerId;
-  const previousTarget = pointerTarget;
+  const previousTarget = gestureTarget;
   pointerId = undefined;
-  pointerTarget = undefined;
+  awaitingTouchStart = false;
+  touchId = undefined;
+  gestureTarget = undefined;
   holding.value = false;
   upward.value = false;
   cancelling.value = false;
@@ -41,32 +45,43 @@ function resetGesture(): void {
 }
 
 function cancelGesture(): void {
-  if (pointerId !== undefined) suppressClick = true;
+  if (gestureTarget !== undefined) suppressClick = true;
   resetGesture();
 }
 
 function onVisibilityChange(): void {
-  if (pointerTarget?.ownerDocument.visibilityState === 'hidden') cancelGesture();
+  if (gestureTarget?.ownerDocument.visibilityState === 'hidden') cancelGesture();
 }
 
-function updateGesturePosition(event: PointerEvent): void {
-  upward.value = startY - event.clientY >= 8;
+function updateGesturePosition(clientY: number): void {
+  upward.value = startY - clientY >= 8;
   // Both Composer entry points place this control inside their native form.
-  cancelling.value = event.clientY < pointerTarget!.form!.getBoundingClientRect().top;
+  cancelling.value = clientY < gestureTarget!.form!.getBoundingClientRect().top;
 }
 
 function onPointerDown(event: PointerEvent): void {
   if (!event.isPrimary || event.button !== 0) return;
+  if (touchId !== undefined) {
+    // A touch-owned gesture stays with Touch Events even if Pointer Events arrive later.
+    if (event.pointerType === 'touch') return;
+    cancelGesture();
+  }
   suppressClick = false;
   if (!gestureEnabled.value || event.pointerType !== 'touch') return;
   event.preventDefault();
+  const button = event.currentTarget as HTMLButtonElement;
   pointerId = event.pointerId;
-  pointerTarget = event.currentTarget as HTMLButtonElement;
-  startY = event.clientY;
-  pointerTarget.setPointerCapture(pointerId);
-  pointerTarget.ownerDocument.addEventListener('visibilitychange', onVisibilityChange);
-  pointerTarget.ownerDocument.defaultView?.addEventListener('blur', cancelGesture);
-  trackTouchRelease(pointerTarget, pointerId);
+  awaitingTouchStart = true;
+  button.setPointerCapture(pointerId);
+  trackTouchRelease(button, pointerId);
+  startGesture(button, event.clientY);
+}
+
+function startGesture(button: HTMLButtonElement, clientY: number): void {
+  gestureTarget = button;
+  startY = clientY;
+  button.ownerDocument.addEventListener('visibilitychange', onVisibilityChange);
+  button.ownerDocument.defaultView?.addEventListener('blur', cancelGesture);
   holdTimer = setTimeout(() => {
     holdTimer = undefined;
     holding.value = true;
@@ -75,17 +90,51 @@ function onPointerDown(event: PointerEvent): void {
 
 function onTouchStart(event: TouchEvent): void {
   // Keep the editor focused instead of letting touch focus dismiss its keyboard.
-  // Pointerup submits the tracked touch, so it does not depend on a native click.
-  if (pointerId !== undefined) event.preventDefault();
+  if (awaitingTouchStart) {
+    awaitingTouchStart = false;
+    event.preventDefault();
+    return;
+  }
+  // Track a single native touch directly when no usable pointerdown reached this button.
+  if (!gestureEnabled.value || event.touches.length !== 1) return;
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+  cancelGesture();
+  expireDetachedTouch?.();
+  suppressClick = false;
+  // Only take over when the browser will suppress the compatibility click.
+  if (!event.cancelable) return;
+  event.preventDefault();
+  touchId = touch.identifier;
+  startGesture(event.currentTarget as HTMLButtonElement, touch.clientY);
+}
+
+function changedTrackedTouch(event: TouchEvent): Touch | undefined {
+  if (touchId !== undefined)
+    return Array.from(event.changedTouches).find((touch) => touch.identifier === touchId);
+}
+
+function onTouchMove(event: TouchEvent): void {
+  const touch = changedTrackedTouch(event);
+  if (touch) updateGesturePosition(touch.clientY);
+}
+
+function onTouchEnd(event: TouchEvent): void {
+  const touch = changedTrackedTouch(event);
+  if (touch) finishGesture(touch.clientY, event);
+}
+
+function onTouchCancel(event: TouchEvent): void {
+  if (changedTrackedTouch(event)) cancelGesture();
 }
 
 function onPointerMove(event: PointerEvent): void {
   if (event.pointerId !== pointerId) return;
-  updateGesturePosition(event);
+  updateGesturePosition(event.clientY);
 }
 
 function onLostPointerCapture(event: PointerEvent): void {
-  if (event.pointerId === pointerId && event.target === pointerTarget) cancelGesture();
+  if (event.pointerId === pointerId && event.target === gestureTarget) cancelGesture();
 }
 
 function trackTouchRelease(button: HTMLButtonElement, id: number): void {
@@ -122,7 +171,7 @@ function trackTouchRelease(button: HTMLButtonElement, id: number): void {
     scheduleExpiry();
     if (pointerId !== id) return;
     // A release retargeted outside the button ends the hold but must not send.
-    if (event.composedPath().includes(button)) onPointerUp(event);
+    if (event.composedPath().includes(button)) finishGesture(event.clientY, event);
     else cancelGesture();
   };
   const onCancel = (event: PointerEvent): void => {
@@ -145,8 +194,8 @@ function trackTouchRelease(button: HTMLButtonElement, id: number): void {
   document.addEventListener('pointercancel', onCancel, capture);
 }
 
-function onPointerUp(event: PointerEvent): void {
-  updateGesturePosition(event);
+function finishGesture(clientY: number, event: Event): void {
+  updateGesturePosition(clientY);
   const shouldSteer = upward.value && props.canSteer;
   const cancelled = cancelling.value;
   suppressClick = true;
@@ -193,6 +242,9 @@ onBeforeUnmount(() => {
     "
     @pointerdown="onPointerDown"
     @touchstart="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend="onTouchEnd"
+    @touchcancel="onTouchCancel"
     @pointermove="onPointerMove"
     @lostpointercapture="onLostPointerCapture"
     @blur="cancelGesture"

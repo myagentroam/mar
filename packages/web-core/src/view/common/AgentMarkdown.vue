@@ -155,15 +155,18 @@ renderer.renderer.rules.image = (tokens, index, options, environment, self) => {
     );
     return `<button type="button" class="agent-markdown-image" data-image-preview aria-label="${accessibleLabel}">${image}</button>`;
   };
-  if (/^https?:\/\//iu.test(source)) return renderImage();
+  if (/^(?:https?:\/\/|data:image\/)/iu.test(source)) return renderImage();
   const fileTarget = workspaceFileTarget(source, props.workspaceRoot, window.location.origin);
+  if (props.imageResourceUrl !== undefined) {
+    const resourceUrl =
+      fileTarget === undefined ? undefined : props.imageResourceUrl(fileTarget.path);
+    if (!resourceUrl) return renderer.utils.escapeHtml(label || source);
+    token.attrSet('src', resourceUrl);
+    return renderImage();
+  }
   if (fileTarget === undefined) {
     if (!/^sandbox:/iu.test(source)) return renderImage();
     return renderer.utils.escapeHtml(label || source);
-  }
-  if (props.imageResourceUrl !== undefined) {
-    token.attrSet('src', props.imageResourceUrl(fileTarget.path));
-    return renderImage();
   }
   if (!/^sandbox:/iu.test(source)) return renderImage();
   const lineAttribute =

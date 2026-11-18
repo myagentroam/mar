@@ -28,8 +28,18 @@ const icon = computed(() => {
     >{{ icon.character }}</span
   >
   <span
+    v-else-if="icon.kind === 'sprite'"
+    class="file-type-icon mar-file-icon mar-file-icon-svg"
+    aria-hidden="true"
+    :style="{ color: icon.color, '--icon-cut': icon.cutColor }"
+  >
+    <svg viewBox="0 0 24 24" focusable="false">
+      <use :href="icon.href" />
+    </svg>
+  </span>
+  <span
     v-else
-    class="file-type-icon material-file-icon"
+    class="file-type-icon material-file-icon mar-file-icon-svg"
     aria-hidden="true"
     :style="{ color: icon.color }"
     v-html="icon.markup"
@@ -57,10 +67,10 @@ const icon = computed(() => {
   font-style: normal;
   font-weight: normal;
 }
-.material-file-icon {
+.mar-file-icon-svg {
   height: 1em;
 }
-.material-file-icon :deep(svg) {
+.mar-file-icon-svg :deep(svg) {
   display: block;
   width: 1em;
   height: 1em;

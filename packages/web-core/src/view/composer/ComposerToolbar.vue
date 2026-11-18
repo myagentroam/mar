@@ -432,9 +432,6 @@ function selectFiles(event: Event): void {
       @send="emit('send')"
       @steer="emit('steer')"
     />
-    <span v-if="mobileViewport && inputHasContent" class="composer-steer-discovery">
-      {{ translate(canSteer ? 'composerSend.holdHint' : 'composerSend.holdSendHint') }}
-    </span>
   </div>
 </template>
 
@@ -539,13 +536,6 @@ function selectFiles(event: Event): void {
   flex-shrink: 0;
   margin-left: auto;
   white-space: nowrap;
-}
-
-.composer-steer-discovery {
-  grid-column: 1 / -1;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.4;
 }
 
 .composer-hint.is-submitting .composer-keyboard-hint {

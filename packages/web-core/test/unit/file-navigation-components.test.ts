@@ -13,7 +13,9 @@ import {
   type QuickOpenCandidate
 } from '../../src/service/quick-open-service.js';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
+import InteractiveWorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue?unit-render';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
+import { renderComponent } from './support/component-renderer.js';
 
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
@@ -83,6 +85,7 @@ function stubBrowserEnvironment(): {
   vi.stubGlobal('document', {
     documentElement: {
       lang: '',
+      style: { setProperty: vi.fn(), removeProperty: vi.fn() },
       classList: {
         add: (name: string) => classes.add(name),
         remove: (name: string) => classes.delete(name),
@@ -101,7 +104,7 @@ function colorFromIconMarkup(html: string): string | undefined {
 }
 
 async function renderFileTypeIcon(
-  iconTheme: 'seti' | 'material',
+  iconTheme: 'mar' | 'seti' | 'material',
   surfaceTheme: 'daylight' | 'vscode-dark-2026'
 ): Promise<string> {
   vi.resetModules();
@@ -121,6 +124,7 @@ const FILE_NAVIGATION_SOURCES = [
 ] as const;
 
 const requiredFileNavigationMessageKeys = [
+  'settings.iconThemeMar',
   'settings.iconThemeSeti',
   'settings.iconThemeMaterial',
   'generated.quickOpenDialog.quickOpen',
@@ -285,7 +289,7 @@ describe('public file navigation components', () => {
       expect(browser.getItem).toHaveBeenCalledTimes(1);
     });
 
-    it.each(['seti', 'material'] as const)(
+    it.each(['mar', 'seti', 'material'] as const)(
       'renders %s icons consistently for both console surface themes',
       async (iconTheme) => {
         const daylightBrowser = stubBrowserEnvironment();
@@ -629,35 +633,30 @@ describe('public file navigation components', () => {
       vi.stubGlobal(
         'ResizeObserver',
         class {
+          observe(): void {}
           disconnect(): void {}
         }
       );
-      vi.stubGlobal('HTMLElement', TestHostNode);
+      vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '24px' }));
       const unregister = vi.fn();
       const register = vi
         .spyOn(consoleKeyboardShortcutService, 'register')
         .mockReturnValue(unregister);
       const root = fileTreeNode('.', 'workspace', 'DIRECTORY');
-      const app = createTestRenderer().createApp({
-        render: () =>
-          h(WorkspaceFileTree, {
-            root,
-            filter: '',
-            selectedPath: undefined,
-            disabled: false,
-            mutationsEnabled: true,
-            mobileViewport: true
-          })
+      const view = renderComponent(InteractiveWorkspaceFileTree, {
+        root,
+        filter: '',
+        selectedPath: undefined,
+        disabled: false,
+        mutationsEnabled: true,
+        mobileViewport: true
       });
-      app.provide(ssrContextKey, { modules: new Set<string>() });
-      app.config.warnHandler = () => {};
-      app.mount(new TestHostNode('container'));
       try {
         expect(register).toHaveBeenCalledWith(
           expect.objectContaining({ command: 'workspaceFileTree.dismissMenu', scope: 'overlay' })
         );
       } finally {
-        app.unmount();
+        view.unmount();
         register.mockRestore();
       }
       expect(unregister).toHaveBeenCalledOnce();
@@ -665,17 +664,33 @@ describe('public file navigation components', () => {
   });
 
   describe('file tree drag expansion', () => {
-    // Vitest compiles these SFCs for SSR, so mount setup handlers through a minimal renderer.
     beforeEach(() => {
       vi.stubGlobal(
         'ResizeObserver',
         class {
+          observe(): void {}
           disconnect(): void {}
         }
       );
+      vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '24px' }));
       vi.stubGlobal('HTMLElement', TestHostNode);
       vi.stubGlobal('Node', TestHostNode);
     });
+
+    function mountDragTree(root: WorkspaceFileTreeNode, mutationsEnabled: boolean) {
+      const toggled = vi.fn();
+      const view = renderComponent(InteractiveWorkspaceFileTree, {
+        root,
+        filter: '',
+        disabled: false,
+        mutationsEnabled,
+        mobileViewport: false,
+        onToggle: toggled
+      });
+      const row = (path: string) =>
+        view.findAll('button').find((node) => node.props['data-file-path'] === path)!;
+      return { ...view, row, toggled };
+    }
 
     it('waits 500ms over upload targets, cancels on leave, and does not restart for repeated enter events', async () => {
       vi.useFakeTimers();
@@ -684,39 +699,13 @@ describe('public file navigation components', () => {
         expanded: true,
         children: [directory]
       });
-      const toggled = vi.fn();
-      let setupState: Record<string, unknown> | undefined;
-      const app = createTestRenderer().createApp({
-        render: () =>
-          h(WorkspaceFileTree, {
-            root,
-            filter: '',
-            selectedPath: undefined,
-            disabled: false,
-            mutationsEnabled: false,
-            mobileViewport: false,
-            onToggle: toggled,
-            onVnodeMounted: (vnode) => {
-              setupState = (
-                vnode.component as unknown as {
-                  readonly setupState: Record<string, unknown>;
-                } | null
-              )?.setupState;
-            }
-          })
-      });
-      app.provide(ssrContextKey, { modules: new Set<string>() });
-      const container = new TestHostNode('container');
-      app.config.warnHandler = () => {};
-      app.mount(container);
+      const view = mountDragTree(root, false);
+      const { toggled } = view;
 
       try {
-        const enterDropTarget = setupState?.['enterDropTarget'] as
-          ((event: DragEvent, node: WorkspaceFileTreeNode) => void) | undefined;
-        const leaveDropTarget = setupState?.['leaveDropTarget'] as
-          ((event: DragEvent, path: string) => void) | undefined;
-        expect(enterDropTarget).toBeTypeOf('function');
-        expect(leaveDropTarget).toBeTypeOf('function');
+        const shell = view.row('docs').parent!;
+        const enter = shell.props['onDragenter'] as (event: DragEvent) => void;
+        const leave = shell.props['onDragleave'] as (event: DragEvent) => void;
         const uploadTransfer = {
           types: ['Files'],
           items: [{ kind: 'file' }]
@@ -727,27 +716,25 @@ describe('public file navigation components', () => {
           preventDefault: vi.fn()
         } as unknown as DragEvent;
 
-        enterDropTarget!(enterEvent, directory);
+        enter(enterEvent);
         await vi.advanceTimersByTimeAsync(200);
-        leaveDropTarget!(
-          {
-            currentTarget: new TestHostNode('row'),
-            relatedTarget: null
-          } as unknown as DragEvent,
-          'docs'
-        );
+        leave({
+          currentTarget: new TestHostNode('row'),
+          relatedTarget: null,
+          stopPropagation: vi.fn()
+        } as unknown as DragEvent);
         await vi.advanceTimersByTimeAsync(500);
         expect(toggled).not.toHaveBeenCalled();
 
-        enterDropTarget!(enterEvent, directory);
+        enter(enterEvent);
         await vi.advanceTimersByTimeAsync(499);
         expect(toggled).not.toHaveBeenCalled();
-        enterDropTarget!(enterEvent, directory);
+        enter(enterEvent);
         await vi.advanceTimersByTimeAsync(1);
         expect(toggled).toHaveBeenCalledTimes(1);
         expect(toggled).toHaveBeenCalledWith(directory);
       } finally {
-        app.unmount();
+        view.unmount();
       }
     });
 
@@ -758,64 +745,25 @@ describe('public file navigation components', () => {
         expanded: true,
         children: [source, directory]
       });
-      const toggled = vi.fn();
-      let setupState: Record<string, unknown> | undefined;
-      const app = createTestRenderer().createApp({
-        render: () =>
-          h(WorkspaceFileTree, {
-            root,
-            filter: '',
-            selectedPath: undefined,
-            disabled: false,
-            mutationsEnabled: true,
-            mobileViewport: false,
-            onToggle: toggled,
-            onVnodeMounted: (vnode) => {
-              setupState = (
-                vnode.component as unknown as {
-                  readonly setupState: Record<string, unknown>;
-                } | null
-              )?.setupState;
-            }
-          })
-      });
-      app.provide(ssrContextKey, { modules: new Set<string>() });
-      const container = new TestHostNode('container');
-      app.config.warnHandler = () => {};
-      app.mount(container);
+      const view = mountDragTree(root, true);
+      const { toggled } = view;
 
       try {
-        const startMove = setupState?.['startMove'] as
-          ((event: DragEvent, node: WorkspaceFileTreeNode) => void) | undefined;
-        const enterDropTarget = setupState?.['enterDropTarget'] as
-          ((event: DragEvent, node: WorkspaceFileTreeNode) => void) | undefined;
-        expect(startMove).toBeTypeOf('function');
-        expect(enterDropTarget).toBeTypeOf('function');
-        startMove!(
-          {
-            dataTransfer: {
-              setData: vi.fn(),
-              effectAllowed: 'none'
-            }
-          } as unknown as DragEvent,
-          source
-        );
-        enterDropTarget!(
-          {
-            dataTransfer: {
-              types: ['application/x-mar-workspace-path'],
-              items: []
-            } as unknown as DataTransfer,
-            stopPropagation: vi.fn(),
-            preventDefault: vi.fn()
-          } as unknown as DragEvent,
-          directory
-        );
+        const start = view.row('notes.txt').props['onDragstart'] as (event: DragEvent) => void;
+        const enter = view.row('docs').parent!.props['onDragenter'] as (event: DragEvent) => void;
+        start({
+          dataTransfer: { setData: vi.fn(), effectAllowed: 'none' }
+        } as unknown as DragEvent);
+        enter({
+          dataTransfer: { types: ['application/x-mar-workspace-path'], items: [] },
+          stopPropagation: vi.fn(),
+          preventDefault: vi.fn()
+        } as unknown as DragEvent);
 
         expect(toggled).toHaveBeenCalledTimes(1);
         expect(toggled).toHaveBeenCalledWith(directory);
       } finally {
-        app.unmount();
+        view.unmount();
       }
     });
   });

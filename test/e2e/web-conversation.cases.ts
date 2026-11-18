@@ -19,6 +19,7 @@ const syntheticAbsoluteFile = `${process.cwd()}/mar-web-console/src/App.vue`;
 test('Assistant Markdown images use compact thumbnails and the conversation image preview', async ({
   page
 }, testInfo) => {
+  test.setTimeout(60_000);
   const longImageName = `External screenshot ${'long filename 中文 with spaces '.repeat(8)}.png`;
   const imageSizes = [
     { width: 1200, height: 900 },
@@ -57,6 +58,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   await page.route('**/api/workspaces/workspace-1/files/content?**', (route) =>
     route.fulfill({
       contentType: 'image/svg+xml',
+      headers: { 'x-mar-image-resized': '0' },
       body: imageSvg(
         new URL(route.request().url()).searchParams.get('path')?.endsWith('mobile.png')
           ? imageSizes[1]!
@@ -101,16 +103,29 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       expect(bounds!.height).toBeLessThanOrEqual(120);
       const source = await img.getAttribute('data-image-source');
       const name = await img.getAttribute('alt');
+      const previewResponse = source?.startsWith('/api/')
+        ? page.waitForResponse((response) => {
+            const previewUrl = new URL(source, page.url());
+            previewUrl.searchParams.set('maxWidth', '2560');
+            previewUrl.searchParams.set('maxHeight', '2560');
+            return response.url() === previewUrl.href && response.ok();
+          })
+        : undefined;
       if (index === 1) {
         await thumbnail.focus();
         await page.keyboard.press('Enter');
       } else await thumbnail.click();
       const dialog = page.getByRole('dialog', { name: name!, exact: true });
       await expect(dialog).toBeVisible();
-      await expect(dialog.locator('img')).toHaveAttribute('src', source!);
+      await previewResponse;
+      const previewImage = dialog.locator('img');
+      await expect(previewImage).toHaveAttribute('src', previewResponse ? /^blob:/u : source!);
+      await expect
+        .poll(() => previewImage.evaluate((image) => image.naturalWidth))
+        .toBe(imageSizes[index]!.width);
       const frame = dialog.locator('.attachment-preview-dialog');
-      const expectedWidth = Math.min(960, width - 32);
-      const expectedHeight = Math.min(760, height - 32);
+      const expectedWidth = width < 768 ? width : Math.min(960, width - 32);
+      const expectedHeight = width < 768 ? height : Math.min(760, height - 32);
       await expect
         .poll(() => frame.boundingBox())
         .toEqual({
@@ -126,21 +141,35 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
           getComputedStyle(element).getPropertyValue('--mar-font-size-title').trim()
         )
       );
-      await expect(title).toHaveAttribute('title', name!);
+      await expect(title).toHaveText(name!);
+      if (index === 2) {
+        await title.hover();
+        const tooltip = page.getByRole('tooltip').filter({ visible: true });
+        await expect(tooltip).toHaveText(name!);
+        await page.keyboard.press('Escape');
+        await expect(tooltip).toHaveCount(0);
+        await expect(dialog).toBeVisible();
+      }
       await expect(title).toHaveCSS('text-overflow', 'ellipsis');
       await expect(dialog.locator('img')).toHaveCSS('object-fit', 'contain');
       await expect(dialog.locator('img')).toHaveCSS('object-position', '50% 50%');
       const layout = await frame.evaluate((element) => {
         const body = element.querySelector('.el-dialog__body')!.getBoundingClientRect();
-        const image = element.querySelector('img')!.getBoundingClientRect();
+        const displayedImage = element.querySelector('img')!;
+        const image = displayedImage.getBoundingClientRect();
         const close = element.querySelector('.el-dialog__headerbtn')!.getBoundingClientRect();
         const header = element.querySelector('.el-dialog__header')!.getBoundingClientRect();
         return {
-          imageFillsBody:
-            Math.abs(image.left - body.left) < 1 &&
-            Math.abs(image.top - body.top) < 1 &&
-            Math.abs(image.width - body.width) < 1 &&
-            Math.abs(image.height - body.height) < 1,
+          imageFitsBody:
+            image.left >= body.left &&
+            image.top >= body.top &&
+            image.right <= body.right &&
+            image.bottom <= body.bottom,
+          imagePreservesAspectRatio:
+            Math.abs(
+              image.height -
+                (image.width * displayedImage.naturalHeight) / displayedImage.naturalWidth
+            ) < 1,
           closeVisible:
             close.left >= 0 &&
             close.right <= innerWidth &&
@@ -151,7 +180,8 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
         };
       });
       expect(layout).toEqual({
-        imageFillsBody: true,
+        imageFitsBody: true,
+        imagePreservesAspectRatio: true,
         closeVisible: true,
         headerAboveImage: true,
         noOverflow: true
@@ -3061,26 +3091,42 @@ test('Admin workspaces render replies, plans, and streaming updates as safe Mark
     readonly csrf: string | undefined;
     readonly body: string;
   }[] = [];
-  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  await mockConsoleApi(
+    page,
+    'MANAGED',
+    ['history.read', 'turn.start'],
+    writes,
+    'GIT_WORKSPACE',
+    true,
+    undefined,
+    undefined,
+    '0.9.6',
+    true
+  );
   const previewPaths: string[] = [];
   const previewContentPaths: string[] = [];
   const previewRoute = (route: Route) => {
     const requestUrl = new URL(route.request().url());
     const path = requestUrl.searchParams.get('path') ?? '';
-    const offset = requestUrl.searchParams.get('offset');
+    const content = '第一行\n第二行\n第三行\n目标行';
     previewPaths.push(path);
     return json(route, {
       file: {
         path,
         encoding: 'utf-8',
-        content: offset === '2' ? '\n目标行' : '第一行\n第二行\n第三行',
-        truncated: offset !== '2',
-        nextOffset: offset === '2' ? null : 2
+        size: Buffer.byteLength(content),
+        content,
+        truncated: false,
+        nextOffset: null
       }
     });
   };
-  await page.context().route('**/api/workspaces/workspace-1/files/read**', previewRoute);
-  await page.route('**/api/workspaces/workspace-1/files/read**', previewRoute);
+  await page.context().route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, previewRoute);
+  await page
+    .context()
+    .route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+      json(route, { preparation: { state: 'UNAVAILABLE' } })
+    );
   await page.context().route('**/api/workspaces/workspace-1/files/content**', (route) => {
     const requestUrl = new URL(route.request().url());
     previewContentPaths.push(requestUrl.searchParams.get('path') ?? '');
@@ -3333,15 +3379,10 @@ test('Admin workspaces render replies, plans, and streaming updates as safe Mark
   await fileLink.first().click({ modifiers: ['Control'] });
   const filePopup = await popupPromise;
   await filePopup.waitForURL(/standaloneFile=1/);
-  const filePopupUrl = filePopup.url();
-  await mockConsoleApi(filePopup, 'MANAGED', ['history.read', 'turn.start'], []);
-  await filePopup.goto('/console');
-  await filePopup.getByRole('button', { name: '进入控制台' }).click();
-  await expect(
-    filePopup.locator('.workspace-tree').getByRole('button', { name: /node-1/ })
-  ).toBeVisible();
-  await filePopup.goto(filePopupUrl);
-  await expect(filePopup.getByRole('dialog', { name: 'src/main.ts 文件预览' })).toBeVisible();
+  await expect(filePopup.getByRole('tab', { name: 'main.ts', exact: true })).toBeVisible();
+  await expect(filePopup.getByRole('tabpanel', { name: 'main.ts', exact: true })).toContainText(
+    '第一行'
+  );
   await expect(filePopup.getByRole('button', { name: '关闭预览' })).toHaveCount(1);
   const filePopupClosed = filePopup.waitForEvent('close');
   await filePopup
@@ -3352,7 +3393,7 @@ test('Admin workspaces render replies, plans, and streaming updates as safe Mark
     });
   await filePopupClosed;
   await page.locator('.conversation-file-change-details > summary').click();
-  await page.getByRole('button', { name: '查看 /project/src/main.ts 的更改' }).click();
+  await page.getByRole('button', { name: '打开当前文件：/project/src/main.ts' }).click();
   await expect(page.getByRole('dialog', { name: 'src/main.ts Git 差异' })).toBeVisible();
   await page.locator('.workspace-file-tab.is-active .workspace-file-tab-close').click();
   await externalFileLink.click();
