@@ -52,7 +52,6 @@ export const workbenchPageZhCN = {
     workbenchSurface: {
       workspaceMetadataUnavailable: '工作区信息暂不可用',
       retryWorkspace: '重试加载',
-      registerWorkspace: '登记工作区',
       offlineWorkspace: '节点离线，等待重新连接。',
       connectionOffline: '网络已离线，等待重新连接。',
       selectAWorkspace: '选择一个工作区',

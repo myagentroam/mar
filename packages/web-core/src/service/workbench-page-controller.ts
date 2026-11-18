@@ -1180,7 +1180,6 @@ export function createWorkbenchPageController<
     pendingDirectoryName: pendingWorkspaceDirectoryName,
     directory: workspaceDirectory,
     loadingDirectory: loadingWorkspaceDirectory,
-    openTools: openWorkspaceTools,
     selectedPathValid: selectedWorkspaceDirectorySelectable,
     reset: resetWorkspaceRegistration,
     load: loadWorkspaceDirectories,
@@ -1742,9 +1741,26 @@ export function createWorkbenchPageController<
       clearNodeDetails
     });
 
+  const openNodeRegistrationOnEntry = ref(false);
+  watch(
+    [view, managementSection],
+    ([nextView, section]) => {
+      if (nextView !== 'management' || section !== options.nodeManagementSection) {
+        openNodeRegistrationOnEntry.value = false;
+      }
+    },
+    { flush: 'sync' }
+  );
+
   function openNodeRegistration(): void {
     navigationService.selectView('management', 'preserve-layout');
     selectManagementSection(options.nodeManagementSection);
+  }
+
+  function openNodeRegistrationFromTree(): void {
+    if (admin.value.managementWritable !== true) return;
+    openNodeRegistration();
+    openNodeRegistrationOnEntry.value = true;
   }
 
   function closeWorkspaceRegistration(): void {
@@ -1756,7 +1772,7 @@ export function createWorkbenchPageController<
     closeMobileSidebar();
     navigationService.selectView('nodes', 'preserve-layout');
     workspaceRegistrationNodeId.value = nodeId;
-    resetWorkspaceRegistration(true);
+    resetWorkspaceRegistration();
     await loadWorkspaceDirectories();
   }
 
@@ -1983,16 +1999,6 @@ export function createWorkbenchPageController<
 
   const workPromptCompletion = mainPaneController.completion;
   const composerInteractions = mainPaneController.interactions;
-
-  watch(openWorkspaceTools, (openItems) => {
-    if (!openItems.includes('register')) {
-      discardPendingWorkspaceDirectory();
-      return;
-    }
-    if (workspaceDirectory.value === undefined && !loadingWorkspaceDirectory.value) {
-      void loadWorkspaceDirectories();
-    }
-  });
 
   installWorkbenchPageLifecycle({
     persistenceSources: [
@@ -2298,7 +2304,8 @@ export function createWorkbenchPageController<
       registrationLoading: workspaceRegistrationService.loading,
       pendingWorkspaceDirectoryName,
       openNodeRegistration,
-      openWorkspaceTools,
+      openNodeRegistrationFromTree,
+      openNodeRegistrationOnEntry,
       registerWorkspace,
       workspacePreserveGitConfig,
       workspaceGitPolicySupported,

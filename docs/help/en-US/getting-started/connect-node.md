@@ -1,6 +1,6 @@
 ---
 title: Connect Your First Node
-lastUpdated: 2026-11-12
+lastUpdated: 2026-11-18
 ---
 
 # Connect Your First Node
@@ -16,7 +16,7 @@ Server does not include a Node executor. Install and register Node separately, e
 
 ## Procedure
 
-1. Open **Admin → Nodes**, select **Register Node**, and create a registration key with a name and owner. On success, the form closes and a separate confirmation dialog shows the key, instructions, and deployment guide. Copy and save the registration key before closing, then follow the deployment guide to register your device.
+1. Right-click a blank area in the Workspace tree and select **Register Node**. You can also open **Admin → Nodes** and select **Register Node** there. Enter a Node name and owner to create a registration key. On success, the form closes and a separate confirmation dialog shows the key, instructions, and deployment guide. Copy and save the registration key before closing, then follow the deployment guide to register your device.
 2. Install `@myagentroam/node` on the target host and create its private configuration file.
 3. Run `mar-node run --config <config-file>` in the foreground for initial verification.
 4. Confirm that the Node is online. Open its management details and verify that the reported Agents match the host. Configure systemd, Task Scheduler, or launchd only after this check succeeds.

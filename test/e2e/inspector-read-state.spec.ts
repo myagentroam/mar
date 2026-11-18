@@ -92,6 +92,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         { panel: 'html-refresh', selector: '.html-browser-actions button' }
       ]) {
         const panel = page.getByTestId(action.panel);
+        const directoryPicker = action.panel === 'directory-refresh';
+        if (directoryPicker)
+          await panel.getByRole('button', { name: 'Open directory picker' }).click();
         const refresh = panel.locator(action.selector).first();
         await expect(refresh).toBeEnabled();
         await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
@@ -113,6 +116,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await expect(refresh.locator('[data-mar-icon="refresh"]')).toBeVisible();
           await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
           pending = undefined;
+        }
+        if (directoryPicker) {
+          const dialog = page.getByRole('dialog', { name: 'Register Workspace' });
+          await dialog.screenshot({
+            path: testInfo.outputPath(`directory-refresh-${theme}-${width}.png`),
+            animations: 'disabled'
+          });
+          await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         }
       }
       await page.locator('.refresh-actions-fixture').screenshot({

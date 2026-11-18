@@ -15,6 +15,7 @@ import { translate } from '@/service/locale-preference-service';
 const props = defineProps<{
   request: <T>(path: string, init?: RequestInit) => Promise<T>;
   writable: boolean;
+  openRegistrationOnEntry?: boolean;
   nodes?: readonly NodeSummary[] | undefined;
   nodeUpgradeProgress?:
     Readonly<Record<string, NonNullable<NodeSummary['upgradeProgress']> | null>> | undefined;
@@ -56,6 +57,7 @@ function detailsExtension(
   <CorePanel
     :request="request"
     :writable="writable"
+    :open-registration-on-entry="openRegistrationOnEntry"
     :nodes="nodes"
     :node-upgrade-progress="nodeUpgradeProgress"
     :resource-type="resourceType"

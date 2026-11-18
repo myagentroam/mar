@@ -575,7 +575,7 @@ describe('Enterprise management components', () => {
       defineComponent({
         setup: () => () =>
           h(WorkspaceRegistrationPicker, {
-            modelValue: [],
+            open: true,
             directory: undefined,
             selectedPath: '/workspace',
             pendingDirectoryName: '',
@@ -597,7 +597,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(personalRequest).not.toHaveBeenCalled();
       expect(textContent(personalView.root)).toContain('Personal');
-      const form = personalView.findAll('form')[0]!;
+      const form = personalView.findAll('ElForm')[0]!;
       await trigger(form, 'onSubmit', { preventDefault() {} });
       expect(personalRegister).toHaveBeenCalledOnce();
       expect(personalRegister).toHaveBeenCalledWith();
@@ -611,7 +611,7 @@ describe('Enterprise management components', () => {
       defineComponent({
         setup: () => () =>
           h(WorkspaceRegistrationPicker, {
-            modelValue: [],
+            open: true,
             directory: undefined,
             selectedPath: '/workspace',
             pendingDirectoryName: '',
@@ -635,7 +635,7 @@ describe('Enterprise management components', () => {
       const options = view.findAll('ElOption').map((node) => node.props['value']);
       expect(options).toEqual([1, 2, 3]);
       await trigger(select, 'onUpdate:modelValue', 3);
-      await trigger(view.findAll('form')[0]!, 'onSubmit', { preventDefault() {} });
+      await trigger(view.findAll('ElForm')[0]!, 'onSubmit', { preventDefault() {} });
       expect(register).toHaveBeenCalledWith({ ownerType: 'ORGANIZATION', ownerOrganizationId: 3 });
     } finally {
       view.unmount();

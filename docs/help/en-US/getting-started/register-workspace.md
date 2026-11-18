@@ -1,6 +1,6 @@
 ---
 title: Register Your First Workspace
-lastUpdated: 2026-10-22
+lastUpdated: 2026-11-18
 ---
 
 # Register Your First Workspace
@@ -10,8 +10,8 @@ A Workspace is a real directory on one Node. It is not a copy and cannot be used
 The Node must be online, the directory must be inside an `allowedRoots` entry, and the Node service account must have the required permissions.
 
 1. Open **Work**, expand the online Node, and select the add-Workspace action. Registration opens in a dialog with an explicit host target, without changing the active Workspace.
-2. Choose a directory returned by the Node and give it a recognizable display name.
-3. Saving immediately activates the Workspace tab and loads its content in the background. Canceling the dialog leaves the original Workspace selected.
+2. Choose a directory within `allowedRoots` directly in the dialog, then click **Register Workspace** at the bottom.
+3. Successful registration immediately activates the Workspace tab and loads its content in the background. Clicking **Cancel** leaves the original Workspace selected.
 4. Open Files and, for a Git repository, Git Changes.
 
 **Success:** the Workspace appears under its Node and the file tree is readable. Git repositories also show the current branch and Git Changes.

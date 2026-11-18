@@ -48,7 +48,6 @@ export const workspaceEnUS = {
     workspaceRegistrationPicker: {
       enterADirectoryName: 'Enter a directory name',
       enterASingleDirectoryNameWithoutPath: 'Enter a single directory name without path separators',
-      registerANewWorkspace: 'Register a New Workspace',
       goToParentDirectory: 'Go to parent directory',
       goToParentDirectory2: 'Go to parent directory',
       up: 'Up',
@@ -65,7 +64,7 @@ export const workspaceEnUS = {
       open: 'Open {value0}',
       open2: 'Open {value0}',
       loadingAllowedRoots: 'Loading allowed roots…',
-      expandAndSelectADirectoryToRegister: 'Expand and select a directory to register.',
+      selectADirectoryToRegister: 'Select a directory to register.',
       onlyTheFirst200ChildDirectoriesAre: 'Only the first 200 child directories are shown.',
       selected: 'Selected:',
       createAndRegister: 'Create and register',

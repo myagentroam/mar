@@ -5,6 +5,7 @@ import type { NodeSummary } from '@myagentroam/web-core/node-model';
 defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly writable: boolean;
+  readonly openRegistrationOnEntry?: boolean;
   readonly nodes?: readonly NodeSummary[];
   readonly nodeUpgradeProgress?:
     Readonly<Record<string, NonNullable<NodeSummary['upgradeProgress']> | null>> | undefined;
@@ -19,6 +20,7 @@ const emit = defineEmits<{ changed: [] }>();
   <ResourceManagementPanel
     :request="request"
     :writable="writable"
+    :open-registration-on-entry="openRegistrationOnEntry"
     :nodes="nodes"
     :node-upgrade-progress="nodeUpgradeProgress"
     :edition="edition"

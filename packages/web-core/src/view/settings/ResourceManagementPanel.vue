@@ -44,6 +44,7 @@ const documentationAvailable = useDocumentationAvailability();
 const props = defineProps<{
   readonly request: <T>(path: string, init?: RequestInit) => Promise<T>;
   readonly writable: boolean;
+  readonly openRegistrationOnEntry?: boolean;
   readonly nodes?: readonly NodeSummary[] | undefined;
   readonly nodeUpgradeProgress?: Readonly<Record<string, NodeUpgradeProgress | null>> | undefined;
   readonly resourceType: 'NODE' | 'WORKSPACE';
@@ -78,7 +79,9 @@ const editing = shallowRef<Row>();
 const editName = ref('');
 const editFormRef = ref<FormInstance>();
 const registrationFormRef = ref<FormInstance>();
-const registrationOpen = ref(false);
+const registrationOpen = ref(
+  props.resourceType === 'NODE' && props.writable && props.openRegistrationOnEntry === true
+);
 const registrationToken = ref('');
 const registrationName = ref('');
 const creatingRegistrationToken = ref(false);

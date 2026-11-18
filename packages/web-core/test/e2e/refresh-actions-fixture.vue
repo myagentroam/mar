@@ -44,6 +44,7 @@ const registration = createWorkspaceRegistrationService({
   error: () => {},
   errorMessage: String
 });
+const directoryPickerOpen = ref(false);
 registration.directory.value = {
   currentPath: '/workspace',
   homePath: '/workspace',
@@ -79,8 +80,10 @@ registration.directory.value = {
       />
     </section>
     <section data-testid="directory-refresh">
+      <button type="button" @click="directoryPickerOpen = true">Open directory picker</button>
       <WorkspaceRegistrationPicker
-        :model-value="['register']"
+        v-if="directoryPickerOpen"
+        :open="directoryPickerOpen"
         :directory="registration.directory.value"
         :loading-directory="registration.loadingDirectory.value"
         :loading="false"
@@ -89,6 +92,7 @@ registration.directory.value = {
         :node-ready="true"
         :selected-path-valid="false"
         @navigate="registration.load"
+        @close="directoryPickerOpen = false"
       />
     </section>
     <section data-testid="html-refresh">

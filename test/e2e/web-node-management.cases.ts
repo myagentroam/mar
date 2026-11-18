@@ -145,8 +145,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       locale === 'zh-CN'
         ? {
             login: '进入控制台',
+            work: '工作',
             admin: '管理',
             nodes: '节点管理',
+            refresh: '刷新工作区',
             register: '注册节点',
             name: '节点名称',
             create: '创建注册密钥',
@@ -158,8 +160,10 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           }
         : {
             login: 'Open console',
+            work: 'Work',
             admin: 'Admin',
             nodes: 'Nodes',
+            refresh: 'Refresh workspaces',
             register: 'Register Node',
             name: 'Node Name',
             create: 'Create registration key',
@@ -172,6 +176,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
     await mockPersonalResources(page);
+    await page.route('**/api/nodes', (route) => json(route, { nodes: [] }));
     await page.route('**/api/management/nodes', (route) => json(route, { nodes: [] }));
     await page.route('**/api/organizations', (route) => json(route, { organizations: [] }));
     await page.route('**/api/enterprise/users', (route) => json(route, { users: [] }));
@@ -189,8 +194,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       csrfToken: 'csrf-1'
     };
     let authenticated = false;
+    let managementWritable = true;
     await page.route('**/api/auth/me', (route) =>
-      json(route, authenticated ? admin : { authenticated: false, mustChangePassword: false })
+      json(
+        route,
+        authenticated
+          ? { ...admin, managementWritable }
+          : { authenticated: false, mustChangePassword: false }
+      )
     );
     await page.route('**/api/auth/login', (route) => {
       authenticated = true;
@@ -226,11 +237,13 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     });
     await page.goto('/console');
     await page.getByRole('button', { name: text.login }).click();
-    await page.getByRole('button', { name: text.admin, exact: true }).click();
-    await page.getByRole('button', { name: text.nodes, exact: true }).click();
-    await page.getByRole('button', { name: text.register, exact: true }).click();
+    const tree = page.locator('aside.workspace-tree');
+    await tree.click({ button: 'right', position: { x: 24, y: 300 } });
+    await page.getByRole('menuitem', { name: text.register, exact: true }).click();
     const form = page.getByRole('dialog', { name: text.register, exact: true });
     const receipt = page.getByRole('dialog', { name: text.success, exact: true });
+    await expect(form).toBeVisible();
+    expect(writes).toHaveLength(0);
     await expect(form.getByRole('link', { name: text.help })).toHaveCount(0);
     await form.getByRole('button', { name: text.create, exact: true }).click();
     await expect(form.locator('.el-form-item__error')).toHaveText(text.required);
@@ -271,6 +284,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await receipt.getByRole('button', { name: text.close, exact: true }).click();
     await expect(receipt).toHaveCount(0);
     await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByRole('button', { name: text.work, exact: true }).click();
+    await page.getByRole('button', { name: text.admin, exact: true }).click();
+    await page.getByRole('button', { name: text.nodes, exact: true }).click();
+    await expect(page.getByRole('button', { name: text.register, exact: true })).toBeVisible();
+    await expect(form).toHaveCount(0);
     await page.getByRole('button', { name: text.register, exact: true }).click();
     await expect(form.getByRole('textbox', { name: text.name })).toHaveValue('');
     await expect(page.getByText(token, { exact: true })).toHaveCount(0);
@@ -279,6 +297,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(receipt.locator('.registration-token')).toHaveText('test-registration-key-new');
     await page.keyboard.press('Escape');
     await expect(receipt).toHaveCount(0);
+
+    managementWritable = false;
+    await page.reload();
+    await page.getByRole('button', { name: text.work, exact: true }).click();
+    await tree.click({ button: 'right', position: { x: 24, y: 300 } });
+    await expect(page.getByRole('menuitem', { name: text.refresh, exact: true })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: text.register, exact: true })).toHaveCount(0);
+    expect(writes).toHaveLength(3);
   });
 }
 
@@ -648,6 +674,8 @@ test('Node and workspace management show resource names and use default controls
   await page.getByRole('button', { name: '进入控制台' }).click();
   await expect(page.getByText(/还没有绑定节点？前往节点管理创建注册密钥/)).toBeVisible();
   await page.getByRole('button', { name: '前往节点管理' }).click();
+  await expect(page.getByRole('cell', { name: '研发节点', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '注册节点', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '工作区管理' }).click();
   await expect(page.getByRole('cell', { name: '研发节点', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '节点管理' }).click();
@@ -656,11 +684,14 @@ test('Node and workspace management show resource names and use default controls
   const details = page.getByRole('dialog', { name: '节点详情' });
   await expect(details).toContainText('node-1');
   await details.getByRole('button', { name: '关闭', exact: true }).click();
-  const deleteButton = page
+  const deleteButtons = page
     .locator('.resource-management-panel')
     .getByRole('button', { name: '删除', exact: true });
-  await expect(deleteButton).not.toHaveClass(/el-button--small/);
-  await expect(deleteButton).toBeDisabled();
+  await expect(deleteButtons).not.toHaveCount(0);
+  for (const button of await deleteButtons.all()) {
+    await expect(button).not.toHaveClass(/el-button--small/);
+    await expect(button).toBeDisabled();
+  }
   expect(deletes).toEqual([]);
 });
 

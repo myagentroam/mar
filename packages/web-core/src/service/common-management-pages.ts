@@ -32,11 +32,12 @@ export function createCommonManagementPages(): readonly ManagementPageDefinition
         delay: 0
       }),
       visible: () => true,
-      props: ({ request, admin, nodes, nodeUpgradeProgress }) => ({
+      props: ({ request, admin, nodes, nodeUpgradeProgress, openNodeRegistrationOnEntry }) => ({
         request,
         nodes,
         ...(nodeUpgradeProgress === undefined ? {} : { nodeUpgradeProgress }),
-        writable: admin.managementWritable === true
+        writable: admin.managementWritable === true,
+        openRegistrationOnEntry: openNodeRegistrationOnEntry === true
       })
     },
     {
