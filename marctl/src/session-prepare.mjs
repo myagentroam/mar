@@ -20,10 +20,12 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
     'mode'
   ])
     if (args[name] !== undefined) input[name] = args[name];
-  if (['send', 'stop', 'view', 'wait'].includes(args.action) && sessionId)
-    input.agentId = sessionId;
-  if (args.action === 'wait' && args.agentIds?.length) input.agentIds = args.agentIds;
-  if (args.action === 'wait' && args.timeoutMs !== undefined) input.waitMs = args.timeoutMs;
+  if (['send', 'stop', 'view'].includes(args.action) && sessionId) input.agentId = sessionId;
+  if (args.action === 'wait') {
+    const agentIds = sessionId ? [sessionId] : args.agentIds;
+    if (agentIds !== undefined) input.agentIds = agentIds;
+    if (args.timeoutMs !== undefined) input.waitMs = args.timeoutMs;
+  }
   if (args.message !== undefined || args.messageFile !== undefined)
     input.content = await messageContent(args, stdin, 100000, translate);
   if (args.goal !== undefined) input.goal = { objective: args.goal.trim() };
@@ -32,8 +34,8 @@ export async function prepareAgentNetworkRequest({ args, stdin, translate, sessi
     input.approval = { approvalId: args.approvalId, decision: args.decision };
   if (args.action === 'start' || args.action === 'send')
     input.clientMessageId = args.clientMessageId ?? randomUUID();
-  if (args.action === 'send')
-    input.deliveryIntent = args.steer ? 'REPLACE_CURRENT' : args.queue ? 'QUEUE' : 'SEND';
+  if (args.action === 'send' && input.content !== undefined)
+    input.deliveryIntent = args.queue ? 'QUEUE' : 'REPLACE_CURRENT';
   return { action: 'network', command: { operation: args.action, input } };
 }
 

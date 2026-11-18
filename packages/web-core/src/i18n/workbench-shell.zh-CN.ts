@@ -133,6 +133,7 @@ export const workbenchShellZhCN = {
       status: '状态',
       notConfigured: '未配置',
       enabled: '已启用',
+      enabledIndicator: '定时任务已启用',
       paused: '已暂停',
       notifyUser: '通知人',
       userUnavailable: '用户已不存在',

@@ -194,9 +194,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   transform: translateX(-50%);
 }
 .web-performance-indicator .mar-icon {
-  width: 16px;
-  height: 16px;
-  font-size: 16px;
+  font-size: var(--mar-activity-rail-icon-size, 1.25rem);
 }
 .web-performance-panel {
   color: var(--mar-text-primary);

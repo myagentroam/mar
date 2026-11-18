@@ -135,7 +135,8 @@ it('publishes paired full MCP and management-only Host guidance without credenti
     }
     expect(marctlInstructions).not.toContain('--history');
     expect(marctlInstructions).toContain('agents view <id>.');
-    expect(marctlInstructions).toContain('Prefer agents send <id> --steer');
+    expect(marctlInstructions).toContain('agents send defaults to --steer');
+    expect(marctlInstructions).toContain('Node may interrupt the current execution');
     expect(marctlInstructions).toContain('timely communication or course correction');
     expect(marctlInstructions).toContain(
       '--queue is best reserved for deferred input explicitly requested by the user or recipient'

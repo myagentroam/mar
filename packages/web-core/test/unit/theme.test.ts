@@ -6,6 +6,7 @@ import {
   createThemePreferenceService,
   CUSTOM_THEMES_STORAGE_KEY,
   parseStoredThemePreference,
+  THEME_BOOTSTRAP_STORAGE_KEY,
   THEME_STORAGE_KEY
 } from '../../src/service/theme-preference-service';
 
@@ -181,16 +182,82 @@ describe('Web theme preference', () => {
     expect(themeColorAttributes.get('content')).toBe(pageColors.daylight);
     service.setTheme(custom.id);
     expect(themeColorAttributes.get('content')).toBe('#284038');
+    expect(JSON.parse(storage.get(THEME_BOOTSTRAP_STORAGE_KEY)!)).toEqual({
+      themeId: custom.id,
+      scheme: 'vscode-dark-2026',
+      background: '#284038'
+    });
     service.saveCustomTheme(source('#dce8df'), custom.id);
     expect(themeColorAttributes.get('content')).toBe('#dce8df');
+    const lightSnapshot = {
+      themeId: custom.id,
+      scheme: 'daylight',
+      background: '#dce8df'
+    };
+    expect(JSON.parse(storage.get(THEME_BOOTSTRAP_STORAGE_KEY)!)).toEqual(lightSnapshot);
 
+    storage.delete(THEME_BOOTSTRAP_STORAGE_KEY);
     const restored = createThemePreferenceService((theme) => ({
       '--mar-bg-page': pageColors[theme]
     }));
     expect(restored.theme.value).toBe(custom.id);
     expect(themeColorAttributes.get('content')).toBe('#dce8df');
     expect(storage.get(CUSTOM_THEMES_STORAGE_KEY)).toContain(custom.id);
+    expect(JSON.parse(storage.get(THEME_BOOTSTRAP_STORAGE_KEY)!)).toEqual(lightSnapshot);
+    restored.setTheme('daylight');
+    expect(storage.has(THEME_BOOTSTRAP_STORAGE_KEY)).toBe(false);
+    restored.setTheme(custom.id);
     restored.deleteCustomTheme(custom.id);
     expect(themeColorAttributes.get('content')).toBe(pageColors['vscode-dark-2026']);
+    expect(storage.has(THEME_BOOTSTRAP_STORAGE_KEY)).toBe(false);
+  });
+
+  it('discards a stale startup snapshot without blocking the theme when the cache write fails', () => {
+    const { storage, themeColorAttributes } = stubBrowserEnvironment();
+    const service = createThemePreferenceService(() => ({ '--mar-bg-page': '#14181e' }));
+    const source = (background: string) =>
+      JSON.stringify({ colors: { '--mar-bg-page': background } });
+    const custom = service.saveCustomTheme(source('#dce8df'));
+    service.setTheme(custom.id);
+    expect(storage.has(THEME_BOOTSTRAP_STORAGE_KEY)).toBe(true);
+
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === THEME_BOOTSTRAP_STORAGE_KEY) throw new Error('quota');
+      storage.set(key, value);
+    });
+    service.saveCustomTheme(source('#284038'), custom.id);
+
+    expect(themeColorAttributes.get('content')).toBe('#284038');
+    expect(storage.get(CUSTOM_THEMES_STORAGE_KEY)).toContain('#284038');
+    expect(storage.has(THEME_BOOTSTRAP_STORAGE_KEY)).toBe(false);
+  });
+
+  it('does not publish outdated startup colors from an older tab', () => {
+    const { storage } = stubBrowserEnvironment();
+    const createService = () =>
+      createThemePreferenceService(() => ({ '--mar-bg-page': '#14181e' }));
+    const firstTab = createService();
+    const source = (background: string) =>
+      JSON.stringify({ colors: { '--mar-bg-page': background } });
+    const custom = firstTab.saveCustomTheme(source('#dce8df'));
+    const secondTab = createService();
+    secondTab.setTheme(custom.id);
+    secondTab.saveCustomTheme(source('#284038'), custom.id);
+    const expected = {
+      themeId: custom.id,
+      scheme: 'vscode-dark-2026',
+      background: '#284038'
+    };
+
+    firstTab.saveCustomTheme(source('#bfd0c1'));
+    expect(JSON.parse(storage.get(THEME_BOOTSTRAP_STORAGE_KEY)!)).toEqual(expected);
+    firstTab.setTheme(custom.id);
+    expect(JSON.parse(storage.get(THEME_BOOTSTRAP_STORAGE_KEY)!)).toEqual(expected);
+
+    secondTab.deleteCustomTheme(custom.id);
+    firstTab.setTheme(custom.id);
+    expect(firstTab.theme.value).toBe('vscode-dark-2026');
+    expect(storage.get(THEME_STORAGE_KEY)).toBe('vscode-dark-2026');
+    expect(storage.has(THEME_BOOTSTRAP_STORAGE_KEY)).toBe(false);
   });
 });

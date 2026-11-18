@@ -81,8 +81,9 @@ export const iconShapes = {
   star: '<path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3-5.7-3-5.7 3 1.1-6.3L2.8 9.7l6.4-.9L12 3Z" />',
   'star-filled':
     '<path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3-5.7-3-5.7 3 1.1-6.3L2.8 9.7l6.4-.9L12 3Z" fill="currentColor" stroke-width="1.2"/>',
-  pin: '<path d="M8 4h8m-7 0v6l-3 4v2h12v-2l-3-4V4M12 16v5" />',
-  'pin-off': '<path d="M10 4h6m-1 0v6l3 4v2h-2M8.5 9l-2.5 5v2h6m0 0v5M3.5 3.5l17 17" />',
+  pin: '<path d="M8.75 4.75A1.75 1.75 0 0 1 10.5 3h3a1.75 1.75 0 0 1 1.75 1.75L14.5 9l2.8 3.15a1.65 1.65 0 0 1-1.23 2.75H7.93a1.65 1.65 0 0 1-1.23-2.75L9.5 9l-.75-4.25Z" transform="translate(-.75 .5) rotate(45 12 12)"/><path d="M12 14.9V22" transform="translate(-.75 .5) rotate(45 12 12)"/>',
+  'pin-off':
+    '<path d="m9.35 8.15-.6-3.4A1.75 1.75 0 0 1 10.5 3h3a1.75 1.75 0 0 1 1.75 1.75l-.6 3.4m2.65 4a1.65 1.65 0 0 1-1.23 2.75H7.93a1.65 1.65 0 0 1-1.23-2.75M12 14.9V22M3 10.15h18" transform="translate(-.75 .5) rotate(45 12 12)"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2" />',
   share:
     '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.7 7.6-4.4m-7.6 7 7.6 4.4" />',

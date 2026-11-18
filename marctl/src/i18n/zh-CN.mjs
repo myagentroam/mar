@@ -81,8 +81,9 @@ ${configurationHelp}
 输入与结果：
   start 默认当前会话的 Runner；没有当前会话的终端须指定 --runner 或
   --parent。start 不等待。
-  send 默认追加；--steer 优先补充，--queue 排队。--goal 设置或替换目标，
-  --clear-goal 清除目标；send 可仅更新目标，省略则不修改。
+  send 默认使用 --steer，用于即时沟通或纠偏。无法在当前执行内交付时，
+  Node 可能中断当前执行。--goal 设置或替换目标；--clear-goal 清除目标。
+  send 可仅更新目标，省略则不修改。
   stop 停止目标当前执行并清除 Goal。wait 默认等待直接子会话终态 30 秒，
   0ms 为快照；正数按传入时长等待，最多 5 分钟。等待不会停止任务。
   -m 与 --message-file 互斥；文件使用 UTF-8，- 从 stdin 读取。
@@ -92,7 +93,6 @@ ${configurationHelp}
   扁平 sessions 和 truncated。limit 默认 10、上限 100，无 cursor 或分页。
   活跃会话优先，其后按最近活动时间倒序。
   配置和持久提示从后续执行生效。
-  即时沟通或纠偏优先使用 --steer。
   建议仅将 --queue 用于明确要求延后的输入：当前工作及前面的队列项结束后才消费，
   有活动 Goal 时，必须等到该 Goal 退出才消费。已接收不保证立即处理。
   消息被接受后，通常无需另行确认收悉或立即查看是否收到。

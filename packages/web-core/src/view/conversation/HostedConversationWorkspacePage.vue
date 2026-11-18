@@ -1085,9 +1085,11 @@ onBeforeUnmount(() => {
           >
             <span class="history-title-row">
               <MarIcon
-                name="star-filled"
                 v-if="conversation.pinnedAt !== null"
+                name="pin"
                 class="history-pin-indicator"
+                role="img"
+                aria-hidden="false"
                 :aria-label="translate('hostedConversations.pinnedLabel')"
               />
               <span
@@ -1680,8 +1682,7 @@ onBeforeUnmount(() => {
 
 .history-list article.selected .history-open,
 .history-list article.selected .history-title-row strong,
-.history-list article.selected .history-open time,
-.history-list article.selected .history-pin-indicator {
+.history-list article.selected .history-open time {
   color: var(--mar-text-primary);
 }
 
@@ -1731,11 +1732,10 @@ onBeforeUnmount(() => {
 }
 
 .history-pin-indicator {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   flex: none;
-  color: var(--mar-color-warning-accent);
-  font-size: 12px;
+  color: var(--mar-text-secondary);
 }
 
 .history-run-indicator {

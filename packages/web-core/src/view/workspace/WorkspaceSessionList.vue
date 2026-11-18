@@ -532,32 +532,21 @@ function submitSessionSearch(): void {
                   class="mar-runner-brand-icon session-title-runner-icon"
                 />
                 <MarIcon
-                  v-tooltip="
-                    translate(
-                      session.schedule.enabled
-                        ? 'generated.scheduledSession.enabled'
-                        : 'generated.scheduledSession.paused'
-                    )
-                  "
-                  v-if="session.schedule"
+                  v-if="session.schedule?.enabled === true"
+                  v-tooltip="translate('generated.scheduledSession.enabledIndicator')"
                   name="clock"
-                  :class="[
-                    'session-pin-indicator',
-                    { 'schedule-paused': !session.schedule.enabled }
-                  ]"
-                  :aria-label="
-                    translate(
-                      session.schedule.enabled
-                        ? 'generated.scheduledSession.enabled'
-                        : 'generated.scheduledSession.paused'
-                    )
-                  "
+                  class="session-status-indicator"
+                  role="img"
+                  aria-hidden="false"
+                  :aria-label="translate('generated.scheduledSession.enabledIndicator')"
                 />
                 <MarIcon
-                  v-tooltip="translate('generated.workspaceSessionList.pinned2')"
                   v-else-if="pinned(session)"
-                  name="star-filled"
-                  class="session-pin-indicator"
+                  v-tooltip="translate('generated.workspaceSessionList.pinned2')"
+                  name="pin"
+                  class="session-status-indicator"
+                  role="img"
+                  aria-hidden="false"
                   :aria-label="translate('generated.workspaceSessionList.pinned')"
                 />
                 <strong>{{ title(session) }}</strong>
@@ -906,10 +895,6 @@ function submitSessionSearch(): void {
   text-align: center;
 }
 
-.schedule-paused {
-  opacity: 0.5;
-}
-
 .session-heading-meta {
   display: flex;
   min-width: 0;
@@ -1175,13 +1160,12 @@ function submitSessionSearch(): void {
   }
 }
 
-.session-pin-indicator {
-  width: 0.68rem;
-  height: 0.68rem;
+.session-status-indicator {
+  width: 14px;
+  height: 14px;
   flex: none;
   margin-inline: -0.12rem;
-  color: var(--mar-color-warning-accent);
-  font-size: 0.68rem;
+  color: var(--mar-text-secondary);
 }
 .effective-skill-list {
   min-height: 96px;

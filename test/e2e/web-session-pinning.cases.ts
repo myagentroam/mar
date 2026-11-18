@@ -242,7 +242,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   const row = page.locator('.session-row').filter({ hasText: '定时会话' });
-  await expect(row.getByLabel('已启用')).toBeVisible();
+  await expect(row.getByRole('img', { name: '定时任务已启用', exact: true })).toBeVisible();
   await expect(row.getByLabel('已置顶')).toHaveCount(0);
   await row.hover();
   await row.getByRole('button', { name: /更多会话操作/ }).click();
@@ -254,6 +254,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
     .getByRole('menuitem', { name: '定时任务' })
     .click();
   const dialog = page.getByRole('dialog', { name: '定时任务' });
+  const loadError = page.getByRole('alert').filter({ hasText: '无法加载定时任务。' });
   await expect(dialog.locator('textarea')).toHaveValue('Inspect status');
   const history = dialog.locator('.schedule-history');
   const pager = history.locator('.el-pagination');
@@ -269,9 +270,12 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   await expect(pager.locator('.btn-next')).toBeDisabled();
   failHistoryPage = true;
   await pager.locator('.btn-prev').click();
-  await expect(page.getByText('无法加载定时任务。', { exact: true })).toBeVisible();
+  await expect(loadError).toBeVisible();
+  await expect(loadError).toContainText('REQUEST_FAILED_500');
   await expect(pager.locator('.number.is-active')).toHaveText('3');
   await expect(history.locator('p')).toHaveCount(5);
+  await loadError.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(loadError).toHaveCount(0);
   historyTotal = 12;
   await pager.locator('.btn-prev').click();
   await expect(pager.locator('.number.is-active')).toHaveText('2');
@@ -383,7 +387,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   await expect(dialog.locator('.el-form-item__label').first()).toHaveCSS('width', /3\d\dpx/);
   expect(await pager.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await expect(page.getByText('无法加载定时任务。', { exact: true })).toHaveCount(0);
+  await expect(loadError).toHaveCount(0);
   holdHistoryPage = true;
   await pager.locator('.btn-next').click();
   await expect.poll(() => releaseHistoryPage !== undefined).toBe(true);
@@ -400,7 +404,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
     .click();
   await expect(dialog.getByText('李四', { exact: true })).toBeVisible();
   await expect(history).toHaveCount(0);
-  await expect(page.getByText('无法加载定时任务。', { exact: true })).toHaveCount(0);
+  await expect(loadError).toHaveCount(0);
   expect(historyPages.at(-1)).toBe(1);
   await expect(dialog.getByText('当前用户', { exact: true })).toHaveCount(0);
 });

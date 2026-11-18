@@ -1,6 +1,6 @@
 ---
 title: 使用 marctl 管理节点
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-18
 ---
 
 # 使用 marctl 管理节点
@@ -100,7 +100,7 @@ marctl agents graph <session-id> --limit 100 --json
 marctl agents start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
 marctl agents show <session-id> --json
 marctl agents history <session-id> --limit 10 --json
-marctl agents send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
+marctl agents send <session-id> -m 'Additional context: focus on the resume path.' --json
 marctl agents send <session-id> --queue -m 'After the current task, review the final diff.' --json
 marctl agents send <session-id> --approval <approval-id> --decision approve --json
 marctl agents wait <session-id> --run <run-id> --timeout 30s --json
@@ -125,7 +125,7 @@ Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来�
 
 按任务需要创建会话，标题用 `fixer#<任务编号> <描述>`、`reviewer#<任务或变更编号> <描述>`。没有固定人数、角色注册、会话池；角色、范围和验收条件可放入首条普通消息，持久指令通过 `prompt` 设置。各 Runner 按上文入口加载指南；目标会话不需要加载该指南才能接受协作消息。
 
-`send` 默认按普通发送处理，也可显式选择互斥的 `--steer` 或 `--queue`；冲突、重复或旧选项在读取输入或发送请求前本地拒绝。`--steer` 优先补充新信息，受管等待可提前返回，后台任务继续；其他情况可能切换当前执行，Node 按实际状态裁决。及时协作建议优先使用 `--steer`；`--queue` 建议保留给用户或接收方明确要求延后处理的输入。队列消息在当前工作及前面的队列项结束后才消费，有活动 Goal 时还需等到 Goal 退出；后来的显式停止仍有效。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。消息回执在 `message.status` 和 `message.result` 中报告接受及投递事实，接受不保证立即处理。消息被接受后，通常无需另外回复或索取收悉确认，也无需仅为确认收到而立即检查历史。投递结果未知时先查看历史再重试；排队消息可通过 `queueItemId`/`clientMessageId` 关联。
+`send` 有正文时默认使用 `--steer`，与 `agent_send` 一致。STEER 可使受管等待提前返回，后台任务继续运行。若无法在当前执行内交付，Node 可能中断该执行以交付新输入。`--queue` 用于明确要求延后处理的输入：在当前工作及前面的队列项结束后才消费，有活动 Goal 时还需等到 Goal 退出；后来的显式停止仍有效。纯 Goal 更新或审批不涉及消息投递。冲突、重复或旧选项在读取输入或发送请求前本地拒绝。start/send 自动生成 `clientMessageId`，也可传入 `--client-message-id`。消息回执在 `message.status` 和 `message.result` 中报告接受及投递事实，接受不保证立即处理。消息被接受后，通常无需另外回复或索取收悉确认，也无需仅为确认收到而立即检查历史。投递结果未知时先查看历史再重试；排队消息可通过 `queueItemId`/`clientMessageId` 关联。
 
 `send --approval <approval-id> --decision approve|reject` 可单独决定审批，也可与正文或 Goal 一起提交；Node 仍核验审批有效性和目标归属。单独决定审批无需启动模型请求。
 
@@ -133,7 +133,7 @@ Agent 内执行 `start` 时，Node 根据可信 Execution 凭据核验创建来�
 
 Agent 会话中的 `start` 首条消息和 `send` 消息会在历史和队列中标注 `来自 {name}`，使用发送时的名称快照；悬停显示来源为会话及其 ID。网页分享访客消息使用相同的 `来自 {name}` 标题，悬停显示来源为网页分享；普通用户与分享页面原作者保留原有标题。终端用户直接输入不伪造会话来源。内部来源标记不会出现在消息正文中。
 
-不带 `--run` 的 `wait` 默认等待直接子会话终态 30 秒，`--timeout 0ms` 读取快照，正数按传入时长等待。`stop <session-id>` 停止目标当前执行并清除 Goal，无需执行 ID；空闲时如实返回 idle，并清除 Goal。`wait --run` 通过既有 Watch 等待指定 Run 或审批，退出时释放观察；超时错误可附最后收到的有界 `progress`，没有观察时省略。无论哪种等待，超时或取消等待都不停止任务。Run 成功仍需核验产物与测试；子会话终态不会自动唤醒父会话的 sleep，需主动等待或读取。
+不带 `--run` 的 `wait` 与 `agent_wait` 一致：省略目标时选择直接子会话，默认等待终态 30 秒；显式指定目标时，即使只有一个，结果也通过 `agents` 数组返回。`--timeout 0ms` 读取快照，正数按传入时长等待。`stop <session-id>` 停止目标当前执行并清除 Goal，无需执行 ID；空闲时如实返回 idle，并清除 Goal。`wait --run` 通过既有 Watch 等待指定 Run 或审批，退出时释放观察；超时错误可附最后收到的有界 `progress`，没有观察时省略。无论哪种等待，超时或取消等待都不停止任务。Run 成功仍需核验产物与测试；子会话终态不会自动唤醒父会话的 sleep，需主动等待或读取。
 
 `view` 返回状态、Goal 和有界最近活动，不公开 Run 或 Execution ID。
 

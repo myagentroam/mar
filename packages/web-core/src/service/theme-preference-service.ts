@@ -7,6 +7,28 @@ export type { ThemePreference } from '../model/custom-theme.js';
 
 export const THEME_STORAGE_KEY = 'mar.theme';
 export const CUSTOM_THEMES_STORAGE_KEY = 'mar.customThemes';
+export const THEME_BOOTSTRAP_STORAGE_KEY = 'mar.themeBootstrap';
+
+// The inline console bootstrap only consumes this derived cache, never the theme source.
+function cacheBootstrapTheme(snapshot?: {
+  themeId: CustomTheme['id'];
+  scheme: BuiltinTheme;
+  background: string;
+}): void {
+  try {
+    if (snapshot) {
+      localStorage.setItem(THEME_BOOTSTRAP_STORAGE_KEY, JSON.stringify(snapshot));
+      return;
+    }
+  } catch {
+    // Discard any previous value if refreshing the cache failed.
+  }
+  try {
+    localStorage.removeItem(THEME_BOOTSTRAP_STORAGE_KEY);
+  } catch {
+    // The cache is optional and must not prevent the selected theme from applying.
+  }
+}
 
 export interface ThemePreferenceService {
   readonly theme: Ref<ThemePreference>;
@@ -82,18 +104,49 @@ export function createThemePreferenceService(
         'content',
         getComputedStyle(document.documentElement).getPropertyValue('--mar-bg-page').trim()
       );
+    document.documentElement.style.removeProperty('--mar-bootstrap-bg');
+  }
+  function refreshBootstrapTheme(): void {
+    // The next page follows the shared preference, which may differ from this tab's theme.
+    let selectedId: string | null;
+    try {
+      selectedId = localStorage.getItem(THEME_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    const selected = customThemes.value.find((item) => item.id === selectedId);
+    if (!selected) {
+      cacheBootstrapTheme();
+      return;
+    }
+    const colors = selected === active.value ? activeColors.value : resolveColors(selected.source);
+    const background = colors['--mar-bg-page'];
+    cacheBootstrapTheme(
+      background
+        ? { themeId: selected.id, scheme: themeColorScheme(colors), background }
+        : undefined
+    );
   }
   function setTheme(next: ThemePreference): void {
-    const resolved = parseStoredThemePreference(next, customThemes.value);
+    // Another tab may have edited or deleted the theme since this page loaded.
+    const items = readCustomThemes();
+    const resolved = parseStoredThemePreference(next, items);
     localStorage.setItem(THEME_STORAGE_KEY, resolved);
+    customThemes.value = items;
     theme.value = resolved;
     apply();
+    refreshBootstrapTheme();
   }
   function persist(items: readonly CustomTheme[]): void {
     localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(items));
     customThemes.value = items;
+    // A stale stored selection also resolves to the default on the next load.
+    theme.value = parseStoredThemePreference(theme.value, items);
+    apply();
+    refreshBootstrapTheme();
   }
   apply();
+  refreshBootstrapTheme();
   return {
     theme,
     baseTheme,
@@ -121,19 +174,13 @@ export function createThemePreferenceService(
       if (id && !id.startsWith('custom:')) throw new Error('BUILTIN_THEME_READ_ONLY');
       if (!analyzeCustomTheme(source).validJson) throw new Error('INVALID_THEME_JSON');
       const item: CustomTheme = { id: id ?? createCustomThemeId(), source };
-      const items = customThemes.value.filter((entry) => entry.id !== item.id);
+      const items = readCustomThemes().filter((entry) => entry.id !== item.id);
       persist([...items, item]);
-      apply();
       return item;
     },
     deleteCustomTheme(id) {
       if (!id.startsWith('custom:')) throw new Error('BUILTIN_THEME_READ_ONLY');
-      persist(customThemes.value.filter((item) => item.id !== id));
-      if (theme.value === id) {
-        // A stale stored selection also resolves to the default on the next load.
-        theme.value = 'vscode-dark-2026';
-      }
-      apply();
+      persist(readCustomThemes().filter((item) => item.id !== id));
     }
   };
 }
