@@ -4,7 +4,7 @@
   padding: 0.625rem var(--mar-conversation-detail-end, 0.75rem) 0.625rem 0.75rem;
   border: 0;
   border-radius: var(--mar-radius-surface);
-  background: var(--mar-conversation-code);
+  background: color-mix(in srgb, var(--mar-conversation-canvas), var(--mar-conversation-text) 6%);
   color: var(--mar-conversation-text);
   font-size: var(--mar-font-size-detail);
   font-weight: 400;
