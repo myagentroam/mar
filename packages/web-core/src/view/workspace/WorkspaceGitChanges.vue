@@ -698,12 +698,12 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .repository-kind,
-.repository-current,
-.repository-sync-tag {
-  --el-tag-border-color: var(--mar-border-default);
+.repository-current {
+  --el-tag-border-color: light-dark(var(--mar-border-default), var(--mar-border-medium));
 }
 
 .repository-sync-tag {
+  --el-tag-border-color: var(--mar-border-default);
   font-variant-numeric: tabular-nums;
 }
 

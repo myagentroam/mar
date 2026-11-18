@@ -115,7 +115,13 @@ test('Git changes append at the repository boundary and refresh in place', async
       const refresh = changes.getByRole('button', { name: 'Refresh Git changes', exact: true });
       await expect(entries).toHaveCount(200);
       await expect(marker).not.toBeInViewport();
-      await expect(changes.locator('[data-repository-path="empty"]')).toHaveCount(1);
+      const emptyRepository = changes.locator('[data-repository-path="empty"]');
+      await expect(emptyRepository).toHaveCount(1);
+      const submoduleTag = emptyRepository.locator('.el-tag').filter({ hasText: /^Submodule$/ });
+      await expect(submoduleTag).toHaveCSS(
+        'border-top-color',
+        theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)'
+      );
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
       expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
         true
@@ -292,11 +298,9 @@ for (const theme of ['dark', 'light']) {
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
       const metadataBorder = theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)';
-      for (const label of ['Root', 'Current']) {
-        await expect(page.locator('.repository-tags-row').getByText(label, { exact: true })).toHaveCSS(
-          'border-top-color',
-          metadataBorder
-        );
+      for (const label of [/^Root$/, /^Current$/]) {
+        const tag = page.locator('.repository-tags-row .el-tag').filter({ hasText: label });
+        await expect(tag).toHaveCSS('border-top-color', metadataBorder);
       }
       await expect(refreshGlyph).toHaveCSS('width', '14px');
       await expect(refreshGlyph).toHaveCSS('height', '14px');
