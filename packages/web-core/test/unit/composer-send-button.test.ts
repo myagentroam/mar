@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import ComposerSendButton from '../../src/view/composer/ComposerSendButton.vue?unit-render';
@@ -222,19 +223,25 @@ describe('mobile Composer send gesture', () => {
     expect(f.steer).not.toHaveBeenCalled();
   });
 
-  it('suppresses a click retargeted after the held button is removed before release', () => {
-    const f = fixture();
-    f.fire('onPointerdown');
-    vi.advanceTimersByTime(200);
-    f.view.unmount();
-    mounted.splice(mounted.indexOf(f.view), 1);
-    f.ownerDocument.dispatchEvent(Object.assign(new Event('pointerup'), { pointerId: 1 }));
-    const click = Object.assign(new Event('click', { cancelable: true }), { detail: 1 });
-    f.ownerDocument.dispatchEvent(click);
-    expect(click.defaultPrevented).toBe(true);
-    expect(f.steer).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
-  });
+  it.each([0, 499])(
+    'suppresses a retargeted click when the held button was removed %ims before release',
+    (releaseDelay) => {
+      const f = fixture();
+      f.fire('onPointerdown');
+      vi.advanceTimersByTime(200);
+      f.view.unmount();
+      mounted.splice(mounted.indexOf(f.view), 1);
+      vi.advanceTimersByTime(releaseDelay);
+      f.ownerDocument.dispatchEvent(Object.assign(new Event('pointerup'), { pointerId: 1 }));
+      vi.advanceTimersByTime(100);
+      const click = Object.assign(new Event('click', { cancelable: true }), { detail: 1 });
+      f.ownerDocument.dispatchEvent(click);
+      expect(click.defaultPrevented).toBe(true);
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.steer).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  );
 
   it.each(['onPointercancel', 'onLostpointercapture', 'onBlur'])(
     'does not submit after %s',
@@ -391,9 +398,29 @@ describe('mobile Composer send gesture', () => {
     f.fire('onPointerdown');
     f.view.unmount();
     mounted.splice(mounted.indexOf(f.view), 1);
-    expect(vi.getTimerCount()).toBe(0);
     expect(f.capture.size).toBe(0);
+    f.ownerDocument.dispatchEvent(Object.assign(new Event('pointercancel'), { pointerId: 1 }));
+    expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(500);
+    expect(f.steer).not.toHaveBeenCalled();
+  });
+
+  it('expires the detached touch tracker even without release or cancellation', () => {
+    const f = fixture();
+    f.fire('onPointerdown');
+    f.view.unmount();
+    mounted.splice(mounted.indexOf(f.view), 1);
+
+    vi.advanceTimersByTime(500);
+    for (const type of ['click', 'pointerdown', 'pointerup', 'pointercancel']) {
+      expect(getEventListeners(f.ownerDocument, type), type).toHaveLength(0);
+    }
+    expect(vi.getTimerCount()).toBe(0);
+
+    const click = Object.assign(new Event('click', { cancelable: true }), { detail: 1 });
+    f.ownerDocument.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+    expect(f.send).not.toHaveBeenCalled();
     expect(f.steer).not.toHaveBeenCalled();
   });
 });
