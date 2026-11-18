@@ -78,6 +78,46 @@ function fixture() {
 }
 
 describe('mobile Composer send gesture', () => {
+  it('recovers with a native touch after the previous pointer release and the next pointer start were missed', async () => {
+    const f = fixture();
+    f.fire('onPointerdown');
+    f.fire('onTouchstart');
+    f.fire('onPointermove', { clientY: 180 });
+    const touch = { identifier: 7, clientY: 200 };
+    const start = f.fire('onTouchstart', {
+      cancelable: true,
+      touches: [touch],
+      changedTouches: [touch]
+    });
+    expect(start.preventDefault).toHaveBeenCalledOnce();
+    expect(f.capture.size).toBe(0);
+    vi.advanceTimersByTime(200);
+    await nextTick();
+    expect(textContent(f.view.root)).toMatch(/^(Slide up to steer|上滑插入消息)/u);
+    f.fire('onTouchcancel', { changedTouches: [{ identifier: 8 }] });
+    f.fire('onTouchend', { changedTouches: [{ ...touch, clientY: 180 }] });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.steer).toHaveBeenCalledOnce();
+  });
+
+  it('ends a native fallback hold on cancellation and leaves the next native click available', async () => {
+    const f = fixture();
+    const touch = { identifier: 7, clientY: 200 };
+    const contact = { touches: [touch], changedTouches: [touch] };
+    f.fire('onTouchstart', { ...contact, cancelable: true });
+    vi.advanceTimersByTime(200);
+    f.fire('onTouchcancel', { changedTouches: [touch] });
+    f.fire('onTouchend', { changedTouches: [touch] });
+    await nextTick();
+    expect(textContent(f.view.root)).toBe('');
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.steer).not.toHaveBeenCalled();
+    const start = f.fire('onTouchstart', { ...contact, cancelable: false });
+    expect(start.preventDefault).not.toHaveBeenCalled();
+    f.fire('onClick', { detail: 1 });
+    expect(f.send).toHaveBeenCalledOnce();
+  });
+
   it('keeps a short touch as one ordinary send', () => {
     const f = fixture();
     f.fire('onPointerdown');

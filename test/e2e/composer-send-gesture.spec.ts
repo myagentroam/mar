@@ -82,6 +82,47 @@ test('Holding without sliding up keeps ordinary sending', async ({ page }) => {
   await expect(ui.draft).toBeFocused();
 });
 
+for (const idle of [false, true]) {
+  test(`The ${idle ? 'idle' : 'running'} Composer can hold and swipe when touch reaches Send without pointerdown`, async ({
+    page
+  }) => {
+    const ui = await openWorkspace(page, idle ? '&idle-composer=1' : '');
+    await ui.draft.tap();
+    // Keep native Touch Events while simulating a missing start to the Pointer Event stream.
+    await page.evaluate(() => {
+      window.addEventListener(
+        'pointerdown',
+        (event) => {
+          if (
+            event.pointerType === 'touch' &&
+            (event.target as Element).closest('.composer-send-control')
+          )
+            event.stopImmediatePropagation();
+        },
+        { capture: true }
+      );
+    });
+    const held = await touchButton(page, ui.button);
+    await expect(ui.hint).toBeVisible();
+    await expect(ui.hint).toContainText(idle ? 'Release to send' : 'Slide up to steer');
+    await held.moveAboveComposer();
+    await expect(ui.hint).toHaveText('Release to cancel');
+    await held.end();
+    await expect(ui.hint).toHaveCount(0);
+    await expect(ui.submitted).toBeEmpty();
+    await expect(ui.draft).toHaveValue('Follow up on mobile layout.');
+
+    const next = await touchButton(page, ui.button);
+    await expect(ui.hint).toBeVisible();
+    await next.move(16);
+    await expect(ui.hint).toContainText(idle ? 'Release to send' : 'Release to steer');
+    await expect(ui.submitted).toBeEmpty();
+    await next.end();
+    await expect(ui.submitted).toHaveText(idle ? 'SEND' : 'REPLACE_CURRENT');
+    await expect(ui.draft).toBeFocused();
+  });
+}
+
 test('Sliding back to Send restores ordinary sending', async ({ page }) => {
   const ui = await openWorkspace(page);
   const touch = await touchButton(page, ui.button);
