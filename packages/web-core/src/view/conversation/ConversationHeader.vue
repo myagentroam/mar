@@ -98,7 +98,7 @@ const titleButton = ref<HTMLButtonElement>();
         :aria-label="translate('generated.conversationHeader.openSessionList')"
         @click="emit('openSurface', 'sessions')"
       >
-        <MarIcon name="menu" />
+        <MarIcon name="session-list" />
       </button>
       <button
         v-if="asideReady || filesReady || terminalReady"

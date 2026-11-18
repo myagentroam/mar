@@ -580,7 +580,7 @@ test('Mobile session title opens its actions without overlapping the session tre
   const icons = await tools
     .locator('[data-mar-icon]')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-mar-icon')));
-  expect(icons).toEqual(['menu', 'split']);
+  expect(icons).toEqual(['session-list', 'split']);
   const [titleBounds, treeBounds, listBounds, asideBounds, headerBounds] = await Promise.all([
     title.boundingBox(),
     tree.boundingBox(),

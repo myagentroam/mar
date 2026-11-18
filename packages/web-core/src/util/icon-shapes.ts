@@ -17,6 +17,8 @@ export const iconShapes = {
     '<path d="M9.7 3.5h4.6l.7 2.7 2 .9 2.5-.8 2.2 3.8-1.9 1.8v2.2l1.9 1.8-2.2 3.8-2.5-.8-2 .9-.7 2.7H9.7L9 19.8l-2-.9-2.5.8-2.2-3.8L4.2 14v-2.2l-1.9-1.8 2.2-3.8 2.5.8 2-.9.7-2.6Z" transform="translate(1.2 .4) scale(.9)"/><circle cx="12" cy="12" r="3"/>',
   'recent-sessions':
     '<path d="M18.5 7.5V7A2.5 2.5 0 0 0 16 4.5H5A2.5 2.5 0 0 0 2.5 7v7A2.5 2.5 0 0 0 5 16.5h.5"/><rect x="5.5" y="7.5" width="16" height="12" rx="2.5"/><path d="M10.5 11.5h6m-6 4h4"/>',
+  'session-list':
+    '<path d="M4.25 5h1.75M4.25 12h1.75M4.25 19h1.75M10 5h10.25M10 12h10.25M10 19h10.25" stroke-width="2.15"/>',
   notification:
     '<path d="M6.5 9.5a5.5 5.5 0 0 1 11 0V13l2 3a.7.7 0 0 1-.6 1H5.1a.7.7 0 0 1-.6-1l2-3V9.5Zm3 11h5"/>',
   menu: '<path d="M4 6.5h16M4 12h16M4 17.5h16" />',
