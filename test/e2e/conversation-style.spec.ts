@@ -1706,17 +1706,15 @@ test('uses the bright daylight palette with accessible interactive and text colo
     expect(contrast(daylight[foreground!]!, daylight[background!]!)).toBeGreaterThanOrEqual(4.5);
   }
 });
-test('uses the original dark palette with distinct surfaces and readable button text', async ({
-  page
-}) => {
+test('uses the dark palette with distinct surfaces and readable button text', async ({ page }) => {
   await page.goto(fixture.url + 'conversation-style.html?theme=vscode-dark-2026');
   const dark = await paletteColors(page);
-  expect(dark['--mar-bg-page']).toBe('#0e1116');
-  expect(dark['--mar-bg-panel']).toBe('#161d28');
-  expect(dark['--mar-bg-chrome']).toBe('#131922');
+  expect(dark['--mar-bg-page']).toBe('#14181e');
+  expect(dark['--mar-bg-panel']).toBe('#1c222b');
+  expect(dark['--mar-bg-chrome']).toBe('#181e26');
   for (const [role, color] of Object.entries({
-    canvas: '#0e1116',
-    surface: '#131922',
+    canvas: '#14181e',
+    surface: '#181e26',
     process: '#111720',
     border: '#313d50',
     'process-border': '#202a39',
@@ -1727,9 +1725,9 @@ test('uses the original dark palette with distinct surfaces and readable button 
     expect(dark[`--mar-conversation-${role}`]).toBe(color);
   }
   expect(dark['--mar-control-bg-color-overlay']).toBe('#1a2230');
-  expect(dark['--mar-bg-tab-inactive']).toBe('#111720');
-  expect(dark['--mar-border-default']).toBe('#273142');
-  expect(dark['--mar-border-subtle']).toBe('#202a39');
+  expect(dark['--mar-bg-tab-inactive']).toBe('#181e26');
+  expect(dark['--mar-border-default']).toBe('#252f3e');
+  expect(dark['--mar-border-subtle']).toBe('#252f3e');
   expect(dark['--mar-color-brand']).toBe('#1f73cf');
   expect(dark['--mar-color-brand-hover']).toBe('#1a65b8');
   expect(dark['--mar-color-brand-selected']).toBe('#162c44');

@@ -261,6 +261,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .workbench-activity-center {
+  --activity-marker-surface: var(--mar-bg-page);
   flex: none;
   width: 100%;
 }
@@ -270,7 +271,6 @@ onBeforeUnmount(() => {
   margin: 0 2px;
 }
 .activity-center-trigger {
-  --activity-marker-surface: var(--mar-bg-chrome);
   position: relative;
   display: grid;
   place-items: center;
@@ -314,6 +314,7 @@ onBeforeUnmount(() => {
   right: calc(50% - 13px);
 }
 .workbench-activity-center.mobile-mode {
+  --activity-marker-surface: var(--mar-bg-chrome);
   width: 36px;
 }
 .mobile-mode .activity-reference {

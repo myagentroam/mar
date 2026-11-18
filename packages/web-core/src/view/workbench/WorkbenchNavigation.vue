@@ -583,7 +583,7 @@ function openBlankMenu(event: MouseEvent): void {
     width: calc(var(--mar-activity-rail-width) + 9px);
     padding-inline: calc((9px + 4px) / 2);
     border-right: 0;
-    background: var(--mar-bg-page);
+    background: transparent;
   }
 
   .workbench-brand {
@@ -592,7 +592,7 @@ function openBlankMenu(event: MouseEvent): void {
     justify-content: center;
     border-right: 0;
     border-bottom: 0;
-    background: var(--mar-bg-page);
+    background: transparent;
     padding: 0;
   }
 

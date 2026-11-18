@@ -369,10 +369,13 @@ for (const [language, theme, width] of [
           return getComputedStyle(probe).color;
         };
         const result = {
+          dark: getComputedStyle(element).colorScheme === 'dark',
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
-          selected: resolve('--mar-fill-selection'),
+          panel: resolve('--mar-bg-panel'),
+          track: resolve('--mar-bg-page'),
           divider: resolve('--mar-border-subtle'),
+          mediumBorder: resolve('--mar-border-medium'),
           tabBorder: resolve('--mar-border-default'),
           success: resolve('--el-color-success')
         };
@@ -382,10 +385,13 @@ for (const [language, theme, width] of [
       await expect(session).toHaveCSS('color', colors.primary);
       const aside = page.locator('.workbench-aside');
       await expect(aside).toHaveCSS('border-inline-start-width', '1px');
-      await expect(aside).toHaveCSS('border-inline-start-color', colors.divider);
+      await expect(aside).toHaveCSS(
+        'border-inline-start-color',
+        colors.dark ? colors.mediumBorder : colors.divider
+      );
       await expect(aside.locator('.workbench-aside-header')).toHaveCSS(
         'border-bottom-color',
-        colors.divider
+        colors.dark ? colors.mediumBorder : colors.divider
       );
       for (const item of await tabs.locator('.mar-tab-strip-item').all()) {
         await expect(item).toHaveCSS('border-top-width', '1px');
@@ -411,7 +417,16 @@ for (const [language, theme, width] of [
       await expect(genericItems).toHaveCount(3);
       await expect(genericItems.first()).toHaveCSS('border-top-color', colors.tabBorder);
       await expect(genericItems.nth(1)).toHaveCSS('border-top-color', colors.tabBorder);
-      await expect(session.locator('..')).toHaveCSS('background-color', colors.selected);
+      await expect(aside).toHaveCSS('background-color', colors.panel);
+      await expect(session.locator('..')).toHaveCSS('background-color', colors.panel);
+      await expect(aside.locator('.workbench-aside-header')).toHaveCSS(
+        'background-color',
+        colors.track
+      );
+      await expect(tabs.getByRole('tab', { name: 'Files' }).locator('..')).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)'
+      );
       await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
       const activity = session.locator('.workbench-aside-activity');
       const dot = activity.locator('i');

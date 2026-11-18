@@ -529,7 +529,7 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
   }
 });
 
-for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
+for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Workbench shell unifies navigation and the inset work surface in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -541,6 +541,7 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       'GIT_WORKSPACE',
       true
     );
+    await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/console');
     await page.getByRole('button', { name: '进入控制台' }).click();
@@ -551,9 +552,9 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       .click();
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
     await expect(page.getByRole('treeitem', { name: 'src/main.ts', exact: true })).toBeVisible();
-    await page.evaluate(
-      (value) => document.documentElement.setAttribute('data-theme', value),
-      theme
+    await expect(page.locator('html')).toHaveCSS(
+      'color-scheme',
+      theme === 'daylight' ? 'light' : 'dark'
     );
     const colors = await page.locator('.console-shell').evaluate((element) => {
       const style = getComputedStyle(element);
@@ -561,11 +562,18 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       element.append(probe);
       probe.style.backgroundColor = 'var(--mar-bg-panel)';
       const panel = getComputedStyle(probe).backgroundColor;
+      probe.style.backgroundColor =
+        style.colorScheme === 'dark' ? 'var(--mar-border-medium)' : 'var(--mar-border-subtle)';
+      const divider = getComputedStyle(probe).backgroundColor;
+      probe.style.backgroundColor = 'var(--mar-border-subtle)';
+      const secondaryDivider = getComputedStyle(probe).backgroundColor;
       probe.remove();
       const frame = getComputedStyle(element, '::before');
       return {
         body: style.backgroundColor,
         panel,
+        divider,
+        secondaryDivider,
         frame: {
           background: frame.backgroundColor,
           radius: frame.borderRadius,
@@ -589,15 +597,16 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
     if (theme === 'vscode-dark-2026') {
       expect(colors.body).toBe('rgb(20, 24, 30)');
       expect(colors.panel).toBe('rgb(28, 34, 43)');
+      expect(colors.secondaryDivider).not.toBe(colors.divider);
     }
     for (const selector of ['.workbench-brand', '.activity-rail']) {
-      await expect(page.locator(selector)).toHaveCSS('background-color', colors.body);
+      await expect(page.locator(selector)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(page.locator(selector)).toHaveCSS('border-right-width', '0px');
     }
     await expect(page.locator('.workbench-brand')).toHaveCSS('border-bottom-width', '0px');
     await expect(page.locator('.workbench-brand img')).toBeVisible();
     await expect(page.locator('.workbench-brand')).not.toContainText('MyAgentRoam');
-    await expect(page.locator('.workbench-brand')).toHaveCSS('width', '52px');
+    await expect(page.locator('.workbench-brand')).toHaveCSS('width', '61px');
     await expect(page.locator('.workspace-tree')).toHaveCSS('border-radius', '11px 0px 0px 11px');
     await expect(page.locator('.workspace-tree')).toHaveCSS('border-right-width', '1px');
     for (const selector of [
@@ -610,6 +619,13 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
     ]) {
       await expect(page.locator(selector)).toHaveCSS('background-color', colors.panel);
     }
+    for (const selector of ['.workspace-tree', '.conversation-sidebar']) {
+      await expect(page.locator(selector)).toHaveCSS('border-right-color', colors.divider);
+    }
+    await expect(page.locator('.workbench-aside')).toHaveCSS(
+      'border-inline-start-color',
+      colors.divider
+    );
     await expect(page.locator('.workbench')).toHaveCSS('border-radius', '0px 11px 11px 0px');
     await expect(page.locator('.workbench')).toHaveCSS('border-left-width', '0px');
     await expect(page.locator('.session-layout')).toHaveCSS('padding-bottom', '8px');
@@ -617,6 +633,11 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
     await expect(page.locator('.session-layout')).toHaveCSS('padding-right', '0px');
     const asideTabs = page.locator('.workbench-aside-header');
     await expect(asideTabs).toHaveCSS('border-bottom-width', '1px');
+    await expect(asideTabs).toHaveCSS('border-bottom-color', colors.divider);
+    await expect(page.locator('.workbench-header')).toHaveCSS(
+      'border-bottom-color',
+      colors.secondaryDivider
+    );
     await expect(asideTabs.locator('.mar-tab-strip-item.is-active')).toHaveCSS(
       'border-radius',
       '6px 6px 0px 0px'

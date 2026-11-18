@@ -305,11 +305,14 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-inline-start: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-page);
+  border-inline-start: 1px solid var(--mar-workbench-divider);
+  background: var(--mar-bg-panel);
 }
 .workbench-aside-header {
-  --mar-tab-strip-active-bg: var(--mar-fill-selection);
+  --mar-tab-strip-item-bg: transparent;
+  --mar-tab-strip-active-bg: var(--mar-bg-panel);
+  border-bottom-color: var(--mar-workbench-divider);
+  background: var(--mar-bg-page);
 }
 .workbench-aside-back {
   display: grid;
