@@ -133,10 +133,11 @@ describe('Workbench page file interaction', () => {
     expect(state.openWorkspaceFileComparison).toHaveBeenCalledWith(
       '/outside/file.html',
       undefined,
-      undefined
+      undefined,
+      'main'
     );
     state.service.openQuickWorkspaceFile('site/index.html');
-    expect(state.openFile).toHaveBeenCalledWith('site/index.html', undefined, undefined);
+    expect(state.openFile).toHaveBeenCalledWith('site/index.html', undefined, undefined, 'main');
   });
   it('opens image attachments in the shared dialog but preserves file and modified-click navigation', () => {
     const state = fixture();
@@ -155,7 +156,8 @@ describe('Workbench page file interaction', () => {
     expect(state.openWorkspaceFileComparison).toHaveBeenCalledWith(
       'src/main.ts',
       undefined,
-      undefined
+      undefined,
+      'main'
     );
   });
   beforeEach(() => {
@@ -880,7 +882,7 @@ describe('Workbench page file interaction', () => {
 
     service.openAgentWorkspaceFile('/workspace/src/changed.ts', 12, 4);
 
-    expect(openWorkspaceFileComparison).toHaveBeenCalledWith('src/changed.ts', 12, 4);
+    expect(openWorkspaceFileComparison).toHaveBeenCalledWith('src/changed.ts', 12, 4, 'main');
     expect(openFile).not.toHaveBeenCalled();
   });
 
@@ -889,7 +891,7 @@ describe('Workbench page file interaction', () => {
 
     service.openQuickWorkspaceFile('src/file.ts', 8, 2);
 
-    expect(openFile).toHaveBeenCalledWith('src/file.ts', 8, 2);
+    expect(openFile).toHaveBeenCalledWith('src/file.ts', 8, 2, 'main');
     expect(openWorkspaceFileComparison).not.toHaveBeenCalled();
   });
 
@@ -898,7 +900,7 @@ describe('Workbench page file interaction', () => {
     f.workspaceFileWorkbench.value = null;
 
     expect(() => f.service.openQuickWorkspaceFile('src/file.ts')).not.toThrow();
-    expect(f.openFile).toHaveBeenCalledWith('src/file.ts', undefined, undefined);
+    expect(f.openFile).toHaveBeenCalledWith('src/file.ts', undefined, undefined, 'main');
     expect(f.notice).not.toHaveBeenCalled();
   });
 

@@ -61,13 +61,16 @@ test('Workspace HTML conversation links and Files preview use the single Aside b
   page
 }, testInfo) => {
   test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
   page.on('pageerror', (error) => console.error('Browser error:', error.message));
   await prepareFiles(page, ['index.html', 'second.htm']);
   const grants: string[] = [];
   await page.context().route('**/api/html-preview/grants', async (route) => {
     const path = route.request().postDataJSON().path as string;
     grants.push(path);
-    await json(route, { url: new URL(`/html-preview-test/${path}`, page.url()).href });
+    const url = new URL(`/html-preview-test/${path}`, page.url());
+    url.searchParams.set('version', String(grants.length));
+    await json(route, { url: url.href });
   });
   await page.context().route('**/html-preview-test/**', (route) =>
     route.fulfill({
@@ -106,6 +109,11 @@ test('Workspace HTML conversation links and Files preview use the single Aside b
     path: testInfo.outputPath('html-aside-desktop.png'),
     animations: 'disabled'
   });
+  await first.click();
+  await expect(
+    page.frameLocator('iframe[src$="version=2"]').getByText('/html-preview-test/index.html')
+  ).toBeVisible();
+  await expect(page.locator('iframe[title="index.html"]')).toHaveCount(1);
   await page.locator('.agent-markdown').getByRole('link', { name: 'Second HTML' }).click();
   await expect(
     page.frameLocator('iframe[title="second.htm"]').getByText('/html-preview-test/second.htm')
@@ -120,7 +128,7 @@ test('Workspace HTML conversation links and Files preview use the single Aside b
   await expect(
     page.frameLocator('iframe[title="second.htm"]').getByText('/html-preview-test/second.htm')
   ).toBeVisible();
-  expect(grants).toEqual(['index.html', 'second.htm', 'index.html']);
+  expect(grants).toEqual(['index.html', 'index.html', 'second.htm', 'index.html']);
   await popup.close();
   await page.getByRole('tab', { name: '文件', exact: true }).click();
   const row = page.locator('.file-tree-row[data-file-path="index.html"]');
@@ -158,7 +166,14 @@ test('Workspace HTML conversation links and Files preview use the single Aside b
   await expect(
     page.frameLocator('iframe[title="index.html"]').getByText('/html-preview-test/index.html')
   ).toBeVisible();
-  expect(grants).toEqual(['index.html', 'second.htm', 'index.html', 'index.html', 'index.html']);
+  expect(grants).toEqual([
+    'index.html',
+    'index.html',
+    'second.htm',
+    'index.html',
+    'index.html',
+    'index.html'
+  ]);
   await page
     .locator('.workbench-aside')
     .getByRole('button', { name: '关闭 浏览器', exact: true })

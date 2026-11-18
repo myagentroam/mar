@@ -24,6 +24,7 @@ export interface AsideSnapshot {
 }
 export interface AsideState extends AsideSnapshot {
   readonly tools: readonly AsideTool[];
+  readonly htmlOpenVersion?: number | undefined;
 }
 
 export const ASIDE_TOOLS: readonly AsideTool[] = [
@@ -162,7 +163,12 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
   function openHtml(target: AsideWorkspace, path: string): boolean {
     const state = current(target);
     if (!state.tools.includes('files')) return false;
-    put(target, { ...state, htmlPath: path, active: { kind: 'browser' } });
+    put(target, {
+      ...state,
+      htmlPath: path,
+      htmlOpenVersion: (state.htmlOpenVersion ?? 0) + 1,
+      active: { kind: 'browser' }
+    });
     return true;
   }
 
@@ -266,7 +272,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
   function clearHtmlWorkspace(target: AsideWorkspace): void {
     const state = workspaces.value.get(target.nodeId)?.get(target.workspaceId);
     if (state?.htmlPath === undefined) return;
-    const next: AsideState = { ...state, htmlPath: undefined };
+    const next: AsideState = { ...state, htmlPath: undefined, htmlOpenVersion: undefined };
     const sessionId = state.sessions.at(-1);
     put(target, {
       ...next,

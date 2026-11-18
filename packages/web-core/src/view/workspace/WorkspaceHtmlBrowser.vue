@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, onBeforeUnmount, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, shallowRef, watch } from 'vue';
 import { createHtmlPreviewService } from '../../service/html-preview-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import { WORKBENCH_HTTP_KEY } from '../../service/workbench-http-service.js';
@@ -12,6 +12,7 @@ const props = defineProps<{
   nodeId: string;
   workspaceId: string;
   path: string;
+  openVersion?: number | undefined;
   csrfToken: string;
   renewCsrfToken: () => Promise<string>;
 }>();
@@ -24,10 +25,14 @@ const preview = createHtmlPreviewService(
     })
 );
 const state = preview.state;
+const targetKey = computed(() => JSON.stringify([props.nodeId, props.workspaceId, props.path]));
+const frame = shallowRef<InstanceType<typeof HtmlPreviewFrame> | null>(null);
+const busy = computed(() => state.value.loading || frame.value?.rendering === true);
+// Only a duplicate grant request is blocked; a stalled frame can be replaced.
 function reload(): void {
   void preview.open({ nodeId: props.nodeId, workspaceId: props.workspaceId, path: props.path });
 }
-watch(() => [props.nodeId, props.workspaceId, props.path], reload, { immediate: true });
+watch([targetKey, () => props.openVersion], reload, { immediate: true });
 onBeforeUnmount(preview.release);
 </script>
 
@@ -44,9 +49,9 @@ onBeforeUnmount(preview.release);
           v-tooltip="translate('htmlPreview.reload')"
           :aria-label="translate('htmlPreview.reload')"
           :disabled="state.loading"
-          :aria-busy="state.loading || undefined"
+          :aria-busy="busy || undefined"
           @click="reload"
-          ><MarIcon :name="state.loading ? 'loading-action' : 'refresh'"
+          ><MarIcon :name="busy ? 'loading-action' : 'refresh'"
         /></el-button>
         <el-button
           class="mar-icon-action"
@@ -73,7 +78,14 @@ onBeforeUnmount(preview.release);
     <p v-if="state.error !== undefined" class="html-browser-error" role="alert">
       {{ filePreviewErrorMessage(state.error, path) }}
     </p>
-    <HtmlPreviewFrame :url="state.url" :loading="state.loading" :title="path" />
+    <HtmlPreviewFrame
+      :key="targetKey"
+      ref="frame"
+      :url="state.url"
+      :loading="state.loading"
+      :title="path"
+      retain-on-reload
+    />
   </section>
 </template>
 

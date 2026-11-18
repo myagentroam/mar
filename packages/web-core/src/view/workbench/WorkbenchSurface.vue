@@ -644,6 +644,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :node-id="page.selection.workspaceTarget.nodeId"
                     :workspace-id="page.selection.workspaceTarget.workspaceId"
                     :path="page.aside.asideState.htmlPath"
+                    :open-version="page.aside.asideState.htmlOpenVersion"
                     :csrf-token="page.identity.csrfToken"
                     :renew-csrf-token="page.identity.renewCsrfToken"
                     @source="page.files.fileWorkbench.openFile($event)"
