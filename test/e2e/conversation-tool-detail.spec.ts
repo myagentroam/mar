@@ -1,5 +1,6 @@
 import { grantClipboardPermissions, clipboardPermissions } from './support/clipboard.js';
 import { expect, test, type Locator } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -1605,7 +1606,10 @@ for (const width of [1280, 390]) {
           'visible stderr'
         ]);
         await expect(detail).not.toContainText('Working directory:');
-        await expect(detail).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        const detailSurface = await detail.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        );
+        expect(resolvedColorToHex(detailSurface)).toBe(theme === 'dark' ? '#1f232a' : '#eaecf1');
         const expand = detail.getByRole('button', { name: 'Show more', exact: true });
         if (await expand.isVisible()) await expand.click();
         const textBounds = await detail.locator('.tool-source-text').boundingBox();
