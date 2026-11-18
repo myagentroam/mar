@@ -411,6 +411,7 @@ onBeforeUnmount(() => {
           class="share-edit-name mar-icon-action"
           :icon="marIcon('edit')"
           :aria-label="translate('sessionShare.editName')"
+          circle
           text
           @click="editingName = true"
         />

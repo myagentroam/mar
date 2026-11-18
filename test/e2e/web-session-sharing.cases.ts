@@ -137,12 +137,14 @@ for (const labels of [
     });
     test('edits only the current visitor without submitting a message', async ({ page }) => {
       await mockSharedConversation(page, labels.locale);
-      await page.addInitScript(() =>
+      const theme = labels.mobile ? 'daylight' : 'vscode-dark-2026';
+      await page.addInitScript((value) => {
+        localStorage.setItem('mar.theme', value);
         localStorage.setItem(
           'mar:session-share:visitor',
           JSON.stringify({ visitorId: 'local-browser', name: 'Before' })
-        )
-      );
+        );
+      }, theme);
       let messages = 0;
       await page.route('**/api/session-shares/participants-test/messages', (route) => {
         messages++;
@@ -150,6 +152,9 @@ for (const labels of [
       });
       await page.goto('/share/participants-test');
       await expect(page.locator('.composer-working')).toBeVisible();
+      expect(await page.locator('html').getAttribute('data-theme')).toBe(
+        theme === 'daylight' ? null : theme
+      );
       await page.evaluate(() => {
         const socket = (window.WebSocket as typeof WebSocket & { current: WebSocket }).current;
         const send = socket.send.bind(socket);
@@ -172,21 +177,45 @@ for (const labels of [
         publish(JSON.parse(localStorage.getItem('mar:session-share:visitor')!));
       });
       const people = page.locator('.share-people');
-      async function edit() {
+      async function edit(checkAppearance = false) {
         if (labels.mobile) await page.locator('.share-heading button').tap();
         const row = people.locator('.share-person').filter({ hasText: 'Before' });
         const button = row.getByRole('button', { name: labels.edit });
         await expect(people.getByRole('button', { name: labels.edit })).toHaveCount(1);
+        if (!labels.mobile) await row.hover();
+        await expect(button).toHaveCSS('opacity', '1');
+        if (checkAppearance) {
+          await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          const controlRadius = await button.evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
+          );
+          await expect(button).toHaveCSS('border-radius', controlRadius);
+          const box = (await button.boundingBox())!;
+          expect(box.width).toBeCloseTo(box.height);
+          if (!labels.mobile) {
+            await button.hover();
+            await expect(button).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+          }
+          await people.screenshot({
+            path: test.info().outputPath('share-participant-edit.png'),
+            animations: 'disabled'
+          });
+        }
         if (labels.mobile) {
-          await expect(button).toHaveCSS('opacity', '1');
           await button.tap();
+        } else if (checkAppearance) {
+          await button.focus();
+          await page.keyboard.press('Shift+Tab');
+          await expect(button).not.toBeFocused();
+          await page.keyboard.press('Tab');
+          await expect(button).toBeFocused();
+          await expect(button).toHaveCSS('outline-style', 'solid');
+          await page.keyboard.press('Enter');
         } else {
-          await row.hover();
-          await expect(button).toHaveCSS('opacity', '1');
           await button.click();
         }
       }
-      await edit();
+      await edit(true);
       const dialog = page.getByRole('dialog', { name: labels.edit, exact: true });
       await expect(dialog.getByRole('textbox')).toHaveValue('Before');
       await dialog.getByRole('textbox').fill('Discarded');
