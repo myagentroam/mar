@@ -22,7 +22,7 @@ defineExpose({ element });
     inset: 9px auto 9px calc(var(--mar-activity-rail-width) + 9px);
     width: calc(var(--mar-workbench-sidebar-width) - 9px);
     border: 0;
-    border-right: 1px solid var(--mar-border-subtle);
+    border-right: 1px solid var(--mar-workbench-divider);
     border-radius: calc(var(--mar-radius-surface) - 1px) 0 0 calc(var(--mar-radius-surface) - 1px);
     background: var(--mar-bg-panel);
     transition:

@@ -43,6 +43,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           return result;
         });
         await expect(header).toHaveCSS('border-bottom-color', colors.divider);
+        await expect(header).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        const inactive = tabs.getByRole('tab', { selected: false }).first().locator('..');
+        await expect(inactive).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         const frame = page.locator('.workspace-file-page-frame:visible');
         await expect(frame.locator('.file-preview-header')).toHaveCSS(
           'border-bottom-color',

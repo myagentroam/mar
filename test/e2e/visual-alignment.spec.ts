@@ -1282,6 +1282,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const trigger = page.locator('.activity-center-trigger');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     await trigger.click();
+    await page.getByRole('tab', { name: 'Recent Sessions', exact: true }).click();
+    const popover = page.locator('.workbench-activity-popover');
+    expect(
+      await popover.evaluate((element) => {
+        const { right, top } = element.getBoundingClientRect();
+        return element.contains(document.elementFromPoint(right - 2, top + 2));
+      })
+    ).toBe(false);
+    await popover.screenshot({
+      path: testInfo.outputPath('recent-sessions.png'),
+      animations: 'disabled'
+    });
     await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const panel = page.locator('.workbench-activity-panel:visible');
@@ -1300,6 +1312,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       'rgb(30, 45, 60)'
     );
     await expect(page.locator('.workbench-activity-popover')).toHaveCSS('border-radius', '13px');
+    await expect(panel).toHaveCSS('border-radius', '13px');
+    await expect(panel).toHaveCSS('overflow', 'clip');
     await expect(page.locator('.notification-unread-label')).toHaveCSS('border-radius', '2px');
     await expect(panel).toHaveCSS('opacity', '1');
     await page.screenshot({

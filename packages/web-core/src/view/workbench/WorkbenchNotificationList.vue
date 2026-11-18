@@ -204,7 +204,6 @@ const visibleNotifications = computed(() => {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: center;
-  border-bottom: 1px solid var(--mar-fill-hover);
   padding: 0.55rem 0.65rem;
   font-size: var(--mar-font-size-meta);
 }
@@ -218,9 +217,13 @@ const visibleNotifications = computed(() => {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: center;
-  border-bottom: 1px solid var(--mar-fill-hover);
   padding: 0.32rem 0.65rem;
   font-size: var(--mar-font-size-meta);
+}
+.workbench-notification-upload + .workbench-notification-upload,
+.workbench-notification-list > li + li,
+.workbench-notification-upload-list + .workbench-notification-list > li:first-child {
+  border-top: 1px solid var(--mar-border-subtle);
 }
 .workbench-notification-upload > .mar-icon {
   color: var(--mar-color-brand-text);

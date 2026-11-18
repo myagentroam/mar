@@ -153,6 +153,10 @@ function activate(id: string | number): void {
   height: 100%;
   max-height: none;
 }
+.workbench-activity-panel:not(.mobile-mode) {
+  border-radius: inherit;
+  overflow: clip;
+}
 .activity-tabs {
   --mar-tab-strip-active-bg: var(--mar-fill-selection);
   flex: none;

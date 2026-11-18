@@ -108,7 +108,7 @@
   min-height: 32px;
   align-items: stretch;
   border-bottom: 1px solid var(--mar-border-subtle);
-  background: var(--mar-bg-subtle);
+  background: transparent;
 }
 
 .mar-tab {
@@ -171,7 +171,7 @@
   border: 1px solid var(--mar-border-default);
   border-bottom: 0;
   border-radius: var(--mar-radius-selection) var(--mar-radius-selection) 0 0;
-  background: var(--mar-bg-subtle);
+  background: transparent;
   color: var(--mar-text-secondary);
 }
 

@@ -213,6 +213,12 @@ test('Aggregated notifications preserve upload recovery, removal and cancellatio
   await page.getByRole('tab', { name: 'Notifications', exact: true }).click();
   const tasks = page.locator('.workbench-notification-upload');
   await expect(tasks).toHaveCount(2);
+  await expect(tasks.first()).toHaveCSS('border-top-width', '0px');
+  await expect(tasks.last()).toHaveCSS('border-top-width', '1px');
+  await expect(page.locator('.workbench-notification-list > li').first()).toHaveCSS(
+    'border-top-width',
+    '1px'
+  );
   const opened = page.getByLabel('Opened target');
   await tasks.first().getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(opened).toHaveText('retry:FAILED');
@@ -279,6 +285,8 @@ for (const width of [1280, 390]) {
         ).toBe(true);
       }
       await expect(notifications.locator('..')).toHaveCSS('border-top-width', '1px');
+      await expect(tabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(recent.locator('..')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const overlap = await recent.evaluate((element) => {
         const row = element.parentElement!;
         return (
@@ -400,6 +408,9 @@ for (const width of [1280, 390]) {
         const result = {
           unread: color('--mar-color-brand'),
           running: color('--el-color-success'),
+          page: color('--mar-bg-page'),
+          chrome: color('--mar-bg-chrome'),
+          divider: color('--mar-border-subtle'),
           runningText: color('--mar-color-success-text'),
           completed: color('--el-color-info')
         };
@@ -407,6 +418,12 @@ for (const width of [1280, 390]) {
         return result;
       });
       expect(colors.running).not.toBe(colors.unread);
+      for (const marker of ['.activity-entry-count', '.activity-entry-running']) {
+        await expect(trigger.locator(marker)).toHaveCSS(
+          'box-shadow',
+          `${width >= 768 ? colors.page : colors.chrome} 0px 0px 0px 1.5px`
+        );
+      }
       await expect(trigger.locator('.activity-entry-count')).toHaveCSS(
         'background-color',
         colors.unread
@@ -421,7 +438,11 @@ for (const width of [1280, 390]) {
         'aria-selected',
         'true'
       );
-      await expect(panel.locator('.workbench-notification-list > li')).toHaveCount(30);
+      const notices = panel.locator('.workbench-notification-list > li');
+      await expect(notices).toHaveCount(30);
+      await expect(notices.first()).toHaveCSS('border-top-width', '0px');
+      await expect(notices.nth(1)).toHaveCSS('border-top-color', colors.divider);
+      await expect(notices.last()).toHaveCSS('border-bottom-width', '0px');
       await expect(trigger.locator('.activity-entry-count')).toHaveText('30');
       await expect(panel).toBeInViewport({ ratio: 1 });
       const box = await panel.boundingBox();

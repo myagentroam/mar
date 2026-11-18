@@ -1541,7 +1541,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-conversation-files {
-  border-left: 1px solid var(--mar-border-medium);
+  border-left: 1px solid var(--mar-workbench-divider);
 }
 
 .pane-header {

@@ -118,8 +118,8 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
   overscroll-behavior: contain;
   list-style: none;
 }
-.recent-sessions-list > li {
-  border-bottom: 1px solid var(--mar-fill-hover);
+.recent-sessions-list > li + li {
+  border-top: 1px solid var(--mar-border-subtle);
 }
 .recent-sessions-list button {
   display: grid;

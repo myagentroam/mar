@@ -879,7 +879,7 @@ function submitSessionSearch(): void {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--mar-border-subtle);
+  border-right: 1px solid var(--mar-workbench-divider);
   background: var(--mar-bg-chrome);
   padding: 0.7rem;
 }

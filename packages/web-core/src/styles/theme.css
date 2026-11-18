@@ -26,6 +26,7 @@ html.console-ui,
   --mar-table-row-hover-bg: #e5edf6;
   --mar-border-default: #cbd6e4;
   --mar-border-subtle: #dce4ef;
+  --mar-workbench-divider: var(--mar-border-subtle);
   --mar-border-medium: #7b8da3;
   --mar-border-strong: #7b8da3;
   --mar-text-primary: #172033;
@@ -148,7 +149,8 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-table-header-bg: #131922;
   --mar-table-row-hover-bg: #202b3a;
   --mar-border-default: #252f3e;
-  --mar-border-subtle: #202836;
+  --mar-border-subtle: #252f3e;
+  --mar-workbench-divider: var(--mar-border-medium);
   --mar-border-medium: #313d50;
   --mar-border-strong: #313d50;
   --mar-text-primary: #d3dbe7;
