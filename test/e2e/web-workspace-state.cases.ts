@@ -4068,24 +4068,19 @@ test('Admin Workbench retains at most eight ordinary Workspace Tabs with stable 
     )
     .toBeGreaterThan(previousLastActiveAt ?? 0);
 
-  const inactiveTab = page.getByRole('tab', { name: /project-6/ }).locator('..');
-  const inactiveTabBackground = await page.evaluate(() => {
-    const probe = document.createElement('span');
-    probe.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue(
-      '--mar-bg-tab-inactive'
-    );
-    document.body.append(probe);
-    const value = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return value;
-  });
-  await inactiveTab.locator('.tab-close').hover();
-  await expect(inactiveTab).toHaveCSS('background-color', inactiveTabBackground);
-  expect(
-    await inactiveTab
-      .locator('.tab-close')
-      .evaluate((element) => getComputedStyle(element).backgroundColor)
-  ).toBe('rgba(0, 0, 0, 0)');
+  const tabTrigger = page.getByRole('tab', { name: /project-6/ });
+  const inactiveTab = tabTrigger.locator('..');
+  const closeTab = inactiveTab.locator('.tab-close');
+  const tabBackground = () =>
+    inactiveTab.evaluate((element) => getComputedStyle(element).background);
+  await page.mouse.move(0, 0);
+  const restingBackground = await tabBackground();
+  await tabTrigger.hover();
+  const hoverBackground = await tabBackground();
+  expect(hoverBackground).not.toBe(restingBackground);
+  await closeTab.hover();
+  expect(await tabBackground()).toBe(hoverBackground);
+  await expect(closeTab).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
   await tree.getByRole('button', { name: 'project-9' }).click();
   await expect(page.locator('.workspace-tab')).toHaveCount(8);

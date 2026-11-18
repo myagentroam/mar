@@ -1671,7 +1671,7 @@ test('uses the bright daylight palette with accessible interactive and text colo
   const daylight = await paletteColors(page);
   expect(daylight['--mar-bg-page']).toBe('#f7f9fd');
   expect(daylight['--mar-bg-panel']).toBe('#ffffff');
-  expect(daylight['--mar-bg-tab-inactive']).toBe('#e7eef7');
+  expect(daylight['--mar-bg-tab-inactive']).toBe('#f7f9fd');
   expect(daylight['--mar-border-default']).toBe('#cbd6e4');
   expect(daylight['--mar-color-brand']).toBe('#0969e8');
   expect(daylight['--mar-color-brand-text']).toBe('#075fc7');
