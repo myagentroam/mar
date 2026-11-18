@@ -204,9 +204,10 @@ const treePopup = ref<{
 }>();
 function closeSessionTree(restoreFocus = false): void {
   const previous = treePopup.value;
+  if (!previous) return;
   treePopup.value = undefined;
   props.page.sessionList.setSessionTreeAnchor(undefined);
-  if (restoreFocus && previous)
+  if (restoreFocus)
     void nextTick(() => {
       if (previous.anchor.isConnected) previous.anchor.focus();
     });
@@ -647,6 +648,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
             :tree-status="treeStatus"
             @open-tree="(id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')"
+            @session-menu-open="closeSessionTree()"
             @open-session="openSessionInPane"
             @open-surface="openPaneSurface"
             @preview-attachment="page.interactions.openAttachmentPreview"
@@ -859,6 +861,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     @open-tree="
                       (id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')
                     "
+                    @session-menu-open="closeSessionTree()"
                     @open-session="openSessionInPane"
                     @open-surface="openPaneSurface"
                     @preview-attachment="page.interactions.openAttachmentPreview"

@@ -615,7 +615,13 @@ test('Mobile session title opens its actions without overlapping the session tre
     animations: 'disabled'
   });
   await titleMenu.getByRole('menuitem', { name: '查看会话树' }).click();
-  await expect(page.locator('.session-tree-popup')).toBeVisible();
+  const treePopup = page.locator('.session-tree-popup');
+  await expect(treePopup).toBeVisible();
+  await title.click();
+  await expect(titleMenu).toBeVisible();
+  await expect(treePopup).toHaveCount(0);
+  await titleMenu.getByRole('menuitem', { name: '查看会话树' }).click();
+  await expect(treePopup).toBeVisible();
   await page.keyboard.press('Escape');
   await header.getByRole('button', { name: '打开会话列表' }).click();
   const listRow = page.locator('[data-session-id="tree-1"]');

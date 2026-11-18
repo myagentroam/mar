@@ -22,6 +22,7 @@ const emit = defineEmits<{
   openSession: [sessionId: string, destination: 'aside' | 'main'];
   openSurface: [surface: 'sessions' | 'inspector' | 'terminal'];
   openTree: [sessionId: string, anchor: HTMLElement];
+  sessionMenuOpen: [];
 }>();
 const titleButton = ref<HTMLButtonElement>();
 </script>
@@ -38,6 +39,7 @@ const titleButton = ref<HTMLButtonElement>();
         popper-class="conversation-title-menu"
         placement="bottom-start"
         trigger="click"
+        @visible-change="$event && emit('sessionMenuOpen')"
         @command="$event === 'tree' && titleButton && emit('openTree', session.id, titleButton)"
       >
         <button
