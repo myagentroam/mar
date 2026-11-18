@@ -7,6 +7,7 @@ import WorkspaceSessionTree from './WorkspaceSessionTree.vue';
 
 const props = defineProps<{
   anchor: HTMLElement;
+  placement?: 'bottom-start' | 'bottom-end';
   sessionId: string;
   title: string;
   tree: NavigationSnapshot['tree'] | undefined;
@@ -66,7 +67,7 @@ onBeforeUnmount(() => {
     :visible="true"
     :virtual-ref="anchor"
     virtual-triggering
-    placement="bottom-start"
+    :placement="placement ?? 'bottom-start'"
     :show-arrow="false"
     popper-class="session-tree-popover"
     width="min(480px, calc(100vw - 24px))"

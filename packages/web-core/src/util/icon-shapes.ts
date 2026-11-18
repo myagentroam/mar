@@ -43,7 +43,7 @@ export const iconShapes = {
   collection:
     '<rect x="6.5" y="7" width="13.5" height="13.5" rx="2.2"/><path d="M16 4H5.5a2 2 0 0 0-2 2v10m6.75-5h6m-6 4h4"/>',
   'session-tree':
-    '<path d="M7 8v9a1.5 1.5 0 0 0 1.5 1.5H13M7 10a1.5 1.5 0 0 0 1.5 1.5H13"/><rect x="3" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="9" width="8" height="5" rx="1.5"/><rect x="13" y="16" width="8" height="5" rx="1.5"/>',
+    '<path d="M9 12h2.75m4.25-5.75h-2.25a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2H16"/><rect x="2.75" y="8.5" width="6.25" height="7" rx="2"/><rect x="16" y="4" width="5.25" height="4.5" rx="1.4"/><rect x="16" y="15.5" width="5.25" height="4.5" rx="1.4"/>',
   image:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2.8"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4" />',
   key: '<circle cx="8" cy="8" r="4.5"/><path d="m11.3 11.3 9.2 9.2m-5.8-5.8 2.5-2.5m.3 5.3 2.5-2.5" />',

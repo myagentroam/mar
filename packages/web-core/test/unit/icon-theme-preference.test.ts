@@ -70,6 +70,11 @@ describe('File Icon Theme Preferences', () => {
       ['foo.ts', 'ts'],
       ['foo.d.MTS', 'decl'],
       ['foo.spec.ts', 'test'],
+      ['pasted-text.TXT', 'txt'],
+      ['notes.rst', 'text'],
+      ['illustrations.svg', 'vector'],
+      ['illustrations.SVGZ', 'vector'],
+      ['screenshot.png', 'image'],
       ['latest.tar.zst', 'archive'],
       ['places.geojson', 'geo'],
       ['schedule.ics', 'mail'],
@@ -87,6 +92,15 @@ describe('File Icon Theme Preferences', () => {
         kind: 'sprite',
         href: expect.stringMatching(new RegExp(`#mar-file-${icon}$`, 'u'))
       });
+    }
+  });
+
+  it('Shares a stylesheet icon across CSS and its preprocessor formats', () => {
+    const mar = resolveIconTheme('mar');
+    const css = mar.resolveFile('theme.css', true);
+    expect(css).toMatchObject({ kind: 'sprite', href: expect.stringMatching(/#mar-file-style$/u) });
+    for (const extension of ['SCSS', 'sass', 'less', 'styl', 'stylus', 'sss', 'pcss']) {
+      expect(mar.resolveFile(`theme.${extension}`, true)).toEqual(css);
     }
   });
 
@@ -142,6 +156,19 @@ describe('File Icon Theme Preferences', () => {
     expect(dark.color).not.toBe(light.color);
     expect(mar.resolveFolder(true, 'packages/web-core/SRC')).toEqual(light);
     expect(mar.resolveFolder(true, 'AGENTS.md')).toEqual(mar.resolveFolder(true));
+  });
+
+  it('Marks only source and conventional test directories in MAR', () => {
+    const mar = resolveIconTheme('mar');
+    for (const name of ['test', 'tests', 'nested/__TESTS__']) {
+      expect(mar.resolveFolder(true, name)).toMatchObject({
+        kind: 'sprite',
+        href: expect.stringMatching(/#mar-file-tests$/u)
+      });
+    }
+    for (const name of ['.agents', '.git', 'data', 'docs', 'dist', 'node_modules', 'assets']) {
+      expect(mar.resolveFolder(true, name)).toEqual(mar.resolveFolder(true));
+    }
   });
 
   it('Resolve Material file and folder icons through the registry', () => {

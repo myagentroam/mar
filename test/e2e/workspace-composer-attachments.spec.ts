@@ -31,6 +31,11 @@ for (const position of ['main', 'aside'] as const) {
       mimeType: 'text/plain',
       buffer: Buffer.from('first')
     });
+    const txtIcon = pane.locator('.composer-attachments .mar-file-icon use');
+    await expect(txtIcon).toHaveAttribute('href', /#mar-file-txt$/u);
+    await expect
+      .poll(() => txtIcon.evaluate((node: SVGUseElement) => node.getBBox().width))
+      .toBeGreaterThan(0);
     await other
       .getByLabel('Attachments', { exact: true })
       .setInputFiles({ name: 'other.txt', mimeType: 'text/plain', buffer: Buffer.from('other') });

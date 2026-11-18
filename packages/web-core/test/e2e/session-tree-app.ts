@@ -30,7 +30,9 @@ const session = {
   runner: 'mar-agent',
   sessionGroup: rootOnly ? 'MAIN' : 'CHILD'
 } as Session;
-const title = 'Review BMP compatibility changes and lifecycle edge cases';
+const title = query.has('long-title')
+  ? 'Review BMP compatibility changes and lifecycle edge cases '.repeat(8).trim()
+  : 'Review BMP compatibility changes and lifecycle edge cases';
 const makeNode = (
   id: string,
   parentSessionId: string | null,
@@ -148,9 +150,14 @@ createTooltipApp(
               runner: 'mar-agent',
               filesReady: false,
               terminalReady: false,
+              sessionNavigationAvailable: true,
               contentSearchReady: false,
               runnerIcon: () => '',
-              sessionTitle: () => title
+              sessionTitle: () => title,
+              onOpenSession: (id: string, pane: 'aside' | 'main') => {
+                selected.value = id;
+                target.value = pane;
+              }
             },
             {
               tree: () =>
@@ -175,6 +182,7 @@ createTooltipApp(
           anchor.value && open.value
             ? h(TreePopover, {
                 anchor: anchor.value,
+                placement: 'bottom-end',
                 sessionId: session.id,
                 title: translate('sessionGroups.tree'),
                 tree: tree.value,

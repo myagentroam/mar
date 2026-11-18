@@ -630,13 +630,12 @@ describe('QuickJS Code Mode', () => {
     ).toEqual(['direct', 'programmatic']);
     expect(names).toContain('default_direct');
     expect(names).not.toContain('programmatic_only');
-    expect(names).toContain('exec');
+    expect(names).not.toContain('exec');
     expect(names).not.toContain('read');
     expect(names).toContain('apply_patch');
     expect(names).toEqual([
       'skill',
       'tool_search',
-      'exec',
       'exec_wait',
       'code_exec',
       'code_exec_wait',
@@ -652,6 +651,7 @@ describe('QuickJS Code Mode', () => {
     expect(description).not.toContain('outputSchema');
     expect(description).not.toContain('ToolResults');
     expect(directory.callableNames).toContain('programmatic_only');
+    expect(directory.callableNames).toContain('exec');
     for (const name of controls) {
       expect(names).toContain(name);
       expect(directory.callableNames).not.toContain(name);

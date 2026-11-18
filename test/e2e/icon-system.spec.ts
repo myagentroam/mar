@@ -1843,26 +1843,49 @@ for (const theme of ['dark', 'light'])
       expect(layout.right).toBeCloseTo(0, 0);
       expect(layout.gap).toBeCloseTo(layout.expectedGap, 0);
       expect(layout.gap).toBeGreaterThan(0);
-      const { fill, border } = await create.evaluate((button) => {
+      const { fill, border, hoverBorder } = await create.evaluate((button, dark) => {
         const probe = document.createElement('span');
         button.append(probe);
-        const resolveColor = (token: string) => {
-          probe.style.color = `var(${token})`;
+        const resolveColor = (color: string) => {
+          probe.style.color = color;
           return getComputedStyle(probe).color;
         };
         const colors = {
-          fill: resolveColor('--mar-fill-row-hover'),
-          border: resolveColor('--mar-border-default')
+          fill: resolveColor(
+            dark
+              ? 'color-mix(in srgb, var(--mar-fill-row-hover) 44%, var(--mar-fill-selection))'
+              : 'var(--mar-fill-row-hover)'
+          ),
+          border: resolveColor(
+            dark
+              ? 'color-mix(in srgb, var(--mar-border-medium) 82%, var(--mar-text-secondary))'
+              : 'var(--mar-border-default)'
+          ),
+          hoverBorder: resolveColor(
+            'color-mix(in srgb, var(--mar-border-medium) 72%, var(--mar-text-secondary))'
+          )
         };
         probe.remove();
         return colors;
-      });
+      }, theme === 'dark');
       await expect(create).toHaveCSS('background-color', fill);
       await expect(create).toHaveCSS('border-top-color', border);
       await expect(page.locator('.session-search .el-input__wrapper')).not.toHaveCSS(
         'background-color',
         fill
       );
+      if (theme === 'dark' && !mobile) {
+        await create.hover();
+        await expect(create).toHaveCSS('border-top-color', hoverBorder);
+        await page.mouse.down();
+        try {
+          await expect(create).toHaveCSS('border-top-color', border);
+          await expect(create).not.toHaveCSS('background-color', fill);
+        } finally {
+          await page.mouse.move(0, 0);
+          await page.mouse.up();
+        }
+      }
       await page
         .locator('.conversation-sidebar')
         .first()

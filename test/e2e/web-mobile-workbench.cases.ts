@@ -318,7 +318,7 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
     .getByRole('button', { name: /node-1/ })
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
-  await expect(page.locator('.conversation-header h2')).toHaveText('新建会话');
+  await expect(page.locator('.conversation-header').getByRole('heading')).toHaveText('新建会话');
 
   for (const width of [390, 420]) {
     await page.setViewportSize({ width, height: 844 });
@@ -867,7 +867,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.getByRole('button', { name: '返回对话' })).toHaveCount(0);
   await closeMobileWorkspaceSurface();
   await expect(page.locator('.conversation-sidebar')).not.toBeVisible();
-  await expect(page.locator('.conversation-header h2')).toHaveText('新建会话');
+  await expect(page.locator('.conversation-header').getByRole('heading')).toHaveText('新建会话');
 
   await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(page.locator('.workspace-aside')).toBeVisible();
@@ -1103,23 +1103,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   expect(terminalLifecycleRequests).toEqual(['create', 'close']);
   await expect(page.getByRole('textbox', { name: '输入消息' })).toBeVisible();
 
-  await page.locator('.conversation-header').evaluate((header) => {
-    const sessionId = document.createElement('p');
-    sessionId.className = 'conversation-session-id';
-    sessionId.title = 'session-'.repeat(24);
-    const code = document.createElement('code');
-    code.textContent = sessionId.title;
-    sessionId.append(code);
-    header.querySelector('.conversation-header-title')?.append(sessionId);
-  });
-  const sessionId = page.locator('.conversation-session-id').last();
-  await expect(sessionId).toHaveText('session-'.repeat(24));
-  await expect(sessionId.locator('code')).toHaveCSS('white-space', 'nowrap');
-  const sessionIdLayout = await sessionId.locator('code').evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    scrollHeight: element.scrollHeight
-  }));
-  expect(sessionIdLayout.scrollHeight).toBeLessThanOrEqual(sessionIdLayout.clientHeight);
+  const header = page.locator('.conversation-header');
+  await expect(header.locator('.conversation-title-text')).toHaveCSS('white-space', 'nowrap');
+  await expect(header.locator('.conversation-title-button')).toHaveCount(0);
   expect(writes).toEqual([]);
   expect(pageErrors).toEqual([]);
 });

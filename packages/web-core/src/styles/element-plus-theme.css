@@ -280,6 +280,25 @@ html.console-ui .el-button.mar-soft-button {
   padding-inline: var(--mar-compact-option-padding-inline);
 }
 
+html.console-ui[data-theme='vscode-dark-2026'] .el-button.mar-soft-button:not(:disabled) {
+  --el-button-bg-color: color-mix(
+    in srgb,
+    var(--mar-fill-row-hover) 44%,
+    var(--mar-fill-selection)
+  );
+  --el-button-border-color: color-mix(
+    in srgb,
+    var(--mar-border-medium) 82%,
+    var(--mar-text-secondary)
+  );
+  --el-button-hover-border-color: color-mix(
+    in srgb,
+    var(--mar-border-medium) 72%,
+    var(--mar-text-secondary)
+  );
+  --el-button-active-border-color: var(--el-button-border-color);
+}
+
 html.console-ui .el-button--primary.is-link,
 html.console-ui .el-button--primary.is-text,
 html.console-ui .el-link--primary {

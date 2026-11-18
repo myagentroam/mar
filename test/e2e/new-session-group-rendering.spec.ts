@@ -204,7 +204,9 @@ for (const entry of ['button', 'shortcut'] as const) {
     await expect(row).toHaveClass(/selected/);
     await childTab.click();
     await expect(row).toHaveCount(0);
-    await expect(page.locator('.conversation-header h2')).toContainText('Created main');
+    await expect(page.locator('.conversation-header').getByRole('heading')).toContainText(
+      'Created main'
+    );
     await mainTab.click();
     await expect(row).toBeVisible();
     await input.fill('Keep this message when opening a new session');
@@ -214,7 +216,9 @@ for (const entry of ['button', 'shortcut'] as const) {
     await expect(input).toHaveValue('Keep this message when opening a new session');
     await row.locator('.session-link').click();
     await expect(row).toHaveClass(/selected/);
-    await expect(page.locator('.conversation-header h2')).toContainText('Created main');
+    await expect(page.locator('.conversation-header').getByRole('heading')).toContainText(
+      'Created main'
+    );
     await expect(input).toHaveValue('Keep this message when opening a new session');
   });
 }
@@ -230,7 +234,9 @@ for (const width of [1280, 390]) {
       .filter({ hasText: 'Created main' })
       .locator('.session-link')
       .click();
-    await expect(page.locator('.conversation-header h2')).toContainText('Created main');
+    await expect(page.locator('.conversation-header').getByRole('heading')).toContainText(
+      'Created main'
+    );
     await page.setViewportSize({ width, height: 900 });
     const input = page.locator('.composer-input');
     await input.fill('/src/review.ts — keep this draft');
@@ -278,5 +284,7 @@ test('legacy Nodes retain the mixed list after explicit New and first send', asy
   });
   await expect(page.locator('.session-row')).toContainText('Created main');
   await expect(page.locator('.session-row')).toHaveClass(/selected/);
-  await expect(page.locator('.conversation-header h2')).toContainText('Created main');
+  await expect(page.locator('.conversation-header').getByRole('heading')).toContainText(
+    'Created main'
+  );
 });

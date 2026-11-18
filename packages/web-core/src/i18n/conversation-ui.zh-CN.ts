@@ -225,15 +225,13 @@ export const conversationUiZhCN = {
       newSession2: '新建会话',
       workspaceTools: '工作区工具',
       openSessionList: '打开会话列表',
-      sessions: '会话',
       openAside: '打开辅助工作面',
-      more: '更多',
       openFiles: '打开文件',
       files: '文件',
       openTerminal: '打开终端',
       terminal: '终端',
-      copySessionId: '复制会话 ID：{sessionId}',
-      sessionIdCopied: '已复制 Session ID。',
+      copySessionId: '复制会话 ID',
+      sessionIdCopied: '已复制会话 ID。',
       copySessionIdFailed: '无法复制会话 ID，请检查浏览器剪贴板权限。'
     },
     conversationTimeline: {

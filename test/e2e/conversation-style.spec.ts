@@ -1345,7 +1345,7 @@ test('Long reasoning history stays responsive through progressive rendering and 
   expect(Math.max(...gaps)).toBeLessThan(1000);
 });
 
-test('Touch conversation details reveal titles and unavailable change reasons', async ({
+test('Touch conversation details open title actions and reveal unavailable change reasons', async ({
   browser
 }) => {
   const context = await browser.newContext({
@@ -1357,8 +1357,11 @@ test('Touch conversation details reveal titles and unavailable change reasons', 
     const page = await context.newPage();
     await page.goto(`${fixture.url}conversation-style.html?touch-details=1`);
     const hint = page.locator('[role="tooltip"]:visible');
-    await page.locator('.conversation-header h2').tap();
-    await expect(hint).toHaveText('Review session');
+    await page.locator('.conversation-title-button').tap();
+    const copySession = page.getByRole('menuitem', { name: 'Copy session ID' });
+    await expect(copySession).toBeVisible();
+    await page.locator('.conversation-title-button').tap();
+    await expect(copySession).not.toBeVisible();
     await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
     await page.getByText('File changes', { exact: true }).tap();
     await expect(page.locator('.conversation-file-change-note')).toBeVisible();
@@ -1576,11 +1579,20 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.getByTestId('toggle-following').click();
       await expect(latest).toHaveCount(0);
       await expect(status).toBeVisible();
-      const copy = page.locator('.conversation-session-id button');
-      await expect(copy).toHaveCSS('cursor', 'pointer');
-      await copy.hover();
-      await expect(copy.locator('code')).toHaveCSS('color', tokens.primary);
-      await expect(copy).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const header = page.locator('.conversation-header');
+      const title = header.locator('.conversation-title-button');
+      await expect(header).toHaveCSS('background-color', tokens.canvas);
+      await expect(header).toHaveCSS('border-bottom-width', '0px');
+      await expect(title).toHaveCSS('cursor', 'pointer');
+      await expect(title).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await title.hover();
+      await expect(title).toHaveCSS('color', tokens.primary);
+      await expect(title).toHaveCSS('background-color', tokens.utilityHover);
+      await title.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(title).toBeFocused();
+      await expect(title).toHaveCSS('outline-width', '2px');
       const messageAction = page.locator('.conversation-message-action').first();
       const messageIconSize = await messageAction.locator('svg').evaluate((element) => {
         const style = getComputedStyle(element);

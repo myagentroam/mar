@@ -110,20 +110,26 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
 });
 
 for (const width of [390, 1280]) {
-  test(`session tree remains visible next to a long session ID at ${width}px`, async ({ page }) => {
+  test(`the title stays on one line and leaves room for session tools at ${width}px`, async ({
+    page
+  }) => {
     await page.setViewportSize({ width, height: 850 });
-    await page.goto(`${fixture.url}session-tree.html?locale=en-US&long-id=1`);
-    const id = page.locator('.conversation-session-id-copy code');
+    await page.goto(`${fixture.url}session-tree.html?locale=en-US&long-id=1&long-title=1`);
+    const header = page.locator('.conversation-header');
+    const title = header.locator('.conversation-title-text');
     const trigger = page.getByRole('button', { name: 'View session tree' });
     await expect(trigger).toBeVisible();
-    await expect(id).toHaveCSS('text-overflow', 'ellipsis');
-    expect(await id.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-    const [idBox, triggerBox, headerBox] = await Promise.all([
-      id.boundingBox(),
+    await expect(header).not.toContainText('session-'.repeat(40));
+    await expect(title).toHaveCSS('white-space', 'nowrap');
+    await expect(title).toHaveCSS('text-overflow', 'ellipsis');
+    expect(await title.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    const [titleBox, triggerBox, headerBox] = await Promise.all([
+      header.locator('.conversation-title-button').boundingBox(),
       trigger.boundingBox(),
-      page.locator('.conversation-header').boundingBox()
+      header.boundingBox()
     ]);
-    expect(triggerBox!.x).toBeGreaterThanOrEqual(idBox!.x + idBox!.width);
+    expect(titleBox!.width).toBeLessThan(headerBox!.width * 0.7);
+    expect(triggerBox!.x).toBeGreaterThanOrEqual(titleBox!.x + titleBox!.width);
     expect(triggerBox!.x + triggerBox!.width).toBeLessThanOrEqual(headerBox!.x + headerBox!.width);
     await trigger.click();
     await expect(page.getByRole('dialog', { name: 'View session tree' })).toBeVisible();
@@ -144,6 +150,59 @@ for (const width of [390, 1280]) {
     await expect(page.getByTestId('requests')).toHaveText('1');
   });
 }
+
+test('title and tree menus navigate and copy the targeted session ID', async ({ page }) => {
+  const copies: string[] = [];
+  await page.exposeFunction('recordClipboardWrite', (value: string) => {
+    copies.push(value);
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: (value: string) =>
+          (
+            window as unknown as { recordClipboardWrite(text: string): Promise<void> }
+          ).recordClipboardWrite(value)
+      }
+    });
+  });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  const title = page.locator('.conversation-title-button');
+  const titleMenu = page.getByRole('menu').filter({ visible: true });
+  const items = ['Open Aside', 'Open Main', 'Copy session ID'];
+  await title.getByText(/Review BMP compatibility/).click();
+  await expect(title).toHaveAttribute('aria-expanded', 'true');
+  await expect(titleMenu.getByRole('menuitem')).toHaveText(items);
+  await titleMenu.getByRole('menuitem', { name: 'Copy session ID' }).click();
+  await expect.poll(() => copies.slice()).toEqual(['child']);
+  await expect(title).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('selected')).toHaveText('');
+  await title.press('Enter');
+  await titleMenu.getByRole('menuitem', { name: 'Open Aside' }).press('Enter');
+  await expect(page.getByTestId('selected')).toHaveText('child');
+  await expect(page.getByTestId('target')).toHaveText('aside');
+
+  await page.getByRole('button', { name: 'View session tree' }).click();
+  const tree = page.getByRole('dialog', { name: 'View session tree' });
+  const parent = tree.locator('.session-tree-parent');
+  const descendant = tree.locator('.session-tree-row').first();
+  const treeMenu = page.locator('.session-tree-menu').getByRole('menu');
+  for (const row of [parent, descendant]) {
+    await row.hover();
+    await row.getByRole('button', { name: 'Session actions' }).click();
+    await expect(treeMenu.getByRole('menuitem')).toHaveText(items);
+    await treeMenu.getByRole('menuitem', { name: 'Copy session ID' }).click();
+    await expect(treeMenu).toHaveCount(0);
+    await expect(tree).toBeVisible();
+  }
+  await expect.poll(() => copies.slice()).toEqual(['child', 'parent', 'grandchild']);
+  await descendant.hover();
+  await descendant.getByRole('button', { name: 'Session actions' }).click();
+  await treeMenu.getByRole('menuitem', { name: 'Open Main' }).click();
+  await expect(page.getByTestId('selected')).toHaveText('grandchild');
+  await expect(page.getByTestId('target')).toHaveText('main');
+  await expect(tree).toHaveCount(0);
+});
 
 for (const width of [390, 1280]) {
   for (const action of ['select', 'failure'] as const) {
@@ -399,19 +458,26 @@ for (const width of [390, 1280]) {
         name: locale === 'en-US' ? 'View session tree' : '查看会话树'
       });
       const treeIcon = trigger.locator('[data-mar-icon="session-tree"]');
-      const sessionId = page.locator('.conversation-session-id-copy');
-      await expect(
-        page
-          .locator('.conversation-session-id')
-          .getByRole('button', { name: locale === 'en-US' ? 'View session tree' : '查看会话树' })
-      ).toBeVisible();
-      const [idBox, triggerBox] = await Promise.all([
-        sessionId.boundingBox(),
+      const header = page.locator('.conversation-header');
+      const title = header.locator('.conversation-title-button');
+      await expect(header.locator('.conversation-tree-button')).toBeVisible();
+      await expect(header).toHaveCSS('border-bottom-width', '0px');
+      await expect(title.locator('[data-mar-icon="chevron-down"]')).toBeVisible();
+      const [titleBox, triggerBox] = await Promise.all([
+        title.boundingBox(),
         trigger.boundingBox()
       ]);
-      expect(triggerBox!.x).toBeGreaterThanOrEqual(idBox!.x + idBox!.width);
+      expect(triggerBox!.x).toBeGreaterThanOrEqual(titleBox!.x + titleBox!.width);
+      if (width >= 768) {
+        const rightEdge = await header.evaluate(
+          (element) =>
+            element.getBoundingClientRect().right -
+            parseFloat(getComputedStyle(element).paddingRight)
+        );
+        expect(Math.abs(rightEdge - (triggerBox!.x + triggerBox!.width))).toBeLessThan(1);
+      }
       expect(
-        Math.abs(triggerBox!.y + triggerBox!.height / 2 - (idBox!.y + idBox!.height / 2))
+        Math.abs(triggerBox!.y + triggerBox!.height / 2 - (titleBox!.y + titleBox!.height / 2))
       ).toBeLessThan(1);
       await expect(treeIcon).toBeVisible();
       await expect(trigger.locator('svg')).toHaveCount(1);

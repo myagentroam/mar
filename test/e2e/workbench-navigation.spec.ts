@@ -63,6 +63,12 @@ for (const theme of ['vscode-dark-2026', 'daylight']) {
     await expect(sessionList).toHaveCSS('border-top-width', '0px');
     await expect(groups).toHaveCSS('border-top-width', '0px');
     await expect(groups.locator('.group-options')).toHaveCSS('box-shadow', 'none');
+    const groupBounds = (await groups.getByRole('tablist').boundingBox())!;
+    const newSessionBounds = (await page.locator('.new-session-button').boundingBox())!;
+    const rem = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.documentElement).fontSize)
+    );
+    expect(groupBounds.y - (newSessionBounds.y + newSessionBounds.height)).toBeCloseTo(rem / 2, 0);
     await groups.locator('[data-group="CHILD"]').click();
     await expect(groups.locator('[data-group="CHILD"]')).toHaveAttribute('aria-selected', 'true');
     await groups.locator('[data-group="MAIN"]').click();

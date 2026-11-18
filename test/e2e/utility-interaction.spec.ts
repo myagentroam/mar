@@ -618,24 +618,23 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(header).not.toHaveAttribute('activity');
       await expect(header).not.toHaveAttribute('activity-label');
       const performanceInfo = page.getByTestId('performance-icon');
-      await expect(performanceInfo).toHaveCSS('width', width >= 768 ? '24px' : '28px');
-      await expect(performanceInfo).toHaveCSS('height', width >= 768 ? '24px' : '28px');
+      await expect(performanceInfo).toHaveCSS('width', '20px');
+      await expect(performanceInfo).toHaveCSS('height', '20px');
       const controls: [Locator, boolean][] = [
         [page.getByTestId('native'), false],
         [page.getByTestId('element'), true],
         [page.getByTestId('element-icon'), false],
-        [page.getByTestId('performance-icon'), false],
+        [performanceInfo, true],
         [page.locator('.session-search-button'), false],
         [page.locator('.workspace-more-button'), false],
-        [page.locator('.conversation-session-id button'), true],
         ...(await page.locator('.queue-item-actions').getByRole('button').all()).map(
           (control): [Locator, boolean] => [control, true]
         )
       ];
       if (width < 768)
         controls.push(
-          ...(await page.locator('.mobile-conversation-tools button').all()).map(
-            (control): [Locator, boolean] => [control, true]
+          ...(await page.locator('.mobile-conversation-tool').all()).map(
+            (control): [Locator, boolean] => [control, false]
           )
         );
       for (const custom of [false, true]) {
@@ -645,15 +644,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           await page.getByTestId('disable').focus();
           await expect(control).toHaveCSS('color', colors.secondary);
           await checkUtility(page, control, colors, inline);
-          for (const code of await control.locator('code').all()) {
-            await expect(code).toHaveCSS('color', colors.primary);
-            if (width < 768) await expect(control).toHaveCSS('outline-offset', '-2px');
-          }
         }
-        await expect(page.locator('.conversation-session-id code')).toHaveCSS(
-          'color',
-          colors.secondary
-        );
         if (!custom) {
           await page.getByTestId('disable').scrollIntoViewIfNeeded();
           await page.screenshot({ path: testInfo.outputPath(`utility-${theme}-${width}.png`) });

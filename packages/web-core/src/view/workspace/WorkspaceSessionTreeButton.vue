@@ -16,6 +16,7 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
   <button
     type="button"
     class="mar-icon-button mar-icon-action conversation-tree-button"
+    v-tooltip="translate('sessionGroups.tree')"
     :aria-description="
       status === 'failed'
         ? translate('sessionGroups.treeSyncUnavailable')
@@ -28,33 +29,45 @@ const emit = defineEmits<{ show: [sessionId: string, anchor: HTMLElement] }>();
     aria-haspopup="dialog"
     @click="emit('show', sessionId, $event.currentTarget as HTMLElement)"
   >
-    <MarIcon name="session-tree" />
-    <span
-      v-if="summary?.hasActiveDescendants"
-      class="tree-active-indicator mar-icon-status-badge"
-      :class="{ paused: status !== 'ready' }"
-      aria-hidden="true"
-    />
+    <span class="tree-icon">
+      <MarIcon name="session-tree" />
+      <span
+        v-if="summary?.hasActiveDescendants"
+        class="tree-active-indicator mar-icon-status-badge"
+        :class="{ paused: status !== 'ready' }"
+        aria-hidden="true"
+      />
+    </span>
   </button>
 </template>
 
 <style scoped>
 .conversation-tree-button {
   display: inline-flex;
-  position: relative;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 2rem;
+  height: 2rem;
+}
+.tree-icon {
+  position: relative;
+  display: inline-flex;
 }
 .tree-active-indicator {
   --mar-icon-status-size: 4px;
-  --mar-icon-status-surface: var(--mar-bg-panel);
-  inset-block-end: 3px;
-  inset-inline-end: 3px;
+  --mar-icon-status-surface: var(--mar-conversation-canvas);
+  inset-block-end: 0;
+  inset-inline-end: 0;
 }
 .tree-active-indicator.paused {
   opacity: 0.6;
+}
+
+@media (max-width: 767px) {
+  .conversation-tree-button {
+    width: 36px;
+    height: 36px;
+  }
 }
 </style>

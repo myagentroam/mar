@@ -16,9 +16,7 @@ import { createMcpCenterService } from '../../service/mcp-center-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import SessionScheduleDialog from './SessionScheduleDialog.vue';
-import SessionPromptDialog from './SessionPromptDialog.vue';
-import SessionShareDialog from './SessionShareDialog.vue';
+import WorkspaceSessionActionsMenu from './WorkspaceSessionActionsMenu.vue';
 
 const props = defineProps<{
   readonly sessionGroup?: import('@myagentroam/protocol').SessionGroup | undefined;
@@ -66,6 +64,8 @@ const emit = defineEmits<{
   ];
   create: [];
   open: [sessionId: string];
+  openMain: [sessionId: string];
+  openDialog: [kind: 'share' | 'prompt' | 'schedule', session: Session];
   rename: [session: Session];
   pin: [session: Session, pinned: boolean];
   movePin: [session: Session, direction: 'up' | 'down'];
@@ -169,20 +169,6 @@ const sessionReorderSnapshot = computed(() => ({
     pin: session.pinOrder ?? null
   }))
 }));
-const promptSession = ref<Session>();
-const shareSession = ref<Session>();
-watch(
-  () => [props.nodeId, props.workspaceId],
-  () => {
-    shareSession.value = undefined;
-  }
-);
-watch(
-  () => [props.nodeId, props.workspaceId],
-  () => {
-    promptSession.value = undefined;
-  }
-);
 const dragOverPinnedSessionId = ref<string>();
 const dragOverPinnedPosition = ref<'before' | 'after'>('before');
 const hoveredSessionId = ref<string>();
@@ -196,8 +182,6 @@ watch(
 const skillDialogOpen = ref(false);
 const skillService = createEffectiveWorkspaceSkillService(props.request);
 const mcpDialogOpen = ref(false);
-const scheduleSession = ref<Session>();
-const scheduleDialogOpen = ref(false);
 const mcpService = createMcpCenterService(props.request);
 const loadedMcps = mcpService.loadedInstallations;
 const executionBuiltIns = computed(() => mcpService.inspection.value?.executionBuiltIns ?? []);
@@ -238,18 +222,6 @@ function skillWarningLabel(status: string): string {
 
 function pinned(session: Session): boolean {
   return session.pinOrder !== null && session.pinOrder !== undefined;
-}
-
-function pinnedIndex(session: Session): number {
-  return props.sessions.filter(pinned).findIndex((candidate) => candidate.id === session.id);
-}
-
-function canMove(session: Session, direction: 'up' | 'down'): boolean {
-  const authoritative = direction === 'up' ? session.canMovePinUp : session.canMovePinDown;
-  if (authoritative !== undefined) return authoritative;
-  const index = pinnedIndex(session);
-  const count = props.sessions.filter(pinned).length;
-  return index >= 0 && (direction === 'up' ? index > 0 : index < count - 1);
 }
 
 function startPinnedDrag(event: DragEvent, session: Session): void {
@@ -517,6 +489,7 @@ function submitSessionSearch(): void {
             v-tooltip="title(session)"
             :class="['session-link', { selected: selectedSessionId === session.id }]"
             type="button"
+            :aria-current="selectedSessionId === session.id ? 'page' : undefined"
             @click="openSession(session.id)"
           >
             <span class="session-link-content">
@@ -594,84 +567,25 @@ function submitSessionSearch(): void {
               <MarIcon name="more" />
             </button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item
-                  v-if="asideSupported"
-                  :disabled="loading || !nodeReady"
-                  @click="asideActionTarget && emit('openAside', asideActionTarget)"
-                >
-                  <MarIcon name="split" />
-                  {{ translate('generated.workbenchAside.openSession') }}
-                </el-dropdown-item>
-                <el-dropdown-item v-if="!pinned(session)" @click="emit('pin', session, true)"
-                  ><MarIcon name="pin" />{{
-                    translate('generated.workspaceSessionList.pin')
-                  }}</el-dropdown-item
-                >
-                <template v-else>
-                  <el-dropdown-item
-                    :disabled="session.schedule?.enabled === true"
-                    @click="emit('pin', session, false)"
-                    ><MarIcon name="pin" />{{
-                      translate('generated.workspaceSessionList.unpin')
-                    }}</el-dropdown-item
-                  >
-                  <el-dropdown-item
-                    :disabled="!canMove(session, 'up')"
-                    @click="emit('movePin', session, 'up')"
-                    ><MarIcon name="chevron-up" />{{
-                      translate('generated.workspaceSessionList.moveUp')
-                    }}</el-dropdown-item
-                  >
-                  <el-dropdown-item
-                    :disabled="!canMove(session, 'down')"
-                    @click="emit('movePin', session, 'down')"
-                    ><MarIcon name="chevron-down" />{{
-                      translate('generated.workspaceSessionList.moveDown')
-                    }}</el-dropdown-item
-                  >
-                </template>
-                <el-dropdown-item @click="shareSession = session"
-                  ><MarIcon name="share" />{{ translate('sessionShare.title') }}</el-dropdown-item
-                >
-                <el-dropdown-item @click="emit('rename', session)"
-                  ><MarIcon name="edit" />{{
-                    translate('generated.workspaceSessionList.rename')
-                  }}</el-dropdown-item
-                >
-                <el-dropdown-item
-                  v-if="asideSupported"
-                  :disabled="loading || !nodeReady"
-                  command="tree"
-                >
-                  <MarIcon name="session-tree" />{{ translate('sessionGroups.tree') }}
-                </el-dropdown-item>
-                <el-dropdown-item
-                  v-if="session.runtime?.capabilities?.includes('session.prompt')"
-                  @click="promptSession = session"
-                  ><MarIcon name="document" />{{
-                    translate('generated.sessionPrompt.title')
-                  }}</el-dropdown-item
-                >
-                <el-dropdown-item
-                  v-if="session.runtime?.capabilities?.includes('session.schedule')"
-                  @click="
-                    scheduleSession = session;
-                    scheduleDialogOpen = true;
-                  "
-                  ><MarIcon name="clock" />{{
-                    translate('generated.scheduledSession.title')
-                  }}</el-dropdown-item
-                >
-                <el-dropdown-item
-                  v-if="props.canDeleteSession?.(session) !== false"
-                  divided
-                  @click="emit('deleteSession', session)"
-                  ><MarIcon name="delete" />{{
-                    translate('generated.workspaceSessionList.delete')
-                  }}</el-dropdown-item
-                >
-              </el-dropdown-menu>
+              <WorkspaceSessionActionsMenu
+                :session="session"
+                :sessions="sessions"
+                :can-navigate="asideSupported === true"
+                :navigation-disabled="loading || !nodeReady"
+                :can-delete="canDeleteSession?.(session) !== false"
+                :mutating="loading"
+                @open="
+                  (id, destination) => {
+                    if (destination === 'main') emit('openMain', id);
+                    else if (asideActionTarget) emit('openAside', asideActionTarget);
+                  }
+                "
+                @pin="emit('pin', session, $event)"
+                @move-pin="emit('movePin', session, $event)"
+                @rename="emit('rename', session)"
+                @dialog="emit('openDialog', $event, session)"
+                @delete="emit('deleteSession', session)"
+              />
             </template>
           </el-dropdown>
         </div>
@@ -837,29 +751,6 @@ function submitSessionSearch(): void {
         </template>
       </div>
     </el-dialog>
-    <SessionShareDialog
-      v-if="shareSession"
-      :key="`${nodeId}:${workspaceId}:${shareSession.id}`"
-      :target="{ nodeId, workspaceId, sessionId: shareSession.id }"
-      :request="request"
-      @close="shareSession = undefined"
-    />
-    <SessionPromptDialog
-      v-if="promptSession !== undefined"
-      :key="`${nodeId}:${promptSession.id}`"
-      :node-id="nodeId"
-      :session-id="promptSession.id"
-      :request="request"
-      @close="promptSession = undefined"
-    />
-    <SessionScheduleDialog
-      v-if="scheduleDialogOpen"
-      v-model="scheduleDialogOpen"
-      :session="scheduleSession"
-      :node-id="nodeId"
-      :workspace-id="workspaceId"
-      :request="request"
-    />
   </aside>
 </template>
 
@@ -1039,10 +930,10 @@ function submitSessionSearch(): void {
   flex: 1;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: var(--mar-font-size-body);
   font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-title-row {
@@ -1050,6 +941,11 @@ function submitSessionSearch(): void {
   min-width: 0;
   align-items: center;
   gap: 0.4rem;
+  color: var(--mar-text-secondary);
+}
+
+.session-link[aria-current='page'] .session-title-row {
+  color: var(--mar-text-primary);
 }
 
 .session-link-content {
@@ -1138,7 +1034,7 @@ function submitSessionSearch(): void {
 }
 
 .session-group-tabs {
-  margin: 0.5rem -0.7rem 0;
+  margin-inline: -0.7rem;
   padding-inline: 6px;
 }
 
@@ -1150,18 +1046,11 @@ function submitSessionSearch(): void {
   padding-top: 4px;
 }
 
-@media (min-width: 768px) {
-  .session-link strong {
-    font-size: var(--mar-font-size-body);
-  }
-}
-
 .session-status-indicator {
   width: 14px;
   height: 14px;
   flex: none;
   margin-inline: -0.12rem;
-  color: var(--mar-text-secondary);
 }
 .effective-skill-list {
   min-height: 96px;
@@ -1225,11 +1114,5 @@ function submitSessionSearch(): void {
   .effective-skill-tags {
     width: 100%;
   }
-}
-</style>
-
-<style scoped>
-:global(.session-action-menu .el-dropdown-menu__item) {
-  gap: 0.4rem;
 }
 </style>

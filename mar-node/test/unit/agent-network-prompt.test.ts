@@ -132,7 +132,9 @@ it.each([false, true])(
   async (networkEnabled) => {
     const test = await fixture(false, undefined, [], undefined, networkEnabled);
     const guidance =
-      'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview. To display an image inline, use Markdown image syntax: `![description](/absolute/path/to/image.png)`.';
+      'When delivering images, show them inline in your final reply using `![short description](/absolute/path/to/image.png)`. ' +
+      'Use the actual absolute path to an image the user can preview in this conversation. If the user asks for links only, use plain links instead. ' +
+      'For other files, you can use `[description](/absolute/path/to/file)` when a link makes the file easier to open or preview.';
     for (const mode of ['run', 'plan', 'compact'] as const) {
       const composed = await test.context.prompts.composeDefault({ mode, tools: ['read'] });
       expect(composed.sections.filter((section) => section.id === 'mar.node.file-links')).toEqual([

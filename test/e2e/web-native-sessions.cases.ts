@@ -57,7 +57,7 @@ test('Restored MAR Agent sessions use first-message titles and synchronize autom
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
-  const title = page.locator('.conversation-title-row h2');
+  const title = page.locator('.conversation-header').getByRole('heading');
   await expect(title).toHaveText(session.runnerTitle);
   await expect(page.locator('.session-list .session-link').first()).toContainText(
     session.runnerTitle
@@ -176,7 +176,7 @@ test('New MAR Agent first messages appear on the session home and clearing searc
   await page.getByRole('textbox', { name: '输入消息' }).fill('回显会话');
   await page.getByRole('button', { name: '发送' }).click();
   await expect.poll(() => published).toBe(true);
-  await expect(page.locator('.conversation-title-row h2')).toHaveText('回显会话');
+  await expect(page.locator('.conversation-header').getByRole('heading')).toHaveText('回显会话');
   await emitMockWorkspaceSnapshot(page, 'sessions', {
     sessions: [created, ...older.slice(0, 19)],
     nextCursor: 'more'

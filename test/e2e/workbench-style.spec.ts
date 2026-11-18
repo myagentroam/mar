@@ -12,6 +12,7 @@ test.afterAll(async () => {
 for (const { theme, width } of [
   { theme: 'daylight', width: 1280 },
   { theme: 'vscode-dark-2026', width: 1280 },
+  { theme: 'daylight', width: 390 },
   { theme: 'vscode-dark-2026', width: 390 }
 ]) {
   test(`Session list shows enabled schedule before pin in ${theme} at ${width}px`, async ({
@@ -29,14 +30,22 @@ for (const { theme, width } of [
       'Paused, not pinned',
       'Normal'
     ]);
-    const secondaryColor = await list.evaluate((element) => {
+    const {
+      normal,
+      selected: selectedColor,
+      fontSize
+    } = await list.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-text-secondary)';
+      probe.style.fontSize = 'var(--mar-font-size-body)';
       element.append(probe);
-      const color = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-text-secondary)';
+      const normal = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-text-primary)';
+      const { color: selected, fontSize } = getComputedStyle(probe);
       probe.remove();
-      return color;
+      return { normal, selected, fontSize };
     });
+    expect(normal).not.toBe(selectedColor);
     const row = (title: string) =>
       list.locator('.session-link').filter({ has: page.getByText(title, { exact: true }) });
     for (const [title, icon, name] of [
@@ -47,19 +56,40 @@ for (const { theme, width } of [
       await expect(row(title).locator('svg[data-mar-icon]')).toHaveCount(1);
       const marker = row(title).getByRole('img', { name, exact: true });
       await expect(marker).toHaveAttribute('data-mar-icon', icon);
-      await expect(marker).toHaveCSS('color', secondaryColor);
+      await expect(marker).toHaveCSS('color', normal);
+    }
+    for (const title of await list.locator('strong').all()) {
+      await expect(title).toHaveCSS('color', normal);
+      await expect(title).toHaveCSS('font-size', fontSize);
+      await expect(title).toHaveCSS('font-weight', '400');
     }
     for (const title of ['Paused, not pinned', 'Normal']) {
       await expect(
         list.getByRole('button', { name: title, exact: true }).locator('svg[data-mar-icon]')
       ).toHaveCount(0);
     }
-    const selected = row('Paused, still pinned');
-    await selected.click();
-    await page.mouse.move(0, 0);
-    await expect(selected.getByRole('img', { name: 'Pinned', exact: true })).toHaveCSS(
+    const scheduled = row('Scheduled');
+    const pinned = row('Paused, still pinned');
+    if (width >= 768) {
+      await scheduled.hover();
+      await expect(scheduled.locator('strong')).toHaveCSS('color', normal);
+    }
+    for (const active of [scheduled, pinned]) {
+      await active.click();
+      await page.mouse.move(0, 0);
+      await expect(active).toHaveAttribute('aria-current', 'page');
+      await expect(active.locator('strong')).toHaveCSS('color', selectedColor);
+      await expect(active.locator('strong')).toHaveCSS('font-weight', '400');
+      await expect(active.getByRole('img', { name: /Pinned|Scheduled task enabled/ })).toHaveCSS(
+        'color',
+        selectedColor
+      );
+    }
+    await expect(scheduled).not.toHaveAttribute('aria-current', 'page');
+    await expect(scheduled.locator('strong')).toHaveCSS('color', normal);
+    await expect(scheduled.getByRole('img', { name: 'Scheduled task enabled' })).toHaveCSS(
       'color',
-      secondaryColor
+      normal
     );
     await list.screenshot({ path: testInfo.outputPath('session-list-markers.png') });
   });

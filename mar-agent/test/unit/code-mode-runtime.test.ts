@@ -310,7 +310,7 @@ describe('Code Mode SDK and protocol integration', () => {
         );
         for (const request of requests) {
           expect(request.tools.some((tool) => tool.name === 'exec_wait')).toBe(true);
-          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(true);
+          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(false);
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
           expect(description).toContain('"name":"exec_wait"');
           expect(description).toContain('"name":"exec"');
@@ -1067,24 +1067,24 @@ describe('Code Mode SDK and protocol integration', () => {
             'apply_patch',
             'code_exec',
             'code_exec_wait',
-            'exec',
             'exec_wait',
             'sleep'
           ]);
           expect(effectiveInstructions(request)).toContain(
-            'Available client tools: apply_patch, code_exec, code_exec_wait, exec, exec_wait, sleep.'
+            'Available client tools: apply_patch, code_exec, code_exec_wait, exec_wait, sleep.'
           );
           expect(effectiveInstructions(request)).toContain('Code Mode Only');
           const onlyLine = /Code Mode Only: ([^.]+) are callable/.exec(
             effectiveInstructions(request)
           )?.[1];
           expect(onlyLine).toBeDefined();
+          expect(onlyLine!.split(', ')).toContain('exec');
           expect(onlyLine).not.toContain('apply_patch');
           expect(onlyLine).not.toContain('exec_wait');
-          expect(effectiveInstructions(request)).toContain('Use read to batch');
+          expect(onlyLine!.split(', ')).toContain('read');
           expect(effectiveInstructions(request)).not.toContain('# Subagents');
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
-          expect(description).toContain('"name":"read"');
+          expect(description).toContain('Known files or ranges to read in one ordered batch.');
           expect(description).toContain('"inputSchema"');
           expect(description).not.toContain('other schemas are provided by their direct');
         }
@@ -1630,14 +1630,14 @@ describe('Code Mode SDK and protocol integration', () => {
             const input =
               name === 'agent_start'
                 ? {
-                    description: 'Read and patch',
                     title: 'Read and patch',
-                    prompt: 'Read input and patch output.',
-                    role: 'general-purpose'
+                    content: 'Read input and patch output.'
                   }
-                : name === 'agent_send'
-                  ? { agentId, content: 'Confirm the completed patch.' }
-                  : { agentId };
+                : name === 'agent_wait'
+                  ? { agentIds: [agentId] }
+                  : name === 'agent_send'
+                    ? { agentId, content: 'Confirm the completed patch.' }
+                    : { agentId };
             yield {
               type: 'client_tool.call',
               name: 'code_exec',
@@ -1696,6 +1696,8 @@ describe('Code Mode SDK and protocol integration', () => {
         expect(childCodeModeDescription).toContain('callableNames');
         expect(childCodeModeDescription).not.toContain('ToolResults');
         expect(childCodeModeDescription).toContain('"agent_start"');
+        expect(childCodeModeDescription).toContain('Call only as tools.exec inside code_exec');
+        expect(child.tools.some((tool) => tool.name === 'exec')).toBe(false);
         expect(child.messages).toContainEqual(
           expect.objectContaining({
             role: 'user',
@@ -1709,13 +1711,15 @@ describe('Code Mode SDK and protocol integration', () => {
             .filter((message) => message.role === 'tool')
             .map((message) => message.name)
         ).toEqual(['code_exec', 'code_exec', 'code_exec', 'code_exec', 'code_exec']);
-        const task = observedJSON(
+        const wait = observedJSON(
           parent.messages.find((m) => m.role === 'tool' && m.callId === 'parent-agent_wait-1')!
             .content
         );
+        expect(wait.agents).toHaveLength(1);
+        const [task] = wait.agents;
         expect(task.agentId).toEqual(expect.any(String));
         expect(task).not.toHaveProperty('taskId');
-        expect(task.status).toBe('completed');
+        expect(task.status).toBe('SUCCEEDED');
         expect(task.changedFiles).toContain('output.txt');
         expect(task).not.toHaveProperty('evidence');
         expect(task).not.toHaveProperty('verification');

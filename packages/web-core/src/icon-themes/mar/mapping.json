@@ -252,7 +252,7 @@
     "mkdn": "markdown",
     "rmd": "markdown",
     "qmd": "markdown",
-    "txt": "text",
+    "txt": "txt",
     "text": "text",
     "rst": "text",
     "adoc": "text",
@@ -867,22 +867,9 @@
   },
   "folderNames": {
     "src": "src",
-    "docs": "docs",
-    "doc": "docs",
     "tests": "tests",
     "test": "tests",
-    "__tests__": "tests",
-    "config": "settings",
-    ".agents": "agents",
-    ".claude": "agents",
-    ".codex": "agents",
-    "skills": "skills",
-    ".git": "repo",
-    "assets": "assets",
-    "dist": "dist",
-    "build": "dist",
-    "node_modules": "deps",
-    "data": "data"
+    "__tests__": "tests"
   },
   "fallback": {
     "file": "fallback",
@@ -924,6 +911,10 @@
     "rose": {
       "light": "#d32778",
       "dark": "#ff79b0"
+    },
+    "graphite": {
+      "light": "#526171",
+      "dark": "#9daab9"
     },
     "orange": {
       "light": "#c54b0b",
@@ -1082,6 +1073,9 @@
     },
     "markdown": {
       "accent": "blue"
+    },
+    "txt": {
+      "accent": "graphite"
     },
     "text": {
       "accent": "slate"
@@ -1269,34 +1263,7 @@
     "src": {
       "accent": "folder"
     },
-    "docs": {
-      "accent": "folder"
-    },
     "tests": {
-      "accent": "folder"
-    },
-    "settings": {
-      "accent": "folder"
-    },
-    "agents": {
-      "accent": "folder"
-    },
-    "skills": {
-      "accent": "folder"
-    },
-    "repo": {
-      "accent": "folder"
-    },
-    "assets": {
-      "accent": "folder"
-    },
-    "dist": {
-      "accent": "folder"
-    },
-    "deps": {
-      "accent": "folder"
-    },
-    "data": {
       "accent": "folder"
     }
   }

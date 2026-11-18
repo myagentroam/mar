@@ -14,14 +14,15 @@ afterEach(async () => {
 });
 
 describe('Code Mode exec exposure', () => {
-  it.each([
-    { protocol: 'OPENAI_RESPONSES' as const, caller: 'direct' },
-    { protocol: 'ANTHROPIC_MESSAGES' as const, caller: 'direct' },
-    { protocol: 'OPENAI_RESPONSES' as const, caller: 'programmatic' },
-    { protocol: 'ANTHROPIC_MESSAGES' as const, caller: 'programmatic' }
-  ])(
-    'advertises both entries and executes $caller exec for $protocol',
-    async ({ protocol, caller }) => {
+  it.each(
+    (['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const).flatMap((protocol) => [
+      { protocol, caller: 'direct', codeMode: false },
+      { protocol, caller: 'direct', codeMode: true },
+      { protocol, caller: 'programmatic', codeMode: true }
+    ])
+  )(
+    'projects exec for $protocol with codeMode=$codeMode and permits $caller dispatch',
+    async ({ protocol, caller, codeMode }) => {
       const home = await mkdtemp(join(tmpdir(), 'mar-exec-exposure-'));
       roots.push(home);
       const workspace = join(home, 'workspace');
@@ -39,7 +40,7 @@ describe('Code Mode exec exposure', () => {
         outputCapabilities: ['TEXT'],
         reasoningEfforts: ['high'],
         defaultReasoningEffort: 'high',
-        codeMode: true,
+        codeMode,
         responsesPreviousResponseId: protocol === 'OPENAI_RESPONSES',
         hostedWebSearch: false,
         enabled: true
@@ -77,7 +78,7 @@ describe('Code Mode exec exposure', () => {
         () => adapter
       );
       try {
-        const session = await agent.createSession({ workspace, title: 'Exec dual exposure' });
+        const session = await agent.createSession({ workspace, title: 'Exec exposure' });
         const run = session.run({ prompt: 'Run the command.' });
         const events = [];
         for await (const event of run) events.push(event);
@@ -99,8 +100,14 @@ describe('Code Mode exec exposure', () => {
           requests[1]!.messages.findLast((message) => message.role === 'tool')?.content
         ).toContain('EXEC_ENTRY_OK');
         for (const request of requests) {
-          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(true);
-          const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
+          expect(request.tools.some((tool) => tool.name === 'exec')).toBe(!codeMode);
+          const codeExec = request.tools.find((tool) => tool.name === 'code_exec');
+          if (!codeMode) {
+            expect(codeExec).toBeUndefined();
+            continue;
+          }
+          expect(codeExec).toBeDefined();
+          const description = codeExec!.description;
           const marker = 'Programmatic tools: ';
           const directory = JSON.parse(
             description.slice(description.lastIndexOf(marker) + marker.length)
@@ -108,12 +115,12 @@ describe('Code Mode exec exposure', () => {
           expect(directory.callableNames).toContain('exec');
           expect(
             directory.tools.find((tool: { name: string }) => tool.name === 'exec').description
-          ).toContain('Call directly or as tools.exec');
+          ).toContain('Call only as tools.exec inside code_exec');
           const only = /Code Mode Only: ([^.]+) are callable/.exec(
             effectiveInstructions(request)
           )?.[1];
           expect(only).toBeDefined();
-          expect(only!.split(', ')).not.toContain('exec');
+          expect(only!.split(', ')).toContain('exec');
         }
       } finally {
         await agent.dispose();

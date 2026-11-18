@@ -7,6 +7,7 @@ import type {
 } from '../../service/session-navigation-projection.js';
 import MarIcon from '../common/MarIcon.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
+import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
 import {
   formatRelativeSessionActivity,
   isKnownSessionActivityAt
@@ -192,7 +193,6 @@ function openContext(event: MouseEvent): void {
           trigger="click"
           popper-class="session-tree-menu"
           @visible-change="updateMenu(tree.parent.id, $event)"
-          @command="emit('open', tree!.parent!.id, $event)"
         >
           <button
             type="button"
@@ -202,20 +202,13 @@ function openContext(event: MouseEvent): void {
           >
             <MarIcon name="more" />
           </button>
-          <template #dropdown
-            ><el-dropdown-menu>
-              <el-dropdown-item command="aside"
-                ><MarIcon name="split" />{{
-                  translate('sessionGroups.openAside')
-                }}</el-dropdown-item
-              >
-              <el-dropdown-item command="main"
-                ><MarIcon name="conversation" />{{
-                  translate('sessionGroups.openMain')
-                }}</el-dropdown-item
-              >
-            </el-dropdown-menu></template
-          >
+          <template #dropdown>
+            <SessionNavigationMenu
+              :session-id="tree.parent.id"
+              can-navigate
+              @open="(id, destination) => emit('open', id, destination)"
+            />
+          </template>
         </el-dropdown>
       </div>
     </div>
@@ -296,7 +289,6 @@ function openContext(event: MouseEvent): void {
             trigger="click"
             popper-class="session-tree-menu"
             @visible-change="updateMenu(row.node.id, $event)"
-            @command="emit('open', row.node.id, $event)"
           >
             <button
               type="button"
@@ -307,20 +299,13 @@ function openContext(event: MouseEvent): void {
             >
               <MarIcon name="more" />
             </button>
-            <template #dropdown
-              ><el-dropdown-menu>
-                <el-dropdown-item command="aside"
-                  ><MarIcon name="split" />{{
-                    translate('sessionGroups.openAside')
-                  }}</el-dropdown-item
-                >
-                <el-dropdown-item command="main"
-                  ><MarIcon name="conversation" />{{
-                    translate('sessionGroups.openMain')
-                  }}</el-dropdown-item
-                >
-              </el-dropdown-menu></template
-            >
+            <template #dropdown>
+              <SessionNavigationMenu
+                :session-id="row.node.id"
+                can-navigate
+                @open="(id, destination) => emit('open', id, destination)"
+              />
+            </template>
           </el-dropdown>
         </div>
       </li>
