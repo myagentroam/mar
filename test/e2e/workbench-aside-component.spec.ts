@@ -373,9 +373,6 @@ for (const [language, theme, width] of [
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
           panel: resolve('--mar-bg-panel'),
-          track: resolve(
-            getComputedStyle(element).colorScheme === 'dark' ? '--mar-bg-chrome' : '--mar-bg-subtle'
-          ),
           divider: resolve('--mar-border-subtle'),
           mediumBorder: resolve('--mar-border-medium'),
           tabBorder: resolve('--mar-border-default'),
@@ -423,7 +420,7 @@ for (const [language, theme, width] of [
       await expect(session.locator('..')).toHaveCSS('background-color', colors.panel);
       await expect(aside.locator('.workbench-aside-header')).toHaveCSS(
         'background-color',
-        colors.track
+        'rgba(0, 0, 0, 0)'
       );
       await expect(tabs.getByRole('tab', { name: 'Files' }).locator('..')).toHaveCSS(
         'background-color',

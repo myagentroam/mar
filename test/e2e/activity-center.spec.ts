@@ -285,18 +285,7 @@ for (const width of [1280, 390]) {
         ).toBe(true);
       }
       await expect(notifications.locator('..')).toHaveCSS('border-top-width', '1px');
-      const track = await tabs.evaluate((element) => {
-        const probe = document.createElement('span');
-        probe.style.color =
-          getComputedStyle(element).colorScheme === 'dark'
-            ? 'var(--mar-bg-chrome)'
-            : 'var(--mar-bg-subtle)';
-        element.append(probe);
-        const color = getComputedStyle(probe).color;
-        probe.remove();
-        return color;
-      });
-      await expect(tabs).toHaveCSS('background-color', track);
+      await expect(tabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(recent.locator('..')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const overlap = await recent.evaluate((element) => {
         const row = element.parentElement!;

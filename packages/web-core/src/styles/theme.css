@@ -15,7 +15,6 @@ html.console-ui,
   --mar-bg-panel: #ffffff;
   --mar-bg-chrome: #edf3fa;
   --mar-bg-subtle: #f3f6fb;
-  --mar-tab-header-bg: var(--mar-bg-subtle);
   --mar-bg-tab-inactive: #e7eef7;
   --mar-fill-subtle: #f3f6fb;
   --mar-fill-muted: #e8f0f9;
@@ -140,7 +139,6 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-bg-panel: #1c222b;
   --mar-bg-chrome: #181e26;
   --mar-bg-subtle: #1c222b;
-  --mar-tab-header-bg: var(--mar-bg-chrome);
   --mar-bg-tab-inactive: #181e26;
   --mar-fill-subtle: #1c222b;
   --mar-fill-muted: #182739;

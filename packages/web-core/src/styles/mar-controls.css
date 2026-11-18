@@ -108,7 +108,7 @@
   min-height: 32px;
   align-items: stretch;
   border-bottom: 1px solid var(--mar-border-subtle);
-  background: var(--mar-tab-header-bg);
+  background: transparent;
 }
 
 .mar-tab {
