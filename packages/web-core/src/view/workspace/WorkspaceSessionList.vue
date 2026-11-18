@@ -489,6 +489,7 @@ function submitSessionSearch(): void {
             v-tooltip="title(session)"
             :class="['session-link', { selected: selectedSessionId === session.id }]"
             type="button"
+            :aria-current="selectedSessionId === session.id ? 'page' : undefined"
             @click="openSession(session.id)"
           >
             <span class="session-link-content">
@@ -929,10 +930,10 @@ function submitSessionSearch(): void {
   flex: 1;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: var(--mar-font-size-body);
   font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-title-row {
@@ -940,6 +941,11 @@ function submitSessionSearch(): void {
   min-width: 0;
   align-items: center;
   gap: 0.4rem;
+  color: var(--mar-text-secondary);
+}
+
+.session-link[aria-current='page'] .session-title-row {
+  color: var(--mar-text-primary);
 }
 
 .session-link-content {
@@ -1040,18 +1046,11 @@ function submitSessionSearch(): void {
   padding-top: 4px;
 }
 
-@media (min-width: 768px) {
-  .session-link strong {
-    font-size: var(--mar-font-size-body);
-  }
-}
-
 .session-status-indicator {
   width: 14px;
   height: 14px;
   flex: none;
   margin-inline: -0.12rem;
-  color: var(--mar-text-secondary);
 }
 .effective-skill-list {
   min-height: 96px;

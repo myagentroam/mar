@@ -1624,9 +1624,7 @@ onBeforeUnmount(() => {
   background: var(--mar-fill-selection);
 }
 
-.history-list article.selected .history-open,
-.history-list article.selected .history-title-row strong,
-.history-list article.selected .history-open time {
+.history-list article.selected .history-open {
   color: var(--mar-text-primary);
 }
 
@@ -1654,13 +1652,11 @@ onBeforeUnmount(() => {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-title-row strong {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-detail);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-open time {

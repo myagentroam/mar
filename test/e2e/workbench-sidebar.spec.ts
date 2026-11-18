@@ -258,7 +258,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       activeVersionId: template.currentVersionId,
       title,
       titleSource: 'AUTO',
-      pinnedAt: index === 0 ? timestamp : null,
+      pinnedAt: timestamp - index,
       status: 'ACTIVE',
       modelId: 'model-1',
       createdAt: timestamp,
@@ -321,17 +321,45 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(await sidebarGeometry(history)).toEqual(geometry);
     const header = (await history.locator('.history-header').boundingBox())!;
     expect(header.y).toBeCloseTo(geometry.top, 1);
-    const current = history.getByText('Current chat', { exact: true });
-    const other = history.getByText('Another chat', { exact: true });
-    await expect(history.locator('[aria-current="page"]')).toContainText('Current chat');
-    const pin = history.getByRole('img', { name: 'Pinned', exact: true });
-    await expect(pin).toHaveAttribute('data-mar-icon', 'pin');
-    const hintColor = await history
-      .locator('[aria-current="page"] time')
-      .evaluate((element) => getComputedStyle(element).color);
-    await expect(pin).toHaveCSS('color', hintColor);
-    await expect(current).toHaveCSS('font-size', '12px');
-    await expect(other).toHaveCSS('font-size', '12px');
+    const expectHistoryTitles = async () => {
+      const { primary, secondary, selection } = await history.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const resolve = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const colors = {
+          primary: resolve('--mar-text-primary'),
+          secondary: resolve('--mar-text-secondary'),
+          selection: resolve('--mar-fill-selection')
+        };
+        probe.remove();
+        return colors;
+      });
+      const current = history.locator('.history-open[aria-current="page"]');
+      await expect(current).toContainText('Current chat');
+      await expect(current.locator('time')).toHaveCSS('color', secondary);
+      for (const title of ['Current chat', 'Another chat']) {
+        const row = history.locator('article').filter({ hasText: title });
+        const text = row.getByText(title, { exact: true });
+        const pin = row.getByRole('img', { name: 'Pinned', exact: true });
+        await expect(text).toHaveCSS('color', primary);
+        await expect(text).toHaveCSS('font-size', '12px');
+        await expect(text).toHaveCSS('font-weight', '400');
+        await expect(pin).toBeVisible();
+        await expect(pin).toHaveAttribute('data-mar-icon', 'pin');
+        await expect(pin).toHaveCSS('color', secondary);
+        if (title === 'Current chat') await expect(row).toHaveCSS('background-color', selection);
+        else await expect(row).not.toHaveCSS('background-color', selection);
+      }
+    };
+    await expectHistoryTitles();
+    const otherTitle = history.getByText('Another chat', { exact: true });
+    const otherColor = await otherTitle.evaluate((element) => getComputedStyle(element).color);
+    await otherTitle.hover();
+    await expect(otherTitle).toHaveCSS('color', otherColor);
+    await page.mouse.move(0, 0);
     const create = history.getByRole('button', { name: 'New chat', exact: true });
     const expectCreateAlignedToSearch = async () => {
       const search = (await history.locator('.history-search-row').boundingBox())!;
@@ -343,25 +371,37 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(create).toHaveCSS('border-top-width', '1px');
     await expect(create).toHaveCSS('height', '32px');
     await expectCreateAlignedToSearch();
-    const { fill, border, folderColor } = await create.evaluate((button) => {
-      const probe = document.createElement('span');
-      button.append(probe);
-      const resolveColor = (token: string) => {
-        probe.style.color = `var(${token})`;
-        return getComputedStyle(probe).color;
-      };
-      const colors = {
-        fill: resolveColor('--mar-fill-row-hover'),
-        border: resolveColor('--mar-border-default'),
-        folderColor: resolveColor('--mar-text-tertiary')
-      };
-      probe.remove();
-      return colors;
-    });
-    await expect(create).toHaveCSS('background-color', fill);
-    await expect(create).toHaveCSS('border-top-color', border);
+    const { createFill, createBorder, hoverFill, folderColor } = await create.evaluate(
+      (button, dark) => {
+        const probe = document.createElement('span');
+        button.append(probe);
+        const resolveColor = (color: string) => {
+          probe.style.color = color;
+          return getComputedStyle(probe).color;
+        };
+        const colors = {
+          createFill: resolveColor(
+            dark
+              ? 'color-mix(in srgb, var(--mar-fill-row-hover) 44%, var(--mar-fill-selection))'
+              : 'var(--mar-fill-row-hover)'
+          ),
+          createBorder: resolveColor(
+            dark
+              ? 'color-mix(in srgb, var(--mar-border-medium) 82%, var(--mar-text-secondary))'
+              : 'var(--mar-border-default)'
+          ),
+          hoverFill: resolveColor('var(--mar-fill-row-hover)'),
+          folderColor: resolveColor('var(--mar-text-tertiary)')
+        };
+        probe.remove();
+        return colors;
+      },
+      theme === 'vscode-dark-2026'
+    );
+    await expect(create).toHaveCSS('background-color', createFill);
+    await expect(create).toHaveCSS('border-top-color', createBorder);
     const searchControl = history.locator('.history-search-row .el-input__wrapper');
-    await expect(searchControl).not.toHaveCSS('background-color', fill);
+    await expect(searchControl).not.toHaveCSS('background-color', hoverFill);
     const upload = page.locator('.files-drop-target');
     await expect(upload).toBeVisible();
     await expect(upload).toBeEnabled();
@@ -390,7 +430,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(assets).toHaveAttribute('aria-expanded', 'false');
     await expect(reports).toHaveCount(0);
     await assets.hover();
-    await expect(assets).toHaveCSS('background-color', fill);
+    await expect(assets).toHaveCSS('background-color', hoverFill);
     await page.addStyleTag({ content: ':root { --mar-motion-duration-collapse: 600ms; }' });
     await assets.click();
     await expect(files.locator('.file-branch-enter-active')).toHaveCSS(
@@ -423,13 +463,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(mobile.bottom).toBe(0);
     expect(mobile.width).toBeLessThan(390);
     expect(mobile.radius).toBe('0px');
-    await expect(history.locator('[aria-current="page"]')).toContainText('Current chat');
-    await expect(pin).toBeVisible();
-    await expect(current).toHaveCSS('font-size', '12px');
-    await expect(other).toHaveCSS('font-size', '12px');
-    await expect(create).toHaveCSS('background-color', fill);
-    await expect(create).toHaveCSS('border-top-color', border);
-    await expect(searchControl).not.toHaveCSS('background-color', fill);
+    await expectHistoryTitles();
+    await expect(create).toHaveCSS('background-color', createFill);
+    await expect(create).toHaveCSS('border-top-color', createBorder);
+    await expect(searchControl).not.toHaveCSS('background-color', hoverFill);
     await expectCreateAlignedToSearch();
     await page.screenshot({ path: testInfo.outputPath(`hosted-history-mobile-${theme}.png`) });
 
