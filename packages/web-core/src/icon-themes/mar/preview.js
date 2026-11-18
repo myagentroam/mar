@@ -27,7 +27,8 @@ export function startPreview(mapping, resolveMarIconId) {
   for (const [name, id] of Object.entries(mapping.folderNames)) addSample(id, `${name}/`, true);
 
   function renderSample(element, label, id, scheme) {
-    const color = mapping.colors[mapping.artwork[id].accent][scheme];
+    const { accent, symbol = id } = mapping.artwork[id];
+    const color = mapping.colors[accent][scheme];
     element.className = 'icon-sample';
     for (const size of [16, 32]) {
       const svg = document.createElementNS(svgNamespace, 'svg');
@@ -39,7 +40,7 @@ export function startPreview(mapping, resolveMarIconId) {
       svg.style.color = color;
       svg.style.setProperty('--icon-cut', mapping.cutColors[scheme]);
       const use = document.createElementNS(svgNamespace, 'use');
-      use.setAttribute('href', `#mar-file-${id}`);
+      use.setAttribute('href', `#mar-file-${symbol}`);
       svg.append(use);
       element.append(svg);
     }

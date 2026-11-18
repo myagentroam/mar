@@ -1854,7 +1854,8 @@
           addSample(id, `${name}/`, true);
 
         function renderSample(element, label, id, scheme) {
-          const color = mapping.colors[mapping.artwork[id].accent][scheme];
+          const { accent, symbol = id } = mapping.artwork[id];
+          const color = mapping.colors[accent][scheme];
           element.className = 'icon-sample';
           for (const size of [16, 32]) {
             const svg = document.createElementNS(svgNamespace, 'svg');
@@ -1866,7 +1867,7 @@
             svg.style.color = color;
             svg.style.setProperty('--icon-cut', mapping.cutColors[scheme]);
             const use = document.createElementNS(svgNamespace, 'use');
-            use.setAttribute('href', `#mar-file-${id}`);
+            use.setAttribute('href', `#mar-file-${symbol}`);
             svg.append(use);
             element.append(svg);
           }
@@ -2745,7 +2746,7 @@
             dat: 'binary'
           },
           fileNames: {
-            'agents.md': 'agent',
+            'agents.md': 'agent-blue',
             'claude.md': 'agent',
             'claude.local.md': 'agent',
             'gemini.md': 'agent',
@@ -2862,6 +2863,7 @@
             graphql: { accent: 'rose' },
             code: { accent: 'slate' },
             agent: { accent: 'purple' },
+            'agent-blue': { symbol: 'agent', accent: 'blue' },
             prompt: { accent: 'violet' },
             skill: { accent: 'cyan' },
             bridge: { accent: 'purple' },

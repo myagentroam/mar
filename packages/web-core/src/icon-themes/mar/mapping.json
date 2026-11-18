@@ -823,7 +823,7 @@
     "dat": "binary"
   },
   "fileNames": {
-    "agents.md": "agent",
+    "agents.md": "agent-blue",
     "claude.md": "agent",
     "claude.local.md": "agent",
     "gemini.md": "agent",
@@ -1057,6 +1057,10 @@
     },
     "agent": {
       "accent": "purple"
+    },
+    "agent-blue": {
+      "symbol": "agent",
+      "accent": "blue"
     },
     "prompt": {
       "accent": "violet"

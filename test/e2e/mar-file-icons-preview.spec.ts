@@ -48,8 +48,13 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
     'href',
     /#mar-file-python$/u
   );
-  await search.fill('src/');
+  await search.fill('AGENTS.md');
+  await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(0, 105, 232)');
   await page.getByLabel('Color theme').selectOption('vscode-dark-2026');
+  await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(89, 169, 255)');
+  await search.fill('CLAUDE.local.md');
+  await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(189, 150, 255)');
+  await search.fill('src/');
   await expect(resolved.locator('svg').first()).toHaveCSS('color', 'rgb(117, 195, 255)');
   expect(requests).toEqual([]);
   await search.fill('AGENTS.md');

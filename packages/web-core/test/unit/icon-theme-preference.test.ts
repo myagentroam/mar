@@ -100,14 +100,30 @@ describe('File Icon Theme Preferences', () => {
       ...Object.values(mapping.folderNames),
       ...Object.values(mapping.fallback)
     ]);
-    expect(ids.toSorted()).toEqual([...referenced].toSorted());
-    expect(Object.keys(mapping.artwork).toSorted()).toEqual(ids.toSorted());
+    expect(Object.keys(mapping.artwork).toSorted()).toEqual([...referenced].toSorted());
+    const usedSymbols = new Set(
+      Object.entries(mapping.artwork).map(([id, artwork]) =>
+        'symbol' in artwork ? artwork.symbol : id
+      )
+    );
+    expect(ids.toSorted()).toEqual([...usedSymbols].toSorted());
     for (const { accent } of Object.values(mapping.artwork)) {
       expect(mapping.colors[accent as keyof typeof mapping.colors]).toEqual({
         light: expect.stringMatching(/^#[0-9a-f]{6}$/iu),
         dark: expect.stringMatching(/^#[0-9a-f]{6}$/iu)
       });
     }
+  });
+
+  it.each([true, false])('Uses blue only for AGENTS.md among robot icons (light=%s)', (light) => {
+    const mar = resolveIconTheme('mar');
+    const agents = mar.resolveFile('docs/AGENTS.md', light);
+    const claude = mar.resolveFile('CLAUDE.md', light);
+    expect(agents).toMatchObject({ kind: 'sprite', color: light ? '#0069e8' : '#59a9ff' });
+    expect(claude).toMatchObject({ kind: 'sprite', color: light ? '#8039e8' : '#bd96ff' });
+    if (agents.kind !== 'sprite' || claude.kind !== 'sprite')
+      throw new Error('Expected SVG sprite');
+    expect(agents.href).toBe(claude.href);
   });
 
   it('Keeps the offline icon preview synchronized with the product resources', () => {
