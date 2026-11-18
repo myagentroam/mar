@@ -22,6 +22,19 @@ const open = ref(false);
 const registrationPath = ref('');
 const pendingDirectoryName = ref('');
 const registeredPath = ref('');
+const registrationLoading = ref(false);
+async function registerWorkspace(): Promise<void> {
+  if (new URLSearchParams(location.search).has('defer-registration')) {
+    registrationLoading.value = true;
+    try {
+      if (!(await fetch('/api/workspace-registration-fixture', { method: 'POST' })).ok) return;
+    } finally {
+      registrationLoading.value = false;
+    }
+  }
+  registeredPath.value = registrationPath.value;
+  open.value = false;
+}
 const fileTarget = { nodeId: 'node', workspaceId: 'workspace' };
 const fileOperations = createWorkspaceFileOperationService({
   http: createScopedHttpService({
@@ -252,7 +265,7 @@ function showMessageBox(): void {
       :selected-path="registrationPath"
       :pending-directory-name="pendingDirectoryName"
       :loading-directory="false"
-      :loading="false"
+      :loading="registrationLoading"
       :node-ready="true"
       :selected-path-valid="registrationPath !== ''"
       @select="registrationPath = $event"
@@ -265,10 +278,7 @@ function showMessageBox(): void {
         pendingDirectoryName = '';
         registrationPath = '';
       "
-      @register="
-        registeredPath = registrationPath;
-        open = false;
-      "
+      @register="registerWorkspace"
     />
     <output aria-label="Registered path">{{ registeredPath }}</output>
   </template>

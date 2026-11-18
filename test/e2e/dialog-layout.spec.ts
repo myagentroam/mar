@@ -394,8 +394,12 @@ test('Workspace registration keeps new-directory confirmation separate from subm
   const registration = page.getByRole('dialog', { name: 'Register Workspace' });
   await registration.getByRole('button', { name: 'New directory', exact: true }).click();
   const directory = page.getByRole('dialog', { name: 'New Directory', exact: true });
-  await directory.getByRole('textbox', { name: 'Directory Name' }).fill('new-project');
-  await directory.getByRole('button', { name: 'Confirm', exact: true }).click();
+  const name = directory.getByRole('textbox', { name: 'Directory Name' });
+  await name.fill('new-project');
+  await name.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
+  await expect(directory).toBeVisible();
+  await expect(name).toBeFocused();
+  await name.press('Enter');
   await expect(directory).toHaveCount(0);
 
   const register = registration.getByRole('button', { name: 'Create and register' });
@@ -407,6 +411,39 @@ test('Workspace registration keeps new-directory confirmation separate from subm
   await page.getByRole('button').first().click();
   await expect(registration.getByRole('button', { name: 'Register Workspace' })).toBeDisabled();
   await expect(registration.getByText('new-project', { exact: true })).toHaveCount(0);
+});
+
+test('Workspace registration cannot be dismissed while the request is pending', async ({
+  page
+}) => {
+  let finishRequest!: () => void;
+  const pendingRequest = new Promise<void>((resolve) => (finishRequest = resolve));
+  await page.route('**/api/workspace-registration-fixture', async (route) => {
+    await pendingRequest;
+    await route.fulfill({ status: 409 });
+  });
+  try {
+    await page.goto(`${fixture.url}dialog-layout.html?kind=registration&defer-registration`);
+    await page.getByRole('button').first().click();
+    const registration = page.getByRole('dialog', { name: 'Register Workspace' });
+    await registration.getByRole('button', { name: 'Select current directory' }).click();
+    const register = registration.getByRole('button', { name: 'Register Workspace' });
+    await register.click();
+    const cancel = registration.getByRole('button', { name: 'Cancel', exact: true });
+    await expect(cancel).toBeDisabled();
+    await expect(registration.getByRole('button', { name: 'Close this dialog' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.locator('.el-overlay-dialog').click({ position: { x: 2, y: 2 } });
+    await expect(registration).toBeVisible();
+    finishRequest();
+    await expect(register).toBeEnabled();
+    await expect(cancel).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(registration).toHaveCount(0);
+    await expect(page.getByLabel('Registered path')).toHaveText('');
+  } finally {
+    finishRequest();
+  }
 });
 
 test.describe('Mobile dialog viewport', () => {

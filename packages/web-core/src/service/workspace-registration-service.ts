@@ -203,7 +203,7 @@ export interface WorkbenchRegistrationView<RegistrationContext> {
   registrationLoading: boolean;
   pendingWorkspaceDirectoryName: string;
   openNodeRegistration: () => void;
-  readonly openNodeRegistrationOnEntry: boolean;
+  readonly openNodeRegistrationOnEntry?: boolean;
   registerWorkspace: (context?: RegistrationContext | undefined) => Promise<void>;
   workspacePreserveGitConfig: boolean;
   workspaceGitPolicySupported: boolean;

@@ -69,7 +69,13 @@ async function submitRegistration(): Promise<void> {
   if (registrationForm.value === form && !registrationUnavailable.value) emit('register');
 }
 
+function closeRegistration(): void {
+  // The parent owns visibility and immediately unmounts the picker on close.
+  if (!props.loading) emit('close');
+}
+
 const directoryForm = ref<FormInstance>();
+const directoryFormId = useId();
 const directoryDialogOpen = ref(false);
 const displayFilter = ref('');
 const directoryFormValue = reactive({ name: '' });
@@ -167,8 +173,9 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
     :model-value="open"
     :title="translate('generated.workspaceRegistrationPicker.registerWorkspace')"
     width="min(980px, calc(100vw - 32px))"
+    :show-close="!loading"
     :close-icon="marIcon('close')"
-    @update:model-value="!$event && emit('close')"
+    :before-close="closeRegistration"
   >
     <div class="workspace-picker">
       <slot name="ownership" />
@@ -375,10 +382,12 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
       append-to-body
     >
       <el-form
+        :id="directoryFormId"
         ref="directoryForm"
         :model="directoryFormValue"
         :rules="directoryRules"
         label-position="top"
+        @submit.prevent="confirmDirectory"
       >
         <el-form-item
           :label="translate('generated.workspaceRegistrationPicker.directoryName')"
@@ -388,7 +397,6 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             v-model="directoryFormValue.name"
             maxlength="255"
             :placeholder="translate('generated.workspaceRegistrationPicker.enterADirectoryName2')"
-            @keydown.enter.prevent.stop="confirmDirectory"
           />
         </el-form-item>
       </el-form>
@@ -396,13 +404,13 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         <el-button native-type="button" @click="directoryDialogOpen = false">{{
           translate('generated.workspaceRegistrationPicker.cancel')
         }}</el-button>
-        <el-button native-type="button" type="primary" @click="confirmDirectory">{{
+        <el-button :form="directoryFormId" native-type="submit" type="primary">{{
           translate('generated.workspaceRegistrationPicker.confirm')
         }}</el-button>
       </template>
     </el-dialog>
     <template #footer>
-      <el-button native-type="button" @click="emit('close')">{{
+      <el-button native-type="button" :disabled="loading" @click="closeRegistration">{{
         translate('generated.workspaceRegistrationPicker.cancel')
       }}</el-button>
       <el-button
