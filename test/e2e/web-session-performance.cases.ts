@@ -128,11 +128,8 @@ async function expectMetricsAndInfoOnSameLine(metrics: Locator, info: Locator) {
   expect(infoBounds!.height).toBeLessThanOrEqual(metricsBounds!.height);
   const iconBounds = await info.locator('[data-mar-icon="info"]').boundingBox();
   expect(iconBounds).not.toBeNull();
-  const textSize = await metrics.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).fontSize)
-  );
-  expect(iconBounds!.width).toBeCloseTo(textSize - 2, 1);
-  expect(iconBounds!.height).toBeCloseTo(textSize - 2, 1);
+  expect(iconBounds!.width).toBeCloseTo(12, 1);
+  expect(iconBounds!.height).toBeCloseTo(12, 1);
   expect(
     Math.abs(iconBounds!.y + iconBounds!.height / 2 - (infoBounds!.y + infoBounds!.height / 2))
   ).toBeLessThanOrEqual(1);
