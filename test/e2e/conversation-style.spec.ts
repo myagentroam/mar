@@ -701,6 +701,58 @@ for (const input of ['wheel', 'touch', 'keyboard']) {
   });
 }
 
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Conversation focus stays quiet for modifiers and shortcuts but visible for keyboard navigation in ${theme}`, async ({
+    page
+  }) => {
+    await page.goto(
+      `${fixture.url}conversation-style.html?cached-scroll=1&underflow=1&theme=${theme}`
+    );
+    const scroll = page.locator('.conversation-scroll');
+    const before = page.getByTestId('shrink-content');
+    const requests = page.getByTestId('older-requests');
+    await page.getByTestId('finish-initial').click();
+    await expect(requests).toHaveText('1');
+    await page.getByTestId('finish-older').click();
+    await page.getByText('Latest cached message', { exact: true }).click();
+    await expect(scroll).toBeFocused();
+    await expect(scroll).toHaveCSS('outline-style', 'none');
+
+    for (const key of [
+      'Shift',
+      'Control+PageUp',
+      'Control+PageDown',
+      'Alt+PageUp',
+      'Alt+PageDown'
+    ]) {
+      await test.step(`${key} does not start reading the conversation`, async () => {
+        await page.keyboard.press(key);
+        await expect(scroll).toBeFocused();
+        await expect(scroll).toHaveCSS('outline-style', 'none');
+        await expect(page.getByTestId('following')).toHaveText('true');
+        await expect(requests).toHaveText('1');
+      });
+    }
+
+    await page.keyboard.press('PageUp');
+    await expect(page.getByTestId('following')).toHaveText('false');
+    await expect(requests).toHaveText('2');
+    await expect(scroll).toHaveCSS('outline-style', 'solid');
+
+    await before.focus();
+    await page.keyboard.press('Tab');
+    await expect(scroll).toBeFocused();
+    await expect(scroll).toHaveCSS('outline-style', 'solid');
+
+    const latest = page.getByRole('button', { name: 'Jump to latest' });
+    await page.keyboard.press('Tab');
+    await expect(latest).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(scroll).toBeFocused();
+    await expect(scroll).toHaveCSS('outline-style', 'solid');
+  });
+}
+
 test('Scrollbar gutter clicks wait for upward movement before loading earlier history', async ({
   page
 }) => {
