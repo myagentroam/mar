@@ -142,6 +142,58 @@ describe('public workspace registration', () => {
     expect(service.loading.value).toBe(false);
   });
 
+  it('ignores a second registration while creating a directory and allows retry after failure', async () => {
+    const submission = Promise.withResolvers<unknown>();
+    const request = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(
+      () => submission.promise
+    );
+    const onRegistered = vi.fn(async () => undefined);
+    const error = vi.fn();
+    const service = createWorkspaceRegistrationService({
+      targetNodeId: ref('node-a'),
+      request: async <T>(path: string, init?: RequestInit) => (await request(path, init)) as T,
+      onRegistered,
+      notice: vi.fn(),
+      error,
+      errorMessage: String
+    });
+    service.directory.value = {
+      homePath: '/work',
+      currentPath: '/work',
+      parentPath: null,
+      browseRoots: ['/work'],
+      selectable: true,
+      entries: [],
+      truncated: false
+    };
+    service.selectPendingDirectory('project');
+
+    const pending = service.register();
+    const duplicate = service.register();
+    expect(request).toHaveBeenCalledExactlyOnceWith('/api/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({
+        nodeId: 'node-a',
+        path: '/work',
+        preserveGitConfig: false,
+        createDirectoryName: 'project'
+      })
+    });
+    expect(service.loading.value).toBe(true);
+
+    const failure = new Error('REGISTRATION_FAILED');
+    submission.reject(failure);
+    await Promise.all([pending, duplicate]);
+    expect(error).toHaveBeenCalledExactlyOnceWith(expect.any(String), failure);
+    expect(service.loading.value).toBe(false);
+
+    request.mockResolvedValueOnce({ workspace: { id: 'workspace-new' } });
+    await service.register();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[1]).toEqual(request.mock.calls[0]);
+    expect(onRegistered).toHaveBeenCalledExactlyOnceWith('node-a', 'workspace-new');
+  });
+
   it('refreshes a Windows drive root without dropping its separator or directory entries', async () => {
     const directory = {
       homePath: 'C:\\Users\\node',
