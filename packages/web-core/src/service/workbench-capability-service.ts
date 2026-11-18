@@ -207,7 +207,6 @@ export interface WorkbenchResourcesView {
   workspaceDirectDescription: (nodeId: string) => string | undefined;
   workspaceLocalFileManagerAvailable: boolean;
   workspaceKindLabel: (workspace: Workspace) => string;
-  workspacePath: string;
 }
 
 export function createSelectedNodeStatus(input: {

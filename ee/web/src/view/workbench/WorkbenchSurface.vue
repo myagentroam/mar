@@ -33,7 +33,7 @@ defineProps<{ page: CoreSurfaceProps['page'] }>();
         v-model:preserve-git-config="page.registration.workspacePreserveGitConfig"
         :git-policy-supported="page.registration.workspaceGitPolicySupported"
         :directory="page.registration.workspaceDirectory"
-        :selected-path="page.resources.workspacePath"
+        :selected-path="page.registration.selectedWorkspaceDirectoryPath"
         :pending-directory-name="page.registration.pendingWorkspaceDirectoryName"
         :loading-directory="page.registration.loadingWorkspaceDirectory"
         :loading="page.registration.registrationLoading"
