@@ -25,7 +25,106 @@ async function sidebarGeometry(sidebar: Locator) {
   });
 }
 
+test('The diagnostics footer leaves the settings button reachable in a short desktop rail', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 230 });
+  await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US`);
+  const rail = page.locator('.activity-rail');
+  const settings = rail.getByRole('button', { name: 'Settings', exact: true });
+  const diagnostics = rail.getByRole('button', { name: 'Web performance diagnostics' });
+  const nav = rail.getByRole('navigation');
+  await expect(diagnostics).toBeInViewport({ ratio: 1 });
+  const footer = (await diagnostics.boundingBox())!;
+  await settings.scrollIntoViewIfNeeded();
+  const settingsBox = (await settings.boundingBox())!;
+  const navBox = (await nav.boundingBox())!;
+  // Scroll offsets can be rounded to whole pixels while the flex gap is fractional.
+  expect(settingsBox.y + settingsBox.height).toBeLessThanOrEqual(navBox.y + navBox.height + 1);
+  expect(navBox.y + navBox.height).toBeLessThan(footer.y);
+  expect(await diagnostics.boundingBox()).toEqual(footer);
+
+  await diagnostics.hover();
+  await expect(page.locator('.web-performance-panel')).toBeVisible();
+  await settings.click();
+  await expect(settings).toHaveAttribute('aria-current', 'page');
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Desktop diagnostics shares the rail button geometry and hover in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html?theme=${theme}&locale=en-US`);
+    const rail = page.locator('.activity-rail');
+    const railButton = (name: string) =>
+      rail.locator('button').filter({ has: page.locator(`svg[data-mar-icon="${name}"]`) });
+    const management = railButton('administration');
+    const settings = railButton('settings');
+    const diagnostics = railButton('info');
+    await expect(diagnostics).toBeVisible();
+
+    const geometry = (button: Locator) =>
+      button.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const icon = element.querySelector('svg')!.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          x: bounds.x,
+          width: bounds.width,
+          height: bounds.height,
+          padding: style.padding,
+          radius: style.borderRadius,
+          transition: style.transition,
+          iconWidth: icon.width,
+          iconHeight: icon.height,
+          iconCenterX: icon.x + icon.width / 2 - bounds.x,
+          iconCenterY: icon.y + icon.height / 2 - bounds.y
+        };
+      });
+    const settingsGeometry = await geometry(settings);
+    expect(await geometry(diagnostics)).toEqual(settingsGeometry);
+    expect(await geometry(management)).toEqual(settingsGeometry);
+    const settingsBox = (await settings.boundingBox())!;
+    const managementBox = (await management.boundingBox())!;
+    const diagnosticsBox = (await diagnostics.boundingBox())!;
+    expect(diagnosticsBox.y - settingsBox.y).toBeCloseTo(settingsBox.y - managementBox.y, 1);
+
+    const hover = await rail.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.cssText =
+        'position: absolute; background: var(--mar-fill-row-hover); color: var(--mar-text-primary)';
+      element.append(probe);
+      const style = getComputedStyle(probe);
+      const colors = { background: style.backgroundColor, color: style.color };
+      probe.remove();
+      return colors;
+    });
+    await settings.hover();
+    await expect(settings).toHaveCSS('background-color', hover.background);
+    await expect(settings).toHaveCSS('color', hover.color);
+    await diagnostics.hover();
+    await expect(diagnostics).toHaveCSS('background-color', hover.background);
+    await expect(diagnostics).toHaveCSS('color', hover.color);
+    await expect(page.locator('.web-performance-panel')).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`diagnostics-rail-${theme}.png`),
+      animations: 'disabled',
+      clip: { x: 0, y: 300, width: 410, height: 600 }
+    });
+
+    await page.mouse.move(700, 20);
+    await page.keyboard.press('Tab');
+    await settings.focus();
+    await expect(settings).toHaveCSS('outline-style', 'solid');
+    const focusOffset = await settings.evaluate(
+      (element) => getComputedStyle(element).outlineOffset
+    );
+    await diagnostics.focus();
+    await expect(diagnostics).toHaveCSS('outline-style', 'solid');
+    await expect(diagnostics).toHaveCSS('outline-offset', focusOffset);
+  });
+
   test(`Hosted history shares the desktop resource sidebar shell in ${theme}`, async ({
     page
   }, testInfo) => {
