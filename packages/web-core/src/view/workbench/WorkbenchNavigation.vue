@@ -1,6 +1,7 @@
 <script setup lang="ts" generic="ManagementSection extends string">
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import type { DropdownInstance } from 'element-plus';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
@@ -54,6 +55,7 @@ const props = defineProps<{
   readonly workspaceTarget: WorkspaceTarget | undefined;
   readonly draggingWorkspace: { readonly nodeId: string; readonly workspaceId: string } | undefined;
   readonly loading: boolean;
+  readonly canRegisterNode?: boolean;
   readonly nodeLabel: (node: NodeSummary) => string;
   readonly workspaceLabel: (workspace: Workspace) => string;
   readonly workspaces: (nodeId: string) => readonly Workspace[];
@@ -111,6 +113,7 @@ const emit = defineEmits<{
   toggleNode: [nodeId: string];
   refreshNodeWorkspaces: [nodeId: string];
   refreshWorkspaceTree: [];
+  registerNode: [];
   addWorkspace: [nodeId: string];
   openNodeDetails: [node: NodeSummary];
   openWorkspace: [nodeId: string, workspaceId: string];
@@ -179,25 +182,39 @@ const forwardWorkspaceDetails = (nodeId: string, workspace: Workspace) =>
   emit('openWorkspaceDetails', nodeId, workspace);
 const forwardWorkspaceRename = (nodeId: string, workspace: Workspace) =>
   emit('renameWorkspace', nodeId, workspace);
-const blankMenuButton = ref<HTMLButtonElement>();
-const blankMenuPosition = ref({ left: 0, top: 0 });
+const blankMenu = ref<DropdownInstance>();
+const blankMenuAnchor = shallowRef<DOMRect>();
+const blankMenuReference = { getBoundingClientRect: () => blankMenuAnchor.value ?? new DOMRect() };
+const blankMenuVisible = ref(false);
+watch(blankMenu, (menu) => {
+  if (menu === null || menu === undefined) blankMenuVisible.value = false;
+});
 function openBlankMenu(event: MouseEvent): void {
   if (
-    event.target instanceof Element &&
-    event.target.closest(
-      '.tree-node-row, .workspace-branches li, .workspace-tree-filter, .tree-filter-empty, .tree-foot'
-    )
-  )
+    event.defaultPrevented ||
+    (event.target instanceof Element &&
+      event.target.closest(
+        '.tree-node-row, .workspace-branches li, .workspace-tree-filter, .tree-filter-empty, .tree-foot'
+      ))
+  ) {
+    blankMenu.value?.handleClose();
     return;
+  }
   event.preventDefault();
-  const aside = event.currentTarget;
-  if (!(aside instanceof HTMLElement)) return;
-  const bounds = aside.getBoundingClientRect();
-  blankMenuPosition.value = {
-    left: event.clientX - bounds.left,
-    top: event.clientY - bounds.top + aside.scrollTop
-  };
-  void nextTick(() => blankMenuButton.value?.click());
+  blankMenuAnchor.value = new DOMRect(event.clientX, event.clientY);
+  if (!blankMenuVisible.value) treeElement.value?.focus({ preventScroll: true });
+  void nextTick(() => blankMenu.value?.handleOpen());
+}
+function handleBlankMenuEscape(event: KeyboardEvent): void {
+  if (!blankMenuVisible.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  treeElement.value?.focus({ preventScroll: true });
+  blankMenu.value?.handleClose();
+}
+function runBlankMenuCommand(command: string): void {
+  if (command === 'refresh') emit('refreshWorkspaceTree');
+  if (command === 'register' && props.canRegisterNode) emit('registerNode');
 }
 </script>
 
@@ -309,6 +326,7 @@ function openBlankMenu(event: MouseEvent): void {
       :aria-label="menuLabel"
       tabindex="-1"
       @contextmenu="view === 'nodes' && mobileUtilityPanel === undefined && openBlankMenu($event)"
+      @keydown.esc="handleBlankMenuEscape"
     >
       <div
         v-show="displayUtility !== undefined"
@@ -317,14 +335,24 @@ function openBlankMenu(event: MouseEvent): void {
       />
       <template v-if="displayUtility === undefined && displayView === 'nodes'">
         <el-dropdown
-          trigger="click"
-          class="workspace-tree-blank-menu"
-          :style="blankMenuPosition"
-          @command="emit('refreshWorkspaceTree')"
+          v-if="blankMenuAnchor && sidebarVisible"
+          ref="blankMenu"
+          virtual-triggering
+          :virtual-ref="blankMenuReference"
+          trigger="contextmenu"
+          placement="bottom-start"
+          :show-arrow="false"
+          :popper-options="{ modifiers: [{ name: 'offset', options: { offset: [0, 2] } }] }"
+          :show-timeout="0"
+          :hide-timeout="0"
+          @visible-change="blankMenuVisible = $event"
+          @command="runBlankMenuCommand"
         >
-          <button ref="blankMenuButton" type="button" tabindex="-1" aria-hidden="true" />
           <template #dropdown>
-            <el-dropdown-menu>
+            <el-dropdown-menu :aria-label="menuLabel" @keydown.capture.esc="handleBlankMenuEscape">
+              <el-dropdown-item v-if="canRegisterNode" command="register" :icon="marIcon('plus')">{{
+                $t('generated.resourceSharingPage.registerNode')
+              }}</el-dropdown-item>
               <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
                 $t('generated.workspaceTree.refreshWorkspaces')
               }}</el-dropdown-item>
@@ -637,21 +665,6 @@ function openBlankMenu(event: MouseEvent): void {
   width: 0;
   overflow: hidden;
   border-right: 0;
-}
-
-.workspace-tree-blank-menu {
-  position: absolute;
-  z-index: -1;
-  width: 0;
-  height: 0;
-}
-
-.workspace-tree-blank-menu > button {
-  width: 0;
-  height: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
 }
 
 .settings-nav {

@@ -1741,9 +1741,26 @@ export function createWorkbenchPageController<
       clearNodeDetails
     });
 
+  const openNodeRegistrationOnEntry = ref(false);
+  watch(
+    [view, managementSection],
+    ([nextView, section]) => {
+      if (nextView !== 'management' || section !== options.nodeManagementSection) {
+        openNodeRegistrationOnEntry.value = false;
+      }
+    },
+    { flush: 'sync' }
+  );
+
   function openNodeRegistration(): void {
     navigationService.selectView('management', 'preserve-layout');
     selectManagementSection(options.nodeManagementSection);
+  }
+
+  function openNodeRegistrationFromTree(): void {
+    if (admin.value.managementWritable !== true) return;
+    openNodeRegistration();
+    openNodeRegistrationOnEntry.value = true;
   }
 
   function closeWorkspaceRegistration(): void {
@@ -2287,6 +2304,8 @@ export function createWorkbenchPageController<
       registrationLoading: workspaceRegistrationService.loading,
       pendingWorkspaceDirectoryName,
       openNodeRegistration,
+      openNodeRegistrationFromTree,
+      openNodeRegistrationOnEntry,
       registerWorkspace,
       workspacePreserveGitConfig,
       workspaceGitPolicySupported,

@@ -2313,8 +2313,39 @@ test('Resource-tree whitespace and Node context menus refresh Workspaces added b
   await expect(tree.getByRole('button', { name: '新增工作区', exact: true })).toBeVisible();
   expect(nodesRequestCount).toBe(1);
 
-  await tree.click({ button: 'right', position: { x: 10, y: 400 } });
-  await page.getByRole('menuitem', { name: '刷新工作区' }).click();
+  const bounds = (await tree.boundingBox())!;
+  const refresh = page.getByRole('menuitem', { name: '刷新工作区' });
+  const menu = page.getByRole('menu').filter({ has: refresh });
+  for (const point of [
+    { x: bounds.x + 30, y: bounds.y + 350 },
+    { x: bounds.x + 60, y: bounds.y + 450 }
+  ]) {
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await expect(menu).toBeVisible();
+    await expect(async () => {
+      const menuBounds = (await menu.boundingBox())!;
+      expect(Math.abs(menuBounds.x - point.x)).toBeLessThan(12);
+      expect(Math.abs(menuBounds.y - point.y)).toBeLessThan(12);
+    }).toPass({ timeout: 3_000 });
+  }
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(tree).toBeFocused();
+
+  await page.mouse.click(bounds.x + 60, bounds.y + 450, { button: 'right' });
+  await expect(menu).toBeVisible();
+  await tree.getByRole('button', { name: '共享节点', exact: true }).click({ button: 'right' });
+  await expect(menu).toHaveCount(1);
+  await expect(menu.getByRole('menuitem', { name: '节点详情', exact: true })).toBeVisible();
+  await page.mouse.click(bounds.x + 60, bounds.y + 450);
+
+  const bottom = bounds.y + bounds.height - 5;
+  await page.mouse.click(bounds.x + 60, bottom, { button: 'right' });
+  await expect(async () => {
+    const menuBounds = (await menu.boundingBox())!;
+    expect(Math.abs(menuBounds.y + menuBounds.height - bottom)).toBeLessThan(12);
+  }).toPass({ timeout: 3_000 });
+  await refresh.click();
   await expect.poll(() => nodesRequestCount).toBe(2);
   await expect.poll(() => workspacesRequestCount).toBe(3);
 });

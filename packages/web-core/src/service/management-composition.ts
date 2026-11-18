@@ -10,6 +10,7 @@ export interface ManagementPageContext {
   readonly nodeUpgradeProgress?: Readonly<Record<string, NodeUpgradeProgress | null>>;
   readonly onlineNodeCount: number;
   readonly serverVersion: string | undefined;
+  readonly openNodeRegistrationOnEntry?: boolean;
 }
 
 export interface ManagementPageProps {

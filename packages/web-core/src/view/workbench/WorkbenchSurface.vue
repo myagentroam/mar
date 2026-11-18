@@ -900,7 +900,8 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             nodes: page.resources.nodes,
             nodeUpgradeProgress: page.resources.nodeUpgradeProgress,
             onlineNodeCount: page.resources.onlineNodeCount,
-            serverVersion: page.resources.serverVersion
+            serverVersion: page.resources.serverVersion,
+            openNodeRegistrationOnEntry: page.registration.openNodeRegistrationOnEntry === true
           })
         "
         @changed="page.resources.refreshNodes"

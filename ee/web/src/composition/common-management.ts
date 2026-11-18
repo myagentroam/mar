@@ -41,11 +41,12 @@ export function createCommonManagementPages(
         delay: 0
       }),
       visible: () => true,
-      props: ({ request, admin, nodes, nodeUpgradeProgress }) => ({
+      props: ({ request, admin, nodes, nodeUpgradeProgress, openNodeRegistrationOnEntry }) => ({
         request,
         nodes,
         ...(nodeUpgradeProgress === undefined ? {} : { nodeUpgradeProgress }),
         writable: admin.managementWritable === true,
+        openRegistrationOnEntry: openNodeRegistrationOnEntry === true,
         edition: admin.edition ?? 'COMMUNITY',
         role: admin.role ?? null
       })
