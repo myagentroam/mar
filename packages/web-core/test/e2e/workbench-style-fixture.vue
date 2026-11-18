@@ -38,7 +38,10 @@ import type { WorkspaceFilePagePort } from '../../src/model/workspace-file-workb
 import type { ChangeEntry, HistoryCommit, HistoryFile } from '../../src/model/workspace-git.js';
 import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
 import { createWorkspaceFileOperationService } from '../../src/service/workspace-file-operation-service.js';
-import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
+import {
+  createWorkspaceFilesController,
+  workspaceFileTreeRootName
+} from '../../src/service/workspace-files-controller.js';
 import { createWorkspaceContentSearchService } from '../../src/service/workspace-content-search-service.js';
 import { createWorkspaceGitService } from '../../src/service/workspace-git-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
@@ -118,7 +121,7 @@ const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
 const sessionMarkersFixture = new URL(location.href).searchParams.has('session-markers');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
-const fileRootPath = ref('/home/example/my-agent-roam');
+const fileRootPath = ref<string | undefined>('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
 const inspectorFixture =
   fileRootFixture ||
@@ -149,7 +152,7 @@ const toolOperations = createWorkspaceFileOperationService({
 });
 const toolFiles = createWorkspaceFilesController({
   target: () => (inspectorFixture ? toolTarget : undefined),
-  workspaceName: () => fileRootPath.value.split('/').filter(Boolean).at(-1) || 'Workspace',
+  workspaceName: () => workspaceFileTreeRootName(fileRootPath.value),
   list: toolOperations.list,
   mutate: toolOperations.mutate,
   revealLocal: toolOperations.reveal,
@@ -218,9 +221,7 @@ function registerFixtureFilePage(
 ): void {
   if (page || fixtureFilePage.value === previous) fixtureFilePage.value = page;
 }
-watch(fileRootPath, (path) =>
-  toolFiles.tree.setRootName(path.split('/').filter(Boolean).at(-1) || 'Workspace')
-);
+watch(fileRootPath, (path) => toolFiles.tree.setRootName(workspaceFileTreeRootName(path)));
 function selectFixtureTool(target: { id: AsideTool }): void {
   if (selectedTool.value === 'history') toolGit.cancelHistoryPending();
   selectedTool.value = target.id;
@@ -718,7 +719,7 @@ if (composerFixture) {
       >
         Switch root path
       </button>
-      <button v-if="fileRootFixture" type="button" @click="fileRootPath = ''">
+      <button v-if="fileRootFixture" type="button" @click="fileRootPath = undefined">
         Clear root path
       </button>
       <WorkbenchAside

@@ -632,7 +632,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     page
   }) => {
     await page.route('**/api/workspaces/workspace/**', (route) =>
-      route.fulfill({ json: { files: { entries: [], nextCursor: null } } })
+      route.fulfill({
+        json: {
+          files: {
+            entries: [{ path: 'README.md', name: 'README.md', kind: 'FILE', size: 1 }],
+            nextCursor: null
+          }
+        }
+      })
     );
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 900 });
@@ -651,6 +658,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(root).toHaveAttribute('aria-expanded', 'false');
       await root.click();
       await expect(root).toHaveAttribute('aria-expanded', 'true');
+      const child = inspector.getByRole('treeitem', { name: 'README.md', exact: true });
+      await expect(child).toBeVisible();
+      await inspector.getByRole('button', { name: 'Clear root path', exact: true }).click();
+      await expect(root.locator('.tree-name')).toHaveText('.');
+      await expect(root).toHaveAccessibleName('.');
+      await expect(child).toBeVisible();
       await inspector.getByRole('button', { name: 'Switch root path', exact: true }).click();
       await expect(root.locator('.tree-name')).toHaveText('my-agent-roam');
       await expect(root).toHaveAccessibleName('/home/other/my-agent-roam');

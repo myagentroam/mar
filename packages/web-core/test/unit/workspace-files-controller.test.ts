@@ -18,13 +18,17 @@ const treeOptions = {
 it.each([
   ['/home/example/my-agent-roam', 'my-agent-roam'],
   ['/home/example/MyAgentRoam///', 'MyAgentRoam'],
+  ['/home/example/team\\project', 'team\\project'],
+  ['/home/example/project\\', 'project\\'],
   ['/project', 'project'],
   ['D:\\Work\\MyAgentRoam\\', 'MyAgentRoam'],
   ['\\\\server\\share\\project\\', 'project'],
   ['/', '/'],
-  ['C:\\', 'C:\\']
+  ['C:\\', 'C:\\'],
+  ['\\\\server\\share', '\\\\server\\share'],
+  ['\\\\server\\share\\', '\\\\server\\share\\']
 ])('uses the directory name for Workspace path %s', (path, expected) => {
-  expect(workspaceFileTreeRootName(path, 'Workspace alias')).toBe(expected);
+  expect(workspaceFileTreeRootName(path)).toBe(expected);
 });
 
 it('keeps current Workspace root naming when restoring an older tree snapshot', () => {

@@ -10,10 +10,13 @@ import {
 } from './workspace-file-tree-service.js';
 import { createTrailingTask } from '../util/trailing-task.js';
 
-export function workspaceFileTreeRootName(path: string | undefined, fallback: string): string {
-  if (!path) return fallback;
+export function workspaceFileTreeRootName(path: string | undefined): string {
+  if (!path) return '.';
   if (/^[a-z]:[\\/]+$/iu.test(path)) return path;
-  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
+  // Node reports native absolute paths; backslashes are literal in POSIX names.
+  const segments = path.split(path.startsWith('/') ? '/' : /[\\/]/u).filter(Boolean);
+  if (path.startsWith('\\\\') && segments.length === 2) return path;
+  return segments.at(-1) ?? path;
 }
 
 export interface WorkspaceUploadPreflight {

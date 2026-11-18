@@ -154,6 +154,8 @@ export function createWorkspaceFileTreeService(options: WorkspaceFileTreeOptions
       if (!(await loadToCount(node, loadedCounts.get(path) ?? 0))) return failed(node);
     }
     if (current !== generation) return undefined;
+    // Workspace metadata can arrive while the replacement tree is loading.
+    nextRoot.name = options.workspaceName();
     root.value = nextRoot;
     refreshError.value = undefined;
     selectedPath.value =
