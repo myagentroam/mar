@@ -3,12 +3,7 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
-import {
-  mountMobileDialogReturn,
-  unmountMobileDialogReturn
-} from '../../service/mobile-dialog-return-service.js';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -334,24 +329,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       }
     ]"
   >
-    <el-dialog
-      @vue:mounted="mountMobileDialogReturn"
-      @vue:before-unmount="unmountMobileDialogReturn"
-      v-if="page.registration.workspaceRegistrationNodeId !== undefined"
-      :model-value="true"
-      :title="translate('generated.workbenchSurface.registerWorkspace')"
-      width="min(980px, calc(100vw - 32px))"
-      destroy-on-close
-      @update:model-value="
-        (value: boolean) => {
-          if (!value) page.registration.closeWorkspaceRegistration();
-        }
-      "
-      :close-icon="marIcon('close')"
-    >
+    <template v-if="page.registration.workspaceRegistrationNodeId !== undefined">
       <slot name="workspace-registration">
         <WorkspaceRegistrationPicker
-          v-model="page.registration.openWorkspaceTools"
+          open
           v-model:preserve-git-config="page.registration.workspacePreserveGitConfig"
           :directory="page.registration.workspaceDirectory"
           :selected-path="page.resources.workspacePath"
@@ -365,9 +346,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           @select-pending="page.registration.selectPendingWorkspaceDirectory"
           @discard-pending="page.registration.discardPendingWorkspaceDirectory"
           @register="page.registration.registerWorkspace"
+          @close="page.registration.closeWorkspaceRegistration"
         />
       </slot>
-    </el-dialog>
+    </template>
     <WorkbenchHeader
       :mobile-viewport="page.layout.mobileViewport"
       :view="page.application.view"
@@ -1312,16 +1294,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
-}
-
-.workspace-selection-panel :deep(.workspace-tools) {
-  width: 100%;
-  max-width: 1080px;
-  margin-top: 0.55rem;
-}
-
-.workspace-selection-panel :deep(.workspace-tools .el-collapse-item__content) {
-  padding-top: 0.35rem;
 }
 
 @media (max-width: 767px) {

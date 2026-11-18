@@ -52,7 +52,6 @@ export const workbenchPageEnUS = {
     workbenchSurface: {
       workspaceMetadataUnavailable: 'Workspace information is currently unavailable',
       retryWorkspace: 'Retry loading',
-      registerWorkspace: 'Register Workspace',
       offlineWorkspace: 'Node offline. Waiting for reconnection.',
       connectionOffline: 'Offline. Waiting for reconnection.',
       selectAWorkspace: 'Select a Workspace',

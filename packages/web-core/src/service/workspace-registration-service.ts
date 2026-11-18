@@ -45,7 +45,6 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
   const pendingDirectoryName = ref('');
   const directory = ref<WorkspaceDirectoryListing>();
   const loadingDirectory = ref(false);
-  const openTools = ref<string[]>([]);
   let directoryRequestRevision = 0;
   let registrationRevision = 0;
 
@@ -61,7 +60,7 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
     return current.entries.some((entry) => entry.path === path.value && entry.selectable);
   });
 
-  function reset(openPicker = false): void {
+  function reset(): void {
     directoryRequestRevision += 1;
     registrationRevision += 1;
     loading.value = false;
@@ -70,7 +69,6 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
     pendingDirectoryName.value = '';
     directory.value = undefined;
     loadingDirectory.value = false;
-    openTools.value = openPicker ? ['register'] : [];
   }
 
   async function load(nextPath?: string): Promise<void> {
@@ -170,7 +168,6 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
     pendingDirectoryName,
     directory,
     loadingDirectory,
-    openTools,
     selectedPathValid,
     reset,
     load,
@@ -206,7 +203,7 @@ export interface WorkbenchRegistrationView<RegistrationContext> {
   registrationLoading: boolean;
   pendingWorkspaceDirectoryName: string;
   openNodeRegistration: () => void;
-  openWorkspaceTools: string[];
+  readonly openNodeRegistrationOnEntry: boolean;
   registerWorkspace: (context?: RegistrationContext | undefined) => Promise<void>;
   workspacePreserveGitConfig: boolean;
   workspaceGitPolicySupported: boolean;

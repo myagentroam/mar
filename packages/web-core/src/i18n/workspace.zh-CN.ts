@@ -48,7 +48,6 @@ export const workspaceZhCN = {
     workspaceRegistrationPicker: {
       enterADirectoryName: '请输入目录名称',
       enterASingleDirectoryNameWithoutPath: '请输入不含路径分隔符的单级目录名称',
-      registerANewWorkspace: '登记新的工作区',
       goToParentDirectory: '返回上一级',
       goToParentDirectory2: '返回上一级',
       up: '返回上一级',
@@ -65,7 +64,7 @@ export const workspaceZhCN = {
       open: '进入 {value0}',
       open2: '进入 {value0}',
       loadingAllowedRoots: '正在读取允许根目录…',
-      expandAndSelectADirectoryToRegister: '展开后选择要登记的目录。',
+      selectADirectoryToRegister: '请选择要登记的目录。',
       onlyTheFirst200ChildDirectoriesAre: '当前目录仅显示前 200 个子目录。',
       selected: '已选择：',
       createAndRegister: '创建并登记',

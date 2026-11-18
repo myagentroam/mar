@@ -10,7 +10,7 @@ import {
 import { translate } from '@/service/locale-preference-service';
 defineOptions({ inheritAttrs: false });
 const props = defineProps<{
-  readonly modelValue: readonly string[];
+  readonly open: boolean;
   readonly directory: WorkspaceDirectoryListing | undefined;
   readonly selectedPath: string;
   readonly pendingDirectoryName: string;
@@ -103,7 +103,7 @@ function submit(): void {
 <template>
   <CorePicker
     v-bind="$attrs"
-    :model-value="modelValue"
+    :open="open"
     :directory="directory"
     :selected-path="selectedPath"
     :pending-directory-name="pendingDirectoryName"

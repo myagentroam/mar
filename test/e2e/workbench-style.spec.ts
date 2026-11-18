@@ -102,13 +102,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&content-search=1`);
       const inspector = page.getByRole('region', { name: 'Inspector fixture' });
       const files = inspector.locator('.file-display-filter');
-      const standard = page.locator('.workspace-picker-filter');
+      await page.getByRole('button', { name: 'Open directory picker' }).click();
+      const picker = page.getByRole('dialog', { name: 'Register Workspace' });
+      const standard = picker.locator('.workspace-picker-filter');
       const appearance = (input: Locator) =>
         input.locator('.el-input__wrapper').evaluate(async (wrapper) => {
           await Promise.all(wrapper.getAnimations().map((animation) => animation.finished));
           const style = getComputedStyle(wrapper);
           return {
-            border: style.border,
+            // A borderless input inherits the text color, which differs on dialog surfaces.
+            border: style.borderTopWidth === '0px' ? 'none' : style.border,
             radius: style.borderRadius,
             background: style.backgroundColor,
             shadow: style.boxShadow,
@@ -127,6 +130,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(focused.border).toBe(normal.border);
       expect(focused.shadow).not.toBe(normal.shadow);
       expect(focused.background).toBe(normal.background);
+      await picker.getByRole('button', { name: 'Cancel', exact: true }).click();
 
       for (const [name, input] of [
         ['files', files],
@@ -562,8 +566,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await tree.screenshot({ path: testInfo.outputPath('tree-empty.png') });
       await state.selectOption('unselected');
       await tree.locator('.workspace-tree-filter input').fill('');
-      await expect(tree.locator('.tree-foot')).toBeVisible();
-      await expect(tree.locator('.tree-foot')).not.toHaveCSS('text-align', 'center');
+      await expect(tree.getByRole('button', { name: 'Node', exact: true })).toBeVisible();
+      await expect(tree.locator('.tree-foot')).toHaveCount(0);
       await state.selectOption('main');
       await sessions.getByRole('textbox', { name: 'Set fixture search' }).fill('');
       await expect(empty).toBeVisible();
@@ -1289,7 +1293,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await search.click();
       await expect(page.getByLabel('Session action')).toHaveText('search:review');
       await expect(search).toHaveAccessibleName(/search/iu);
-      const picker = page.getByRole('region', { name: 'Workspace picker fixture' });
+      await page.getByRole('button', { name: 'Open directory picker' }).click();
+      const picker = page.getByRole('dialog', { name: 'Register Workspace' });
       await expect(picker.locator('.workspace-picker-toolbar-actions button')).toHaveCount(3);
       for (const button of await picker.locator('.workspace-picker-toolbar-actions button').all()) {
         const bounds = (await button.boundingBox())!;
@@ -1297,30 +1302,50 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(bounds.height).toBeGreaterThanOrEqual(28);
         await expect(button.locator('svg')).toHaveCount(1);
       }
-      const actionHover = await picker.evaluate((element) => {
+      const rowColors = await picker.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
         probe.style.color = 'var(--mar-text-primary)';
         element.append(probe);
         const style = getComputedStyle(probe);
-        const colors = { background: style.backgroundColor, color: style.color };
+        probe.style.backgroundColor = 'var(--mar-fill-row-hover)';
+        const hover = style.backgroundColor;
+        probe.style.backgroundColor = 'var(--mar-fill-selection)';
+        const colors = { hover, selected: style.backgroundColor, color: style.color };
         probe.remove();
         return colors;
       });
-      expect(actionHover.background).not.toBe('rgba(0, 0, 0, 0)');
-      const directoryActions = picker.locator('.workspace-directory-list > li > button:last-child');
-      await expect(directoryActions).toHaveCount(2);
-      for (const button of await directoryActions.all()) {
+      const transparent = 'rgba(0, 0, 0, 0)';
+      expect(rowColors.hover).not.toBe(transparent);
+      expect(rowColors.selected).not.toBe(transparent);
+      const rows = picker.locator('.workspace-directory-list > li');
+      const pendingRow = rows.filter({ hasText: 'new-workspace' });
+      const directoryRow = rows.filter({
+        has: page.getByRole('button', { name: 'example', exact: true })
+      });
+      const selectDirectory = directoryRow.getByRole('button', { name: 'example', exact: true });
+      await selectDirectory.hover();
+      await expect(directoryRow).toHaveCSS('background-color', rowColors.hover);
+      await expect(selectDirectory).toHaveCSS('background-color', transparent);
+      await directoryRow.getByRole('button', { name: 'Open example' }).hover();
+      await expect(directoryRow).toHaveCSS('background-color', rowColors.hover);
+      for (const [row, name, select] of [
+        [pendingRow, 'Cancel new directory', undefined],
+        [directoryRow, 'Open example', selectDirectory]
+      ] as const) {
+        await select?.click();
+        const button = row.getByRole('button', { name });
         await button.hover();
-        await expect(button).toHaveCSS('background-color', actionHover.background);
-        await expect(button).toHaveCSS('color', actionHover.color);
-        await expect(button).toHaveCSS('border-radius', '6px');
+        await expect(row).toHaveCSS('background-color', rowColors.selected);
+        await expect(button).toHaveCSS('background-color', transparent);
+        await expect(button).toHaveCSS('color', rowColors.color);
         await page.mouse.move(0, 0);
         await page.keyboard.press('Tab');
         await button.focus();
-        await expect(button).toHaveCSS('background-color', actionHover.background);
+        await expect(button).toHaveCSS('background-color', transparent);
         await expect(button).toHaveCSS('outline-width', '2px');
       }
+      await expect(pendingRow).toHaveCount(0);
+      await picker.getByRole('button', { name: 'Cancel', exact: true }).click();
       const strip = page.locator('.workbench-aside-tabs .mar-tab-strip');
       await expect(strip.getByRole('tab')).toHaveCount(4);
       expect(await strip.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(

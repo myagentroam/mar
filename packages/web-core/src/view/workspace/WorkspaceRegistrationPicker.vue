@@ -7,7 +7,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
 import type { FormInstance, FormRules } from 'element-plus';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, useId, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { matchesWorkspaceDisplayFilter } from '../../service/workspace-file-tree-service.js';
 
@@ -25,7 +25,7 @@ interface DirectoryListing {
 }
 
 const props = defineProps<{
-  readonly modelValue: readonly string[];
+  readonly open: boolean;
   readonly directory: DirectoryListing | undefined;
   readonly selectedPath: string;
   readonly pendingDirectoryName: string;
@@ -38,14 +38,37 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string[]];
   'update:preserveGitConfig': [value: boolean];
+  close: [];
   navigate: [path?: string];
   select: [path: string];
   'select-pending': [directoryName: string];
   'discard-pending': [];
   register: [];
 }>();
+const registrationForm = ref<FormInstance>();
+const registrationFormId = useId();
+const registrationFormValue = computed(() => ({ path: props.selectedPath }));
+const registrationRules: FormRules<{ path: string }> = {
+  path: {
+    validator: (_rule, _value, callback) =>
+      props.selectedPathValid
+        ? callback()
+        : callback(
+            new Error(translate('generated.workspaceRegistrationPicker.selectADirectoryToRegister'))
+          )
+  }
+};
+const registrationUnavailable = computed(
+  () => props.loading || props.loadingDirectory || !props.nodeReady || props.registrationDisabled
+);
+async function submitRegistration(): Promise<void> {
+  const form = registrationForm.value;
+  if (form === undefined || registrationUnavailable.value) return;
+  if (!(await form.validate().catch(() => false))) return;
+  if (registrationForm.value === form && !registrationUnavailable.value) emit('register');
+}
+
 const directoryForm = ref<FormInstance>();
 const directoryDialogOpen = ref(false);
 const displayFilter = ref('');
@@ -137,256 +160,265 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 </script>
 
 <template>
-  <el-collapse
-    :model-value="modelValue"
-    class="workspace-tools"
-    @update:model-value="emit('update:modelValue', $event as string[])"
+  <el-dialog
+    v-if="open"
+    @vue:mounted="mountMobileDialogReturn"
+    @vue:before-unmount="unmountMobileDialogReturn"
+    :model-value="open"
+    :title="translate('generated.workspaceRegistrationPicker.registerWorkspace')"
+    width="min(980px, calc(100vw - 32px))"
+    :close-icon="marIcon('close')"
+    @update:model-value="!$event && emit('close')"
   >
-    <el-collapse-item
-      name="register"
-      :title="translate('generated.workspaceRegistrationPicker.registerANewWorkspace')"
-      :icon="marIcon('chevron-right')"
-    >
-      <form class="workspace-picker" @submit.prevent="emit('register')">
-        <slot name="ownership" />
+    <div class="workspace-picker">
+      <slot name="ownership" />
 
-        <div v-if="directory !== undefined" class="workspace-picker-toolbar">
+      <div v-if="directory !== undefined" class="workspace-picker-toolbar">
+        <el-button
+          v-tooltip="translate('generated.workspaceRegistrationPicker.goToParentDirectory2')"
+          :aria-label="translate('generated.workspaceRegistrationPicker.goToParentDirectory')"
+          :icon="marIcon('chevron-left')"
+          :disabled="directory.parentPath === null || loadingDirectory"
+          native-type="button"
+          text
+          @click="emit('navigate', directory.parentPath ?? undefined)"
+        >
+          {{ translate('generated.workspaceRegistrationPicker.up') }}
+        </el-button>
+        <el-dropdown
+          v-if="directory.browseRoots.length > 1"
+          :disabled="loadingDirectory"
+          trigger="click"
+          @command="emit('navigate', $event as string)"
+        >
+          <el-button native-type="button" text>
+            {{ translate('generated.workspaceRegistrationPicker.roots')
+            }}<MarIcon name="chevron-down" class="mar-icon--right" />
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="root in directory.browseRoots" :key="root" :command="root">
+                {{ root }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <nav
+          class="workspace-picker-breadcrumbs"
+          :aria-label="translate('generated.workspaceRegistrationPicker.currentDirectory')"
+        >
+          <template v-for="(breadcrumb, index) in breadcrumbs" :key="breadcrumb.path">
+            <span v-if="index > 0">/</span>
+            <el-button
+              v-tooltip="breadcrumb.path"
+              v-if="index < breadcrumbs.length - 1"
+              :disabled="loadingDirectory"
+              text
+              @click="emit('navigate', breadcrumb.path)"
+            >
+              {{ breadcrumb.label }}
+            </el-button>
+            <strong v-tooltip="breadcrumb.path" v-else>{{ breadcrumb.label }}</strong>
+          </template>
+        </nav>
+        <div class="workspace-picker-toolbar-actions">
           <el-button
-            v-tooltip="translate('generated.workspaceRegistrationPicker.goToParentDirectory2')"
-            :aria-label="translate('generated.workspaceRegistrationPicker.goToParentDirectory')"
-            :icon="marIcon('chevron-left')"
-            :disabled="directory.parentPath === null || loadingDirectory"
+            v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
+            class="mar-icon-action"
+            :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
+            :icon="marIcon('refresh')"
+            :loading="loadingDirectory"
+            :loading-icon="marIcon('loading-action')"
+            :aria-busy="loadingDirectory || undefined"
+            :disabled="loadingDirectory"
             native-type="button"
             text
-            @click="emit('navigate', directory.parentPath ?? undefined)"
+            @click="emit('navigate', directory.currentPath)"
+          />
+          <el-button
+            :icon="marIcon('folder-add')"
+            :disabled="!canCreateDirectory || loadingDirectory"
+            native-type="button"
+            @click="openDirectoryDialog"
           >
-            {{ translate('generated.workspaceRegistrationPicker.up') }}
+            {{ translate('generated.workspaceRegistrationPicker.newDirectory') }}
           </el-button>
-          <el-dropdown
-            v-if="directory.browseRoots.length > 1"
-            :disabled="loadingDirectory"
-            trigger="click"
-            @command="emit('navigate', $event as string)"
+          <el-button
+            :class="{ selected: selectedPath === directory.currentPath }"
+            :disabled="loadingDirectory || !directory.selectable"
+            :icon="marIcon('check')"
+            native-type="button"
+            @click="emit('select', directory.currentPath)"
           >
-            <el-button native-type="button" text>
-              {{ translate('generated.workspaceRegistrationPicker.roots')
-              }}<MarIcon name="chevron-down" class="mar-icon--right" />
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item v-for="root in directory.browseRoots" :key="root" :command="root">
-                  {{ root }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <nav
-            class="workspace-picker-breadcrumbs"
-            :aria-label="translate('generated.workspaceRegistrationPicker.currentDirectory')"
-          >
-            <template v-for="(breadcrumb, index) in breadcrumbs" :key="breadcrumb.path">
-              <span v-if="index > 0">/</span>
-              <el-button
-                v-tooltip="breadcrumb.path"
-                v-if="index < breadcrumbs.length - 1"
-                :disabled="loadingDirectory"
-                text
-                @click="emit('navigate', breadcrumb.path)"
-              >
-                {{ breadcrumb.label }}
-              </el-button>
-              <strong v-tooltip="breadcrumb.path" v-else>{{ breadcrumb.label }}</strong>
-            </template>
-          </nav>
-          <div class="workspace-picker-toolbar-actions">
-            <el-button
-              v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
-              class="mar-icon-action"
-              :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
-              :icon="marIcon('refresh')"
-              :loading="loadingDirectory"
-              :loading-icon="marIcon('loading-action')"
-              :aria-busy="loadingDirectory || undefined"
-              :disabled="loadingDirectory"
-              native-type="button"
-              text
-              @click="emit('navigate', directory.currentPath)"
-            />
-            <el-button
-              :icon="marIcon('folder-add')"
-              :disabled="!canCreateDirectory || loadingDirectory"
-              native-type="button"
-              @click="openDirectoryDialog"
-            >
-              {{ translate('generated.workspaceRegistrationPicker.newDirectory') }}
-            </el-button>
-            <el-button
-              :class="{ selected: selectedPath === directory.currentPath }"
-              :disabled="loadingDirectory || !directory.selectable"
-              :icon="marIcon('check')"
-              native-type="button"
-              @click="emit('select', directory.currentPath)"
-            >
-              {{ translate('generated.workspaceRegistrationPicker.selectCurrentDirectory') }}
-            </el-button>
-          </div>
+            {{ translate('generated.workspaceRegistrationPicker.selectCurrentDirectory') }}
+          </el-button>
         </div>
+      </div>
 
-        <el-input
-          v-if="directory !== undefined"
-          v-model="displayFilter"
-          class="workspace-picker-filter"
-          :aria-label="translate('workspaceDisplayFilter.label')"
-          clearable
-          :placeholder="translate('workspaceDisplayFilter.placeholder')"
-          size="small"
-          :clear-icon="marIcon('clear-input')"
-        >
-          <template #prefix><MarIcon name="search" /></template>
-        </el-input>
+      <el-input
+        v-if="directory !== undefined"
+        v-model="displayFilter"
+        class="workspace-picker-filter"
+        :aria-label="translate('workspaceDisplayFilter.label')"
+        clearable
+        :placeholder="translate('workspaceDisplayFilter.placeholder')"
+        size="small"
+        :clear-icon="marIcon('clear-input')"
+      >
+        <template #prefix><MarIcon name="search" /></template>
+      </el-input>
 
-        <ul v-if="directory !== undefined" class="workspace-directory-list">
-          <li v-if="pendingDirectoryName" class="pending-directory">
-            <button type="button">
-              <FileTypeIcon :name="pendingDirectoryName" kind="DIRECTORY" />
-              <span>{{ pendingDirectoryName }}</span>
-              <el-tag type="warning">{{
-                translate('generated.workspaceRegistrationPicker.pending')
-              }}</el-tag>
-            </button>
-            <button
-              v-tooltip="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
-              class="mar-icon-action"
-              :aria-label="translate('generated.workspaceRegistrationPicker.cancelNewDirectory')"
-              type="button"
-              @click="emit('discard-pending')"
-            >
-              <MarIcon name="close" />
-            </button>
-          </li>
-          <li v-for="entry in filteredEntries" :key="entry.path">
-            <button
-              :class="{ selected: selectedPath === entry.path }"
-              :disabled="loadingDirectory || !entry.selectable"
-              type="button"
-              @click="emit('select', entry.path)"
-              @dblclick="emit('navigate', entry.path)"
-            >
-              <FileTypeIcon :name="entry.name" kind="DIRECTORY" />
-              <span>{{ entry.name }}</span>
-              <small v-if="!entry.selectable">{{
-                translate('generated.workspaceRegistrationPicker.outsideAllowedRoots')
-              }}</small>
-            </button>
-            <button
-              v-tooltip="
-                translate('generated.workspaceRegistrationPicker.open2', { value0: entry.name })
-              "
-              class="mar-icon-action"
-              :aria-label="
-                translate('generated.workspaceRegistrationPicker.open', { value0: entry.name })
-              "
-              :disabled="loadingDirectory"
-              type="button"
-              @click="emit('navigate', entry.path)"
-            >
-              <MarIcon name="chevron-right" />
-            </button>
-          </li>
-          <li
-            v-if="
-              displayFilter.trim().length > 0 &&
-              filteredEntries.length === 0 &&
-              pendingDirectoryName.length === 0
-            "
-            class="workspace-directory-empty"
+      <ul v-if="directory !== undefined" class="workspace-directory-list">
+        <li v-if="pendingDirectoryName" class="workspace-directory-row selected">
+          <div class="workspace-directory-entry">
+            <FileTypeIcon :name="pendingDirectoryName" kind="DIRECTORY" />
+            <span>{{ pendingDirectoryName }}</span>
+            <el-tag type="warning">{{
+              translate('generated.workspaceRegistrationPicker.pending')
+            }}</el-tag>
+          </div>
+          <button
+            v-tooltip="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
+            class="mar-icon-action mar-icon-action--inline"
+            :aria-label="translate('generated.workspaceRegistrationPicker.cancelNewDirectory')"
+            type="button"
+            @click="emit('discard-pending')"
           >
-            {{ translate('workspaceDisplayFilter.empty') }}
-          </li>
-        </ul>
-        <p v-else-if="loadingDirectory" class="workspace-picker-empty">
-          {{ translate('generated.workspaceRegistrationPicker.loadingAllowedRoots') }}
-        </p>
-        <p v-else class="workspace-picker-empty">
-          {{
-            translate('generated.workspaceRegistrationPicker.expandAndSelectADirectoryToRegister')
-          }}
-        </p>
-        <p v-if="directory?.truncated" class="workspace-picker-empty">
-          {{
-            translate('generated.workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre')
-          }}
-        </p>
+            <MarIcon name="close" />
+          </button>
+        </li>
+        <li
+          v-for="entry in filteredEntries"
+          :key="entry.path"
+          class="workspace-directory-row"
+          :class="{ selected: !pendingDirectoryName && selectedPath === entry.path }"
+        >
+          <button
+            class="workspace-directory-entry"
+            :disabled="loadingDirectory || !entry.selectable"
+            type="button"
+            @click="emit('select', entry.path)"
+            @dblclick="emit('navigate', entry.path)"
+          >
+            <FileTypeIcon :name="entry.name" kind="DIRECTORY" />
+            <span>{{ entry.name }}</span>
+            <small v-if="!entry.selectable">{{
+              translate('generated.workspaceRegistrationPicker.outsideAllowedRoots')
+            }}</small>
+          </button>
+          <button
+            v-tooltip="
+              translate('generated.workspaceRegistrationPicker.open2', { value0: entry.name })
+            "
+            class="mar-icon-action mar-icon-action--inline"
+            :aria-label="
+              translate('generated.workspaceRegistrationPicker.open', { value0: entry.name })
+            "
+            :disabled="loadingDirectory"
+            type="button"
+            @click="emit('navigate', entry.path)"
+          >
+            <MarIcon name="chevron-right" />
+          </button>
+        </li>
+        <li
+          v-if="
+            displayFilter.trim().length > 0 &&
+            filteredEntries.length === 0 &&
+            pendingDirectoryName.length === 0
+          "
+          class="workspace-directory-empty"
+        >
+          {{ translate('workspaceDisplayFilter.empty') }}
+        </li>
+      </ul>
+      <p v-else-if="loadingDirectory" class="workspace-picker-empty">
+        {{ translate('generated.workspaceRegistrationPicker.loadingAllowedRoots') }}
+      </p>
+      <p v-else class="workspace-picker-empty">
+        {{ translate('generated.workspaceRegistrationPicker.selectADirectoryToRegister') }}
+      </p>
+      <p v-if="directory?.truncated" class="workspace-picker-empty">
+        {{ translate('generated.workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre') }}
+      </p>
+      <el-form
+        :id="registrationFormId"
+        ref="registrationForm"
+        :model="registrationFormValue"
+        :rules="registrationRules"
+        class="workspace-picker"
+        @submit.prevent="submitRegistration"
+      >
         <el-checkbox
           :model-value="preserveGitConfig ?? false"
           :disabled="loading || !nodeReady"
           @update:model-value="emit('update:preserveGitConfig', $event === true)"
           >{{ translate('personalGit.preserve') }}</el-checkbox
         >
-        <div class="workspace-picker-actions">
+        <el-form-item prop="path" class="workspace-picker-selection">
           <code v-tooltip="selectedPath" v-if="selectedPath"
             >{{ translate('generated.workspaceRegistrationPicker.selected') }}
             {{ selectedPath }}</code
           >
-          <span v-else />
-          <el-button
-            :disabled="
-              loading ||
-              loadingDirectory ||
-              !nodeReady ||
-              !selectedPathValid ||
-              registrationDisabled
-            "
-            :loading="loading"
-            native-type="submit"
-            type="primary"
-            :loading-icon="marIcon('loading-action')"
-          >
-            {{
-              pendingDirectoryName
-                ? translate('generated.workspaceRegistrationPicker.createAndRegister')
-                : translate('generated.workspaceRegistrationPicker.registerWorkspace')
-            }}
-          </el-button>
-        </div>
-      </form>
-    </el-collapse-item>
-  </el-collapse>
+        </el-form-item>
+      </el-form>
+    </div>
 
-  <el-dialog
-    @vue:mounted="mountMobileDialogReturn"
-    @vue:before-unmount="unmountMobileDialogReturn"
-    v-if="directoryDialogOpen"
-    v-model="directoryDialogOpen"
-    :title="translate('generated.workspaceRegistrationPicker.newDirectory2')"
-    width="min(460px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
-  >
-    <el-form
-      ref="directoryForm"
-      :model="directoryFormValue"
-      :rules="directoryRules"
-      label-position="top"
+    <el-dialog
+      @vue:mounted="mountMobileDialogReturn"
+      @vue:before-unmount="unmountMobileDialogReturn"
+      v-if="directoryDialogOpen"
+      v-model="directoryDialogOpen"
+      :title="translate('generated.workspaceRegistrationPicker.newDirectory2')"
+      width="min(460px, calc(100vw - 32px))"
+      :close-icon="marIcon('close')"
+      append-to-body
     >
-      <el-form-item
-        :label="translate('generated.workspaceRegistrationPicker.directoryName')"
-        prop="name"
+      <el-form
+        ref="directoryForm"
+        :model="directoryFormValue"
+        :rules="directoryRules"
+        label-position="top"
       >
-        <el-input
-          v-model="directoryFormValue.name"
-          maxlength="255"
-          :placeholder="translate('generated.workspaceRegistrationPicker.enterADirectoryName2')"
-          @keydown.enter.prevent.stop="confirmDirectory"
-        />
-      </el-form-item>
-    </el-form>
+        <el-form-item
+          :label="translate('generated.workspaceRegistrationPicker.directoryName')"
+          prop="name"
+        >
+          <el-input
+            v-model="directoryFormValue.name"
+            maxlength="255"
+            :placeholder="translate('generated.workspaceRegistrationPicker.enterADirectoryName2')"
+            @keydown.enter.prevent.stop="confirmDirectory"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button native-type="button" @click="directoryDialogOpen = false">{{
+          translate('generated.workspaceRegistrationPicker.cancel')
+        }}</el-button>
+        <el-button native-type="button" type="primary" @click="confirmDirectory">{{
+          translate('generated.workspaceRegistrationPicker.confirm')
+        }}</el-button>
+      </template>
+    </el-dialog>
     <template #footer>
-      <el-button native-type="button" @click="directoryDialogOpen = false">{{
+      <el-button native-type="button" @click="emit('close')">{{
         translate('generated.workspaceRegistrationPicker.cancel')
       }}</el-button>
-      <el-button native-type="button" type="primary" @click="confirmDirectory">{{
-        translate('generated.workspaceRegistrationPicker.confirm')
-      }}</el-button>
+      <el-button
+        :form="registrationFormId"
+        :disabled="registrationUnavailable || !selectedPathValid"
+        :loading="loading"
+        native-type="submit"
+        type="primary"
+        :loading-icon="marIcon('loading-action')"
+      >
+        {{
+          pendingDirectoryName
+            ? translate('generated.workspaceRegistrationPicker.createAndRegister')
+            : translate('generated.workspaceRegistrationPicker.registerWorkspace')
+        }}
+      </el-button>
     </template>
   </el-dialog>
 </template>
@@ -394,14 +426,10 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 <style scoped>
 .workspace-picker {
   display: grid;
-  width: 100%;
-  max-width: 1080px;
-  margin-top: 0.35rem;
   gap: 0.65rem;
 }
 
-.workspace-picker-toolbar,
-.workspace-picker-actions {
+.workspace-picker-toolbar {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -448,18 +476,11 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 }
 
 .workspace-directory-list {
-  max-height: min(360px, 42vh);
-  overflow: auto;
   margin: 0;
   border: 1px solid var(--mar-border-medium);
   border-radius: 4px;
   padding: 0;
   list-style: none;
-}
-
-.el-dialog__body .workspace-directory-list {
-  max-height: none;
-  overflow: visible;
 }
 
 .workspace-picker-filter {
@@ -474,18 +495,26 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   font-size: var(--mar-font-size-meta);
 }
 
-.workspace-directory-list > li {
+.workspace-directory-row {
   display: flex;
   min-width: 0;
   align-items: center;
   border-bottom: 1px solid var(--mar-fill-hover);
 }
 
-.workspace-directory-list > li:last-child {
+.workspace-directory-row:last-child {
   border-bottom: 0;
 }
 
-.workspace-directory-list > li > button:first-child {
+.workspace-directory-row:not(.selected):hover:has(> button:not(:disabled)) {
+  background: var(--mar-fill-row-hover);
+}
+
+.workspace-directory-row.selected {
+  background: var(--mar-fill-selection);
+}
+
+.workspace-directory-entry {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -497,22 +526,13 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   color: var(--mar-text-primary);
   padding: 0.5rem 0.65rem;
   text-align: left;
+}
+
+button.workspace-directory-entry {
   cursor: pointer;
 }
 
-.workspace-directory-list > li > button:first-child:hover:not(:disabled) {
-  background: var(--mar-fill-row-hover);
-}
-
-.workspace-directory-list > li > button:first-child.selected,
-.workspace-directory-list > li > button:first-child.selected:hover:not(:disabled),
-.workspace-directory-list > li.pending-directory > button:first-child,
-.workspace-directory-list > li.pending-directory > button:first-child:hover:not(:disabled) {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-}
-
-.workspace-directory-list > li > button:first-child:disabled {
+button.workspace-directory-entry:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -533,7 +553,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   margin-left: auto;
 }
 
-.workspace-directory-list > li > button:last-child {
+.workspace-directory-row > .mar-icon-action {
   display: inline-grid;
   width: 32px;
   height: 30px;
@@ -543,34 +563,19 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   cursor: pointer;
 }
 
-.workspace-directory-list > li > button:last-child:disabled {
+.workspace-directory-row > .mar-icon-action:disabled {
   cursor: wait;
   opacity: 0.5;
 }
 
-.workspace-picker-actions {
-  position: sticky;
-  bottom: 0;
-  justify-content: space-between;
-  background: var(--mar-bg-panel);
-  padding-top: 0.25rem;
-}
-
-.workspace-picker-actions code {
+.workspace-picker-selection {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin: 0;
 }
 
-.workspace-tools {
-  margin-top: 0.8rem;
-  border-top: 1px solid var(--mar-border-medium);
-  padding-top: 0.55rem;
-}
-
-:global(.workspace-tools.el-collapse) {
-  border-bottom: 0;
+.workspace-picker-selection code {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 767px) {
@@ -588,6 +593,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   .workspace-picker-toolbar-actions {
     width: 100%;
     flex-basis: 100%;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.35rem;
   }

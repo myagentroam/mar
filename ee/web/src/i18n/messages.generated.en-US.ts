@@ -1982,8 +1982,6 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     workspaceEnUS.generated.workspaceRegistrationPicker.enterADirectoryName,
   'workspaceRegistrationPicker.enterASingleDirectoryNameWithoutPath':
     workspaceEnUS.generated.workspaceRegistrationPicker.enterASingleDirectoryNameWithoutPath,
-  'workspaceRegistrationPicker.registerANewWorkspace':
-    workspaceEnUS.generated.workspaceRegistrationPicker.registerANewWorkspace,
   'workspaceRegistrationPicker.resourceOwner': 'Resource Owner',
   'workspaceRegistrationPicker.personal': 'Personal',
   'workspaceRegistrationPicker.mEMBERUsersCannotCreateOrganizationWorkspaces':
@@ -2016,8 +2014,8 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
   'workspaceRegistrationPicker.open2': workspaceEnUS.generated.workspaceRegistrationPicker.open2,
   'workspaceRegistrationPicker.loadingAllowedRoots':
     workspaceEnUS.generated.workspaceRegistrationPicker.loadingAllowedRoots,
-  'workspaceRegistrationPicker.expandAndSelectADirectoryToRegister':
-    workspaceEnUS.generated.workspaceRegistrationPicker.expandAndSelectADirectoryToRegister,
+  'workspaceRegistrationPicker.selectADirectoryToRegister':
+    workspaceEnUS.generated.workspaceRegistrationPicker.selectADirectoryToRegister,
   'workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre':
     workspaceEnUS.generated.workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre,
   'workspaceRegistrationPicker.selected':

@@ -246,6 +246,9 @@ const workspaces: Workspace[] = [
   { id: 'grouped', path: '/grouped', kind: 'DIRECTORY', groupName: 'Team' }
 ];
 const selectedWorkspace = ref('plain');
+const workspacePickerOpen = ref(false);
+const selectedDirectory = ref('/home');
+const pendingDirectory = ref('new-workspace');
 const tabs = Array.from({ length: 8 }, (_, index) => ({
   id: String(index),
   nodeId: 'node',
@@ -682,8 +685,10 @@ if (composerFixture) {
       <output aria-label="Session action">{{ action }}</output>
     </section>
     <section aria-label="Workspace picker fixture">
+      <button type="button" @click="workspacePickerOpen = true">Open directory picker</button>
       <WorkspaceRegistrationPicker
-        :model-value="['register']"
+        v-if="workspacePickerOpen"
+        :open="workspacePickerOpen"
         :directory="{
           currentPath: '/home',
           parentPath: '/',
@@ -692,12 +697,17 @@ if (composerFixture) {
           entries: [{ path: '/home/example', name: 'example', selectable: true }],
           truncated: false
         }"
-        selected-path="/home"
-        pending-directory-name="new-workspace"
+        :selected-path="selectedDirectory"
+        :pending-directory-name="pendingDirectory"
         :loading-directory="false"
         :loading="false"
         :node-ready="true"
         :selected-path-valid="true"
+        @select="
+          selectedDirectory = $event;
+          pendingDirectory = '';
+        "
+        @close="workspacePickerOpen = false"
       />
     </section>
     <section aria-label="Inspector fixture">

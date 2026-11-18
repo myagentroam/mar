@@ -29,14 +29,14 @@ defineProps<{ page: CoreSurfaceProps['page'] }>();
   <CoreSurface :page="page">
     <template #workspace-registration>
       <WorkspaceRegistrationPicker
-        v-model="page.registration.openWorkspaceTools"
+        open
         v-model:preserve-git-config="page.registration.workspacePreserveGitConfig"
         :git-policy-supported="page.registration.workspaceGitPolicySupported"
         :directory="page.registration.workspaceDirectory"
         :selected-path="page.resources.workspacePath"
         :pending-directory-name="page.registration.pendingWorkspaceDirectoryName"
         :loading-directory="page.registration.loadingWorkspaceDirectory"
-        :loading="page.identity.loading"
+        :loading="page.registration.registrationLoading"
         :node-ready="page.registration.workspaceRegistrationReady"
         :selected-path-valid="page.registration.selectedWorkspaceDirectorySelectable"
         :enterprise="page.identity.admin.edition === 'ENTERPRISE'"
@@ -50,6 +50,7 @@ defineProps<{ page: CoreSurfaceProps['page'] }>();
         @select-pending="page.registration.selectPendingWorkspaceDirectory"
         @discard-pending="page.registration.discardPendingWorkspaceDirectory"
         @register="page.registration.registerWorkspace"
+        @close="page.registration.closeWorkspaceRegistration"
       />
     </template>
     <template #settings>

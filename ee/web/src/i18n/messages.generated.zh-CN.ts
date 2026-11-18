@@ -1963,8 +1963,6 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     workspaceZhCN.generated.workspaceRegistrationPicker.enterADirectoryName,
   'workspaceRegistrationPicker.enterASingleDirectoryNameWithoutPath':
     workspaceZhCN.generated.workspaceRegistrationPicker.enterASingleDirectoryNameWithoutPath,
-  'workspaceRegistrationPicker.registerANewWorkspace':
-    workspaceZhCN.generated.workspaceRegistrationPicker.registerANewWorkspace,
   'workspaceRegistrationPicker.resourceOwner': '资源归属',
   'workspaceRegistrationPicker.personal': '个人',
   'workspaceRegistrationPicker.mEMBERUsersCannotCreateOrganizationWorkspaces':
@@ -1997,8 +1995,8 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
   'workspaceRegistrationPicker.open2': workspaceZhCN.generated.workspaceRegistrationPicker.open2,
   'workspaceRegistrationPicker.loadingAllowedRoots':
     workspaceZhCN.generated.workspaceRegistrationPicker.loadingAllowedRoots,
-  'workspaceRegistrationPicker.expandAndSelectADirectoryToRegister':
-    workspaceZhCN.generated.workspaceRegistrationPicker.expandAndSelectADirectoryToRegister,
+  'workspaceRegistrationPicker.selectADirectoryToRegister':
+    workspaceZhCN.generated.workspaceRegistrationPicker.selectADirectoryToRegister,
   'workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre':
     workspaceZhCN.generated.workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre,
   'workspaceRegistrationPicker.selected':

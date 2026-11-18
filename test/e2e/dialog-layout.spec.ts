@@ -353,6 +353,11 @@ for (const kind of ['tokens', 'mail', 'registration', 'upload', 'quick']) {
     const dialog = page.locator('.el-dialog:visible');
     if (kind === 'mail') await expect(dialog.locator('iframe')).toBeVisible();
     await expectBounded(dialog);
+    if (kind === 'registration') {
+      await expect(dialog.getByRole('button', { name: 'Register a New Workspace' })).toHaveCount(0);
+      await expect(dialog.getByRole('button', { name: 'Register Workspace' })).toBeInViewport();
+      await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport();
+    }
     if (kind !== 'quick') await expectScrollableBody(dialog);
     if (kind === 'quick') {
       const input = dialog.locator('.quick-open-input');
@@ -362,8 +367,47 @@ for (const kind of ['tokens', 'mail', 'registration', 'upload', 'quick']) {
       await expectBounded(dialog);
     }
     await expectSingleScrollRegion(dialog);
+    if (kind === 'registration') {
+      const register = dialog.getByRole('button', { name: 'Register Workspace' });
+      await expect(register).toBeInViewport();
+      await expect(register).toBeDisabled();
+      await dialog.getByRole('button', { name: 'Select current directory' }).click();
+      await expect(register).toBeEnabled();
+      const filter = dialog.getByRole('textbox', { name: 'Filter displayed items' });
+      await filter.fill('folder');
+      await filter.press('Enter');
+      await expect(filter).toBeFocused();
+      await expect(page.getByLabel('Registered path')).toHaveText('');
+      await register.press('Enter');
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByLabel('Registered path')).toHaveText('/workspace');
+    }
   });
 }
+
+test('Workspace registration keeps new-directory confirmation separate from submission', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await visit(page, 'registration', 'vscode-dark-2026');
+  await page.getByRole('button').first().click();
+  const registration = page.getByRole('dialog', { name: 'Register Workspace' });
+  await registration.getByRole('button', { name: 'New directory', exact: true }).click();
+  const directory = page.getByRole('dialog', { name: 'New Directory', exact: true });
+  await directory.getByRole('textbox', { name: 'Directory Name' }).fill('new-project');
+  await directory.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect(directory).toHaveCount(0);
+
+  const register = registration.getByRole('button', { name: 'Create and register' });
+  await expect(register).toBeEnabled();
+  await expect(register).toBeInViewport();
+  await expect(page.getByLabel('Registered path')).toHaveText('');
+  await registration.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(registration).toHaveCount(0);
+  await page.getByRole('button').first().click();
+  await expect(registration.getByRole('button', { name: 'Register Workspace' })).toBeDisabled();
+  await expect(registration.getByText('new-project', { exact: true })).toHaveCount(0);
+});
 
 test.describe('Mobile dialog viewport', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'Mobile emulation requires Chromium.');
