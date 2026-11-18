@@ -180,6 +180,11 @@ const titleButton = ref<HTMLButtonElement>();
 @media (max-width: 767px) {
   .conversation-header {
     justify-content: flex-start;
+    gap: 0.25rem;
+  }
+
+  .conversation-header-title {
+    margin-inline-end: auto;
   }
 
   .conversation-title-row {
@@ -191,7 +196,6 @@ const titleButton = ref<HTMLButtonElement>();
     flex: none;
     align-items: center;
     gap: 0.25rem;
-    margin-inline-start: auto;
   }
 
   .mobile-conversation-tool {

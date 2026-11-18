@@ -1741,7 +1741,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-timeline-scroll :deep(.conversation-scroll) {
-  padding: 0 clamp(6px, 2vw, 22px);
+  padding-block: 0;
 }
 
 .hosted-timeline-scroll :deep(.conversation-timeline) {
@@ -1951,7 +1951,7 @@ onBeforeUnmount(() => {
   }
 
   .hosted-timeline-scroll :deep(.conversation-scroll) {
-    padding-top: 50px;
+    padding-block-start: 50px;
   }
 
   .history-search-row {
