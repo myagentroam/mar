@@ -49,6 +49,8 @@ function fixture() {
       clientX: 100,
       clientY: 200,
       currentTarget: target,
+      target,
+      composedPath: () => [target, ownerDocument],
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
       ...overrides
@@ -59,9 +61,14 @@ function fixture() {
     if (['onPointerdown', 'onPointerup', 'onPointercancel'].includes(name)) {
       ownerDocument.dispatchEvent(
         Object.assign(new Event(name.slice(2).toLowerCase()), {
-          pointerId: input.pointerId
+          pointerId: input.pointerId,
+          isPrimary: input.isPrimary,
+          clientY: input.clientY,
+          composedPath: input.composedPath,
+          preventDefault: input.preventDefault
         })
       );
+      if (name !== 'onPointerdown') return input;
     }
     (button.props[name] as (event: unknown) => void)(input);
     return input;
@@ -178,11 +185,41 @@ describe('mobile Composer send gesture', () => {
     f.fire('onPointerdown');
     vi.advanceTimersByTime(200);
     f.fire('onPointerup');
-    f.ownerDocument.dispatchEvent(new Event('pointerdown'));
+    f.ownerDocument.dispatchEvent(Object.assign(new Event('pointerdown'), { isPrimary: true }));
     const click = Object.assign(new Event('click', { cancelable: true }), { detail: 1 });
     f.ownerDocument.dispatchEvent(click);
     expect(click.defaultPrevented).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears an interrupted hold when the next press is outside the Composer', () => {
+    const f = fixture();
+    f.fire('onPointerdown');
+    f.ownerDocument.dispatchEvent(Object.assign(new Event('pointerdown'), { isPrimary: true }));
+    expect(f.capture.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.steer).not.toHaveBeenCalled();
+  });
+
+  it('only consumes the tracked touch click if its release was missed', () => {
+    const f = fixture();
+    f.fire('onPointerdown');
+    const click = (pointerId: number) => {
+      const event = Object.assign(new Event('click', { cancelable: true }), {
+        detail: 1,
+        pointerId
+      });
+      f.ownerDocument.dispatchEvent(event);
+      return event;
+    };
+    expect(click(2).defaultPrevented).toBe(false);
+    expect(f.capture.size).toBe(1);
+    expect(click(1).defaultPrevented).toBe(true);
+    expect(f.capture.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.steer).not.toHaveBeenCalled();
   });
 
   it('suppresses a click retargeted after the held button is removed before release', () => {
@@ -212,6 +249,36 @@ describe('mobile Composer send gesture', () => {
       expect(f.capture.size).toBe(0);
     }
   );
+
+  it('cancels a release retargeted outside the send button without submitting', async () => {
+    const f = fixture();
+    f.fire('onPointerdown');
+    vi.advanceTimersByTime(200);
+    f.fire('onPointerup', { clientY: 180, composedPath: () => [f.ownerDocument] });
+    await nextTick();
+    expect(f.capture.size).toBe(0);
+    expect(f.view.findAll('span').some((node) => node.props['role'] === 'status')).toBe(false);
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.steer).not.toHaveBeenCalled();
+
+    const click = Object.assign(new Event('click', { cancelable: true }), { detail: 1 });
+    f.ownerDocument.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+  });
+
+  it('ignores cancellation and capture loss from another pointer', async () => {
+    const f = fixture();
+    f.fire('onPointerdown');
+    f.fire('onPointerdown', { pointerId: 2, isPrimary: false });
+    f.fire('onPointercancel', { pointerId: 2 });
+    f.fire('onLostpointercapture', { pointerId: 2 });
+    f.fire('onPointermove', { clientY: 180 });
+    await nextTick();
+    expect(textContent(f.view.root)).toMatch(/^(Release to steer|松手插入消息)/u);
+    f.fire('onPointerup', { clientY: 180 });
+    expect(f.steer).toHaveBeenCalledTimes(1);
+    expect(f.send).not.toHaveBeenCalled();
+  });
 
   it.each(['disabled', 'mobileViewport', 'canSteer', 'contextKey'] as const)(
     'cancels an ongoing hold when %s changes',

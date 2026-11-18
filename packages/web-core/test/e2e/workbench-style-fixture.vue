@@ -3,7 +3,13 @@ import { createFileAccessFixture } from '../support/file-access-fixture.js';
 
 import { computed, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue';
 import HostedComposerGestureFixture from './hosted-composer-gesture-fixture.vue';
-import type { AgentRun, NodeSummary, Session, Workspace } from '../../src/model/workbench.js';
+import type {
+  AgentRun,
+  NodeSummary,
+  Session,
+  Workspace,
+  WorkspaceQueueItem
+} from '../../src/model/workbench.js';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue';
 import { registerWorkspacePaneShortcuts } from '../../src/service/workspace-session-pane-state.js';
 import { createConversationStateService } from '../../src/service/conversation-state-service.js';
@@ -14,6 +20,7 @@ import type { WorkbenchView } from '../../src/util/workbench-route.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import type { PromptCompletionBinding } from '../../src/service/prompt-completion-client-service.js';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
+import ComposerQueue from '../../src/view/composer/ComposerQueue.vue';
 import ConversationComposer from '../../src/view/composer/ConversationComposer.vue';
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
@@ -47,6 +54,19 @@ const workspaceRecoveryFixture = new URL(location.href).searchParams.has('worksp
 const networkOfflineFixture = new URL(location.href).searchParams.has('network-offline');
 const restrictionFixture = new URL(location.href).searchParams.has('restriction');
 const idleComposer = new URL(location.href).searchParams.has('idle-composer');
+const queuedComposer = new URL(location.href).searchParams.has('queued-composer');
+const gestureQueuedItems: WorkspaceQueueItem[] = [
+  {
+    queueItemId: 'queued-1',
+    sessionId: 'active',
+    workspaceId: 'plain',
+    runner: 'mar',
+    clientMessageId: 'queued-message-1',
+    sessionTitle: 'Active session',
+    content: 'Earlier queued message',
+    createdAt: Date.now()
+  }
+];
 const managedSessionOnly = new URL(location.href).searchParams.has('managed-session-only');
 const gestureSessionId = ref('active');
 const gestureWorkspaceId = ref('plain');
@@ -521,6 +541,17 @@ if (composerFixture) {
       :completion="gestureCompletion"
       @submit="submitGestureIntent()"
     >
+      <template #queue>
+        <ComposerQueue
+          v-if="queuedComposer"
+          :items="gestureQueuedItems"
+          :paused="idleComposer"
+          :loading="false"
+          :editing-queue-item-id="undefined"
+          editing-content=""
+          :goal="undefined"
+        />
+      </template>
       <template #toolbar>
         <ComposerToolbar
           :draft-session-open="true"

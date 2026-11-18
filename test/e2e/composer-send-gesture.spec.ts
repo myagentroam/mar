@@ -263,6 +263,51 @@ test('A system touch cancellation preserves the draft and submits nothing', asyn
   await expect(ui.draft).toHaveValue('Follow up on mobile layout.');
 });
 
+for (const idle of [false, true]) {
+  for (const queued of [false, true]) {
+    test(`The ${idle ? 'idle' : 'running'} Composer ${queued ? 'with' : 'without'} queued messages accepts the next swipe after a missing release`, async ({
+      page
+    }) => {
+      const ui = await openWorkspace(
+        page,
+        `${idle ? '&idle-composer=1' : ''}${queued ? '&queued-composer=1' : ''}`
+      );
+      await expect(page.getByText('Earlier queued message', { exact: true })).toHaveCount(
+        queued ? 1 : 0
+      );
+      await ui.draft.tap();
+      // Simulate an interruption where no terminal pointer event reaches the Composer.
+      await page.evaluate(() => {
+        for (const type of ['pointerup', 'lostpointercapture']) {
+          window.addEventListener(type, (event) => event.stopImmediatePropagation(), {
+            capture: true,
+            once: true
+          });
+        }
+      });
+      const releaseHint = idle ? 'Release to send' : 'Release to steer';
+      const interrupted = await touchButton(page, ui.button);
+      await interrupted.move(16);
+      await expect(ui.hint).toContainText(releaseHint);
+      await interrupted.end();
+      await expect(ui.submitted).toBeEmpty();
+
+      const next = await touchButton(page, ui.button);
+      await expect(ui.hint).toContainText(idle ? releaseHint : 'Slide up to steer');
+      await next.move(16);
+      await expect(ui.hint).toContainText(releaseHint);
+      await next.moveAboveComposer();
+      await expect(ui.hint).toContainText('Release to cancel');
+      await next.move(16);
+      await expect(ui.hint).toContainText(releaseHint);
+      await expect(ui.submitted).toBeEmpty();
+      await next.end();
+      await expect(ui.submitted).toHaveText(idle ? 'SEND' : 'REPLACE_CURRENT');
+      await expect(ui.draft).toBeFocused();
+    });
+  }
+}
+
 test('Changing the target Run cancels an in-flight touch rather than sending to its replacement', async ({
   page
 }) => {
