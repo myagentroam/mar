@@ -14,11 +14,6 @@ export type HostedConversationFileTreeNode =
       readonly file: ConversationFileProjection;
     };
 
-export interface HostedConversationFileTreeRow {
-  readonly node: HostedConversationFileTreeNode;
-  readonly depth: number;
-}
-
 interface MutableDirectory {
   readonly name: string;
   readonly path: string;
@@ -48,28 +43,6 @@ export function buildHostedConversationFileTree(
     directory.files.push(file);
   }
   return finalizedChildren(root);
-}
-
-export function visibleHostedConversationFileTreeRows(
-  nodes: readonly HostedConversationFileTreeNode[],
-  expanded: (path: string) => boolean
-): readonly HostedConversationFileTreeRow[] {
-  const rows: HostedConversationFileTreeRow[] = [];
-  appendVisibleRows(nodes, 0, expanded, rows);
-  return rows;
-}
-
-function appendVisibleRows(
-  nodes: readonly HostedConversationFileTreeNode[],
-  depth: number,
-  expanded: (path: string) => boolean,
-  output: HostedConversationFileTreeRow[]
-): void {
-  for (const node of nodes) {
-    output.push({ node, depth });
-    if (node.kind === 'DIRECTORY' && expanded(node.path))
-      appendVisibleRows(node.children, depth + 1, expanded, output);
-  }
 }
 
 function mutableDirectory(name: string, path: string): MutableDirectory {

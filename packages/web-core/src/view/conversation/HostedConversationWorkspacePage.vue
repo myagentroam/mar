@@ -30,10 +30,7 @@ import {
 } from 'vue';
 import { createConversationImageService } from '../../service/conversation-image-service.js';
 import { createConversationScrollService } from '../../service/conversation-scroll-service.js';
-import {
-  buildHostedConversationFileTree,
-  visibleHostedConversationFileTreeRows
-} from '../../service/hosted-conversation-file-tree-service.js';
+import { buildHostedConversationFileTree } from '../../service/hosted-conversation-file-tree-service.js';
 import { createHostedConversationFilePreviewService } from '../../service/hosted-conversation-file-preview-service.js';
 import { projectedFilePath } from '../../service/hosted-conversation-file-preview-service.js';
 import { createStandaloneFileWindowService } from '../../service/standalone-file-window-service.js';
@@ -48,7 +45,6 @@ import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
 import { errorMessage, filePreviewErrorSummary } from '../../util/error-presentation.js';
-import { fileSizeLabel } from '../../util/file-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
 import ConversationScroll from './ConversationScroll.vue';
@@ -59,6 +55,7 @@ import { createToolChangeReviewService } from '../../service/tool-change-review-
 import type { FileChangeEntry } from '../../util/conversation-presentation.js';
 import HostedConversationComposer from '../../view/conversation/HostedConversationComposer.vue';
 import HostedConversationEntryPage from '../../view/conversation/HostedConversationEntryPage.vue';
+import HostedConversationFileTree from './HostedConversationFileTree.vue';
 import { createHostedConversationEntryService } from '../../service/hosted-conversation-entry-service.js';
 import ImagePreviewDialogs from './ImagePreviewDialogs.vue';
 import WorkspaceTextFilePage from '../workspace/WorkspaceTextFilePage.vue';
@@ -290,16 +287,10 @@ const filesByCategory = computed(() => {
   ]);
   for (const file of props.workspace.snapshot.value?.files ?? [])
     groups.get(file.category)!.push(file);
-  return [...groups.entries()].map(([category, files]) => {
-    const tree = buildHostedConversationFileTree(files);
-    return {
-      category,
-      files,
-      rows: visibleHostedConversationFileTreeRows(tree, (path) =>
-        expandedFileDirectories.value.has(fileDirectoryKey(category, path))
-      )
-    };
-  });
+  return [...groups.entries()].map(([category, files]) => ({
+    category,
+    nodes: buildHostedConversationFileTree(files)
+  }));
 });
 const timelineTurns = computed(() => props.workspace.turns.value);
 const selectedConversationKey = computed(
@@ -1367,67 +1358,18 @@ onBeforeUnmount(() => {
         <div v-loading="uploadingDroppedFiles" class="files-list">
           <section v-for="group in filesByCategory" :key="group.category">
             <h3>{{ categoryLabel(group.category) }}</h3>
-            <p v-if="group.files.length === 0">{{ translate('hostedConversations.noFiles') }}</p>
-            <div
-              v-for="row in group.rows"
-              :key="`${group.category}:${row.node.kind}:${row.node.path}`"
-              class="file-row"
-              :class="{ 'is-directory': row.node.kind === 'DIRECTORY' }"
-              :style="{ '--file-depth': row.depth }"
-            >
-              <span
-                v-tooltip="row.node.path"
-                v-if="row.node.kind === 'DIRECTORY'"
-                class="mar-tooltip-control"
-                ><button
-                  class="file-directory"
-                  type="button"
-                  :aria-expanded="fileDirectoryExpanded(group.category, row.node.path)"
-                  :aria-label="fileDirectoryActionLabel(group.category, row.node.path)"
-                  @click="toggleFileDirectory(group.category, row.node.path)"
-                >
-                  <MarIcon
-                    name="chevron-right"
-                    class="file-directory-chevron"
-                    :class="{
-                      expanded: fileDirectoryExpanded(group.category, row.node.path)
-                    }"
-                  />
-                  <MarIcon name="folder-open" class="file-directory-kind" />
-                  <span>{{ row.node.name }}</span>
-                </button></span
-              >
-              <template v-else>
-                <button
-                  v-tooltip="row.node.file.relativePath"
-                  :aria-label="row.node.file.relativePath"
-                  class="file-open"
-                  type="button"
-                  @click="filePreview.openFile(row.node.file)"
-                >
-                  <span>{{ row.node.file.displayName }}</span>
-                  <small>{{ fileSizeLabel(row.node.file.size) }}</small>
-                </button>
-                <button
-                  v-tooltip="
-                    translate('hostedConversations.fileDeleteNamed', {
-                      name: row.node.file.displayName
-                    })
-                  "
-                  class="file-delete mar-icon-action mar-icon-action--inline"
-                  type="button"
-                  :disabled="!filesWritable || deletingFileId !== undefined"
-                  :aria-label="
-                    translate('hostedConversations.fileDeleteNamed', {
-                      name: row.node.file.displayName
-                    })
-                  "
-                  @click="deleteProjectedFile(row.node.file)"
-                >
-                  <MarIcon name="delete" />
-                </button>
-              </template>
-            </div>
+            <p v-if="group.nodes.length === 0">{{ translate('hostedConversations.noFiles') }}</p>
+            <HostedConversationFileTree
+              v-else
+              :key="selectedConversationKey"
+              :nodes="group.nodes"
+              :directory-expanded="(path) => fileDirectoryExpanded(group.category, path)"
+              :directory-label="(path) => fileDirectoryActionLabel(group.category, path)"
+              :toggle-directory="(path) => toggleFileDirectory(group.category, path)"
+              :open-file="filePreview.openFile"
+              :delete-file="deleteProjectedFile"
+              :delete-disabled="!filesWritable || deletingFileId !== undefined"
+            />
           </section>
         </div>
       </template>
@@ -1942,120 +1884,6 @@ onBeforeUnmount(() => {
   font-size: var(--mar-font-size-meta);
 }
 
-.file-row {
-  --file-depth: 0;
-
-  display: grid;
-  box-sizing: border-box;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  align-items: center;
-  border-radius: 6px;
-  padding-left: calc(var(--file-depth) * 14px);
-}
-
-.file-row:hover,
-.file-row:focus-within {
-  background: var(--mar-fill-hover);
-}
-
-.file-open {
-  display: grid;
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  padding: 7px 8px;
-  color: var(--mar-text-primary);
-  text-align: left;
-  cursor: pointer;
-}
-
-.file-open:focus-visible,
-.file-directory:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--mar-color-brand-border);
-}
-
-.file-directory {
-  display: flex;
-  min-width: 0;
-  min-height: 30px;
-  grid-column: 1 / -1;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  padding: 5px 8px;
-  color: var(--mar-text-primary);
-  text-align: left;
-  cursor: pointer;
-}
-
-.file-directory-chevron {
-  flex: none;
-  color: var(--mar-text-faint);
-  font-size: 11px;
-}
-
-.file-directory-chevron svg {
-  transition: transform 120ms ease;
-}
-
-.file-directory-chevron svg.expanded {
-  transform: rotate(90deg);
-}
-
-.file-directory-kind {
-  flex: none;
-  color: var(--mar-color-brand-text);
-  font-size: 15px;
-}
-
-.file-directory span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-open span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-open small {
-  justify-self: end;
-  color: var(--mar-text-tertiary);
-  line-height: 1.35;
-  text-align: right;
-}
-
-.file-delete {
-  --mar-action-icon-size: 14px;
-  display: inline-grid;
-  width: 26px;
-  height: 26px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  background: transparent;
-  cursor: pointer;
-}
-
-.file-delete:hover:not(:disabled) {
-  color: var(--mar-color-danger-text);
-}
-
-.file-delete:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
 .hosted-conversation-scrim,
 .hosted-mobile-files-button {
   display: none;
@@ -2070,10 +1898,6 @@ onBeforeUnmount(() => {
 @media (max-width: 767px) {
   .hosted-workspace {
     display: flex;
-  }
-
-  .file-directory {
-    min-height: 36px;
   }
 
   .hosted-conversation-scrim {
