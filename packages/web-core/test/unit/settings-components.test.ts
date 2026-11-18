@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.stubGlobal('document', {
     documentElement: {
       lang: '',
+      style: { setProperty: vi.fn(), removeProperty: vi.fn() },
       setAttribute: vi.fn(),
       removeAttribute: vi.fn(),
       classList: { add: vi.fn(), remove: vi.fn() }

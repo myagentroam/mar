@@ -1,6 +1,7 @@
 export const fileNavigationZhCN = {
   workspaceDisplayFilter: { empty: '没有匹配的文件或目录。' },
   settings: {
+    iconThemeMar: 'MAR File Icons',
     iconThemeSeti: 'Seti',
     iconThemeMaterial: 'Material'
   },

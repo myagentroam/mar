@@ -1,0 +1,2950 @@
+<!doctype html>
+<!-- Generated as preview.html by generate-preview.mjs; edit the template and source assets. -->
+<html lang="en" class="console-ui" data-theme="daylight">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAR File Icons Preview</title>
+    <style>
+      /* MAR theme tokens and built-in palettes. */
+
+      :root,
+      html.console-ui,
+      .mar-theme-preview {
+        --mar-motion-duration-collapse: 160ms;
+        --mar-motion-easing-collapse: cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      :root,
+      .mar-theme-preview {
+        --mar-font-sans: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        color-scheme: light;
+        --mar-bg-page: #f7f9fd;
+        --mar-bg-panel: #ffffff;
+        --mar-bg-chrome: #edf3fa;
+        --mar-bg-subtle: #f3f6fb;
+        --mar-bg-tab-inactive: #f7f9fd;
+        --mar-fill-subtle: #f3f6fb;
+        --mar-fill-muted: #e8f0f9;
+        --mar-fill-row-hover: #e5edf6;
+        --mar-fill-selection: #dfe9f6;
+        --mar-fill-soft: #f0f5fb;
+        --mar-fill-hover: #e5edf6;
+        --mar-table-header-bg: #edf3fa;
+        --mar-table-row-hover-bg: #e5edf6;
+        --mar-border-default: #cbd6e4;
+        --mar-border-subtle: #dce4ef;
+        --mar-workbench-divider: var(--mar-border-subtle);
+        --mar-border-medium: #7b8da3;
+        --mar-border-strong: #7b8da3;
+        --mar-text-primary: #172033;
+        --mar-text-secondary: #52627a;
+        --mar-text-tertiary: #5f6f86;
+        --mar-text-faint: #5f6f86;
+        --mar-text-muted: #5f6f86;
+        --mar-conversation-canvas: #f7f9fd;
+        --mar-conversation-surface: #ffffff;
+        --mar-conversation-process: #f0f5fb;
+        --mar-conversation-border: #d8e2ee;
+        --mar-conversation-process-border: #d3dfec;
+        --mar-conversation-text: #172033;
+        --mar-conversation-muted: #52627a;
+        --mar-conversation-code: #f0f5fb;
+        --mar-scrollbar-thumb: #8c9cb266;
+        --mar-scrollbar-thumb-hover: #6b7f9ab3;
+        --mar-color-brand: #0969e8;
+        --mar-control-color-primary-light-3: #5a97ef;
+        --mar-control-color-primary-light-5: #84b4f4;
+        --mar-control-color-primary-light-7: #b5d2f9;
+        --mar-control-color-primary-light-8: #c6ddfa;
+        --mar-control-color-primary-light-9: #e6effd;
+        --mar-control-color-primary-dark-2: #044a9f;
+        --mar-color-brand-text: #075fc7;
+        --mar-color-on-accent: #ffffff;
+        --mar-control-disabled-on-accent: var(--mar-color-on-accent);
+        --mar-color-brand-hover: #0554b8;
+        --mar-color-brand-disabled: #7fa7df;
+        --mar-control-link-text: #075fc7;
+        --mar-control-link-hover: #044a9f;
+        --mar-color-brand-subtle: #eaf2ff;
+        --mar-color-brand-selected: #d9e9ff;
+        --mar-color-brand-border: #8ab8ff;
+        --mar-control-color-success: #067551;
+        --mar-control-color-warning: #a15c07;
+        --mar-control-color-danger: #c82f4d;
+        --mar-color-success-text: #067551;
+        --mar-color-success-bg: #e6f6ef;
+        --mar-color-warning-text: #a15c07;
+        --mar-color-warning-accent: #a15c07;
+        --mar-color-warning-bg: #fff4df;
+        --mar-color-danger-text: #c82f4d;
+        --mar-color-danger-bg: #ffedf1;
+        --mar-color-accent: #067493;
+        --mar-color-accent-bg: #e6f6fa;
+        --mar-color-diff-add-text: #067551;
+        --mar-color-diff-del-text: #c82f4d;
+        --mar-radius-marker: 4px;
+        --mar-radius-control: 6px;
+        --mar-radius-selection: 6px;
+        --mar-radius-surface: 12px;
+
+        --mar-control-border-color-lighter: #dce4ef;
+        --mar-control-border-color-extra-light: #dce4ef;
+        --mar-control-border-color-dark: #7b8da3;
+        --mar-control-border-color-darker: #7b8da3;
+        --mar-control-fill-color: #e8eff7;
+        --mar-control-fill-color-light: #edf3f9;
+        --mar-control-fill-color-lighter: #f3f7fb;
+        --mar-control-fill-color-extra-light: #f8faff;
+
+        --mar-control-bg-color-overlay: #ffffff;
+        --mar-font-size-detail: 12px;
+        --mar-font-size-body: 13px;
+        --mar-font-size-navigation: 13px;
+        --mar-font-size-meta: 11px;
+        --mar-font-size-nano: 9px;
+        --mar-font-size-title: 14px;
+        --mar-font-size-input: var(--mar-font-size-body);
+        --mar-font-size-page-title: 1.35rem;
+        --mar-font-size-display: 1.5rem;
+        --mar-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+        --mar-compact-control-size: 24px;
+        --mar-primary-control-size: 28px;
+        --mar-utility-control-size: 28px;
+        --mar-compact-row-size: 24px;
+        --mar-session-row-min-height: 32px;
+        --mar-session-row-padding-block: 0.3rem;
+        --mar-brand-logo-size: 32px;
+        --mar-rail-item-height: 46px;
+        --mar-settings-row-height: 34px;
+        --mar-compact-option-padding-inline: 0.75rem;
+        --mar-sidebar-header-height: 62px;
+        --mar-activity-rail-width: 48px;
+        --mar-workbench-sidebar-width: 222px;
+        --mar-workbench-sidebar-total-width: 270px;
+        --mar-workbench-header-height: 44px;
+        --mar-session-sidebar-width: 238px;
+        --mar-inspector-min-width: 250px;
+        --mar-inspector-max-width: 310px;
+        --mar-terminal-font-size: 12;
+        --mar-terminal-background: #0e1116;
+        --mar-terminal-surface: #131922;
+        --mar-terminal-foreground: #e8eef8;
+        --mar-terminal-cursor: #37c8ff;
+        --mar-shadow-soft: #24364b0a;
+        --mar-shadow-medium: #24364b1f;
+        --mar-overlay-scrim: #18293d40;
+        --mar-overlay-border: #cbd6e4;
+        --mar-text-neutral-control: #5f6f86;
+      }
+
+      html.console-ui[data-theme='vscode-dark-2026'],
+      .mar-theme-preview[data-theme='vscode-dark-2026'] {
+        color-scheme: dark;
+        color: var(--mar-text-primary);
+        background: var(--mar-bg-page);
+        --mar-bg-page: #14181e;
+        --mar-bg-panel: #1c222b;
+        --mar-bg-chrome: #181e26;
+        --mar-bg-subtle: #1c222b;
+        --mar-bg-tab-inactive: #181e26;
+        --mar-fill-subtle: #1c222b;
+        --mar-fill-muted: #182739;
+        --mar-fill-row-hover: #202a38;
+        --mar-fill-selection: #2a3748;
+        --mar-fill-soft: #152334;
+        --mar-fill-hover: #202b3a;
+        --mar-table-header-bg: #131922;
+        --mar-table-row-hover-bg: #202b3a;
+        --mar-border-default: #252f3e;
+        --mar-border-subtle: #252f3e;
+        --mar-workbench-divider: var(--mar-border-medium);
+        --mar-border-medium: #313d50;
+        --mar-border-strong: #313d50;
+        --mar-text-primary: #d3dbe7;
+        --mar-text-secondary: #9fb0c7;
+        --mar-text-tertiary: #8799b1;
+        --mar-text-faint: #8799b1;
+        --mar-text-muted: #8799b1;
+        --mar-conversation-canvas: #14181e;
+        --mar-conversation-surface: #181e26;
+        --mar-conversation-process: #111720;
+        --mar-conversation-border: #313d50;
+        --mar-conversation-process-border: #202a39;
+        --mar-conversation-text: #d0d7e2;
+        --mar-conversation-muted: #9fb0c7;
+        --mar-conversation-code: #111720;
+        --mar-color-brand: #1f73cf;
+        --mar-control-color-primary-light-3: #2477d1;
+        --mar-control-color-primary-light-5: #1f73cf80;
+        --mar-control-color-primary-light-7: #1f73cf57;
+        --mar-control-color-primary-light-8: #1f73cf3d;
+        --mar-control-color-primary-light-9: #1f73cf24;
+        --mar-control-color-primary-dark-2: #195fac;
+        --mar-color-brand-text: #3093ff;
+        --mar-color-on-accent: #ffffff;
+        --mar-control-disabled-on-accent: color-mix(
+          in srgb,
+          var(--mar-color-on-accent) 50%,
+          transparent
+        );
+        --mar-color-brand-hover: #1a65b8;
+        --mar-color-brand-disabled: #3093ff73;
+        --mar-control-link-text: #3093ff;
+        --mar-control-link-hover: #4aa3ff;
+        --mar-color-brand-subtle: #3093ff24;
+        --mar-color-brand-selected: #162c44;
+        --mar-color-brand-border: #1f73cf7a;
+        --mar-control-color-success: #62d6a4;
+        --mar-control-color-warning: #f1c56e;
+        --mar-control-color-danger: #ff8d9c;
+        --mar-color-success-text: #22c55e;
+        --mar-color-success-bg: #62d6a424;
+        --mar-color-warning-text: #d29922;
+        --mar-color-warning-accent: #f1c56e;
+        --mar-color-warning-bg: #f1c56e24;
+        --mar-color-danger-text: #f85149;
+        --mar-color-danger-bg: #ff8d9c24;
+        --mar-color-accent: #5edcec;
+        --mar-color-accent-bg: #5edcec24;
+        --mar-color-diff-add-text: #93e9b5;
+        --mar-color-diff-del-text: #ffabb8;
+        --mar-shadow-soft: #0000002e;
+        --mar-shadow-medium: #00000047;
+        --mar-overlay-scrim: #0000007a;
+        --mar-overlay-border: #313d50;
+        --mar-text-neutral-control: #8799b1;
+
+        --mar-control-bg-color-overlay: #1a2230;
+        --mar-control-fill-color: #131922;
+        --mar-control-fill-color-light: #202b3a;
+        --mar-control-fill-color-lighter: #111720;
+        --mar-control-fill-color-extra-light: #161d28;
+
+        --mar-control-border-color-lighter: #202a39;
+        --mar-control-border-color-extra-light: #202a39;
+        --mar-control-border-color-dark: #313d50;
+        --mar-control-border-color-darker: #313d50;
+        --mar-scrollbar-thumb: #8799b185;
+        --mar-scrollbar-thumb-hover: #9fb0c7ad;
+      }
+
+      html.console-ui[data-theme='vscode-dark-2026'] body {
+        background: var(--mar-bg-page);
+      }
+
+      html.console-ui[data-theme='vscode-dark-2026'] .mar-runner-brand-icon[data-runner='codex'] {
+        filter: invert(1);
+      }
+
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs {
+        color: #c9d1d9;
+        background: var(--mar-fill-subtle);
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-comment,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-punctuation {
+        color: #8b949e;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-attr,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-attribute,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-meta,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-selector-attr,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-selector-class,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-selector-id,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-selector-pseudo,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-variable,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-template-variable {
+        color: #79c0ff;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-doctag,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-keyword,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-meta .hljs-keyword,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-template-tag {
+        color: #ff7b72;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-type,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-built_in {
+        color: #ffa657;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-literal,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-number,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-symbol {
+        color: #79c0ff;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-name,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-quote,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-selector-tag {
+        color: #7ee787;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-regexp,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-string {
+        color: #a5d6ff;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-section,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-title,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-title.class_,
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-title.function_ {
+        color: #d2a8ff;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-emphasis {
+        font-style: italic;
+      }
+      html.console-ui[data-theme='vscode-dark-2026'] .hljs-strong {
+        font-weight: 600;
+      }
+
+      @media (min-width: 768px) {
+        html.console-ui {
+          --mar-font-size-body: 14px;
+          --mar-font-size-meta: 12px;
+          --mar-font-size-nano: 10px;
+          --mar-font-size-title: 15px;
+          --mar-compact-control-size: 26px;
+          --mar-primary-control-size: 30px;
+          --mar-utility-control-size: 24px;
+          --mar-compact-row-size: 27px;
+          --mar-session-row-min-height: 32px;
+          --mar-session-row-padding-block: 0.2rem;
+          --mar-brand-logo-size: 35px;
+          --mar-rail-item-height: 51px;
+          --mar-settings-row-height: 37px;
+          --mar-sidebar-header-height: var(--mar-workbench-header-height);
+          --mar-activity-rail-width: 52px;
+          --mar-workbench-sidebar-width: 244px;
+          --mar-workbench-sidebar-total-width: calc(
+            var(--mar-activity-rail-width) + var(--mar-workbench-sidebar-width)
+          );
+          --mar-workbench-header-height: 44px;
+          --mar-session-sidebar-width: 262px;
+          --mar-inspector-min-width: 275px;
+          --mar-inspector-max-width: 341px;
+          --mar-terminal-font-size: 13;
+        }
+      }
+
+      @media (min-width: 768px) and (max-width: 860px) {
+        html.console-ui {
+          --mar-workbench-sidebar-width: 220px;
+        }
+      }
+
+      @media (max-width: 767px) {
+        :root {
+          --mar-sidebar-header-height: 46px;
+          --mar-font-size-body: 13px;
+          --mar-font-size-meta: 11px;
+          --mar-font-size-nano: 9px;
+          --mar-font-size-title: 14px;
+          --mar-font-size-input: 0.875rem;
+          --mar-compact-control-size: 24px;
+          --mar-primary-control-size: 28px;
+          --mar-utility-control-size: 28px;
+          --mar-compact-row-size: 24px;
+          --mar-session-row-min-height: 32px;
+          --mar-session-row-padding-block: 0.3rem;
+          --mar-brand-logo-size: 32px;
+          --mar-rail-item-height: 46px;
+          --mar-settings-row-height: 34px;
+          --mar-terminal-font-size: 12;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--mar-bg-page);
+        color: var(--mar-text-primary);
+        font: 14px/1.5 var(--mar-font-sans);
+      }
+      main {
+        max-width: 72rem;
+        margin-inline: auto;
+        padding: clamp(1rem, 4vw, 3rem);
+      }
+      header {
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid var(--mar-border-default);
+      }
+      p,
+      h1,
+      h2 {
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(1.8rem, 4vw, 2.5rem);
+        letter-spacing: -0.035em;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin-block-end: 0.75rem;
+      }
+      header > p,
+      small,
+      #count {
+        color: var(--mar-text-secondary);
+      }
+      .eyebrow {
+        font:
+          650 0.72rem/1.5 ui-monospace,
+          monospace;
+        letter-spacing: 0.12em;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-block: 1.5rem;
+      }
+      .controls > :first-child {
+        flex: 1 1 18rem;
+      }
+      label {
+        display: block;
+        margin-block-end: 0.25rem;
+        font-weight: 600;
+      }
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--mar-border-medium);
+        border-radius: 0.4rem;
+        padding: 0.5rem 0.65rem;
+        background: var(--mar-bg-panel);
+        color: inherit;
+        font: inherit;
+      }
+      small {
+        display: block;
+        margin-block-start: 0.25rem;
+      }
+      #lookup {
+        margin-block-end: 1.5rem;
+      }
+      #count {
+        margin: -0.5rem 0 0.75rem;
+      }
+      #catalog {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+        gap: 0.5rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .icon-sample {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 3.25rem;
+        padding: 0.5rem;
+        border: 1px solid var(--mar-border-subtle);
+        border-radius: 0.4rem;
+        background: var(--mar-bg-panel);
+      }
+      .icon-sample svg {
+        display: block;
+        flex: none;
+      }
+      .icon-sample code {
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <svg
+      aria-hidden="true"
+      width="0"
+      height="0"
+      style="position: absolute"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <symbol id="mar-file-js" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g transform="translate(2.64 2.64) scale(.78)">
+          <path
+            fill="none"
+            stroke="var(--icon-cut,#fff)"
+            stroke-width="1.9"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M4.3 14.6c.2 1.5 1.2 2.2 2.4 2.2 1.5 0 2.3-1 2.3-2.5V7.3m10.5 1.3c-.7-.9-1.7-1.4-2.8-1.4-1.7 0-2.7 1-2.7 2.3 0 1.5 1.2 2 2.8 2.5 1.8.5 2.9 1 2.9 2.5 0 1.3-1.1 2.3-2.9 2.3-1.3 0-2.5-.6-3.2-1.6"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-ts" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g transform="translate(2.64 2.64) scale(.78)">
+          <path
+            fill="none"
+            stroke="var(--icon-cut,#fff)"
+            stroke-width="1.9"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M4 7.3h7m-3.5 0v9.4m12-8.1c-.7-.9-1.7-1.4-2.8-1.4-1.7 0-2.7 1-2.7 2.3 0 1.5 1.2 2 2.8 2.5 1.8.5 2.9 1 2.9 2.5 0 1.3-1.1 2.3-2.9 2.3-1.3 0-2.5-.6-3.2-1.6"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-react" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h3l1 1v2L3 4H0m2 0 2 4"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="m0 0 4 8m0-8L0 8" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-vue" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="m0 0 2 8 2-8" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-svelte" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(4.0 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v2l1 1h2l1 1v2L3 8H0"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-html" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M4.8 7.3h14.4v1.7H4.8Zm4.6 3.7-3.2 2.5 3.2 2.5 1-1.25-1.65-1.25 1.65-1.25Zm5.2 0-1 1.25 1.65 1.25-1.65 1.25 1 1.25 3.2-2.5Z"
+        />
+      </symbol>
+      <symbol id="mar-file-style" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="m8.3 3.6-1 4.2H4.2v2.4h2.6l-.8 3.6H3.2v2.4h2.2l-1 4.2H7l1-4.2h5.7l-1 4.2h2.6l1-4.2h3.5v-2.4h-2.9l.8-3.6h3.1V7.8h-2.5l1-4.2h-2.6l-1 4.2H10l1-4.2Zm1.2 6.6h5.6l-.8 3.6H8.7Z"
+        />
+      </symbol>
+      <symbol id="mar-file-component" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M5.1 8h13.8v2.2H5.1Zm0 4.2h4.1V16H5.1Zm6.2 0h7.6V16h-7.6Z"
+        />
+      </symbol>
+      <symbol id="mar-file-python" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h3l1 1v2L3 4H0"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="m0 0 2 4 2-4M2 4v4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-cython" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v6l1 1h3"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="m0 0 2 4 2-4M2 4v4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-go" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v6l1 1h3V5H2.5"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M1 0h2l1 1v6L3 8H1L0 7V1z" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-rust" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h3l1 1v2L3 4H0m2 0 2 4"
+          />
+          <path
+            transform="translate(7.3 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v2l1 1h2l1 1v2L3 8H0"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-java" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M0 0h4v6L3 8H1L0 7" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-kotlin" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M0 0v8m4-8L0 4l4 4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-scala" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v2l1 1h2l1 1v2L3 8H0"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M4 0H1L0 1v6l1 1h3" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-c" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M4 0H1L0 1v6l1 1h3" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-cpp" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v6l1 1h3"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 4h4M2 2v4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-csharp" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v6l1 1h3"
+          />
+          <path
+            transform="translate(7.3 2)"
+            stroke-width="1.15"
+            d="M-.7 2.5h5.4M-.7 5.5h5.4M1.1 .2v7.6M3 .2v7.6"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-fsharp" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h4M0 3.7h3"
+          />
+          <path
+            transform="translate(7.3 2)"
+            stroke-width="1.15"
+            d="M-.7 2.5h5.4M-.7 5.5h5.4M1.1 .2v7.6M3 .2v7.6"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-swift" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v2l1 1h2l1 1v2L3 8H0"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="m0 0 .55 8L2 5l1.45 3L4 0" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-php" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M0 8V0h3l1 1v2L3 4H0" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-ruby" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h3l1 1v2L3 4H0m2 0 2 4"
+          />
+          <path
+            transform="translate(7.3 2)"
+            stroke-width="1.8"
+            d="M0 0h3l1 1v2L3 4H0m3 0 1 1v2L3 8H0V0"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-perl" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h3l1 1v2L3 4H0"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 0v8h4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-dart" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M0 0h2l2 2v4L2 8H0z" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-lua" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M0 0v8h4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-elixir" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H0v8h4M0 4h3"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="m0 0 4 8m0-8L0 8" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-erlang" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H0v8h4M0 4h3"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 8V0h3l1 1v2L3 4H0m2 0 2 4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-haskell" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 0v8m4-8v8M0 4h4"
+          />
+          <path
+            transform="translate(7.3 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v2l1 1h2l1 1v2L3 8H0"
+          />
+        </g>
+      </symbol>
+      <symbol id="mar-file-ocaml" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0l2 3.7L4 0v8"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 0v8h4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-r-lang" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(3.9 6.6) scale(1.35 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(4.0 2)" stroke-width="1.8" d="M0 8V0h3l1 1v2L3 4H0m2 0 2 4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-julia" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 0h4v6L3 8H1L0 7"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 0v8h4" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-zig" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path transform="translate(0.7000000000000002 2)" stroke-width="1.8" d="M0 0h4L0 8h4" />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M4 0H1L0 1v6l1 1h3V5H2.5" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-fortran" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M0 8V0h4M0 3.7h3"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 0h4M2 0v8" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-cuda" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.4" y="3.7" width="19.2" height="16.6" rx="4" />
+        <g
+          transform="translate(5.4 6.6) scale(1.1 .9)"
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            transform="translate(0.7000000000000002 2)"
+            stroke-width="1.8"
+            d="M4 0H1L0 1v6l1 1h3"
+          />
+          <path transform="translate(7.3 2)" stroke-width="1.8" d="M0 0v7l1 1h2l1-1V0" />
+        </g>
+      </symbol>
+      <symbol id="mar-file-shader" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M11.7 3a1.2 1.2 0 0 1 2 0L21 16.5a1.4 1.4 0 0 1-1.2 2.1H5.5a1.4 1.4 0 0 1-1.2-2.1Zm1 4.3L8 15.8h9.4Z"
+        />
+        <rect fill="currentColor" x="3.1" y="20" width="17.8" height="2" rx="1" />
+      </symbol>
+      <symbol id="mar-file-hdl" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M3.3 16.5h4.5v-9h8.4v9h4.5"
+        />
+        <circle fill="currentColor" cx="3.3" cy="16.5" r="2" />
+        <circle fill="currentColor" cx="20.7" cy="16.5" r="2" />
+      </symbol>
+      <symbol id="mar-file-assembly" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M5.6 8.1h3.1v2.7H5.6Zm5.3 0h7.5v2.7h-7.5Zm-5.3 5.1h7.5v2.7H5.6Zm9.7 0h3.1v2.7h-3.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-shell" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M6 8l4.5 4L6 16l-1.3-1.5L7.4 12l-2.7-2.5ZM12 14h5.5v2H12Z"
+        />
+      </symbol>
+      <symbol id="mar-file-graphql" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M7 7h10l3 5-3 5H7l-3-5Z"
+        />
+        <circle fill="currentColor" cx="7" cy="7" r="2.25" />
+        <circle fill="currentColor" cx="17" cy="7" r="2.25" />
+        <circle fill="currentColor" cx="4" cy="12" r="2.25" />
+        <circle fill="currentColor" cx="20" cy="12" r="2.25" />
+        <circle fill="currentColor" cx="7" cy="17" r="2.25" />
+        <circle fill="currentColor" cx="17" cy="17" r="2.25" />
+      </symbol>
+      <symbol id="mar-file-code" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M8.5 5.5 2 12l6.5 6.5 2-2L6 12l4.5-4.5Zm7 0-2 2L18 12l-4.5 4.5 2 2L22 12Z"
+        />
+      </symbol>
+      <symbol id="mar-file-agent" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M13.4 4.8v2h4.1a3 3 0 0 1 3 3v1.3h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v.9a3 3 0 0 1-3 3h-11a3 3 0 0 1-3-3v-.9h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1V9.8a3 3 0 0 1 3-3h4.1v-2A2.1 2.1 0 1 1 13.4 4.8ZM8.5 11a1.55 1.55 0 1 0 0 3.1 1.55 1.55 0 0 0 0-3.1Zm7 0a1.55 1.55 0 1 0 0 3.1 1.55 1.55 0 0 0 0-3.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-prompt" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M5.1 4h13.8A2.6 2.6 0 0 1 21.5 6.6v8.5a2.6 2.6 0 0 1-2.6 2.6h-8.4l-4.8 3.2v-3.2h-.6a2.6 2.6 0 0 1-2.6-2.6V6.6A2.6 2.6 0 0 1 5.1 4Zm4 3.6-1.5 1.5 2.1 2.1-2.1 2.1 1.5 1.5 3.6-3.6Zm4.2 5.2v2.1h3.7v-2.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-skill" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M7.5 3.6h9a2.1 2.1 0 0 1 2.1 2.1v14a.8.8 0 0 1-1.2.7L12 17l-5.4 3.4a.8.8 0 0 1-1.2-.7v-14a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path fill="var(--icon-cut,#fff)" d="m12 6.9 3.4 4.1-3.4 4.1L8.6 11Z" />
+      </symbol>
+      <symbol id="mar-file-bridge" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M2.5 10.6H6V6.2h3v4.4h6V6.2h3v4.4h3.5v2.8H18v4.4h-3v-4.4H9v4.4H6v-4.4H2.5Z"
+        />
+      </symbol>
+      <symbol id="mar-file-readme" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M12 6.5C9.5 4.5 6.7 4.2 3.8 4.9v12.8c3-.6 5.9-.2 8.2 1.9 2.3-2.1 5.2-2.5 8.2-1.9V4.9c-2.9-.7-5.7-.4-8.2 1.6Z"
+        />
+        <path fill="var(--icon-cut,#fff)" d="M11.2 6.2h1.6v11.6h-1.6Z" />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m6.5 9 .8 0 2 .6m5.3 0 2-.6h.8"
+        />
+      </symbol>
+      <symbol id="mar-file-changelog" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="4.8" y="4" width="2.7" height="16" rx="1.4" />
+        <circle fill="currentColor" cx="6.15" cy="5.2" r="2.5" />
+        <circle fill="currentColor" cx="6.15" cy="12" r="2.5" />
+        <circle fill="currentColor" cx="6.15" cy="18.8" r="2.5" />
+        <rect fill="currentColor" x="10.4" y="4" width="9.8" height="2.4" rx="1.4" />
+        <rect fill="currentColor" x="10.4" y="10.8" width="7.1" height="2.4" rx="1.4" />
+        <rect fill="currentColor" x="10.4" y="17.6" width="8.5" height="2.4" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-license" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.8a6.2 6.2 0 0 1 4.5 10.5l1.4 7.4-5.9-2.4-5.9 2.4 1.4-7.4A6.2 6.2 0 0 1 12 2.8Zm0 3a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z"
+        />
+      </symbol>
+      <symbol id="mar-file-markdown" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M4.9 15.9v-7h1.8l2.6 2.8L12 8.9h1.8v7h-2.1v-4l-2.4 2.4-2.3-2.4v4Zm10.9-4.1 1.5 1.7 1.5-1.7 1.4 1.3-2.9 3.3-2.9-3.3Z"
+        />
+      </symbol>
+      <symbol id="mar-file-text" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="4" y="5.2" width="16" height="2.8" rx="1.4" />
+        <rect fill="currentColor" x="4" y="10.6" width="13" height="2.8" rx="1.4" />
+        <rect fill="currentColor" x="4" y="16" width="8.5" height="2.8" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-typeset" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M6.5 2.8H14l4.8 4.8v12a1.6 1.6 0 0 1-1.6 1.6H6.5a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M13.8 4.1v4h3.9Z M8 10.2h8.1v1.9h-5.3l2.4 2.4-2.4 2.6h5.3V19H8v-1.8l2.5-2.7L8 12Z"
+        />
+      </symbol>
+      <symbol id="mar-file-mail" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z m5.2 8 6.8 4.4L18.8 8v2.35L12 14.7l-6.8-4.35Z"
+        />
+      </symbol>
+      <symbol id="mar-file-log" viewBox="0 0 24 24">
+        <circle fill="currentColor" cx="4.8" cy="6" r="1.45" />
+        <rect fill="currentColor" x="8.5" y="4.85" width="11" height="2.3" rx="1.4" />
+        <circle fill="currentColor" cx="4.8" cy="12" r="1.45" />
+        <rect fill="currentColor" x="8.5" y="10.85" width="8" height="2.3" rx="1.4" />
+        <circle fill="currentColor" cx="4.8" cy="18" r="1.45" />
+        <rect fill="currentColor" x="8.5" y="16.85" width="11" height="2.3" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-patch" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M7 4h2.6v3.8h3.8v2.6H9.6v3.8H7v-3.8H3.2V7.8H7Z"
+        />
+        <rect fill="currentColor" x="12" y="16.5" width="8.8" height="2.7" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-git" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M6.5 5.5v13m0-10c3.5 0 4.9 1.3 6.5 3s2.3 1.6 4.5 1.6"
+        />
+        <circle fill="currentColor" cx="6.5" cy="5.5" r="2.8" />
+        <circle fill="currentColor" cx="6.5" cy="18.5" r="2.8" />
+        <circle fill="currentColor" cx="17.5" cy="13.1" r="2.8" />
+      </symbol>
+      <symbol id="mar-file-env" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.3" y="6.2" width="17.4" height="3.1" rx="1.4" />
+        <rect fill="currentColor" x="3.3" y="14.7" width="10.9" height="3.1" rx="1.4" />
+        <circle fill="currentColor" cx="18.6" cy="16.25" r="2.05" />
+      </symbol>
+      <symbol id="mar-file-key" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M9 3.3a5.7 5.7 0 0 1 5.1 8.3l6 6v3h-3v-2.1h-2.5v-2.3l-2.6-2.6A5.7 5.7 0 1 1 9 3.3Zm0 3a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4Z"
+        />
+      </symbol>
+      <symbol id="mar-file-manifest" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.9 21 7.6v8.8l-9 4.7-9-4.7V7.6Zm0 3.1L6.7 8.9l5.3 2.8 5.3-2.8Zm-6 5.6v3.1l4.6 2.5v-3.1Zm12 0-4.6 2.5v3.1l4.6-2.5Z"
+        />
+      </symbol>
+      <symbol id="mar-file-lock" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M7.1 9V7a4.9 4.9 0 0 1 9.8 0v2h.9a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2H6.2a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2Zm2.5 0h4.8V7a2.4 2.4 0 0 0-4.8 0Zm2.4 3.5a1.55 1.55 0 0 0-.85 2.84V17h1.7v-1.66a1.55 1.55 0 0 0-.85-2.84Z"
+        />
+      </symbol>
+      <symbol id="mar-file-test" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M8.1 2.9h7.8a1 1 0 0 1 0 2h-.8v4.4l5.6 8.6a2.1 2.1 0 0 1-1.8 3.2H5.1a2.1 2.1 0 0 1-1.8-3.2l5.6-8.6V4.9h-.8a1 1 0 0 1 0-2Z"
+        />
+        <path fill="var(--icon-cut,#fff)" d="M9 13.5h6l1.1 1.7H7.9Z" />
+        <circle fill="var(--icon-cut,#fff)" cx="10" cy="18.1" r="1" />
+      </symbol>
+      <symbol id="mar-file-decl" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M9 4.2H4.4v15.6H9v-2.4H7V6.6h2Zm6 0v2.4h2v10.8h-2v2.4h4.6V4.2Z"
+        />
+        <rect fill="currentColor" x="9" y="10.8" width="6" height="2.4" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-docker" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M5.7 8h2.2v8H5.7Zm5.2 0h2.2v8h-2.2Zm5.2 0h2.2v8h-2.2Z"
+        />
+      </symbol>
+      <symbol id="mar-file-compose" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M3 4h9v9H3Zm2.6 2.6v3.8h3.8V6.6ZM12 11h9v9h-9Zm2.6 2.6v3.8h3.8v-3.8Z"
+        />
+        <rect fill="currentColor" x="13.6" y="5.5" width="5" height="2.2" rx="1.4" />
+        <rect fill="currentColor" x="5.4" y="16.3" width="5" height="2.2" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-make" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="m9 3.5 8.9 1.1 3 3-3.2 3.2-2.4-1.2-2 2 5.8 5.8-2.7 2.7-6-5.7-4.7 4.7-2.8-2.8 9.5-9.5-2.9-1.4-2.4.3Z"
+        />
+      </symbol>
+      <symbol id="mar-file-ci" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M5.7 6.4v11.2m0-11.2h9.3a3 3 0 0 1 3 3v5.5"
+        />
+        <circle fill="currentColor" cx="5.7" cy="6.4" r="2.9" />
+        <circle fill="currentColor" cx="5.7" cy="17.6" r="2.9" />
+        <circle fill="currentColor" cx="18" cy="15.5" r="2.9" />
+      </symbol>
+      <symbol id="mar-file-infra" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M3 3.6h7.6v7.6H3Zm10.4 0H21v7.6h-7.6ZM8.2 13h7.6v7.6H8.2Z"
+        />
+        <rect fill="currentColor" x="10.4" y="6.4" width="3.2" height="2" rx="1.4" />
+        <rect fill="currentColor" x="11" y="8.9" width="2" height="4.2" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-kube" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.7 20.6 7v10L12 21.3 3.4 17V7Zm0 3.1L6.6 8.5v7L12 18.2l5.4-2.7v-7Zm-1.25 2.1h2.5v2.85h2.85v2.5h-2.85v2.85h-2.5v-2.85H7.9v-2.5h2.85Z"
+        />
+      </symbol>
+      <symbol id="mar-file-config" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.1" y="6" width="17.8" height="2.2" rx="1.4" />
+        <rect fill="currentColor" x="3.1" y="15.8" width="17.8" height="2.2" rx="1.4" />
+        <rect fill="currentColor" x="7.3" y="3.4" width="3.1" height="7.4" rx="1.1" />
+        <rect fill="currentColor" x="14" y="13.2" width="3.1" height="7.4" rx="1.1" />
+      </symbol>
+      <symbol id="mar-file-ignore" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.9a9.1 9.1 0 1 0 0 18.2 9.1 9.1 0 0 0 0-18.2Zm0 2.8a6.3 6.3 0 0 1 3.3.9l-8.7 8.7A6.3 6.3 0 0 1 12 5.7Zm5.4 2.9a6.3 6.3 0 0 1-8.8 8.8Z"
+        />
+      </symbol>
+      <symbol id="mar-file-sourcemap" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="2.6" y="3.8" width="8.2" height="5.4" rx="1.4" />
+        <rect fill="currentColor" x="13.2" y="14.8" width="8.2" height="5.4" rx="1.4" />
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M6.7 8.7v4.1h10.6v2.5"
+        />
+      </symbol>
+      <symbol id="mar-file-search-data" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3" y="5.1" width="8.6" height="2.7" rx="1.4" />
+        <rect fill="currentColor" x="3" y="10.5" width="7.2" height="2.7" rx="1.4" />
+        <rect fill="currentColor" x="3" y="15.9" width="5.1" height="2.7" rx="1.4" />
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M15 6.5a5.05 5.05 0 0 1 4.3 7.7l3.2 3.2-1.8 1.8-3.2-3.2A5.05 5.05 0 1 1 15 6.5Zm0 2.45a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2Z"
+        />
+      </symbol>
+      <symbol id="mar-file-backup" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M18.8 6.1v-3l3.3 4.5-3.3 4.5v-3h-4.3a4.5 4.5 0 0 0-4.5 4.5V15H7.2v-1.4a7.3 7.3 0 0 1 7.3-7.5Z"
+        />
+        <rect fill="currentColor" x="3" y="17" width="17.8" height="4" rx="1.2" />
+      </symbol>
+      <symbol id="mar-file-json" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M9.7 3.3c-4.7 0-5.8 2-5.8 4.9v1.1c0 .9-.5 1.3-1.9 1.3v2.8c1.4 0 1.9.4 1.9 1.3v1.1c0 2.9 1.1 4.9 5.8 4.9v-2.5c-2.4-.1-3.1-1-3.1-2.5v-1.3c0-1.3-.6-2-1.4-2.4.8-.4 1.4-1.1 1.4-2.4V8.3c0-1.5.7-2.4 3.1-2.5Zm4.6 0v2.5c2.4.1 3.1 1 3.1 2.5v1.3c0 1.3.6 2 1.4 2.4-.8.4-1.4 1.1-1.4 2.4v1.3c0 1.5-.7 2.4-3.1 2.5v2.5c4.7 0 5.8-2 5.8-4.9v-1.1c0-.9.5-1.3 1.9-1.3v-2.8c-1.4 0-1.9-.4-1.9-1.3V8.2c0-2.9-1.1-4.9-5.8-4.9Z"
+        />
+        <circle fill="currentColor" cx="12" cy="12" r="1.65" />
+      </symbol>
+      <symbol id="mar-file-yaml" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M5 6v10.6h5.2"
+        />
+        <rect fill="currentColor" x="2.7" y="3.4" width="5.4" height="5.2" rx="1.4" />
+        <rect fill="currentColor" x="9" y="14.1" width="5.5" height="5.2" rx="1.4" />
+        <rect fill="currentColor" x="10.5" y="4.8" width="10.8" height="2.5" rx="1.4" />
+        <rect fill="currentColor" x="16.6" y="15.4" width="4.7" height="2.5" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-xml" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.55"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m7.4 7.3-4.6 4.7 4.6 4.7m9.2-9.4 4.6 4.7-4.6 4.7M13.6 5.8l-3.2 12.4"
+        />
+      </symbol>
+      <symbol id="mar-file-toml" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M3.2 4.1h6.5v2.6H6v10.6h3.7v2.6H3.2Zm17.6 0v15.8h-6.5v-2.6H18V6.7h-3.7V4.1Z"
+        />
+        <rect fill="currentColor" x="8.6" y="10.7" width="6.8" height="2.6" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-protocol" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.5" y="5" width="17" height="5.5" rx="1.4" />
+        <rect fill="currentColor" x="3.5" y="13.5" width="17" height="5.5" rx="1.4" />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M7.7 7.75h4.6m-.7 8.5h4.7"
+        />
+      </symbol>
+      <symbol id="mar-file-sql" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.2" y="5.4" width="17.6" height="2.6" rx="1.4" />
+        <rect fill="currentColor" x="3.2" y="10.6" width="11.2" height="2.6" rx="1.4" />
+        <rect fill="currentColor" x="3.2" y="15.8" width="7" height="2.6" rx="1.4" />
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m13.7 16.2 2.2 2.2 4.1-4.1"
+        />
+      </symbol>
+      <symbol id="mar-file-db" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4 7c0-2.5 3.6-4.3 8-4.3s8 1.8 8 4.3v10c0 2.5-3.6 4.3-8 4.3S4 19.5 4 17Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M4.8 7.4c1.5 1.5 4 2.3 7.2 2.3s5.7-.8 7.2-2.3m-14.4 5.1c1.5 1.5 4 2.3 7.2 2.3s5.7-.8 7.2-2.3"
+        />
+      </symbol>
+      <symbol id="mar-file-csv" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.6" y="4.4" width="16.8" height="2.5" rx="1.4" />
+        <rect fill="currentColor" x="3.6" y="10.75" width="16.8" height="2.5" rx="1.4" />
+        <rect fill="currentColor" x="3.6" y="17.1" width="16.8" height="2.5" rx="1.4" />
+        <rect fill="currentColor" x="8.2" y="4.4" width="2.5" height="15.2" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-column" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.5" y="9.6" width="2.8" height="10.4" rx="1" />
+        <rect fill="currentColor" x="8.2" y="5.9" width="2.8" height="14.1" rx="1" />
+        <rect fill="currentColor" x="13" y="7.9" width="2.8" height="12.1" rx="1" />
+        <rect fill="currentColor" x="17.7" y="3.7" width="2.8" height="16.3" rx="1" />
+      </symbol>
+      <symbol id="mar-file-notation" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M3.3 5.2h5v5h-5Zm1.4 1.4v2.2h2.2V6.6ZM3.3 13.8h5v5h-5Z"
+        />
+        <rect fill="currentColor" x="10" y="6.45" width="10.7" height="2.5" rx="1.4" />
+        <rect fill="currentColor" x="10" y="15.05" width="8.4" height="2.5" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-science" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M5.4 4h13.2A2.4 2.4 0 0 1 21 6.4v11.2a2.4 2.4 0 0 1-2.4 2.4H5.4A2.4 2.4 0 0 1 3 17.6V6.4A2.4 2.4 0 0 1 5.4 4Zm-.2 8h3.5l1.2-3.4 2.5 7.4 2-5.5 1 1.5h3.4v2h-4l-2.5 4.1-2.5-5.7-.6 1.6h-4Z"
+        />
+      </symbol>
+      <symbol id="mar-file-geo" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.7a7.5 7.5 0 0 1 7.5 7.5c0 4.1-3.9 7.4-6.4 10.5a1.4 1.4 0 0 1-2.2 0c-2.5-3.1-6.4-6.4-6.4-10.5A7.5 7.5 0 0 1 12 2.7Zm0 4.2a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z"
+        />
+      </symbol>
+      <symbol id="mar-file-sheet" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M5.2 3.6h13.6a2 2 0 0 1 2 2v12.8a2 2 0 0 1-2 2H5.2a2 2 0 0 1-2-2V5.6a2 2 0 0 1 2-2Zm.6 3v2.3h12.4V6.6Zm0 4.6v2.1h4.9v-2.1Zm7.3 0v2.1h5.1v-2.1Zm-7.3 4.4v2.1h4.9v-2.1Zm7.3 0v2.1h5.1v-2.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-pdf" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M6.5 2.8H14l4.8 4.8v12a1.6 1.6 0 0 1-1.6 1.6H6.5a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M13.8 4.1v4h3.9Z M8 16.3l3.9-6.3 4.1 6.3ZM10.8 14.8h2.4l-1.2-2ZM8 17.7h8V19H8Z"
+        />
+      </symbol>
+      <symbol id="mar-file-doc" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M6.5 2.8H14l4.8 4.8v12a1.6 1.6 0 0 1-1.6 1.6H6.5a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M13.8 4.1v4h3.9Z M8.1 10.4h7.7v1.7H8.1Zm0 3.4h7.7v1.7H8.1Zm0 3.4h5.5V19H8.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-slides" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M7.3 15.6v-2.4l3.8-2.9 2.4 1.7 3.2-3v2.5l-3 2.9-2.5-1.7-3.9 2.9Z"
+        />
+        <rect fill="currentColor" x="10.7" y="18.6" width="2.6" height="2.3" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-ebook" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M7 3.5h11.6a2 2 0 0 1 2 2V19a1.6 1.6 0 0 1-1.6 1.6H7a3.6 3.6 0 0 1-3.6-3.6V7.1A3.6 3.6 0 0 1 7 3.5Zm-.8 12.2v2h12v-2ZM10 6.6v6.4l2.5-1.4 2.5 1.4V6.6Z"
+        />
+      </symbol>
+      <symbol id="mar-file-notebook" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M6.1 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-12ZM9 8.1l3.8 3.9L9 16l1.6 1.5 5.2-5.5-5.2-5.4Z"
+        />
+        <rect fill="currentColor" x="3.8" y="4" width="2.8" height="16" rx="1" />
+      </symbol>
+      <symbol id="mar-file-image" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3.5" y="4.7" width="17" height="14.6" rx="2.4" />
+        <circle fill="var(--icon-cut,#fff)" cx="8.4" cy="9.1" r="1.55" />
+        <path fill="var(--icon-cut,#fff)" d="m4.8 17.5 4.1-4.4 2.7 2.4 4.4-5.2 3.3 3.7v3.5Z" />
+      </symbol>
+      <symbol id="mar-file-vector" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M5.3 17.1c0-6.1 3.7-10.4 13.4-10.4"
+        />
+        <rect fill="currentColor" x="2.8" y="14.6" width="5.1" height="5.1" rx="1.4" />
+        <rect fill="currentColor" x="16.1" y="4.2" width="5.1" height="5.1" rx="1.4" />
+      </symbol>
+      <symbol id="mar-file-audio" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M8 6.2 19.8 3v12.1c0 1.9-1.65 3.2-3.6 3.2s-3.3-1-3.3-2.5c0-1.7 1.6-3 3.7-3 .3 0 .5 0 .7.1V7.5l-6.8 1.8v8.6c0 1.9-1.65 3.2-3.6 3.2s-3.3-1-3.3-2.5c0-1.7 1.6-3 3.7-3 .3 0 .5 0 .7.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-video" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M10.1 7.9v8.2l6-4.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-captions" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M4.7 4.9h14.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H4.7a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3Z M5.6 10.9h5.1v2H5.6Zm7.1 0h5.7v2h-5.7Zm-7.1 3.4h8.1v2H5.6Zm10.1 0h2.7v2h-2.7Z"
+        />
+      </symbol>
+      <symbol id="mar-file-font" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M10.3 3.7h3.4l6.9 16.6h-3.3l-1.6-4.2H8.3l-1.6 4.2H3.4Zm-.9 9.7h5.2L12 6.9Z"
+        />
+      </symbol>
+      <symbol id="mar-file-archive" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="3" y="4.4" width="18" height="4.7" rx="1.25" />
+        <rect fill="currentColor" x="4.6" y="10.4" width="14.8" height="9.2" rx="1.6" />
+        <rect fill="var(--icon-cut,#fff)" x="9.3" y="12.7" width="5.4" height="1.65" rx="0.8" />
+      </symbol>
+      <symbol id="mar-file-exec" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="m13.4 2.7-9 10.9h6l-1 7.7 10.2-11.9h-6.1l1-6.7Z"
+        />
+      </symbol>
+      <symbol id="mar-file-package" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M5.5 4h13l2.5 4.8v9.6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8.8ZM6.9 6.4 5.8 8.7h12.4l-1.1-2.3ZM9.3 12v5.3h5.4V12Z"
+        />
+      </symbol>
+      <symbol id="mar-file-library" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M9.1 3.2h11.5v12.2h-2.5V5.7h-9Z M3.4 7.2h12.2v13.6H3.4Zm3.1 3.1v7.4h6v-7.4Z"
+        />
+      </symbol>
+      <symbol id="mar-file-wasm" viewBox="0 0 24 24">
+        <path fill="currentColor" fill-rule="evenodd" d="M6 6h12v12H6Zm4 2.9v6.2l4.6-3.1Z" />
+        <rect fill="currentColor" x="2.7" y="8" width="3.8" height="2" rx="0.7" />
+        <rect fill="currentColor" x="2.7" y="14" width="3.8" height="2" rx="0.7" />
+        <rect fill="currentColor" x="17.5" y="8" width="3.8" height="2" rx="0.7" />
+        <rect fill="currentColor" x="17.5" y="14" width="3.8" height="2" rx="0.7" />
+        <rect fill="currentColor" x="8" y="2.7" width="2" height="3.8" rx="0.7" />
+        <rect fill="currentColor" x="14" y="2.7" width="2" height="3.8" rx="0.7" />
+        <rect fill="currentColor" x="8" y="17.5" width="2" height="3.8" rx="0.7" />
+        <rect fill="currentColor" x="14" y="17.5" width="2" height="3.8" rx="0.7" />
+      </symbol>
+      <symbol id="mar-file-model" viewBox="0 0 24 24">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.1"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M5.7 6.2h12.6L5.7 17.8h12.6Z"
+        />
+        <circle fill="currentColor" cx="5.7" cy="6.2" r="2.8" />
+        <circle fill="currentColor" cx="18.3" cy="6.2" r="2.8" />
+        <circle fill="currentColor" cx="5.7" cy="17.8" r="2.8" />
+        <circle fill="currentColor" cx="18.3" cy="17.8" r="2.8" />
+      </symbol>
+      <symbol id="mar-file-geometry" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="m12 2.8 9 5v8.4l-9 5-9-5V7.8Zm0 3L6.6 8.9l5.4 3.1 5.4-3.1Zm1.3 8.4v3.5l5-2.8v-3.5Z"
+        />
+      </symbol>
+      <symbol id="mar-file-scene" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="m12 3 9 4.6-9 4.6-9-4.6Zm-.8 3.4v2.4l2.7-1.2ZM3 10.4l9 4.6 9-4.6v2.7l-9 4.6-9-4.6Zm0 5.5 9 4.6 9-4.6v2L12 22l-9-4.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-diagram" viewBox="0 0 24 24">
+        <rect fill="currentColor" x="8" y="3" width="8" height="5" rx="1.4" />
+        <rect fill="currentColor" x="2.5" y="15" width="8" height="5.5" rx="1.4" />
+        <rect fill="currentColor" x="13.5" y="15" width="8" height="5.5" rx="1.4" />
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 7.6v4.3m-5.5 3.2v-3.2h11v3.2"
+        />
+      </symbol>
+      <symbol id="mar-file-design" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="m4 15.3 10.8-11 4.9 4.9L8.9 20.1H4Zm11.5-8.1-1.4 1.5 2.1 2.1 1.4-1.5Z"
+        />
+      </symbol>
+      <symbol id="mar-file-disk" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M12 2.9a9.1 9.1 0 1 0 0 18.2 9.1 9.1 0 0 0 0-18.2Zm0 5.6a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"
+        />
+      </symbol>
+      <symbol id="mar-file-binary" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M3.5 4.7H10v6.2H3.5ZM14 4.7h6.5v6.2H14ZM3.5 13.1H10v6.2H3.5ZM14 13.1h6.5v6.2H14Z"
+        />
+      </symbol>
+      <symbol id="mar-file-fallback" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M7 3.2h6.6l4.7 4.7v11.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5V4.7A1.5 1.5 0 0 1 7 3.2Z"
+        />
+        <path fill="var(--icon-cut,#fff)" d="M13.5 4.1v4h3.9Z" />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M9 13h5.5M9 16.5h3.3"
+        />
+      </symbol>
+      <symbol id="mar-file-dir" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+      </symbol>
+      <symbol id="mar-file-src" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m9.5 11-2.7 2.7 2.7 2.7m5-5.4 2.7 2.7-2.7 2.7"
+        />
+      </symbol>
+      <symbol id="mar-file-docs" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 11.8c-1.5-1-2.8-1.2-4.1-.7v5c1.4-.4 2.7-.3 4.1.7 1.4-1 2.7-1.1 4.1-.7v-5c-1.3-.5-2.6-.3-4.1.7Zm0 0v4.7"
+        />
+      </symbol>
+      <symbol id="mar-file-tests" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M10.5 10.9h3m-2.5 0v2l-2 3.1a.5.5 0 0 0 .4.75h5.2a.5.5 0 0 0 .4-.75l-2-3.1v-2"
+        />
+      </symbol>
+      <symbol id="mar-file-settings" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M8.3 12h7.4m-7.4 3.4h7.4m-5.1-4.7v2.6m3-1.2v2.6"
+        />
+      </symbol>
+      <symbol id="mar-file-agents" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m8.1 12.1 1.3 1.3 2.7-2.6m1.5 1.9h2.5m-8 2.5 1.3 1.3 2.7-2.6m1.5 1.9h2.5"
+        />
+      </symbol>
+      <symbol id="mar-file-skills" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M9.4 10.9h5.2v6l-2.6-1.6-2.6 1.6Z"
+        />
+      </symbol>
+      <symbol id="mar-file-repo" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M9 11.1v5.5m0-4.4c3 0 2.4 2.2 5.8 2.2m-.7-.1h1.6"
+        />
+      </symbol>
+      <symbol id="mar-file-assets" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M8.1 11h7.8v5.7H8.1Zm.1 4.8 2.5-2.3 1.5 1.3 1.9-1.9 1.8 1.8"
+        />
+      </symbol>
+      <symbol id="mar-file-dist" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M8.2 11.1h7.6v2.1H8.2Zm.8 2.1v3.5h6v-3.5m-3.8 1.5h1.6"
+        />
+      </symbol>
+      <symbol id="mar-file-deps" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="m12 10.7 3.6 1.8v3L12 17.3l-3.6-1.8v-3Zm0 3.6 3.6-1.8m-3.6 1.8-3.6-1.8m3.6 1.8v3"
+        />
+      </symbol>
+      <symbol id="mar-file-data" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M4.3 4.6H9l2.5 2.6h8.2a2.1 2.1 0 0 1 2.1 2.1v8.5a2.1 2.1 0 0 1-2.1 2.1H4.3a2.1 2.1 0 0 1-2.1-2.1V6.7a2.1 2.1 0 0 1 2.1-2.1Z"
+        />
+        <path
+          fill="none"
+          stroke="var(--icon-cut,#fff)"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M8.7 11.8v3.9c0 2 6.6 2 6.6 0v-3.9c0-1.9-6.6-1.9-6.6 0Zm0 .1c0 1.9 6.6 1.9 6.6 0"
+        />
+      </symbol>
+    </svg>
+    <main>
+      <header>
+        <p class="eyebrow">MAR / DEVELOPMENT</p>
+        <h1>MAR File Icons</h1>
+        <p>Inspect the bundled icons at 16px and 32px without changing your console preferences.</p>
+      </header>
+      <search class="controls">
+        <div>
+          <label for="filename">File name or extension</label>
+          <input
+            type="search"
+            id="filename"
+            aria-describedby="query-hint"
+            placeholder="AGENTS.md, *.py, src/"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+          />
+          <small id="query-hint"
+            >Use *.ext for an extension or a trailing slash for a folder.</small
+          >
+        </div>
+        <div>
+          <label for="appearance">Color theme</label>
+          <select id="appearance">
+            <option value="daylight">Light</option>
+            <option value="vscode-dark-2026">Dark</option>
+          </select>
+        </div>
+      </search>
+      <section id="lookup" aria-labelledby="lookup-title" hidden>
+        <h2 id="lookup-title">Resolved icon</h2>
+        <div id="resolved"></div>
+      </section>
+      <section aria-labelledby="catalog-title">
+        <h2 id="catalog-title">Icon catalog</h2>
+        <p id="count" role="status"></p>
+        <ul id="catalog" aria-labelledby="catalog-title"></ul>
+      </section>
+    </main>
+    <script>
+      // Shared with the offline preview. Keep the matcher independent of the DOM and asset loading.
+      function resolveMarIconId(mapping, path, folder) {
+        const name = path.slice(path.lastIndexOf('/') + 1);
+        const normalized = name.replace(/[A-Z]/g, (character) => character.toLowerCase());
+        const lookup = (entries, key) => (Object.hasOwn(entries, key) ? entries[key] : undefined);
+
+        if (folder) {
+          return lookup(mapping.folderNames, normalized) ?? mapping.fallback.folder;
+        }
+        const exact = lookup(mapping.fileNames, normalized);
+        if (exact) return exact;
+
+        // Try the longest suffix first, without treating a leading dot as a suffix separator.
+        for (
+          let dot = normalized.indexOf('.', 1);
+          dot !== -1;
+          dot = normalized.indexOf('.', dot + 1)
+        ) {
+          const id = lookup(mapping.fileExtensions, normalized.slice(dot + 1));
+          if (id) return id;
+        }
+        return mapping.fallback.file;
+      }
+      // The generator calls this function with the embedded mapping and shared matcher.
+      function startPreview(mapping, resolveMarIconId) {
+        const filename = document.querySelector('#filename');
+        const appearance = document.querySelector('#appearance');
+        const lookup = document.querySelector('#lookup');
+        const resolved = document.querySelector('#resolved');
+        const catalog = document.querySelector('#catalog');
+        const count = document.querySelector('#count');
+        const svgNamespace = 'http://www.w3.org/2000/svg';
+
+        const samples = new Map();
+        const searchTerms = new Map();
+
+        function addSample(id, name, folder = false, searchTerm = name) {
+          if (!samples.has(id)) samples.set(id, { id, name, folder });
+          const terms = searchTerms.get(id) ?? [];
+          terms.push(searchTerm.toLowerCase());
+          searchTerms.set(id, terms);
+        }
+
+        addSample(mapping.fallback.folder, 'workspace/', true);
+        addSample(mapping.fallback.file, 'example.unknown');
+        for (const [name, id] of Object.entries(mapping.fileNames)) addSample(id, name);
+        for (const [suffix, id] of Object.entries(mapping.fileExtensions)) {
+          addSample(id, `example.${suffix}`, false, `.${suffix}`);
+        }
+        for (const [name, id] of Object.entries(mapping.folderNames))
+          addSample(id, `${name}/`, true);
+
+        function renderSample(element, label, id, scheme) {
+          const color = mapping.colors[mapping.artwork[id].accent][scheme];
+          element.className = 'icon-sample';
+          for (const size of [16, 32]) {
+            const svg = document.createElementNS(svgNamespace, 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('width', String(size));
+            svg.setAttribute('height', String(size));
+            svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('focusable', 'false');
+            svg.style.color = color;
+            svg.style.setProperty('--icon-cut', mapping.cutColors[scheme]);
+            const use = document.createElementNS(svgNamespace, 'use');
+            use.setAttribute('href', `#mar-file-${id}`);
+            svg.append(use);
+            element.append(svg);
+          }
+          const name = document.createElement('code');
+          name.textContent = label;
+          element.append(name);
+          return element;
+        }
+
+        function render() {
+          const query = filename.value.trim();
+          const extension = query.startsWith('*.');
+          const normalized = (extension ? query.slice(1) : query).toLowerCase();
+          const scheme = appearance.value === 'vscode-dark-2026' ? 'dark' : 'light';
+          document.documentElement.dataset['theme'] = appearance.value;
+
+          lookup.hidden = query.length === 0;
+          resolved.replaceChildren();
+          let resolvedId;
+          if (query) {
+            const folder = query.endsWith('/');
+            const name = folder
+              ? query.slice(0, -1)
+              : extension
+                ? `example${query.slice(1)}`
+                : query;
+            resolvedId = resolveMarIconId(mapping, name, folder);
+            resolved.append(renderSample(document.createElement('div'), query, resolvedId, scheme));
+          }
+
+          const results = [];
+          for (const sample of samples.values()) {
+            if (
+              normalized &&
+              !(sample.id !== mapping.fallback.file && sample.id === resolvedId) &&
+              !sample.id.includes(normalized) &&
+              !sample.name.toLowerCase().includes(normalized) &&
+              !searchTerms.get(sample.id)?.some((term) => term.includes(normalized))
+            )
+              continue;
+            results.push(
+              renderSample(document.createElement('li'), sample.name, sample.id, scheme)
+            );
+          }
+          catalog.replaceChildren(...results);
+          count.textContent = `${results.length} ${results.length === 1 ? 'icon' : 'icons'}`;
+        }
+
+        filename.addEventListener('input', render);
+        appearance.addEventListener('change', render);
+        render();
+      }
+      startPreview(
+        {
+          fileExtensions: {
+            js: 'js',
+            mjs: 'js',
+            cjs: 'js',
+            es: 'js',
+            es5: 'js',
+            es6: 'js',
+            es7: 'js',
+            ts: 'ts',
+            mts: 'ts',
+            cts: 'ts',
+            jsx: 'react',
+            tsx: 'react',
+            cjsx: 'react',
+            vue: 'vue',
+            svelte: 'svelte',
+            html: 'html',
+            htm: 'html',
+            xhtml: 'html',
+            shtml: 'html',
+            css: 'style',
+            scss: 'style',
+            sass: 'style',
+            less: 'style',
+            styl: 'style',
+            stylus: 'style',
+            sss: 'style',
+            pcss: 'style',
+            twig: 'component',
+            hbs: 'component',
+            handlebars: 'component',
+            mustache: 'component',
+            stache: 'component',
+            njk: 'component',
+            nunjucks: 'component',
+            nunjs: 'component',
+            nunj: 'component',
+            njs: 'component',
+            nj: 'component',
+            liquid: 'component',
+            astro: 'component',
+            ejs: 'component',
+            pug: 'component',
+            jade: 'component',
+            jinja: 'component',
+            jinja2: 'component',
+            j2: 'component',
+            haml: 'component',
+            slim: 'component',
+            erb: 'component',
+            razor: 'component',
+            cshtml: 'component',
+            vbhtml: 'component',
+            jsp: 'component',
+            aspx: 'component',
+            ascx: 'component',
+            asax: 'component',
+            master: 'component',
+            cfm: 'component',
+            ctp: 'component',
+            ecr: 'component',
+            gsp: 'component',
+            'smarty.tpl': 'component',
+            tpl: 'component',
+            epp: 'component',
+            component: 'component',
+            templ: 'component',
+            py: 'python',
+            pyw: 'python',
+            pyx: 'cython',
+            pxi: 'cython',
+            go: 'go',
+            rs: 'rust',
+            java: 'java',
+            kt: 'kotlin',
+            kts: 'kotlin',
+            scala: 'scala',
+            c: 'c',
+            cpp: 'cpp',
+            cxx: 'cpp',
+            cc: 'cpp',
+            h: 'cpp',
+            hpp: 'cpp',
+            'h++': 'cpp',
+            hh: 'cpp',
+            hxx: 'cpp',
+            inl: 'cpp',
+            ipp: 'cpp',
+            tpp: 'cpp',
+            ixx: 'cpp',
+            cppm: 'cpp',
+            cs: 'csharp',
+            csx: 'csharp',
+            fs: 'fsharp',
+            fsx: 'fsharp',
+            fsi: 'fsharp',
+            swift: 'swift',
+            php: 'php',
+            phtml: 'php',
+            'php.inc': 'php',
+            php4: 'php',
+            php5: 'php',
+            phpt: 'php',
+            rb: 'ruby',
+            rake: 'ruby',
+            gemspec: 'ruby',
+            pl: 'perl',
+            pm: 'perl',
+            dart: 'dart',
+            lua: 'lua',
+            luau: 'lua',
+            ex: 'elixir',
+            exs: 'elixir',
+            heex: 'elixir',
+            eex: 'elixir',
+            erl: 'erlang',
+            hrl: 'erlang',
+            escript: 'erlang',
+            hs: 'haskell',
+            lhs: 'haskell',
+            ml: 'ocaml',
+            mli: 'ocaml',
+            mll: 'ocaml',
+            mly: 'ocaml',
+            r: 'r-lang',
+            jl: 'julia',
+            zig: 'zig',
+            f: 'fortran',
+            for: 'fortran',
+            f77: 'fortran',
+            f90: 'fortran',
+            f95: 'fortran',
+            f03: 'fortran',
+            f08: 'fortran',
+            cu: 'cuda',
+            cuh: 'cuda',
+            wgsl: 'shader',
+            glsl: 'shader',
+            hlsl: 'shader',
+            hlsli: 'shader',
+            vert: 'shader',
+            frag: 'shader',
+            geom: 'shader',
+            tesc: 'shader',
+            tese: 'shader',
+            metal: 'shader',
+            gdshader: 'shader',
+            gdshaderinc: 'shader',
+            cginc: 'shader',
+            fxh: 'shader',
+            sv: 'hdl',
+            svh: 'hdl',
+            vh: 'hdl',
+            vhdl: 'hdl',
+            asm: 'assembly',
+            s: 'assembly',
+            nasm: 'assembly',
+            ptx: 'assembly',
+            spvasm: 'assembly',
+            sh: 'shell',
+            bash: 'shell',
+            zsh: 'shell',
+            fish: 'shell',
+            ps1: 'shell',
+            psd1: 'shell',
+            psm1: 'shell',
+            ksh: 'shell',
+            csh: 'shell',
+            tcsh: 'shell',
+            nu: 'shell',
+            cmd: 'shell',
+            bat: 'shell',
+            awk: 'shell',
+            graphql: 'graphql',
+            gql: 'graphql',
+            graphqls: 'graphql',
+            clj: 'code',
+            cljs: 'code',
+            cljc: 'code',
+            nim: 'code',
+            nims: 'code',
+            nimble: 'code',
+            groovy: 'code',
+            el: 'code',
+            vb: 'code',
+            sol: 'code',
+            nix: 'code',
+            rego: 'code',
+            lisp: 'code',
+            lsp: 'code',
+            scm: 'code',
+            rkt: 'code',
+            m: 'code',
+            mm: 'code',
+            ada: 'code',
+            adb: 'code',
+            ads: 'code',
+            odin: 'code',
+            di: 'code',
+            cr: 'code',
+            elm: 'code',
+            gleam: 'code',
+            tcl: 'code',
+            au3: 'code',
+            ahk: 'code',
+            coffee: 'code',
+            litcoffee: 'code',
+            ls: 'code',
+            lgt: 'code',
+            prolog: 'code',
+            pas: 'code',
+            pp: 'code',
+            cob: 'code',
+            cbl: 'code',
+            abap: 'code',
+            mojo: 'code',
+            dylan: 'code',
+            pony: 'code',
+            forth: 'code',
+            fth: 'code',
+            v: 'code',
+            ll: 'code',
+            bzl: 'code',
+            star: 'code',
+            gd: 'code',
+            bsl: 'code',
+            apex: 'code',
+            cfc: 'code',
+            slang: 'code',
+            hack: 'code',
+            hx: 'code',
+            hxs: 'code',
+            hxp: 'code',
+            purs: 'code',
+            re: 'code',
+            vala: 'code',
+            vapi: 'code',
+            agda: 'code',
+            lean: 'code',
+            idr: 'code',
+            idr2: 'code',
+            'instructions.md': 'agent',
+            'agent.md': 'agent',
+            'chatmode.md': 'agent',
+            'prompt.md': 'prompt',
+            md: 'markdown',
+            markdown: 'markdown',
+            mdx: 'markdown',
+            mdown: 'markdown',
+            mkd: 'markdown',
+            mkdn: 'markdown',
+            rmd: 'markdown',
+            qmd: 'markdown',
+            txt: 'text',
+            text: 'text',
+            rst: 'text',
+            adoc: 'text',
+            asciidoc: 'text',
+            org: 'text',
+            nfo: 'text',
+            todo: 'text',
+            tex: 'typeset',
+            ltx: 'typeset',
+            latex: 'typeset',
+            dtx: 'typeset',
+            bib: 'typeset',
+            bibtex: 'typeset',
+            sty: 'typeset',
+            bst: 'typeset',
+            bbx: 'typeset',
+            cbx: 'typeset',
+            typ: 'typeset',
+            ris: 'typeset',
+            tikz: 'typeset',
+            bbl: 'typeset',
+            context: 'typeset',
+            texi: 'typeset',
+            eml: 'mail',
+            emlx: 'mail',
+            msg: 'mail',
+            oft: 'mail',
+            mbox: 'mail',
+            pst: 'mail',
+            ost: 'mail',
+            ics: 'mail',
+            ifb: 'mail',
+            vcs: 'mail',
+            log: 'log',
+            patch: 'patch',
+            diff: 'patch',
+            gitconfig: 'git',
+            gitattributes: 'git',
+            gitmodules: 'git',
+            gitkeep: 'git',
+            pem: 'key',
+            crt: 'key',
+            cer: 'key',
+            cert: 'key',
+            der: 'key',
+            p7b: 'key',
+            p7c: 'key',
+            p12: 'key',
+            pfx: 'key',
+            jks: 'key',
+            keystore: 'key',
+            asc: 'key',
+            gpg: 'key',
+            pgp: 'key',
+            csr: 'key',
+            crl: 'key',
+            nuspec: 'manifest',
+            opam: 'manifest',
+            cabal: 'manifest',
+            vsixmanifest: 'manifest',
+            lock: 'lock',
+            lockb: 'lock',
+            'spec.ts': 'test',
+            'test.ts': 'test',
+            'spec.tsx': 'test',
+            'test.tsx': 'test',
+            'spec.js': 'test',
+            'test.js': 'test',
+            'test.mjs': 'test',
+            'spec.mjs': 'test',
+            'test.jsx': 'test',
+            'spec.jsx': 'test',
+            'test.mts': 'test',
+            'spec.mts': 'test',
+            'd.ts': 'decl',
+            'd.mts': 'decl',
+            'd.cts': 'decl',
+            pyi: 'decl',
+            pxd: 'decl',
+            resi: 'decl',
+            dockerfile: 'docker',
+            containerfile: 'docker',
+            mk: 'make',
+            cmake: 'make',
+            bazel: 'make',
+            gradle: 'make',
+            'gradle.kts': 'make',
+            sbt: 'make',
+            cake: 'make',
+            pipeline: 'ci',
+            tf: 'infra',
+            tfvars: 'infra',
+            'tf.json': 'infra',
+            'tfvars.json': 'infra',
+            hcl: 'infra',
+            hcl2: 'infra',
+            bicep: 'infra',
+            tofu: 'infra',
+            tfstate: 'infra',
+            'tfstate.backup': 'infra',
+            ini: 'config',
+            cfg: 'config',
+            conf: 'config',
+            config: 'config',
+            properties: 'config',
+            prefs: 'config',
+            iml: 'config',
+            sln: 'config',
+            slnx: 'config',
+            slnf: 'config',
+            csproj: 'config',
+            fsproj: 'config',
+            vbproj: 'config',
+            vcxproj: 'config',
+            sqlproj: 'config',
+            props: 'config',
+            targets: 'config',
+            classpath: 'config',
+            project: 'config',
+            'sublime-project': 'config',
+            'sublime-workspace': 'config',
+            direnv: 'config',
+            htaccess: 'config',
+            bazelversion: 'config',
+            babelrc: 'config',
+            bazelrc: 'config',
+            bowerrc: 'config',
+            eslintrc: 'config',
+            firebaserc: 'config',
+            jshintrc: 'config',
+            jscsrc: 'config',
+            stylelintrc: 'config',
+            npmrc: 'config',
+            hxml: 'config',
+            springbeans: 'config',
+            'code-workspace': 'config',
+            'code-profile': 'config',
+            'code-snippets': 'config',
+            rproj: 'config',
+            xcodeproj: 'config',
+            ovpn: 'config',
+            reg: 'config',
+            dockerignore: 'ignore',
+            bazelignore: 'ignore',
+            npmignore: 'ignore',
+            eslintignore: 'ignore',
+            stylelintignore: 'ignore',
+            slugignore: 'ignore',
+            'js.map': 'sourcemap',
+            'cjs.map': 'sourcemap',
+            'mjs.map': 'sourcemap',
+            'css.map': 'sourcemap',
+            'ts.map': 'sourcemap',
+            'jsx.map': 'sourcemap',
+            'tsx.map': 'sourcemap',
+            'code-search': 'search-data',
+            'github-issues': 'search-data',
+            bak: 'backup',
+            backup: 'backup',
+            back: 'backup',
+            dump: 'backup',
+            json: 'json',
+            jsonc: 'json',
+            jsonl: 'json',
+            ndjson: 'json',
+            json5: 'json',
+            jsonld: 'json',
+            'json-ld': 'json',
+            tsbuildinfo: 'json',
+            yml: 'yaml',
+            yaml: 'yaml',
+            xml: 'xml',
+            xsd: 'xml',
+            xsl: 'xml',
+            xslt: 'xml',
+            dtd: 'xml',
+            atom: 'xml',
+            rss: 'xml',
+            xaml: 'xml',
+            axaml: 'xml',
+            tmlanguage: 'xml',
+            storyboard: 'xml',
+            xib: 'xml',
+            toml: 'toml',
+            proto: 'protocol',
+            thrift: 'protocol',
+            capnp: 'protocol',
+            avsc: 'protocol',
+            fbs: 'protocol',
+            prisma: 'protocol',
+            odata: 'protocol',
+            pddl: 'protocol',
+            wit: 'protocol',
+            sql: 'sql',
+            psql: 'sql',
+            ddl: 'sql',
+            dml: 'sql',
+            soql: 'sql',
+            pkb: 'sql',
+            pks: 'sql',
+            kql: 'sql',
+            sqlite: 'db',
+            sqlite3: 'db',
+            db: 'db',
+            db3: 'db',
+            duckdb: 'db',
+            mdb: 'db',
+            accdb: 'db',
+            accde: 'db',
+            adp: 'db',
+            odb: 'db',
+            dbf: 'db',
+            csv: 'csv',
+            tsv: 'csv',
+            psv: 'csv',
+            parquet: 'column',
+            arrow: 'column',
+            feather: 'column',
+            orc: 'column',
+            edn: 'notation',
+            cson: 'notation',
+            hjson: 'notation',
+            kdl: 'notation',
+            ron: 'notation',
+            plist: 'notation',
+            strings: 'notation',
+            resx: 'notation',
+            po: 'notation',
+            pot: 'notation',
+            mo: 'notation',
+            xlf: 'notation',
+            xliff: 'notation',
+            h5: 'science',
+            hdf: 'science',
+            hdf4: 'science',
+            hdf5: 'science',
+            nc: 'science',
+            netcdf: 'science',
+            zarr: 'science',
+            npz: 'science',
+            npy: 'science',
+            sav: 'science',
+            dta: 'science',
+            sas7bdat: 'science',
+            avro: 'science',
+            geojson: 'geo',
+            topojson: 'geo',
+            kml: 'geo',
+            kmz: 'geo',
+            gpx: 'geo',
+            shp: 'geo',
+            gpkg: 'geo',
+            geotiff: 'geo',
+            mbtiles: 'geo',
+            xls: 'sheet',
+            xlsx: 'sheet',
+            xlsm: 'sheet',
+            xlsb: 'sheet',
+            xlt: 'sheet',
+            xltx: 'sheet',
+            xltm: 'sheet',
+            ods: 'sheet',
+            ots: 'sheet',
+            fods: 'sheet',
+            numbers: 'sheet',
+            pdf: 'pdf',
+            doc: 'doc',
+            docx: 'doc',
+            docm: 'doc',
+            dotx: 'doc',
+            dotm: 'doc',
+            odt: 'doc',
+            ott: 'doc',
+            rtf: 'doc',
+            pages: 'doc',
+            pub: 'doc',
+            one: 'doc',
+            onepkg: 'doc',
+            ppt: 'slides',
+            pptx: 'slides',
+            pptm: 'slides',
+            pps: 'slides',
+            ppsx: 'slides',
+            ppsm: 'slides',
+            potx: 'slides',
+            potm: 'slides',
+            ppa: 'slides',
+            ppam: 'slides',
+            odp: 'slides',
+            otp: 'slides',
+            keynote: 'slides',
+            epub: 'ebook',
+            mobi: 'ebook',
+            azw: 'ebook',
+            azw3: 'ebook',
+            fb2: 'ebook',
+            cbz: 'ebook',
+            cbr: 'ebook',
+            ipynb: 'notebook',
+            png: 'image',
+            jpg: 'image',
+            jpeg: 'image',
+            webp: 'image',
+            avif: 'image',
+            gif: 'image',
+            apng: 'image',
+            jxl: 'image',
+            bmp: 'image',
+            tif: 'image',
+            tiff: 'image',
+            heic: 'image',
+            heif: 'image',
+            ico: 'image',
+            dng: 'image',
+            pnm: 'image',
+            ppm: 'image',
+            pgm: 'image',
+            pbm: 'image',
+            pxm: 'image',
+            exr: 'image',
+            hdr: 'image',
+            cr2: 'image',
+            cr3: 'image',
+            nef: 'image',
+            arw: 'image',
+            raf: 'image',
+            orf: 'image',
+            rw2: 'image',
+            icns: 'image',
+            svg: 'vector',
+            svgz: 'vector',
+            eps: 'vector',
+            emf: 'vector',
+            wmf: 'vector',
+            mp3: 'audio',
+            wav: 'audio',
+            flac: 'audio',
+            aac: 'audio',
+            ogg: 'audio',
+            oga: 'audio',
+            opus: 'audio',
+            m4a: 'audio',
+            m4b: 'audio',
+            m4p: 'audio',
+            aiff: 'audio',
+            aif: 'audio',
+            wma: 'audio',
+            mid: 'audio',
+            midi: 'audio',
+            alac: 'audio',
+            ape: 'audio',
+            amr: 'audio',
+            au: 'audio',
+            mka: 'audio',
+            ac3: 'audio',
+            dss: 'audio',
+            gsm: 'audio',
+            mmf: 'audio',
+            mpc: 'audio',
+            ra: 'audio',
+            tta: 'audio',
+            mp4: 'video',
+            m4v: 'video',
+            webm: 'video',
+            mov: 'video',
+            mkv: 'video',
+            avi: 'video',
+            wmv: 'video',
+            mpeg: 'video',
+            mpg: 'video',
+            flv: 'video',
+            ogv: 'video',
+            mxf: 'video',
+            m2t: 'video',
+            m2ts: 'video',
+            m2v: 'video',
+            '3gp': 'video',
+            '3g2': 'video',
+            vob: 'video',
+            f4v: 'video',
+            qt: 'video',
+            rmvb: 'video',
+            mpeg2: 'video',
+            asf: 'video',
+            srt: 'captions',
+            vtt: 'captions',
+            ass: 'captions',
+            ssa: 'captions',
+            ttml: 'captions',
+            dfxp: 'captions',
+            sbv: 'captions',
+            ttf: 'font',
+            otf: 'font',
+            woff: 'font',
+            woff2: 'font',
+            ttc: 'font',
+            otc: 'font',
+            eot: 'font',
+            pfb: 'font',
+            pfa: 'font',
+            bdf: 'font',
+            zip: 'archive',
+            zipx: 'archive',
+            '7z': 'archive',
+            rar: 'archive',
+            tar: 'archive',
+            gz: 'archive',
+            bz2: 'archive',
+            bzip2: 'archive',
+            xz: 'archive',
+            zst: 'archive',
+            tgz: 'archive',
+            tbz: 'archive',
+            tbz2: 'archive',
+            txz: 'archive',
+            'tar.gz': 'archive',
+            'tar.bz2': 'archive',
+            'tar.xz': 'archive',
+            'tar.zst': 'archive',
+            'tar.lz4': 'archive',
+            br: 'archive',
+            lz: 'archive',
+            lz4: 'archive',
+            lzma: 'archive',
+            lzh: 'archive',
+            cab: 'archive',
+            arj: 'archive',
+            cpio: 'archive',
+            jar: 'archive',
+            war: 'archive',
+            ear: 'archive',
+            gzip: 'archive',
+            exe: 'exec',
+            com: 'exec',
+            appimage: 'exec',
+            msi: 'package',
+            msix: 'package',
+            msixbundle: 'package',
+            appx: 'package',
+            appxbundle: 'package',
+            apk: 'package',
+            apks: 'package',
+            aab: 'package',
+            ipa: 'package',
+            deb: 'package',
+            rpm: 'package',
+            flatpak: 'package',
+            snap: 'package',
+            pkg: 'package',
+            wgt: 'package',
+            vsix: 'package',
+            whl: 'package',
+            nupkg: 'package',
+            snupkg: 'package',
+            crx: 'package',
+            so: 'library',
+            dylib: 'library',
+            dll: 'library',
+            a: 'library',
+            o: 'library',
+            lib: 'library',
+            pyd: 'library',
+            pyc: 'library',
+            pyo: 'library',
+            node: 'library',
+            class: 'library',
+            cubin: 'library',
+            fatbin: 'library',
+            spv: 'library',
+            cmx: 'library',
+            cmxa: 'library',
+            cmo: 'library',
+            cma: 'library',
+            cmi: 'library',
+            ilk: 'library',
+            wasm: 'wasm',
+            wat: 'wasm',
+            onnx: 'model',
+            safetensors: 'model',
+            gguf: 'model',
+            tflite: 'model',
+            mlmodel: 'model',
+            mlpackage: 'model',
+            ckpt: 'model',
+            gltf: 'geometry',
+            glb: 'geometry',
+            stl: 'geometry',
+            fbx: 'geometry',
+            blend: 'geometry',
+            usd: 'geometry',
+            usda: 'geometry',
+            usdc: 'geometry',
+            usdz: 'geometry',
+            '3ds': 'geometry',
+            '3dm': 'geometry',
+            '3mf': 'geometry',
+            dae: 'geometry',
+            abc: 'geometry',
+            ply: 'geometry',
+            step: 'geometry',
+            stp: 'geometry',
+            iges: 'geometry',
+            igs: 'geometry',
+            dwg: 'geometry',
+            dxf: 'geometry',
+            fcstd: 'geometry',
+            tscn: 'scene',
+            scn: 'scene',
+            tres: 'scene',
+            gres: 'scene',
+            unity: 'scene',
+            unitypackage: 'scene',
+            prefab: 'scene',
+            uasset: 'scene',
+            umap: 'scene',
+            godot: 'scene',
+            gdextension: 'scene',
+            yy: 'scene',
+            yyp: 'scene',
+            mca: 'scene',
+            mcmeta: 'scene',
+            mcpack: 'scene',
+            mcworld: 'scene',
+            drawio: 'diagram',
+            dio: 'diagram',
+            mmd: 'diagram',
+            mermaid: 'diagram',
+            puml: 'diagram',
+            plantuml: 'diagram',
+            iuml: 'diagram',
+            graphml: 'diagram',
+            dot: 'diagram',
+            gv: 'diagram',
+            argdown: 'diagram',
+            vsd: 'diagram',
+            vsdx: 'diagram',
+            excalidraw: 'diagram',
+            'excalidraw.json': 'diagram',
+            fig: 'design',
+            psd: 'design',
+            psb: 'design',
+            ai: 'design',
+            sketch: 'design',
+            afdesign: 'design',
+            afphoto: 'design',
+            afpub: 'design',
+            affinitydesigner: 'design',
+            affinityphoto: 'design',
+            affinitypublisher: 'design',
+            xcf: 'design',
+            kra: 'design',
+            ora: 'design',
+            indd: 'design',
+            idml: 'design',
+            xd: 'design',
+            aseprite: 'design',
+            iso: 'disk',
+            img: 'disk',
+            dmg: 'disk',
+            vhdx: 'disk',
+            qcow: 'disk',
+            qcow2: 'disk',
+            vmdk: 'disk',
+            vdi: 'disk',
+            sparseimage: 'disk',
+            bin: 'binary',
+            blob: 'binary',
+            dat: 'binary'
+          },
+          fileNames: {
+            'agents.md': 'agent',
+            'claude.md': 'agent',
+            'claude.local.md': 'agent',
+            'gemini.md': 'agent',
+            'skill.md': 'skill',
+            '.mcp.json': 'bridge',
+            readme: 'readme',
+            'readme.md': 'readme',
+            'changelog.md': 'changelog',
+            license: 'license',
+            'license.md': 'license',
+            'license-mit': 'license',
+            'license-apache': 'license',
+            copying: 'license',
+            unlicense: 'license',
+            notice: 'license',
+            '.gitignore': 'git',
+            '.gitattributes': 'git',
+            '.gitconfig': 'git',
+            '.gitmodules': 'git',
+            '.gitkeep': 'git',
+            '.env': 'env',
+            '.env.example': 'env',
+            'package.json': 'manifest',
+            'cargo.toml': 'manifest',
+            'pyproject.toml': 'manifest',
+            'go.mod': 'manifest',
+            'pnpm-lock.yaml': 'lock',
+            'package-lock.json': 'lock',
+            dockerfile: 'docker',
+            containerfile: 'docker',
+            'compose.yaml': 'compose',
+            'compose.yml': 'compose',
+            makefile: 'make',
+            'cmakelists.txt': 'make',
+            jenkinsfile: 'ci',
+            '.gitlab-ci.yml': 'ci',
+            'chart.yaml': 'kube',
+            '.editorconfig': 'config',
+            '.npmrc': 'config',
+            '.dockerignore': 'ignore'
+          },
+          folderNames: {
+            src: 'src',
+            docs: 'docs',
+            doc: 'docs',
+            tests: 'tests',
+            test: 'tests',
+            __tests__: 'tests',
+            config: 'settings',
+            '.agents': 'agents',
+            '.claude': 'agents',
+            '.codex': 'agents',
+            skills: 'skills',
+            '.git': 'repo',
+            assets: 'assets',
+            dist: 'dist',
+            build: 'dist',
+            node_modules: 'deps',
+            data: 'data'
+          },
+          fallback: { file: 'fallback', folder: 'dir' },
+          cutColors: { light: '#ffffff', dark: '#181e26' },
+          colors: {
+            folder: { light: '#0076e5', dark: '#75c3ff' },
+            slate: { light: '#4b6180', dark: '#a6b9d3' },
+            blue: { light: '#0069e8', dark: '#59a9ff' },
+            gold: { light: '#a56600', dark: '#ffd044' },
+            green: { light: '#008649', dark: '#45db91' },
+            violet: { light: '#8039e8', dark: '#bd96ff' },
+            cyan: { light: '#007d9c', dark: '#3bd1ee' },
+            rose: { light: '#d32778', dark: '#ff79b0' },
+            orange: { light: '#c54b0b', dark: '#ff945b' },
+            purple: { light: '#8039e8', dark: '#bd96ff' }
+          },
+          artwork: {
+            js: { accent: 'gold' },
+            ts: { accent: 'blue' },
+            react: { accent: 'cyan' },
+            vue: { accent: 'green' },
+            svelte: { accent: 'orange' },
+            html: { accent: 'orange' },
+            style: { accent: 'purple' },
+            component: { accent: 'cyan' },
+            python: { accent: 'blue' },
+            cython: { accent: 'cyan' },
+            go: { accent: 'cyan' },
+            rust: { accent: 'orange' },
+            java: { accent: 'orange' },
+            kotlin: { accent: 'purple' },
+            scala: { accent: 'rose' },
+            c: { accent: 'blue' },
+            cpp: { accent: 'purple' },
+            csharp: { accent: 'green' },
+            fsharp: { accent: 'cyan' },
+            swift: { accent: 'orange' },
+            php: { accent: 'purple' },
+            ruby: { accent: 'rose' },
+            perl: { accent: 'blue' },
+            dart: { accent: 'cyan' },
+            lua: { accent: 'blue' },
+            elixir: { accent: 'purple' },
+            erlang: { accent: 'rose' },
+            haskell: { accent: 'purple' },
+            ocaml: { accent: 'orange' },
+            'r-lang': { accent: 'blue' },
+            julia: { accent: 'purple' },
+            zig: { accent: 'orange' },
+            fortran: { accent: 'cyan' },
+            cuda: { accent: 'green' },
+            shader: { accent: 'violet' },
+            hdl: { accent: 'cyan' },
+            assembly: { accent: 'slate' },
+            shell: { accent: 'green' },
+            graphql: { accent: 'rose' },
+            code: { accent: 'slate' },
+            agent: { accent: 'purple' },
+            prompt: { accent: 'violet' },
+            skill: { accent: 'cyan' },
+            bridge: { accent: 'purple' },
+            readme: { accent: 'slate' },
+            changelog: { accent: 'green' },
+            license: { accent: 'gold' },
+            markdown: { accent: 'blue' },
+            text: { accent: 'slate' },
+            typeset: { accent: 'blue' },
+            mail: { accent: 'blue' },
+            log: { accent: 'slate' },
+            patch: { accent: 'rose' },
+            git: { accent: 'orange' },
+            env: { accent: 'gold' },
+            key: { accent: 'gold' },
+            manifest: { accent: 'green' },
+            lock: { accent: 'gold' },
+            test: { accent: 'green' },
+            decl: { accent: 'cyan' },
+            docker: { accent: 'blue' },
+            compose: { accent: 'cyan' },
+            make: { accent: 'orange' },
+            ci: { accent: 'purple' },
+            infra: { accent: 'purple' },
+            kube: { accent: 'blue' },
+            config: { accent: 'slate' },
+            ignore: { accent: 'slate' },
+            sourcemap: { accent: 'cyan' },
+            'search-data': { accent: 'slate' },
+            backup: { accent: 'slate' },
+            json: { accent: 'gold' },
+            yaml: { accent: 'purple' },
+            xml: { accent: 'orange' },
+            toml: { accent: 'slate' },
+            protocol: { accent: 'blue' },
+            sql: { accent: 'cyan' },
+            db: { accent: 'cyan' },
+            csv: { accent: 'green' },
+            column: { accent: 'cyan' },
+            notation: { accent: 'violet' },
+            science: { accent: 'cyan' },
+            geo: { accent: 'green' },
+            sheet: { accent: 'green' },
+            pdf: { accent: 'rose' },
+            doc: { accent: 'blue' },
+            slides: { accent: 'orange' },
+            ebook: { accent: 'purple' },
+            notebook: { accent: 'orange' },
+            image: { accent: 'rose' },
+            vector: { accent: 'purple' },
+            audio: { accent: 'purple' },
+            video: { accent: 'rose' },
+            captions: { accent: 'violet' },
+            font: { accent: 'cyan' },
+            archive: { accent: 'gold' },
+            exec: { accent: 'orange' },
+            package: { accent: 'orange' },
+            library: { accent: 'slate' },
+            wasm: { accent: 'purple' },
+            model: { accent: 'cyan' },
+            geometry: { accent: 'blue' },
+            scene: { accent: 'violet' },
+            diagram: { accent: 'cyan' },
+            design: { accent: 'rose' },
+            disk: { accent: 'slate' },
+            binary: { accent: 'slate' },
+            fallback: { accent: 'slate' },
+            dir: { accent: 'folder' },
+            src: { accent: 'folder' },
+            docs: { accent: 'folder' },
+            tests: { accent: 'folder' },
+            settings: { accent: 'folder' },
+            agents: { accent: 'folder' },
+            skills: { accent: 'folder' },
+            repo: { accent: 'folder' },
+            assets: { accent: 'folder' },
+            dist: { accent: 'folder' },
+            deps: { accent: 'folder' },
+            data: { accent: 'folder' }
+          }
+        },
+        resolveMarIconId
+      );
+    </script>
+  </body>
+</html>

@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveIconTheme } from '../../src/icon-themes/index.js';
+import illustrations from '../../src/icon-themes/mar/illustrations.svg?raw';
+import mapping from '../../src/icon-themes/mar/mapping.json';
 import {
   createIconThemePreferenceService,
   ICON_THEME_STORAGE_KEY,
@@ -9,15 +13,17 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('File Icon Theme Preferences', () => {
-  it('Use Material by default and safely fall back from invalid values', () => {
-    expect(parseStoredIconThemePreference(null)).toBe('material');
-    expect(parseStoredIconThemePreference('')).toBe('material');
-    expect(parseStoredIconThemePreference('unknown')).toBe('material');
+  it('Defaults to MAR File Icons without overriding a valid preference', () => {
+    expect(parseStoredIconThemePreference(null)).toBe('mar');
+    expect(parseStoredIconThemePreference('')).toBe('mar');
+    expect(parseStoredIconThemePreference('unknown')).toBe('mar');
+    expect(parseStoredIconThemePreference('constructor')).toBe('mar');
+    expect(parseStoredIconThemePreference('mar')).toBe('mar');
     expect(parseStoredIconThemePreference('material')).toBe('material');
     expect(parseStoredIconThemePreference('seti')).toBe('seti');
   });
 
-  it.each([null, '', 'unknown', 'seti', 'material'])(
+  it.each([null, '', 'unknown', 'mar', 'seti', 'material'])(
     'Restore the icon theme from stored value %s without overwriting it',
     (stored) => {
       const storage = new Map<string, string>();
@@ -29,12 +35,12 @@ describe('File Icon Theme Preferences', () => {
 
       const service = createIconThemePreferenceService();
 
-      expect(service.theme.value).toBe(stored === 'seti' ? 'seti' : 'material');
+      expect(service.theme.value).toBe(stored === 'seti' || stored === 'material' ? stored : 'mar');
       expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe(stored ?? undefined);
     }
   );
 
-  it.each(['seti', 'material'] as const)(
+  it.each(['mar', 'seti', 'material'] as const)(
     'Persist the %s theme selected by the current browser',
     (next) => {
       const storage = new Map<string, string>();
@@ -50,6 +56,77 @@ describe('File Icon Theme Preferences', () => {
       expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe(next);
     }
   );
+
+  it('Matches MAR icons by exact name, longest suffix, ordinary suffix and fallback', () => {
+    const mar = resolveIconTheme('mar');
+    for (const [name, icon] of [
+      ['AGENTS.MD', 'agent'],
+      ['nested.dir/AGENTS.MD', 'agent'],
+      ['nested.dir/Dockerfile', 'docker'],
+      ['nested.dir/.py', 'fallback'],
+      ['CLAUDE.local.md', 'agent'],
+      ['.mcp.json', 'bridge'],
+      ['foo.instructions.md', 'agent'],
+      ['foo.ts', 'ts'],
+      ['foo.d.MTS', 'decl'],
+      ['foo.spec.ts', 'test'],
+      ['latest.tar.zst', 'archive'],
+      ['places.geojson', 'geo'],
+      ['schedule.ics', 'mail'],
+      ['script.PY', 'python'],
+      ['script.pyi', 'decl'],
+      ['module.pyx', 'cython'],
+      ['legacy.vhd', 'fallback'],
+      ['asset.obj', 'fallback'],
+      ['.md', 'fallback'],
+      ['README', 'readme'],
+      ['constructor', 'fallback'],
+      ['asset.toString', 'fallback']
+    ] as const) {
+      expect(mar.resolveFile(name, true)).toMatchObject({
+        kind: 'sprite',
+        href: expect.stringMatching(new RegExp(`#mar-file-${icon}$`, 'u'))
+      });
+    }
+  });
+
+  it('Ships a symbol and a complete palette for every mapped MAR icon', () => {
+    const ids = [
+      ...illustrations.matchAll(/<symbol id="mar-file-([a-z-]+)" viewBox="0 0 24 24">/gu)
+    ].map((match) => match[1]);
+    const referenced = new Set([
+      ...Object.values(mapping.fileNames),
+      ...Object.values(mapping.fileExtensions),
+      ...Object.values(mapping.folderNames),
+      ...Object.values(mapping.fallback)
+    ]);
+    expect(ids.toSorted()).toEqual([...referenced].toSorted());
+    expect(Object.keys(mapping.artwork).toSorted()).toEqual(ids.toSorted());
+    for (const { accent } of Object.values(mapping.artwork)) {
+      expect(mapping.colors[accent as keyof typeof mapping.colors]).toEqual({
+        light: expect.stringMatching(/^#[0-9a-f]{6}$/iu),
+        dark: expect.stringMatching(/^#[0-9a-f]{6}$/iu)
+      });
+    }
+  });
+
+  it('Keeps the offline icon preview synchronized with the product resources', () => {
+    const generator = fileURLToPath(
+      new URL('../../src/icon-themes/mar/generate-preview.mjs', import.meta.url)
+    );
+    execFileSync(process.execPath, [generator, '--check'], { stdio: 'pipe' });
+  });
+
+  it('Resolves folders independently and reuses geometry across light and dark colors', () => {
+    const mar = resolveIconTheme('mar');
+    const light = mar.resolveFolder(true, 'SRC');
+    const dark = mar.resolveFolder(false, 'src');
+    expect(light).toMatchObject({ kind: 'sprite', href: expect.stringMatching(/#mar-file-src$/u) });
+    expect(dark).toMatchObject({ kind: 'sprite', href: expect.stringMatching(/#mar-file-src$/u) });
+    expect(dark.color).not.toBe(light.color);
+    expect(mar.resolveFolder(true, 'packages/web-core/SRC')).toEqual(light);
+    expect(mar.resolveFolder(true, 'AGENTS.md')).toEqual(mar.resolveFolder(true));
+  });
 
   it('Resolve Material file and folder icons through the registry', () => {
     const material = resolveIconTheme('material');
@@ -92,16 +169,16 @@ describe('File Icon Theme Preferences', () => {
     );
   });
 
-  it.each(['seti', 'material'] as const)(
+  it.each(['mar', 'seti', 'material'] as const)(
     'keeps the effective %s theme on storage failure and confirms a later successful write',
     (previous) => {
-      const next = previous === 'seti' ? 'material' : 'seti';
-      const storage = new Map([[ICON_THEME_STORAGE_KEY, previous]]);
+      const next = previous === 'mar' ? 'seti' : 'mar';
+      const storage = new Map<string, string>([[ICON_THEME_STORAGE_KEY, previous]]);
       const failure = new Error('Storage unavailable');
       let failWrite = true;
       vi.stubGlobal('localStorage', {
         getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: 'seti' | 'material') => {
+        setItem: (key: string, value: string) => {
           expect(service.theme.value).toBe(previous);
           if (failWrite) throw failure;
           storage.set(key, value);

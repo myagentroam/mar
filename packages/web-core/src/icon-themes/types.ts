@@ -1,4 +1,4 @@
-export type IconThemeId = 'seti' | 'material';
+export type IconThemeId = 'mar' | 'seti' | 'material';
 
 export interface GlyphFileIcon {
   readonly kind: 'glyph';
@@ -12,7 +12,14 @@ export interface SvgFileIcon {
   readonly color: string;
 }
 
-export type FileIcon = GlyphFileIcon | SvgFileIcon;
+export interface SpriteFileIcon {
+  readonly kind: 'sprite';
+  readonly href: string;
+  readonly color: string;
+  readonly cutColor: string;
+}
+
+export type FileIcon = GlyphFileIcon | SvgFileIcon | SpriteFileIcon;
 
 export interface FileIconTheme {
   readonly id: IconThemeId;

@@ -432,6 +432,7 @@ export const enUS = {
     light: personalSettingsEnUS.settings.light,
     dark: personalSettingsEnUS.settings.dark,
     iconTheme: personalSettingsEnUS.settings.iconTheme,
+    iconThemeMar: fileNavigationEnUS.settings.iconThemeMar,
     iconThemeSeti: fileNavigationEnUS.settings.iconThemeSeti,
     iconThemeMaterial: fileNavigationEnUS.settings.iconThemeMaterial,
     defaultFileMode: personalSettingsEnUS.settings.defaultFileMode,
