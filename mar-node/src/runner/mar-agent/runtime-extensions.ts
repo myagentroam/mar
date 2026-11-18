@@ -24,7 +24,8 @@ export function marAgentRuntimeExtensionSource(state: MarAgentCompactState): Ext
                       text:
                         input.facts?.mode === 'compact'
                           ? null
-                          : 'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview.'
+                          : 'When mentioning key files changed in this task, prefer Markdown links to their absolute paths for easy preview. ' +
+                            'To display an image inline, use Markdown image syntax: `![description](/absolute/path/to/image.png)`.'
                     }
                   ]
                 })

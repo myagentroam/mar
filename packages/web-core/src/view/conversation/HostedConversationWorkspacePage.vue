@@ -856,7 +856,9 @@ function openLinkedFile(
 
 function markdownResourceUrl(path: string): string {
   const file = hostedConversationFileForPath(props.workspace.snapshot.value?.files ?? [], path);
-  return file === undefined ? '' : props.workspace.contentUrl(file);
+  return file === undefined
+    ? ''
+    : `${props.workspace.contentUrl(file)}?revision=${file.updatedAt}-${file.size}`;
 }
 
 function closePreview(): void {
@@ -1280,12 +1282,13 @@ onBeforeUnmount(() => {
             v-if="workspace.snapshot.value !== undefined"
             :runs="workspace.snapshot.value?.run ? [workspace.snapshot.value.run] : []"
             :turns="timelineTurns"
-            workspace-root="/workspace"
+            :workspace-root="undefined"
             :loading="rollbackPending"
             :initializing="openingConversationKey !== undefined"
             :initial-render-version="0"
             :capture-render-anchor="conversationScrollService.captureRenderAnchor"
             :image-attachments="conversationImages.attachments"
+            :image-resource-url="markdownResourceUrl"
             :user-input-questions="() => []"
             :user-input-answer="() => ''"
             :user-input-submitted="() => false"

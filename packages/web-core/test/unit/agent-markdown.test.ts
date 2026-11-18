@@ -302,19 +302,42 @@ describe('AgentMarkdown workspace images', () => {
     expect(html.match(/loading="lazy"/gu)).toHaveLength(6);
   });
 
-  it('keeps external image URLs outside the workspace file response', async () => {
-    const imageResourceUrl = vi.fn((path: string) => `/api/workspace-image?path=${path}`);
+  it('shows alt text without loading raw paths when local image resolution fails', async () => {
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const imageResourceUrl = vi.fn(() => '');
     const app = createSSRApp({
       render: () =>
         h(AgentMarkdown, {
-          content: '![external](https://example.com/chart.png)',
+          content: '![Missing](/workspace/output/missing.png) ![Outside](../private.png)',
+          workspaceRoot: '/workspace',
+          imageResourceUrl
+        })
+    });
+    app.use(i18n);
+
+    const html = await renderToString(app);
+    expect(html).toContain('Missing Outside');
+    expect(html).not.toContain('<img');
+    expect(imageResourceUrl.mock.calls).toEqual([['output/missing.png']]);
+  });
+
+  it('keeps external and embedded images outside the workspace file resolver', async () => {
+    const imageResourceUrl = vi.fn((path: string) => `/api/workspace-image?path=${path}`);
+    const embedded =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const app = createSSRApp({
+      render: () =>
+        h(AgentMarkdown, {
+          content: `![external](https://example.com/chart.png) ![embedded](${embedded})`,
           workspaceRoot: '/home/runner/project',
           imageResourceUrl
         })
     });
     app.use(i18n);
 
-    expect(await renderToString(app)).toContain('src="https://example.com/chart.png"');
+    const html = await renderToString(app);
+    expect(html).toContain('src="https://example.com/chart.png"');
+    expect(html).toContain(`src="${embedded}"`);
     expect(imageResourceUrl).not.toHaveBeenCalled();
   });
 

@@ -954,6 +954,115 @@ test('Hosted conversation entry aligns compact controls across languages and vie
   });
 });
 
+test('Hosted reply images appear inline and open previews only for projected files', async ({
+  page
+}) => {
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  const turn = snapshot.turns[0]!;
+  const reply = {
+    ...turn.items[1]!,
+    payload: {
+      text: [
+        '![Output chart](/workspace/output/chart.svg)',
+        '![Relative chart](chart.svg)',
+        '![Template chart](/workspace/chart.svg)',
+        '![Private chart](/tmp/private.svg)'
+      ].join('\n\n'),
+      format: 'markdown',
+      model: 'model-1'
+    }
+  };
+  const chart = {
+    ...snapshot.files[0]!,
+    id: 'file-chart',
+    relativePath: 'chart.svg',
+    displayName: 'chart.svg',
+    mimeType: 'image/svg+xml'
+  };
+  const contentPath =
+    '/api/nodes/node-1/hosted-conversations/conversation-1/files/file-chart/content';
+  let imageWidth = 16;
+  await page.route('**/api/nodes/node-1/conversation-templates/template-1/model-options', (route) =>
+    json(route, { models: snapshot.models, defaultModelId: 'model-1' })
+  );
+  await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+    json(route, { items: [conversation], nextCursor: null })
+  );
+  await page.route('**/api/conversation-templates', (route) =>
+    json(route, { templates: [snapshot.template] })
+  );
+  await page.route('**/api/nodes/node-1/hosted-conversations/conversation-1/watch', (route) =>
+    fulfillMockHostedConversationWatch(page, route, conversation.id, {
+      ...snapshot,
+      historyNextCursor: null,
+      turns: [{ ...turn, items: [reply] }],
+      files: []
+    })
+  );
+  await page.route(`**${contentPath}*`, (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      headers: { 'x-mar-image-resized': '0' },
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="${imageWidth}" height="8"/>`
+    })
+  );
+  const rawRequests: string[] = [];
+  await page.route(/\/(?:workspace\/(?:output\/)?chart|tmp\/private)\.svg$/u, (route) => {
+    rawRequests.push(route.request().url());
+    return route.abort();
+  });
+
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  const markdown = page.locator('.agent-markdown').filter({ hasText: 'Private chart' });
+  await expect(markdown).toContainText('Output chart');
+  await expect(markdown).toContainText('Private chart');
+  await expect(markdown.locator('img')).toHaveCount(0);
+
+  await emitMockHostedConversationEvent(page, {
+    conversationId: conversation.id,
+    kind: 'files',
+    files: [chart],
+    error: null
+  });
+  const thumbnail = markdown.getByRole('img', { name: 'Output chart' });
+  const thumbnailUrl = `${contentPath}?revision=${chart.updatedAt}-${chart.size}&maxWidth=320&maxHeight=240`;
+  await expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
+  await expect(markdown.getByRole('img', { name: 'Relative chart' })).toHaveAttribute(
+    'src',
+    thumbnailUrl
+  );
+  await expect(markdown.getByRole('img')).toHaveCount(2);
+  await expect(markdown).toContainText('Template chart');
+  await expect
+    .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBe(16);
+  const previewResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === contentPath &&
+      new URL(response.url()).searchParams.get('maxWidth') === '2560' &&
+      response.ok()
+  );
+  await thumbnail.click();
+  const preview = page.getByRole('dialog', { name: 'Output chart', exact: true });
+  await expect(preview).toBeVisible();
+  await previewResponse;
+  await expect.poll(() => preview.locator('img').evaluate((image) => image.naturalWidth)).toBe(16);
+  await page.keyboard.press('Escape');
+  await expect(preview).toBeHidden();
+
+  imageWidth = 32;
+  await emitMockHostedConversationEvent(page, {
+    conversationId: conversation.id,
+    kind: 'files',
+    files: [{ ...chart, updatedAt: chart.updatedAt + 1 }],
+    error: null
+  });
+  await expect.poll(() => thumbnail.evaluate((image) => image.naturalWidth)).toBe(32);
+  expect(rawRequests).toEqual([]);
+});
+
 test('Hosted file deletion preserves files published by Watch before the HTTP response', async ({
   page
 }) => {
