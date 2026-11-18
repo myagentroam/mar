@@ -621,7 +621,7 @@ describe('Enterprise management components', () => {
             selectedPathValid: true,
             enterprise: true,
             role: 'ADMIN',
-            nodeOwnership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 1 },
+            nodeOwnership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 2 },
             nodeManageable: true,
             workspaceCreatable: true,
             request: request as never,
@@ -631,10 +631,19 @@ describe('Enterprise management components', () => {
     );
     try {
       await flushComponent();
-      const select = view.findAll('ElSelect')[0]!;
-      const options = view.findAll('ElOption').map((node) => node.props['value']);
-      expect(options).toEqual([1, 2, 3]);
-      await trigger(select, 'onUpdate:modelValue', 3);
+      const cascader = view.findAll('el-cascader')[0]!;
+      expect(cascader?.props).toMatchObject({
+        modelValue: 2,
+        props: { checkStrictly: true, emitPath: false },
+        options: [
+          {
+            value: 2,
+            label: 'Engineering / Research',
+            children: [{ value: 3, label: 'Platform', children: [] }]
+          }
+        ]
+      });
+      await trigger(cascader, 'onUpdate:modelValue', 3);
       await trigger(view.findAll('ElForm')[0]!, 'onSubmit', { preventDefault() {} });
       expect(register).toHaveBeenCalledWith({ ownerType: 'ORGANIZATION', ownerOrganizationId: 3 });
     } finally {

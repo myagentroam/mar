@@ -211,6 +211,7 @@ export interface WorkbenchRegistrationView<RegistrationContext> {
   selectWorkspaceDirectory: (nextPath: string) => void;
   selectPendingWorkspaceDirectory: (directoryName: string) => void;
   discardPendingWorkspaceDirectory: () => void;
+  readonly selectedWorkspaceDirectoryPath: string;
   selectedWorkspaceDirectorySelectable: boolean;
   workspaceDirectory: WorkspaceDirectoryListing | undefined;
   workspaceRegistrationNodeId: string | undefined;

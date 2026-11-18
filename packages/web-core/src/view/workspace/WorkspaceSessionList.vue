@@ -226,16 +226,14 @@ async function openMcps(): Promise<void> {
   }
 }
 
-function skillStatusLabel(status: string): string {
-  return status === 'VALID'
-    ? translate('generated.workspaceSessionList.available')
-    : status === 'PARTIAL'
-      ? translate('generated.workspaceSessionList.incompleteInstallation')
-      : status === 'UNKNOWN_VERSION'
-        ? translate('generated.workspaceSessionList.unknownVersion')
-        : status === 'GIT_EXCLUDE_BROKEN'
-          ? translate('generated.workspaceSessionList.invalidGitRules')
-          : translate('generated.workspaceSessionList.invalidDirectory');
+function skillWarningLabel(status: string): string {
+  if (status === 'PARTIAL') {
+    return translate('generated.workspaceSessionList.incompleteInstallation');
+  }
+  if (status === 'GIT_EXCLUDE_BROKEN') {
+    return translate('generated.workspaceSessionList.invalidGitRules');
+  }
+  return translate('generated.workspaceSessionList.invalidDirectory');
 }
 
 function pinned(session: Session): boolean {
@@ -420,9 +418,8 @@ function submitSessionSearch(): void {
     </form>
     <div class="new-session-form">
       <el-button
-        class="new-session-button"
+        class="new-session-button mar-soft-button"
         :disabled="!nodeReady"
-        type="primary"
         @click="emit('create')"
       >
         <MarIcon name="session-add" /><span>{{
@@ -746,8 +743,12 @@ function submitSessionSearch(): void {
             </p>
           </div>
           <span class="effective-skill-tags">
-            <el-tag effect="plain" :type="skill.localStatus === 'VALID' ? 'success' : 'warning'">
-              {{ skillStatusLabel(skill.localStatus) }}
+            <el-tag
+              v-if="skill.localStatus !== 'VALID' && skill.localStatus !== 'UNKNOWN_VERSION'"
+              effect="plain"
+              type="warning"
+            >
+              {{ skillWarningLabel(skill.localStatus) }}
             </el-tag>
             <el-tag effect="plain" :type="skill.source === 'WORKSPACE' ? 'primary' : 'info'">
               {{
@@ -944,9 +945,13 @@ function submitSessionSearch(): void {
 .new-session-form {
   display: flex;
   align-items: center;
-  justify-content: stretch;
   gap: 0.35rem;
   margin-bottom: 0.25rem;
+}
+
+.new-session-button {
+  flex: 1;
+  min-width: 0;
 }
 
 .session-search {
@@ -985,15 +990,6 @@ function submitSessionSearch(): void {
 .new-session-form .workspace-more-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.new-session-form .new-session-button {
-  width: auto;
-  min-width: 0;
-  flex: 1;
-  border-radius: 6px;
-  justify-content: flex-start;
-  padding-inline: 0.65rem;
 }
 
 :global(.workspace-tool-menu .el-dropdown-menu__item) {

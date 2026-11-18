@@ -57,9 +57,7 @@ export const workbenchShellZhCN = {
     workspaceSessionList: {
       unableToLoadCurrentSkillsTryAgain: '当前技能读取失败，请稍后重试。',
       unableToLoadCurrentMCPServersTry: '当前已加载 MCP 读取失败，请稍后重试。',
-      available: '可用',
       incompleteInstallation: '安装不完整',
-      unknownVersion: '版本未知',
       invalidGitRules: 'Git 规则异常',
       invalidDirectory: '目录异常',
       workspaceSessions: '工作区会话',

@@ -91,7 +91,7 @@ vi.mock('../../src/view/workspace/WorkspaceRegistrationPicker.vue?unit-render', 
   const { defineComponent, h } = await import('vue');
   return {
     default: defineComponent({
-      props: ['nodeReady'],
+      props: ['nodeReady', 'selectedPath'],
       setup: (props) => () => h('registration-picker', props)
     })
   };
@@ -216,7 +216,8 @@ function pageFixture() {
     terminal: shallowReactive({ terminalReady: true, terminalDocks: new Map() }),
     registration: shallowReactive({
       workspaceRegistrationNodeId: undefined as string | undefined,
-      workspaceRegistrationReady: false
+      workspaceRegistrationReady: false,
+      selectedWorkspaceDirectoryPath: ''
     }),
     files: shallowReactive({}) as Record<string, any>,
     interactions: { notice: vi.fn() },
@@ -996,15 +997,20 @@ describe('Workbench surface composition behavior', () => {
       view.unmount();
     }
   });
-  it('passes live registration readiness to the picker', async () => {
+  it('passes the live registration path and readiness to the picker', async () => {
     const page = pageFixture();
     page.registration.workspaceRegistrationNodeId = 'node';
     const view = renderComponent(Surface, { page });
     try {
       for (const allowed of [false, true]) {
+        const selectedPath = allowed ? '/candidate' : '';
+        page.registration.selectedWorkspaceDirectoryPath = selectedPath;
         page.registration.workspaceRegistrationReady = allowed;
         await flushComponent();
-        expect(view.findAll('registration-picker')[0]?.props).toMatchObject({ nodeReady: allowed });
+        expect(view.findAll('registration-picker')[0]?.props).toMatchObject({
+          nodeReady: allowed,
+          selectedPath
+        });
       }
     } finally {
       view.unmount();

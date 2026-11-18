@@ -14,7 +14,6 @@ import {
   createWorkspaceFilesController,
   workspaceFileTreeRootName
 } from './workspace-files-controller.js';
-import { workspaceTabLabel } from '../util/workbench-presentation.js';
 import { createWorkspaceGitService, type WorkspaceGitSnapshot } from './workspace-git-service.js';
 import {
   createWorkspaceContentSearchService,
@@ -113,13 +112,7 @@ export function createWorkspaceFileToolsController(input: {
   updateWorkspace: (nodeId: string, workspace: WorkspaceFileTreeWorkspace) => void;
 }) {
   const filesPanel = shallowRef<WorkspaceFilesPanelHandle>();
-  const rootName = computed(() => {
-    const workspace = input.workspace();
-    return workspaceFileTreeRootName(
-      workspace?.path,
-      workspace === undefined ? '' : workspaceTabLabel(workspace)
-    );
-  });
+  const rootName = computed(() => workspaceFileTreeRootName(input.workspace()?.path));
   const reportFailure = (error: unknown, action: string) =>
     input.notice(
       translate('generated.workspaceInspector.unableToLoad', {

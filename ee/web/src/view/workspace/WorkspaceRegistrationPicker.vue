@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { marIcon } from '@myagentroam/web-core/icons';
-import { computed, ref, watch } from 'vue';
+import type { CascaderInstance } from 'element-plus';
+import { computed, ref, watch, watchEffect } from 'vue';
 import CorePicker from '@myagentroam/web-core/WorkspaceRegistrationPicker.vue';
 import type { WorkspaceDirectoryListing } from '@myagentroam/web-core/workspace-registration';
 import {
+  organizationCascaderOptions,
   organizationDisplayLabel,
   type OrganizationSummary
 } from '@/service/enterprise-management-service';
@@ -33,6 +34,22 @@ const emit = defineEmits<{
 }>();
 const organizations = ref<readonly OrganizationSummary[]>([]);
 const ownerOrganizationId = ref<number>();
+const ownerPicker = ref<CascaderInstance>();
+watchEffect((onCleanup) => {
+  const picker = ownerPicker.value;
+  const popup = picker?.contentRef;
+  if (!picker || !popup) return;
+  // The teleported popup's Escape does not reach the cascader input's key handler.
+  const closeOnEscape = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape' || event.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    picker.togglePopperVisible(false);
+    picker.focus();
+  };
+  popup.addEventListener('keydown', closeOnEscape, true);
+  onCleanup(() => popup.removeEventListener('keydown', closeOnEscape, true));
+});
 const organizationOptions = computed(() => {
   if (props.nodeOwnership?.ownerType !== 'ORGANIZATION') return [];
   const rootId = props.nodeOwnership.ownerOrganizationId;
@@ -51,7 +68,13 @@ const organizationOptions = computed(() => {
         allowed.add(child);
         pending.push(child);
       }
-  return organizations.value.filter((organization) => allowed.has(organization.id));
+  return organizationCascaderOptions(
+    organizations.value.filter((organization) => allowed.has(organization.id))
+  ).map((option) =>
+    option.value === rootId
+      ? { ...option, label: organizationDisplayLabel(organizations.value, rootId) }
+      : option
+  );
 });
 const fixedOrganizationOwnership = computed(
   () =>
@@ -116,27 +139,26 @@ function submit(): void {
   >
     <template #ownership>
       <div v-if="enterprise" class="workspace-picker-ownership">
-        <span>{{ translate('generated.workspaceRegistrationPicker.resourceOwner') }}</span>
+        <span v-if="nodeOwnership?.ownerType !== 'ORGANIZATION' || fixedOrganizationOwnership">{{
+          translate('generated.workspaceRegistrationPicker.resourceOwner')
+        }}</span>
         <strong v-if="nodeOwnership?.ownerType !== 'ORGANIZATION'">{{
           translate('generated.workspaceRegistrationPicker.personal')
         }}</strong>
         <strong v-else-if="fixedOrganizationOwnership">{{
           organizationDisplayLabel(organizations, nodeOwnership.ownerOrganizationId)
         }}</strong>
-        <el-select
-          v-else
-          v-model="ownerOrganizationId"
-          :disabled="role === 'MEMBER'"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-        >
-          <el-option
-            v-for="organization in organizationOptions"
-            :key="organization.id"
-            :value="organization.id"
-            :label="organizationDisplayLabel(organizations, organization.id)"
+        <label v-else class="workspace-picker-owner-field">
+          <span>{{ translate('generated.workspaceRegistrationPicker.resourceOwner') }}</span>
+          <el-cascader
+            ref="ownerPicker"
+            v-model="ownerOrganizationId"
+            :disabled="role === 'MEMBER' || loading"
+            :options="organizationOptions"
+            :props="{ checkStrictly: true, emitPath: false }"
+            filterable
           />
-        </el-select>
+        </label>
         <small
           v-if="
             nodeOwnership?.ownerType === 'ORGANIZATION' &&
@@ -161,9 +183,16 @@ function submit(): void {
   gap: 0.55rem;
   flex-wrap: wrap;
 }
-.workspace-picker-ownership > span {
+.workspace-picker-ownership > span,
+.workspace-picker-owner-field > span {
   margin: 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
+}
+.workspace-picker-owner-field {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.35rem;
 }
 </style>

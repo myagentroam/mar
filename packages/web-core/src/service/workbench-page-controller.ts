@@ -1175,7 +1175,7 @@ export function createWorkbenchPageController<
   });
 
   const {
-    path: workspacePath,
+    path: selectedWorkspaceDirectoryPath,
     preserveGitConfig: workspacePreserveGitConfig,
     pendingDirectoryName: pendingWorkspaceDirectoryName,
     directory: workspaceDirectory,
@@ -2295,8 +2295,7 @@ export function createWorkbenchPageController<
       workspaceDirectAvailable,
       workspaceDirectDescription,
       workspaceLocalFileManagerAvailable,
-      workspaceKindLabel,
-      workspacePath
+      workspaceKindLabel
     }),
     registration: proxyRefs({
       loadWorkspaceDirectories,
@@ -2312,6 +2311,7 @@ export function createWorkbenchPageController<
       selectWorkspaceDirectory,
       selectPendingWorkspaceDirectory,
       discardPendingWorkspaceDirectory,
+      selectedWorkspaceDirectoryPath,
       selectedWorkspaceDirectorySelectable,
       workspaceDirectory,
       workspaceRegistrationNodeId,

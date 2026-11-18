@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createWorkspaceFileToolsController } from '../../src/service/workspace-file-tools-controller.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
 import { createFileAccessFixture } from '../support/file-access-fixture.js';
+import type { Workspace } from '../../src/model/workbench.js';
 import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
 import type { WorkspaceDirectFileRange } from '../../src/model/workspace-direct-file.js';
 
@@ -13,6 +14,7 @@ function fixture(request = vi.fn()) {
   const searchReady = ref(true);
   const history = ref(true);
   const tool = ref('changes');
+  const workspace = ref<Workspace>();
   const scope = effectScope();
   const controller = scope.run(() =>
     createWorkspaceFileToolsController({
@@ -32,12 +34,64 @@ function fixture(request = vi.fn()) {
       searchReady: () => searchReady.value,
       historySupported: () => history.value,
       isGit: () => true,
-      workspace: () => undefined,
+      workspace: () => workspace.value,
       updateWorkspace: vi.fn()
     })
   )!;
-  return { scope, controller, target, visible, ready, searchReady, history, tool };
+  return { scope, controller, target, visible, ready, searchReady, history, tool, workspace };
 }
+
+describe('Workspace file tree root naming', () => {
+  const entries = [{ path: 'README.md', name: 'README.md', kind: 'FILE', size: 1 }] as const;
+  const files = { entries, nextCursor: null };
+  const metadata = {
+    id: 'one',
+    path: '/home/example/project',
+    displayName: 'Workspace alias',
+    kind: 'DIRECTORY'
+  } as const;
+
+  it('keeps the current directory name when metadata arrives during a file refresh', async () => {
+    let completeRead!: (result: { files: typeof files }) => void;
+    const { scope, controller, workspace } = fixture(
+      vi.fn(() => new Promise((resolve) => (completeRead = resolve)))
+    );
+    try {
+      const pending = controller.files.requestRefresh();
+      workspace.value = metadata;
+      await nextTick();
+      expect(controller.files.tree.root.value.name).toBe('project');
+
+      completeRead({ files });
+      await pending;
+
+      expect(controller.files.tree.root.value.name).toBe('project');
+      expect(controller.files.tree.root.value.children.map((node) => node.path)).toEqual([
+        'README.md'
+      ]);
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it('labels a Watch-populated root even before the Workspace path is available', async () => {
+    const { scope, controller, workspace } = fixture();
+    try {
+      controller.acceptWatch('node', 'one', { files: { files } }, { topic: 'files', revision: 1 });
+      await nextTick();
+
+      expect(controller.files.tree.root.value.name).toBe('.');
+      workspace.value = metadata;
+      await nextTick();
+      expect(controller.files.tree.root.value.name).toBe('project');
+      expect(controller.files.tree.root.value.children.map((node) => node.path)).toEqual([
+        'README.md'
+      ]);
+    } finally {
+      scope.stop();
+    }
+  });
+});
 
 it.each([
   ['selected file', 'src/selected.ts', 'src/selected.ts'],

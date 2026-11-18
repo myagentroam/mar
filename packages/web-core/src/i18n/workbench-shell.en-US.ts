@@ -57,9 +57,7 @@ export const workbenchShellEnUS = {
     workspaceSessionList: {
       unableToLoadCurrentSkillsTryAgain: 'Unable to load current skills. Try again later.',
       unableToLoadCurrentMCPServersTry: 'Unable to load current MCP servers. Try again later.',
-      available: 'Available',
       incompleteInstallation: 'Incomplete installation',
-      unknownVersion: 'Unknown version',
       invalidGitRules: 'Invalid Git rules',
       invalidDirectory: 'Invalid directory',
       workspaceSessions: 'Workspace sessions',

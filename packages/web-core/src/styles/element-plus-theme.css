@@ -269,6 +269,17 @@ html.console-ui
   --el-button-outline-color: var(--mar-color-brand);
 }
 
+html.console-ui .el-button.mar-soft-button {
+  --el-button-text-color: var(--mar-text-primary);
+  --el-button-bg-color: var(--mar-fill-row-hover);
+  --el-button-hover-bg-color: var(--mar-fill-selection);
+  --el-button-disabled-bg-color: var(--mar-fill-subtle);
+  justify-content: flex-start;
+  border: 0;
+  border-radius: var(--mar-radius-control);
+  padding-inline: var(--mar-compact-option-padding-inline);
+}
+
 html.console-ui .el-button--primary.is-link,
 html.console-ui .el-button--primary.is-text,
 html.console-ui .el-link--primary {

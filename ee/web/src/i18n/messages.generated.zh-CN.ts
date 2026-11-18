@@ -1643,11 +1643,8 @@ const generatedZhCNFlat: Readonly<Record<string, string>> = {
     workbenchShellZhCN.generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain,
   'workspaceSessionList.unableToLoadCurrentMCPServersTry':
     workbenchShellZhCN.generated.workspaceSessionList.unableToLoadCurrentMCPServersTry,
-  'workspaceSessionList.available': workbenchShellZhCN.generated.workspaceSessionList.available,
   'workspaceSessionList.incompleteInstallation':
     workbenchShellZhCN.generated.workspaceSessionList.incompleteInstallation,
-  'workspaceSessionList.unknownVersion':
-    workbenchShellZhCN.generated.workspaceSessionList.unknownVersion,
   'workspaceSessionList.invalidGitRules':
     workbenchShellZhCN.generated.workspaceSessionList.invalidGitRules,
   'workspaceSessionList.invalidDirectory':

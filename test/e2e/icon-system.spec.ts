@@ -115,7 +115,13 @@ test('Git changes append at the repository boundary and refresh in place', async
       const refresh = changes.getByRole('button', { name: 'Refresh Git changes', exact: true });
       await expect(entries).toHaveCount(200);
       await expect(marker).not.toBeInViewport();
-      await expect(changes.locator('[data-repository-path="empty"]')).toHaveCount(1);
+      const emptyRepository = changes.locator('[data-repository-path="empty"]');
+      await expect(emptyRepository).toHaveCount(1);
+      const submoduleTag = emptyRepository.locator('.el-tag').filter({ hasText: /^Submodule$/ });
+      await expect(submoduleTag).toHaveCSS(
+        'border-top-color',
+        theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)'
+      );
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
       expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
         true
@@ -291,6 +297,11 @@ for (const theme of ['dark', 'light']) {
       await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
+      const metadataBorder = theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)';
+      for (const label of [/^Root$/, /^Current$/]) {
+        const tag = page.locator('.repository-tags-row .el-tag').filter({ hasText: label });
+        await expect(tag).toHaveCSS('border-top-color', metadataBorder);
+      }
       await expect(refreshGlyph).toHaveCSS('width', '14px');
       await expect(refreshGlyph).toHaveCSS('height', '14px');
       const refreshBounds = (await refresh.boundingBox())!;
@@ -1814,8 +1825,45 @@ for (const theme of ['dark', 'light'])
         );
       });
       expect(buttonGap).toBeGreaterThanOrEqual(5);
+      await expect(create).toHaveCSS('border-top-width', '0px');
+      await expect(create).toHaveCSS('height', '32px');
+      const layout = await create.evaluate((button) => {
+        const row = button.parentElement!;
+        const more = row.querySelector('.workspace-more-button')!.getBoundingClientRect();
+        const rowBounds = row.getBoundingClientRect();
+        const createBounds = button.getBoundingClientRect();
+        return {
+          left: createBounds.left - rowBounds.left,
+          right: rowBounds.right - more.right,
+          gap: more.left - createBounds.right,
+          expectedGap: parseFloat(getComputedStyle(row).columnGap)
+        };
+      });
+      expect(layout.left).toBeCloseTo(0, 0);
+      expect(layout.right).toBeCloseTo(0, 0);
+      expect(layout.gap).toBeCloseTo(layout.expectedGap, 0);
+      expect(layout.gap).toBeGreaterThan(0);
+      const fill = await create.evaluate((button) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-fill-row-hover)';
+        button.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(create).toHaveCSS('background-color', fill);
+      await page
+        .locator('.conversation-sidebar')
+        .first()
+        .screenshot({
+          path: testInfo.outputPath(`session-create-${theme}-${mobile ? 'mobile' : 'desktop'}.png`),
+          animations: 'disabled'
+        });
       await create.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
       await expect(create).toBeFocused();
+      await expect(create).toHaveCSS('outline-style', 'solid');
       await create.press('Enter');
       await expect(page.getByTestId('created')).toHaveText('1');
       const search = page.locator('.session-search input');

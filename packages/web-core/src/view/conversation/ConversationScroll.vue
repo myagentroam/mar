@@ -40,6 +40,7 @@ const region = ref<HTMLElement>();
 const element = ref<HTMLElement>();
 const content = ref<HTMLElement>();
 const historyMarker = ref<HTMLElement>();
+const showFocusOutline = ref(false);
 let contentObserver: ResizeObserver | undefined;
 let renderedEmpty = false;
 let previousComposerRect: DOMRect | undefined;
@@ -101,6 +102,11 @@ function onTouchMove(event: TouchEvent): void {
   touchY = nextY;
 }
 
+function onScrollFocus(): void {
+  // Keep the browser's indication at focus entry, not when a modifier later changes its heuristic.
+  showFocusOutline.value = element.value?.matches(':focus-visible') === true;
+}
+
 function onScrollKeydown(event: KeyboardEvent): void {
   const target = event.target;
   if (
@@ -109,8 +115,17 @@ function onScrollKeydown(event: KeyboardEvent): void {
       (target.isContentEditable || target.closest('input, textarea, select')))
   )
     return;
-  if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey))
-    onUpwardIntent();
+  // Modified Page Up/Down shortcuts do not scroll the conversation.
+  if ((event.ctrlKey || event.altKey) && (event.key === 'PageUp' || event.key === 'PageDown'))
+    return;
+  const scrollsUp =
+    ['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey);
+  if (
+    target === event.currentTarget &&
+    (scrollsUp || ['ArrowDown', 'PageDown', 'End', ' '].includes(event.key))
+  )
+    showFocusOutline.value = true;
+  if (scrollsUp) onUpwardIntent();
 }
 
 function onScrollbarPointerdown(event: PointerEvent): void {
@@ -300,7 +315,9 @@ onBeforeUnmount(() => {
     <div
       ref="element"
       class="conversation-scroll"
+      :class="{ 'shows-focus-outline': showFocusOutline }"
       tabindex="0"
+      @focus="onScrollFocus"
       @scroll="emit('scroll')"
       @wheel.passive="onWheel"
       @touchstart.passive="onTouchStart"
@@ -452,7 +469,11 @@ onBeforeUnmount(() => {
   background: var(--mar-conversation-canvas);
 }
 
-.conversation-scroll:focus-visible {
+.conversation-scroll:focus-visible:not(.shows-focus-outline) {
+  outline: none;
+}
+
+.conversation-scroll.shows-focus-outline:focus {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
 }

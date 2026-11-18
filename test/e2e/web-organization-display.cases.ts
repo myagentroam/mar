@@ -8,7 +8,7 @@ const organizations = [
   { id: 9, name: 'Other', parentOrganizationId: 1 }
 ];
 
-async function setup(page: Page, english: boolean): Promise<void> {
+async function setup(page: Page, english: boolean, nodeManageable = false): Promise<void> {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await page.addInitScript(
     (locale) => localStorage.setItem('mar.locale.v2', locale),
@@ -48,14 +48,21 @@ async function setup(page: Page, english: boolean): Promise<void> {
     nodeVersion: 'v24.15.0',
     connected: true,
     disabled: false,
-    manageable: false,
+    manageable: nodeManageable,
     workspaceCreatable: true,
     ownership: { ownerType: 'ORGANIZATION', ownerOrganizationId: 7 },
     capabilities: { codex: { available: true, version: '0.146' } }
   };
   await page.route('**/api/nodes', (route) => json(route, { nodes: [node] }));
   await page.route('**/api/management/nodes', (route) => json(route, { nodes: [node] }));
-  await page.route('**/api/resources*', (route) => json(route, { nodes: [node], workspaces: [] }));
+  await page.route('**/api/resources*', (route) => {
+    const paginated = new URL(route.request().url()).searchParams.has('page');
+    return json(route, {
+      nodes: [node],
+      workspaces: [],
+      ...(paginated ? { page: 1, pageSize: 20, total: 1, hasMore: false } : {})
+    });
+  });
   await page.route('**/api/enterprise/users', (route) => json(route, { users: [] }));
   await page.route('**/api/runner-usage/status?*', (route) => json(route, { statuses: [] }));
   await page.route('**/api/organizations', (route) => json(route, { organizations }));
@@ -194,6 +201,46 @@ for (const english of [false, true]) {
       .click();
     const ownership = page.locator('.workspace-picker-ownership');
     await expect(ownership.locator('strong')).toHaveText('Root / Platform');
-    await expect(ownership.locator('.el-select')).toHaveCount(0);
+    await expect(ownership.locator('.el-select, .el-cascader')).toHaveCount(0);
   });
 }
+
+test('Workspace registration uses the searchable organization selector for the Node subtree', async ({
+  page
+}) => {
+  await setup(page, true, true);
+  await page.goto('/console?view=nodes');
+  const tree = page.locator('.workspace-tree');
+  await tree.getByRole('button', { name: 'Organization Node', exact: true }).click();
+  await tree.getByRole('button', { name: 'Node actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add workspace', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Register Workspace' });
+  const selector = dialog.getByLabel('Resource Owner', { exact: true });
+  const dropdown = page.locator('.el-cascader__dropdown:visible');
+  const suggestions = dropdown.locator('.el-cascader__suggestion-item');
+  await expect(selector).toHaveValue('Root / Platform');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await selector.fill('Other');
+  await expect(dropdown.locator('.el-cascader__empty-text')).toBeVisible();
+  await expect(suggestions).toHaveCount(0);
+  await selector.fill('Research');
+  const research = suggestions.filter({ hasText: /^Root \/ Platform \/ Research$/u });
+  await expect(research).toBeInViewport();
+  await page.keyboard.press('ArrowDown');
+  await expect(research).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dropdown).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(selector).toBeFocused();
+  await expect(selector).toHaveAttribute('aria-expanded', 'false');
+  await expect(selector).toHaveValue('Root / Platform');
+
+  await selector.click();
+  await selector.fill('Research');
+  await expect(research).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(research).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(selector).toHaveValue('Root / Platform / Research');
+});
