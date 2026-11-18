@@ -35,7 +35,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           };
           const result = {
             divider: resolve('--mar-border-subtle'),
-            selected: resolve('--mar-bg-page'),
+            selected: resolve('--mar-fill-selection'),
+            inactive: resolve('--mar-bg-tab-inactive'),
+            hover: resolve('--mar-fill-row-hover'),
             border: resolve('--mar-border-default'),
             focus: resolve('--mar-color-brand')
           };
@@ -45,7 +47,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(header).toHaveCSS('border-bottom-color', colors.divider);
         await expect(header).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         const inactive = tabs.getByRole('tab', { selected: false }).first().locator('..');
-        await expect(inactive).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(inactive).toHaveCSS('background-color', colors.inactive);
+        if (width >= 768) {
+          await inactive.hover();
+          await expect(inactive).toHaveCSS('background-color', colors.hover);
+          await page.mouse.move(width - 1, 849);
+          await expect(inactive).toHaveCSS('background-color', colors.inactive);
+        }
         const frame = page.locator('.workspace-file-page-frame:visible');
         await expect(frame.locator('.file-preview-header')).toHaveCSS(
           'border-bottom-color',
