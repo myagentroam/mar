@@ -26,28 +26,32 @@ const props = defineProps<{
 const filterQuery = ref('');
 const nodeTreeElement = ref<HTMLElement>();
 const animateBranches = ref(false);
+const movingBranches = new Set<Element>();
+let pendingReveal = false;
 
 function enableBranchMotion(): void {
   animateBranches.value = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Only the render caused by an explicit toggle should animate.
+  // Only the render caused by a toggle or visible Tab reveal should animate.
   void nextTick(() => (animateBranches.value = false));
 }
 
 function enterBranch(element: Element): void {
   const branch = element as HTMLElement;
   branch.inert = false;
-  // Vue still invokes transition hooks when CSS motion is disabled for automatic reveal.
-  if (animateBranches.value)
-    branch.style.setProperty('--workspace-branch-height', `${branch.scrollHeight}px`);
+  if (!animateBranches.value) return;
+  movingBranches.add(branch);
+  branch.style.setProperty('--workspace-branch-height', `${branch.scrollHeight}px`);
 }
 
 function leaveBranch(element: Element): void {
   const branch = element as HTMLElement;
-  if (animateBranches.value)
+  if (animateBranches.value) {
+    movingBranches.add(branch);
     branch.style.setProperty(
       '--workspace-branch-height',
       `${branch.getBoundingClientRect().height}px`
     );
+  }
   branch.inert = true;
 }
 
@@ -55,6 +59,7 @@ function finishBranchMotion(element: Element): void {
   const branch = element as HTMLElement;
   branch.style.removeProperty('--workspace-branch-height');
   branch.inert = false;
+  if (movingBranches.delete(branch) && pendingReveal) void nextTick(scrollToRevealedWorkspace);
 }
 
 const filterActive = computed(() => filterQuery.value.trim().length > 0);
@@ -188,6 +193,19 @@ const revealGroupName = computed(() => {
 });
 
 watch(
+  () => props.revealTarget,
+  (target) => {
+    if (
+      target !== undefined &&
+      revealGroupName.value !== undefined &&
+      props.visible !== false &&
+      !filterActive.value
+    )
+      enableBranchMotion();
+  }
+);
+
+watch(
   [() => props.revealTarget, revealGroupName],
   ([target, groupName]) => {
     if (target === undefined || groupName === undefined) return;
@@ -198,18 +216,42 @@ watch(
   { immediate: true }
 );
 
+function scrollToRevealedWorkspace(): void {
+  if (!pendingReveal) return;
+  const tree = nodeTreeElement.value;
+  for (const branch of movingBranches) {
+    if (!tree?.contains(branch)) movingBranches.delete(branch);
+  }
+  if (movingBranches.size > 0) return;
+  pendingReveal = false;
+  if (props.visible === false || revealGroupName.value === undefined) return;
+  const row = tree?.querySelector<HTMLElement>(
+    '.workspace-branches li.selected > .workspace-branch-button'
+  );
+  if (row?.getClientRects().length)
+    row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+}
+
 watch(
-  [() => props.revealTarget, revealGroupName, () => props.visible],
-  async (_value, _previous, onCleanup) => {
+  [() => props.revealTarget, revealGroupName, () => props.visible, filterQuery],
+  async (
+    [target, groupName, visible],
+    [previousTarget, previousGroup, previousVisible],
+    onCleanup
+  ) => {
+    // Editing the filter supersedes a pending reveal, but does not request another scroll.
+    if (target === previousTarget && groupName === previousGroup && visible === previousVisible)
+      return;
     let cancelled = false;
-    onCleanup(() => (cancelled = true));
+    onCleanup(() => {
+      cancelled = true;
+      pendingReveal = false;
+    });
     await nextTick();
-    if (cancelled || props.visible === false || revealGroupName.value === undefined) return;
-    const row = nodeTreeElement.value?.querySelector<HTMLElement>(
-      '.workspace-branches li.selected > .workspace-branch-button'
-    );
-    if (row?.getClientRects().length)
-      row.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    if (cancelled) return;
+    pendingReveal = true;
+    // The selected row may still be clipped or move as other branches collapse.
+    scrollToRevealedWorkspace();
   },
   { immediate: true, flush: 'post' }
 );
@@ -586,6 +628,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
           @enter="enterBranch"
           @before-leave="leaveBranch"
           @after-enter="finishBranchMotion"
+          @enter-cancelled="finishBranchMotion"
           @after-leave="finishBranchMotion"
         >
           <ul v-if="nodeExpanded(result.node.id)" class="workspace-branches">
@@ -755,6 +798,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                   @enter="enterBranch"
                   @before-leave="leaveBranch"
                   @after-enter="finishBranchMotion"
+                  @enter-cancelled="finishBranchMotion"
                   @after-leave="finishBranchMotion"
                 >
                   <ul
@@ -1192,6 +1236,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-branches > li:not(.workspace-group, :hover, :focus-within) {
+    transition: background-color var(--mar-motion-duration-collapse)
+      var(--mar-motion-easing-collapse);
+  }
 }
 
 .workspace-branches > li:hover,

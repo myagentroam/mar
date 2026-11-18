@@ -1715,7 +1715,7 @@ onBeforeUnmount(() => {
 
 .history-title-row strong {
   color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-body);
+  font-size: var(--mar-font-size-detail);
 }
 
 .history-open time {
