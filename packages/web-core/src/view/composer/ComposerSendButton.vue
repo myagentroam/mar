@@ -54,20 +54,9 @@ function updateGesturePosition(event: PointerEvent): void {
 }
 
 function onPointerDown(event: PointerEvent): void {
-  if (pointerId !== undefined) {
-    cancelGesture();
-    return;
-  }
+  if (!event.isPrimary || event.button !== 0) return;
   suppressClick = false;
-  if (
-    !props.mobileViewport ||
-    props.disabled ||
-    props.submitting ||
-    event.pointerType !== 'touch' ||
-    !event.isPrimary ||
-    event.button !== 0
-  )
-    return;
+  if (!gestureEnabled.value || event.pointerType !== 'touch') return;
   event.preventDefault();
   pointerId = event.pointerId;
   pointerTarget = event.currentTarget as HTMLButtonElement;
@@ -75,12 +64,11 @@ function onPointerDown(event: PointerEvent): void {
   pointerTarget.setPointerCapture(pointerId);
   pointerTarget.ownerDocument.addEventListener('visibilitychange', onVisibilityChange);
   pointerTarget.ownerDocument.defaultView?.addEventListener('blur', cancelGesture);
-  trackTouchClick(pointerTarget.ownerDocument, pointerId);
-  if (gestureEnabled.value)
-    holdTimer = setTimeout(() => {
-      holdTimer = undefined;
-      holding.value = true;
-    }, 200);
+  trackTouchRelease(pointerTarget, pointerId);
+  holdTimer = setTimeout(() => {
+    holdTimer = undefined;
+    holding.value = true;
+  }, 200);
 }
 
 function onTouchStart(event: TouchEvent): void {
@@ -94,39 +82,59 @@ function onPointerMove(event: PointerEvent): void {
   updateGesturePosition(event);
 }
 
-function trackTouchClick(document: Document, id: number): void {
+function onLostPointerCapture(event: PointerEvent): void {
+  if (event.pointerId === pointerId && event.target === pointerTarget) cancelGesture();
+}
+
+function trackTouchRelease(button: HTMLButtonElement, id: number): void {
   // The button can disappear before release or after sending. Track the original
   // touch through its compatibility click so it cannot fall through to Stop.
+  const document = button.ownerDocument;
   const capture = { capture: true };
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const clear = (): void => {
     if (timeout !== undefined) clearTimeout(timeout);
     document.removeEventListener('click', onClick, capture);
-    document.removeEventListener('pointerdown', clear, capture);
+    document.removeEventListener('pointerdown', onNextPress, capture);
     document.removeEventListener('pointerup', onRelease, capture);
-    document.removeEventListener('pointercancel', clear, capture);
+    document.removeEventListener('pointercancel', onCancel, capture);
+  };
+  const onNextPress = (event: PointerEvent): void => {
+    if (!event.isPrimary) return;
+    // Retire an interrupted touch before the next press reaches its target.
+    if (pointerId === id) cancelGesture();
+    clear();
   };
   const onRelease = (event: PointerEvent): void => {
     if (event.pointerId !== id) return;
     document.removeEventListener('pointerup', onRelease, capture);
     timeout = setTimeout(clear, 500);
+    if (pointerId !== id) return;
+    // A release retargeted outside the button ends the hold but must not send.
+    if (event.composedPath().includes(button)) onPointerUp(event);
+    else cancelGesture();
+  };
+  const onCancel = (event: PointerEvent): void => {
+    if (event.pointerId !== id) return;
+    if (pointerId === id) cancelGesture();
+    clear();
   };
   const onClick = (event: MouseEvent): void => {
     if (event.detail === 0) return;
-    if (suppressClick) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
+    if ('pointerId' in event ? event.pointerId !== id : !suppressClick) return;
+    // A click may arrive even when the release did not reach this listener.
+    if (pointerId === id) cancelGesture();
+    event.preventDefault();
+    event.stopImmediatePropagation();
     clear();
   };
   document.addEventListener('click', onClick, capture);
-  document.addEventListener('pointerdown', clear, capture);
+  document.addEventListener('pointerdown', onNextPress, capture);
   document.addEventListener('pointerup', onRelease, capture);
-  document.addEventListener('pointercancel', clear, capture);
+  document.addEventListener('pointercancel', onCancel, capture);
 }
 
 function onPointerUp(event: PointerEvent): void {
-  if (event.pointerId !== pointerId) return;
   updateGesturePosition(event);
   const shouldSteer = upward.value && props.canSteer;
   const cancelled = cancelling.value;
@@ -172,9 +180,7 @@ onBeforeUnmount(cancelGesture);
     @pointerdown="onPointerDown"
     @touchstart="onTouchStart"
     @pointermove="onPointerMove"
-    @pointerup="onPointerUp"
-    @pointercancel="cancelGesture"
-    @lostpointercapture="cancelGesture"
+    @lostpointercapture="onLostPointerCapture"
     @blur="cancelGesture"
     @contextmenu="gestureEnabled && $event.preventDefault()"
     @click="onClick"

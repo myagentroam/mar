@@ -373,6 +373,8 @@ for (const [language, theme, width] of [
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
           panel: resolve('--mar-bg-panel'),
+          inactiveTab: resolve('--mar-bg-tab-inactive'),
+          selectedTab: resolve('--mar-fill-selection'),
           divider: resolve('--mar-border-subtle'),
           mediumBorder: resolve('--mar-border-medium'),
           tabBorder: resolve('--mar-border-default'),
@@ -417,14 +419,14 @@ for (const [language, theme, width] of [
       await expect(genericItems.first()).toHaveCSS('border-top-color', colors.tabBorder);
       await expect(genericItems.nth(1)).toHaveCSS('border-top-color', colors.tabBorder);
       await expect(aside).toHaveCSS('background-color', colors.panel);
-      await expect(session.locator('..')).toHaveCSS('background-color', colors.panel);
+      await expect(session.locator('..')).toHaveCSS('background-color', colors.selectedTab);
       await expect(aside.locator('.workbench-aside-header')).toHaveCSS(
         'background-color',
         'rgba(0, 0, 0, 0)'
       );
       await expect(tabs.getByRole('tab', { name: 'Files' }).locator('..')).toHaveCSS(
         'background-color',
-        'rgba(0, 0, 0, 0)'
+        colors.inactiveTab
       );
       await expect(tabs.getByRole('tab', { name: 'Files' })).toHaveCSS('color', colors.secondary);
       const activity = session.locator('.workbench-aside-activity');
@@ -447,10 +449,10 @@ for (const [language, theme, width] of [
         path: test.info().outputPath(`aside-tabs-${language}-${theme}-${width}.png`)
       });
       await tabs.getByRole('tab', { name: 'Files', exact: true }).click();
-      await expect(tabs.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute(
-        'aria-selected',
-        'true'
-      );
+      const files = tabs.getByRole('tab', { name: 'Files', exact: true });
+      await expect(files).toHaveAttribute('aria-selected', 'true');
+      await expect(files.locator('..')).toHaveCSS('background-color', colors.selectedTab);
+      await expect(session.locator('..')).toHaveCSS('background-color', colors.inactiveTab);
       const nestedTab = aside.locator('#nested-files-tablist .mar-tab-strip-item');
       await expect(nestedTab).toHaveCount(1);
       await expect(nestedTab).toHaveCSS('border-top-color', colors.tabBorder);

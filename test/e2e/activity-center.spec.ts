@@ -286,7 +286,18 @@ for (const width of [1280, 390]) {
       }
       await expect(notifications.locator('..')).toHaveCSS('border-top-width', '1px');
       await expect(tabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(recent.locator('..')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const colors = await tabs.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        probe.style.color = 'var(--mar-bg-tab-inactive)';
+        const inactive = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-fill-selection)';
+        const selected = getComputedStyle(probe).color;
+        probe.remove();
+        return { inactive, selected };
+      });
+      await expect(recent.locator('..')).toHaveCSS('background-color', colors.inactive);
+      await expect(notifications.locator('..')).toHaveCSS('background-color', colors.selected);
       const overlap = await recent.evaluate((element) => {
         const row = element.parentElement!;
         return (
