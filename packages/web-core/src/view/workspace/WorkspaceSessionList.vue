@@ -226,16 +226,14 @@ async function openMcps(): Promise<void> {
   }
 }
 
-function skillStatusLabel(status: string): string {
-  return status === 'VALID'
-    ? translate('generated.workspaceSessionList.available')
-    : status === 'PARTIAL'
-      ? translate('generated.workspaceSessionList.incompleteInstallation')
-      : status === 'UNKNOWN_VERSION'
-        ? translate('generated.workspaceSessionList.unknownVersion')
-        : status === 'GIT_EXCLUDE_BROKEN'
-          ? translate('generated.workspaceSessionList.invalidGitRules')
-          : translate('generated.workspaceSessionList.invalidDirectory');
+function skillWarningLabel(status: string): string {
+  if (status === 'PARTIAL') {
+    return translate('generated.workspaceSessionList.incompleteInstallation');
+  }
+  if (status === 'GIT_EXCLUDE_BROKEN') {
+    return translate('generated.workspaceSessionList.invalidGitRules');
+  }
+  return translate('generated.workspaceSessionList.invalidDirectory');
 }
 
 function pinned(session: Session): boolean {
@@ -746,8 +744,12 @@ function submitSessionSearch(): void {
             </p>
           </div>
           <span class="effective-skill-tags">
-            <el-tag effect="plain" :type="skill.localStatus === 'VALID' ? 'success' : 'warning'">
-              {{ skillStatusLabel(skill.localStatus) }}
+            <el-tag
+              v-if="skill.localStatus !== 'VALID' && skill.localStatus !== 'UNKNOWN_VERSION'"
+              effect="plain"
+              type="warning"
+            >
+              {{ skillWarningLabel(skill.localStatus) }}
             </el-tag>
             <el-tag effect="plain" :type="skill.source === 'WORKSPACE' ? 'primary' : 'info'">
               {{

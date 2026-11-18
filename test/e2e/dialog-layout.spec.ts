@@ -186,7 +186,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           })
           .click();
         const dialog = page.locator('.el-dialog:visible');
-        await expect(dialog.locator('.effective-skill-row')).toHaveCount(60);
+        const rows = dialog.locator('.effective-skill-row');
+        await expect(rows).toHaveCount(60);
+        if (resource === 'Skills') {
+          await expect(rows.nth(0).locator('.el-tag')).toHaveText(['Node HOME']);
+          await expect(rows.nth(1).locator('.el-tag')).toHaveText(['Workspace']);
+          await expect(rows.nth(2).locator('.el-tag')).toHaveText([
+            'Incomplete installation',
+            'Workspace'
+          ]);
+        }
         await expectBounded(dialog);
         await expectScrollableBody(dialog);
         await expectSingleScrollRegion(dialog);

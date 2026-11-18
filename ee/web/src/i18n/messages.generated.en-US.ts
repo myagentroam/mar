@@ -1657,11 +1657,8 @@ const generatedEnUSFlat: Readonly<Record<string, string>> = {
     workbenchShellEnUS.generated.workspaceSessionList.unableToLoadCurrentSkillsTryAgain,
   'workspaceSessionList.unableToLoadCurrentMCPServersTry':
     workbenchShellEnUS.generated.workspaceSessionList.unableToLoadCurrentMCPServersTry,
-  'workspaceSessionList.available': workbenchShellEnUS.generated.workspaceSessionList.available,
   'workspaceSessionList.incompleteInstallation':
     workbenchShellEnUS.generated.workspaceSessionList.incompleteInstallation,
-  'workspaceSessionList.unknownVersion':
-    workbenchShellEnUS.generated.workspaceSessionList.unknownVersion,
   'workspaceSessionList.invalidGitRules':
     workbenchShellEnUS.generated.workspaceSessionList.invalidGitRules,
   'workspaceSessionList.invalidDirectory':
