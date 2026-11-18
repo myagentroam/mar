@@ -101,12 +101,6 @@ async function copySessionId(sessionId: string): Promise<void> {
 </template>
 
 <style scoped>
-.conversation-header p {
-  margin: 0;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-}
-
 .conversation-title-runner-icon {
   width: 1rem;
   height: 1rem;
@@ -136,12 +130,6 @@ async function copySessionId(sessionId: string): Promise<void> {
   min-width: 0;
   align-items: center;
   gap: 0.32rem;
-}
-
-.conversation-header p {
-  margin: 0.18rem 0 0;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
 }
 
 .conversation-header h2 {
@@ -179,6 +167,9 @@ async function copySessionId(sessionId: string): Promise<void> {
   min-width: 0;
   align-items: center;
   gap: 0.25rem;
+  margin: 0.18rem 0 0;
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
 }
 
 :global(.conversation-session-id code) {
@@ -202,6 +193,20 @@ async function copySessionId(sessionId: string): Promise<void> {
   cursor: pointer;
   font: inherit;
   text-align: start;
+}
+
+@media (min-width: 768px) {
+  .conversation-header {
+    padding-block: 0.25rem;
+  }
+
+  .conversation-header h2 {
+    line-height: 1.25;
+  }
+
+  .conversation-session-id {
+    margin-block-start: 0;
+  }
 }
 
 @media (max-width: 767px) {

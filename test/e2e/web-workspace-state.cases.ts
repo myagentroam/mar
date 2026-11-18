@@ -488,16 +488,30 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await page.setViewportSize({ width: 1440, height: 900 });
   const { queries, legacyTreeReads } = await prepareDescendantTree(page);
   const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
+  const header = main.locator('.conversation-header');
+  const copyId = header.locator('.conversation-session-id-copy');
   const treeButton = main.getByRole('button', { name: '查看会话树' });
+  await expect(copyId).toHaveText('tree-1');
+  const [headerBox, titleBox, copyBox, treeBox] = await Promise.all([
+    header.boundingBox(),
+    header.getByRole('heading').boundingBox(),
+    copyId.boundingBox(),
+    treeButton.boundingBox()
+  ]);
+  if (!headerBox || !titleBox || !copyBox || !treeBox) throw new Error('Missing header geometry');
+  expect(headerBox.height).toBeLessThanOrEqual(52);
+  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(Math.min(copyBox.y, treeBox.y));
+  expect(treeBox.y + treeBox.height).toBeLessThan(headerBox.y + headerBox.height);
+  await header.screenshot({
+    path: test.info().outputPath('conversation-header-desktop.png'),
+    animations: 'disabled'
+  });
   await expect(treeButton.locator('.tree-active-indicator')).toBeVisible();
   await treeButton.click();
   const tree = page.locator('.session-tree-popup');
   await expect(tree).toBeVisible();
   await expect(tree.getByRole('button', { name: '关闭', exact: true })).toHaveCount(0);
   await expect(page.locator('.session-tree-popover .el-popper__arrow')).toHaveCount(0);
-  await expect(tree.getByRole('button', { name: '会话操作' }).first()).toHaveClass(
-    /mar-icon-action/
-  );
   await expect(tree.locator('.session-tree-list .session-tree-title')).toHaveText([
     '树会话 2',
     '树会话 3'
@@ -507,7 +521,11 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
     path: test.info().outputPath('session-tree-popover.png'),
     animations: 'disabled'
   });
-  await tree.getByRole('button', { name: '会话操作' }).first().click();
+  const firstRow = tree.locator('.session-tree-row').first();
+  await firstRow.getByRole('button', { name: '树会话 2, 空闲', exact: true }).hover();
+  const actions = firstRow.getByRole('button', { name: '会话操作' });
+  await expect(actions).toHaveClass(/mar-icon-action/);
+  await actions.click();
   await expect(
     page.getByRole('menuitem', { name: '在侧栏打开' }).locator('[data-mar-icon="split"]')
   ).toHaveCount(1);
