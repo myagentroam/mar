@@ -327,18 +327,27 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(button.width).toBeCloseTo(search.width, 0);
       expect(button.y).toBeGreaterThanOrEqual(search.y + search.height);
     };
-    await expect(create).toHaveCSS('border-top-width', '0px');
+    await expect(create).toHaveCSS('border-top-width', '1px');
     await expect(create).toHaveCSS('height', '32px');
     await expectCreateAlignedToSearch();
-    const fill = await create.evaluate((button) => {
+    const { fill, border } = await create.evaluate((button) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-fill-row-hover)';
       button.append(probe);
-      const color = getComputedStyle(probe).color;
+      const resolveColor = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const colors = {
+        fill: resolveColor('--mar-fill-row-hover'),
+        border: resolveColor('--mar-border-default')
+      };
       probe.remove();
-      return color;
+      return colors;
     });
     await expect(create).toHaveCSS('background-color', fill);
+    await expect(create).toHaveCSS('border-top-color', border);
+    const searchControl = history.locator('.history-search-row .el-input__wrapper');
+    await expect(searchControl).not.toHaveCSS('background-color', fill);
     const upload = page.locator('.files-drop-target');
     await expect(upload).toBeVisible();
     await expect(upload).toBeEnabled();
@@ -375,6 +384,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(current).toHaveCSS('font-size', '12px');
     await expect(other).toHaveCSS('font-size', '12px');
     await expect(create).toHaveCSS('background-color', fill);
+    await expect(create).toHaveCSS('border-top-color', border);
+    await expect(searchControl).not.toHaveCSS('background-color', fill);
     await expectCreateAlignedToSearch();
     await page.screenshot({ path: testInfo.outputPath(`hosted-history-mobile-${theme}.png`) });
   });

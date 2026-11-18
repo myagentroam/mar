@@ -121,6 +121,7 @@ export function createWorkspaceRegistrationService<Context = void>(options: {
   }
 
   async function register(context?: Context): Promise<void> {
+    if (loading.value) return;
     let revision = registrationRevision;
     const nodeId = options.targetNodeId.value;
     const selectedPath = path.value.trim();
