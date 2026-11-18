@@ -67,12 +67,42 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.route('**/api/**', (route) =>
       route.fulfill({ json: { items: [], nextCursor: null } })
     );
+    await page.route(
+      (url) => url.pathname === '/api/hosted-conversations',
+      (route) =>
+        route.fulfill({
+          json: {
+            items: ['Current chat', 'Another chat'].map((title, index) => ({
+              id: `chat-${index}`,
+              nodeId: 'node-1',
+              sessionId: `session-${index}`,
+              templateId: 'template-1',
+              templateName: 'Assistant',
+              activeVersionId: 'version-1',
+              title,
+              titleSource: 'AUTO',
+              pinnedAt: null,
+              status: 'ACTIVE',
+              modelId: 'model-1',
+              createdAt: 1,
+              updatedAt: 10 - index,
+              lastActivityAt: 10 - index
+            })),
+            nextCursor: null
+          }
+        })
+    );
     await page.goto(`${fixture.url}hosted-entry.html?workspace-page&theme=${theme}`);
     const history = page.locator('.hosted-conversation-history');
     await expect(history).toBeVisible();
     expect(await sidebarGeometry(history)).toEqual(geometry);
     const header = (await history.locator('.history-header').boundingBox())!;
     expect(header.y).toBeCloseTo(geometry.top, 1);
+    const current = history.getByText('Current chat', { exact: true });
+    const other = history.getByText('Another chat', { exact: true });
+    await expect(history.locator('[aria-current="page"]')).toContainText('Current chat');
+    await expect(current).toHaveCSS('font-size', '12px');
+    await expect(other).toHaveCSS('font-size', '12px');
     await history.screenshot({ path: testInfo.outputPath(`hosted-history-${theme}.png`) });
 
     await page.goto(
@@ -87,6 +117,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(mobile.bottom).toBe(0);
     expect(mobile.width).toBeLessThan(390);
     expect(mobile.radius).toBe('0px');
+    await expect(history.locator('[aria-current="page"]')).toContainText('Current chat');
+    await expect(current).toHaveCSS('font-size', '12px');
+    await expect(other).toHaveCSS('font-size', '12px');
     await page.screenshot({ path: testInfo.outputPath(`hosted-history-mobile-${theme}.png`) });
   });
 
