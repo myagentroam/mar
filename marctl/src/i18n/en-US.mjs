@@ -82,7 +82,8 @@ Management:
 Input and results:
   Start defaults to the current Session Runner; a terminal without a current
   Session must specify --runner or --parent. Start returns without waiting.
-  Send appends by default; --steer provides timely input and --queue defers.
+  Send defaults to --steer for timely communication or course correction.
+  If it cannot deliver in place, Node may interrupt the current execution.
   --goal sets or replaces a Goal; --clear-goal clears it. Send can update a Goal
   without text; omitted Goal is unchanged. Stop targets the current execution
   and clears the target Session Goal.
@@ -97,7 +98,6 @@ Input and results:
   truncated. Limit defaults to 10, maximum 100; no cursor or pagination.
   Active Sessions come first, then recent activity descending.
   Configuration and prompt changes apply to future executions.
-  Prefer --steer for timely communication or course correction.
   Reserve --queue for explicitly requested deferred input: it is consumed after
   current work and earlier queued inputs finish. With an active Goal it is
   not consumed until that Goal exits.

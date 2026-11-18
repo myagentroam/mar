@@ -184,6 +184,56 @@ async function fixture(title?: string) {
 }
 
 describe('marctl Agent network over isolated CLI, HTTP and Node', () => {
+  it('sends with the default intent and returns an explicit single-target wait as a group snapshot', async () => {
+    const h = await fixture();
+    try {
+      await expect(h.command('wait', h.session.id, '--timeout', '0ms')).rejects.toThrow(
+        'CLI command failed: AGENT_IDLE'
+      );
+      const sent = await h.command('send', h.session.id, '-m', 'Start work');
+      expect(sent.message).toMatchObject({ status: 'accepted', result: { delivery: 'STARTED' } });
+      await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledOnce());
+
+      expect(
+        await h.command('wait', h.session.id, '--mode', 'all', '--timeout', '0ms')
+      ).toMatchObject({
+        mode: 'all',
+        waitOutcome: 'snapshot',
+        agents: [{ agentId: h.session.id, status: 'RUNNING' }],
+        pendingAgentIds: [h.session.id]
+      });
+      expect(h.interruptTurn).not.toHaveBeenCalled();
+      h.finish('turn-1');
+    } finally {
+      await h.close();
+    }
+  });
+
+  it.each([{ flags: [] }, { flags: ['--steer'] }])(
+    'uses the existing steer fallback for a busy Codex Session (flags: $flags)',
+    async ({ flags }) => {
+      const h = await fixture();
+      try {
+        await h.command('send', h.session.id, '--queue', '-m', 'Current work');
+        await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledOnce());
+
+        const sent = await h.command('send', h.session.id, ...flags, '-m', 'New guidance');
+        expect(sent.message).toMatchObject({
+          status: 'accepted',
+          result: { delivery: 'ACCEPTED' }
+        });
+        await vi.waitFor(() => expect(h.interruptTurn).toHaveBeenCalledOnce());
+        expect(h.startTurn).toHaveBeenCalledOnce();
+        h.settleCancellation();
+        await vi.waitFor(() => expect(h.startTurn).toHaveBeenCalledTimes(2));
+        expect(h.startTurn.mock.calls[1]?.[1]).toContain('New guidance');
+        h.finish('turn-2');
+      } finally {
+        await h.close();
+      }
+    }
+  );
+
   it('lists active Sessions with a pre-restart terminal credential without inventing a source', async () => {
     const h = await fixture('Ｎｅｔｗｏｒｋ Task');
     try {

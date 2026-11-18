@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-17
+lastUpdated: 2026-11-18
 ---
 
 # Configure and Use MAR Agent
@@ -145,7 +145,7 @@ Unread public child messages and new terminal results are delivered automaticall
 
 Node retains the latest 10 unread updates per parent-child observation relationship across executions. Overflow removes the oldest records, and `omittedUpdates` reports omissions since the last confirmed observation. This count belongs to the relationship, not to a particular execution. Confirmation clears the delivered notice; full public history remains available on demand. The window does not retain unlimited unread content.
 
-Node's native `agent_send` accepts a `delivery` parameter of `STEER` or `QUEUE`. For messages with text, omitting it defaults to `STEER`; Goal-only updates and approval decisions are unaffected, and public message API and CLI defaults remain unchanged. Other Runners use `marctl agents send <id> --steer -m <text>`. Prefer STEER for timely communication; reserve QUEUE for deferred input explicitly requested by the user or recipient. It is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance does not guarantee immediate processing.
+Node's native `agent_send` accepts a `delivery` parameter of `STEER` or `QUEUE`. Messages with text default to `STEER`, including `marctl agents send <id> -m <text>` from other Runners. Goal-only updates and approval decisions do not involve message delivery. Prefer STEER for timely communication; reserve QUEUE for deferred input explicitly requested by the user or recipient. It is consumed after current work and earlier queued inputs finish, and with an active Goal it is not consumed until that Goal exits. Acceptance does not guarantee immediate processing.
 
 An accepted message normally needs no separate receipt acknowledgment, request for one, or immediate Session view just to confirm receipt. Parent and child Agents should preferably advance meaningful, non-overlapping work in parallel; waiting is generally useful once no other local task work remains and a required result is needed to unblock or finish. Necessary results, clarification, blockers, conflicts, and decisions still belong in the collaboration.
 

@@ -72,6 +72,7 @@ test('maps six Agent operations to the common Node command without inventing a s
   assert.equal(calls[0].command.input.parentSessionId, undefined);
   assert.deepEqual(calls[1].command.input.goal, { clear: true });
   assert.equal(calls[1].command.input.content, undefined);
+  assert.equal(Object.hasOwn(calls[1].command.input, 'deliveryIntent'), false);
   assert.deepEqual(calls[2].command.input.agentIds, ['child', 'other']);
   assert.equal(calls[2].command.input.waitMs, 0);
   assert.deepEqual(calls[3].command.input, { agentId: 'child' });
@@ -123,22 +124,32 @@ test('state view rejects history options locally while dedicated history retains
   ]);
 });
 
-test('keeps the CLI wait transport budget above the effective Node wait', async () => {
-  for (const [timeout, expected] of [
-    [undefined, 40000],
-    ['0ms', 10000],
-    ['1ms', 20000],
-    ['10s', 20000],
-    ['5m', 310000]
+test('forwards a positional wait target as an array and preserves the requested duration', async () => {
+  for (const [timeout, waitMs, transportTimeout] of [
+    [undefined, undefined, 40000],
+    ['0ms', 0, 10000],
+    ['1ms', 1, 20000],
+    ['10s', 10000, 20000],
+    ['5m', 300000, 310000]
   ]) {
+    let request;
     let options;
     const exit = await main(
-      ['agents', 'wait', 'child', ...(timeout ? ['--timeout', timeout] : []), '--json'],
+      [
+        'agents',
+        'wait',
+        'child',
+        '--mode',
+        'all',
+        ...(timeout ? ['--timeout', timeout] : []),
+        '--json'
+      ],
       {
         env,
         stdout: { write() {} },
         client: {
-          sessionCommand: async (_body, supplied) => {
+          sessionCommand: async (body, supplied) => {
+            request = body;
             options = supplied;
             return { waitOutcome: 'snapshot' };
           }
@@ -146,8 +157,32 @@ test('keeps the CLI wait transport budget above the effective Node wait', async 
       }
     );
     assert.equal(exit, 0);
-    assert.equal(options.timeoutMs, expected);
+    assert.deepEqual(request.command, {
+      operation: 'wait',
+      input: { agentIds: ['child'], mode: 'all', ...(waitMs === undefined ? {} : { waitMs }) }
+    });
+    assert.equal(options.timeoutMs, transportTimeout);
   }
+});
+
+test('leaves an untargeted wait to Node direct-child selection', async () => {
+  const calls = [];
+  assert.equal(
+    await main(['agents', 'wait', '--timeout', '0ms', '--json'], {
+      env,
+      stdout: { write() {} },
+      client: {
+        sessionCommand: async (body) => {
+          calls.push(body);
+          return { agents: [], waitOutcome: 'snapshot' };
+        }
+      }
+    }),
+    0
+  );
+  assert.deepEqual(calls, [
+    { action: 'network', command: { operation: 'wait', input: { waitMs: 0 } } }
+  ]);
 });
 
 test('send maps an approval ID and decision without a Run ID', async () => {
@@ -170,6 +205,7 @@ test('send maps an approval ID and decision without a Run ID', async () => {
     decision: 'approve'
   });
   assert.equal(calls[0].command.input.runId, undefined);
+  assert.equal(Object.hasOwn(calls[0].command.input, 'deliveryIntent'), false);
   assert.throws(() => parseArgs(['agents', 'send', 'child', '--approval', 'approval-1']));
   assert.throws(() => parseArgs(['agents', 'send', 'child', '--decision', 'approve']));
   assert.throws(() =>
@@ -476,9 +512,9 @@ test('prompt set reports invalid UTF-8 input and rejects missing context before 
   }
 });
 
-test('send defaults to append and supports explicit steer or queued delivery', async () => {
+test('send uses the same Node intent for default and explicit steer, and queues only explicitly', async () => {
   for (const [flags, intent] of [
-    [[], 'SEND'],
+    [[], 'REPLACE_CURRENT'],
     [['--steer'], 'REPLACE_CURRENT'],
     [['--queue'], 'QUEUE']
   ]) {
@@ -532,6 +568,7 @@ test('send defaults to append and supports explicit steer or queued delivery', a
     ['send', 'target', '-m', 'task', '--queue', '--queue'],
     ['send', 'target', '-m', 'task', '--queue', 'true'],
     ['send', 'target', '-m', 'task', '--delivery', 'queue'],
+    ['send', 'target', '-m', 'task', '--replace'],
     ['send', 'target', '-m', 'task', '--forced'],
     ['send', 'target', '-m', 'task', '--queue', '--forced'],
     ['start', '--runner', 'codex', '-m', 'task', '--queue'],

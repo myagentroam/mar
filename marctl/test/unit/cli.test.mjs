@@ -185,7 +185,8 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'en_US.UTF-8',
       [
-        'Prefer --steer for timely communication or course correction',
+        'Send defaults to --steer for timely communication or course correction',
+        'Node may interrupt the current execution',
         'Reserve --queue for explicitly requested deferred input',
         'current work and earlier queued inputs finish',
         'not consumed until that Goal exits',
@@ -198,7 +199,8 @@ test('sessions help explains JSON fields and delivery tradeoffs offline in both 
     [
       'zh_CN.UTF-8',
       [
-        '即时沟通或纠偏优先使用 --steer',
+        'send 默认使用 --steer，用于即时沟通或纠偏',
+        'Node 可能中断当前执行',
         '建议仅将 --queue 用于明确要求延后的输入',
         '当前工作及前面的队列项结束后才消费',
         '必须等到该 Goal 退出才消费',

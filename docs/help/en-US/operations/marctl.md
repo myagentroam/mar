@@ -1,6 +1,6 @@
 ---
 title: Manage Nodes with marctl
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-18
 ---
 
 # Manage Nodes with marctl
@@ -100,7 +100,7 @@ marctl agents graph <session-id> --limit 100 --json
 marctl agents start --runner codex --title 'fixer#42 Handle empty totals' --message-file task.txt --json
 marctl agents show <session-id> --json
 marctl agents history <session-id> --limit 10 --json
-marctl agents send <session-id> --steer -m 'Additional context: focus on the resume path.' --json
+marctl agents send <session-id> -m 'Additional context: focus on the resume path.' --json
 marctl agents send <session-id> --queue -m 'After the current task, review the final diff.' --json
 marctl agents send <session-id> --approval <approval-id> --decision approve --json
 marctl agents wait <session-id> --run <run-id> --timeout 30s --json
@@ -125,7 +125,7 @@ When an Agent runs `start`, Node validates the creation source using its trusted
 
 Create workers as tasks need them, using `fixer#<task-id> <description>` or `reviewer#<task-or-change-id> <description>`. There is no fixed worker count, role registry, or worker pool. Put role, scope, and acceptance criteria in the first ordinary message, or use `prompt` for persistent instructions. Each Runner loads guidance through the entry described above; a target Session does not need to load the guide to receive collaboration messages.
 
-`send` uses ordinary delivery by default; you can choose either `--steer` or `--queue`. Conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. `--steer` prioritizes new context; managed waits may return early without stopping background tasks, while other cases may switch the current execution. Node decides delivery from actual state. Prefer `--steer` for timely coordination; reserve `--queue` for deferred input explicitly requested by the user or recipient. Queued messages are consumed after current work and earlier queued inputs finish, and an active Goal must exit first. Later explicit stops still apply. Start/send generate a `clientMessageId`, or accept `--client-message-id`. Message receipts report acceptance and delivery under `message.status` and `message.result`; acceptance does not guarantee immediate processing. An accepted message normally needs no separate receipt acknowledgment, request for one, or immediate history check just to confirm receipt. If delivery is unknown, inspect history before retrying; queued messages can be correlated using `queueItemId`/`clientMessageId`.
+When text is supplied, `send` defaults to `--steer`, like `agent_send`. Steering can end a managed wait early without stopping its background task. If Node cannot deliver the message in the current execution, it may interrupt that execution to deliver the new input. Use `--queue` for explicitly deferred input: queued messages are consumed after current work and earlier queued inputs finish, and an active Goal must exit first. Later explicit stops still apply. Goal-only updates and approval decisions do not involve message delivery. Conflicting, repeated, or obsolete options are rejected locally before input is read or a request is sent. Start/send generate a `clientMessageId`, or accept `--client-message-id`. Message receipts report acceptance and delivery under `message.status` and `message.result`; acceptance does not guarantee immediate processing. An accepted message normally needs no separate receipt acknowledgment, request for one, or immediate history check just to confirm receipt. If delivery is unknown, inspect history before retrying; queued messages can be correlated using `queueItemId`/`clientMessageId`.
 
 `send --approval <approval-id> --decision approve|reject` can decide an approval alone or alongside a message or Goal. Node still checks validity and target ownership. Deciding an approval alone does not require a model request.
 
@@ -133,7 +133,7 @@ While child Agents run, prefer advancing meaningful, non-overlapping work rather
 
 The first message from `start` and messages from `send` inside an Agent Session are labeled `From {name}` in history and the queue, using the name captured at send time. The tooltip identifies the source as a Session and shows its ID. Web-share visitor messages use the same `From {name}` title, with a tooltip identifying a Web share; ordinary user messages and original author messages on shared pages keep their existing titles. Direct terminal user input does not impersonate a Session source. The internal origin marker is not shown in the message text.
 
-Without `--run`, `wait` defaults to direct-child completion and 30 seconds; `--timeout 0ms` reads a snapshot, and positive timeouts use the requested duration. `stop <session-id>` stops the target's current execution and clears its Goal without an execution ID; an idle target is reported as idle and its Goal is cleared. `wait --run` uses the existing Watch for that Run or an approval and releases observation on exit; a timeout error may include the last bounded `progress`, omitted if none was observed. Neither kind of wait stops the task on timeout or cancellation. A successful Run still requires checking artifacts and tests; a child terminal state does not wake the parent's sleep, so wait or read actively.
+Without `--run`, `wait` follows `agent_wait`: it selects direct children when no target is given and defaults to waiting for completion for 30 seconds. Explicit targets, including a single one, are returned in an `agents` array. `--timeout 0ms` reads a snapshot, and positive timeouts use the requested duration. `stop <session-id>` stops the target's current execution and clears its Goal without an execution ID; an idle target is reported as idle and its Goal is cleared. `wait --run` uses the existing Watch for that Run or an approval and releases observation on exit; a timeout error may include the last bounded `progress`, omitted if none was observed. Neither kind of wait stops the task on timeout or cancellation. A successful Run still requires checking artifacts and tests; a child terminal state does not wake the parent's sleep, so wait or read actively.
 
 `view` returns state, Goal, and bounded recent activity without Run or Execution IDs.
 
