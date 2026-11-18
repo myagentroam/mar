@@ -237,35 +237,72 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect.poll(() => sidebarGeometry(tree)).toEqual(geometry);
     expect(await logo.boundingBox()).toEqual(logoBounds);
 
-    await page.route('**/api/**', (route) =>
-      route.fulfill({ json: { items: [], nextCursor: null } })
-    );
-    await page.route(
-      (url) => url.pathname === '/api/hosted-conversations',
-      (route) =>
-        route.fulfill({
+    const timestamp = Date.UTC(2026, 10, 18, 9);
+    const template = {
+      id: 'template-1',
+      nodeId: 'node-1',
+      name: 'Assistant',
+      description: '',
+      status: 'ACTIVE',
+      currentVersionId: 'version-1',
+      available: true,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    const chats = ['Current chat', 'Another chat'].map((title, index) => ({
+      id: `chat-${index}`,
+      nodeId: template.nodeId,
+      sessionId: `session-${index}`,
+      templateId: template.id,
+      templateName: template.name,
+      activeVersionId: template.currentVersionId,
+      title,
+      titleSource: 'AUTO',
+      pinnedAt: index === 0 ? timestamp : null,
+      status: 'ACTIVE',
+      modelId: 'model-1',
+      createdAt: timestamp,
+      updatedAt: timestamp - index,
+      lastActivityAt: timestamp - index
+    }));
+    await page.route('**/api/**', (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/hosted-conversations')
+        return route.fulfill({ json: { items: chats, nextCursor: null } });
+      if (path === '/api/conversation-templates')
+        return route.fulfill({ json: { templates: [template] } });
+      if (path.endsWith('/model-options'))
+        return route.fulfill({ json: { models: [], defaultModelId: null } });
+      if (path === '/api/hosted-template-fixture/current')
+        return route.fulfill({
           json: {
-            items: ['Current chat', 'Another chat'].map((title, index) => ({
-              id: `chat-${index}`,
-              nodeId: 'node-1',
-              sessionId: `session-${index}`,
-              templateId: 'template-1',
-              templateName: 'Assistant',
-              activeVersionId: 'version-1',
-              title,
-              titleSource: 'AUTO',
-              pinnedAt: index === 0 ? 10 : null,
-              status: 'ACTIVE',
-              modelId: 'model-1',
-              createdAt: 1,
-              updatedAt: 10 - index,
-              lastActivityAt: 10 - index
-            })),
-            nextCursor: null
+            nodeAppVersion: '0.13.47',
+            conversation: {
+              ...chats[0],
+              activity: { status: 'IDLE', version: 0, updatedAt: timestamp }
+            },
+            template,
+            turns: [],
+            historyNextCursor: null,
+            files: [],
+            models: [],
+            run: null,
+            error: null,
+            snapshotSequence: 1
           }
-        })
-    );
-    await page.goto(`${fixture.url}hosted-entry.html?workspace-page&theme=${theme}`);
+        });
+      if (path.endsWith('/watch') && route.request().method() === 'POST')
+        return route.fulfill({
+          json: {
+            accepted: true,
+            watchId: route.request().postDataJSON().watchId,
+            nodeGeneration: 'fixture-generation',
+            expiresAt: Date.now() + 30_000
+          }
+        });
+      return route.fulfill({ json: {} });
+    });
+    await page.goto(`${fixture.url}hosted-entry.html?existing&workspace-page&theme=${theme}`);
     const history = page.locator('.hosted-conversation-history');
     await expect(history).toBeVisible();
     expect(await sidebarGeometry(history)).toEqual(geometry);
@@ -282,7 +319,44 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(pin).toHaveCSS('color', hintColor);
     await expect(current).toHaveCSS('font-size', '12px');
     await expect(other).toHaveCSS('font-size', '12px');
+    const create = history.getByRole('button', { name: 'New chat', exact: true });
+    const expectCreateAlignedToSearch = async () => {
+      const search = (await history.locator('.history-search-row').boundingBox())!;
+      const button = (await create.boundingBox())!;
+      expect(button.x).toBeCloseTo(search.x, 0);
+      expect(button.width).toBeCloseTo(search.width, 0);
+      expect(button.y).toBeGreaterThanOrEqual(search.y + search.height);
+    };
+    await expect(create).toHaveCSS('border-top-width', '0px');
+    await expect(create).toHaveCSS('height', '32px');
+    await expectCreateAlignedToSearch();
+    const fill = await create.evaluate((button) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-fill-row-hover)';
+      button.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    await expect(create).toHaveCSS('background-color', fill);
+    const upload = page.locator('.files-drop-target');
+    await expect(upload).toBeVisible();
+    await expect(upload).toBeEnabled();
+    const uploadTextColor = await upload
+      .locator('span')
+      .evaluate((span) => getComputedStyle(span).color);
+    await expect(upload.locator('svg[data-mar-icon="upload"]')).toHaveCSS('color', uploadTextColor);
+    await page.screenshot({ path: testInfo.outputPath(`hosted-create-and-upload-${theme}.png`) });
     await history.screenshot({ path: testInfo.outputPath(`hosted-history-${theme}.png`) });
+
+    const searchInput = history.getByRole('textbox', { name: 'Search chat titles' });
+    const refresh = history.locator('.history-refresh-button');
+    await expect(refresh).toBeEnabled();
+    await searchInput.focus();
+    await page.keyboard.press('Tab');
+    await expect(refresh).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(create).toBeFocused();
 
     await page.goto(
       `${fixture.url}hosted-entry.html?workspace-page&sidebar-collapsed&theme=${theme}`
@@ -300,6 +374,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(pin).toBeVisible();
     await expect(current).toHaveCSS('font-size', '12px');
     await expect(other).toHaveCSS('font-size', '12px');
+    await expect(create).toHaveCSS('background-color', fill);
+    await expectCreateAlignedToSearch();
     await page.screenshot({ path: testInfo.outputPath(`hosted-history-mobile-${theme}.png`) });
   });
 

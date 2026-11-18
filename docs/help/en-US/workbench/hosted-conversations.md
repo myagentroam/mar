@@ -1,6 +1,6 @@
 ---
 title: Start a Conversation from a Template
-lastUpdated: 2026-11-05
+lastUpdated: 2026-11-18
 ---
 
 # Start a Conversation from a Template
@@ -10,7 +10,7 @@ lastUpdated: 2026-11-05
 ## Create a conversation
 
 1. Open **Chat** from the main menu to enter Conversation mode. The entry is always visible and does not require you to select or receive access to any Node or Workspace.
-2. If an existing conversation is open, select **+ New chat** above the history search field to show the temporary Composer start area in the center. The page does not open a dialog.
+2. If an existing conversation is open, select **New chat** below the history search field to show the temporary Composer start area in the center. The page does not open a dialog.
 3. Select a published template granted to your current organization or one of its ancestors from the Composer toolbar. A template grant is sufficient to create and continue your own hosted conversations; it does not also grant access to the hosting Node, source Workspace, files, or terminal. A grant to the root organization makes the template available to everyone in the enterprise. This browser remembers the most recently selected template and selects it by default while it remains in the current catalog.
 4. If no remembered selection can be restored and only one template is available, the page may preselect that template but never creates a conversation automatically. Review the template name, then explicitly send a message or attachment. The page creates the conversation, uploads any draft attachments, and sends the first message in that order.
 5. If the creation response is interrupted, retry directly. Unless you switch templates or reload the catalog, the retry remains part of the same creation intent and does not create a duplicate.
@@ -113,7 +113,7 @@ When you select **Delete**, the confirmation states that the action cannot be un
 - At 95% filesystem usage, the Node blocks only new conversation creation. Existing conversations remain available for opening, runs, uploads, exports, and deletion.
 - A template disappears from your new-conversation catalog after it becomes unpublished, disabled, archived, deleted, or no longer granted to you.
 - A template grant does not add the hosting Node or source Workspace to **Work**. Ordinary Workspace, file, terminal, or Node operations still require a separate resource grant.
-- The page stores only the most recently selected template ID in this browser and safely ignores it when that template is no longer available. It never creates a conversation silently when opened, refreshed, or reduced to one template. **+ New chat** only opens the temporary center panel.
+- The page stores only the most recently selected template ID in this browser and safely ignores it when that template is no longer available. It never creates a conversation silently when opened, refreshed, or reduced to one template. **New chat** only opens the temporary center panel.
 
 **Success:** the page shows the new conversation title and first message, and **Related files** is available.
 

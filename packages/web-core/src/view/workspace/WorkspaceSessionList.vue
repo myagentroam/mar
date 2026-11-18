@@ -418,9 +418,8 @@ function submitSessionSearch(): void {
     </form>
     <div class="new-session-form">
       <el-button
-        class="new-session-button"
+        class="new-session-button mar-soft-button"
         :disabled="!nodeReady"
-        type="primary"
         @click="emit('create')"
       >
         <MarIcon name="session-add" /><span>{{
@@ -946,9 +945,13 @@ function submitSessionSearch(): void {
 .new-session-form {
   display: flex;
   align-items: center;
-  justify-content: stretch;
   gap: 0.35rem;
   margin-bottom: 0.25rem;
+}
+
+.new-session-button {
+  flex: 1;
+  min-width: 0;
 }
 
 .session-search {
@@ -987,15 +990,6 @@ function submitSessionSearch(): void {
 .new-session-form .workspace-more-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.new-session-form .new-session-button {
-  width: auto;
-  min-width: 0;
-  flex: 1;
-  border-radius: 6px;
-  justify-content: flex-start;
-  padding-inline: 0.65rem;
 }
 
 :global(.workspace-tool-menu .el-dropdown-menu__item) {

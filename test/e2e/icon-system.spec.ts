@@ -291,6 +291,13 @@ for (const theme of ['dark', 'light']) {
       await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
+      const metadataBorder = theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)';
+      for (const label of ['Root', 'Current']) {
+        await expect(page.locator('.repository-tags-row').getByText(label, { exact: true })).toHaveCSS(
+          'border-top-color',
+          metadataBorder
+        );
+      }
       await expect(refreshGlyph).toHaveCSS('width', '14px');
       await expect(refreshGlyph).toHaveCSS('height', '14px');
       const refreshBounds = (await refresh.boundingBox())!;
@@ -1814,8 +1821,45 @@ for (const theme of ['dark', 'light'])
         );
       });
       expect(buttonGap).toBeGreaterThanOrEqual(5);
+      await expect(create).toHaveCSS('border-top-width', '0px');
+      await expect(create).toHaveCSS('height', '32px');
+      const layout = await create.evaluate((button) => {
+        const row = button.parentElement!;
+        const more = row.querySelector('.workspace-more-button')!.getBoundingClientRect();
+        const rowBounds = row.getBoundingClientRect();
+        const createBounds = button.getBoundingClientRect();
+        return {
+          left: createBounds.left - rowBounds.left,
+          right: rowBounds.right - more.right,
+          gap: more.left - createBounds.right,
+          expectedGap: parseFloat(getComputedStyle(row).columnGap)
+        };
+      });
+      expect(layout.left).toBeCloseTo(0, 0);
+      expect(layout.right).toBeCloseTo(0, 0);
+      expect(layout.gap).toBeCloseTo(layout.expectedGap, 0);
+      expect(layout.gap).toBeGreaterThan(0);
+      const fill = await create.evaluate((button) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--mar-fill-row-hover)';
+        button.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(create).toHaveCSS('background-color', fill);
+      await page
+        .locator('.conversation-sidebar')
+        .first()
+        .screenshot({
+          path: testInfo.outputPath(`session-create-${theme}-${mobile ? 'mobile' : 'desktop'}.png`),
+          animations: 'disabled'
+        });
       await create.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
       await expect(create).toBeFocused();
+      await expect(create).toHaveCSS('outline-style', 'solid');
       await create.press('Enter');
       await expect(page.getByTestId('created')).toHaveText('1');
       const search = page.locator('.session-search input');

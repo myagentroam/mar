@@ -1011,10 +1011,6 @@ onBeforeUnmount(() => {
         </div>
       </header>
       <div class="history-controls">
-        <el-button class="history-create-button" type="primary" @click="beginNewConversation">
-          <MarIcon name="session-add" />
-          <span>{{ translate('hostedConversations.create') }}</span>
-        </el-button>
         <div class="history-search-row">
           <el-input
             v-model="filter"
@@ -1038,6 +1034,10 @@ onBeforeUnmount(() => {
             :loading-icon="marIcon('loading-action')"
           />
         </div>
+        <el-button class="history-create-button mar-soft-button" @click="beginNewConversation">
+          <MarIcon name="session-add" />
+          <span>{{ translate('hostedConversations.create') }}</span>
+        </el-button>
       </div>
       <div
         ref="historyList"
@@ -1608,7 +1608,6 @@ onBeforeUnmount(() => {
 
 .history-create-button {
   width: 100%;
-  justify-content: flex-start;
 }
 
 .history-search-row {
@@ -1897,7 +1896,6 @@ onBeforeUnmount(() => {
 
 .files-drop-target > .mar-icon {
   flex: none;
-  color: var(--mar-color-brand);
   font-size: 18px;
 }
 
