@@ -447,6 +447,25 @@ for (const theme of ['dark', 'light']) {
         await expect(page.locator('.node-expand-button svg')).toHaveCSS('width', '12px');
         await expect(page.locator('.tree-node [data-mar-icon="node"]')).toHaveCSS('width', '16px');
       }
+      if (name === 'workspace tabs') {
+        const pin = page.locator('.tab-pin').first();
+        const glyph = pin.locator('svg[data-mar-icon="pin"]');
+        await expect(glyph).toBeVisible();
+        const needle = await glyph
+          .locator('path')
+          .last()
+          .evaluate((path: SVGPathElement) => {
+            const end = path.getTotalLength();
+            const matrix = path.getCTM()!;
+            const base = path.getPointAtLength(end - 1).matrixTransform(matrix);
+            const tip = path.getPointAtLength(end).matrixTransform(matrix);
+            return { dx: tip.x - base.x, dy: tip.y - base.y };
+          });
+        expect(needle.dx).toBeLessThan(0);
+        expect(needle.dy).toBeGreaterThan(0);
+        expect(-needle.dx).toBeCloseTo(needle.dy, 2);
+        await pin.screenshot({ path: testInfo.outputPath(`workspace-pin-${theme}.png`) });
+      }
       if (name === 'file tabs') {
         await expect(page.locator('.workspace-file-window-close svg')).toHaveCSS('width', '18px');
         await expect(controls.first()).toHaveCSS('width', '36px');

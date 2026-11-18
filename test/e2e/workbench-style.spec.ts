@@ -9,6 +9,62 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const { theme, width } of [
+  { theme: 'daylight', width: 1280 },
+  { theme: 'vscode-dark-2026', width: 1280 },
+  { theme: 'vscode-dark-2026', width: 390 }
+]) {
+  test(`Session list shows enabled schedule before pin in ${theme} at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}workbench-style.html?session-markers&theme=${theme}&locale=en-US`
+    );
+    const list = page.getByRole('region', { name: 'Session fixture' }).locator('.session-list');
+    await expect(list.locator('strong')).toHaveText([
+      'Scheduled',
+      'Pinned',
+      'Paused, still pinned',
+      'Paused, not pinned',
+      'Normal'
+    ]);
+    const secondaryColor = await list.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-text-secondary)';
+      element.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    const row = (title: string) =>
+      list.locator('.session-link').filter({ has: page.getByText(title, { exact: true }) });
+    for (const [title, icon, name] of [
+      ['Scheduled', 'clock', 'Scheduled task enabled'],
+      ['Pinned', 'pin', 'Pinned'],
+      ['Paused, still pinned', 'pin', 'Pinned']
+    ] as const) {
+      await expect(row(title).locator('svg[data-mar-icon]')).toHaveCount(1);
+      const marker = row(title).getByRole('img', { name, exact: true });
+      await expect(marker).toHaveAttribute('data-mar-icon', icon);
+      await expect(marker).toHaveCSS('color', secondaryColor);
+    }
+    for (const title of ['Paused, not pinned', 'Normal']) {
+      await expect(
+        list.getByRole('button', { name: title, exact: true }).locator('svg[data-mar-icon]')
+      ).toHaveCount(0);
+    }
+    const selected = row('Paused, still pinned');
+    await selected.click();
+    await page.mouse.move(0, 0);
+    await expect(selected.getByRole('img', { name: 'Pinned', exact: true })).toHaveCSS(
+      'color',
+      secondaryColor
+    );
+    await list.screenshot({ path: testInfo.outputPath('session-list-markers.png') });
+  });
+}
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [1280, 390]) {
     test(`Workbench filters use standard controls in ${theme} at ${width}px`, async ({

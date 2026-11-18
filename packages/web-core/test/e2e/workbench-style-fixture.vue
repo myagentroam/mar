@@ -25,6 +25,7 @@ import ConversationComposer from '../../src/view/composer/ConversationComposer.v
 import WorkspaceTree from '../../src/view/workspace/WorkspaceTree.vue';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
+import { runnerBrandIcon } from '../../src/util/runner-brand-icon.js';
 import WorkspaceRegistrationPicker from '../../src/view/workspace/WorkspaceRegistrationPicker.vue';
 import WorkbenchAside from '../../src/view/workbench/WorkbenchAside.vue';
 import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vue';
@@ -115,6 +116,7 @@ const fileRootFixture = new URL(location.href).searchParams.has('file-root');
 const lateTreeFixture = new URL(location.href).searchParams.has('late-tree');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
+const sessionMarkersFixture = new URL(location.href).searchParams.has('session-markers');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
@@ -257,6 +259,13 @@ const action = ref('');
 // Keep transport pending while the real dock and xterm render their presentation.
 const terminalDirect = { attach: () => new Promise<never>(() => undefined) };
 const selectedSession = ref('active');
+const markerSessions: Session[] = [
+  { id: 'Scheduled', pinOrder: 0, schedule: { enabled: true, nextRunAt: null } },
+  { id: 'Pinned', pinOrder: 1 },
+  { id: 'Paused, still pinned', pinOrder: 2, schedule: { enabled: false, nextRunAt: null } },
+  { id: 'Paused, not pinned', pinOrder: null, schedule: { enabled: false, nextRunAt: null } },
+  { id: 'Normal', pinOrder: null }
+].map((session) => ({ ...session, runner: 'mar-agent', workspaceId: 'workspace' }));
 const sessions = ref(
   (reorderFixture
     ? ['pinned-one', 'pinned-two', 'pinned-three', 'active', 'idle']
@@ -320,7 +329,7 @@ const sessionProps = {
   workspaceKindLabel: 'Directory',
   workspaceBranch: undefined,
   title: (session: Session) => session.id,
-  runnerIcon: () => '',
+  runnerIcon: sessionMarkersFixture ? runnerBrandIcon : () => '',
   activity: (session: Session) => (session.id === 'active' ? 'RUNNING' : 'IDLE'),
   activityLabel: () => 'Working',
   activityDateTime: () => undefined,
@@ -636,7 +645,10 @@ if (composerFixture) {
         @open-workspace="(_node, workspace) => (selectedWorkspace = workspace)"
       />
     </section>
-    <section aria-label="Session fixture">
+    <section
+      aria-label="Session fixture"
+      :class="{ 'session-markers-fixture': sessionMarkersFixture && !mobile }"
+    >
       <button v-if="reorderFixture" type="button" @click="advanceSessionActivity">
         Advance session activity
       </button>
@@ -650,7 +662,7 @@ if (composerFixture) {
       </select>
       <WorkspaceSessionList
         v-bind="sessionProps"
-        :sessions="listState === 'ready' ? sessions : []"
+        :sessions="listState === 'ready' ? (sessionMarkersFixture ? markerSessions : sessions) : []"
         :watch-status="listState === 'loading' || listState === 'failed' ? listState : 'ready'"
         :session-group="
           listState === 'child'
@@ -806,6 +818,9 @@ main {
 }
 main > section {
   min-width: 0;
+}
+.session-markers-fixture {
+  max-inline-size: 260px;
 }
 .surface-fixture {
   height: 260px;

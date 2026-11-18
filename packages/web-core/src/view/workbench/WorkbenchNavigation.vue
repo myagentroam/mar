@@ -399,6 +399,7 @@ function openBlankMenu(event: MouseEvent): void {
 
 <style scoped>
 .activity-rail {
+  --mar-activity-rail-icon-size: 1.25rem;
   position: fixed;
   z-index: 4;
   inset: var(--mar-sidebar-header-height) auto 0 0;
@@ -516,7 +517,7 @@ function openBlankMenu(event: MouseEvent): void {
 }
 
 .activity-rail nav button .mar-icon {
-  font-size: 1.25rem;
+  font-size: var(--mar-activity-rail-icon-size);
 }
 
 .rail-label {

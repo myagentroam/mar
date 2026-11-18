@@ -47,6 +47,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(bounds.x - rail.x).toBeCloseTo(rail.x + rail.width - bounds.x - bounds.width, 1);
       expect(bounds.x).toBeGreaterThan(rail.x);
     }
+    const diagnosticsIcon = page.locator('.web-performance-indicator svg[data-mar-icon="info"]');
+    const settingsIcon = buttons.locator('svg[data-mar-icon="settings"]');
+    await expect(settingsIcon).toBeVisible();
+    await expect(diagnosticsIcon).toBeVisible();
+    const settingsBounds = (await settingsIcon.boundingBox())!;
+    const diagnosticsBounds = (await diagnosticsIcon.boundingBox())!;
+    expect(diagnosticsBounds.width).toBeCloseTo(settingsBounds.width, 1);
+    expect(diagnosticsBounds.height).toBeCloseTo(settingsBounds.height, 1);
     await page.screenshot({
       path: testInfo.outputPath(`resource-sidebar-${theme}.png`),
       clip: { x: 0, y: 0, width: Math.ceil(geometry.left + geometry.width), height: 900 }
@@ -81,7 +89,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               activeVersionId: 'version-1',
               title,
               titleSource: 'AUTO',
-              pinnedAt: null,
+              pinnedAt: index === 0 ? 10 : null,
               status: 'ACTIVE',
               modelId: 'model-1',
               createdAt: 1,
@@ -101,6 +109,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const current = history.getByText('Current chat', { exact: true });
     const other = history.getByText('Another chat', { exact: true });
     await expect(history.locator('[aria-current="page"]')).toContainText('Current chat');
+    const pin = history.getByRole('img', { name: 'Pinned', exact: true });
+    await expect(pin).toHaveAttribute('data-mar-icon', 'pin');
+    const hintColor = await history
+      .locator('[aria-current="page"] time')
+      .evaluate((element) => getComputedStyle(element).color);
+    await expect(pin).toHaveCSS('color', hintColor);
     await expect(current).toHaveCSS('font-size', '12px');
     await expect(other).toHaveCSS('font-size', '12px');
     await history.screenshot({ path: testInfo.outputPath(`hosted-history-${theme}.png`) });
@@ -118,6 +132,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     expect(mobile.width).toBeLessThan(390);
     expect(mobile.radius).toBe('0px');
     await expect(history.locator('[aria-current="page"]')).toContainText('Current chat');
+    await expect(pin).toBeVisible();
     await expect(current).toHaveCSS('font-size', '12px');
     await expect(other).toHaveCSS('font-size', '12px');
     await page.screenshot({ path: testInfo.outputPath(`hosted-history-mobile-${theme}.png`) });

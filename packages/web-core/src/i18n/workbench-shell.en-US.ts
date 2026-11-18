@@ -137,6 +137,7 @@ export const workbenchShellEnUS = {
       status: 'Status',
       notConfigured: 'Not configured',
       enabled: 'Enabled',
+      enabledIndicator: 'Scheduled task enabled',
       paused: 'Paused',
       notifyUser: 'Notify user',
       userUnavailable: 'User unavailable',
