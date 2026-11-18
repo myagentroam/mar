@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { MIN_NODE_BUSINESS_VERSION } from '../../packages/server-core/src/node-version.js';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
-for (const gate of ['node-version', 'session-capability'] as const) {
-  test('Session Prompt menu respects ' + gate, async ({ page }) => {
+for (const supported of [false, true]) {
+  test(`Session Prompt menus respect session capability (${supported})`, async ({ page }) => {
     await mockConsoleApi(
       page,
       'MANAGED',
@@ -12,29 +13,26 @@ for (const gate of ['node-version', 'session-capability'] as const) {
       true,
       undefined,
       undefined,
-      gate === 'node-version' ? '0.10.32' : '0.10.33'
+      MIN_NODE_BUSINESS_VERSION
     );
+    const session = {
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      runner: 'codex',
+      externalSessionId: 'session-1',
+      nativeControl: 'EXTERNAL',
+      runnerTitle: 'Gated session',
+      activity: 'IDLE',
+      runtime: {
+        level: 'MANAGED',
+        capabilities: ['history.read', 'turn.start', ...(supported ? ['session.prompt'] : [])]
+      }
+    };
     await page.route('**/api/agent-sessions?nodeId=node-1*', (route) =>
-      json(route, {
-        sessions: [
-          {
-            id: 'session-1',
-            workspaceId: 'workspace-1',
-            runner: 'codex',
-            externalSessionId: 'session-1',
-            runnerTitle: 'Gated session',
-            activity: 'IDLE',
-            runtime: {
-              level: 'MANAGED',
-              capabilities: [
-                'history.read',
-                'turn.start',
-                ...(gate === 'node-version' ? ['session.prompt'] : [])
-              ]
-            }
-          }
-        ]
-      })
+      json(route, { sessions: [session], nextCursor: null })
+    );
+    await page.route('**/api/agent-sessions/session-1?nodeId=node-1', (route) =>
+      json(route, { session })
     );
     await page.goto('/console');
     await page.getByRole('button', { name: '进入控制台' }).click();
@@ -46,10 +44,24 @@ for (const gate of ['node-version', 'session-capability'] as const) {
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
     const row = page.locator('.session-row').filter({ hasText: 'Gated session' });
     await row.hover();
-    await row.getByRole('button', { name: /更多会话操作/ }).click();
-    const menu = page.locator('.el-dropdown__popper:visible');
-    await expect(menu.getByRole('menuitem', { name: '重命名', exact: true })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: '会话提示词', exact: true })).toHaveCount(0);
+    const more = row.getByRole('button', { name: /更多会话操作/ });
+    await more.click();
+    const listMenu = page.locator('.session-action-menu');
+    const expectPromptAvailability = async (menu: typeof listMenu) => {
+      await expect(menu.getByRole('menuitem', { name: '重命名', exact: true })).toBeVisible();
+      const prompt = menu.getByRole('menuitem', { name: '会话提示词', exact: true });
+      if (supported) await expect(prompt).toBeVisible();
+      else await expect(prompt).toHaveCount(0);
+    };
+    await expectPromptAvailability(listMenu);
+    await more.click();
+    await expect(listMenu).not.toBeVisible();
+    await row.locator('.session-link').click();
+    await page
+      .locator('.conversation-header')
+      .getByRole('button', { name: 'Gated session' })
+      .click();
+    await expectPromptAvailability(page.locator('.conversation-title-menu'));
   });
 }
 
@@ -72,7 +84,7 @@ for (const [locale, theme] of [
       true,
       undefined,
       undefined,
-      '0.10.33'
+      MIN_NODE_BUSINESS_VERSION
     );
     await page.addInitScript((language) => localStorage.setItem('mar.locale.v2', language), locale);
     const english = locale === 'en-US';
