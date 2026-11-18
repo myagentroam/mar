@@ -87,7 +87,6 @@ interface WorkbenchPresentationStateOptions {
   readonly nextCursors: Ref<Map<string, string | null>>;
   readonly pageSize: number;
   readonly tabId: (nodeId: string, workspaceId: string) => string;
-  readonly workspaceLabel: (workspace: Workspace) => string;
   readonly shouldDisplayItem: (
     item: ConversationTurn['items'][number],
     runId: ConversationTurn['runId']
@@ -99,7 +98,7 @@ interface WorkbenchPresentationStateOptions {
 
 type SessionPresentationOptions = Omit<
   WorkbenchPresentationStateOptions,
-  'workspaces' | 'visibleLimits' | 'nextCursors' | 'pageSize' | 'tabId' | 'workspaceLabel'
+  'workspaces' | 'visibleLimits' | 'nextCursors' | 'pageSize' | 'tabId'
 >;
 
 /** Presentation belonging to one target-bound session surface. */
@@ -352,19 +351,12 @@ export function createWorkbenchPresentationStateService(
     | 'nextCursors'
     | 'pageSize'
     | 'tabId'
-    | 'workspaceLabel'
   > & {
     readonly pane: ReturnType<typeof createWorkspaceSessionPresentationStateService>;
     readonly context: ReturnType<typeof createWorkbenchWorkspaceContext>;
   }
 ) {
   const sessionActivityClockNow = createSessionActivityClock();
-  const { selectedWorkspace } = options.context;
-  const documentTitle = computed(() =>
-    selectedWorkspace.value === undefined
-      ? translate('common.productName')
-      : `${translate('common.productName')} - ${options.workspaceLabel(selectedWorkspace.value)}`
-  );
   const workspaceSessions = computed(() =>
     restorableWorkspaceSessions(options.sessions.value, options.workspaceTarget.value?.workspaceId)
   );
@@ -393,8 +385,6 @@ export function createWorkbenchPresentationStateService(
     ...options.pane,
     ...options.context,
     sessionActivityClockNow,
-    selectedWorkspace,
-    documentTitle,
     workspaceSessions,
     visibleWorkspaceSessions,
     canLoadMoreWorkspaceSessions,

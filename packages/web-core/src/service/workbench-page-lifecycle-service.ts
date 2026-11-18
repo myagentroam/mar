@@ -10,7 +10,6 @@ interface WorkbenchPageLifecycleOptions {
   readonly persistenceSources: WatchSource<unknown>[];
   readonly cacheSources: WatchSource<unknown>[];
   readonly routeSources: WatchSource<unknown>[];
-  readonly documentTitle: Readonly<Ref<string>>;
   readonly newSessionRunner: WatchSource<unknown>;
   readonly newSessionModel: WatchSource<unknown>;
   readonly workspaceTarget: WatchSource<WorkspaceTarget | undefined>;
@@ -61,7 +60,6 @@ export function installWorkbenchPageLifecycle(options: WorkbenchPageLifecycleOpt
   }
 
   watch(options.persistenceSources, options.persistWorkbenchState, { deep: true });
-  watch(options.documentTitle, (title) => (document.title = title), { immediate: true });
   watch(options.routeSources, options.syncWorkbenchRoute);
   watch(options.newSessionRunner, () => {
     options.normalizeNewSessionOptions();

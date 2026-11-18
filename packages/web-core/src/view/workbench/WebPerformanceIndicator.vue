@@ -85,7 +85,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   >
     <template #reference>
       <button
-        class="web-performance-indicator mar-icon-button mar-icon-action"
+        class="web-performance-indicator nav-menu-button mar-icon-button mar-icon-action"
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
       >
@@ -177,25 +177,6 @@ onBeforeUnmount(props.diagnostics.dispose);
 </template>
 
 <style scoped>
-.web-performance-indicator {
-  position: absolute;
-  left: 50%;
-  bottom: 8px;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--mar-radius-control);
-  padding: 3px;
-  cursor: pointer;
-  line-height: 1;
-  transform: translateX(-50%);
-}
-.web-performance-indicator .mar-icon {
-  font-size: var(--mar-activity-rail-icon-size, 1.25rem);
-}
 .web-performance-panel {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);

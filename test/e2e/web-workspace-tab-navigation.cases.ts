@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import {
   fulfillMockSessionWatch,
@@ -6,10 +7,61 @@ import {
   json
 } from './support/web-console-api.js';
 
+test('Console title stays on the Web version across Workspaces and pages', async ({ page }) => {
+  const { version } = JSON.parse(
+    await readFile(new URL('../../mar-web-console/package.json', import.meta.url), 'utf8')
+  ) as { version: string };
+  const consoleTitle = `MyAgentRoam - v${version}`;
+  await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+  await mockEmptyWorkspaceFiles(page, ['workspace-2']);
+  await page.route('**/api/workspaces?nodeId=node-1', (route) =>
+    json(route, {
+      workspaces: [
+        { id: 'workspace-1', path: '/project-1', kind: 'DIRECTORY' },
+        { id: 'workspace-2', path: '/project-2', kind: 'DIRECTORY' }
+      ]
+    })
+  );
+
+  await page.goto('/console');
+  await expect(page.getByRole('button', { name: '进入控制台' })).toBeVisible();
+  await expect(page).toHaveTitle(consoleTitle);
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  const tree = page.locator('.workspace-tree');
+  await tree.getByRole('button', { name: /node-1/ }).click();
+  for (const index of [1, 2]) {
+    await tree.getByRole('button', { name: `project-${index}`, exact: true }).click();
+    const tab = page.locator(`.workspace-tab[data-tab-id="node-1:workspace-${index}"]`);
+    await expect(tab.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveTitle(consoleTitle);
+  }
+
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '账户安全' })).toBeVisible();
+  await expect(page).toHaveTitle(consoleTitle);
+
+  await page.route('**/api/workspaces/workspace-1/files/read?*', (route) =>
+    json(route, {
+      file: {
+        path: 'README.md',
+        encoding: 'utf-8',
+        content: '# Versioned preview',
+        truncated: false,
+        nextOffset: null
+      }
+    })
+  );
+  await page.goto(
+    '/console?standaloneFile=1&nodeId=node-1&workspaceId=workspace-1&path=README.md&markdownPreview=1'
+  );
+  await expect(page.getByRole('heading', { name: 'Versioned preview', exact: true })).toBeVisible();
+  await expect(page).toHaveTitle(consoleTitle);
+});
+
 for (const locale of ['zh-CN', 'en-US'] as const) {
   test(
-    'Workspace Tab clicks choose unread then active then last session without background navigation: ' +
-      locale,
+    'Workspace Tab clicks choose unread then last session without background navigation: ' + locale,
     async ({ page }) => {
       test.setTimeout(60_000);
       const english = locale === 'en-US';
@@ -199,6 +251,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       ];
       await refresh();
       await expect(first.locator('.workspace-tab-unread')).toBeVisible();
+      await expect(first.locator('.workspace-tab-running')).toBeVisible();
       await expect(second.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
       reads.length = 0;
       const listsBeforeSwitching = notificationLists;
@@ -216,38 +269,24 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       await first.getByRole('tab').click();
       await expect(header).toContainText('Priority session-1');
       await expect(first.locator('.workspace-tab-unread')).toHaveCount(0);
-      await first.getByRole('tab').click();
-      await expect(header).toContainText('Priority active-first');
+      await expect(first.locator('.workspace-tab-running')).toBeVisible();
       const opened = identityReads.length;
       await first.getByRole('tab').click();
+      await expect(header).toContainText('Priority session-1');
       expect(identityReads).toHaveLength(opened);
       expect(notificationLists).toBe(listsBeforeSwitching);
-      recentRuns = [
-        run('active-first', 'SUCCEEDED', now + 2),
-        run('active-second', 'RUNNING', now + 1)
-      ];
-      await refresh();
-      await expect(header).toContainText('Priority active-first');
-      await first.getByRole('tab').click();
-      await expect(header).toContainText('Priority active-second');
-      recentRuns = [
-        run('active-first', 'RUNNING', now + 3),
-        run('active-second', 'RUNNING', now + 1)
-      ];
-      await refresh();
-      const retained = identityReads.length;
-      await first.getByRole('tab').click();
-      await expect(header).toContainText('Priority active-second');
-      expect(identityReads).toHaveLength(retained);
-      await second.getByRole('tab').click();
-      await first.getByRole('tab').click();
-      await expect(header).toContainText('Priority active-second');
       recentRuns = [];
       await refresh();
       await expect(first.locator('.workspace-tab-running')).toHaveCount(0);
+      await expect(header).toContainText('Priority session-1');
+      expect(identityReads).toHaveLength(opened);
       await second.getByRole('tab').click();
+      recentRuns = [run('active-second', 'RUNNING', now + 1)];
+      await refresh();
+      await expect(first.locator('.workspace-tab-running')).toBeVisible();
+      await expect(second.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
       await first.getByRole('tab').click();
-      await expect(header).toContainText('Priority active-second');
+      await expect(header).toContainText('Priority session-1');
       await second.getByRole('tab').click();
       notifications = [entry('failed', 'outside-1')];
       failIdentity = true;

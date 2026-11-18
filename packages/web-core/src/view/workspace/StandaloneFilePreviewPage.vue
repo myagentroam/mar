@@ -340,7 +340,6 @@ onMounted(async () => {
       activeDownloadWorker: pwaApplication.activeWorker,
       ...fileTarget
     });
-  document.title = `${path.split('/').at(-1) ?? path} · MyAgentRoam`;
   if (htmlPreviewMode) {
     loading.value = true;
     if (!hostedMode && isHtmlFile(path) && Object.keys(fileTarget).length === 0) {

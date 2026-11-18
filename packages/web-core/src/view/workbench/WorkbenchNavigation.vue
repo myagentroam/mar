@@ -269,7 +269,9 @@ function openBlankMenu(event: MouseEvent): void {
         </span>
       </el-link>
     </nav>
-    <WebPerformanceIndicator v-if="!mobileViewport" :diagnostics="performanceDiagnostics" />
+    <div v-if="!mobileViewport" class="activity-rail-footer">
+      <WebPerformanceIndicator :diagnostics="performanceDiagnostics" />
+    </div>
   </aside>
   <Transition name="mobile-menu-scrim">
     <button
@@ -399,6 +401,7 @@ function openBlankMenu(event: MouseEvent): void {
 
 <style scoped>
 .activity-rail {
+  --mar-activity-rail-gap: 0.25rem;
   --mar-activity-rail-icon-size: 1.25rem;
   position: fixed;
   z-index: 4;
@@ -407,6 +410,7 @@ function openBlankMenu(event: MouseEvent): void {
   width: var(--mar-activity-rail-width);
   flex-direction: column;
   align-items: center;
+  gap: var(--mar-activity-rail-gap);
   background: var(--mar-bg-chrome);
 }
 
@@ -445,11 +449,17 @@ function openBlankMenu(event: MouseEvent): void {
   min-height: 0;
   overflow-y: auto;
   width: 100%;
-  gap: 0.25rem;
-  padding: 0.5rem 0 52px;
+  gap: var(--mar-activity-rail-gap);
+  padding: 0.5rem 0 0;
 }
 
-.activity-rail nav button {
+.activity-rail-footer {
+  flex: none;
+  width: 100%;
+  padding-bottom: 8px;
+}
+
+.activity-rail :deep(button.nav-menu-button) {
   box-sizing: border-box;
   display: grid;
   min-height: var(--mar-rail-item-height);
@@ -484,7 +494,7 @@ function openBlankMenu(event: MouseEvent): void {
   text-decoration: none;
 }
 
-.activity-rail nav button:hover:not(:disabled) {
+.activity-rail :deep(button.nav-menu-button:hover:not(:disabled)) {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
@@ -501,7 +511,7 @@ function openBlankMenu(event: MouseEvent): void {
   color: var(--mar-color-brand-text);
 }
 
-.activity-rail nav button:focus-visible {
+.activity-rail :deep(button.nav-menu-button:focus-visible) {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
 }
@@ -516,7 +526,7 @@ function openBlankMenu(event: MouseEvent): void {
   width: 100%;
 }
 
-.activity-rail nav button .mar-icon {
+.activity-rail :deep(button.nav-menu-button .mar-icon) {
   font-size: var(--mar-activity-rail-icon-size);
 }
 
@@ -857,7 +867,7 @@ function openBlankMenu(event: MouseEvent): void {
     animation: mobile-menu-content-in var(--mar-motion-duration-collapse)
       var(--mar-motion-easing-collapse);
   }
-  .activity-rail nav button {
+  .activity-rail :deep(button.nav-menu-button) {
     transition:
       background-color var(--mar-motion-duration-collapse) ease,
       color var(--mar-motion-duration-collapse) ease;
