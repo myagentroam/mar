@@ -995,6 +995,7 @@ beforeEach(() => {
     documentElement: {
       lang: '',
       classList: { add: vi.fn(), remove: vi.fn() },
+      style: { removeProperty: vi.fn(), setProperty: vi.fn() },
       setAttribute: vi.fn(),
       removeAttribute: vi.fn()
     }
