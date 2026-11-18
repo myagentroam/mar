@@ -115,7 +115,6 @@ function controlsFixture() {
     nextCursors: ref(new Map()),
     pageSize: 20,
     tabId: String,
-    workspaceLabel: () => '',
     shouldDisplayItem: () => true,
     runService,
     formatTokenCount: String,

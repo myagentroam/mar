@@ -874,7 +874,6 @@ export function createWorkbenchPageController<
     composerWorking: authoritativeComposerWorking,
     sessionActivityClockNow,
     composerWorkingLabel: authoritativeComposerWorkingLabel,
-    documentTitle,
     visibleWorkspaceSessions: unfilteredWorkspaceSessions,
     canLoadMoreWorkspaceSessions: canLoadMoreUnfilteredWorkspaceSessions,
     onlineNodeCount
@@ -887,7 +886,6 @@ export function createWorkbenchPageController<
     nextCursors: workspaceSessionNextCursors,
     pageSize: WORKSPACE_SESSION_PAGE_SIZE,
     tabId: workspaceTabId,
-    workspaceLabel: workspaceTabLabel,
     pane: mainPanePresentation
   });
 
@@ -2022,7 +2020,6 @@ export function createWorkbenchPageController<
       hostedConversationWorkspace.selectedNodeId,
       hostedConversationWorkspace.selectedConversationId
     ],
-    documentTitle,
     newSessionRunner,
     newSessionModel,
     workspaceTarget,

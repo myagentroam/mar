@@ -8,7 +8,6 @@ import { renderComponent } from './support/component-renderer.js';
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal('document', {
-    title: '',
     addEventListener: vi.fn(),
     removeEventListener: vi.fn()
   });
@@ -37,7 +36,6 @@ function mountLifecycle(initial: ConversationTurn[]) {
           persistenceSources: [],
           cacheSources: [conversation.turns],
           routeSources: [],
-          documentTitle: ref('Workbench'),
           newSessionRunner: ref('mar-agent'),
           newSessionModel: ref('model'),
           workspaceTarget: ref(undefined),

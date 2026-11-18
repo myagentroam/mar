@@ -112,6 +112,7 @@ export default defineConfig({
   ],
   build: { sourcemap: false },
   define: {
+    'import.meta.env.MAR_WEB_VERSION': JSON.stringify(webVersion),
     __MAR_WEB_VERSION__: JSON.stringify(webVersion),
     __MAR_WEB_BUILD_HASH__: JSON.stringify(webBuildHash)
   },
