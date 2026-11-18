@@ -232,9 +232,12 @@ onUnmounted(() => usersPage.dispose());
             ? translate('generated.userManagementPage.administrator')
             : translate('generated.userManagementPage.user')
         }}</template></el-table-column
-      ><el-table-column :label="translate('generated.userManagementPage.actions')" :width="180"
+      ><el-table-column
+        :label="translate('generated.userManagementPage.actions')"
+        :width="usersPage.mobileViewport.value ? undefined : 180"
+        :min-width="usersPage.mobileViewport.value ? 144 : undefined"
         ><template #default="{ row }"
-          ><div class="mar-row-actions" @click.stop>
+          ><div class="mar-row-actions mar-row-actions--wrap" @click.stop>
             <el-button v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
               translate('generated.userManagementPage.resetPassword3')
             }}</el-button

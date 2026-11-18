@@ -553,9 +553,10 @@ onUnmounted(() => {
       >
       <el-table-column
         :label="translate('generated.organizationUserManagementPage.actions2')"
-        :width="320"
+        :width="usersPage.mobileViewport.value ? undefined : 320"
+        :min-width="usersPage.mobileViewport.value ? 144 : undefined"
         ><template #default="{ row }"
-          ><div class="mar-row-actions" @click.stop>
+          ><div class="mar-row-actions mar-row-actions--wrap" @click.stop>
             <el-button
               link
               :icon="marIcon('edit')"

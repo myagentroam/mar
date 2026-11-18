@@ -261,6 +261,11 @@ pre {
     flex-shrink: 0;
   }
 
+  .mar-management-page .mar-row-actions--wrap {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
   .mar-management-page > header {
     flex-wrap: wrap;
   }

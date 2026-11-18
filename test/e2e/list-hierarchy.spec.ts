@@ -145,6 +145,18 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}visual-alignment.html?list-hierarchy=quick&theme=${theme}`);
       const palette = await colors(page);
       const rows = page.locator('.quick-open-results li');
+      const filters = page.getByRole('group', { name: 'Result types', exact: true });
+      const all = filters.getByRole('button', { name: 'All', exact: true });
+      const files = filters.getByRole('button', { name: 'File', exact: true });
+      await expect(all).toHaveAttribute('aria-pressed', 'true');
+      await expect(all).toHaveCSS('background-color', palette.selected);
+      await expect(rows).toHaveCount(2);
+      await files.click();
+      await expect(files).toHaveAttribute('aria-pressed', 'true');
+      await expect(files).toHaveCSS('background-color', palette.selected);
+      await expect(all).toHaveAttribute('aria-pressed', 'false');
+      await expect(rows).toHaveCount(0);
+      await all.click();
       await expect(rows).toHaveCount(2);
       await expect(rows.first().locator('.entry-name')).toHaveCSS('font-weight', '400');
       await expect(rows.first().locator('.entry-name')).toHaveCSS('color', palette.primary);
