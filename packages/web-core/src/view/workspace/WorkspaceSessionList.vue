@@ -1138,7 +1138,7 @@ function submitSessionSearch(): void {
 }
 
 .session-group-tabs {
-  margin: 0.5rem -0.7rem 0;
+  margin-inline: -0.7rem;
   padding-inline: 6px;
 }
 
