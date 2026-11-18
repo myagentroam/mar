@@ -95,6 +95,15 @@ describe('File Icon Theme Preferences', () => {
     }
   });
 
+  it('Shares a stylesheet icon across CSS and its preprocessor formats', () => {
+    const mar = resolveIconTheme('mar');
+    const css = mar.resolveFile('theme.css', true);
+    expect(css).toMatchObject({ kind: 'sprite', href: expect.stringMatching(/#mar-file-style$/u) });
+    for (const extension of ['SCSS', 'sass', 'less', 'styl', 'stylus', 'sss', 'pcss']) {
+      expect(mar.resolveFile(`theme.${extension}`, true)).toEqual(css);
+    }
+  });
+
   it('Ships a symbol and a complete palette for every mapped MAR icon', () => {
     const ids = [
       ...illustrations.matchAll(/<symbol id="mar-file-([a-z-]+)" viewBox="0 0 24 24">/gu)
