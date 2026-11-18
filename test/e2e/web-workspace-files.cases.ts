@@ -495,7 +495,7 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
       });
       await page.keyboard.press('Control+Shift+O');
       const dialog = page.getByRole('dialog', { name: '快速打开', exact: true });
-      const filters = dialog.getByRole('tablist');
+      const filters = dialog.getByRole('group', { name: '结果类型', exact: true });
       await expect(filters).toBeVisible();
       const selectedResult = dialog.locator('.quick-open-results li[aria-selected="true"] button');
       await expect(selectedResult).toHaveCount(1);
@@ -505,9 +505,9 @@ test('Quick Open filters match Workspace Tab selection and tab labels keep their
       await expect(selectedResult).toHaveCSS('box-shadow', 'none');
       await selectedResult.hover();
       await expect(selectedResult).toHaveCSS('background-color', reference.background);
-      for (const filter of await filters.getByRole('tab').all()) {
+      for (const filter of await filters.getByRole('button').all()) {
         await filter.click();
-        await expect(filter).toHaveAttribute('aria-selected', 'true');
+        await expect(filter).toHaveAttribute('aria-pressed', 'true');
         await expect(filter).toHaveCSS('background-color', reference.background);
         await expect(filter).toHaveCSS('color', reference.color);
         await expect(filter).toHaveCSS('font-weight', reference.weight);
@@ -1089,15 +1089,16 @@ test('Quick Open and Agent output locations share file, line, and column navigat
   await page.keyboard.press('Control+Shift+O');
   const quickOpen = page.getByRole('dialog', { name: '快速打开' });
   const quickOpenInput = quickOpen.getByRole('textbox', { name: '快速打开' });
-  await expect(quickOpen.getByRole('tab', { name: '全部' })).toHaveAttribute(
-    'aria-selected',
+  const filters = quickOpen.getByRole('group', { name: '结果类型', exact: true });
+  await expect(filters.getByRole('button', { name: '全部' })).toHaveAttribute(
+    'aria-pressed',
     'true'
   );
-  await expect(quickOpen.getByRole('tab', { name: '工作区' })).toBeVisible();
-  await expect(quickOpen.getByRole('tab', { name: '会话' })).toBeVisible();
-  await expect(quickOpen.getByRole('tab', { name: '符号' })).toBeVisible();
-  await expect(quickOpen.getByRole('tab', { name: '文件' })).toBeVisible();
-  expect(await quickOpen.getByRole('tab').allTextContents()).toEqual([
+  await expect(filters.getByRole('button', { name: '工作区' })).toBeVisible();
+  await expect(filters.getByRole('button', { name: '会话' })).toBeVisible();
+  await expect(filters.getByRole('button', { name: '符号' })).toBeVisible();
+  await expect(filters.getByRole('button', { name: '文件' })).toBeVisible();
+  expect(await filters.getByRole('button').allTextContents()).toEqual([
     '全部',
     '工作区',
     '会话',
@@ -1112,7 +1113,7 @@ test('Quick Open and Agent output locations share file, line, and column navigat
     await sessionOpenBlocked;
     await route.fallback();
   });
-  await quickOpen.getByRole('tab', { name: '会话' }).click();
+  await filters.getByRole('button', { name: '会话' }).click();
   const sessionResults = quickOpen.locator('.quick-open-results button');
   await expect(sessionResults).toHaveCount(1);
   await sessionResults.first().click();
@@ -1124,7 +1125,7 @@ test('Quick Open and Agent output locations share file, line, and column navigat
   await expect(quickOpen).toBeHidden();
 
   await page.keyboard.press('Control+Shift+O');
-  await quickOpen.getByRole('tab', { name: '符号' }).click();
+  await filters.getByRole('button', { name: '符号' }).click();
   await quickOpenInput.fill('alpha');
   const symbolResults = quickOpen.locator('.quick-open-results button');
   await expect(symbolResults).toHaveCount(2);

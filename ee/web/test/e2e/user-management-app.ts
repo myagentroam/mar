@@ -35,10 +35,11 @@ function createFixtureApp() {
     serverVersion: undefined
   };
   const composition = createEnterpriseManagementComposition();
-  if (!composition.items(context.admin).some((item) => item.id === 'users'))
-    throw new Error('Users menu is unavailable');
-  const page = composition.resolve('users', context.admin);
-  if (page.id !== 'users') throw new Error('Users menu resolved to a different page');
+  const pageId = params.get('page') === 'organizations' ? 'organizations' : 'users';
+  if (!composition.items(context.admin).some((item) => item.id === pageId))
+    throw new Error(`${pageId} menu is unavailable`);
+  const page = composition.resolve(pageId, context.admin);
+  if (page.id !== pageId) throw new Error(`${pageId} menu resolved to a different page`);
   return createApp(page.component, { ...page.props(context) });
 }
 

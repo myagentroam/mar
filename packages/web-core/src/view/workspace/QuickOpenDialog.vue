@@ -339,15 +339,14 @@ function onKeydown(event: KeyboardEvent): void {
   >
     <div
       class="quick-open-tabs"
-      role="tablist"
+      role="group"
       :aria-label="translate('generated.quickOpenDialog.resultTypes')"
     >
       <button
         v-for="candidateTab in ['ALL', 'WORKSPACE', 'SESSION', 'FILE', 'SYMBOL'] as const"
         :key="candidateTab"
         type="button"
-        role="tab"
-        :aria-selected="tab === candidateTab"
+        :aria-pressed="tab === candidateTab"
         @click="tab = candidateTab"
       >
         {{
@@ -542,7 +541,7 @@ function onKeydown(event: KeyboardEvent): void {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
-.quick-open-tabs button[aria-selected='true'] {
+.quick-open-tabs button[aria-pressed='true'] {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
 }

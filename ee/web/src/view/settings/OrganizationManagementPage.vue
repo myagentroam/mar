@@ -6,8 +6,9 @@ import {
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
+import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '@myagentroam/web-core/mobile-workbench';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
@@ -40,6 +41,11 @@ const organizationDetail = ref<Organization>();
 const organizationForm = ref({ name: '', parentOrganizationId: 1 });
 const organizationFormRef = ref<FormInstance>();
 const keyword = ref('');
+const viewport = window.matchMedia(MOBILE_WORKBENCH_VIEWPORT_QUERY);
+const mobileViewport = ref(viewport.matches);
+function updateMobileViewport(event: MediaQueryListEvent): void {
+  mobileViewport.value = event.matches;
+}
 const initialFilters = managementUrlValues('organizations', ['keyword']);
 keyword.value = initialFilters.keyword ?? '';
 watch(keyword, () => replaceManagementUrlValues('organizations', { keyword: keyword.value }));
@@ -194,8 +200,10 @@ async function removeOrganization(organization: Organization): Promise<void> {
   }
 }
 onMounted(() => {
+  viewport.addEventListener('change', updateMobileViewport);
   void load();
 });
+onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
 </script>
 
 <template>
@@ -246,10 +254,11 @@ onMounted(() => {
       />
       <el-table-column
         :label="translate('generated.organizationUserManagementPage.actions')"
-        :width="280"
+        :width="mobileViewport ? undefined : 280"
+        :min-width="mobileViewport ? 144 : undefined"
       >
         <template #default="{ row }">
-          <div class="organization-actions" @click.stop>
+          <div class="organization-actions mar-row-actions--wrap" @click.stop>
             <el-button
               link
               :icon="marIcon('edit')"

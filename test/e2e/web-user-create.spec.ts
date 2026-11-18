@@ -3,6 +3,7 @@ import { startUserManagementFixture } from './support/user-management-vite.js';
 
 // @test-covers ee/web/src/composition/enterprise-management.ts
 // @test-covers ee/web/src/view/settings/EnterpriseUserManagementPage.vue
+// @test-covers ee/web/src/view/settings/OrganizationManagementPage.vue
 // @test-covers ee/web/src/view/settings/UserManagementPage.vue
 
 let fixture: Awaited<ReturnType<typeof startUserManagementFixture>>;
@@ -20,6 +21,77 @@ interface UserInput {
   role: string;
   organizationId: number;
 }
+
+for (const [view, name, title, desktopWidth, actionCount] of [
+  ['personal', 'example-user', 'User details', 180, 2],
+  ['users', 'example-user', 'User details', 320, 3],
+  ['organizations', 'Example team', 'Organization details', 280, 3]
+] as const) {
+  test(`Management ${view} keeps row details and narrow actions reachable`, async ({ page }) => {
+    const time = 1_700_000_000_000;
+    const user = {
+      id: 2,
+      username: 'example-user',
+      email: 'example@example.test',
+      role: 'MEMBER',
+      organizationId: 2,
+      isAdmin: false,
+      fixedAdmin: false,
+      enabled: true,
+      createdAt: time,
+      updatedAt: time
+    };
+    await page.route('**/api/organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [
+            { id: 1, name: 'Root', parentOrganizationId: null, createdAt: time, updatedAt: time },
+            {
+              id: 2,
+              name: 'Example team',
+              parentOrganizationId: 1,
+              createdAt: time,
+              updatedAt: time
+            }
+          ]
+        }
+      })
+    );
+    await page.route('**/api/*/users**', (route) =>
+      route.fulfill({ json: { users: [user], page: 1, pageSize: 20, total: 1, hasMore: false } })
+    );
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`${fixture.url}?locale=en-US&page=${view}`);
+    const row = page.locator('.el-table').getByRole('row').filter({ hasText: name });
+    const actionCell = row.getByRole('cell').last();
+    const detail = page.getByRole('dialog', { name: title, exact: true });
+    await expect(actionCell).toHaveCSS('width', `${desktopWidth}px`);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() => actionCell.evaluate((cell) => cell.clientWidth))
+      .toBeLessThan(desktopWidth);
+    const actions = actionCell.getByRole('button');
+    await expect(actions).toHaveCount(actionCount);
+    for (const action of await actions.all()) {
+      await action.scrollIntoViewIfNeeded();
+      await expect(action).toBeInViewport();
+      expect(
+        await action.evaluate((button) => {
+          const rect = button.getBoundingClientRect();
+          const cell = button.closest('td')!.getBoundingClientRect();
+          return rect.left >= cell.left && rect.right <= cell.right;
+        })
+      ).toBe(true);
+    }
+    await row.getByText(name, { exact: true }).click();
+    await expect(detail).toContainText(name);
+
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await expect(actionCell).toHaveCSS('width', `${desktopWidth}px`);
+  });
+}
+
 async function prepare(page: Page, locale = 'en-US') {
   const writes: UserInput[] = [];
   let reads = 0;
