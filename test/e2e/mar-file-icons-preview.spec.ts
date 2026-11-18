@@ -34,7 +34,13 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
     ['.py', 'fallback'],
     ['.prompt.md', 'markdown'],
     ['*.prompt.md', 'prompt'],
-    ['packages/web-core/src/', 'src']
+    ['packages/web-core/src/', 'src'],
+    ['packages/web-core/test/', 'tests'],
+    ['button.spec.ts', 'test'],
+    ['.agents/', 'dir'],
+    ['docs/', 'dir'],
+    ['website/dist/', 'dir'],
+    ['node_modules/', 'dir']
   ] as const) {
     await search.fill(query);
     const symbol = resolved.locator('use').first();

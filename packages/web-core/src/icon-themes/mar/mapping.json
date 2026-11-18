@@ -867,22 +867,9 @@
   },
   "folderNames": {
     "src": "src",
-    "docs": "docs",
-    "doc": "docs",
     "tests": "tests",
     "test": "tests",
-    "__tests__": "tests",
-    "config": "settings",
-    ".agents": "agents",
-    ".claude": "agents",
-    ".codex": "agents",
-    "skills": "skills",
-    ".git": "repo",
-    "assets": "assets",
-    "dist": "dist",
-    "build": "dist",
-    "node_modules": "deps",
-    "data": "data"
+    "__tests__": "tests"
   },
   "fallback": {
     "file": "fallback",
@@ -1269,34 +1256,7 @@
     "src": {
       "accent": "folder"
     },
-    "docs": {
-      "accent": "folder"
-    },
     "tests": {
-      "accent": "folder"
-    },
-    "settings": {
-      "accent": "folder"
-    },
-    "agents": {
-      "accent": "folder"
-    },
-    "skills": {
-      "accent": "folder"
-    },
-    "repo": {
-      "accent": "folder"
-    },
-    "assets": {
-      "accent": "folder"
-    },
-    "dist": {
-      "accent": "folder"
-    },
-    "deps": {
-      "accent": "folder"
-    },
-    "data": {
       "accent": "folder"
     }
   }

@@ -144,6 +144,19 @@ describe('File Icon Theme Preferences', () => {
     expect(mar.resolveFolder(true, 'AGENTS.md')).toEqual(mar.resolveFolder(true));
   });
 
+  it('Marks only source and conventional test directories in MAR', () => {
+    const mar = resolveIconTheme('mar');
+    for (const name of ['test', 'tests', 'nested/__TESTS__']) {
+      expect(mar.resolveFolder(true, name)).toMatchObject({
+        kind: 'sprite',
+        href: expect.stringMatching(/#mar-file-tests$/u)
+      });
+    }
+    for (const name of ['.agents', '.git', 'data', 'docs', 'dist', 'node_modules', 'assets']) {
+      expect(mar.resolveFolder(true, name)).toEqual(mar.resolveFolder(true));
+    }
+  });
+
   it('Resolve Material file and folder icons through the registry', () => {
     const material = resolveIconTheme('material');
 
