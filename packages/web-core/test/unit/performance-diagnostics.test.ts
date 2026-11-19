@@ -123,6 +123,11 @@ describe('WebPerformanceDiagnosticService', () => {
       const diagnostics = createWebPerformanceDiagnostics({ now: () => Date.now() });
       diagnostics.start();
       vi.advanceTimersByTime(6_000);
+      diagnostics.observeFrame({
+        payloadUtf16CodeUnits: 115,
+        durationMs: 4,
+        message: { type: 'event', event: { category: 'conversation' } }
+      });
       observer.callbacks.get('longtask')?.([
         { name: 'severe', startTime: 7_000, duration: 900 } as PerformanceEntry,
         { name: 'ordinary', startTime: 7_001, duration: 120 } as PerformanceEntry
@@ -136,7 +141,28 @@ describe('WebPerformanceDiagnosticService', () => {
 
       const restored = createWebPerformanceDiagnostics({ now: () => Date.now() });
       expect(restored.detail().retainedLongTasks.map((task) => task.name)).toEqual(['severe']);
+      const relatedFrames = [
+        {
+          observedAtMs: 7_000,
+          payloadUtf16CodeUnits: 115,
+          durationMs: 4,
+          category: 'conversation',
+          context: {}
+        }
+      ];
+      expect(restored.detail().retainedLongTasks[0]?.relatedFrames).toEqual(relatedFrames);
       restored.dispose();
+
+      // Simulate a reload with a severe sample saved before the unit was renamed.
+      const key = 'mar.web-performance.severe.v1';
+      const prior = JSON.parse(stored.get(key)!);
+      const { payloadUtf16CodeUnits, ...frame } = prior.longTasks[0].value.relatedFrames[0];
+      prior.longTasks[0].value.relatedFrames = [{ ...frame, bytes: payloadUtf16CodeUnits }];
+      stored.set(key, JSON.stringify(prior));
+      const restoredLegacy = createWebPerformanceDiagnostics({ now: () => Date.now() });
+      expect(restoredLegacy.detail().retainedLongTasks[0]?.relatedFrames).toEqual(relatedFrames);
+      restoredLegacy.dispose();
+
       vi.advanceTimersByTime(30 * 60_000 + 1);
       const expired = createWebPerformanceDiagnostics({ now: () => Date.now() });
       expect(expired.detail().retainedLongTasks).toEqual([]);
@@ -228,19 +254,19 @@ describe('WebPerformanceDiagnosticService', () => {
     const diagnostics = createWebPerformanceDiagnostics({ now: () => now });
 
     diagnostics.observeFrame({
-      bytes: 1_024,
+      payloadUtf16CodeUnits: 1_024,
       durationMs: 4,
       message: { type: 'event', event: { nodeId: 'node-1', sequence: 1, category: 'conversation' } }
     });
     diagnostics.observeFrame({
-      bytes: 512,
+      payloadUtf16CodeUnits: 512,
       durationMs: 8,
       message: { type: 'watch.event', event: {} }
     });
     diagnostics.refresh();
 
     expect(diagnostics.snapshot.value.messagesPerSecond).toBe(2);
-    expect(diagnostics.snapshot.value.kilobytesPerSecond).toBe(1.5);
+    expect(diagnostics.snapshot.value.payloadUtf16CodeUnitsPerSecond).toBe(1_536);
     expect(diagnostics.snapshot.value.categories).toMatchObject({ conversation: 1, watch: 1 });
     expect(diagnostics.snapshot.value.processing.averageMs).toBe(6);
     expect(diagnostics.snapshot.value.processing.p95Ms).toBe(8);
@@ -248,7 +274,12 @@ describe('WebPerformanceDiagnosticService', () => {
     now += 1_100;
     diagnostics.refresh();
     expect(diagnostics.snapshot.value.messagesPerSecond).toBe(0);
+    expect(diagnostics.snapshot.value.payloadUtf16CodeUnitsPerSecond).toBe(0);
     expect(diagnostics.snapshot.value.peakMessagesPerSecond).toBe(2);
+    expect(diagnostics.detail().frames).toHaveLength(2);
+
+    now += 9_000;
+    expect(diagnostics.detail().frames).toEqual([]);
   });
 
   it('Record round-trip latency for Workbench WebSocket pings', () => {
@@ -266,7 +297,7 @@ describe('WebPerformanceDiagnosticService', () => {
   it('deduplicates active Runs by Session across Node callbacks and clears them on connection failure', () => {
     const diagnostics = createWebPerformanceDiagnostics({ now: () => 1_000 });
     const frame = (id: string, sessionId: string, status: string, nodeId: string) => ({
-      bytes: 100,
+      payloadUtf16CodeUnits: 100,
       durationMs: 1,
       message: {
         type: 'event',
@@ -300,7 +331,7 @@ describe('WebPerformanceDiagnosticService', () => {
   it('Clean up live samples and active Runs when stopping desktop sampling to avoid displaying old status after the mobile end is switched back', () => {
     const diagnostics = createWebPerformanceDiagnostics({ now: () => 1_000 });
     diagnostics.observeFrame({
-      bytes: 100,
+      payloadUtf16CodeUnits: 100,
       durationMs: 2,
       message: {
         type: 'event',
@@ -435,7 +466,7 @@ describe('WebPerformanceDiagnosticService', () => {
       } as unknown as PerformanceEntry
     ]);
     diagnostics.observeFrame({
-      bytes: 512,
+      payloadUtf16CodeUnits: 512,
       durationMs: 4,
       message: { type: 'event', event: { category: 'conversation' } }
     });
@@ -448,7 +479,7 @@ describe('WebPerformanceDiagnosticService', () => {
     });
 
     const detail = diagnostics.detail();
-    expect(detail.schemaVersion).toBe(1);
+    expect(detail.schemaVersion).toBe(2);
     expect(detail.context).toEqual({
       view: 'NODES',
       nodeId: 'node-1',
@@ -475,12 +506,12 @@ describe('WebPerformanceDiagnosticService', () => {
       expect.objectContaining({
         observedAtMs: 7_200,
         category: 'conversation',
-        bytes: 512,
+        payloadUtf16CodeUnits: 512,
         durationMs: 4
       })
     ]);
     expect(detail.frames[0]).not.toHaveProperty('message');
-    expect(detail.longTasks[0]?.relatedFrames[0]).not.toHaveProperty('message');
+    expect(detail.longTasks[0]?.relatedFrames).toEqual(detail.frames);
     expect(detail.browserSamples.at(-1)).toEqual(
       expect.objectContaining({ sampledAtMs: 7_200, domNodes: 2_500, eventLoopDelayMs: 18 })
     );

@@ -122,7 +122,7 @@ onBeforeUnmount(props.diagnostics.dispose);
             t('performanceDiagnostics.rateValue', {
               current: snapshot.messagesPerSecond,
               peak: snapshot.peakMessagesPerSecond,
-              kilobytes: decimal(snapshot.kilobytesPerSecond)
+              codeUnits: decimal(snapshot.payloadUtf16CodeUnitsPerSecond)
             })
           }}
         </dd>

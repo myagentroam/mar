@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createWebPerformanceDiagnostics } from '../../src/service/web-performance-diagnostic-service.js';
 import { createWorkbenchLiveService } from '../../src/service/workbench-live-service.js';
 
 function memoryStorage() {
@@ -14,6 +15,82 @@ describe('Public Workbench Real-Time Connection', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it.each([true, false])('routes text frames with diagnostics enabled=%s', (enabled) => {
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static instance: FakeWebSocket;
+      readonly readyState = FakeWebSocket.OPEN;
+      constructor() {
+        super();
+        FakeWebSocket.instance = this;
+      }
+      send(): void {}
+      close(): void {}
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    vi.stubGlobal('window', { location: { origin: 'https://console.example' } });
+    const diagnostics = createWebPerformanceDiagnostics({
+      now: () => 1_000,
+      enabled: () => enabled
+    });
+    const onEvent = vi.fn();
+    const service = createWorkbenchLiveService({
+      canConnect: () => true,
+      onEvent,
+      onResyncRequired: vi.fn(),
+      onNodeConnection: vi.fn(),
+      onNodeReplaced: vi.fn(),
+      onReconnect: vi.fn(),
+      onUnauthenticated: vi.fn(),
+      onInvalidMessage: vi.fn(),
+      diagnostics
+    });
+    const frame = (sequence: number, text: string) =>
+      JSON.stringify({
+        type: 'event',
+        event: { nodeId: 'node-fake-01', sequence, category: 'conversation', payload: { text } }
+      });
+    const ascii = frame(1, 'abcd');
+    const unicode = frame(2, '中文🙂');
+    try {
+      service.connect();
+      for (const data of [ascii, unicode]) {
+        FakeWebSocket.instance.dispatchEvent(new MessageEvent('message', { data }));
+      }
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ payload: { text: 'abcd' } })
+      );
+      expect(onEvent).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ payload: { text: '中文🙂' } })
+      );
+      diagnostics.refresh();
+      const report = diagnostics.detail();
+      if (!enabled) {
+        expect(report.frames).toEqual([]);
+        expect(report.snapshot.messagesPerSecond).toBe(0);
+        return;
+      }
+      const encoder = new TextEncoder();
+      expect(encoder.encode(ascii).byteLength).toBe(115);
+      expect(encoder.encode(unicode).byteLength).toBe(121);
+      const metadata = {
+        observedAtMs: 1_000,
+        payloadUtf16CodeUnits: 115,
+        durationMs: expect.any(Number),
+        category: 'conversation',
+        context: {}
+      };
+      expect(report.frames).toEqual([metadata, metadata]);
+      expect(report.snapshot.payloadUtf16CodeUnitsPerSecond).toBe(230);
+    } finally {
+      service.close();
+      diagnostics.dispose();
+    }
   });
 
   it('shares readiness until the handshake, waits across reconnects, and cancels on close', async () => {

@@ -15,7 +15,7 @@ export interface WebPerformanceSnapshot {
   readonly health: WebPerformanceHealth;
   readonly messagesPerSecond: number;
   readonly peakMessagesPerSecond: number;
-  readonly kilobytesPerSecond: number;
+  readonly payloadUtf16CodeUnitsPerSecond: number;
   readonly categories: Readonly<Record<string, number>>;
   readonly activeRunSessions: number;
   readonly processing: {
@@ -37,15 +37,10 @@ export interface WebPerformanceSnapshot {
 }
 
 export interface WebPerformanceFrameSample {
-  readonly bytes: number;
+  /** Length of the decoded string, not a wire-byte count. */
+  readonly payloadUtf16CodeUnits: number;
   readonly durationMs: number;
   readonly message: unknown;
-}
-
-interface TimedFrame extends WebPerformanceFrameSample {
-  readonly at: number;
-  readonly category: string;
-  readonly context: WebPerformanceContext;
 }
 
 interface LongTaskSample {
@@ -85,7 +80,7 @@ export interface WebPerformanceLongTaskAttribution {
 
 export interface WebPerformanceFrameDetail {
   readonly observedAtMs: number;
-  readonly bytes: number;
+  readonly payloadUtf16CodeUnits: number;
   readonly durationMs: number;
   readonly category: string;
   readonly context: WebPerformanceContext;
@@ -119,6 +114,15 @@ export interface WebPerformanceLongTaskDetail {
   readonly relatedFrames: readonly WebPerformanceFrameDetail[];
 }
 
+type StoredFrameDetail = Omit<WebPerformanceFrameDetail, 'payloadUtf16CodeUnits'> & {
+  readonly payloadUtf16CodeUnits?: number;
+  readonly bytes?: number;
+};
+
+type StoredLongTaskDetail = Omit<WebPerformanceLongTaskDetail, 'relatedFrames'> & {
+  readonly relatedFrames: readonly StoredFrameDetail[];
+};
+
 export interface WebPerformanceLongAnimationFrameDetail {
   readonly startTimeMs: number;
   readonly endTimeMs: number;
@@ -136,7 +140,7 @@ export interface WebPerformanceLongAnimationFrameDetail {
 }
 
 export interface WebPerformanceDiagnosticDetail {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly generatedAt: string;
   readonly windowMs: number;
   readonly context: WebPerformanceContext;
@@ -182,7 +186,7 @@ const emptySnapshot = (): WebPerformanceSnapshot => ({
   health: 'idle',
   messagesPerSecond: 0,
   peakMessagesPerSecond: 0,
-  kilobytesPerSecond: 0,
+  payloadUtf16CodeUnitsPerSecond: 0,
   categories: {},
   activeRunSessions: 0,
   processing: { averageMs: 0, p95Ms: 0, maxMs: 0 },
@@ -192,6 +196,7 @@ const emptySnapshot = (): WebPerformanceSnapshot => ({
   messageCards: 0
 });
 
+/** Owns page-local diagnostic sampling, aggregation, and bounded diagnostic history. */
 export function createWebPerformanceDiagnostics(
   options: {
     readonly now?: () => number;
@@ -201,7 +206,7 @@ export function createWebPerformanceDiagnostics(
 ) {
   const now = options.now ?? (() => performance.now());
   const snapshot = ref<WebPerformanceSnapshot>(emptySnapshot());
-  const frames: TimedFrame[] = [];
+  const frames: WebPerformanceFrameDetail[] = [];
   const activeRuns = new Map<string, string>();
   const longTaskSamples: LongTaskSample[] = [];
   const interactionSamples: InteractionSample[] = [];
@@ -262,7 +267,21 @@ export function createWebPerformanceDiagnostics(
               .slice(-RETAINED_TASK_LIMIT)
           : [];
       return {
-        longTasks: valid<WebPerformanceLongTaskDetail>(value.longTasks),
+        longTasks: valid<StoredLongTaskDetail>(value.longTasks).map(({ capturedAt, value }) => {
+          const storedFrames: readonly StoredFrameDetail[] = Array.isArray(value.relatedFrames)
+            ? value.relatedFrames
+            : [];
+          const relatedFrames = storedFrames.flatMap((frame) => {
+            if (frame === null || typeof frame !== 'object') return [];
+            const { observedAtMs, durationMs, category, context, bytes } = frame;
+            // Older retained samples stored String.length under the name `bytes`.
+            const payloadUtf16CodeUnits = frame.payloadUtf16CodeUnits ?? bytes;
+            return typeof payloadUtf16CodeUnits === 'number'
+              ? [{ observedAtMs, durationMs, category, context, payloadUtf16CodeUnits }]
+              : [];
+          });
+          return { capturedAt, value: { ...value, relatedFrames } };
+        }),
         longAnimationFrames: valid<WebPerformanceLongAnimationFrameDetail>(
           value.longAnimationFrames
         )
@@ -301,7 +320,7 @@ export function createWebPerformanceDiagnostics(
   }
 
   function prune(at: number): void {
-    while (frames[0] !== undefined && frames[0].at < at - FRAME_WINDOW_MS) frames.shift();
+    while (frames[0] !== undefined && frames[0].observedAtMs < at - FRAME_WINDOW_MS) frames.shift();
     while (longTaskSamples[0] !== undefined && longTaskSamples[0].at < at - FRAME_WINDOW_MS)
       longTaskSamples.shift();
     while (interactionSamples[0] !== undefined && interactionSamples[0].at < at - FRAME_WINDOW_MS)
@@ -337,14 +356,14 @@ export function createWebPerformanceDiagnostics(
   function refresh(): void {
     const at = now();
     prune(at);
-    const recent = frames.filter((frame) => frame.at >= at - RATE_WINDOW_MS);
+    const recent = frames.filter((frame) => frame.observedAtMs >= at - RATE_WINDOW_MS);
     const durations = frames.map((frame) => frame.durationMs).sort((left, right) => left - right);
     const durationTotal = durations.reduce((total, duration) => total + duration, 0);
     const categories: Record<string, number> = {};
     for (const frame of recent) categories[frame.category] = (categories[frame.category] ?? 0) + 1;
     const buckets = new Map<number, number>();
     for (const frame of frames) {
-      const bucket = Math.floor(frame.at / RATE_WINDOW_MS);
+      const bucket = Math.floor(frame.observedAtMs / RATE_WINDOW_MS);
       buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
     }
     const p95Index = Math.max(0, Math.ceil(durations.length * 0.95) - 1);
@@ -354,8 +373,10 @@ export function createWebPerformanceDiagnostics(
       health: health(p95Ms, at),
       messagesPerSecond: recent.length,
       peakMessagesPerSecond: Math.max(0, ...buckets.values()),
-      kilobytesPerSecond:
-        recent.reduce((total, frame) => total + Math.max(0, frame.bytes), 0) / 1_024,
+      payloadUtf16CodeUnitsPerSecond: recent.reduce(
+        (total, frame) => total + Math.max(0, frame.payloadUtf16CodeUnits),
+        0
+      ),
       categories,
       activeRunSessions: new Set(activeRuns.values()).size,
       processing: {
@@ -408,8 +429,13 @@ export function createWebPerformanceDiagnostics(
 
   function observeFrame(sample: WebPerformanceFrameSample): void {
     if (!enabled()) return;
-    const at = now();
-    frames.push({ ...sample, at, category: frameCategory(sample.message), context: context() });
+    frames.push({
+      observedAtMs: now(),
+      payloadUtf16CodeUnits: sample.payloadUtf16CodeUnits,
+      durationMs: sample.durationMs,
+      category: frameCategory(sample.message),
+      context: context()
+    });
     lastMessageAt = Date.now();
     observeRun(sample.message);
   }
@@ -537,15 +563,6 @@ export function createWebPerformanceDiagnostics(
       startTimeMs,
       ...sample
     }));
-    const frameDetails = frames.map(
-      ({ at: observedAtMs, bytes, durationMs, category, context }) => ({
-        observedAtMs,
-        bytes,
-        durationMs,
-        category,
-        context
-      })
-    );
     return {
       name: task.name,
       startTimeMs: task.at,
@@ -559,11 +576,13 @@ export function createWebPerformanceDiagnostics(
           interaction.startTimeMs <= task.at + task.durationMs + 250 &&
           interaction.startTimeMs + interaction.durationMs >= task.at - 250
       ),
-      relatedFrames: frameDetails.filter(
-        (frame) =>
-          frame.observedAtMs >= task.at - 250 &&
-          frame.observedAtMs <= task.at + task.durationMs + 250
-      )
+      relatedFrames: frames
+        .filter(
+          (frame) =>
+            frame.observedAtMs >= task.at - 250 &&
+            frame.observedAtMs <= task.at + task.durationMs + 250
+        )
+        .map((frame) => ({ ...frame }))
     };
   }
 
@@ -603,22 +622,13 @@ export function createWebPerformanceDiagnostics(
   function detail(): WebPerformanceDiagnosticDetail {
     const at = now();
     prune(at);
-    const frameDetails = frames.map(
-      ({ at: observedAtMs, bytes, durationMs, category, context }) => ({
-        observedAtMs,
-        bytes,
-        durationMs,
-        category,
-        context
-      })
-    );
     const interactionDetails = interactionSamples.map(({ at: startTimeMs, ...sample }) => ({
       startTimeMs,
       ...sample
     }));
     const longTasks = longTaskSamples.map(longTaskDetail);
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       windowMs: FRAME_WINDOW_MS,
       context: context(),
@@ -627,7 +637,7 @@ export function createWebPerformanceDiagnostics(
       retainedLongTasks: retainedValues(retainedLongTasks),
       longAnimationFrames: retainedValues(retainedAnimationFrames),
       interactions: interactionDetails,
-      frames: frameDetails,
+      frames: frames.map((frame) => ({ ...frame })),
       browserSamples: browserSamples.map(({ at: sampledAtMs, ...sample }) => ({
         sampledAtMs,
         ...sample

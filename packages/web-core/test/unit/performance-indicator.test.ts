@@ -34,7 +34,7 @@ describe('Long Task diagnostic indicator', () => {
     const diagnostics = createWebPerformanceDiagnostics();
     try {
       diagnostics.start();
-      diagnostics.observeFrame({ bytes: 1, durationMs: 0, message: {} });
+      diagnostics.observeFrame({ payloadUtf16CodeUnits: 1, durationMs: 0, message: {} });
       diagnostics.setConnectionState('connected');
       if (state === 'samples')
         diagnostics.updateBrowserMetrics({
@@ -69,6 +69,32 @@ describe('Long Task diagnostic indicator', () => {
         view.unmount();
       }
     } finally {
+      diagnostics.dispose();
+    }
+  });
+});
+
+describe('Live diagnostic payload rate', () => {
+  it.each([
+    ['en-US', 'payload 115 UTF-16 code units/s'],
+    ['zh-CN', '载荷 115 UTF-16 码元/秒']
+  ] as const)('renders the exported payload unit in %s', (locale, expected) => {
+    vi.stubGlobal('document', {
+      hidden: false,
+      documentElement: { lang: originalLocale },
+      getElementsByTagName: () => [],
+      querySelectorAll: () => []
+    });
+    localePreferenceService().setLocale(locale);
+    const diagnostics = createWebPerformanceDiagnostics({ now: () => 1_000 });
+    diagnostics.observeFrame({ payloadUtf16CodeUnits: 115, durationMs: 1, message: {} });
+    diagnostics.refresh();
+    const view = renderComponent(WebPerformanceIndicator, { diagnostics });
+    try {
+      expect(textContent(view.root)).toContain(expected);
+      expect(diagnostics.detail().snapshot.payloadUtf16CodeUnitsPerSecond).toBe(115);
+    } finally {
+      view.unmount();
       diagnostics.dispose();
     }
   });
