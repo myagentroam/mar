@@ -28,7 +28,7 @@ export const workbenchShellZhCN = {
       rename: '重命名',
       delete: '移除工作区',
       selectAWorkspaceToContinueInThe: '选择一个工作区，即可在主区域继续工作。',
-      readingNodes: '正在读取节点',
+      readingNodes: '正在读取节点…',
       nodeListUnavailable: '节点列表暂不可用',
       noNodes: '尚无节点'
     },

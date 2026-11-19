@@ -1467,7 +1467,16 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   line-height: 1.5;
 }
 
-.tree-empty,
+.tree-empty {
+  display: grid;
+  align-content: center;
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  padding: 12px 16px;
+  text-align: center;
+}
+
 .tree-filter-empty {
   margin: 1rem 0.9rem;
   text-align: center;

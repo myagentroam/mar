@@ -28,7 +28,7 @@ export const workbenchShellEnUS = {
       rename: 'Rename',
       delete: 'Remove workspace',
       selectAWorkspaceToContinueInThe: 'Select a workspace to continue in the main area.',
-      readingNodes: 'Loading Nodes',
+      readingNodes: 'Loading Nodes…',
       nodeListUnavailable: 'Node list unavailable',
       noNodes: 'No nodes'
     },

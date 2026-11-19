@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   fulfillMockHostedConversationWatch,
   json,
@@ -12,6 +12,25 @@ function gate() {
     release = resolve;
   });
   return { promise, release };
+}
+
+async function expectCenteredInNodeSidebar(state: Locator): Promise<void> {
+  await expect
+    .poll(() =>
+      state.evaluate((element) => {
+        const sidebar = element.closest('.workspace-tree');
+        if (!sidebar) throw new Error('NODE_SIDEBAR_MISSING');
+        const panel = sidebar.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        return Math.max(
+          Math.abs(text.x + text.width / 2 - (panel.x + panel.width / 2)),
+          Math.abs(text.y + text.height / 2 - (panel.y + panel.height / 2))
+        );
+      })
+    )
+    .toBeLessThanOrEqual(3);
 }
 
 async function openWorkspace(page: Page, mobile: boolean): Promise<void> {
@@ -77,7 +96,7 @@ for (const { theme, mobile } of [
         await page.getByRole('button', { name: '进入控制台' }).click();
         const work = page.getByRole('button', { name: '工作', exact: true });
         const ring = page.getByRole('progressbar', { name: '正在恢复工作台' });
-        const readingNodes = page.getByText('正在读取节点', { exact: true });
+        const readingNodes = page.getByText('正在读取节点…', { exact: true });
         const unavailableNodes = page.getByText('节点列表暂不可用', { exact: true });
         const noNodes = page.getByText('尚无节点', { exact: true });
         await expect(work).toBeVisible();
@@ -86,7 +105,10 @@ for (const { theme, mobile } of [
           await work.click();
           await expect(readingNodes).toBeHidden();
           await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
-        } else await expect(readingNodes).toBeVisible();
+        } else {
+          await expect(readingNodes).toBeVisible();
+          await expectCenteredInNodeSidebar(readingNodes);
+        }
         await expect(noNodes).toBeHidden();
         await expect(page.getByRole('button', { name: '收起侧栏' })).toHaveCount(0);
         const indicator = ring.locator('.mar-busy-indicator');
@@ -104,7 +126,10 @@ for (const { theme, mobile } of [
           await work.click();
           await expect(unavailableNodes).toBeHidden();
           await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
-        } else await expect(unavailableNodes).toBeVisible();
+        } else {
+          await expect(unavailableNodes).toBeVisible();
+          await expectCenteredInNodeSidebar(unavailableNodes);
+        }
         await expect(noNodes).toBeHidden();
         await expect(retry).not.toHaveClass(/is-link|el-button--primary/);
         await retry.focus();
@@ -134,6 +159,7 @@ for (const { theme, mobile } of [
         }
         await expect(noNodes).toBeVisible();
         await expect(noNodes).toBeInViewport({ ratio: 1 });
+        await expectCenteredInNodeSidebar(noNodes);
         await page.screenshot({ path: testInfo.outputPath('work-startup-empty.png') });
         expect(reads).toBe(3);
       } finally {
