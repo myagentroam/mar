@@ -216,8 +216,7 @@ export class WorkbenchRelayService {
     if (connection === undefined) return Promise.resolve('authorization-revoked');
     if (socket === undefined || socket.readyState !== socket.OPEN)
       return Promise.resolve('unavailable');
-    this.send(socket, message);
-    return Promise.resolve('delivered');
+    return Promise.resolve(this.send(socket, message) ? 'delivered' : 'unavailable');
   }
 
   private async deliverConnection(
@@ -258,8 +257,7 @@ export class WorkbenchRelayService {
     const currentSocket = this.connections.get(connectionId)?.socket;
     if (currentSocket === undefined || currentSocket.readyState !== currentSocket.OPEN)
       return 'unavailable';
-    this.send(currentSocket, message);
-    return 'delivered';
+    return this.send(currentSocket, message) ? 'delivered' : 'unavailable';
   }
 
   onEvent(listener: (event: RelayedWorkbenchEvent) => void): () => void {
@@ -561,17 +559,18 @@ export class WorkbenchRelayService {
     }
   }
 
-  private send(socket: WebSocket, message: object): void {
-    this.sendSerialized(socket, JSON.stringify(message));
+  private send(socket: WebSocket, message: object): boolean {
+    return this.sendSerialized(socket, JSON.stringify(message));
   }
 
-  private sendSerialized(socket: WebSocket, serialized: string): void {
-    if (socket.readyState !== socket.OPEN) return;
+  /** Reports local socket acceptance, not browser receipt. */
+  private sendSerialized(socket: WebSocket, serialized: string): boolean {
+    if (socket.readyState !== socket.OPEN) return false;
     if (socket.bufferedAmount > MAX_SOCKET_BUFFERED_BYTES) {
       this.options.traffic?.backpressure('workbench', socket.bufferedAmount);
       this.browsers.delete(socket);
       socket.close(4009, 'WORKBENCH_BACKPRESSURE');
-      return;
+      return false;
     }
     try {
       this.options.traffic?.record('workbench', 'out', Buffer.byteLength(serialized));
@@ -579,7 +578,9 @@ export class WorkbenchRelayService {
     } catch {
       this.browsers.delete(socket);
       socket.close(1011, 'WORKBENCH_SEND_FAILED');
+      return false;
     }
+    return true;
   }
 
   private connectionCount(sessionHash: string): number {
