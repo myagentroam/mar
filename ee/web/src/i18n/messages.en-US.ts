@@ -756,6 +756,7 @@ export const enUS = {
       'After revocation, the target cannot use this model in subsequent sessions, messages, or commands. Continue?',
     grantCreated: 'Model access granted.',
     grantRemoved: 'Model access revoked.',
+    grantResultForModel: '“{name}”: {message}',
     grantsLoadFailed: 'Unable to load model access grants.',
     grantCreateFailed: 'Unable to grant model access.',
     grantRemoveFailed: 'Unable to revoke model access.',

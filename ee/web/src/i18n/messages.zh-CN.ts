@@ -748,6 +748,7 @@ export const zhCN = {
     confirmRevoke: '撤销后，目标将无法在后续会话、消息或命令中使用此模型。是否继续？',
     grantCreated: '模型授权已添加。',
     grantRemoved: '模型授权已撤销。',
+    grantResultForModel: '“{name}”：{message}',
     grantsLoadFailed: '无法加载模型授权。',
     grantCreateFailed: '无法添加模型授权。',
     grantRemoveFailed: '无法撤销模型授权。',

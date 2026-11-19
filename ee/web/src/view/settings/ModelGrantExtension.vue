@@ -7,7 +7,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { type FormInstance, type FormRules } from 'element-plus';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';
@@ -23,7 +23,6 @@ const props = defineProps<{
   writable: boolean;
   refresh: () => Promise<readonly ModelSummary[]>;
 }>();
-const selectedModel = ref<ModelSummary>();
 interface Grant {
   id: string;
   targetType: 'USER' | 'ORGANIZATION';
@@ -37,22 +36,39 @@ interface User {
   organizationId: number;
 }
 
-const grants = ref<readonly Grant[]>([]);
-const organizations = ref<readonly OrganizationSummary[]>([]);
-const organizationOptions = computed(() => organizationCascaderOptions(organizations.value));
-const users = ref<readonly User[]>([]);
-const grantLoading = ref(false);
-const grantSaving = ref(false);
-const revokingGrantIds = ref(new Set<string>());
+interface GrantDraft {
+  targetType: Grant['targetType'];
+  targetOrganizationId?: number;
+  targetUserId?: number;
+}
+
+interface GrantOpening {
+  generation: number;
+  model: ModelSummary;
+  grants: readonly Grant[];
+  organizations: readonly OrganizationSummary[];
+  users: readonly User[];
+  draft: GrantDraft;
+  loading: boolean;
+  saving: boolean;
+  revokingGrantIds: Set<string>;
+  refreshSequence: number;
+  close: () => void;
+}
+
+// Each opening owns its selection, draft, rows and activity. The parent owns the
+// shared model catalog refresh; closing an opening does not undo a submitted write.
+const opening = shallowRef<GrantOpening>();
+const organizationOptions = computed(() =>
+  organizationCascaderOptions(opening.value?.organizations ?? [])
+);
+let generation = 0;
 const grantFormRef = ref<FormInstance>();
-const targetType = ref<'USER' | 'ORGANIZATION'>('ORGANIZATION');
-const targetUserId = ref<number>();
-const targetOrganizationId = ref<number>();
-const grantRules = computed<FormRules>(() => ({
+const grantRules: FormRules<GrantDraft> = {
   targetOrganizationId: [
     {
-      validator: (_rule, _value, callback) =>
-        targetType.value !== 'ORGANIZATION' || targetOrganizationId.value !== undefined
+      validator: (_rule, value, callback) =>
+        value !== undefined
           ? callback()
           : callback(new Error(translate('marAgentModels.selectOrganization'))),
       trigger: 'change'
@@ -60,30 +76,40 @@ const grantRules = computed<FormRules>(() => ({
   ],
   targetUserId: [
     {
-      validator: (_rule, _value, callback) =>
-        targetType.value !== 'USER' || targetUserId.value !== undefined
+      validator: (_rule, value, callback) =>
+        value !== undefined
           ? callback()
           : callback(new Error(translate('marAgentModels.selectUser'))),
       trigger: 'change'
     }
   ]
-}));
-const grantOpen = computed({
-  get: () => selectedModel.value !== undefined,
-  set: (value) => {
-    if (!value) selectedModel.value = undefined;
-  }
-});
+};
+
+function readGrants(modelId: string) {
+  const query = new URLSearchParams({ resourceType: 'MODEL', modelId });
+  return props.request<{ grants: readonly Grant[] }>(`/api/resource-grants?${query}`);
+}
+
 async function openGrants(row: ModelSummary): Promise<void> {
-  selectedModel.value = row;
-  targetType.value = 'ORGANIZATION';
-  targetUserId.value = undefined;
-  targetOrganizationId.value = undefined;
-  grantLoading.value = true;
-  const query = new URLSearchParams({ resourceType: 'MODEL', modelId: row.id });
+  const dialog: GrantOpening = reactive({
+    generation: ++generation,
+    model: row,
+    grants: [],
+    organizations: [],
+    users: [],
+    draft: { targetType: 'ORGANIZATION' },
+    loading: true,
+    saving: false,
+    revokingGrantIds: new Set<string>(),
+    refreshSequence: 0,
+    close: () => {
+      if (opening.value === dialog) opening.value = undefined;
+    }
+  });
+  opening.value = dialog;
   try {
     const [grantResult, organizationResult, userResult] = await Promise.all([
-      props.request<{ grants: readonly Grant[] }>(`/api/resource-grants?${query}`),
+      readGrants(row.id),
       props
         .request<{ organizations: readonly OrganizationSummary[] }>('/api/organizations')
         .catch(() => ({ organizations: [] as readonly OrganizationSummary[] })),
@@ -91,63 +117,103 @@ async function openGrants(row: ModelSummary): Promise<void> {
         .request<{ users: readonly User[] }>('/api/enterprise/users')
         .catch(() => ({ users: [] as readonly User[] }))
     ]);
-    grants.value = grantResult.grants;
-    organizations.value = organizationResult.organizations;
-    users.value = userResult.users;
+    if (opening.value !== dialog) return;
+    dialog.grants = grantResult.grants;
+    dialog.organizations = organizationResult.organizations;
+    dialog.users = userResult.users;
   } catch (error) {
-    selectedModel.value = undefined;
+    if (opening.value !== dialog) return;
+    dialog.close();
     showMessage(
       error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantsLoadFailed'),
       'error',
       error
     );
   } finally {
-    grantLoading.value = false;
+    dialog.loading = false;
   }
 }
 
-async function refreshGrantState(modelId: string): Promise<void> {
-  const query = new URLSearchParams({ resourceType: 'MODEL', modelId });
-  const grantResult = await props.request<{ grants: readonly Grant[] }>(
-    `/api/resource-grants?${query}`
-  );
-  grants.value = grantResult.grants;
-  const models = await props.refresh();
-  selectedModel.value = models.find((model) => model.id === modelId);
+async function refreshGrantState(dialog: GrantOpening): Promise<boolean> {
+  const modelId = dialog.model.id;
+  const sequence = ++dialog.refreshSequence;
+  const isCurrent = () => opening.value === dialog && dialog.refreshSequence === sequence;
+  try {
+    const [models, result] = await Promise.all([
+      props.refresh(),
+      isCurrent() ? readGrants(modelId) : undefined
+    ]);
+    if (!isCurrent() || result === undefined) return true;
+    const model = models.find((candidate) => candidate.id === modelId);
+    if (model === undefined) {
+      dialog.close();
+      return true;
+    }
+    dialog.model = model;
+    dialog.grants = result.grants;
+  } catch (error) {
+    if (isCurrent()) {
+      showMessage(
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantsLoadFailed'),
+        'error',
+        error
+      );
+      return false;
+    }
+  }
+  return true;
 }
 
-async function createGrant(): Promise<void> {
-  const row = selectedModel.value;
-  if (row === undefined || !(await grantFormRef.value?.validate().catch(() => false))) return;
-  grantSaving.value = true;
+function canWrite(dialog: GrantOpening): boolean {
+  return opening.value === dialog && props.writable && !dialog.loading;
+}
+
+function writeResultMessage(dialog: GrantOpening, message: string): string {
+  return opening.value === dialog
+    ? message
+    : translate('marAgentModels.grantResultForModel', { name: dialog.model.name, message });
+}
+
+async function createGrant(dialog: GrantOpening): Promise<void> {
+  const form = grantFormRef.value;
+  if (form === undefined || !canWrite(dialog) || dialog.saving) return;
+  dialog.saving = true;
   try {
+    if (!(await form.validate().catch(() => false)) || !canWrite(dialog)) return;
+    const { targetType, targetUserId, targetOrganizationId } = dialog.draft;
     await props.request('/api/resource-grants', {
       method: 'POST',
       body: JSON.stringify({
         resourceType: 'MODEL',
-        modelId: row.id,
-        targetType: targetType.value,
-        targetUserId: targetType.value === 'USER' ? targetUserId.value : undefined,
-        targetOrganizationId:
-          targetType.value === 'ORGANIZATION' ? targetOrganizationId.value : undefined
+        modelId: dialog.model.id,
+        targetType,
+        targetUserId: targetType === 'USER' ? targetUserId : undefined,
+        targetOrganizationId: targetType === 'ORGANIZATION' ? targetOrganizationId : undefined
       })
     });
-    await refreshGrantState(row.id);
-    showMessage(translate('marAgentModels.grantCreated'), 'success');
+    if (await refreshGrantState(dialog))
+      showMessage(writeResultMessage(dialog, translate('marAgentModels.grantCreated')), 'success');
   } catch (error) {
     showMessage(
-      error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantCreateFailed'),
+      writeResultMessage(
+        dialog,
+        error instanceof Error ? errorMessage(error) : translate('marAgentModels.grantCreateFailed')
+      ),
       'error',
       error
     );
   } finally {
-    grantSaving.value = false;
+    dialog.saving = false;
   }
 }
 
-async function removeGrant(grant: Grant): Promise<void> {
-  const model = selectedModel.value;
-  if (model === undefined) return;
+async function removeGrant(dialog: GrantOpening, grant: Grant): Promise<void> {
+  const grantId = grant.id;
+  if (dialog.revokingGrantIds.has(grantId)) return;
+  const canRevoke = () => canWrite(dialog) && dialog.grants.some((item) => item.id === grantId);
+  if (!canRevoke()) return;
+  dialog.revokingGrantIds.add(grantId);
+  let submitted = false;
   try {
     await ElMessageBox.confirm(
       translate('marAgentModels.confirmRevoke'),
@@ -160,54 +226,59 @@ async function removeGrant(grant: Grant): Promise<void> {
         cancelButtonText: translate('marAgentModels.cancel')
       }
     );
-    revokingGrantIds.value = new Set(revokingGrantIds.value).add(grant.id);
-    await props.request(`/api/resource-grants/${encodeURIComponent(grant.id)}`, {
+    if (!canRevoke()) return;
+    submitted = true;
+    await props.request(`/api/resource-grants/${encodeURIComponent(grantId)}`, {
       method: 'DELETE'
     });
-    await refreshGrantState(model.id);
-    showMessage(translate('marAgentModels.grantRemoved'), 'success');
+    if (await refreshGrantState(dialog))
+      showMessage(writeResultMessage(dialog, translate('marAgentModels.grantRemoved')), 'success');
   } catch (error) {
-    if (error !== 'cancel')
+    if (submitted || (opening.value === dialog && error !== 'cancel' && error !== 'close'))
       showMessage(
-        error instanceof Error
-          ? errorMessage(error)
-          : translate('marAgentModels.grantRemoveFailed'),
+        writeResultMessage(
+          dialog,
+          error instanceof Error
+            ? errorMessage(error)
+            : translate('marAgentModels.grantRemoveFailed')
+        ),
         'error',
         error
       );
   } finally {
-    const next = new Set(revokingGrantIds.value);
-    next.delete(grant.id);
-    revokingGrantIds.value = next;
+    dialog.revokingGrantIds.delete(grantId);
   }
 }
 
-function organizationLabel(organizationId: number | undefined): string {
+function organizationLabel(dialog: GrantOpening, organizationId: number | undefined): string {
   if (organizationId === undefined) return '—';
-  return organizationDisplayLabel(organizations.value, organizationId);
+  return organizationDisplayLabel(dialog.organizations, organizationId);
 }
 
-function grantTargetLabel(grant: Grant): string {
+function grantTargetLabel(dialog: GrantOpening, grant: Grant): string {
   if (grant.targetType === 'USER')
-    return users.value.find((user) => user.id === grant.targetUserId)?.username ?? '—';
-  return organizationLabel(grant.targetOrganizationId);
+    return dialog.users.find((user) => user.id === grant.targetUserId)?.username ?? '—';
+  return organizationLabel(dialog, grant.targetOrganizationId);
 }
 
+onBeforeUnmount(() => opening.value?.close());
 defineExpose({ open: openGrants });
 </script>
 <template>
   <el-dialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
-    v-if="grantOpen"
-    v-model="grantOpen"
+    v-if="opening"
+    :key="opening.generation"
+    :model-value="true"
+    :before-close="opening.close"
     :title="translate('marAgentModels.accessDialogTitle')"
     width="min(640px, calc(100vw - 32px))"
     :close-icon="marIcon('close')"
   >
-    <div v-if="selectedModel" class="model-access-context">
-      <strong>{{ selectedModel.name }}</strong>
-      <code>{{ selectedModel.modelId }}</code>
+    <div class="model-access-context">
+      <strong>{{ opening.model.name }}</strong>
+      <code>{{ opening.model.modelId }}</code>
     </div>
     <el-alert
       :title="translate('marAgentModels.publicHint')"
@@ -216,18 +287,18 @@ defineExpose({ open: openGrants });
       show-icon
       ><template #icon><MarIcon name="info" /></template
     ></el-alert>
-    <div v-loading="grantLoading">
+    <div v-loading="opening.loading">
       <el-form
         ref="grantFormRef"
-        :model="{ targetType, targetOrganizationId, targetUserId }"
+        :model="opening.draft"
         :rules="grantRules"
+        :disabled="!writable || opening.loading || opening.saving"
         class="grant-create"
         label-position="top"
       >
         <el-form-item :label="translate('marAgentModels.targetType')">
           <el-select
-            v-model="targetType"
-            :disabled="!writable"
+            v-model="opening.draft.targetType"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
@@ -236,14 +307,13 @@ defineExpose({ open: openGrants });
           </el-select>
         </el-form-item>
         <el-form-item
-          v-if="targetType === 'ORGANIZATION'"
+          v-if="opening.draft.targetType === 'ORGANIZATION'"
           :label="translate('marAgentModels.targetOrganization')"
           prop="targetOrganizationId"
         >
           <el-cascader
-            v-model="targetOrganizationId"
+            v-model="opening.draft.targetOrganizationId"
             style="width: 100%"
-            :disabled="!writable"
             :placeholder="translate('marAgentModels.selectOrganization')"
             filterable
             :options="organizationOptions"
@@ -252,28 +322,31 @@ defineExpose({ open: openGrants });
           />
         </el-form-item>
         <el-form-item
-          v-else-if="targetType === 'USER'"
+          v-else-if="opening.draft.targetType === 'USER'"
           :label="translate('marAgentModels.targetUser')"
           prop="targetUserId"
         >
           <el-select
-            v-model="targetUserId"
-            :disabled="!writable"
+            v-model="opening.draft.targetUserId"
             :placeholder="translate('marAgentModels.selectUser')"
             filterable
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
             <el-option
-              v-for="user in users"
+              v-for="user in opening.users"
               :key="user.id"
-              :label="`${user.username} · ${organizationLabel(user.organizationId)}`"
+              :label="`${user.username} · ${organizationLabel(opening, user.organizationId)}`"
               :value="user.id"
             />
           </el-select>
         </el-form-item>
       </el-form>
-      <el-table :data="grants" row-key="id" :empty-text="translate('marAgentModels.noGrants')">
+      <el-table
+        :data="opening.grants"
+        row-key="id"
+        :empty-text="translate('marAgentModels.noGrants')"
+      >
         <el-table-column :label="translate('marAgentModels.targetType')" width="140">
           <template #default="{ row }">
             {{
@@ -284,7 +357,7 @@ defineExpose({ open: openGrants });
           </template>
         </el-table-column>
         <el-table-column :label="translate('marAgentModels.target')" min-width="200">
-          <template #default="{ row }">{{ grantTargetLabel(row) }}</template>
+          <template #default="{ row }">{{ grantTargetLabel(opening, row) }}</template>
         </el-table-column>
         <el-table-column :label="translate('marAgentModels.actions')" width="100">
           <template #default="{ row }">
@@ -293,8 +366,8 @@ defineExpose({ open: openGrants });
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable"
-              :loading="revokingGrantIds.has(row.id)"
-              @click="removeGrant(row)"
+              :loading="opening.revokingGrantIds.has(row.id)"
+              :onClick="removeGrant.bind(null, opening, row)"
               :loading-icon="marIcon('loading-action')"
             >
               {{ translate('marAgentModels.revoke') }}
@@ -304,13 +377,13 @@ defineExpose({ open: openGrants });
       </el-table>
     </div>
     <template #footer>
-      <el-button @click="grantOpen = false">{{ translate('marAgentModels.close') }}</el-button>
+      <el-button :onClick="opening.close">{{ translate('marAgentModels.close') }}</el-button>
       <el-button
         type="primary"
         :icon="marIcon('share')"
-        :disabled="!writable || grantLoading"
-        :loading="grantSaving"
-        @click="createGrant"
+        :disabled="!writable || opening.loading"
+        :loading="opening.saving"
+        :onClick="createGrant.bind(null, opening)"
         :loading-icon="marIcon('loading-action')"
       >
         {{ translate('common.grant') }}
