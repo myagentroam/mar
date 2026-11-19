@@ -1,5 +1,5 @@
 import { executionActivity } from './support/execution-activity.js';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -124,12 +124,11 @@ it.each([
     let processId = '';
     let cellId = '';
     let phase = 0;
-    const bundledPath = ripgrep.bundledRipgrepPath;
+    const bundledPath = join(root, 'fixture-rg');
     const ripgrepPath = changesCommands
-      ? vi.spyOn(ripgrep, 'bundledRipgrepPath').mockImplementation(() => {
-          if (phase > 0) throw new Error('Fixture bundled command unavailable.');
-          return bundledPath();
-        })
+      ? vi
+          .spyOn(ripgrep, 'bundledRipgrepPath')
+          .mockImplementation(() => (phase === 0 ? bundledPath : join(root, 'missing-rg')))
       : undefined;
     // Keep the environment stable so command availability is an independent category.
     const prependPath = changesCommands
@@ -384,6 +383,7 @@ observe.text("retained fixture result");`
         : {})
     };
     try {
+      if (changesCommands) await writeFile(bundledPath, '', { mode: 0o700 });
       first = run({ ...input, runId: 'first' });
       await Promise.race([
         firstBlocked,

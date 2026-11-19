@@ -69,10 +69,7 @@ export const HOST_CONFIGURATION_CATEGORIES = [
   'guaranteedCommands'
 ] as const;
 export type HostConfigurationCategory = (typeof HOST_CONFIGURATION_CATEGORIES)[number];
-export interface MarAgentHostFingerprint {
-  readonly value: string;
-  readonly categories: Readonly<Record<HostConfigurationCategory, string>>;
-}
+export type MarAgentHostFingerprint = Readonly<Record<HostConfigurationCategory, string>>;
 
 export interface MarAgentRuntimeRequest {
   runId: string;
@@ -381,14 +378,10 @@ export function sessionHostFingerprint(
   const digest = (value: unknown) =>
     createHash('sha256').update(canonicalJson(value)).digest('hex');
   return {
-    value: digest(configuration),
-    // Only fixed category names leave this comparison; never log these value fingerprints.
-    categories: {
-      cwd: digest(configuration.cwd),
-      mcpServers: digest(configuration.mcpServers),
-      environment: digest(configuration.environment),
-      guaranteedCommands: digest(configuration.guaranteedCommands)
-    }
+    cwd: digest(configuration.cwd),
+    mcpServers: digest(configuration.mcpServers),
+    environment: digest(configuration.environment),
+    guaranteedCommands: digest(configuration.guaranteedCommands)
   };
 }
 

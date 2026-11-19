@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 async function fixture() {
-  vi.spyOn(operational, 'nodeLog').mockImplementation(() => undefined);
+  const log = vi.spyOn(operational, 'nodeLog').mockImplementation(() => undefined);
   const cwd = await mkdtemp(join(tmpdir(), 'mar-runtime-registry-'));
   const releases: ReturnType<typeof vi.fn>[] = [];
   const cache = new MarAgentMcpClientCache();
@@ -130,6 +130,7 @@ async function fixture() {
     promote,
     hosts,
     question,
+    log,
     close: async () => {
       for (const value of lifetimes) value.finish();
       try {
@@ -303,6 +304,67 @@ it('does not let old cleanup extend the next idle TTL', async () => {
     first.finish(old);
     await vi.advanceTimersByTimeAsync(1);
     expect(f.agent.dispose).toHaveBeenCalledOnce();
+  } finally {
+    await f.close();
+  }
+});
+
+it('reuses the Host across Execution MCP changes and logs only actual Host changes', async () => {
+  const f = await fixture();
+  const mcpServers = (value: string): MarAgentRuntimeRequest['mcpServers'] => [
+    {
+      name: 'explicit',
+      transport: 'HTTP',
+      lifecycle: 'EXECUTION',
+      url: 'https://fixture.invalid/mcp',
+      headers: { Authorization: value }
+    },
+    {
+      name: 'implicit',
+      transport: 'STDIO',
+      command: 'fixture',
+      environment: { MAR_CTL_USER_TOKEN: value }
+    }
+  ];
+  try {
+    const acquire = async (
+      runId: string,
+      secretEnvironment: MarAgentRuntimeRequest['secretEnvironment'] = {}
+    ) => {
+      const run = f.run(runId);
+      const use = await f.registry.acquire(
+        {
+          ...f.request,
+          runId,
+          mcpServers: mcpServers(`fixture-secret-${runId}`),
+          secretEnvironment
+        },
+        run
+      );
+      run.finish(use);
+      return use.runtime;
+    };
+    const first = await acquire('first');
+    expect(await acquire('reused')).toBe(first);
+    expect(f.agent.dispose).not.toHaveBeenCalled();
+
+    const replaced = await acquire('replaced', { FIXTURE_SCOPE: 'changed' });
+    expect(replaced).not.toBe(first);
+    expect(f.agent.dispose).toHaveBeenCalledOnce();
+    expect(f.releases[0]).toHaveBeenCalledOnce();
+    expect(
+      f.log.mock.calls.filter(([event]) => event === 'runner.mar-agent.runtime.releasing')
+    ).toEqual([
+      [
+        'runner.mar-agent.runtime.releasing',
+        {
+          runtimeId: first.runtimeId,
+          sessionId: first.session.id,
+          reason: 'host_configuration_changed',
+          changedCategories: ['environment']
+        }
+      ]
+    ]);
   } finally {
     await f.close();
   }

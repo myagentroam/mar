@@ -104,7 +104,14 @@ export class MarAgentSessionRuntimeRegistry {
         this.#assertUsable(entry, lifetime);
         const fingerprint = sessionHostFingerprint(input, configuration);
         const existing = entry.runtime;
-        if (existing !== undefined && existing.fingerprint.value === fingerprint.value) {
+        // Reuse and release diagnostics share the same comparison; only category names are logged.
+        const changedCategories =
+          existing === undefined
+            ? []
+            : HOST_CONFIGURATION_CATEGORIES.filter(
+                (category) => existing.fingerprint[category] !== fingerprint[category]
+              );
+        if (existing !== undefined && changedCategories.length === 0) {
           await reconfigureSessionRuntime(existing, input, this.resources.modelFactory);
           this.#assertUsable(entry, lifetime);
           nodeLog('runner.mar-agent.runtime.reused', {
@@ -126,10 +133,7 @@ export class MarAgentSessionRuntimeRegistry {
               entry.aliases,
               'host_configuration_changed',
               undefined,
-              HOST_CONFIGURATION_CATEGORIES.filter(
-                (category) =>
-                  existing.fingerprint.categories[category] !== fingerprint.categories[category]
-              )
+              changedCategories
             );
             this.#assertUsable(entry, lifetime);
           }
