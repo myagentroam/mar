@@ -3045,7 +3045,7 @@ test('Work resource trees do not substitute Workspace-management permission for 
 
 test('Reload restores Workspace Tabs and sessions, falls back to the first valid item, and creates only for empty lists', async ({
   page
-}) => {
+}, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
   await page.route(/\/api\/workspaces\/workspace-2\/changes(?:\?.*)?$/, (route) =>
@@ -3145,13 +3145,51 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
     )
     .toEqual(['session-1', 'session-2']);
 
-  await page.reload();
+  await test.step('Hold and fail the first Node read without showing the welcome page or losing saved tabs', async () => {
+    let releaseNodes!: () => void;
+    const delayedNodes = new Promise<void>((resolve) => {
+      releaseNodes = resolve;
+    });
+    await page.route(
+      '**/api/nodes',
+      async (route) => {
+        await delayedNodes;
+        await route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' } });
+      },
+      { times: 1 }
+    );
+    try {
+      await page.reload();
+      await expect(page.getByRole('progressbar', { name: '正在恢复工作台' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '选择一个工作区' })).toHaveCount(0);
+      await expect(page.locator('.workspace-tab')).toHaveCount(0);
+      await page.keyboard.press('Alt+Shift+W');
+      await page.screenshot({ path: testInfo.outputPath('workspace-restoring.png') });
+      await page.route('**/api/conversation-templates', (route) => json(route, { templates: [] }));
+      await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+        json(route, { items: [], nextCursor: null })
+      );
+      await page.getByRole('button', { name: '对话', exact: true }).click();
+      await expect(page).toHaveURL(/view=conversations/);
+      await page.getByRole('button', { name: '工作', exact: true }).click();
+      await expect(page.getByRole('progressbar', { name: '正在恢复工作台' })).toBeVisible();
+    } finally {
+      releaseNodes();
+    }
+    await expect(
+      page.getByText('暂时无法加载节点列表，已打开的工作区标签仍会保留。')
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '选择一个工作区' })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('workspace-retry.png') });
+    await page.getByRole('button', { name: '重试', exact: true }).click();
+  });
   await expect(page.locator('.workspace-tab')).toHaveCount(2);
   await expect(page.getByText('恢复内容 session-2', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: /^another-project\b/ })).toHaveAttribute(
     'aria-selected',
     'true'
   );
+  await page.screenshot({ path: testInfo.outputPath('workspace-restored.png') });
   holdSessionOne = true;
   try {
     await page.getByRole('tab', { name: /^project\b/ }).click();

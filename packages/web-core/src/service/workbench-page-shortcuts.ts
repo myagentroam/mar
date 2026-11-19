@@ -20,7 +20,12 @@ export function createWorkbenchPageShortcuts(
           'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
         ) !== null &&
           !consoleKeyboardShortcutService.isWithin('pane', target)));
-    return options.view.value === 'nodes' && !quickOpenFileVisible.value && !blocked;
+    return (
+      options.view.value === 'nodes' &&
+      options.workspaceStartupReady.value &&
+      !quickOpenFileVisible.value &&
+      !blocked
+    );
   };
   const workspaceBinding = (
     command: string,
@@ -97,6 +102,7 @@ export function createWorkbenchPageShortcuts(
       keys: workspaceKeys.quickOpen,
       when: () =>
         options.view.value === 'nodes' &&
+        options.workspaceStartupReady.value &&
         options.nodes.value.some((node) => node.connected && !node.disabled),
       execute: () => {
         openQuickOpenFile();

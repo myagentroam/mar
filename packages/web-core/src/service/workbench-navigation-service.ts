@@ -176,6 +176,7 @@ export function createWorkbenchNavigationPresentation<ManagementSection extends 
   readonly management: Pick<ManagementComposition<ManagementSection>, 'items'>;
   readonly admin: Readonly<Ref<AdminState>>;
   readonly defaultManagement: ManagementSection;
+  readonly canOpenWorkspaceSidebar: () => boolean;
   readonly transition: (previous: ApplicationView, next: ApplicationView) => void;
   readonly recoverNotifications: () => Promise<unknown>;
   readonly layout: Pick<
@@ -275,12 +276,10 @@ export function createWorkbenchNavigationPresentation<ManagementSection extends 
     )
       managementSection.value = managementItems.value[0]?.id ?? input.defaultManagement;
     selectWorkbenchView(nextView);
-    if (
-      collapseSidebar ||
-      (mobileViewport.value &&
-        previousView !== nextView &&
-        (nextView === 'nodes' || nextView === 'conversations'))
-    )
+    const enteringContent =
+      previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations');
+    const restoringWork = nextView === 'nodes' && !input.canOpenWorkspaceSidebar();
+    if (mobileViewport.value && (collapseSidebar || enteringContent || restoringWork))
       closeMobileSidebar();
     if (previousView !== nextView && (nextView === 'nodes' || nextView === 'conversations'))
       void input.recoverNotifications().catch(() => undefined);

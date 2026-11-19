@@ -199,6 +199,8 @@ export function createWorkbenchSessionSelection(
 }
 
 export interface WorkbenchSelectionView {
+  workspaceStartupStatus: 'loading' | 'failed' | 'ready';
+  retryWorkspaceStartup: () => void;
   activateWorkspaceTab: (tab: WorkspaceTab) => Promise<void>;
   activeWorkspaceTabId: string | undefined;
   closeWorkspaceTab: (tab: WorkspaceTab, force?: boolean) => void;

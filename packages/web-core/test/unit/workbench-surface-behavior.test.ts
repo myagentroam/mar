@@ -197,6 +197,7 @@ function pageFixture() {
       workspaceTarget: { nodeId: 'node', workspaceId: 'one' },
       workspaceTabs: tabs,
       activeWorkspaceTabId: 'one',
+      workspaceStartupStatus: 'ready' as 'loading' | 'failed' | 'ready',
       workspaceSelectionLoading: false,
       workspaceTabNodeLabel: () => 'Node',
       moveWorkspaceTab: vi.fn(),
@@ -212,7 +213,10 @@ function pageFixture() {
       workspaceDirectDescription: () => undefined,
       nodes: []
     }),
-    notifications: { hasActiveWorkspaceRun: () => false, hasUnreadWorkspace: () => false },
+    notifications: {
+      hasActiveWorkspaceRun: (_nodeId: string, _workspaceId: string) => false,
+      hasUnreadWorkspace: (_nodeId: string, _workspaceId: string) => false
+    },
     terminal: shallowReactive({ terminalReady: true, terminalDocks: new Map() }),
     registration: shallowReactive({
       workspaceRegistrationNodeId: undefined as string | undefined,
@@ -335,8 +339,18 @@ describe('Workbench surface composition behavior', () => {
       });
       const view = renderComponent(Surface, { page });
       try {
+        const tabStatus = (
+          name: 'has-active-run' | 'has-unread',
+          nodeId: string,
+          workspaceId: string
+        ) => {
+          const callback = view.findAll('tab-strip')[0]!.props[
+            name
+          ] as typeof page.notifications.hasActiveWorkspaceRun;
+          return callback(nodeId, workspaceId);
+        };
         const running = (nodeId: string, workspaceId: string) =>
-          view.findAll('tab-strip')[0]!.props['has-active-run'](nodeId, workspaceId);
+          tabStatus('has-active-run', nodeId, workspaceId);
         expect(running('node', 'one')).toBe(true);
         expect(running('node', 'two')).toBe(false);
         expect(running('other-node', 'other')).toBe(true);
@@ -348,7 +362,7 @@ describe('Workbench surface composition behavior', () => {
         expect(running('other-node', 'other')).toBe(false);
         expect(nodes[0]!.connected).toBe(true);
         expect(page.notifications.hasActiveWorkspaceRun('node', 'one')).toBe(true);
-        expect(view.findAll('tab-strip')[0]!.props['has-unread']('node', 'one')).toBe(true);
+        expect(tabStatus('has-unread', 'node', 'one')).toBe(true);
 
         Object.assign(page.application, { networkUnavailable: false });
         nodes[0] = { id: 'node', connected: false };
@@ -362,7 +376,7 @@ describe('Workbench surface composition behavior', () => {
         activeRun.value = false;
         await nextTick();
         expect(running('node', 'one')).toBe(false);
-        expect(view.findAll('tab-strip')[0]!.props['has-unread']('node', 'one')).toBe(true);
+        expect(tabStatus('has-unread', 'node', 'one')).toBe(true);
       } finally {
         view.unmount();
       }

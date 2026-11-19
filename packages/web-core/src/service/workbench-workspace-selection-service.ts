@@ -41,6 +41,7 @@ interface WorkbenchWorkspaceSelectionOptions {
   readonly draftOpen: Readonly<Ref<boolean>>;
   readonly setDraftOpen: (open: boolean) => void;
   readonly profilesLoading: Readonly<Ref<boolean>>;
+  readonly nodeListConfirmed: Readonly<Ref<boolean>>;
   readonly hasNode: (nodeId: string) => boolean;
   readonly isHostAvailable: (nodeId: string) => boolean;
   readonly isNetworkUnavailable: () => boolean;
@@ -110,7 +111,7 @@ export function createWorkbenchWorkspaceSelectionService(
 
   async function select(target: WorkspaceTarget, openDraft = true): Promise<boolean> {
     if (!options.hasNode(target.nodeId)) {
-      options.invalidateWorkspace(target);
+      if (options.nodeListConfirmed.value) options.invalidateWorkspace(target);
       return false;
     }
     const selectionRevision = revision.nextSelectionRevision();

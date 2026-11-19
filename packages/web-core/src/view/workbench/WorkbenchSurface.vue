@@ -428,7 +428,12 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       @toggle-sidebar="page.layout.sidebarCollapsed = !page.layout.sidebarCollapsed"
     >
       <template
-        v-if="page.application.view === 'nodes' && !page.layout.mobileViewport"
+        v-if="
+          page.application.view === 'nodes' &&
+          !page.layout.mobileViewport &&
+          page.selection.workspaceStartupStatus !== 'loading' &&
+          page.selection.workspaceStartupStatus !== 'failed'
+        "
         #workspace-tabs
       >
         <WorkspaceTabs
@@ -454,8 +459,35 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       </template>
     </WorkbenchHeader>
     <section v-show="page.application.view === 'nodes'" class="session-layout">
+      <div
+        v-if="
+          page.application.view === 'nodes' && page.selection.workspaceStartupStatus === 'loading'
+        "
+        class="mar-page-loading-state"
+        role="progressbar"
+        :aria-label="translate('generated.workbenchSurface.restoringWorkspace')"
+      >
+        <BusyIndicator />
+      </div>
       <section
-        v-if="page.application.view === 'nodes' && page.selection.workspaceTarget === undefined"
+        v-else-if="
+          page.application.view === 'nodes' && page.selection.workspaceStartupStatus === 'failed'
+        "
+        class="welcome-panel compact-welcome workspace-recovery-panel"
+      >
+        <div class="workspace-recovery-state">
+          <p role="status">
+            {{ translate('generated.workbenchSurface.nodeListUnavailable') }}
+          </p>
+          <el-button link type="primary" size="small" @click="page.selection.retryWorkspaceStartup">
+            {{ translate('common.retry') }}
+          </el-button>
+        </div>
+      </section>
+      <section
+        v-else-if="
+          page.application.view === 'nodes' && page.selection.workspaceTarget === undefined
+        "
         class="welcome-panel compact-welcome"
       >
         <h1>{{ translate('generated.workbenchSurface.selectAWorkspace') }}</h1>

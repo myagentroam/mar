@@ -50,6 +50,8 @@ export const workbenchPageZhCN = {
   },
   generated: {
     workbenchSurface: {
+      restoringWorkspace: '正在恢复工作台',
+      nodeListUnavailable: '暂时无法加载节点列表，已打开的工作区标签仍会保留。',
       workspaceMetadataUnavailable: '工作区信息暂不可用',
       retryWorkspace: '重试加载',
       offlineWorkspace: '节点离线，等待重新连接。',

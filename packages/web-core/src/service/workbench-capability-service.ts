@@ -20,10 +20,14 @@ interface WorkbenchCapabilityServiceOptions {
   readonly errorMessage: (error: unknown) => string;
 }
 
+const INITIAL_NODE_LIST_TIMEOUT_MS = 15_000;
+
+/** Owns the account's authoritative Node inventory and cached workbench capabilities. */
 export function createWorkbenchCapabilityService<WorkspaceType extends Workspace = Workspace>(
   options: WorkbenchCapabilityServiceOptions
 ) {
   const nodes = ref<NodeSummary[]>([]);
+  const nodeListConfirmed = ref(false);
   const serverVersion = ref('');
   const workspaces = ref<WorkspaceType[]>([]) as Ref<WorkspaceType[]>;
   const manifest = ref<NodeWorkbenchManifest>();
@@ -33,6 +37,8 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
   const manifestRequestsByNode = new Map<string, number>();
   let manifestRequest = 0;
   let nodesRequest = 0;
+  let initialNodesRequest: Promise<void> | undefined;
+  let initialNodeConnections: Map<string, boolean> | undefined;
 
   function applyUpgrade(nodeId: string, progress: NodeUpgradeProgress | null): void {
     upgradeProgress.value = { ...upgradeProgress.value, [nodeId]: progress };
@@ -48,6 +54,7 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
     nodes.value = nodes.value.filter((node) => node.id !== nodeId);
   }
   function setNodeConnection(nodeId: string, connected: boolean): boolean {
+    initialNodeConnections?.set(nodeId, connected);
     const wasConnected = nodes.value.some((node) => node.id === nodeId && node.connected);
     nodes.value = nodes.value.map((node) => (node.id === nodeId ? { ...node, connected } : node));
     return wasConnected;
@@ -61,6 +68,10 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
   }
 
   function resetResources(): void {
+    nodesRequest += 1;
+    initialNodesRequest = undefined;
+    initialNodeConnections = undefined;
+    nodeListConfirmed.value = false;
     nodes.value = [];
     serverVersion.value = '';
     clearUpgradeProgress();
@@ -89,19 +100,51 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
       }
   }
 
-  async function refreshNodes(): Promise<void> {
+  function refreshNodes(): Promise<void> {
+    if (nodeListConfirmed.value) return readNodes();
+    if (initialNodesRequest !== undefined) return initialNodesRequest;
+    // The startup caller and any concurrent refresh must see the same first result.
+    const connections = (initialNodeConnections = new Map<string, boolean>());
+    const pending = readNodes(
+      { signal: AbortSignal.timeout(INITIAL_NODE_LIST_TIMEOUT_MS) },
+      connections
+    ).finally(() => {
+      if (initialNodesRequest !== pending) return;
+      initialNodesRequest = undefined;
+      initialNodeConnections = undefined;
+    });
+    initialNodesRequest = pending;
+    return pending;
+  }
+
+  async function readNodes(
+    init?: RequestInit,
+    connections?: ReadonlyMap<string, boolean>
+  ): Promise<void> {
     const requestId = ++nodesRequest;
     try {
-      const next = (await options.request<{ nodes: NodeSummary[] }>('/api/nodes')).nodes;
+      const inventory = (await options.request<{ nodes: NodeSummary[] }>('/api/nodes', init)).nodes;
       if (requestId !== nodesRequest) return;
+      if (!Array.isArray(inventory)) throw new Error('Invalid Node list response.');
+      // Live events can arrive before the first inventory is published; retain their connection
+      // facts without treating them as proof that an unlisted Node is visible to this account.
+      const next = connections?.size
+        ? inventory.map((node) => ({
+            ...node,
+            connected: connections.get(node.id) ?? node.connected
+          }))
+        : inventory;
       const disconnected = new Set(
         nodes.value.filter((node) => !node.connected).map((node) => node.id)
       );
       nodes.value = next;
+      nodeListConfirmed.value = true;
       for (const node of next)
         if (node.connected && disconnected.has(node.id)) options.onNodeConnected?.(node.id);
     } catch (error) {
       if (requestId !== nodesRequest) return;
+      // The Work surface owns initial-load error feedback and offers retry.
+      if (!nodeListConfirmed.value) return;
       if (errorCode(error) === 'NETWORK_UNAVAILABLE' && options.isNetworkUnavailable()) return;
       options.notice(
         translate('generated.workbenchCapabilityService.unableToLoadNodes', {
@@ -159,6 +202,7 @@ export function createWorkbenchCapabilityService<WorkspaceType extends Workspace
 
   return {
     nodes: computed(() => nodes.value),
+    nodeListConfirmed: computed(() => nodeListConfirmed.value),
     serverVersion: computed(() => serverVersion.value),
     workspaces: computed(() => workspaces.value),
     replaceNode,

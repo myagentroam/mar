@@ -66,6 +66,7 @@ function fixture() {
   >;
   const service = createWorkbenchPageInteractionService({
     view,
+    workspaceStartupReady: ref(true),
     nodes,
     workspaceTabs,
     activeWorkspaceTabId,

@@ -13,6 +13,8 @@ In Work mode, expand a Node group in the left resource tree and open a registere
 
 Every Workspace uses the same activation path: its tab activates and restores cached content immediately, then refreshes in the background. An uncached target shows its own loading state without waiting for network responses before selection. A temporary network failure leaves the target selected so it can be retried. Confirmed missing or inaccessible Workspaces have their content cleared and follow tab removal and fallback rules. Newer selections take precedence over late responses.
 
+After a browser reload, Work restores the last open tabs and active Workspace. If the Node list cannot be loaded, select **Retry** to continue; the failure does not close the saved tabs. Other modes remain available during restoration.
+
 Clicking a Workspace tab, including the active tab, desktop overflow menu, or mobile strip, opens its first valid unread session and selects the correct Main / Child group. A successful open marks only that session read; another click can open the next unread session. With no unread sessions, the tab restores its last selected session, or preserves the existing empty or draft behavior. Running indicators are informational and never select a running session. A failed open does not clear unread state. Background notifications and task changes do not switch sessions automatically. Tree navigation, shortcuts, and tab-close fallback keep their existing behavior.
 
 Workspace registration uses an explicit host target in a dialog; closing it leaves the active Workspace unchanged. Open Workspaces appear as tabs and retain their order in the current browser.

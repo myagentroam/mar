@@ -50,6 +50,8 @@ export const workbenchPageEnUS = {
   },
   generated: {
     workbenchSurface: {
+      restoringWorkspace: 'Restoring workbench',
+      nodeListUnavailable: 'The Node list could not be loaded. Your open Workspace tabs are saved.',
       workspaceMetadataUnavailable: 'Workspace information is currently unavailable',
       retryWorkspace: 'Retry loading',
       offlineWorkspace: 'Node offline. Waiting for reconnection.',

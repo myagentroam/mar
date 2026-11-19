@@ -55,6 +55,7 @@ const captured = vi.hoisted(() => ({
   accountChanged: undefined as Parameters<typeof createAdminAuthService>[0]['onAccountChanged'],
   notificationOptions: undefined as Parameters<typeof createWorkbenchNotificationService>[1],
   waitForReady: vi.fn(async () => true),
+  connectLive: vi.fn(),
   startWorkspace: vi.fn(async () => undefined),
   restartWorkspace: vi.fn(async () => undefined),
   seedNodes: undefined as ((nodes: NodeSummary[]) => Promise<void>) | undefined,
@@ -350,7 +351,7 @@ vi.mock('../../src/service/workbench-live-service.js', async (original) => {
         connected: ref(false),
         waitForReady: captured.waitForReady,
         restore: vi.fn(),
-        connect: vi.fn(),
+        connect: captured.connectLive,
         reconnect: vi.fn(),
         close: vi.fn(),
         sendDirect: vi.fn(),
@@ -495,6 +496,113 @@ function controller(pwaApplication?: PwaApplicationService, initialView: Workben
 }
 
 describe('Workbench controller composition behavior', () => {
+  it('starts realtime and restores the hosted deep link while the initial Node list is still pending', async () => {
+    window.location.search = '?view=conversations&node=host-node&conversation=old-conversation';
+    const { page } = controller(undefined, 'conversations');
+    let finishNodes!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation(async (path) =>
+      path === '/api/nodes'
+        ? new Promise<Response>((resolve) => (finishNodes = resolve))
+        : new Response(JSON.stringify({ notifications: [], recentRuns: [] }))
+    );
+
+    const restoring = captured.authenticated!();
+    await flushComponent();
+    expect(captured.connectLive).toHaveBeenCalledOnce();
+    expect(page.hosted.hostedConversationWorkspace.selectedConversationId.value).toBe(
+      'old-conversation'
+    );
+    expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+    finishNodes(new Response(JSON.stringify({ nodes: [] })));
+    await restoring;
+  });
+
+  it.each([true, false])(
+    'does not let a late hosted deep link replace a newer selection (ready=%s)',
+    async (ready) => {
+      window.location.search = '?view=conversations&node=host-node&conversation=old-conversation';
+      let finishLive!: (ready: boolean) => void;
+      captured.waitForReady.mockReturnValue(new Promise((resolve) => (finishLive = resolve)));
+      const { page } = controller(undefined, 'conversations');
+      const restoring = captured.authenticated!();
+      await flushComponent();
+      expect(captured.waitForReady).toHaveBeenCalledOnce();
+      await page.hosted.selectHostedConversation({
+        nodeId: 'host-node',
+        id: 'new-conversation'
+      } as Parameters<typeof page.hosted.selectHostedConversation>[0]);
+      finishLive(ready);
+      await restoring;
+      expect(page.hosted.hostedConversationWorkspace.selectedConversationId.value).toBe(
+        'new-conversation'
+      );
+      expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+    }
+  );
+
+  it('does not queue a hidden mobile Work drawer during startup or failure', async () => {
+    const { page } = controller();
+    page.layout.mobileViewport = true;
+    page.application.selectNavigation('nodes');
+    expect(page.layout.mobileSidebarOpen).toBe(false);
+
+    vi.mocked(fetch).mockImplementation(async (path) =>
+      path === '/api/nodes'
+        ? new Response('{}', { status: 503 })
+        : new Response(JSON.stringify({ notifications: [], recentRuns: [] }))
+    );
+    await captured.authenticated!();
+    expect(page.selection.workspaceStartupStatus).toBe('failed');
+    page.application.selectNavigation('nodes');
+    expect(page.layout.mobileSidebarOpen).toBe(false);
+
+    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ nodes: [] })));
+    page.selection.retryWorkspaceStartup();
+    await flushComponent();
+    expect(page.selection.workspaceStartupStatus).toBe('ready');
+    expect(page.layout.mobileSidebarOpen).toBe(false);
+    page.application.selectNavigation('nodes');
+    expect(page.layout.mobileSidebarOpen).toBe(true);
+  });
+
+  it('does not reopen a hosted deep link after a newer selection is cleared', async () => {
+    window.location.search = '?view=conversations&node=host-node&conversation=old-conversation';
+    let finishLive!: (ready: boolean) => void;
+    captured.waitForReady.mockReturnValue(new Promise((resolve) => (finishLive = resolve)));
+    const { page } = controller(undefined, 'conversations');
+    const restoring = captured.authenticated!();
+    page.hosted.clearHostedConversation();
+    finishLive(true);
+    await restoring;
+    expect(page.hosted.hostedConversationWorkspace.selectedConversationId.value).toBeUndefined();
+    expect(page.hosted.restoringHostedConversationRoute).toBe(false);
+  });
+
+  it('restores the cached Workspace without waiting for realtime readiness', async () => {
+    const workspace = { nodeId: node.id, workspaceId: 'workspace-a' };
+    vi.spyOn(localStorage, 'getItem').mockImplementation((key) =>
+      key.endsWith('mar.workbench.selection.v1') ? JSON.stringify({ workspace }) : null
+    );
+    captured.waitForReady.mockReturnValue(new Promise(() => {}));
+    const { page } = controller();
+    vi.mocked(fetch).mockImplementation(
+      async (path) =>
+        new Response(
+          JSON.stringify(
+            path === '/api/nodes'
+              ? { nodes: [{ ...node, connected: false }] }
+              : { notifications: [], recentRuns: [] }
+          )
+        )
+    );
+
+    expect(page.selection.workspaceStartupStatus).toBe('loading');
+    await captured.authenticated!();
+    expect(page.selection.workspaceStartupStatus).toBe('ready');
+    expect(page.selection.workspaceTarget).toEqual(workspace);
+    expect(captured.waitForReady).not.toHaveBeenCalled();
+  });
+
   it.each(['nodes', 'conversations'] as const)(
     'recovers only the active %s Watch after fresh and resumed readiness and a matching Node gap',
     async (view) => {
@@ -3058,8 +3166,9 @@ describe('Workbench controller composition behavior', () => {
     expect(page.sessionList.sessions).toEqual([session]);
   });
 
-  it('toggles active mobile top menus without changing their selected page', () => {
+  it('toggles active mobile top menus without changing their selected page', async () => {
     const { page } = controller();
+    await captured.authenticated!();
     page.layout.mobileViewport = true;
     for (const view of ['nodes', 'settings', 'management'] as const) {
       page.application.selectNavigation(view);
@@ -3081,8 +3190,9 @@ describe('Workbench controller composition behavior', () => {
 
   it.each(['nodes', 'conversations'] as const)(
     'switches to mobile %s content without opening a menu or retaining another tool surface',
-    (view) => {
+    async (view) => {
       const { page } = controller();
+      await captured.authenticated!();
       page.layout.mobileViewport = true;
       page.application.selectNavigation(view === 'nodes' ? 'conversations' : 'nodes');
       page.layout.openMobileWorkspaceSurface('terminal');
@@ -3136,8 +3246,9 @@ describe('Workbench controller composition behavior', () => {
     expect(page.layout.mobileSidebarOpen).toBe(false);
   });
 
-  it('replaces a mobile utility menu with the active Work resource menu', () => {
+  it('replaces a mobile utility menu with the active Work resource menu', async () => {
     const { page } = controller();
+    await captured.authenticated!();
     page.layout.mobileViewport = true;
     page.layout.selectMobileUtilityPanel('activity');
     page.application.selectNavigation('nodes');

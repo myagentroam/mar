@@ -29,6 +29,7 @@ import { isHtmlFile } from '../util/file-preview.js';
 
 export interface WorkbenchPageInteractionOptions {
   readonly view: Readonly<Ref<WorkbenchView>>;
+  readonly workspaceStartupReady: Readonly<Ref<boolean>>;
   readonly nodes: Readonly<Ref<readonly NodeSummary[]>>;
   readonly workspaceTabs: Readonly<Ref<readonly WorkspaceTab[]>>;
   readonly activeWorkspaceTabId: Readonly<Ref<string | undefined>>;
@@ -177,6 +178,7 @@ export function createWorkbenchPageInteractionService(options: WorkbenchPageInte
   function openQuickOpenFile(): void {
     if (
       options.view.value !== 'nodes' ||
+      !options.workspaceStartupReady.value ||
       !options.nodes.value.some((node) => node.connected && !node.disabled)
     )
       return;

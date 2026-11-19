@@ -17,6 +17,7 @@ import { errorCode } from '../util/api-error.js';
 
 export interface WorkbenchWorkspaceTreeControllerOptions {
   readonly nodes: Readonly<Ref<readonly NodeSummary[]>>;
+  readonly nodeListConfirmed: Readonly<Ref<boolean>>;
   readonly workspaces: Readonly<Ref<readonly Workspace[]>>;
   readonly replaceWorkspaces: (workspaces: readonly Workspace[]) => void;
   readonly sessions: Readonly<Ref<readonly Session[]>>;
@@ -152,21 +153,20 @@ export function createWorkbenchWorkspaceTreeController(
     ]);
   }
 
-  async function activateWorkspaceTab(tab: WorkspaceTab): Promise<boolean> {
+  function resolveTabNode(tab: WorkspaceTab): NodeSummary | undefined {
     const node = options.nodes.value.find((candidate) => candidate.id === tab.nodeId);
-    if (node === undefined) {
-      closeWorkspaceTab(tab, true);
-      return false;
-    }
+    if (node === undefined && options.nodeListConfirmed.value) closeWorkspaceTab(tab, true);
+    return node;
+  }
+
+  async function activateWorkspaceTab(tab: WorkspaceTab): Promise<boolean> {
+    if (resolveTabNode(tab) === undefined) return false;
     return activateWorkspaceTarget(tab);
   }
 
   async function openWorkspaceTab(tab: WorkspaceTab): Promise<void> {
-    const node = options.nodes.value.find((candidate) => candidate.id === tab.nodeId);
-    if (node === undefined) {
-      closeWorkspaceTab(tab, true);
-      return;
-    }
+    const node = resolveTabNode(tab);
+    if (node === undefined) return;
     const sessionId = options.workspaceTabSession(tab.nodeId, tab.workspaceId);
     const activation = activateWorkspaceTarget(tab, sessionId === undefined);
     const revision = options.currentSelectionRevision();

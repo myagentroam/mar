@@ -109,6 +109,7 @@ function fixture(create = createWorkbenchWorkspaceSelectionService) {
     },
     profilesLoading,
     isCacheActive: cache.isActive,
+    nodeListConfirmed: ref(true),
     hasNode,
     isHostAvailable,
     isNetworkUnavailable,

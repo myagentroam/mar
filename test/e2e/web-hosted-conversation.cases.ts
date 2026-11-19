@@ -350,6 +350,9 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
     page
   }) => {
     await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await page.route('**/api/notifications', (route) =>
+      json(route, { notifications: [], recentRuns: [] })
+    );
     const second = {
       ...conversation,
       id: 'conversation-2',
@@ -362,6 +365,10 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
     );
     await page.route('**/api/conversation-templates', (route) =>
       json(route, { templates: [snapshot.template] })
+    );
+    await page.route(
+      '**/api/nodes/node-1/conversation-templates/template-1/model-options',
+      (route) => json(route, { models: snapshot.models, defaultModelId: 'model-1' })
     );
     let releaseA!: () => void;
     const pendingA = new Promise<void>((resolve) => (releaseA = resolve));
@@ -420,8 +427,9 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
       const rowB = page
         .locator('.hosted-conversation-history article', { hasText: second.title })
         .locator('.history-open');
+      const loadingHistory = page.getByRole('status', { name: '正在加载会话记录…' });
       await expect.poll(() => starts.a).toBe(1);
-      await expect(page.locator('.mar-page-loading-state')).toBeVisible();
+      await expect(loadingHistory).toBeVisible();
       await rowA.click();
       expect(starts.a).toBe(1);
       await rowB.click();
@@ -451,11 +459,11 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
         await aCompleted;
       }
       await expect(rowB).toHaveAttribute('aria-current', 'page');
-      await expect(page.locator('.mar-page-loading-state')).toBeVisible();
+      await expect(loadingHistory).toBeVisible();
       await rowB.click();
       expect(starts.b).toBe(1);
       releaseB();
-      await expect(page.locator('.mar-page-loading-state')).toHaveCount(0);
+      await expect(loadingHistory).toHaveCount(0);
       await expect(page.locator('.hosted-workspace .hosted-timeline-scroll')).toBeVisible();
       await expect(rowB).toHaveAttribute('aria-current', 'page');
       await expect(page.locator('.el-message--error')).toHaveCount(0);
