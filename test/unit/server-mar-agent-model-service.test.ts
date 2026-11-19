@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import type { AuditEvent } from '../../packages/server-core/src/audit.js';
 import { MarAgentModelService as CoreMarAgentModelService } from '../../packages/server-core/src/mar-agent-model-service.js';
 import {
   codexModelCatalogSchema,
@@ -173,7 +174,7 @@ function database(responses: unknown[] = []) {
     const sql = String(args[0]);
     const values = Array.isArray(args[1]) ? args[1] : [];
     if (sql.includes('SELECT id FROM users')) return [values.map((id) => ({ id })), []];
-    if (sql.includes('SELECT id FROM mar_agent_models WHERE id=? FOR SHARE'))
+    if (/^SELECT id FROM mar_agent_models WHERE id=\? FOR (?:SHARE|UPDATE)$/u.test(sql))
       return [[{ id: values[0] }], []];
     if (
       sql.includes(
@@ -291,7 +292,247 @@ function managementAccess() {
   };
 }
 
+function transactionGate() {
+  const entered = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  return {
+    entered: entered.promise,
+    release: () => released.resolve(),
+    async pause() {
+      entered.resolve();
+      await released.promise;
+    }
+  };
+}
+
+// Models one parent row and its two settings; nonlocking reads see only committed state.
+function modelEditDatabase(
+  hooks: {
+    beforeConnection?(transaction: number): Promise<void> | undefined;
+    beforeCommit?(transaction: number): Promise<void> | undefined;
+  } = {}
+) {
+  const modelId = 'editable-model';
+  const configKey = `mar_agent_model_config:${modelId}`;
+  const inputKey = `mar_agent_resource_input:model:${modelId}`;
+  let model: ReturnType<typeof modelServiceRow> | undefined = modelServiceRow(modelId);
+  const originalName = model.name;
+  let settings = new Map([
+    [configKey, '{"version":1,"gcEnabled":true,"unifiedCompact":false}'],
+    [inputKey, '{"useResourceUrl":false}']
+  ]);
+  let nextTransaction = 0;
+  let parentLock: PromiseWithResolvers<void> | undefined;
+  const blocked = Promise.withResolvers<number>();
+  const committed: number[] = [];
+  const rolledBack: number[] = [];
+  const settingWrites: string[] = [];
+  const affectedRows: number[] = [];
+  const audit = vi.fn<(event: AuditEvent) => void>();
+  const execute = async (sql: string, values: string[]) => {
+    if (sql.startsWith('SELECT sort_order FROM mar_agent_models'))
+      return [model && values[0] === modelId ? [{ sort_order: model.sort_order }] : [], []];
+    if (sql.includes('LEFT JOIN system_settings model_settings'))
+      return [
+        model && values[0] === modelId
+          ? [{ ...model, model_settings: settings.get(configKey) }]
+          : [],
+        []
+      ];
+    if (sql.startsWith('SELECT setting_key,setting_value FROM system_settings'))
+      return [
+        values.flatMap((key) =>
+          settings.has(key) ? [{ setting_key: key, setting_value: settings.get(key) }] : []
+        ),
+        []
+      ];
+    throw new Error(`Unexpected pool query: ${sql}`);
+  };
+  const getConnection = async () => {
+    const transaction = ++nextTransaction;
+    await hooks.beforeConnection?.(transaction);
+    let lock: PromiseWithResolvers<void> | undefined;
+    let pendingModel: typeof model;
+    let pendingSettings: typeof settings | undefined;
+    async function lockParent() {
+      if (lock) return;
+      while (parentLock) {
+        blocked.resolve(transaction);
+        await parentLock.promise;
+      }
+      parentLock = lock = Promise.withResolvers<void>();
+      pendingModel = model;
+      pendingSettings = new Map(settings);
+    }
+    return {
+      beginTransaction: async () => undefined,
+      async execute(sql: string, values: unknown[]) {
+        if (
+          sql.startsWith('SELECT ') &&
+          sql.endsWith('FROM mar_agent_models WHERE id=? FOR UPDATE')
+        ) {
+          if (values[0] !== modelId) return [[], []];
+          await lockParent();
+          return [pendingModel ? [pendingModel] : [], []];
+        }
+        if (sql.startsWith('UPDATE mar_agent_models SET')) {
+          if (values.at(-1) !== modelId) return [{ affectedRows: 0 }, []];
+          await lockParent(); // UPDATE also takes the row lock, even without an explicit precheck.
+          const name = String(values[0]);
+          const changed = pendingModel && pendingModel.name !== name ? 1 : 0;
+          if (pendingModel) pendingModel = { ...pendingModel, name };
+          affectedRows.push(changed);
+          return [{ affectedRows: changed }, []];
+        }
+        if (!pendingSettings) throw new Error(`Parent row not locked before: ${sql}`);
+        if (sql.startsWith('DELETE FROM user_mar_agent_model_orders'))
+          return [{ affectedRows: 0 }, []];
+        if (sql.startsWith('DELETE FROM mar_agent_models')) {
+          if (values[0] !== modelId) return [{ affectedRows: 0 }, []];
+          pendingModel = undefined;
+        } else if (sql.startsWith('DELETE FROM system_settings'))
+          pendingSettings.delete(String(values[0]));
+        else if (sql.startsWith('INSERT INTO system_settings')) {
+          settingWrites.push(String(values[0]));
+          pendingSettings.set(String(values[0]), String(values[1]));
+        } else throw new Error(`Unexpected transaction query: ${sql}`);
+        return [{ affectedRows: 1 }, []];
+      },
+      async commit() {
+        await hooks.beforeCommit?.(transaction);
+        if (!pendingSettings) throw new Error('Transaction did not lock the model row');
+        model = pendingModel;
+        settings = pendingSettings;
+        committed.push(transaction);
+      },
+      async rollback() {
+        rolledBack.push(transaction);
+      },
+      release() {
+        if (!lock) return;
+        parentLock = undefined;
+        lock.resolve();
+      }
+    };
+  };
+  const db = { raw: { execute, getConnection }, audit } as unknown as MysqlServerDatabase;
+  const service = new MarAgentModelService(db, () => 10, undefined, managementAccess());
+  return {
+    modelId,
+    originalName,
+    configKey,
+    inputKey,
+    service,
+    audit,
+    committed,
+    rolledBack,
+    blocked: blocked.promise,
+    affectedRows,
+    settingWrites,
+    state: () => ({ model, settings })
+  };
+}
+
 describe('MAR Agent model service', () => {
+  describe('model edit parent lock', () => {
+    it('rejects a stale edit without setting writes or a success event when removal commits first', async () => {
+      const editing = transactionGate();
+      const db = modelEditDatabase({
+        beforeConnection: (transaction) => (transaction === 1 ? editing.pause() : undefined)
+      });
+      const { modelId, service } = db;
+      const update = service.update(7, modelId, {
+        name: 'Edited',
+        metadata: { useResourceUrl: true }
+      });
+      const settled = Promise.allSettled([update]);
+      try {
+        await Promise.race([editing.entered, update]);
+        await service.remove(modelId, 7);
+        expect(db.state()).toEqual({ model: undefined, settings: new Map() });
+        editing.release();
+        await expect(update).rejects.toThrow('MAR_AGENT_MODEL_NOT_FOUND');
+        expect(db.state()).toEqual({ model: undefined, settings: new Map() });
+        expect(db.settingWrites).toEqual([]);
+        expect(db.affectedRows).toEqual([]);
+        expect(db.committed).toEqual([2]);
+        expect(db.rolledBack).toEqual([1]);
+        expect(db.audit.mock.calls.map(([event]) => event.eventType)).toEqual(['model.deleted']);
+      } finally {
+        editing.release();
+        await settled;
+      }
+    });
+
+    it('lets removal wait for a committing edit and clean up both committed settings', async () => {
+      const editing = transactionGate();
+      const removing = transactionGate();
+      const db = modelEditDatabase({
+        beforeCommit: (transaction) => (transaction === 1 ? editing : removing).pause()
+      });
+      const { modelId, service } = db;
+      const update = service.update(7, modelId, {
+        name: 'Edited',
+        gcEnabled: false,
+        metadata: { useResourceUrl: true }
+      });
+      let remove: Promise<void> | undefined;
+      try {
+        await Promise.race([editing.entered, update]);
+        remove = service.remove(modelId, 7);
+        expect(await Promise.race([db.blocked, removing.entered, remove])).toBe(2);
+        expect(db.committed).toEqual([]);
+        expect(db.audit).not.toHaveBeenCalled();
+        expect(db.state().model?.name).toBe(db.originalName);
+        expect(db.state().settings.get(db.inputKey)).toBe('{"useResourceUrl":false}');
+
+        editing.release();
+        await expect(update).resolves.toMatchObject({
+          id: modelId,
+          name: 'Edited',
+          gcEnabled: false,
+          metadata: { useResourceUrl: true }
+        });
+        expect(db.committed).toEqual([1]);
+        expect(JSON.parse(db.state().settings.get(db.configKey)!)).toMatchObject({
+          version: 1,
+          gcEnabled: false
+        });
+        expect(JSON.parse(db.state().settings.get(db.inputKey)!)).toEqual({ useResourceUrl: true });
+        expect(db.audit.mock.calls.map(([event]) => event.eventType)).toEqual(['model.updated']);
+
+        removing.release();
+        await expect(remove).resolves.toBeUndefined();
+        expect(db.committed).toEqual([1, 2]);
+        expect(db.rolledBack).toEqual([]);
+        expect(db.state()).toEqual({ model: undefined, settings: new Map() });
+        expect(db.audit.mock.calls.map(([event]) => event.eventType)).toEqual([
+          'model.updated',
+          'model.deleted'
+        ]);
+      } finally {
+        editing.release();
+        removing.release();
+        await Promise.allSettled([update, remove]);
+      }
+    });
+
+    it('commits a same-value edit even when the model UPDATE changes zero rows', async () => {
+      const db = modelEditDatabase();
+      const { modelId, service } = db;
+      await expect(service.update(7, modelId, { name: db.originalName })).resolves.toMatchObject({
+        id: modelId,
+        name: db.originalName,
+        metadata: { useResourceUrl: false }
+      });
+      expect(db.affectedRows).toEqual([0]);
+      expect(db.committed).toEqual([1]);
+      expect(db.rolledBack).toEqual([]);
+      expect(db.settingWrites).toEqual([db.configKey, db.inputKey]);
+      expect(db.audit.mock.calls.map(([event]) => event.eventType)).toEqual(['model.updated']);
+    });
+  });
+
   it.each([false, true])(
     'duplicates a model with a server-side key (replacement=%s)',
     async (replace) => {

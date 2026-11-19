@@ -389,6 +389,12 @@ export class MarAgentModelService {
     );
     await this.#assertTarget(actorUserId, parsed);
     await withMysqlTransaction(this.database.raw, async (connection) => {
+      // Lock the parent exclusively before updating it and its associated settings.
+      const [lockedModels] = await connection.execute<RowDataPacket[]>(
+        'SELECT id FROM mar_agent_models WHERE id=? FOR UPDATE',
+        [modelId]
+      );
+      if (lockedModels.length !== 1) throw new Error('MAR_AGENT_MODEL_NOT_FOUND');
       await connection.execute(
         "UPDATE mar_agent_models SET name=?,normalized_name=?,protocol=?,base_url=?,credential=?,model_id=?,context_window_tokens=?,max_output_tokens=?,input_capabilities=?,output_capabilities=?,reasoning_efforts=?,default_reasoning_effort=?,conversation_model=?,subagent_model=?,title_generation=?,code_mode=?,enabled=?,sort_order=?,last_test_status='UNVERIFIED',last_test_code=NULL,updated_at=? WHERE id=?",
         [
