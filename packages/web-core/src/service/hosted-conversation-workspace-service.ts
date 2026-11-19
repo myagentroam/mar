@@ -71,7 +71,7 @@ interface HostedConversationWorkspaceServiceOptions {
   readonly onWatchExpired?: () => void;
 }
 
-/** Owns the Hosted directory, selection and single Watch; composes account-scoped submission and file lifecycles. */
+/** Owns Hosted selection and Watch-backed message and Run projection; composes the directory, submission and file lifecycles. */
 export function createHostedConversationWorkspaceService(
   options: HostedConversationWorkspaceServiceOptions
 ) {
@@ -431,28 +431,8 @@ export function createHostedConversationWorkspaceService(
           sourceSequence,
           createdAt
         )
-      ) {
-        const item = record(runtime.payload.item) ? runtime.payload.item : undefined;
-        const payload = item === undefined || !record(item.payload) ? undefined : item.payload;
-        if (
-          item?.kind === 'user_message' &&
-          typeof payload?.clientMessageId === 'string' &&
-          payload.clientMessageId.length > 0
-        ) {
-          const authoritativeTurn = projectedTurns.value.findLast(
-            (candidate) => candidate.id === turnId || candidate.runId === executionId
-          );
-          if (authoritativeTurn !== undefined)
-            conversationProjection.mergeLatest({
-              turns: [authoritativeTurn],
-              nextCursor: null,
-              source: 'runtime',
-              snapshotSequence: sourceSequence,
-              readAt: createdAt
-            });
-        }
+      )
         commitHistoryMetadata(current);
-      }
       return;
     }
     if (runtime.kind === 'DELTA') {
@@ -627,7 +607,6 @@ export function createHostedConversationWorkspaceService(
     );
     if (finishSubmission === undefined)
       throw new Error('HOSTED_CONVERSATION_MESSAGE_SUBMISSION_ACTIVE');
-    projectOptimisticUserMessage(context.snapshot, input);
     try {
       const response = await options.request<unknown>(`${conversationBasePath(context)}/messages`, {
         method: 'POST',
@@ -641,73 +620,20 @@ export function createHostedConversationWorkspaceService(
       });
       const next = parseConversationResponse(response, context, true);
       if (next.run === null) throw responseInvalid();
-      if (sameSelectedContext(context) && snapshot.value !== undefined) {
-        if (conversationProjection.updateOptimisticUserMessage(input.clientMessageId))
-          commitHistoryMetadata(snapshot.value);
+      const current = snapshot.value;
+      if (sameSelectedContext(context) && current !== undefined) {
+        // A write acknowledgment can refresh metadata, not messages or execution activity.
         const conversation = mergeConversationSummary(
-          next.conversation,
-          snapshot.value.conversation
+          { ...next.conversation, activity: current.conversation.activity },
+          current.conversation
         );
-        replaceSnapshot(
-          {
-            ...snapshot.value,
-            conversation,
-            run: normalizeRun(next.run, snapshot.value.run)
-          },
-          true
-        );
+        replaceSnapshot({ ...current, conversation });
         upsertConversation(conversation);
       }
       return next.run;
-    } catch (error) {
-      if (sameSelectedContext(context) && snapshot.value !== undefined)
-        if (conversationProjection.removeOptimisticUserMessage(input.clientMessageId))
-          commitHistoryMetadata(snapshot.value);
-      throw error;
     } finally {
       finishSubmission();
     }
-  }
-
-  function projectOptimisticUserMessage(
-    current: HostedConversationView,
-    input: {
-      readonly prompt: string;
-      readonly clientMessageId: string;
-    }
-  ): void {
-    const createdAt = Date.now();
-    conversationProjection.mergeLatest({
-      turns: [
-        {
-          id: input.clientMessageId,
-          sessionId: current.conversation.sessionId,
-          runId: null,
-          status: 'PREPARING',
-          items: [
-            {
-              id: input.clientMessageId,
-              kind: 'user_message',
-              status: 'COMPLETED',
-              payload: {
-                clientMessageId: input.clientMessageId,
-                text: input.prompt,
-                contexts: [],
-                delivery: 'PENDING'
-              },
-              startedAt: createdAt,
-              completedAt: createdAt
-            }
-          ],
-          startedAt: createdAt,
-          completedAt: null
-        }
-      ],
-      nextCursor: null,
-      source: 'runtime',
-      readAt: createdAt
-    });
-    commitHistoryMetadata(current);
   }
 
   async function updateConfiguration(input: {

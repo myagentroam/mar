@@ -190,50 +190,6 @@ export function createConversationProjectionService(options: {
     options.turns.value = syncConversationRunStatus(options.turns.value, runId, status);
   }
 
-  function updateOptimisticUserMessage(clientMessageId: string): boolean {
-    let changed = false;
-    const next = options.turns.value.map((turn) => {
-      if (!isOptimisticUserTurn(turn, clientMessageId)) return turn;
-      let turnChanged = false;
-      const items = turn.items.map((item) => {
-        if (
-          item.id !== clientMessageId ||
-          item.kind !== 'user_message' ||
-          !record(item.payload) ||
-          item.payload.clientMessageId !== clientMessageId
-        )
-          return item;
-        turnChanged = true;
-        changed = true;
-        return { ...item, payload: { ...item.payload, delivery: 'ACCEPTED' } };
-      });
-      return turnChanged ? { ...turn, items } : turn;
-    });
-    if (changed) options.turns.value = next;
-    return changed;
-  }
-
-  function removeOptimisticUserMessage(clientMessageId: string): boolean {
-    const next = options.turns.value.filter((turn) => !isOptimisticUserTurn(turn, clientMessageId));
-    if (next.length === options.turns.value.length) return false;
-    options.turns.value = next;
-    return true;
-  }
-
-  function isOptimisticUserTurn(turn: ConversationTurn, clientMessageId: string): boolean {
-    return (
-      turn.id === clientMessageId &&
-      turn.runId === null &&
-      turn.items.some(
-        (item) =>
-          item.id === clientMessageId &&
-          item.kind === 'user_message' &&
-          record(item.payload) &&
-          item.payload.clientMessageId === clientMessageId
-      )
-    );
-  }
-
   function clearSession(sessionId: string, runIds: readonly string[]): void {
     flushPendingTextDeltas();
     const prefix = `${sessionId}:`;
@@ -693,8 +649,6 @@ export function createConversationProjectionService(options: {
     recoverWindow,
     clearCursor,
     syncRunStatus,
-    updateOptimisticUserMessage,
-    removeOptimisticUserMessage,
     clearSession,
     markLive,
     mergeItem,
