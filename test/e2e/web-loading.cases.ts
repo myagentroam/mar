@@ -42,6 +42,81 @@ function sessions(start: number, count: number) {
   }));
 }
 
+for (const { theme, mobile } of [
+  { theme: 'vscode-dark-2026', mobile: false },
+  { theme: 'daylight', mobile: true }
+] as const) {
+  test.describe(`Work startup: ${theme}`, () => {
+    test.use(
+      mobile ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : {}
+    );
+
+    test('uses the page ring and a keyboard-accessible neutral retry', async ({
+      page,
+      browserName
+    }, testInfo) => {
+      test.skip(mobile && browserName !== 'chromium', 'Mobile pointer emulation requires Chromium');
+      await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
+      await mockConsoleApi(page, 'MANAGED', ['history.read'], []);
+      await page.route('**/api/notifications', (route) => json(route, { notifications: [] }));
+      const response = gate();
+      const retryResponse = gate();
+      const recovery = gate();
+      let reads = 0;
+      await page.route('**/api/nodes', async (route) => {
+        const read = ++reads;
+        if (read === 1) await response.promise;
+        if (read === 2) await retryResponse.promise;
+        if (read <= 2)
+          return route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' } });
+        if (read === 3) await recovery.promise;
+        return route.fallback();
+      });
+      try {
+        await page.goto('/console');
+        await page.getByRole('button', { name: '进入控制台' }).click();
+        const work = page.getByRole('button', { name: '工作', exact: true });
+        const ring = page.getByRole('progressbar', { name: '正在恢复工作台' });
+        await expect(work).toBeVisible();
+        await expect(ring).toBeVisible();
+        await expect(page.getByRole('button', { name: '收起侧栏' })).toHaveCount(0);
+        const indicator = ring.locator('.mar-busy-indicator');
+        expect(await indicator.evaluate((element) => getComputedStyle(element).color)).toBe(
+          await ring.evaluate((element) => getComputedStyle(element).color)
+        );
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await expect(indicator).toHaveCSS('animation-name', 'none');
+        await page.screenshot({ path: testInfo.outputPath('work-startup-loading.png') });
+        response.release();
+
+        const retry = page.getByRole('button', { name: '重试', exact: true });
+        await expect(retry).toBeVisible();
+        await expect(retry).not.toHaveClass(/is-link|el-button--primary/);
+        await retry.focus();
+        await expect(retry).toBeFocused();
+        await page.screenshot({ path: testInfo.outputPath('work-startup-retry.png') });
+        await page.keyboard.press('Enter');
+        await expect(ring).toBeVisible();
+        await expect(page.locator('.session-layout')).toBeFocused();
+        retryResponse.release();
+        await expect(retry).toBeFocused();
+        await page.keyboard.press('Space');
+        await expect(ring).toBeVisible();
+        if (mobile) await work.focus();
+        recovery.release();
+        await expect(page.getByRole('heading', { name: '选择一个工作区' })).toBeVisible();
+        await expect(mobile ? work : page.locator('.session-layout')).toBeFocused();
+        if (!mobile) await expect(page.getByRole('button', { name: '收起侧栏' })).toBeVisible();
+        expect(reads).toBe(3);
+      } finally {
+        response.release();
+        retryResponse.release();
+        recovery.release();
+      }
+    });
+  });
+}
+
 for (const theme of ['vscode-dark-2026', 'daylight']) {
   test(`Unified loading: authentication ring consumes the actual theme: ${theme}`, async ({
     page
