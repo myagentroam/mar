@@ -4,6 +4,8 @@ import {
   conversationTemplateSourceInspectionSchema,
   type ConversationTemplateDraft
 } from '../../packages/protocol/src/index.js';
+import type { AuditEvent } from '../../packages/server-core/src/audit.js';
+import { scopedAuditEvent } from '../../ee/server/src/audit/audit-policy.js';
 import type { MysqlServerDatabase } from '../../ee/server/src/mysql/server-database.js';
 import type { ResourceAccessService } from '../../ee/server/src/rbac/resource-access-service.js';
 import { ConversationTemplateService } from '../../ee/server/src/service/conversation-template-service.js';
@@ -1135,6 +1137,77 @@ describe('Server conversation template service', () => {
     expect(fixture.models.listTemplateOptionsForNode).not.toHaveBeenCalled();
   });
 
+  it.each(['renamed', 'deleted', 'missing', 'registered on another Node'] as const)(
+    'keeps a single publication audit when the source Workspace is %s',
+    async (change) => {
+      const { database, resources, models, transactionState, workspaces } = serviceFixture();
+      const hadName = change === 'renamed' || change === 'deleted';
+      if (change !== 'missing') {
+        workspaces.set('workspace-1', {
+          nodeId: hadName ? 'node-1' : 'node-2',
+          name: 'Publication source'
+        });
+      }
+      transactionState.jobRow = publishJobRow({
+        status: 'RUNNING',
+        stage: 'COPYING',
+        version_id: null
+      });
+      database.raw.execute.mockImplementation(async (sql) =>
+        String(sql).includes('FROM conversation_template_publish_jobs')
+          ? [[{ ...transactionState.jobRow }], []]
+          : [[templateRow()], []]
+      );
+      const service = new ConversationTemplateService(database, resources, models, () => 2_100);
+      const refresh = vi.fn(async () => ({ job: succeededJob, version }));
+      const status = () => service.publishStatus(2, 'template-1', 'request-1', refresh);
+
+      await expect(status()).resolves.toEqual(succeededJob);
+      expect(database.audit).toHaveBeenCalledOnce();
+      const [event] = database.audit.mock.calls[0] as [AuditEvent];
+      expect(event).toMatchObject({
+        eventType: 'conversation_template.published',
+        targetId: 'template-1',
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1'
+      });
+
+      // Simulate the independent audit writer running after the business commit and mutation.
+      if (change === 'renamed')
+        workspaces.set('workspace-1', { nodeId: 'node-1', name: 'New name' });
+      if (change === 'deleted') workspaces.delete('workspace-1');
+      const lookupWorkspace = vi.fn((workspaceId: string, nodeId: string) => {
+        const workspace = workspaces.get(workspaceId);
+        return workspace?.nodeId === nodeId ? [{ display_name: workspace.name }] : [];
+      });
+      const execute = vi.fn(async (sql: string, [id, nodeId]: [string, string]) => {
+        if (sql.includes('FROM workspaces')) return [lookupWorkspace(id, nodeId), []];
+        if (sql.includes('FROM organizations')) return [[{ name: 'Team' }], []];
+        throw new Error('Unexpected audit lookup');
+      });
+      const record = await scopedAuditEvent({ execute } as never, event);
+      expect(record).toMatchObject({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+      const metadata = JSON.parse(record!.metadata!);
+      if (hadName) {
+        expect(metadata).toHaveProperty('workspaceName', 'Publication source');
+        expect(lookupWorkspace).not.toHaveBeenCalled();
+      } else {
+        expect(metadata).not.toHaveProperty('workspaceName');
+        expect(lookupWorkspace).toHaveBeenCalledExactlyOnceWith('workspace-1', 'node-1');
+      }
+
+      await expect(status()).resolves.toEqual(succeededJob);
+      expect(refresh).toHaveBeenCalledExactlyOnceWith(
+        'node-1',
+        'workspace-1',
+        'template-1',
+        'request-1'
+      );
+      expect(database.audit).toHaveBeenCalledOnce();
+      expect(transactionState.registeredVersions).toEqual([{ id: 'version-1', version: 1 }]);
+    }
+  );
+
   it('keeps the current published version monotonic when an older result is registered later', async () => {
     const fixture = serviceFixture();
     fixture.database.raw.execute
@@ -1277,6 +1350,7 @@ describe('Server conversation template service', () => {
 });
 
 function serviceFixture() {
+  const workspaces = new Map<string, { nodeId: string; name: string }>();
   const transactionState: {
     readonly publishInsert: { affectedRows: number };
     publishTemplateRow: Record<string, unknown>;
@@ -1300,8 +1374,17 @@ function serviceFixture() {
     execute: vi.fn<(...args: unknown[]) => Promise<[unknown, unknown]>>(async (sql, values) => {
       const statement = String(sql);
       const parameters = Array.isArray(values) ? values : [];
-      if (statement.includes('FROM conversation_template_publish_jobs'))
-        return [[{ ...transactionState.jobRow }], []];
+      if (statement.includes('FROM conversation_template_publish_jobs')) {
+        const job = { ...transactionState.jobRow };
+        if (statement.includes('AS workspaceName')) {
+          const workspace = workspaces.get(String(job['source_workspace_id']));
+          const matchesNode =
+            !statement.includes('node_id=job.source_node_id') ||
+            workspace?.nodeId === job['source_node_id'];
+          job['workspaceName'] = matchesNode ? (workspace?.name ?? null) : null;
+        }
+        return [[job], []];
+      }
       if (
         statement.includes('UPDATE conversation_template_publish_jobs') &&
         statement.includes('SET stage=')
@@ -1423,7 +1506,7 @@ function serviceFixture() {
   } as unknown as MarAgentModelService & {
     listTemplateOptionsForNode: ReturnType<typeof vi.fn>;
   };
-  return { database, resources, models, connection, transactionState };
+  return { database, resources, models, connection, transactionState, workspaces };
 }
 
 function templateRow(overrides: Record<string, unknown> = {}) {

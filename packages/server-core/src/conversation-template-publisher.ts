@@ -199,7 +199,11 @@ export class ConversationTemplatePublisher {
         Number(template['draft_revision']) < context.revision
       )
         throw new Error('CONVERSATION_TEMPLATE_NOT_FOUND');
-      const stored = await this.publishJobRow(job.id, connection, true);
+      const stored = await this.publishJobRow(
+        job.id,
+        connection,
+        job.status === 'SUCCEEDED' && version !== undefined ? 'lock-with-workspace-name' : 'lock'
+      );
       if (stored === undefined) throw new Error('CONVERSATION_TEMPLATE_PUBLISH_JOB_NOT_FOUND');
       requireMatchingPublishJob(stored, context.templateId, context.revision);
       const current = publishJob(stored);
@@ -269,7 +273,7 @@ export class ConversationTemplatePublisher {
           owner_type: template['owner_type'],
           owner_organization_id: template['owner_organization_id'],
           nodeName: template['nodeName'],
-          workspaceName: template['workspaceName']
+          workspaceName: stored['workspaceName']
         },
         { revision: context.revision, jobId: job.id, versionId: version.id }
       );
@@ -280,12 +284,18 @@ export class ConversationTemplatePublisher {
   private async publishJobRow(
     jobId: string,
     connection: Pick<PoolConnection, 'execute'> = this.database.raw,
-    forUpdate = false
+    read: 'read' | 'lock' | 'lock-with-workspace-name' = 'read'
   ): Promise<RowDataPacket | undefined> {
+    // The audit name comes from the job's fixed source. The outer lock does not lock the Workspace.
+    const workspaceName =
+      read === 'lock-with-workspace-name'
+        ? `, (SELECT display_name FROM workspaces
+              WHERE workspace_id=job.source_workspace_id AND node_id=job.source_node_id) AS workspaceName`
+        : '';
     const [rows] = await connection.execute<RowDataPacket[]>(
       `SELECT id,template_id,draft_revision,stage,status,version_id,error_code,error_summary,
-              source_node_id,source_workspace_id,requested_by_user_id,created_at,updated_at
-       FROM conversation_template_publish_jobs WHERE id=?${forUpdate ? ' FOR UPDATE' : ''}`,
+              source_node_id,source_workspace_id,requested_by_user_id,created_at,updated_at${workspaceName}
+       FROM conversation_template_publish_jobs job WHERE id=?${read === 'read' ? '' : ' FOR UPDATE'}`,
       [jobId]
     );
     return rows[0];
