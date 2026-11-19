@@ -19,9 +19,19 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       })
     );
     await page.addInitScript((value) => localStorage.setItem('mar.locale.v2', value), locale);
+    const mobile = locale === 'zh-CN';
     await page.setViewportSize(
-      locale === 'zh-CN' ? { width: 390, height: 844 } : { width: 1920, height: 1080 }
+      mobile ? { width: 390, height: 844 } : { width: 1920, height: 1080 }
     );
+    const purposeNames = mobile
+      ? ['对话请求', '上下文压缩', '输入预测', '标题生成', '其他模型请求']
+      : [
+          'Conversation',
+          'Compact',
+          'Composer Prediction',
+          'Title generation',
+          'Other model request'
+        ];
     const labels =
       locale === 'en-US'
         ? {
@@ -222,31 +232,53 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         { exact: true }
       );
     await expect(summary).toBeVisible();
-    const categories = panel.getByRole('radiogroup', {
-      name: locale === 'en-US' ? 'Purpose' : '用途'
-    });
-    const radios = categories.getByRole('radio');
-    await expect(radios).toHaveCount(5);
-    const selectedCategory = radios.first();
-    await expect(selectedCategory).toBeChecked();
+    const purposeName = mobile ? '用途' : 'Purpose';
+    const categories = panel.getByRole('radiogroup', { name: purposeName, exact: true });
+    const purposeSelect = panel.getByRole('combobox', { name: purposeName, exact: true });
+    const purposeSelectBox = panel.locator('.usage-purpose-select');
+    const conversation = categories.getByRole('radio', { name: purposeNames[0], exact: true });
+    const assertSelectedPurpose = async (label: string) => {
+      if (mobile) await expect(purposeSelectBox.getByText(label, { exact: true })).toBeVisible();
+      else await expect(categories.getByRole('radio', { name: label, exact: true })).toBeChecked();
+    };
+    const clickPurpose = async (label: string) => {
+      if (mobile) {
+        await purposeSelectBox.click();
+        await page.getByRole('option', { name: label, exact: true }).click();
+      } else await categories.getByText(label, { exact: true }).click();
+    };
+    await expect(categories.getByRole('radio')).toHaveCount(mobile ? 0 : 5);
+    await expect(purposeSelect).toHaveCount(mobile ? 1 : 0);
+    await assertSelectedPurpose(purposeNames[0]!);
+    await expect(refreshButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const refreshSize = await refreshButton.boundingBox();
+    expect(refreshSize!.width).toBe(refreshSize!.height);
     const selectionIndicator = categories.locator('.el-segmented__item-selected');
     for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       await page.evaluate(
         (value) => document.documentElement.setAttribute('data-theme', value),
         theme
       );
-      const selection = await categories.evaluate((element) => {
+      const selection = await summary.evaluate((element) => {
         const reference = document.createElement('span');
         reference.style.backgroundColor = 'var(--mar-fill-selection)';
         reference.style.color = 'var(--mar-text-secondary)';
-        element.append(reference);
+        element.parentElement!.append(reference);
         const style = getComputedStyle(reference);
         const result = { background: style.backgroundColor, color: style.color };
         reference.remove();
         return result;
       });
-      expect(selection.background).not.toBe('rgba(0, 0, 0, 0)');
-      await expect(selectionIndicator).toHaveCSS('background-color', selection.background);
+      if (!mobile) {
+        expect(selection.background).not.toBe('rgba(0, 0, 0, 0)');
+        await expect(selectionIndicator).toHaveCSS('background-color', selection.background);
+        for (const label of purposeNames) {
+          await expect(categories.getByText(label, { exact: true })).toHaveCSS(
+            'font-weight',
+            '400'
+          );
+        }
+      }
       await expect(summary).toHaveCSS('color', selection.color);
       await expect(summary).toHaveCSS(
         'font-size',
@@ -257,8 +289,17 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await page.screenshot({
         animations: 'disabled',
         clip: { x: 0, y: 0, width: page.viewportSize()!.width, height: 610 },
-        path: testInfo.outputPath(`usage-segmented-${theme}.png`)
+        path: testInfo.outputPath(`usage-purpose-${theme}.png`)
       });
+      if (!mobile && theme === 'vscode-dark-2026') {
+        await refreshButton.hover();
+        await expect(refreshButton).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await panel.locator('.refresh-actions').screenshot({
+          animations: 'disabled',
+          path: testInfo.outputPath('usage-refresh-hover.png')
+        });
+        await summary.hover();
+      }
     }
     const panelLayout = await panel.evaluate((element) => {
       const parent = element.parentElement!;
@@ -390,7 +431,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(inputCount).toHaveCSS('cursor', 'pointer');
     await hoverForTooltip(inputCount);
     await expect(tooltip).toHaveText(exact('1234567'));
-    const mobile = locale === 'zh-CN';
     const cacheWithoutRead = rows.nth(2).getByText('0 (0%)', { exact: true });
     await expect(cacheWithoutRead).toHaveCSS('cursor', 'pointer');
     await hoverForTooltip(cacheWithoutRead);
@@ -556,11 +596,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await panel.getByRole('heading', { name: labels.title, exact: true }).click();
 
     const beforeInvalidCategory = requests.length;
-    await categories
-      .getByText(locale === 'en-US' ? 'Compact' : '上下文压缩', { exact: true })
-      .click();
+    await clickPurpose(purposeNames[1]!);
     await expect(panel.locator('.el-form-item__error')).toBeVisible();
-    await expect(selectedCategory).toBeChecked();
+    await assertSelectedPurpose(purposeNames[0]!);
     expect(requests).toHaveLength(beforeInvalidCategory);
     const range = await page.evaluate((now) => {
       const format = (value: number) => {
@@ -615,15 +653,16 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.resume();
 
     categoryTesting = true;
-    for (const [purpose, label, tokens] of [
-      ['compact', locale === 'en-US' ? 'Compact' : '上下文压缩', '700'],
-      ['prompt_completion', locale === 'en-US' ? 'Composer Prediction' : '输入预测', '900'],
-      ['other', locale === 'en-US' ? 'Other model request' : '其他模型请求', '900']
+    for (const [purpose, index, tokens] of [
+      ['compact', 1, '700'],
+      ['prompt_completion', 2, '900'],
+      ['other', 4, '900']
     ] as const) {
+      const label = purposeNames[index]!;
       const before = { overview: reads('overview'), records: reads('records') };
-      if (purpose === 'compact') await selectedCategory.press('ArrowRight');
-      else await categories.getByText(label, { exact: true }).click();
-      await expect(categories.getByRole('radio', { name: label, exact: true })).toBeChecked();
+      if (!mobile && purpose === 'compact') await conversation.press('ArrowRight');
+      else await clickPurpose(label);
+      await assertSelectedPurpose(label);
       await expect.poll(() => reads('overview')).toBe(before.overview + 1);
       await expect.poll(() => reads('records')).toBe(before.records + 1);
       for (const endpoint of ['overview', 'records'])
@@ -639,5 +678,26 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );
+
+    // Exercise both locales on mobile, including the longer English labels at 320px.
+    if (!mobile) await page.setViewportSize({ width: 320, height: 844 });
+    await expect(categories).toHaveCount(0);
+    await expect(purposeSelectBox.getByText(purposeNames[4]!, { exact: true })).toBeVisible();
+    await panel.locator('header').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    await purposeSelectBox.click();
+    const options = page.getByRole('listbox').getByRole('option');
+    await expect(options).toHaveText(purposeNames);
+    for (const option of await options.all()) {
+      await expect(option).toBeInViewport();
+      await expect(option).toHaveCSS('font-weight', '400');
+      expect(await option.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.screenshot({
+      animations: 'disabled',
+      path: testInfo.outputPath('usage-purpose-mobile-open.png')
+    });
   });
 }

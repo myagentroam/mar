@@ -497,6 +497,10 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   color: var(--mar-text-disabled);
 }
 
+:is(html.console-ui, .mar-theme-preview) .el-segmented__item-label {
+  font-weight: 400;
+}
+
 :is(html.console-ui, .mar-theme-preview)
   .el-segmented
   .el-segmented__item-selected.is-focus-visible::before {

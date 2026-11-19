@@ -258,6 +258,8 @@ onUnmounted(() => {
             v-tooltip="t('usageStatistics.refresh')"
             class="mar-icon-action"
             text
+            circle
+            size="small"
             :icon="marIcon('refresh')"
             :loading="state.loading && !pageLoading"
             :disabled="pageLoading"
@@ -267,7 +269,16 @@ onUnmounted(() => {
           />
         </div>
       </header>
-      <div class="usage-purpose-scroll">
+      <el-select
+        v-if="pagination.mobileViewport.value"
+        v-model="selectedPurpose"
+        class="usage-purpose-select"
+        :options="purposeOptions"
+        :aria-label="t('usageStatistics.purpose')"
+        :suffix-icon="marIcon('chevron-down')"
+        @change="refresh(true, selectedPurpose)"
+      />
+      <div v-else class="usage-purpose-scroll">
         <el-segmented
           v-model="selectedPurpose"
           class="usage-purposes"
@@ -773,6 +784,10 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.usage-purpose-select {
+  width: min(100%, 24rem);
+  margin-top: 0.5rem;
+}
 .usage-purpose-scroll {
   margin: 0.5rem -3px 0;
   padding: 3px;
