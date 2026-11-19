@@ -43,7 +43,7 @@ export function createWorkbenchEventProjectionService(options: {
   readonly openRun: (runId: string) => void;
   readonly markLiveTurn: (turn: ConversationTurn, sequence?: number) => void;
   readonly cacheTurn: (turn: ConversationTurn) => void;
-  readonly mergeTurns: (page: ConversationTurnPage) => boolean;
+  readonly mergeTurns: (page: ConversationTurnPage, scope?: 'segment-update') => boolean;
   readonly applyConversationSnapshot: (
     sessionId: string,
     page: ConversationTurnPage,
@@ -197,6 +197,25 @@ export function createWorkbenchEventProjectionService(options: {
       return;
     }
     const turn = payload.turn;
+    if (
+      turn === undefined &&
+      event.nodeId === options.workspaceTarget.value?.nodeId &&
+      typeof payload.sessionId === 'string' &&
+      payload.sessionId === options.selectedSessionId.value &&
+      Array.isArray(payload.segments) &&
+      payload.segments.every(
+        (segment) => isConversationSegment(segment) && segment.sessionId === payload.sessionId
+      )
+    ) {
+      const page = segmentPageAsTurnPage({
+        segments: payload.segments,
+        nextCursor: options.conversationNextCursor.value,
+        snapshotSequence: event.sequence
+      });
+      if (options.mergeTurns(page, 'segment-update') && page.turns.length === 1)
+        options.cacheTurn(page.turns[0]!);
+      return;
+    }
     if (isConversationTurn(turn) && event.nodeId === options.workspaceTarget.value?.nodeId) {
       if (!Array.isArray(payload.segments) || !payload.segments.every(isConversationSegment))
         return;

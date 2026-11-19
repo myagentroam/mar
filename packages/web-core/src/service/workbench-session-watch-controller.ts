@@ -13,7 +13,7 @@ import { createSessionWatchService } from './session-watch-service.js';
 import type { WorkbenchLiveEvent } from './workbench-live-service.js';
 import type { WorkspaceQueueSnapshotSource } from './workspace-queue-projection-service.js';
 
-/** Owns selected native-session observation, renewal and visibility transitions. */
+/** Owns one pane's Session Watch and its same-resource handoff until the replacement initial. */
 export function createWorkbenchSessionWatchController(options: {
   readonly workspaceTarget: Readonly<Ref<WorkspaceTarget | undefined>>;
   readonly selectedSessionId: Ref<string | undefined>;
@@ -49,6 +49,7 @@ export function createWorkbenchSessionWatchController(options: {
   let watchedWorkspaceId: string | undefined;
   let watchedConnectionId: string | undefined;
   let nodeGeneration: string | undefined;
+  let previousWatch: { readonly id: string; readonly generation: string } | undefined;
   const appliedInitialSnapshot = shallowRef<{
     readonly watchId: string;
     readonly nodeId: string;
@@ -65,7 +66,7 @@ export function createWorkbenchSessionWatchController(options: {
         readonly resolve: () => void;
         readonly reject: (error: Error) => void;
         readonly removeAbortListener: () => void;
-        readonly events: WorkbenchLiveEvent[];
+        readonly events: Array<{ readonly event: WorkbenchLiveEvent; readonly generation: string }>;
       }
     | undefined;
 
@@ -75,6 +76,7 @@ export function createWorkbenchSessionWatchController(options: {
     const pending = pendingInitial;
     if (pending === undefined) return;
     pendingInitial = undefined;
+    previousWatch = undefined;
     pending.removeAbortListener();
     pending.reject(error);
   }
@@ -236,6 +238,7 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   function stop(): void {
+    previousWatch = undefined;
     appliedInitialSnapshot.value = undefined;
     cancelPendingInitial();
     const sessionId = watchedSessionId;
@@ -276,10 +279,21 @@ export function createWorkbenchSessionWatchController(options: {
   }
 
   function restart(sessionId: string, resetFailures = true): Promise<void> | undefined {
+    const target = options.workspaceTarget.value;
+    const predecessor =
+      watchId !== undefined &&
+      nodeGeneration !== undefined &&
+      watchedConnectionId === connectionId() &&
+      watchedNodeId === target?.nodeId &&
+      watchedWorkspaceId === target?.workspaceId &&
+      watchedSessionId === sessionId
+        ? { id: watchId, generation: nodeGeneration }
+        : undefined;
     appliedInitialSnapshot.value = undefined;
     if (failureRetryTimer !== undefined) clearTimeout(failureRetryTimer);
     failureRetryTimer = undefined;
     cancelPendingInitial();
+    previousWatch = predecessor;
     lifecycle.stop();
     watchedSessionId = undefined;
     watchedNodeId = undefined;
@@ -304,19 +318,31 @@ export function createWorkbenchSessionWatchController(options: {
   function handleEvent(value: unknown): boolean {
     if (typeof value !== 'object' || value === null) return false;
     const event = value as Record<string, unknown>;
+    const target = options.workspaceTarget.value;
+    // Old realtime can be in flight, but only the new lease may confirm the initial snapshot.
+    const previous =
+      event.type === 'watch.session.event' &&
+      pendingInitial !== undefined &&
+      previousWatch !== undefined &&
+      event.watchId === previousWatch.id &&
+      event.nodeGeneration === previousWatch.generation;
     if (
       (event.type !== 'watch.session.snapshot' && event.type !== 'watch.session.event') ||
       event.workbenchConnectionId !== connectionId() ||
-      event.nodeId !== options.workspaceTarget.value?.nodeId ||
+      event.workbenchConnectionId !== watchedConnectionId ||
+      event.nodeId !== target?.nodeId ||
+      event.nodeId !== watchedNodeId ||
+      event.workspaceId !== target?.workspaceId ||
       event.workspaceId !== watchedWorkspaceId ||
+      event.sessionId !== options.selectedSessionId.value ||
       event.sessionId !== watchedSessionId ||
       watchId === undefined ||
-      event.watchId !== watchId ||
+      (event.watchId !== watchId && !previous) ||
       typeof event.nodeGeneration !== 'string' ||
       (nodeGeneration !== undefined && event.nodeGeneration !== nodeGeneration)
     )
       return false;
-    nodeGeneration ??= event.nodeGeneration;
+    if (!previous) nodeGeneration ??= event.nodeGeneration;
     failureRetries = 0;
     const sessionId = watchedSessionId;
     if (sessionId === undefined) return false;
@@ -337,7 +363,7 @@ export function createWorkbenchSessionWatchController(options: {
           payload: realtime.payload
         };
         if (pendingInitial?.sessionId === sessionId && pendingInitial.watchId === watchId)
-          pendingInitial.events.push(projected);
+          pendingInitial.events.push({ event: projected, generation: event.nodeGeneration });
         else options.applyEvent?.(projected);
       }
       return true;
@@ -400,6 +426,7 @@ export function createWorkbenchSessionWatchController(options: {
     if (pendingInitial?.sessionId === sessionId && pendingInitial.watchId === watchId) {
       const pending = pendingInitial;
       pendingInitial = undefined;
+      previousWatch = undefined;
       pending.removeAbortListener();
       options.applySnapshot(sessionId, page, event.historyReset === true ? 'reset' : 'initial');
       appliedInitialSnapshot.value = {
@@ -413,12 +440,26 @@ export function createWorkbenchSessionWatchController(options: {
         typeof runtimeSnapshot?.sequence === 'number'
           ? runtimeSnapshot.sequence
           : page.snapshotSequence;
-      for (const realtime of pending.events) {
+      const snapshotIds = new Set(page.turns.map((turn) => turn.id));
+      for (const { event: realtime, generation } of pending.events) {
+        if (generation !== event.nodeGeneration) continue;
         const coveredSequence =
           realtime.category === 'conversation'
             ? (page.snapshotSequence ?? snapshotSequence)
             : snapshotSequence;
-        if (coveredSequence !== undefined && realtime.sequence <= coveredSequence) continue;
+        if (coveredSequence !== undefined && realtime.sequence <= coveredSequence) {
+          // Only replay complete, explicitly targeted Segments that the bounded window did not cover.
+          if (event.historyReset === true || realtime.category !== 'conversation') continue;
+          const payload = realtime.payload as
+            { turn?: unknown; segments?: { id?: string }[] } | undefined;
+          if (payload?.turn !== undefined || !Array.isArray(payload?.segments)) continue;
+          const uncovered = payload.segments.filter(
+            (segment) => typeof segment?.id === 'string' && !snapshotIds.has(segment.id)
+          );
+          if (uncovered.length > 0)
+            options.applyEvent?.({ ...realtime, payload: { ...payload, segments: uncovered } });
+          continue;
+        }
         options.applyEvent?.(realtime);
       }
       pending.resolve();

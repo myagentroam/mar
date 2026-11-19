@@ -1,6 +1,6 @@
 import type { NodeAgentSession } from '../session/contracts.js';
 import type { NodeOperationHandler } from '../application/node-operation-contracts.js';
-import type { WorkbenchEvent } from '@myagentroam/protocol';
+import type { ConversationSegment, WorkbenchEvent } from '@myagentroam/protocol';
 import { isPlainRecord } from '../util/records.js';
 import type { ConversationHistoryPage } from '../session/runner-native-session-parsers.js';
 import {
@@ -42,6 +42,11 @@ interface NativeSessionLease {
   expiresAt: number;
   ready: boolean;
   snapshotSent: boolean;
+  snapshotSegments?: {
+    readonly ids: ReadonlySet<string>;
+    readonly firstIndexByTurn: ReadonlyMap<string, number>;
+    readonly earlierTurnIds: ReadonlySet<string>;
+  };
   historyReset?: true;
   readonly pendingEvents: WorkbenchEvent[];
   readonly slotToken: SessionWatchSlotToken;
@@ -57,6 +62,10 @@ export interface NativeSessionWatchOptions extends ConversationObservationOption
     unit: 'SEGMENT',
     limit: number
   ) => unknown;
+  readonly projectEventSegment?: (
+    sessionId: string,
+    target: { readonly runId: string; readonly turnId: string; readonly segmentId: string }
+  ) => ConversationSegment | undefined;
   readonly emitSession: (session: unknown) => void;
   readonly emitPage: (session: NodeAgentSession, page: ConversationHistoryPage) => void;
   readonly nodeId?: () => string;
@@ -460,8 +469,9 @@ export class NativeSessionWatchService {
         lease.unit === 'SEGMENT'
           ? projectInitialPage!(session, page, 'SEGMENT', SNAPSHOT_SEGMENT_LIMIT)
           : page;
+      this.recordSnapshotSegments(lease, payload, page);
       this.emitSnapshot(lease, session, payload);
-      this.releaseSnapshotPendingEvents(lease, page, payload);
+      this.releaseSnapshotPendingEvents(lease, page);
       const hydration = watch.observation.hydrate();
       if (hydration !== undefined)
         void hydration
@@ -514,7 +524,35 @@ export class NativeSessionWatchService {
     else if (observer !== undefined) observer.expiresAt = nextExpiry;
   }
 
-  private emitLeaseEvent(lease: NativeSessionLease, event: WorkbenchEvent): void {
+  private emitLeaseEvent(
+    lease: NativeSessionLease,
+    event: WorkbenchEvent,
+    recoverOmitted = false
+  ): void {
+    const target = conversationEventTarget(event);
+    const coverage = lease.snapshotSegments;
+    if (coverage !== undefined && target !== undefined && !coverage.ids.has(target.segmentId)) {
+      const firstIndex = coverage.firstIndexByTurn.get(target.turnId);
+      if (
+        recoverOmitted ||
+        coverage.earlierTurnIds.has(target.turnId) ||
+        (firstIndex !== undefined && target.segmentIndex < firstIndex)
+      ) {
+        const segment = this.options.projectEventSegment?.(lease.sessionId, target);
+        if (segment !== undefined) {
+          // Send only the affected authoritative unit; do not ask Web to construct an old unit.
+          const payload = event.payload as Record<string, unknown>;
+          event = {
+            ...event,
+            payload: {
+              sessionId: lease.sessionId,
+              segments: [segment],
+              ...(payload.progress === undefined ? {} : { progress: payload.progress })
+            }
+          };
+        }
+      }
+    }
     this.options.emitWatchEvent?.({
       type: 'watch.session.event',
       workbenchConnectionId: lease.workbenchConnectionId,
@@ -541,6 +579,7 @@ export class NativeSessionWatchService {
           ? this.options.projectInitialPage?.(session, page, 'SEGMENT', SNAPSHOT_SEGMENT_LIMIT)
           : page;
       if (payload === undefined) continue;
+      this.recordSnapshotSegments(lease, payload, page);
       this.options.emitWatchEvent?.({
         type: 'watch.session.snapshot',
         workbenchConnectionId: lease.workbenchConnectionId,
@@ -570,9 +609,10 @@ export class NativeSessionWatchService {
           ? this.options.projectInitialPage?.(session, page, 'SEGMENT', SNAPSHOT_SEGMENT_LIMIT)
           : page;
       if (payload === undefined) continue;
+      this.recordSnapshotSegments(lease, payload, page);
       this.emitSnapshot(lease, session, payload);
       if (!releasePending) continue;
-      this.releaseSnapshotPendingEvents(lease, page, payload);
+      this.releaseSnapshotPendingEvents(lease, page);
     }
   }
 
@@ -599,6 +639,32 @@ export class NativeSessionWatchService {
     delete lease.historyReset;
   }
 
+  private recordSnapshotSegments(
+    lease: NativeSessionLease,
+    payload: unknown,
+    history: ConversationHistoryPage
+  ): void {
+    if (lease.unit !== 'SEGMENT' || !isPlainRecord(payload)) return;
+    const page = payload.kind === 'session-watch-snapshot' ? payload.conversation : payload;
+    if (!isPlainRecord(page) || page.unit !== 'SEGMENT' || !Array.isArray(page.segments)) return;
+    const ids = new Set<string>();
+    const firstIndexByTurn = new Map<string, number>();
+    for (const segment of page.segments) {
+      if (!isPlainRecord(segment) || typeof segment.id !== 'string') continue;
+      ids.add(segment.id);
+      if (typeof segment.turnId === 'string' && typeof segment.index === 'number')
+        firstIndexByTurn.set(
+          segment.turnId,
+          Math.min(firstIndexByTurn.get(segment.turnId) ?? segment.index, segment.index)
+        );
+    }
+    const firstTurn = history.turns.findIndex((turn) => firstIndexByTurn.has(turn.id));
+    const earlierTurnIds = new Set(
+      history.turns.slice(0, Math.max(firstTurn, 0)).map((turn) => turn.id)
+    );
+    lease.snapshotSegments = { ids, firstIndexByTurn, earlierTurnIds };
+  }
+
   private releasePendingEvents(sessionId: string): void {
     for (const lease of this.leases.values()) {
       if (lease.sessionId !== sessionId) continue;
@@ -611,8 +677,7 @@ export class NativeSessionWatchService {
 
   private releaseSnapshotPendingEvents(
     lease: NativeSessionLease,
-    page: ConversationHistoryPage,
-    payload: unknown
+    page: ConversationHistoryPage
   ): void {
     const candidateSequence = page.snapshotSequence;
     const snapshotSequence =
@@ -621,34 +686,16 @@ export class NativeSessionWatchService {
       candidateSequence >= 0
         ? candidateSequence
         : undefined;
-    const segmentIds =
-      lease.unit === 'SEGMENT' &&
-      isPlainRecord(payload) &&
-      payload.unit === 'SEGMENT' &&
-      Array.isArray(payload.segments)
-        ? new Set(
-            payload.segments.flatMap((segment) =>
-              isPlainRecord(segment) && typeof segment.id === 'string' ? [segment.id] : []
-            )
-          )
-        : undefined;
     lease.ready = true;
     for (const event of lease.pendingEvents) {
-      const content =
-        event.category === 'conversation' && isPlainRecord(event.payload)
-          ? isPlainRecord(event.payload.item)
-            ? event.payload.item
-            : isPlainRecord(event.payload.delta)
-              ? event.payload.delta
-              : undefined
-          : undefined;
       // The full Turn high-water mark cannot cover an Item/Delta in an omitted Segment.
+      const content = conversationEventContent(event);
       const outsideSnapshot =
-        segmentIds !== undefined &&
         typeof content?.segmentId === 'string' &&
-        !segmentIds.has(content.segmentId);
-      if (snapshotSequence === undefined || event.sequence > snapshotSequence || outsideSnapshot)
+        lease.snapshotSegments?.ids.has(content.segmentId) === false;
+      if (snapshotSequence === undefined || event.sequence > snapshotSequence)
         this.emitLeaseEvent(lease, event);
+      else if (outsideSnapshot) this.emitLeaseEvent(lease, event, true);
     }
     lease.pendingEvents.length = 0;
   }
@@ -697,6 +744,37 @@ export class NativeSessionWatchService {
     timer.unref();
     return timer;
   }
+}
+
+function conversationEventContent(event: WorkbenchEvent) {
+  if (event.category !== 'conversation' || !isPlainRecord(event.payload)) return undefined;
+  const { item, delta, runId: itemRunId } = event.payload;
+  const content = isPlainRecord(item) ? item : isPlainRecord(delta) ? delta : undefined;
+  return content === undefined
+    ? undefined
+    : {
+        runId: isPlainRecord(item) ? itemRunId : content.runId,
+        turnId: content.turnId,
+        segmentId: content.segmentId,
+        segmentIndex: content.segmentIndex
+      };
+}
+
+function conversationEventTarget(event: WorkbenchEvent) {
+  const content = conversationEventContent(event);
+  if (
+    typeof content?.runId !== 'string' ||
+    typeof content?.turnId !== 'string' ||
+    typeof content.segmentId !== 'string' ||
+    typeof content.segmentIndex !== 'number'
+  )
+    return undefined;
+  return {
+    runId: content.runId,
+    turnId: content.turnId,
+    segmentId: content.segmentId,
+    segmentIndex: content.segmentIndex
+  };
 }
 
 function diagnosticErrorCode(error: unknown, fallback: string): string {

@@ -554,9 +554,10 @@ export function createConversationProjectionService(options: {
     );
   }
 
-  function mergeLatest(page: ConversationTurnPage): boolean {
+  function mergeLatest(page: ConversationTurnPage, scope?: 'segment-update'): boolean {
     flushPendingTextDeltas();
-    if (staleSnapshot(page)) return false;
+    // A targeted update does not replace the page or cover unrelated Segments in its Run.
+    if (scope !== 'segment-update' && staleSnapshot(page)) return false;
     const priorTurns = options.turns.value;
     const pageTurns = page.turns.map(limitConversationSegmentText);
     const incoming = pageTurns;

@@ -113,7 +113,10 @@ import {
   ConversationHistoryService,
   hasActiveRun
 } from './service/conversation-history-service.js';
-import { ConversationSegmentService } from './service/conversation-segment-service.js';
+import {
+  ConversationSegmentService,
+  conversationSegments
+} from './service/conversation-segment-service.js';
 import { RunnerInteractionService } from './service/runner-interaction-service.js';
 import { SessionLifecycleService } from './session/session-lifecycle-service.js';
 import { ExternalSessionResumeService } from './service/external-session-resume-service.js';
@@ -1194,6 +1197,11 @@ export class NodeConnector {
       readPage: (session, limit) => this.conversationHistoryService.read(session, { limit }),
       readHistoryPage: (session, limit) =>
         this.conversationHistoryService.readHistoryPage(session, { limit }),
+      projectEventSegment: (sessionId, target) => {
+        const turn = this.runtime.conversationTurnForRun(target.runId);
+        if (turn?.sessionId !== sessionId || turn.id !== target.turnId) return undefined;
+        return conversationSegments(turn).find((segment) => segment.id === target.segmentId);
+      },
       projectInitialPage: (session, page, _unit, limit) => {
         const context = this.sessionContextService.snapshot(session.id);
         this.sessionContextService.schedule(session);
