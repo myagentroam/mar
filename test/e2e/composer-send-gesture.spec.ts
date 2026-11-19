@@ -417,9 +417,15 @@ for (const idle of [false, true]) {
 test('Hosted mobile steering also retains a directly tappable action', async ({ page }) => {
   await page.goto(`${fixture.url}workbench-style.html?hosted-gesture=1`);
   await page.locator('textarea.composer-input').fill('Tap to steer');
-  await page.getByRole('button', { name: 'Steer', exact: true }).tap();
+  const steer = page.getByRole('button', { name: 'Steer', exact: true });
+  const stop = page.getByRole('button', { name: 'Stop (Esc)', exact: true });
+  const [stopBox, steerBox] = await Promise.all([stop.boundingBox(), steer.boundingBox()]);
+  expect(stopBox!.y).toBe(steerBox!.y);
+  expect(stopBox!.x + stopBox!.width).toBeLessThan(steerBox!.x);
+  await stop.tap();
+  await steer.tap();
   await expect(page.getByRole('status', { name: 'Submitted intents' })).toHaveText(
-    'REPLACE_CURRENT'
+    'STOP,REPLACE_CURRENT'
   );
 });
 

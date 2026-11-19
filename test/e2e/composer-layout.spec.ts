@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -9,6 +9,104 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 test.use({ deviceScaleFactor: 3 });
+
+async function composerActionStyle(button: Locator) {
+  return button.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const icon = element.querySelector('[data-mar-icon]');
+    return {
+      width: style.width,
+      height: style.height,
+      radius: style.borderRadius,
+      background: style.backgroundColor,
+      foreground: style.color,
+      border: style.border,
+      opacity: style.opacity,
+      icon: icon?.getAttribute('data-mar-icon'),
+      iconWidth: icon && getComputedStyle(icon).width
+    };
+  });
+}
+
+for (const theme of ['daylight', 'vscode-dark-2026']) {
+  for (const width of [390, 1280]) {
+    test(`Hosted Composer matches Workspace toolbar and actions at ${width} in ${theme}`, async ({
+      page
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      for (const state of ['empty-input', 'ready', 'submitting', 'interrupt', 'cancelling']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?hosted=1&theme=${theme}&model-options&${state}${width < 768 ? '&mobile=1' : ''}`
+        );
+        const hostedToolbar = page.locator('.hosted-composer-toolbar');
+        const workspaceToolbar = page.locator('.composer-toolbar');
+        const stopping = state === 'interrupt' || state === 'cancelling';
+        const hostedAction = hostedToolbar.locator(
+          stopping ? '.hosted-stop-button' : '.hosted-send-button'
+        );
+        const workspaceAction = workspaceToolbar.locator(
+          stopping ? '.composer-stop-button' : '.composer-send-button'
+        );
+        if (state === 'ready') await page.locator('.composer-input').fill('Review this change');
+        await expect(hostedAction).toBeVisible();
+        if (state === 'ready' || state === 'interrupt') await expect(hostedAction).toBeEnabled();
+        else await expect(hostedAction).toBeDisabled();
+        if (state === 'submitting') {
+          await expect(hostedAction).toHaveAttribute('aria-busy', 'true');
+          await expect(hostedToolbar.getByRole('status')).toHaveText('Sending...');
+        }
+        expect(await composerActionStyle(hostedAction)).toEqual(
+          await composerActionStyle(workspaceAction)
+        );
+        const hostedBox = (await hostedToolbar.boundingBox())!;
+        const workspaceBox = (await workspaceToolbar.boundingBox())!;
+        expect(hostedBox.height).toBeCloseTo(workspaceBox.height, 1);
+        const actionBox = (await hostedAction.boundingBox())!;
+        const attachmentBox = (await hostedToolbar.locator('.hosted-icon-button').boundingBox())!;
+        expect(
+          actionBox.y + actionBox.height / 2 - attachmentBox.y - attachmentBox.height / 2
+        ).toBeCloseTo(0, 1);
+        const workspaceSend = (await workspaceToolbar
+          .locator('.composer-send-button')
+          .boundingBox())!;
+        expect(hostedBox.x + hostedBox.width - actionBox.x - actionBox.width).toBeCloseTo(
+          workspaceBox.x + workspaceBox.width - workspaceSend.x - workspaceSend.width,
+          1
+        );
+        if (state === 'ready' || state === 'interrupt') {
+          await hostedToolbar.screenshot({ path: testInfo.outputPath(`hosted-${state}.png`) });
+        }
+      }
+    });
+  }
+}
+
+test('Hosted Composer keeps the no-model warning and Send inside a narrow desktop column', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto(`${fixture.url}visual-alignment.html?hosted=1&no-hosted-models&locale=en-US`);
+  await page.locator('.composer-shell').evaluate((shell) => {
+    shell.style.width = '320px';
+  });
+  const toolbar = page.locator('.hosted-composer-toolbar');
+  const warning = toolbar.getByText('The current template has no available models;', {
+    exact: false
+  });
+  const send = toolbar.getByRole('button', { name: 'Send', exact: true });
+  await expect(warning).toBeVisible();
+  await expect(send).toBeDisabled();
+  const [toolbarBox, warningBox, sendBox] = await Promise.all([
+    toolbar.boundingBox(),
+    warning.boundingBox(),
+    send.boundingBox()
+  ]);
+  expect(await warning.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true
+  );
+  expect(warningBox!.x + warningBox!.width).toBeLessThan(sendBox!.x);
+  expect(sendBox!.x + sendBox!.width).toBeLessThan(toolbarBox!.x + toolbarBox!.width);
+});
 
 test('Workspace context indicator stays visible without a usage snapshot', async ({ page }) => {
   for (const width of [390, 1280]) {
@@ -254,10 +352,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const composer = page.locator('.composer');
         await expect(composer).toBeVisible();
         await expect(composer).toHaveCSS('position', width < 768 ? 'fixed' : 'relative');
-        await expect(page.locator('.workspace-grid')).toHaveCSS(
-          'border-bottom-width',
-          width < 768 ? '0px' : '1px'
-        );
+        await expect(page.locator('.workspace-grid')).toHaveCSS('border-bottom-width', '0px');
         for (const height of [844, 560]) {
           await page.setViewportSize({ width, height });
           for (const composerHeight of [313.1875, 379.3125]) {

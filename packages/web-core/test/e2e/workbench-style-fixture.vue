@@ -469,6 +469,14 @@ let composerSurfacePage: ReturnType<typeof createWorkbenchPageController> | unde
 if (composerFixture) {
   const originalFetch = window.fetch;
   window.fetch = (input, init) => {
+    if (input === '/api/auth/me') {
+      return Promise.resolve(
+        Response.json({ authenticated: true, userId: 1, mustChangePassword: false })
+      );
+    }
+    if (input === '/api/auth/csrf') {
+      return Promise.resolve(Response.json({ csrfToken: 'fixture-csrf-token' }));
+    }
     if (typeof input === 'string' && input === '/api/nodes') {
       return Promise.resolve(Response.json({ nodes: [node] }));
     }

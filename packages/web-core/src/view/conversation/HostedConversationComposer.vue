@@ -12,6 +12,7 @@ import { marIcon } from '../../util/mar-icons.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from '../composer/ComposerSendButton.vue';
+import '../composer/composer-toolbar.css';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -206,6 +207,15 @@ const syncingOnly = computed(
     (activeRun.value === undefined || canReplaceCurrent.value)
 );
 const working = clockWorking;
+const sendLabel = computed(() =>
+  translate(
+    submitting.value
+      ? 'workbench.sending'
+      : props.mobileViewport && canReplaceCurrent.value
+        ? 'composerSend.steer'
+        : 'hostedConversations.send'
+  )
+);
 const workingLabel = computed(() =>
   conversationActivityLabel(activeRun.value, props.readonly ? [] : props.workspace.turns.value)
 );
@@ -765,8 +775,8 @@ onBeforeUnmount(() => {
 
     <template #toolbar>
       <div
-        class="hosted-composer-toolbar"
-        :class="{ 'has-mobile-send': mobileViewport && canReplaceCurrent && inputHasContent }"
+        class="hosted-composer-toolbar mar-composer-toolbar"
+        :class="{ 'is-mobile': mobileViewport }"
       >
         <input
           ref="fileInput"
@@ -777,7 +787,7 @@ onBeforeUnmount(() => {
         />
         <button
           v-tooltip="translate('hostedConversations.addAttachment')"
-          class="hosted-icon-button mar-icon-action"
+          class="hosted-icon-button mar-composer-attachment mar-icon-action"
           type="button"
           :disabled="composerReadonly"
           :aria-label="translate('hostedConversations.addAttachment')"
@@ -880,48 +890,58 @@ onBeforeUnmount(() => {
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}
         </span>
-        <span v-if="!mobileViewport && canReplaceCurrent" class="hosted-replace-hint" role="status">
-          {{ translate('hostedConversations.replaceCurrentHint') }}
-        </span>
-        <span v-if="submitting" class="composer-submitting" role="status">{{
-          translate('workbench.sending')
-        }}</span>
-        <button
-          v-tooltip="translate('hostedConversations.stopWithEsc')"
-          v-if="activeRun"
-          class="hosted-stop-button"
-          type="button"
-          :disabled="!canStopCurrent"
-          :aria-label="translate('hostedConversations.stopWithEsc')"
-          @click="stop"
-        >
-          <i aria-hidden="true" />
-        </button>
-        <ComposerSendButton
-          v-if="!activeRun || (mobileViewport && canReplaceCurrent && inputHasContent)"
-          class="hosted-send-button"
-          :disabled="
-            composerReadonly ||
-            pendingAttachments ||
-            failedDraftAttachments ||
-            !inputHasContent ||
-            configurationUpdating ||
-            modelUnavailable
-          "
-          :mobile-viewport="mobileViewport"
-          :can-steer="canReplaceCurrent"
-          :context-key="`${selectedSubmissionContext ?? draftTemplateId}:${activeRun?.id ?? ''}`"
-          :submitting="submitting"
-          :label="
-            translate(
-              mobileViewport && canReplaceCurrent
-                ? 'composerSend.steer'
-                : 'hostedConversations.send'
-            )
-          "
-          @send="send(mobileViewport && canReplaceCurrent ? 'REPLACE_CURRENT' : undefined)"
-          @steer="send('REPLACE_CURRENT')"
-        />
+        <div class="hosted-composer-actions">
+          <span
+            v-if="!mobileViewport && canReplaceCurrent && !submitting"
+            class="hosted-replace-hint"
+            role="status"
+          >
+            {{ translate('hostedConversations.replaceCurrentHint') }}
+          </span>
+          <span
+            v-if="submitting"
+            class="composer-submitting mar-composer-submitting mar-composer-mobile-status"
+            role="status"
+            >{{ translate('workbench.sending') }}</span
+          >
+          <button
+            v-tooltip="
+              translate(
+                activeRun.status === 'CANCELLING'
+                  ? 'generated.composerToolbar.stopping'
+                  : 'hostedConversations.stopWithEsc'
+              )
+            "
+            v-if="activeRun"
+            class="hosted-stop-button mar-composer-action mar-composer-stop-action"
+            type="button"
+            :disabled="!canStopCurrent"
+            :aria-label="translate('hostedConversations.stopWithEsc')"
+            @click="stop"
+          >
+            <MarIcon name="stop" aria-hidden="true" />
+          </button>
+          <ComposerSendButton
+            v-tooltip="sendLabel"
+            v-if="!activeRun || (mobileViewport && canReplaceCurrent && inputHasContent)"
+            class="hosted-send-button mar-composer-action"
+            :disabled="
+              composerReadonly ||
+              pendingAttachments ||
+              failedDraftAttachments ||
+              !inputHasContent ||
+              configurationUpdating ||
+              modelUnavailable
+            "
+            :mobile-viewport="mobileViewport"
+            :can-steer="canReplaceCurrent"
+            :context-key="`${selectedSubmissionContext ?? draftTemplateId}:${activeRun?.id ?? ''}`"
+            :submitting="submitting"
+            :label="sendLabel"
+            @send="send(mobileViewport && canReplaceCurrent ? 'REPLACE_CURRENT' : undefined)"
+            @steer="send('REPLACE_CURRENT')"
+          />
+        </div>
       </div>
     </template>
   </ConversationComposer>
@@ -930,12 +950,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .hosted-draft-composer :deep(.composer) {
   background: transparent;
-}
-
-.composer-submitting {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  flex-shrink: 0;
 }
 
 .hosted-file-input {
@@ -990,33 +1004,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.hosted-composer-toolbar {
+.hosted-composer-actions {
   display: flex;
-  min-width: 0;
+  flex: none;
   align-items: center;
-  gap: 8px;
-  border-top: 1px solid var(--mar-border-subtle);
-  padding: 8px 10px;
-}
-
-.hosted-icon-button,
-.hosted-send-button,
-.hosted-stop-button {
-  display: inline-grid;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
-  cursor: pointer;
-}
-
-@media (max-width: 767px) {
-  .hosted-icon-button :deep(.mar-icon[data-mar-icon='attachment']) {
-    font-size: 16px;
-  }
+  gap: inherit;
+  margin-inline-start: auto;
 }
 
 .hosted-syncing :deep(.composer-shell.readonly) {
@@ -1029,30 +1022,7 @@ onBeforeUnmount(() => {
   cursor: text;
 }
 
-.hosted-send-button {
-  border-radius: 50%;
-  margin-left: auto;
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
-}
-
-.hosted-stop-button {
-  border-radius: 50%;
-  margin-left: auto;
-  border: 1px solid var(--mar-color-danger-text);
-  color: var(--mar-color-danger-text);
-}
-
-.hosted-stop-button i {
-  width: 9px;
-  height: 9px;
-  border-radius: 1px;
-  background: currentcolor;
-}
-
-.hosted-icon-button:disabled,
-.hosted-send-button:disabled,
-.hosted-stop-button:disabled {
+.hosted-icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -1148,10 +1118,11 @@ onBeforeUnmount(() => {
 }
 
 .hosted-model-unavailable {
+  min-width: 0;
   color: var(--mar-color-warning-text);
   font-size: var(--mar-font-size-meta);
-  line-height: 1;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .hosted-replace-hint {
@@ -1161,27 +1132,31 @@ onBeforeUnmount(() => {
   line-height: 1.35;
 }
 
+@container (max-width: 680px) {
+  .hosted-replace-hint {
+    display: none;
+  }
+}
+
 @media (max-width: 767px) {
   .hosted-composer-toolbar {
-    display: grid;
-    grid-template-columns: 34px minmax(72px, 0.9fr) minmax(0, 1.1fr) 34px;
+    grid-template-columns: auto minmax(0, 0.9fr) minmax(0, 1.1fr) auto;
   }
 
-  .hosted-composer-toolbar.has-mobile-send {
-    grid-template-columns: 34px minmax(72px, 0.9fr) minmax(0, 1.1fr) 34px 34px;
-  }
-
-  .has-mobile-send .hosted-send-button {
-    grid-column: 5;
+  .hosted-icon-button {
+    grid-column: 1;
+    grid-row: 1;
   }
 
   .hosted-model-unavailable {
     grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .hosted-model-slot {
     width: 100%;
     grid-column: 3;
+    grid-row: 1;
   }
 
   .hosted-model-menu,
@@ -1194,14 +1169,14 @@ onBeforeUnmount(() => {
     width: 100%;
     max-width: 100%;
     grid-column: 2;
+    grid-row: 1;
   }
 
   .hosted-template-trigger {
     width: 100%;
   }
 
-  .hosted-send-button,
-  .hosted-stop-button {
+  .hosted-composer-actions {
     grid-column: 4;
     grid-row: 1;
   }
