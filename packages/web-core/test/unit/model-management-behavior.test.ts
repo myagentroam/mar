@@ -572,9 +572,12 @@ describe('Model management component behavior', () => {
     }
   });
 
-  it.each(['zh-CN', 'en-US'] as const)(
-    'keeps the resource URL setting and its explanation together in %s',
-    async (locale) => {
+  it.each([
+    ['zh-CN', '需同时开启全局选项。'],
+    ['en-US', 'Requires the global option too.']
+  ] as const)(
+    'shows and saves the resource URL setting without the redundant hint in %s',
+    async (locale, removedHint) => {
       i18n.global.locale.value = locale;
       const labels = commonMessages[locale].marAgentModels;
       const base = requestFixture([{ ...model, metadata: { useResourceUrl: true } }]);
@@ -597,11 +600,11 @@ describe('Model management component behavior', () => {
         const field = view
           .findAll('ElFormItem')
           .find((node) => node.props['label'] === labels.capabilities)!;
-        expect(textContent(field)).toContain(labels.resourceUrlDescription);
-        const reasoning = view
-          .findAll('ElFormItem')
-          .find((node) => node.props['label'] === labels.reasoningEfforts)!;
-        expect(textContent(reasoning)).not.toContain(labels.resourceUrlDescription);
+        expect(textContent(field)).toContain(labels.useResourceUrl);
+        const dialog = view
+          .findAll('ElDialog')
+          .find((node) => node.props['title'] === labels.edit)!;
+        expect(textContent(dialog)).not.toContain(removedHint);
         await trigger(setting, 'onUpdate:modelValue', false);
         await trigger(button(view, labels.save), 'onClick');
         const saved = request.mock.calls.find(([, init]) => init?.method === 'PUT');

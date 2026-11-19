@@ -2070,7 +2070,6 @@ onBeforeUnmount(() => {
             :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
             >{{ translate('marAgentModels.responsesContinuation') }}</el-checkbox
           >
-          <p class="form-hint">{{ translate('marAgentModels.resourceUrlDescription') }}</p>
         </el-form-item>
         <el-form-item :label="translate('marAgentModels.reasoningEfforts')">
           <el-checkbox-group v-model="draft.reasoningEfforts">
