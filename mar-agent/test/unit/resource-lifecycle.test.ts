@@ -81,8 +81,7 @@ class WarmProcessAdapter implements ModelAdapter {
           command:
             JSON.stringify(process.execPath) +
             ' -e "console.log(\'READY\'); setInterval(() => {}, 1000)"',
-          yieldMs: 100,
-          timeoutMs: 10_000
+          timeoutMs: 12_000
         }
       };
       yield { type: 'completed', reason: 'tool_use' };
@@ -870,9 +869,9 @@ describe('resource lifecycle', () => {
     const started = await tools.exec({
       action: 'start',
       command: `${process.execPath} -e "console.log(process.pid); setInterval(() => {}, 1000)"`,
-      yieldMs: 250,
-      timeoutMs: 10_000
+      timeoutMs: 30_000
     });
+    expect(started).toMatchObject({ status: 'running', waitOutcome: 'timeout' });
     const pid = Number(started.stdout.trim().split(/\s+/u).at(-1));
     expect(Number.isSafeInteger(pid)).toBe(true);
     await tools.dispose();

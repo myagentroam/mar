@@ -127,9 +127,7 @@ export class ExecTool {
         return {
           ...completed.result,
           cached: true,
-          ...(input.action === 'poll'
-            ? waitMetadata(input.yieldMs === 0 ? 'snapshot' : 'completion')
-            : {})
+          ...(input.action === 'poll' ? waitMetadata('completion') : {})
         };
       }
       if (
@@ -141,11 +139,11 @@ export class ExecTool {
       if (onExecutionSource) await onExecutionSource(processSource(process));
       if (signal?.aborted) throw executionAbortReason(signal);
       let outcome: 'ready' | 'timeout' | 'interrupted' | undefined;
-      if (input.action === 'poll' && input.yieldMs)
+      if (input.action === 'poll')
         outcome = await waitForProcessCompletion(
           input.processId,
           process,
-          Math.min(Math.max(input.yieldMs, 0), TOOL_EXECUTION_LIMITS.execMaxPollYieldMs),
+          input.yieldMs,
           signal,
           waitInterrupt,
           onOutput
@@ -168,13 +166,11 @@ export class ExecTool {
         ...result,
         ...(input.action === 'poll'
           ? waitMetadata(
-              input.yieldMs === 0
-                ? 'snapshot'
-                : result.status !== 'running'
-                  ? 'completion'
-                  : outcome === 'interrupted'
-                    ? 'interrupted'
-                    : 'timeout'
+              result.status !== 'running'
+                ? 'completion'
+                : outcome === 'interrupted'
+                  ? 'interrupted'
+                  : 'timeout'
             )
           : {})
       };
@@ -206,26 +202,24 @@ export class ExecTool {
       );
       managed.timer.unref();
     }
-    const yieldMs = Math.min(
+    const outcome = await waitForProcessCompletion(
+      id,
+      managed,
       input.yieldMs ?? TOOL_EXECUTION_LIMITS.execDefaultYieldMs,
-      TOOL_EXECUTION_LIMITS.execMaxYieldMs
+      signal,
+      waitInterrupt,
+      onOutput
     );
-    const outcome =
-      yieldMs === 0
-        ? undefined
-        : await waitForProcessCompletion(id, managed, yieldMs, signal, waitInterrupt, onOutput);
     const result = this.#result(id, managed);
     if (managed.status !== 'running') this.#retainCompleted(id, managed);
     return {
       ...result,
       ...waitMetadata(
-        yieldMs === 0
-          ? 'snapshot'
-          : result.status !== 'running'
-            ? 'completion'
-            : outcome === 'interrupted'
-              ? 'interrupted'
-              : 'timeout'
+        result.status !== 'running'
+          ? 'completion'
+          : outcome === 'interrupted'
+            ? 'interrupted'
+            : 'timeout'
       )
     };
   }

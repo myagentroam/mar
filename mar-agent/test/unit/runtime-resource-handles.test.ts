@@ -11,6 +11,7 @@ import { CodeCells } from '../../src/tools/code-mode/cells.js';
 import { ExecTool } from '../../src/host/local-exec-tool.js';
 import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
 import { RuntimeResourceHandles } from '../../src/tools/runtime-resource-handles.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
 
 vi.mock('node:crypto', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:crypto')>()),
@@ -91,7 +92,8 @@ describe('typed runtime resource handles', () => {
     ])
       vi.mocked(randomBytes).mockReturnValueOnce(Buffer.from(suffix, 'hex'));
     const owner = { sessionId: 'session', executionId: 'first' };
-    const start = () => tool.execute({ command: 'fixture', yieldMs: 0 }, undefined, owner);
+    const stopWaiting = createToolWaitInterrupt(() => true);
+    const start = () => tool.execute({ command: 'fixture' }, undefined, owner, stopWaiting);
     try {
       const results = await Promise.all([start(), start()]);
       expect(results.map((result) => result.processId)).toEqual([
@@ -116,9 +118,10 @@ describe('typed runtime resource handles', () => {
       ).toMatchObject({ cached: true, stdout: 'retained' });
       expect(
         await tool.execute(
-          { processId: results[1]!.processId, action: 'poll', yieldMs: 0 },
+          { processId: results[1]!.processId, action: 'poll' },
           undefined,
-          owner
+          owner,
+          stopWaiting
         )
       ).toMatchObject({ status: 'running' });
     } finally {

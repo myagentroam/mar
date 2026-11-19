@@ -4,6 +4,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { afterEach, expect, it } from 'vitest';
 import type { AgentEvent } from '../../src/runtime/events.js';
 import type { ToolExecutionContext, ToolExecutionResult } from '../../src/tools/contracts.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
 import { answer, call, cleanupCoreFixtures, fixture } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -71,9 +72,9 @@ it.each([
       const started = await host.executeTool(
         {
           name: codeMode ? 'code_exec' : 'exec',
-          arguments: codeMode ? source : { command: source, yieldMs: 0 }
+          arguments: codeMode ? source : { command: source }
         },
-        context
+        codeMode ? context : { ...context, waitInterrupt: createToolWaitInterrupt(() => true) }
       );
       const data = started.data as { processId?: string; cellId?: string };
       input = {

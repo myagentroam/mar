@@ -6,6 +6,7 @@ import {
   type NativeSubagentClient
 } from '../../extensions/subagent/src/index.js';
 import type { ToolExecutionContext } from '../../src/tools/contracts.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
 afterEach(cleanupCoreFixtures);
@@ -18,7 +19,7 @@ const childCommand = command(
 describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
   'steer resumes managed waits %s',
   (protocol) => {
-    it.each(['single', 'any', 'all', 'untargeted'] as const)(
+    it.each(['default', 'any', 'all', 'untargeted'] as const)(
       'wakes a %s child wait while retaining the child Turn',
       async (target) => {
         const entered = Promise.withResolvers<void>();
@@ -53,7 +54,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
               return call('agent_start', {
                 title: 'Retained child',
                 description: 'Retained child',
-                prompt: 'child worker',
+                content: 'child worker',
                 role: 'explore'
               });
             if (parentRound === 2) {
@@ -65,8 +66,8 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
                 'agent_wait',
                 target === 'untargeted'
                   ? { waitMs: 300000, waitFor: 'message' }
-                  : target === 'single'
-                    ? { agentId, waitMs: 300000 }
+                  : target === 'default'
+                    ? { agentIds: [agentId], waitMs: 300000 }
                     : { agentIds: [agentId], mode: target, waitMs: 300000 }
               );
             }
@@ -120,12 +121,14 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           if (event?.type !== 'tool.completed') throw new Error('Missing wait result');
           const result = JSON.parse(event.summary);
           expect(result).toMatchObject({ waitOutcome: 'interrupted', reason: 'steer' });
-          if (target === 'single' || target === 'untargeted')
-            expect(result).toMatchObject({ status: 'running', agentId });
+          expect(result).toMatchObject({
+            agents: [{ agentId, status: 'RUNNING', waitOutcome: 'interrupted' }]
+          });
+          if (target === 'untargeted') expect(result).not.toHaveProperty('pendingAgentIds');
           else
             expect(result).toMatchObject({
-              pendingAgentIds: [agentId],
-              agents: [{ status: 'running', waitOutcome: 'interrupted' }]
+              mode: target === 'all' ? 'all' : 'any',
+              pendingAgentIds: [agentId]
             });
           expect(events.some((value) => value.type === 'tool.failed')).toBe(false);
           release.resolve();
@@ -224,11 +227,11 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           ).toBe(false);
         }
         expect(processId).toBeTruthy();
-        const snapshot = await f.host.executeTool(
-          { name: 'exec_wait', arguments: { processId, yieldMs: 0 } },
-          ctx
+        const retained = await f.host.executeTool(
+          { name: 'exec_wait', arguments: { processId } },
+          { ...ctx, waitInterrupt: createToolWaitInterrupt(() => true) }
         );
-        expect(snapshot.data).toMatchObject({ status: 'running', waitOutcome: 'snapshot' });
+        expect(retained.data).toMatchObject({ status: 'running', waitOutcome: 'interrupted' });
         await f.host.executeTool(
           { name: 'exec_wait', arguments: { processId, action: 'write', data: 'finish' } },
           ctx

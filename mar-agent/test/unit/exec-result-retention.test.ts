@@ -8,6 +8,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExecTool } from '../../src/host/local-exec-tool.js';
 import { TOOL_EXECUTION_LIMITS } from '../../src/tools/execution-limits.js';
 import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
+
+const stopWaiting = createToolWaitInterrupt(() => true);
 
 const fixtures: Array<{ tool: ExecTool; root: string; close: () => void }> = [];
 afterEach(async () => {
@@ -56,10 +59,15 @@ async function fixture(maxProcesses = 2) {
   });
   const owner = { sessionId: 'parent', executionId: 'first' };
   const start = async (sessionId = owner.sessionId) => {
-    const result = await tool.execute({ command: 'fixture', yieldMs: 0 }, undefined, {
-      ...owner,
-      sessionId
-    });
+    const result = await tool.execute(
+      { command: 'fixture' },
+      undefined,
+      {
+        ...owner,
+        sessionId
+      },
+      stopWaiting
+    );
     return { result, ...children.at(-1)! };
   };
   return { tool, owner, start };
@@ -72,9 +80,10 @@ describe('uncollected exec terminal results', () => {
     running.state.stdout.write('early');
     expect(
       await tool.execute(
-        { action: 'poll', processId: running.result.processId, yieldMs: 0 },
+        { action: 'poll', processId: running.result.processId },
         undefined,
-        owner
+        owner,
+        stopWaiting
       )
     ).toMatchObject({ status: 'running', stdout: 'early' });
     vi.useFakeTimers();

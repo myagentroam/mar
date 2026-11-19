@@ -265,11 +265,11 @@ describe('exec live output and model observation separation', () => {
           if (index === 0)
             return call('code_exec', {
               code: revisitFirst
-                ? '// @options: {"yieldMs":0}\nconst r=await tools.exec({command:"one",yieldMs:1000}); await tools.exec({command:"two",yieldMs:4000}); await tools.exec_wait({processId:r.data.processId,yieldMs:4000});'
-                : '// @options: {"yieldMs":0}\nawait tools.exec({command:"one",yieldMs:4000}); const r=await tools.exec({command:"two",yieldMs:1000}); await tools.exec_wait({processId:r.data.processId,yieldMs:4000});'
+                ? '// @options: {"yieldMs":0}\nconst r=await tools.exec({command:"one"}); await tools.exec({command:"two",yieldMs:20000}); await tools.exec_wait({processId:r.data.processId});'
+                : '// @options: {"yieldMs":0}\nawait tools.exec({command:"one",yieldMs:20000}); const r=await tools.exec({command:"two"}); await tools.exec_wait({processId:r.data.processId});'
             });
           if (index === 2)
-            return call('code_exec_wait', { cellId, yieldMs: 4000 }).map((event) =>
+            return call('code_exec_wait', { cellId, yieldMs: 300000 }).map((event) =>
               event.type === 'client_tool.call' ? { ...event, callId: 'later-wait' } : event
             );
           return answer();
@@ -288,6 +288,7 @@ describe('exec live output and model observation separation', () => {
           }
         }
       );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const first = f.session.run({ prompt: 'Start.' });
       const firstEvents: AgentEvent[] = [];
       const collectingFirst = (async () => {
@@ -325,6 +326,8 @@ describe('exec live output and model observation separation', () => {
         if (!revisitFirst) {
           one.exitCode = 0;
           one.emit('close', 0, null);
+        } else {
+          await vi.advanceTimersByTimeAsync(10_000);
         }
         await vi.waitFor(() => expect(two.stdout.listenerCount('data')).toBe(1), { timeout: 2500 });
         two.stdout.write(twoText);
@@ -340,6 +343,8 @@ describe('exec live output and model observation separation', () => {
         if (revisitFirst) {
           two.exitCode = 0;
           two.emit('close', 0, null);
+        } else {
+          await vi.advanceTimersByTimeAsync(10_000);
         }
         await vi.waitFor(
           () =>
@@ -367,6 +372,7 @@ describe('exec live output and model observation separation', () => {
         await second.result();
         await collecting;
       } finally {
+        vi.useRealTimers();
         one.exitCode = 0;
         one.emit('close', 0, null);
         two.exitCode = 0;
@@ -387,10 +393,10 @@ describe('exec live output and model observation separation', () => {
       (_request, index) => {
         if (index === 0)
           return call('code_exec', {
-            code: '// @options: {"yieldMs":0}\nconst r = await tools.exec({command:"fixture",yieldMs:1000}); await tools.exec_wait({processId:r.data.processId,yieldMs:4000});'
+            code: '// @options: {"yieldMs":0}\nconst r = await tools.exec({command:"fixture"}); await tools.exec_wait({processId:r.data.processId});'
           });
         if (index === 2)
-          return call('code_exec_wait', { cellId, yieldMs: 4000 }).map((event) =>
+          return call('code_exec_wait', { cellId, yieldMs: 300000 }).map((event) =>
             event.type === 'client_tool.call' ? { ...event, callId: 'later-wait' } : event
           );
         return answer();
@@ -407,6 +413,7 @@ describe('exec live output and model observation separation', () => {
         }
       }
     );
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const first = f.session.run({ prompt: 'Start.' });
     const firstEvents: AgentEvent[] = [];
     const collectingFirst = (async () => {
@@ -441,6 +448,7 @@ describe('exec live output and model observation separation', () => {
           })
         )
       );
+      await vi.advanceTimersByTimeAsync(10_000);
       await vi.waitFor(
         () =>
           expect(events).toContainEqual(
@@ -462,6 +470,7 @@ describe('exec live output and model observation separation', () => {
       await second.result();
       await collecting;
     } finally {
+      vi.useRealTimers();
       child.exitCode = 0;
       child.emit('close', 0, null);
     }

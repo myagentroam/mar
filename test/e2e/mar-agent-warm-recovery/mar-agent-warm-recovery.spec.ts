@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { expect, test } from '@playwright/test';
 import mysql from 'mysql2/promise';
+import { unavailableCapabilities } from '../../../mar-node/src/capabilities.js';
 import { NodeConnector } from '../../../mar-node/src/connector.js';
 import { createServerApp } from '../../../ee/server/src/app.js';
 import {
@@ -26,6 +27,7 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
     browserName !== 'chromium',
     'Cross-module API coverage only runs in one browser project'
   );
+  test.setTimeout(60_000); // Starting and polling the live process take 10 seconds each.
   const directory = await mkdtemp(join(tmpdir(), 'my-agent-roam-mar-agent-warm-e2e-'));
   const workspacePath = join(directory, 'workspace');
   const agentHome = join(directory, 'home');
@@ -37,7 +39,6 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
   );
   await createPlaywrightTestDatabase(testDatabase);
   const databaseUrl = testDatabase.databaseUrl;
-  const nodeAppVersion = await projectVersion();
   const nodeDisplayName = `MAR Agent warm recovery ${randomUUID()}`;
   const app = (
     await createServerApp({
@@ -71,16 +72,7 @@ test('MAR Agent restores resources through the real Server and NodeConnector and
         allowedRoots: [directory],
         registrationToken: token.json<{ token: string }>().token
       },
-      capabilities: {
-        platform: 'linux',
-        architecture: 'x64',
-        nodeAppVersion,
-        nodeVersion: process.version,
-        codex: { available: false },
-        claudeCode: { available: false },
-        openCode: { available: false },
-        marAgent: { available: true, version: nodeAppVersion }
-      }
+      capabilities: unavailableCapabilities()
     });
     await connector.start();
     const nodeId = await waitForConnectedNode(app, admin.headers.cookie, nodeDisplayName);
@@ -552,10 +544,8 @@ class FakeAnthropicServer {
             id: 'warm-exec-start',
             name: 'exec',
             input: {
-              action: 'start',
               command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
-              yieldMs: 100,
-              timeoutMs: 20_000
+              timeoutMs: 60_000
             }
           },
           {
@@ -583,7 +573,7 @@ class FakeAnthropicServer {
           {
             id: 'warm-exec-poll',
             name: 'exec_wait',
-            input: { action: 'poll', processId: resources.processId, yieldMs: 0 }
+            input: { action: 'poll', processId: resources.processId, yieldMs: 10_000 }
           },
           {
             id: 'warm-task-output',

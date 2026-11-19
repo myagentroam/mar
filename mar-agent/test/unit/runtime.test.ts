@@ -502,8 +502,7 @@ class HostedExecResourceAdapter implements ModelAdapter {
         arguments: {
           command: `${JSON.stringify(process.execPath)} -e "setInterval(() => {}, 1000)"`,
           cwd: 'output',
-          yieldMs: 10,
-          timeoutMs: 10_000
+          timeoutMs: 30_000
         }
       };
       yield { type: 'completed', reason: 'tool_use' };

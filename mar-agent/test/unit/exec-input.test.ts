@@ -75,7 +75,7 @@ describe('exec input diagnostics', () => {
       yieldMs: 60_000
     });
     expect(execToolInput('exec_wait', { processId: 'p', yieldMs: 1e10 })).toMatchObject({
-      yieldMs: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs
+      yieldMs: TOOL_EXECUTION_LIMITS.execMaxYieldMs
     });
     expect(execToolInput('exec_wait', { processId: 'p', action: 'write', data: '' })).toEqual({
       action: 'write',
@@ -85,6 +85,22 @@ describe('exec input diagnostics', () => {
     expect(execToolInput('exec_wait', { processId: 'p', action: 'cancel' })).toEqual({
       action: 'cancel',
       processId: 'p'
+    });
+  });
+
+  it.each([
+    [0, 10_000],
+    [1, 10_000],
+    [9_999, 10_000],
+    [10_000, 10_000],
+    [30_001, 30_001],
+    [300_000, 300_000]
+  ])('normalizes %i ms to %i ms for both process waits', (yieldMs, expected) => {
+    expect(execToolInput('exec', { command: 'test', yieldMs })).toMatchObject({
+      yieldMs: expected
+    });
+    expect(execToolInput('exec_wait', { processId: 'p', yieldMs })).toMatchObject({
+      yieldMs: expected
     });
   });
 
