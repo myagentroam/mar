@@ -997,13 +997,9 @@ describe('usage statistics settings contract', () => {
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
         ).toBe(commonMessages[locale].usageStatistics.trend);
-        expect(textContent(view.findAll('summary')[0]!)).toBe(
-          commonMessages[locale].usageStatistics.chartData
-        );
-        const recordTable = view
-          .findAll('ElTable')
-          .find((node) => typeof node.props['row-key'] === 'function')!;
-        const key = recordTable.props['row-key'] as (record: UsageRecord) => string;
+        const tables = view.findAll('ElTable');
+        expect(tables).toHaveLength(1);
+        const key = tables[0]!.props['row-key'] as (record: UsageRecord) => string;
         expect(service.state.records.map(key)).toEqual(['ledger-one', 'ledger-two']);
         expect(key(record('legacy-record'))).toBe('legacy-record');
       } finally {

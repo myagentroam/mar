@@ -32,7 +32,6 @@ export const personalSettingsEnUS = {
     timeZone: 'Time zone: {zone}',
     empty: 'No recorded requests in this range.',
     unknown: 'Unknown',
-    chartData: 'View chart data',
     time: 'Time',
     inputTokens: 'Input tokens',
     outputTokens: 'Output tokens',

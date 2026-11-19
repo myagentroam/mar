@@ -6,7 +6,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import type { TagProps } from 'element-plus';
-import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { type FormInstance, type FormRules } from 'element-plus';
 import {
@@ -25,6 +25,7 @@ import LoadingPanel from '../common/LoadingPanel.vue';
 
 const props = defineProps<{ request: <T>(path: string, init?: RequestInit) => Promise<T> }>();
 const { t, locale } = useI18n();
+const trendId = useId();
 const service = new UsageStatisticsService(props.request, (error) =>
   showMessage(errorMessage(error), 'error', error)
 );
@@ -411,6 +412,7 @@ onUnmounted(() => {
         <div class="section-heading">
           <h3>{{ t('usageStatistics.trend') }}</h3>
           <span
+            :id="`${trendId}-summary`"
             v-tooltip="{
               content: t('usageStatistics.selected', {
                 tokens: number(state.overview.selected.totalTokens),
@@ -461,6 +463,7 @@ onUnmounted(() => {
             viewBox="0 0 800 170"
             role="img"
             :aria-label="t('usageStatistics.trend')"
+            :aria-describedby="`${trendId}-range ${trendId}-summary`"
             preserveAspectRatio="none"
           >
             <line x1="0" y1="155" x2="800" y2="155" class="axis" />
@@ -530,55 +533,10 @@ onUnmounted(() => {
               </div>
             </template>
           </el-tooltip>
-          <div class="axis-labels">
+          <div :id="`${trendId}-range`" class="axis-labels">
             <span>{{ time(state.overview.buckets[0]?.from) }}</span
             ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
           </div>
-          <details>
-            <summary class="mar-disclosure-summary">
-              <MarIcon class="mar-disclosure-icon" name="chevron-right" />{{
-                t('usageStatistics.chartData')
-              }}
-            </summary>
-            <el-table :data="state.overview.buckets" :empty-text="t('usageStatistics.empty')"
-              ><el-table-column :label="t('usageStatistics.time')"
-                ><template #default="{ row }"
-                  >{{ time(row.from) }} – {{ time(row.to) }}</template
-                ></el-table-column
-              ><el-table-column
-                v-for="key in tokenColumns"
-                :key="key"
-                :label="
-                  key === 'cacheReadTokens'
-                    ? t('usageStatistics.cache')
-                    : t(`usageStatistics.${key}`)
-                "
-                :min-width="key === 'cacheReadTokens' ? 170 : 110"
-              >
-                <template #default="{ row }">
-                  <span
-                    v-tooltip="{
-                      touch: true,
-                      content: key === 'cacheReadTokens' ? cacheTooltip(row) : number(row[key]),
-                      disabled: key === 'cacheReadTokens' ? !hasCacheDetails(row) : row[key] == null
-                    }"
-                    :class="{
-                      'usage-count':
-                        key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null
-                    }"
-                    :tabindex="
-                      (key === 'cacheReadTokens' ? hasCacheDetails(row) : row[key] != null)
-                        ? 0
-                        : undefined
-                    "
-                    >{{
-                      key === 'cacheReadTokens' ? cacheLabel(row, true) : number(row[key], true)
-                    }}</span
-                  >
-                </template>
-              </el-table-column></el-table
-            >
-          </details>
         </div>
         <div class="section-heading">
           <h3>{{ t('usageStatistics.distribution') }}</h3>
@@ -998,14 +956,6 @@ p {
   gap: 1rem;
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
-}
-details {
-  margin-top: 0.6rem;
-}
-summary {
-  cursor: pointer;
-  color: var(--el-color-primary);
-  font-size: var(--mar-font-size-meta);
 }
 .distributions {
   display: grid;

@@ -300,7 +300,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.locator('.overview')).not.toContainText(
       locale === 'en-US' ? 'Partial usage' : '部分用量'
     );
-    await expect(panel.getByRole('img', { name: labels.trend })).toBeVisible();
+    const trend = panel.getByRole('img', { name: labels.trend });
+    await expect(trend).toBeVisible();
+    await expect(trend).toHaveAccessibleDescription(
+      new RegExp(`2026-10-14 08:44:05.*2026-10-14 09:44:05.*${labels.totalTokens}`)
+    );
     await expect(panel.locator('.axis-labels')).toHaveText(
       '2026-10-14 08:44:052026-10-14 09:44:05'
     );
@@ -369,15 +373,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
     await page.mouse.move(0, 0);
     await expect(tooltip).toHaveCount(0);
-    await panel.getByText(labels.chart, { exact: true }).click();
-    await expect(panel.locator('.trend details')).toHaveAttribute('open', '');
-    expect(
-      (await panel.locator('.trend details .el-table').getByRole('columnheader').allTextContents())
-        .map((text) => text.trim())
-        .filter((text) => numericHeaders.includes(text))
-    ).toEqual(numericHeaders);
+    await expect(panel.getByText(labels.chart, { exact: true })).toHaveCount(0);
     await expect(panel.getByText(labels.notes, { exact: true })).toHaveCount(0);
-    await expect(panel.locator('.el-table__body-wrapper').last()).toContainText(labels.unknown);
+    await expect(panel.locator('.records .el-table__body-wrapper')).toContainText(labels.unknown);
     const rows = panel.locator('.records .el-table__body-wrapper tr.el-table__row');
     await expect(rows).toHaveCount(20);
     await expect(rows.first()).toContainText('2026-10-14 09:44:04');

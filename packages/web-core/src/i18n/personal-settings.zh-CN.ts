@@ -32,7 +32,6 @@ export const personalSettingsZhCN = {
     timeZone: '时区：{zone}',
     empty: '所选范围内没有已采集的请求。',
     unknown: '未知',
-    chartData: '查看图表数据',
     time: '时间',
     inputTokens: '输入 Token',
     outputTokens: '输出 Token',
