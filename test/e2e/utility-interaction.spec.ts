@@ -602,6 +602,42 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     }
   });
 
+  test(`Aside toggle has no persistent highlight in ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 844 });
+    await page.goto(`${fixture.url}visual-alignment.html?utility-interaction&theme=${theme}`);
+    const expand = page.getByRole('button', { name: 'Open auxiliary workspace', exact: true });
+    const collapse = page.getByRole('button', {
+      name: 'Collapse auxiliary workspace',
+      exact: true
+    });
+    const aside = page.locator('#fixture-utility-aside');
+    const menuTrigger = page.locator('.workspace-more-button');
+
+    for (const custom of [false, true]) {
+      const colors = custom ? await customPalette(page) : await palette(page);
+      await expect(expand).toHaveAttribute('aria-expanded', 'false');
+      await expand.click();
+      await expect(aside).toBeVisible();
+      await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+      await page.mouse.move(0, 0);
+      await page.getByTestId('disable').focus();
+      await expect(collapse).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(collapse).toHaveCSS('color', colors.secondary);
+      await checkUtility(page, collapse, colors);
+      await collapse.press('Enter');
+      await expect(aside).toBeHidden();
+      await expect(expand).toBeFocused();
+
+      await menuTrigger.click();
+      await expect(menuTrigger).toHaveAttribute('aria-expanded', 'true');
+      await page.mouse.move(0, 0);
+      expect(await menuTrigger.evaluate((el) => el.matches(':hover, :focus-visible'))).toBe(false);
+      await expect(menuTrigger).toHaveCSS('background-color', colors.hover);
+      await menuTrigger.click();
+      await expect(menuTrigger).toHaveAttribute('aria-expanded', 'false');
+    }
+  });
+
   for (const width of [1280, 390]) {
     test(`actual utility controls use neutral feedback in ${theme} at ${width}px`, async ({
       page

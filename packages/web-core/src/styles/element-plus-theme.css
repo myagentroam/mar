@@ -698,7 +698,7 @@ html.console-ui
     :active,
     :focus-visible,
     .is-active,
-    [aria-expanded='true']
+    [aria-expanded='true']:not(:where(.mar-icon-action--panel-toggle))
   ):not(:disabled, .is-disabled, [aria-disabled='true']) {
   background-color: var(--mar-action-hover-bg) !important;
 }

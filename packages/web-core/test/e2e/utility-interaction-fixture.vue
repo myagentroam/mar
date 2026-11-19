@@ -19,6 +19,7 @@ import type {
 } from '../../src/model/workbench.js';
 
 const disabled = ref(false);
+const asideExpanded = ref(false);
 const events = ref<string[]>([]);
 const record = (event: string) => events.value.push(event);
 const session: Session = {
@@ -216,10 +217,18 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       :files-ready="true"
       :terminal-ready="true"
       :content-search-ready="false"
+      aside-controls="fixture-utility-aside"
+      :aside-expanded="asideExpanded"
       :runner-icon="() => ''"
       :session-title="() => 'Review'"
-      @open-surface="record(`surface:${$event}`)"
+      @open-surface="
+        (surface) => {
+          record(`surface:${surface}`);
+          if (surface === 'inspector') asideExpanded = !asideExpanded;
+        }
+      "
     />
+    <aside id="fixture-utility-aside" v-show="asideExpanded">Workspace tools</aside>
     <ConversationComposer
       v-if="composerLayout"
       v-model:input="composerInput"
