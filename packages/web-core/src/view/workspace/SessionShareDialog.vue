@@ -155,13 +155,17 @@ async function copyRecord(id: string): Promise<void> {
     </section>
     <h3>{{ translate('sessionShare.records') }}</h3>
     <el-table :data="shares" :empty-text="translate('sessionShare.noRecords')">
-      <el-table-column :label="translate('sessionShare.link')" min-width="230"
-        ><template #default="{ row }"
-          ><el-link :href="link(row.id)" target="_blank" rel="noopener">{{
-            link(row.id)
-          }}</el-link></template
-        ></el-table-column
+      <el-table-column
+        :label="translate('sessionShare.link')"
+        min-width="230"
+        show-overflow-tooltip
       >
+        <template #default="{ row }">
+          <el-link class="share-record-link" :href="link(row.id)" target="_blank" rel="noopener">
+            {{ link(row.id) }}
+          </el-link>
+        </template>
+      </el-table-column>
       <el-table-column
         :label="translate('sessionShare.createdAt')"
         prop="createdAt"
@@ -227,6 +231,10 @@ async function copyRecord(id: string): Promise<void> {
 .share-text {
   margin: 0 0 0.75rem;
   white-space: pre-wrap;
+}
+.share-record-link,
+.share-record-link :deep(.el-link__inner) {
+  display: inline;
 }
 h3 {
   font-size: var(--mar-font-size-title);

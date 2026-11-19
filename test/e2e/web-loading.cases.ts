@@ -575,21 +575,23 @@ test('Unified loading: shared access keeps the password form visible during subm
     await response.promise;
     await json(
       route,
-      { code: 'SESSION_SHARE_PASSWORD_INVALID', message: 'Invalid password.' },
-      403
+      { error: { code: 'SESSION_SHARE_CREDENTIAL_INVALID', message: 'Invalid share credential.' } },
+      401
     );
   });
   await page.goto('/share/loading-test');
-  const password = page.locator('input[type="password"]');
+  const password = page.getByLabel('密码', { exact: true });
   await expect(password).toBeVisible();
   await password.fill('123456');
-  const submit = page.locator('.share-entry-panel button[type="submit"]');
+  const submit = page.getByRole('button', { name: '进入对话', exact: true });
   await submit.click();
   await expect(submit).toHaveClass(/is-loading/);
   await expect(password).toBeVisible();
+  await expect(password).not.toBeEditable();
   await expect(password).toHaveValue('123456');
   await expect(page.locator('.mar-page-loading-state')).toHaveCount(0);
   response.release();
   await expect(submit).not.toHaveClass(/is-loading/);
+  await expect(password).toBeEditable();
   await expect(password).toHaveValue('123456');
 });

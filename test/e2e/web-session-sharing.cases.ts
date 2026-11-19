@@ -471,6 +471,8 @@ for (const labels of [
       '\n'
     );
     await expect(dialog.locator('.share-text')).toHaveText(shareText);
+    const recordLink = dialog.getByRole('link', { name: shareUrl, exact: true });
+    await expect(recordLink).toHaveAttribute('href', shareUrl);
     const expectedCreated = await page.evaluate((value) => {
       const date = new Date(value);
       return new Date(value - date.getTimezoneOffset() * 60_000)
@@ -487,6 +489,14 @@ for (const labels of [
     for (const width of [320, 390, 1100]) {
       await page.setViewportSize({ width, height: 740 });
       await checkBounds(width);
+      const linkCell = recordLink.locator('..');
+      await expect(linkCell).toHaveCSS('white-space', 'nowrap');
+      await expect(linkCell).toHaveCSS('text-overflow', 'ellipsis');
+      expect(await linkCell.evaluate((cell) => cell.scrollWidth > cell.clientWidth)).toBe(true);
+      if (width === 1100) {
+        await recordLink.hover();
+        await expect(page.getByRole('tooltip').filter({ hasText: shareUrl })).toBeVisible();
+      }
       const copy = dialog
         .locator('.created-share')
         .getByRole('button', { name: labels.copy, exact: true });
@@ -517,7 +527,6 @@ for (const labels of [
       delete (window as typeof window & { copiedShareText?: string }).copiedShareText;
     });
     const historicalCopy = dialog.getByRole('button', { name: labels.copy, exact: true });
-    await historicalCopy.scrollIntoViewIfNeeded();
     await historicalCopy.click();
     await expect
       .poll(() =>
@@ -531,22 +540,103 @@ for (const labels of [
 }
 
 for (const locale of ['zh-CN', 'en-US']) {
-  test('Share password wording does not expose its format (' + locale + ')', async ({ page }) => {
-    await page.addInitScript((locale) => {
-      localStorage.setItem('mar.locale.v2', locale);
-    }, locale);
-    await page.goto('/share/password-wording');
-    const password = page.locator('input[type="password"]');
-    await expect(password).toBeVisible();
-    await expect(page.locator('body')).not.toContainText(/six|digit|六位|数字/);
-    await password.fill('wrong');
-    await page
-      .getByRole('button', {
-        name: locale === 'zh-CN' ? '进入对话' : 'Open conversation',
+  test(
+    'Share password gate presents Console branding and inline errors (' + locale + ')',
+    async ({ page }, testInfo) => {
+      const chinese = locale === 'zh-CN';
+      const theme = chinese ? 'vscode-dark-2026' : 'daylight';
+      await page.setViewportSize(
+        chinese ? { width: 320, height: 300 } : { width: 1100, height: 740 }
+      );
+      await page.addInitScript(
+        ({ locale, theme }) => {
+          localStorage.setItem('mar.locale.v2', locale);
+          localStorage.setItem('mar.theme', theme);
+        },
+        { locale, theme }
+      );
+      let submissions = 0;
+      await page.route('**/api/session-shares/password-wording/auth', (route) => {
+        submissions += 1;
+        if (submissions === 2) {
+          return json(
+            route,
+            { error: { code: 'SESSION_SHARE_NOT_FOUND', message: 'Share not found' } },
+            404
+          );
+        }
+        return json(
+          route,
+          {
+            error: { code: 'SESSION_SHARE_CREDENTIAL_INVALID', message: 'Invalid share credential' }
+          },
+          401
+        );
+      });
+      await page.goto('/share/password-wording');
+      const panel = page.getByRole('region', {
+        name: chinese ? '共享会话' : 'Shared conversation'
+      });
+      const password = panel.getByLabel(chinese ? '密码' : 'Password', { exact: true });
+      await expect(password).toBeVisible();
+      await expect(password).not.toBeFocused();
+      await expect(page.locator('html')).toHaveCSS('color-scheme', chinese ? 'dark' : 'light');
+      await expect(panel.getByText('MyAgentRoam', { exact: true })).toBeVisible();
+      await expect(panel.locator('img')).toBeVisible();
+      await expect(panel).toHaveCSS('border-top-width', '1px');
+      await expect(panel).toHaveCSS('box-shadow', 'none');
+      await page.screenshot({
+        path: testInfo.outputPath('share-password-gate.png'),
+        animations: 'disabled'
+      });
+      expect(await page.locator('main').evaluate((main) => main.scrollWidth)).toBeLessThanOrEqual(
+        chinese ? 320 : 1100
+      );
+      await expect(panel).not.toContainText(/six|digit|六位|数字/);
+      const submit = panel.getByRole('button', {
+        name: chinese ? '进入对话' : 'Open conversation',
         exact: true
-      })
-      .click();
-    await expect(page.locator('.el-form-item__error')).toBeVisible();
-    await expect(page.locator('body')).not.toContainText(/six|digit|六位|数字/);
-  });
+      });
+      await password.fill('wrong');
+      const showPassword = panel.getByRole('button', {
+        name: chinese ? '显示密码' : 'Show password',
+        exact: true
+      });
+      await showPassword.press('Space');
+      await expect(showPassword).toHaveAttribute('aria-pressed', 'true');
+      await expect(password).toHaveAttribute('type', 'text');
+      await showPassword.press('Space');
+      await expect(password).toHaveAttribute('type', 'password');
+      await submit.focus();
+      await expect(password).not.toHaveAttribute('aria-invalid', 'true');
+      await submit.press('Enter');
+      const invalidFormat = chinese ? '请输入有效的分享密码。' : 'Enter a valid share password.';
+      await expect(password).toHaveAttribute('aria-invalid', 'true');
+      await expect(password).toHaveAccessibleDescription(invalidFormat);
+      await expect(password).toBeFocused();
+      expect(submissions).toBe(0);
+      await password.fill('123456');
+      await expect(password).not.toHaveAttribute('aria-invalid', 'true');
+      await showPassword.press('Space');
+      await expect(password).toHaveAttribute('type', 'text');
+      await password.press('Enter');
+      await expect(password).toHaveAttribute('aria-invalid', 'true');
+      await expect(password).toHaveAttribute('type', 'password');
+      await expect(showPassword).toHaveAttribute('aria-pressed', 'false');
+      await expect(password).not.toHaveAccessibleDescription(invalidFormat);
+      await expect(
+        panel.getByRole('alert').filter({ hasText: /密码错误|credential is invalid/i })
+      ).toBeVisible();
+      expect(submissions).toBe(1);
+      await expect(panel).not.toContainText(/six|digit|六位|数字/);
+      await password.press('Enter');
+      await expect(password).toHaveCount(0);
+      const status = panel.getByRole('status');
+      await expect(status).toBeFocused();
+      await expect(status).toContainText(
+        chinese ? '此分享已失效。' : 'This share is no longer available.'
+      );
+      await expect(status).toContainText('SESSION_SHARE_NOT_FOUND');
+    }
+  );
 }
