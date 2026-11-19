@@ -633,7 +633,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       ];
       if (width < 768)
         controls.push(
-          ...(await page.locator('.mobile-conversation-tool').all()).map(
+          ...(await header.locator('.conversation-header-tools').getByRole('button').all()).map(
             (control): [Locator, boolean] => [control, false]
           )
         );
@@ -661,7 +661,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         .press('Enter');
       await expect(page.getByTestId('events')).toHaveText('native|edit');
       if (width < 768) {
-        await page.locator('.mobile-conversation-tools button').first().press('Enter');
+        await header.getByRole('button', { name: 'Open session list' }).press('Enter');
         await expect(page.getByTestId('events')).toHaveText('native|edit|surface:sessions');
       }
       await page.getByTestId('disable').click();

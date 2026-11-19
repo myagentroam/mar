@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
 import { sessionIsDraft } from '../../util/session-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
 import SessionNavigationMenu from '../common/SessionNavigationMenu.vue';
 
-defineProps<{
+const props = defineProps<{
   readonly session: Session | undefined;
   readonly runner: RunnerId;
   readonly filesReady: boolean;
   readonly terminalReady: boolean;
   readonly asideReady?: boolean;
+  readonly asideControls?: string | undefined;
+  readonly asideExpanded?: boolean;
+  readonly asideDisabled?: boolean;
   readonly contentSearchReady: boolean;
   readonly runnerIcon: (runner: RunnerId) => string;
   readonly sessionTitle: (session: Session) => string;
@@ -23,6 +26,11 @@ const emit = defineEmits<{
   sessionMenuOpen: [];
 }>();
 const titleButton = ref<HTMLButtonElement>();
+const asideLabel = computed(() =>
+  props.asideExpanded
+    ? translate('generated.conversationHeader.collapseAside')
+    : translate('generated.conversationHeader.openAside')
+);
 </script>
 
 <template>
@@ -79,14 +87,13 @@ const titleButton = ref<HTMLButtonElement>();
         </span>
       </span>
     </div>
-    <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
     <div
-      class="mobile-conversation-tools"
+      class="conversation-header-tools"
       role="group"
       :aria-label="translate('generated.conversationHeader.workspaceTools')"
     >
       <button
-        class="mar-icon-button mar-icon-action mobile-conversation-tool"
+        class="mar-icon-button mar-icon-action conversation-header-tool conversation-header-tool-mobile-only"
         type="button"
         v-tooltip="translate('generated.conversationHeader.openSessionList')"
         :aria-label="translate('generated.conversationHeader.openSessionList')"
@@ -94,12 +101,17 @@ const titleButton = ref<HTMLButtonElement>();
       >
         <MarIcon name="session-list" />
       </button>
+      <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
       <button
         v-if="asideReady || filesReady || terminalReady"
-        class="mar-icon-button mar-icon-action mobile-conversation-tool"
+        class="mar-icon-button mar-icon-action conversation-header-tool"
+        :class="{ 'conversation-header-tool-mobile-only': !asideControls }"
         type="button"
-        v-tooltip="translate('generated.conversationHeader.openAside')"
-        :aria-label="translate('generated.conversationHeader.openAside')"
+        v-tooltip="asideLabel"
+        :aria-label="asideLabel"
+        :aria-expanded="asideControls ? asideExpanded : undefined"
+        :aria-controls="asideControls"
+        :disabled="asideDisabled"
         @click="emit('openSurface', 'inspector')"
       >
         <MarIcon name="split" />
@@ -169,7 +181,27 @@ const titleButton = ref<HTMLButtonElement>();
   white-space: nowrap;
 }
 
-.mobile-conversation-tools {
+.conversation-header-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.conversation-header-tool {
+  display: inline-flex;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.conversation-header-tool .mar-icon {
+  font-size: var(--mar-action-icon-size, 18px);
+}
+
+.conversation-header-tool-mobile-only {
   display: none;
 }
 
@@ -187,20 +219,10 @@ const titleButton = ref<HTMLButtonElement>();
     min-height: 36px;
   }
 
-  .mobile-conversation-tools {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 0.25rem;
-  }
-
-  .mobile-conversation-tool {
+  .conversation-header-tool {
     display: inline-flex;
-    flex: none;
     width: 36px;
     height: 36px;
-    align-items: center;
-    justify-content: center;
   }
 }
 </style>

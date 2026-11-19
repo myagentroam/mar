@@ -24,6 +24,9 @@ const props = defineProps<{
   controller: WorkspaceSessionPaneView;
   treeSupported?: boolean;
   asideReady?: boolean;
+  asideControls?: string;
+  asideExpanded?: boolean;
+  asideDisabled?: boolean;
   treeOpenSessionId?: string | undefined;
   treeSummaries?: readonly NavigationSummary[] | undefined;
   treeStatus?: 'idle' | 'loading' | 'ready' | 'failed';
@@ -101,6 +104,9 @@ onBeforeUnmount(() => {
         :files-ready="controller.filesReady.value"
         :terminal-ready="controller.terminalReady.value"
         :aside-ready="asideReady"
+        :aside-controls="asideControls"
+        :aside-expanded="asideExpanded"
+        :aside-disabled="asideDisabled"
         :runner-icon="runnerBrandIcon"
         :session-title="sessionTitle"
         :content-search-ready="controller.filesReady.value"

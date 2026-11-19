@@ -240,7 +240,8 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const input = page.locator('.composer-input');
     await input.fill('/src/review.ts — keep this draft');
-    if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+    if (width < 768)
+      await page.getByRole('button', { name: /打开会话列表|Open session list/u }).click();
     await page.locator('.new-session-button').click();
     await expect(page.locator('.session-row.selected')).toHaveCount(0);
     await expect(input).toHaveValue('/src/review.ts — keep this draft');

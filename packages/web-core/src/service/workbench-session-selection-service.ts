@@ -80,8 +80,7 @@ export function createWorkbenchSessionSelectionService(options: WorkbenchSession
     const { sessionId } = target;
     if (!options.canOpenAside()) return false;
     const active = options.aside.current(workspace).active;
-    if (active?.kind === 'session' && active.sessionId === sessionId) return true;
-    options.saveAside();
+    if (active?.kind !== 'session' || active.sessionId !== sessionId) options.saveAside();
     options.aside.openSession(target);
     return true;
   }

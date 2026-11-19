@@ -1,10 +1,79 @@
 import { describe, expect, it } from 'vitest';
+import { ref } from 'vue';
 import {
   asideViewMode,
   createWorkbenchAsideService
 } from '../../src/service/workbench-aside-service.js';
 
 describe('Workspace Aside metadata', () => {
+  it('keeps the desktop collapse preference when selecting content in the mobile surface', () => {
+    const mobileViewport = ref(true);
+    const service = createWorkbenchAsideService({ mobileViewport });
+    const target = { nodeId: 'node', workspaceId: 'workspace' };
+    const session = { ...target, sessionId: 'session' };
+    service.ensure(target, ['files', 'search']);
+    service.setCollapsed(target, true);
+
+    service.selectTool(target, 'search');
+    expect(service.current(target).collapsed).toBe(true);
+    service.openSession(session);
+    service.openSession(session);
+    expect(service.current(target).collapsed).toBe(true);
+    service.openHtml(target, 'index.html');
+    expect(service.current(target).collapsed).toBe(true);
+    service.selectTool(target, 'files');
+    service.activateHtml(target);
+    expect(service.current(target).collapsed).toBe(true);
+    expect(service.current(target).active).toEqual({ kind: 'browser' });
+
+    mobileViewport.value = false;
+    service.activateHtml(target);
+    expect(service.current(target).collapsed).toBe(false);
+  });
+
+  it('remembers desktop collapse per open Workspace without including it in snapshots', () => {
+    const service = createWorkbenchAsideService();
+    const a = { nodeId: 'node', workspaceId: 'a' };
+    const b = { nodeId: 'node', workspaceId: 'b' };
+    service.ensure(a, ['files', 'search']);
+    service.ensure(b, ['files']);
+    service.selectTool(a, 'search');
+    service.setCollapsed(a, true);
+    service.ensure(a, ['files', 'search']);
+    expect(service.current(a).collapsed).toBe(true);
+    expect(service.current(b).collapsed).toBeFalsy();
+    expect(service.snapshot(a)).not.toHaveProperty('collapsed');
+    service.setCollapsed(a, false);
+    expect(service.current(a).active).toEqual({ kind: 'tool', id: 'search' });
+
+    service.setCollapsed(a, true);
+    service.openHtml(a, 'index.html');
+    expect(service.current(a).collapsed).toBeFalsy();
+    service.setCollapsed(a, true);
+    service.removeWorkspace(a);
+    service.ensure(a, ['files', 'search']);
+    expect(service.current(a).collapsed).toBeFalsy();
+  });
+
+  it('reveals the already active Terminal on an explicit toggle before switching away', () => {
+    const service = createWorkbenchAsideService();
+    const target = { nodeId: 'node', workspaceId: 'workspace' };
+    const { toggleTerminal } = service.createInteraction({
+      workspace: ref(target),
+      mobileSurface: ref('conversation'),
+      saveSession: () => undefined,
+      openMobile: () => undefined
+    });
+    service.ensure(target, ['files', 'terminal']);
+    toggleTerminal();
+    service.setCollapsed(target, true);
+    toggleTerminal();
+    expect(service.current(target).collapsed).toBeFalsy();
+    expect(service.current(target).active).toEqual({ kind: 'tool', id: 'terminal' });
+    toggleTerminal();
+    expect(service.current(target).active).toEqual({ kind: 'tool', id: 'files' });
+  });
+
   it('releases the complete Workspace, Node and page scope independently', () => {
     const service = createWorkbenchAsideService();
     const a = { nodeId: 'node-a', workspaceId: 'a' };
@@ -145,7 +214,7 @@ describe('Workspace Aside metadata', () => {
   });
 
   it('can raise the capacity without changing the tab model or selection operations', () => {
-    const service = createWorkbenchAsideService(2);
+    const service = createWorkbenchAsideService({ sessionTabLimit: 2 });
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };
     service.ensure(workspace, ['files']);
     for (const sessionId of ['a', 'b', 'c']) service.openSession({ ...workspace, sessionId });
@@ -175,7 +244,7 @@ describe('Workspace Aside metadata', () => {
   });
 
   it('keeps independent session tabs and chooses neighboring sessions before the latest tool', () => {
-    const service = createWorkbenchAsideService(3);
+    const service = createWorkbenchAsideService({ sessionTabLimit: 3 });
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };
     service.ensure(workspace, ['files', 'search', 'terminal']);
     service.selectTool(workspace, 'search');
@@ -215,7 +284,7 @@ describe('Workspace Aside metadata', () => {
   });
 
   it('removes only authoritatively missing sessions without dropping other Workspace tabs', () => {
-    const service = createWorkbenchAsideService(3);
+    const service = createWorkbenchAsideService({ sessionTabLimit: 3 });
     const workspace = { nodeId: 'node', workspaceId: 'workspace' };
     service.ensure(workspace, ['files']);
     for (const sessionId of ['a', 'b', 'c']) service.openSession({ ...workspace, sessionId });
