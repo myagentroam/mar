@@ -12,14 +12,12 @@ defineProps<{
   readonly filesReady: boolean;
   readonly terminalReady: boolean;
   readonly asideReady?: boolean;
-  readonly sessionNavigationAvailable?: boolean;
   readonly contentSearchReady: boolean;
   readonly runnerIcon: (runner: RunnerId) => string;
   readonly sessionTitle: (session: Session) => string;
 }>();
 
 const emit = defineEmits<{
-  openSession: [sessionId: string, destination: 'aside' | 'main'];
   openSurface: [surface: 'sessions' | 'inspector' | 'terminal'];
   openTree: [sessionId: string, anchor: HTMLElement];
   sessionMenuOpen: [];
@@ -61,11 +59,7 @@ const titleButton = ref<HTMLButtonElement>();
         </button>
         <template #dropdown>
           <slot name="session-menu" :session="session">
-            <SessionNavigationMenu
-              :session-id="session.id"
-              :can-navigate="sessionNavigationAvailable === true"
-              @open="(id, destination) => emit('openSession', id, destination)"
-            />
+            <SessionNavigationMenu :session-id="session.id" :can-navigate="false" />
           </slot>
         </template>
       </el-dropdown>

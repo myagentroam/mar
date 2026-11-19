@@ -570,10 +570,9 @@ function submitSessionSearch(): void {
             <template #dropdown>
               <WorkspaceSessionActionsMenu
                 :session="session"
-                :sessions="sessions"
+                :list-context="{ sessions, canDelete: canDeleteSession?.(session) !== false }"
                 :can-navigate="asideSupported === true"
                 :navigation-disabled="loading || !nodeReady"
-                :can-delete="canDeleteSession?.(session) !== false"
                 :mutating="loading"
                 @open="
                   (id, destination) => {

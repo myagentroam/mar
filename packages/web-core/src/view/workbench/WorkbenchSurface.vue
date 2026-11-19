@@ -271,17 +271,11 @@ function titleMenuBindings(session: Session) {
   const { sessionList, aside, resources } = props.page;
   return {
     session,
-    sessions: sessionList.visibleWorkspaceSessions,
     canNavigate: aside.asideSupported,
     navigationDisabled: sessionList.mutationLoading || !resources.nodeReady,
-    canDelete: sessionList.canDeleteSession(session),
     mutating: sessionList.mutationLoading,
-    onOpen: openSessionInPane,
-    onPin: (pinned: boolean) => sessionList.setSessionPinned(session, pinned),
-    onMovePin: (direction: 'up' | 'down') => sessionList.movePinnedSession(session, direction),
     onRename: () => sessionList.renameSession(session),
-    onDialog: (kind: 'share' | 'prompt' | 'schedule') => openSessionDialog(kind, session),
-    onDelete: () => sessionList.deleteSession(session)
+    onDialog: (kind: 'share' | 'prompt' | 'schedule') => openSessionDialog(kind, session)
   };
 }
 
@@ -649,7 +643,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :tree-status="treeStatus"
             @open-tree="(id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')"
             @session-menu-open="closeSessionTree()"
-            @open-session="openSessionInPane"
             @open-surface="openPaneSurface"
             @preview-attachment="page.interactions.openAttachmentPreview"
             @reload="page.sessionList.reloadSelectedSession"
@@ -862,7 +855,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                       (id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')
                     "
                     @session-menu-open="closeSessionTree()"
-                    @open-session="openSessionInPane"
                     @open-surface="openPaneSurface"
                     @preview-attachment="page.interactions.openAttachmentPreview"
                     @reload="page.aside.reloadAsideSession"
