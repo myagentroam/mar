@@ -14,8 +14,18 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ copy: [text: string] }>();
 const mode = ref<'bubble' | 'menu'>();
-const actions = ref<HTMLElement>();
+const bubbleActions = ref<HTMLElement>();
+const menuActions = ref<HTMLElement>();
+const activeActions = computed(() =>
+  mode.value === 'bubble'
+    ? bubbleActions.value
+    : mode.value === 'menu'
+      ? menuActions.value
+      : undefined
+);
 const menu = ref<DropdownInstance>();
+const bubbleAnchor = ref(new DOMRect());
+const bubbleReference = { getBoundingClientRect: () => bubbleAnchor.value };
 const anchor = ref(new DOMRect());
 const virtualReference = computed(() => ({ getBoundingClientRect: () => anchor.value }));
 interface SelectedQuote {
@@ -96,7 +106,7 @@ function readSelection(): SelectedQuote | undefined {
   };
 }
 function inspectSelection(): void {
-  if (dragging || actions.value?.contains(document.activeElement)) return;
+  if (dragging || activeActions.value?.contains(document.activeElement)) return;
   const value = readSelection();
   if (!value) return clear();
   if (
@@ -105,7 +115,7 @@ function inspectSelection(): void {
   )
     return;
   selected = value;
-  anchor.value = value.range.getClientRects()[0] ?? value.range.getBoundingClientRect();
+  bubbleAnchor.value = value.range.getClientRects()[0] ?? value.range.getBoundingClientRect();
   mode.value = 'bubble';
 }
 function quote(): void {
@@ -147,7 +157,7 @@ function contextMenu(event: MouseEvent): void {
   mode.value = 'menu';
 }
 function pointerDown(event: PointerEvent): void {
-  if (actions.value?.contains(event.target as Node)) return;
+  if (activeActions.value?.contains(event.target as Node)) return;
   if (event.button === 0) {
     close();
     dragging = event.target instanceof Node && props.root?.contains(event.target) === true;
@@ -190,22 +200,27 @@ onBeforeUnmount(() => {
 
 <template>
   <el-popover
-    v-if="mode === 'bubble'"
-    :visible="true"
-    :virtual-ref="virtualReference"
+    :visible="mode === 'bubble'"
+    :virtual-ref="bubbleReference"
     virtual-triggering
     placement="top-start"
     width="auto"
     :show-arrow="false"
     :persistent="false"
     popper-class="mar-compact-popover"
-    :popper-style="{ padding: '0', minWidth: 'unset', overflow: 'hidden' }"
+    :popper-style="{
+      padding: '0',
+      minWidth: 'unset',
+      overflow: 'hidden',
+      pointerEvents: mode === 'bubble' ? undefined : 'none'
+    }"
   >
     <div
-      ref="actions"
+      ref="bubbleActions"
       class="quote-actions"
       role="group"
       :aria-label="translate('composer.quote')"
+      :inert="mode !== 'bubble'"
       @pointerdown.prevent
     >
       <el-button text size="small" @click="quote">
@@ -231,7 +246,7 @@ onBeforeUnmount(() => {
     "
   >
     <template #dropdown>
-      <div ref="actions" @pointerdown.prevent>
+      <div ref="menuActions" @pointerdown.prevent>
         <el-dropdown-menu :aria-label="translate('composer.quote')">
           <el-dropdown-item command="copy"
             ><MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}</el-dropdown-item

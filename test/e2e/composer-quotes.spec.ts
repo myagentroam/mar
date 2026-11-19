@@ -672,6 +672,29 @@ test('mobile quotation remains available after a cancelled touch gesture', async
   ]);
 });
 
+test('the quote bubble fades out without leaving a clickable action', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.addStyleTag({
+    content: 'html.console-ui { --el-transition-fade-linear: opacity 0.6s linear; }'
+  });
+  await selectReply(page);
+  const actions = page.locator('.quote-actions');
+  const leaving = await actions.evaluate(async (element) => {
+    const popper = element.closest('.el-popper')!;
+    await Promise.allSettled(popper.getAnimations().map((animation) => animation.finished));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return {
+      retained: popper.isConnected,
+      inert: element.hasAttribute('inert'),
+      pointerEvents: getComputedStyle(popper).pointerEvents
+    };
+  });
+  expect(leaving).toEqual({ retained: true, inert: true, pointerEvents: 'none' });
+  await expect(actions).toHaveCount(0);
+  expect(await result(page, 'references')).toEqual([]);
+});
+
 test('Diff quotation excludes the unselected line at an end boundary', async ({ page }) => {
   await page.getByRole('button', { name: 'Diff', exact: true }).click();
   await page.locator('.unified-history-diff').evaluate((element) => {
@@ -691,24 +714,22 @@ test('Diff quotation excludes the unselected line at an end boundary', async ({ 
   ]);
 });
 
-test('mobile file actions preserve selection until quoting closes the source window', async ({
+test('the mobile file context menu preserves selection until quoting closes the source window', async ({
   page
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'File', exact: true }).click();
-  await expect(page.locator('.cm-content')).toBeVisible();
-  const menu = page
-    .locator('.workspace-file-mobile-actions')
-    .getByRole('button', { name: 'File actions', exact: true });
-  await menu.click();
+  const editor = page.locator('.cm-content');
+  await expect(editor).toBeVisible();
+  await editor.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Quote', exact: true })).toBeDisabled();
   await page.getByRole('menuitem', { name: 'Select all', exact: true }).click();
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(0);
-  await menu.click();
+  await editor.click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Quote', exact: true })).toBeEnabled();
   await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(1);
-  await expect(page.locator('.cm-content')).toHaveCount(0);
+  await expect(editor).toHaveCount(0);
   expect(await result(page, 'references')).toMatchObject([
     { source: 'file', text: 'const first = 1;\nconst second = 2;\nreturn first + second;' }
   ]);

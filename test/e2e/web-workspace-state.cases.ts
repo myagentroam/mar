@@ -1314,6 +1314,7 @@ test('mobile descendant tree fits the viewport and Back closes only the tree', a
     await page.setViewportSize({ width: 390, height: 844 });
     const main = page.locator('.conversation-panel').filter({ hasText: '正文 tree-1' });
     const button = main.getByRole('button', { name: '查看会话树' });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await button.tap();
     const tree = page.locator('.session-tree-popup');
     await expect(tree.locator('.session-tree-list .session-tree-title')).toHaveText([
@@ -1334,8 +1335,24 @@ test('mobile descendant tree fits the viewport and Back closes only the tree', a
     await button.tap();
     await expect(tree).toBeVisible();
     await expect.poll(() => queries.at(-1)?.treeAnchor).toBe('tree-1');
+    const popover = page.locator('.session-tree-popover');
+    await expect(popover).toHaveCSS('opacity', '1');
+    await popover.evaluate((element) => {
+      element.addEventListener('transitionrun', (event) => {
+        if (
+          event.propertyName === 'opacity' &&
+          element.classList.contains('el-fade-in-linear-leave-active')
+        ) {
+          document.documentElement.dataset.treeLeave = String(
+            element.querySelector('.session-tree-popup')?.hasAttribute('inert')
+          );
+        }
+      });
+    });
     await page.goBack();
+    await expect(page.locator('html')).toHaveAttribute('data-tree-leave', 'true');
     await expect(tree).toHaveCount(0);
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
     await expect(main.getByText('正文 tree-1', { exact: true })).toBeVisible();
     await expect.poll(() => queries.at(-1)?.treeAnchor).toBeUndefined();
   } finally {

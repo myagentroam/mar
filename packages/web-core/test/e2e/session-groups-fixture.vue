@@ -158,6 +158,7 @@ const props = {
     </aside>
     <WorkspaceSessionTreePopover
       v-if="treePopup"
+      :visible="true"
       :anchor="treePopup.anchor"
       :session-id="treePopup.sessionId"
       title="View session tree"

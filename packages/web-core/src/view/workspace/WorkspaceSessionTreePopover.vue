@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NavigationSnapshot } from '../../service/session-navigation-projection.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createMobileLayerHistoryService } from '../../service/mobile-layer-history-service.js';
 import WorkspaceSessionTree from './WorkspaceSessionTree.vue';
 
 const props = defineProps<{
+  visible: boolean;
   anchor: HTMLElement;
   placement?: 'bottom-start' | 'bottom-end';
   sessionId: string;
@@ -18,18 +19,31 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   close: [restoreFocus: boolean];
+  'after-leave': [];
   open: [sessionId: string, target: 'aside' | 'main'];
   retry: [];
 }>();
+// Element Plus must position against the anchor without owning the trigger's ARIA attributes.
+const virtualReference = computed(() => {
+  const anchor = props.anchor;
+  return { getBoundingClientRect: () => anchor.getBoundingClientRect(), contextElement: anchor };
+});
 const root = ref<HTMLElement>();
 const treeComponent = ref<InstanceType<typeof WorkspaceSessionTree>>();
 const menuOpen = ref(false);
 let unregister: (() => void) | undefined;
 const mobileHistory = createMobileLayerHistoryService({
-  isOpen: () => true,
+  isOpen: () => props.visible,
   close: () => emit('close', true)
 });
+watch(
+  () => props.visible,
+  (visible) => {
+    if (!visible) treeComponent.value?.closeMenu();
+  }
+);
 function outside(event: PointerEvent): void {
+  if (!props.visible) return;
   const path = event.composedPath();
   if (
     path.includes(props.anchor) ||
@@ -47,7 +61,7 @@ onMounted(() => {
     scope: 'overlay',
     priority: 140,
     keys: [{ key: 'Escape' }],
-    when: () => true,
+    when: () => props.visible,
     execute: () => {
       if (menuOpen.value) treeComponent.value?.closeMenu();
       else emit('close', true);
@@ -64,18 +78,27 @@ onBeforeUnmount(() => {
 
 <template>
   <el-popover
-    :visible="true"
-    :virtual-ref="anchor"
+    :visible="visible"
+    :virtual-ref="virtualReference"
     virtual-triggering
     :placement="placement ?? 'bottom-start'"
     :show-arrow="false"
+    :persistent="false"
     popper-class="session-tree-popover mar-content-popover"
+    :popper-style="visible ? undefined : { pointerEvents: 'none' }"
     width="min(480px, calc(100vw - 24px))"
     :popper-options="{
       modifiers: [{ name: 'preventOverflow', options: { padding: 12, tether: false } }]
     }"
+    @after-leave="!visible && emit('after-leave')"
   >
-    <section ref="root" class="session-tree-popup" role="dialog" :aria-label="title">
+    <section
+      ref="root"
+      class="session-tree-popup"
+      role="dialog"
+      :aria-label="title"
+      :inert="!visible"
+    >
       <header class="session-tree-header">{{ title }}</header>
       <div class="session-tree-scroll">
         <WorkspaceSessionTree

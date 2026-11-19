@@ -271,6 +271,48 @@ test('session tree respects reduced motion when opening and closing', async ({ p
   await expect(trigger).toBeFocused();
 });
 
+test('session tree fades out without keeping keyboard or pointer interaction', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 850 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  // Stretch the shared fade so that the test can inspect and interrupt it.
+  await page.addStyleTag({
+    content: 'html.console-ui { --el-transition-fade-linear: opacity 0.6s linear; }'
+  });
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  const surface = page.locator('.session-tree-popover');
+  const tree = surface.locator('.session-tree-popup');
+  await trigger.click();
+  const row = tree.getByRole('button', { name: 'Verify image decoding and cleanup, Idle' });
+  await row.focus();
+
+  const closing = await surface.evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished));
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return {
+      retained: element.isConnected,
+      inert: element.querySelector('.session-tree-popup')?.hasAttribute('inert'),
+      pointerEvents: getComputedStyle(element).pointerEvents
+    };
+  });
+  expect(closing).toEqual({ retained: true, inert: true, pointerEvents: 'none' });
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger).toBeFocused();
+  await surface.evaluate((element) => {
+    for (const animation of element.getAnimations()) animation.pause();
+  });
+  await expect(surface).toHaveClass(/el-fade-in-linear-leave-active/);
+  await trigger.click();
+  await expect(surface).not.toHaveClass(/el-fade-in-linear-leave-active/);
+  await expect(row).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await page.mouse.click(2, 2);
+  await expect(surface).toHaveCount(0);
+});
+
 test('standard MessageBox respects reduced motion on desktop and mobile', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [1280, 390]) {
