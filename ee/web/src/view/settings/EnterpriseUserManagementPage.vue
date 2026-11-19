@@ -71,7 +71,7 @@ watch(
   },
   { flush: 'sync' }
 );
-function isCurrentCreation(generation: number): boolean {
+function isCurrentUserDialog(generation: number): boolean {
   return !disposed && userOpen.value && generation === userGeneration;
 }
 function restoreCreateFocus(): void {
@@ -262,10 +262,10 @@ async function createUser(draft: typeof userForm.value, generation: number): Pro
       username: result.user.username,
       password: result.temporaryPassword
     });
-    if (isCurrentCreation(generation)) userOpen.value = false;
+    if (isCurrentUserDialog(generation)) userOpen.value = false;
     await load();
   } catch (error) {
-    if (!isCurrentCreation(generation)) return;
+    if (!isCurrentUserDialog(generation)) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -292,35 +292,37 @@ function openEditUser(user: EnterpriseUser): void {
   userOpen.value = true;
 }
 async function saveUser(): Promise<void> {
-  if (editingUser.value === undefined) {
-    if (!userOpen.value || creatingUser.value || disposed) return;
-    const generation = userGeneration;
+  if (!userOpen.value || disposed) return;
+  const generation = userGeneration;
+  const target = editingUser.value;
+  if (target === undefined) {
+    if (creatingUser.value) return;
     const draft = { ...userForm.value };
     creatingUser.value = true;
     try {
       const valid = await userFormRef.value?.validate().catch(() => false);
-      if (valid && isCurrentCreation(generation)) await createUser(draft, generation);
+      if (valid && isCurrentUserDialog(generation)) await createUser(draft, generation);
     } finally {
-      if (isCurrentCreation(generation)) creatingUser.value = false;
+      if (isCurrentUserDialog(generation)) creatingUser.value = false;
     }
     return;
   }
-  if (!(await userFormRef.value?.validate().catch(() => false))) return;
+  const userId = target.id;
+  const draft = userForm.value;
+  const valid = await userFormRef.value?.validate().catch(() => false);
+  if (!valid || !isCurrentUserDialog(generation)) return;
   try {
-    await props.request(`/api/enterprise/users/${editingUser.value.id}`, {
+    await props.request(`/api/enterprise/users/${userId}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        email: userForm.value.email || null,
-        nickname: userForm.value.nickname || null,
-        role: userForm.value.role,
-        organizationId: userForm.value.organizationId
+        email: draft.email || null,
+        nickname: draft.nickname || null,
+        role: draft.role,
+        organizationId: draft.organizationId
       })
     });
-    userOpen.value = false;
-    editingUser.value = undefined;
-    showMessage(translate('generated.organizationUserManagementPage.userUpdated'), 'success');
-    await load();
   } catch (error) {
+    if (!isCurrentUserDialog(generation)) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -328,7 +330,15 @@ async function saveUser(): Promise<void> {
       'error',
       error
     );
+    return;
   }
+  if (isCurrentUserDialog(generation)) {
+    userOpen.value = false;
+    editingUser.value = undefined;
+    showMessage(translate('generated.organizationUserManagementPage.userUpdated'), 'success');
+  }
+  // A completed write still changes the list, even if its dialog is gone.
+  if (!disposed) await load();
 }
 async function resetPassword(user: EnterpriseUser): Promise<void> {
   try {

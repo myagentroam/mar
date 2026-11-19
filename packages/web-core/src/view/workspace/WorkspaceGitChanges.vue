@@ -529,6 +529,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   gap: 0.25rem;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   max-height: min(18rem, 35vh);
   margin: 0.3rem 0 0;
   padding: 0;
@@ -792,6 +793,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 @media (max-width: 767px) {

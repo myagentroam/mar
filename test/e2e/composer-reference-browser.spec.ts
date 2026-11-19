@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startPromptCompletionViteFixture } from './support/prompt-completion-vite.js';
+
+// @test-covers packages/web-core/src/view/composer/ComposerCommandPicker.vue
+// @test-covers packages/web-core/src/view/composer/ComposerReferencePicker.vue
 
 type ReferenceHarnessWindow = Window & {
   __referenceHarness: {
@@ -65,11 +69,22 @@ test('mixed results render once and session selection removes the trigger in one
 
 test('file insertion, quick prompt and their undo preserve surrounding text', async ({ page }) => {
   await page.goto(`${fixture.url}/composer-reference-browser.html`);
+  await page.locator('html').evaluate((element) => {
+    element.style.setProperty('--mar-control-bg-color-overlay', '#25364940');
+  });
   const editor = page.locator('textarea.composer-input');
   await editor.fill('before @alphaSuffix after');
   await placeCursor(page, 10);
   const files = page.locator('.file-reference-picker [role=option]');
   await expect(files).toHaveCount(2);
+  const reference = page.locator('.file-reference-picker');
+  await expect(reference).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(reference).toHaveCSS('box-shadow', /0px 4px 12px/u);
+  expect(
+    resolvedColorToHex(
+      await reference.evaluate((element) => getComputedStyle(element).backgroundColor)
+    )
+  ).toBe('#253649');
   await files.filter({ hasText: 'alpha.ts' }).click();
   await expect(editor).toHaveValue('before  after');
   await expect(page.locator('.composer-file-reference-state')).toContainText('alpha.ts');
@@ -77,7 +92,15 @@ test('file insertion, quick prompt and their undo preserve surrounding text', as
   await expect(editor).toHaveValue('before @alphaSuffix after');
   await editor.fill('before #reviewSuffix after');
   await placeCursor(page, 11);
-  await expect(page.locator('.command-picker').filter({ hasText: 'review' })).toBeVisible();
+  const commands = page.locator('.command-picker').filter({ hasText: 'review' });
+  await expect(commands).toBeVisible();
+  await expect(commands).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(commands).toHaveCSS('box-shadow', /0px 4px 12px/u);
+  expect(
+    resolvedColorToHex(
+      await commands.evaluate((element) => getComputedStyle(element).backgroundColor)
+    )
+  ).toBe('#253649');
   await editor.press('Enter');
   await expect(editor).toHaveValue('before Review\nchanges after');
   await editor.press('Control+z');
@@ -307,8 +330,12 @@ for (const [theme, width] of [
       document.documentElement.dataset.theme = theme;
     }, theme);
     await expect
-      .poll(() => picker.evaluate((element) => getComputedStyle(element).backgroundColor))
-      .toBe(theme === 'daylight' ? 'rgb(255, 255, 255)' : 'rgb(26, 34, 48)');
+      .poll(async () =>
+        resolvedColorToHex(
+          await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
+        )
+      )
+      .toBe(theme === 'daylight' ? '#ffffff' : '#1a2230');
     expect(await picker.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
     );

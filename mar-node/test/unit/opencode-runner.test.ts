@@ -646,7 +646,7 @@ describe('OpenCode Runner', () => {
         id: 'managed-turn',
         runId: 'run-1',
         status: 'SUCCEEDED',
-        rewind: { before: null, after: 'assistant-1' },
+        rewind: { before: 'before:user-1', after: 'tip:assistant-1' },
         items: [
           expect.objectContaining({ id: 'local-user', turnId: 'managed-turn' }),
           expect.objectContaining({
@@ -657,6 +657,31 @@ describe('OpenCode Runner', () => {
           })
         ]
       })
+    ]);
+  });
+
+  it('keeps the whole selected OpenCode Turn using the next native message as an exclusive cut', () => {
+    const session = { id: 'source', externalSessionId: 'source' } as NodeAgentSession;
+    const page = openCodeConversationPage(
+      session,
+      [
+        {
+          info: { id: 'user-1', role: 'user' },
+          parts: [{ id: 'part-1', type: 'text', text: 'one' }]
+        },
+        { info: { id: 'assistant-1', role: 'assistant', parentID: 'user-1' }, parts: [] },
+        {
+          info: { id: 'user-2', role: 'user' },
+          parts: [{ id: 'part-2', type: 'text', text: 'two' }]
+        },
+        { info: { id: 'assistant-2', role: 'assistant', parentID: 'user-2' }, parts: [] }
+      ],
+      {},
+      () => undefined
+    );
+    expect(page?.turns.map((turn) => turn.rewind)).toEqual([
+      { before: 'before:user-1', after: 'before:user-2' },
+      { before: 'before:user-2', after: 'tip:assistant-2' }
     ]);
   });
 

@@ -489,6 +489,7 @@ function runBlankMenuCommand(command: string): void {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   width: 100%;
   gap: var(--mar-activity-rail-gap);
   padding: 0.5rem 0 0;
@@ -581,6 +582,7 @@ function runBlankMenuCommand(command: string): void {
 
 .workspace-tree {
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--mar-bg-panel);
 }
 

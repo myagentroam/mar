@@ -237,6 +237,63 @@ html.console-ui .el-popover {
   --el-popover-border-radius: var(--mar-radius-surface);
 }
 
+html.console-ui
+  .el-popper:is(
+    .mar-content-popover,
+    .mar-compact-popover,
+    .el-dropdown__popper,
+    .el-select__popper,
+    .el-cascader__dropdown,
+    .el-picker__popper
+  ) {
+  --el-bg-color-overlay: var(--mar-overlay-surface);
+}
+
+html.console-ui .el-popover.mar-content-popover {
+  --el-popover-border-color: var(--mar-overlay-border);
+  --el-border-color-light: var(--mar-overlay-border);
+  --el-box-shadow-light: 0 2px 6px var(--mar-shadow-soft), 0 10px 24px var(--mar-shadow-medium);
+}
+
+html.console-ui
+  .el-popper:is(
+    .el-dropdown__popper,
+    .el-select__popper,
+    .el-cascader__dropdown,
+    .el-picker__popper,
+    .mar-compact-popover
+  ) {
+  --el-border-color-light: var(--mar-overlay-border);
+  --el-box-shadow-light: var(--mar-compact-overlay-shadow);
+}
+
+html.console-ui .el-picker__popper.el-popper {
+  --el-datepicker-border-color: var(--mar-overlay-border);
+  --el-datepicker-bg-color: var(--mar-overlay-surface);
+}
+
+html.console-ui .el-popover.mar-compact-popover {
+  --el-popover-border-color: var(--mar-overlay-border);
+  --el-popover-border-radius: var(--mar-radius-control);
+}
+
+html.console-ui .el-dropdown__popper .el-dropdown-menu__item--divided,
+html.console-ui .el-select__popper :is(.el-select-dropdown__header, .el-select-dropdown__footer),
+html.console-ui
+  .el-cascader__dropdown
+  :is(.el-cascader__header, .el-cascader__footer, .el-cascader-menu:not(:last-child)) {
+  border-color: var(--mar-border-subtle);
+}
+
+html.console-ui .el-picker__popper :is(.el-date-picker, .el-date-range-picker) {
+  --el-datepicker-inner-border-color: var(--mar-border-subtle);
+}
+
+html.console-ui .el-picker__popper .el-time-panel__content::before,
+html.console-ui .el-picker__popper .el-time-range-picker__body {
+  border-color: var(--mar-border-subtle);
+}
+
 html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-text-color: var(--mar-color-on-accent);
   --el-button-hover-text-color: var(--mar-color-on-accent);
@@ -354,9 +411,23 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   font-family: inherit;
 }
 
-:is(html.console-ui, .mar-theme-preview) :is(.el-input, .el-textarea) {
+:is(html.console-ui, .mar-theme-preview) :is(.el-input, .el-textarea, .el-date-editor) {
   --el-input-border-color: var(--mar-input-border);
-  --el-input-hover-border-color: var(--mar-input-border-hover, var(--el-border-color-hover));
+  --el-input-hover-border-color: var(--mar-input-border-hover);
+}
+
+:is(html.console-ui, .mar-theme-preview) .el-select__wrapper {
+  --el-border-color: var(--mar-input-border);
+  --el-border-color-hover: var(--mar-input-border-hover);
+}
+
+:is(html.console-ui, .mar-theme-preview) .el-select__wrapper.is-disabled {
+  --el-fill-color-light: var(--el-disabled-bg-color);
+}
+
+:is(html.console-ui, .mar-theme-preview) .el-range-editor.is-disabled {
+  --el-input-border-color: var(--el-disabled-border-color);
+  --el-input-hover-border-color: var(--el-disabled-border-color);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-tabs .el-tabs__nav {
@@ -436,10 +507,6 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
 :is(html.console-ui, .mar-theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
-}
-
-:is(html.console-ui, .mar-theme-preview) .el-select {
-  --el-border-color-hover: var(--mar-border-medium);
 }
 
 .el-select-dropdown__item {

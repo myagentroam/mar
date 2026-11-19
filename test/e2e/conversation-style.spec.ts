@@ -61,7 +61,7 @@ for (const [width, columnWidth] of [
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1&live-performance=1`);
-    const heading = page.locator('[data-process-id="preview-process"] .process-heading');
+    const heading = page.locator('[data-process-id="preview-process"] .process-heading-row');
     if (columnWidth !== undefined)
       await page.locator('.conversation-timeline').evaluate((element, size) => {
         (element as HTMLElement).style.width = `${size}px`;
@@ -69,7 +69,7 @@ for (const [width, columnWidth] of [
     await expect(heading).not.toContainText('420 ms');
     await page.getByTestId('update-performance').click();
     await expect(heading).toContainText('420 ms');
-    await expect(heading).toContainText('42.0 token/s');
+    await expect(heading).toContainText('TPS: 42.0');
     const metrics = heading.locator('.process-performance');
     expect(await metrics.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true
@@ -1160,8 +1160,31 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const process = page.locator('[data-process-id="preview-process"]');
       const preview = process.locator('.process-summary');
       const heading = process.locator('.process-heading');
+      const reply = page.locator('.assistant_message .agent-markdown');
       await expect(preview).toHaveText(thinkingPreview);
       await expect(heading).toHaveAttribute('aria-expanded', 'true');
+      await expect(reply).toContainText('I identified the files to review.');
+      const bodyStyle = await reply.evaluate((element) => {
+        const { color, fontSize } = getComputedStyle(element);
+        return { color, fontSize };
+      });
+      const secondaryColor = await process
+        .locator('.reasoning-subtitle')
+        .evaluate((element) => getComputedStyle(element).color);
+      await expect(preview).toHaveCSS('font-size', bodyStyle.fontSize);
+      await expect(preview).not.toHaveCSS('color', bodyStyle.color);
+      await expect(preview).toHaveCSS('color', secondaryColor);
+      await expect(process.locator('.process-activity')).toHaveCSS('color', bodyStyle.color);
+      const duration = process.locator('.process-duration');
+      await expect(duration).toHaveCSS('font-size', bodyStyle.fontSize);
+      await expect(duration).toHaveCSS('color', secondaryColor);
+      const { gap, recordGap } = await process.evaluate((element) => ({
+        gap:
+          element.getBoundingClientRect().top -
+          element.previousElementSibling!.getBoundingClientRect().bottom,
+        recordGap: parseFloat(getComputedStyle(element.parentElement!).rowGap)
+      }));
+      expect(gap).toBeGreaterThan(recordGap);
       await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
       await expect(preview).toHaveText(thinkingPreview);
@@ -1200,6 +1223,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(preview).toHaveCount(0);
       await expect(process.locator('.reasoning-subtitle').first()).toHaveText(thinkingPreview);
       await expect(page.getByText('Finished reviewing files.', { exact: true })).toBeVisible();
+      const followingGap = await process.evaluate(
+        (element) =>
+          element.nextElementSibling!.getBoundingClientRect().top -
+          element.getBoundingClientRect().bottom
+      );
+      expect(followingGap).toBeCloseTo(gap, 1);
       await heading.click();
       await expect(heading).toHaveAttribute('aria-expanded', 'false');
       await expect(preview).toHaveCount(0);
@@ -1402,9 +1431,24 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       try {
         const page = await context.newPage();
         await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
-        await page.locator('[data-process-id="spacing-process"] > .process-heading').click();
+        await page.locator('[data-process-id="spacing-process"] .process-heading').click();
         const group = page.locator('.conversation-item.command-group > details');
-        await group.locator(':scope > summary').click();
+        const groupHeading = group.locator(':scope > summary');
+        const count = groupHeading.locator('.conversation-group-meta');
+        await expect(count).toHaveText('3 calls');
+        await expect(count).toHaveCSS(
+          'font-size',
+          await groupHeading
+            .locator('strong')
+            .evaluate((element) => getComputedStyle(element).fontSize)
+        );
+        await expect(count).toHaveCSS(
+          'color',
+          await groupHeading
+            .locator('.conversation-record-icon')
+            .evaluate((element) => getComputedStyle(element).color)
+        );
+        await groupHeading.click();
         const command = group.locator(':scope > details').first();
         const heading = command.locator(':scope > summary');
         const preview = heading.locator('.conversation-command-preview');
@@ -1413,6 +1457,26 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         expect(await preview.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
           true
         );
+        await expect(heading.locator('.conversation-command-status')).toHaveText('Failed');
+        await expect(heading.locator('.conversation-step-duration')).toHaveText('Duration 3s');
+        const statusLayout = await heading.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          const preview = element
+            .querySelector('.conversation-command-preview')!
+            .getBoundingClientRect();
+          const meta = element.querySelector('.conversation-command-meta')!;
+          const status = meta
+            .querySelector('.conversation-command-status')!
+            .getBoundingClientRect();
+          const duration = meta
+            .querySelector('.conversation-step-duration')!
+            .getBoundingClientRect();
+          return {
+            separate: preview.right <= status.left && status.right <= duration.left,
+            fits: duration.right <= bounds.right && meta.scrollWidth <= meta.clientWidth
+          };
+        });
+        expect(statusLayout).toEqual({ separate: true, fits: true });
         const headingHeight = await heading.evaluate(
           (element) => element.getBoundingClientRect().height
         );
@@ -1462,7 +1526,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
-      await page.locator('[data-process-id="spacing-process"] > .process-heading').click();
+      await page.locator('[data-process-id="spacing-process"] .process-heading').click();
       const groups = page.locator('.conversation-record-group');
       await expect(groups).toHaveCount(3);
       for (const group of await groups.all()) {

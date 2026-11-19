@@ -2132,7 +2132,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     });
   });
 
-  it('Immediately display user messages during message submission and converge in-place with authoritative user items and streaming terminal', async () => {
+  it('projects authoritative user items and streaming completion while the message POST is pending', async () => {
     const response = deferred<unknown>();
     let watchId = '';
     const workspace = service(async (path, init) => {
@@ -2174,22 +2174,9 @@ describe('Web Hosted Conversation Workspace Service', () => {
       clientMessageId: 'message-stream'
     });
 
-    expect(workspace.turns.value).toEqual([
-      expect.objectContaining({
-        runId: null,
-        status: 'PREPARING',
-        items: [
-          expect.objectContaining({
-            kind: 'user_message',
-            payload: expect.objectContaining({
-              clientMessageId: 'message-stream',
-              text: 'Stream this answer.',
-              delivery: 'PENDING'
-            })
-          })
-        ]
-      })
-    ]);
+    expect(workspace.messageSubmitting.value).toBe(true);
+    expect(workspace.turns.value).toEqual([]);
+    expect(workspace.snapshot.value?.run).toBeNull();
 
     const runtimeEvent = (
       sourceSequence: number,
@@ -2294,6 +2281,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
       status: 'COMPLETED',
       payload: { text: 'Partial answer' }
     });
+    expect(workspace.messageSubmitting.value).toBe(true);
 
     response.resolve({
       conversation: { ...conversation, updatedAt: 2, lastActivityAt: 2 },
@@ -2323,7 +2311,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     ).toBe('Partial answer');
   });
 
-  it('Remove this optimistic user message when the message request fails', async () => {
+  it('leaves history untouched when the message request fails', async () => {
     const workspace = service(async () => {
       throw new Error('NETWORK_FAILED');
     });
@@ -2372,7 +2360,7 @@ describe('Web Hosted Conversation Workspace Service', () => {
     expect(workspace.messageSubmitting.value).toBe(false);
   });
 
-  it('Message requests reuse plain session commit transactions and are only being sent in the current Hosted Conversation presentation', async () => {
+  it('settles the Hosted submission from HTTP without projecting its Run or user message', async () => {
     const response = deferred<unknown>();
     const workspace = service(async () => response.promise as never);
     workspace.selectConversation('node-1', 'conversation-1', snapshot as never);
@@ -2391,7 +2379,8 @@ describe('Web Hosted Conversation Workspace Service', () => {
         ...conversation,
         title: 'Continue.',
         updatedAt: 2,
-        lastActivityAt: 2
+        lastActivityAt: 2,
+        activity: { status: 'RUNNING', updatedAt: 2, version: 1 }
       },
       run: {
         id: 'run-submission',
@@ -2404,5 +2393,10 @@ describe('Web Hosted Conversation Workspace Service', () => {
 
     expect(workspace.messageSubmitting.value).toBe(false);
     expect(workspace.messageSubmissionContext.value).toBeUndefined();
+    expect(workspace.snapshot.value?.run).toBeNull();
+    expect(workspace.turns.value).toEqual([]);
+    expect(workspace.snapshot.value?.conversation.title).toBe('Continue.');
+    expect(workspace.snapshot.value?.conversation.activity).toEqual(conversation.activity);
+    expect(workspace.conversations.value[0]?.activity).toEqual(conversation.activity);
   });
 });

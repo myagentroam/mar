@@ -232,7 +232,7 @@ interface HostedBindings {
   send(deliveryIntent?: 'REPLACE_CURRENT'): Promise<void>;
   selectTemplate(id: string): Promise<void>;
   retryAttachment(id: string): void;
-  refreshDraftTemplates(visible: boolean): Promise<void>;
+  handleTemplateMenuVisibility(visible: boolean): Promise<void>;
 }
 
 function hostedFixture(mobileViewport = false) {
@@ -391,7 +391,7 @@ describe('hosted message draft preservation', () => {
     const { composer, workspace, revoke } = hostedFixture();
     composer.input.value = 'Unsent draft';
     composer.attachments.value = [attachment('first')];
-    await composer.refreshDraftTemplates(true);
+    await composer.handleTemplateMenuVisibility(true);
     await composer.selectTemplate('template-2');
     expect(workspace.switchTemplate).toHaveBeenCalledExactlyOnceWith('template-2', 'template-1');
     expect(composer.input.value).toBe('Unsent draft');
@@ -405,7 +405,7 @@ describe('hosted message draft preservation', () => {
       const { composer, workspace } = hostedFixture();
       const confirmation = deferred<MessageBoxData>();
       vi.mocked(ElMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
-      await composer.refreshDraftTemplates(true);
+      await composer.handleTemplateMenuVisibility(true);
       const pending = composer.selectTemplate('template-2');
       expect(ElMessageBox.confirm).toHaveBeenCalledOnce();
       if (reason === 'watch-replaced') workspace.selectedWatchId.mockReturnValue('watch-2');

@@ -454,7 +454,9 @@ describe('single shared Web implementation', () => {
       if (path === '/api/pending') return pendingResponse;
       if (path === '/api/unauthenticated') return unauthenticatedResponse;
       if (path === '/api/auth/me')
-        return Promise.resolve(Response.json({ authenticated: true, mustChangePassword: false }));
+        return Promise.resolve(
+          Response.json({ authenticated: true, userId: 1, mustChangePassword: false })
+        );
       if (path === '/api/auth/csrf')
         return Promise.resolve(Response.json({ csrfToken: 'fixture-csrf' }));
       return Promise.resolve(Response.json({ nodes: [], notifications: [], recentRuns: [] }));
@@ -493,6 +495,13 @@ describe('single shared Web implementation', () => {
       })
     );
     vi.stubGlobal('fetch', fetchMock);
+    // Keep background Workbench recovery local while the HTTP responses are under test.
+    vi.stubGlobal(
+      'WebSocket',
+      class extends EventTarget {
+        close() {}
+      }
+    );
 
     let page!: ReturnType<typeof createWorkbenchPageController>;
     let rendered: ReturnType<typeof renderComponent> | undefined;
@@ -518,20 +527,27 @@ describe('single shared Web implementation', () => {
         })
       );
 
-      const pendingRequest = page.request('/api/pending');
-      expect(page.nodes.value).toEqual([]);
-      expect(page.navigationItems.value.map((item) => item.id)).toContain('conversations');
-      const pendingRejected = expect(pendingRequest).rejects.toMatchObject({
+      await vi.waitFor(() => expect(page.identity.admin.authenticated).toBe(true));
+      expect(page.identity.csrfToken).toBe('fixture-csrf');
+      expect(page.resources.nodes).toEqual([]);
+      expect(page.application.navigationItems.map((item) => item.id)).toContain('conversations');
+
+      const pendingRejected = expect(page.identity.request('/api/pending')).rejects.toMatchObject({
         name: 'AbortError'
       });
-      const unauthenticatedRequest = page.request('/api/unauthenticated');
-      const unauthenticatedRejected = expect(unauthenticatedRequest).rejects.toMatchObject({
-        code: 'UNAUTHENTICATED'
-      });
+      const unauthenticatedRejected = expect(
+        page.identity.request('/api/unauthenticated')
+      ).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+      expect(fetchMock).toHaveBeenCalledWith('/api/pending', expect.anything());
+      expect(fetchMock).toHaveBeenCalledWith('/api/unauthenticated', expect.anything());
       resolveUnauthenticated(Response.json({ error: 'UNAUTHENTICATED' }, { status: 401 }));
       await unauthenticatedRejected;
+      expect(page.identity.admin.authenticated).toBe(false);
+      expect(page.identity.csrfToken).toBe('');
+
       resolvePending(Response.json({ completed: true }));
       await pendingRejected;
+      expect(page.identity.admin.authenticated).toBe(false);
     } finally {
       rendered?.unmount();
       vi.unstubAllGlobals();
@@ -655,13 +671,26 @@ describe('single shared Web implementation', () => {
   });
 
   it('keeps neutral selection recovery separate from public routes and private management identifiers', () => {
+    const privateManagement = /['"](?:organizations|users|oauth|audit|conversation-templates)['"]/u;
+    const hostedDependency = /['"][^'"\s]*\/hosted-conversation[^'"\s]*['"]/u;
+    const routeDependency =
+      /['"][^'"\s]*\/(?:workbench-route(?:-service)?|route-service)(?:\.[jt]s)?['"]/u;
+    const navigation = read(`${root}/src/service/workbench-navigation-service.ts`);
+    // Public navigation can present the Hosted page without owning its domain or parsing routes.
+    expect(navigation).not.toMatch(privateManagement);
+    expect(navigation).not.toMatch(hostedDependency);
+    expect(navigation).not.toMatch(/parseWorkbenchRoute/u);
+
     for (const file of [
-      'workbench-navigation-service',
       'workbench-navigation-watch-service',
       'workbench-selection-persistence-service'
     ]) {
-      expect(read(`packages/web-core/src/service/${file}.ts`)).not.toMatch(
-        /HostedConversation|hostedConversation|['"]conversations['"]|['"]users['"]|['"]organizations['"]|parseWorkbenchRoute/u
+      const neutral = read(`${root}/src/service/${file}.ts`);
+      expect(neutral, file).not.toMatch(privateManagement);
+      expect(neutral, file).not.toMatch(hostedDependency);
+      expect(neutral, file).not.toMatch(routeDependency);
+      expect(neutral, file).not.toMatch(
+        /HostedConversation|hostedConversation|['"]conversations['"]|parseWorkbenchRoute/u
       );
     }
     expectSharedEntry('ee/web/src/service/workbench-route-service.ts', 'route-service');

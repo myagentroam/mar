@@ -17,6 +17,7 @@ import {
   type RemoteDesktopRelayBrowserMessage,
   type RemoteDesktopRelayServerMessage
 } from '@myagentroam/protocol';
+import type { WebPerformanceFrameSample } from './web-performance-diagnostic-service.js';
 
 export interface WorkbenchLiveEvent {
   readonly nodeId: string;
@@ -46,11 +47,7 @@ interface WorkbenchLiveConnectionOptions {
   readonly onDesktopDirectMessage?: (message: RemoteDesktopDirectServerMessage) => void;
   readonly onDesktopRelayMessage?: (message: RemoteDesktopRelayServerMessage) => void;
   readonly diagnostics?: {
-    observeFrame(sample: {
-      readonly bytes: number;
-      readonly durationMs: number;
-      readonly message: unknown;
-    }): void;
+    observeFrame(sample: WebPerformanceFrameSample): void;
     setConnectionState(state: 'connecting' | 'connected' | 'disconnected'): void;
     resetActiveRuns(): void;
     setPingLatency?(durationMs: number): void;
@@ -272,7 +269,7 @@ export function createWorkbenchLiveService(options: WorkbenchLiveConnectionOptio
         options.onInvalidMessage();
       } finally {
         options.diagnostics?.observeFrame({
-          bytes: text.length,
+          payloadUtf16CodeUnits: text.length,
           durationMs: performance.now() - startedAt,
           message
         });

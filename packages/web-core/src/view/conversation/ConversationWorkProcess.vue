@@ -191,7 +191,7 @@ watch(open, async () => {
 }
 .process-summary {
   margin: 0;
-  color: var(--mar-conversation-text);
+  color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
   overflow: hidden;

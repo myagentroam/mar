@@ -1010,6 +1010,7 @@ function submitSessionSearch(): void {
   padding: 0;
   list-style: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .session-list li {

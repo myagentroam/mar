@@ -64,7 +64,7 @@ watch(
   <div
     v-if="open"
     ref="picker"
-    class="command-picker file-reference-picker"
+    class="command-picker file-reference-picker mar-compact-overlay"
     :aria-label="pickerLabel"
   >
     <p v-if="capacityExceeded" role="status">{{ translate('errors.COMPOSER_TAG_INVALID') }}</p>
@@ -175,10 +175,6 @@ watch(
   display: grid;
   max-height: 200px;
   overflow: auto;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: 5px;
-  background: var(--mar-control-bg-color-overlay);
-  box-shadow: 0 4px 12px var(--mar-shadow-soft);
 }
 
 .command-picker button {

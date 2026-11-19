@@ -9,7 +9,7 @@ import {
 } from './agent-network-observations.js';
 import { sessionPendingApprovals } from './session-recent-activity.js';
 
-/** Projects normalized Run events and owns transient observers from attachment through terminal cleanup.
+/** Projects normalized Execution observations and owns transient observers through Run settlement.
  * Run-keyed handles survive Session identity promotion without borrowing a replacement's lifetime.
  * Runner-owned context observers remain with the Runner; this owner only borrows their delivery port.
  */
@@ -41,13 +41,15 @@ export class AgentNetworkRunProjection {
     executionId,
     eventType,
     payload,
-    terminalStatus
+    terminalStatus,
+    runTerminal
   }: {
     readonly run: NodeAgentRun;
     readonly executionId: string;
     readonly eventType: string;
     readonly payload: unknown;
     readonly terminalStatus?: RunnerExecutionStatus;
+    readonly runTerminal?: true;
   }): void => {
     const child = this.runtime.getAgentSession(run.sessionId);
     if (!child) return;
@@ -69,7 +71,7 @@ export class AgentNetworkRunProjection {
         executionId,
         ...observation
       });
-    if (terminalStatus !== undefined) {
+    if (runTerminal) {
       const observer = this.transient.get(run.id);
       this.transient.delete(run.id);
       observer?.close();

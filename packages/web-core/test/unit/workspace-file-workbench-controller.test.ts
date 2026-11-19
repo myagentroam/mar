@@ -142,6 +142,116 @@ it.each([false, true])(
   }
 );
 
+it.each(['close background', 'close source', 'switch tabs'] as const)(
+  'keeps file navigation owned by its source tab on %s',
+  async (action) => {
+    const target = { nodeId: 'node', workspaceId: 'workspace' };
+    const ready = (...paths: { path: string; line: number }[]) => ({
+      definition: { state: 'READY', targets: [], paths, truncated: false }
+    });
+    const pending = Promise.withResolvers<ReturnType<typeof ready>>();
+    const request = vi.fn();
+    const http = { request } as ReturnType<typeof createScopedHttpService>;
+    const onFailure = vi.fn();
+    const bytes = new TextEncoder().encode('import "./target";\n\nexport {};');
+    const owner: ReturnType<typeof createWorkspaceFileWorkbenchController> =
+      createWorkspaceFileWorkbenchController({
+        externalTarget: () => target,
+        fileWriteEnabled: () => false,
+        onPopupBlocked: vi.fn(),
+        target: () => target,
+        page: () => undefined,
+        prewarmEnabled: () => false,
+        resolveRepositoryPath: () => undefined,
+        reveal: async () => {},
+        comparison: async () => undefined,
+        onOpenFailure: vi.fn(),
+        onRevealFailure: vi.fn(),
+        access: createFileAccessFixture({
+          http,
+          transfers: () => ({
+            directFileReadRange: async () => ({
+              bytes,
+              size: bytes.length,
+              offset: 0,
+              nextOffset: null,
+              revision: 'r'
+            })
+          })
+        }),
+        preview: { onWritten: vi.fn() },
+        navigation: {
+          http,
+          onFailure,
+          onFileTarget: (destination, sourceId) => owner.openNavigationTarget(destination, sourceId)
+        }
+      });
+    try {
+      const fileReference = {
+        reference: {
+          languageId: 'ecmascript',
+          extractorId: 'ecmascript-import',
+          kind: 'module',
+          value: './target',
+          from: 8,
+          to: 16
+        },
+        sourceContext: { text: 'import "./target";', position: 10 }
+      } as const;
+      const navigate = (pageId: number, path: string) =>
+        owner.navigate({ ...target, pageId, path }, fileReference);
+      await owner.openFile('background.ts');
+      const background = owner.frames.value.find((frame) => frame.id === owner.activeTabId.value)!;
+      request.mockResolvedValueOnce(
+        ready({ path: 'one.ts', line: 1 }, { path: 'two.ts', line: 1 })
+      );
+      await navigate(background.id, 'background.ts');
+      expect(background.navigationTargets.value.map(({ path }) => path)).toEqual([
+        'one.ts',
+        'two.ts'
+      ]);
+
+      await owner.openFile('source.ts');
+      const source = owner.frames.value.find((frame) => frame.id === owner.activeTabId.value)!;
+      request.mockReturnValueOnce(pending.promise);
+      const navigating = navigate(source.id, 'source.ts');
+      expect(source.navigationLoading.value).toBe(true);
+
+      if (action === 'close background') {
+        owner.closeTabs([background.id]);
+        const loadingAfterClose = source.navigationLoading.value;
+        pending.resolve(ready({ path: 'source.ts', line: 3 }));
+        await navigating;
+        expect(source.targetLine.value).toBe(3);
+        expect(loadingAfterClose).toBe(true);
+        expect(source.navigationLoading.value).toBe(false);
+        expect(owner.activeTabId.value).toBe(source.id);
+        expect(owner.frames.value.map(({ id }) => id)).toEqual([source.id]);
+        expect(background.navigationTargets.value).toEqual([]);
+      } else {
+        if (action === 'close source') owner.closeTabs([source.id]);
+        else owner.activateTab(background.id);
+        expect(owner.activeTabId.value).toBe(background.id);
+        expect(source.navigationLoading.value).toBe(false);
+
+        request.mockResolvedValueOnce(ready({ path: 'background.ts', line: 2 }));
+        await navigate(background.id, 'background.ts');
+        pending.resolve(ready({ path: 'late.ts', line: 1 }));
+        await navigating;
+        expect(background.targetLine.value).toBe(2);
+        expect(owner.activeTabId.value).toBe(background.id);
+        expect(owner.tabList.value.map(({ path }) => path)).toEqual(
+          action === 'close source' ? ['background.ts'] : ['background.ts', 'source.ts']
+        );
+      }
+      expect(onFailure).not.toHaveBeenCalled();
+    } finally {
+      owner.dispose();
+      pending.resolve(ready());
+    }
+  }
+);
+
 it('opens previews independently of a slow reveal and prevents its late failure from replacing the latest target', async () => {
   const target = { nodeId: 'node', workspaceId: 'workspace' };
   let rejectReveal!: (error: unknown) => void;

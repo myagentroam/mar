@@ -78,6 +78,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 <template>
   <el-popover
     placement="right-end"
+    popper-class="mar-content-popover"
     :trigger="['hover', 'focus']"
     :width="320"
     :show-after="180"
@@ -121,7 +122,7 @@ onBeforeUnmount(props.diagnostics.dispose);
             t('performanceDiagnostics.rateValue', {
               current: snapshot.messagesPerSecond,
               peak: snapshot.peakMessagesPerSecond,
-              kilobytes: decimal(snapshot.kilobytesPerSecond)
+              codeUnits: decimal(snapshot.payloadUtf16CodeUnitsPerSecond)
             })
           }}
         </dd>

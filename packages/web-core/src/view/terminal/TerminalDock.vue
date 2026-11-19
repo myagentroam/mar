@@ -629,6 +629,10 @@ defineExpose({ release, toggle: toggleTerminal });
   padding: 4px 3px 3px;
 }
 
+.admin-terminal.is-embedded .terminal-tabs {
+  overscroll-behavior: contain;
+}
+
 .terminal-tab {
   position: relative;
   display: flex;

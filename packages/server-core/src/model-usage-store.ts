@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Pool, RowDataPacket } from 'mysql2/promise';
+import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
   MODEL_USAGE_RETENTION_MS,
   MODEL_USAGE_BATCH_BYTES,
@@ -12,6 +12,9 @@ import { withMysqlTransaction } from './mysql-reference-store.js';
 import { ModelUsageGrants } from './model-usage-grant.js';
 import { recordedUsage } from './model-usage-record.js';
 
+const CLEANUP_BATCH_SIZE = 1000;
+const MAX_CLEANUP_BATCHES = 12;
+
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 export function usageModelKey(record: ModelUsageRecord): string {
   return JSON.stringify([
@@ -21,8 +24,8 @@ export function usageModelKey(record: ModelUsageRecord): string {
   ]);
 }
 
+/** Persists usage and exposes retention cleanup for the Server's maintenance lifecycle. */
 export class ModelUsageStore {
-  private lastCleanup = 0;
   constructor(
     readonly pool: Pool,
     readonly grants: ModelUsageGrants,
@@ -30,10 +33,14 @@ export class ModelUsageStore {
   ) {}
 
   async cleanup(): Promise<void> {
-    await this.pool.execute(
-      'DELETE FROM model_usage_records WHERE COALESCE(ended_at,started_at) < ? LIMIT 1000',
-      [this.now() - MODEL_USAGE_RETENTION_MS]
-    );
+    const cutoff = this.now() - MODEL_USAGE_RETENTION_MS;
+    for (let batch = 0; batch < MAX_CLEANUP_BATCHES; batch++) {
+      const [result] = await this.pool.execute<ResultSetHeader>(
+        `DELETE FROM model_usage_records WHERE COALESCE(ended_at,started_at) < ? LIMIT ${CLEANUP_BATCH_SIZE}`,
+        [cutoff]
+      );
+      if (result.affectedRows < CLEANUP_BATCH_SIZE) break;
+    }
   }
 
   async consume(nodeId: string, value: unknown): Promise<ModelUsageAck> {
@@ -42,10 +49,6 @@ export class ModelUsageStore {
     const batch = modelUsageBatchSchema.parse(value);
     const results: ModelUsageAck['results'] = [];
     for (const entry of batch.entries) results.push(await this.accept(nodeId, entry));
-    if (this.now() - this.lastCleanup >= 300_000) {
-      await this.cleanup();
-      this.lastCleanup = this.now();
-    }
     return { apiVersion: 1, results };
   }
 

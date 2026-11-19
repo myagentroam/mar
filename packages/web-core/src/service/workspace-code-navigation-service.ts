@@ -36,6 +36,7 @@ function navigationNotice(
   return;
 }
 
+/** Owns per-file-tab results and the single foreground navigation query for a file surface. */
 export function createWorkspaceCodeNavigationService(options: {
   readonly http: ScopedHttpService;
   readonly onFailure: (error: unknown) => void;
@@ -68,9 +69,8 @@ export function createWorkspaceCodeNavigationService(options: {
     activePageId = undefined;
   }
 
-  function clear(pageId?: number): void {
-    cancel();
-    const state = pageId === undefined ? undefined : pages.get(pageId);
+  function clearPage(pageId: number): void {
+    const state = pages.get(pageId);
     if (state === undefined) return;
     state.navigationLoading.value = false;
     state.navigationTargets.value = [];
@@ -78,8 +78,14 @@ export function createWorkspaceCodeNavigationService(options: {
     state.navigationNotice.value = undefined;
   }
 
+  function clear(pageId?: number): void {
+    cancel();
+    if (pageId !== undefined) clearPage(pageId);
+  }
+
   function release(pageId: number): void {
-    clear(pageId);
+    if (activePageId === pageId) cancel();
+    clearPage(pageId);
     pages.delete(pageId);
   }
 

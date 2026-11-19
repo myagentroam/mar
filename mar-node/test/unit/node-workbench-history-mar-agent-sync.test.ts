@@ -577,6 +577,62 @@ it('keeps active MAR Agent reads on the live stream', async () => {
   expect(readOfficial).not.toHaveBeenCalled();
 });
 
+it('does not page in the SDK copy of an active manual compact before the following Steer', async () => {
+  const asCompacting = (value: NodeConversationTurn): NodeConversationTurn => ({
+    ...value,
+    status: value.runId === null ? 'INTERRUPTED' : 'RUNNING',
+    completedAt: null,
+    items: value.items.map((item) => ({
+      ...item,
+      status: 'IN_PROGRESS',
+      completedAt: null,
+      payload: { phase: 'STARTED', stage: 'GENERATING', summary: null }
+    }))
+  });
+  const runId = 'continuing-run';
+  const compact = compactTurn('local-compact', 12, 'compact-1', runId);
+  const local = [asCompacting(compact)];
+  // A distinct compact at the same SDK timestamp must still be pageable.
+  const old = compactTurn('earlier-compact', 10, 'compact-2');
+  // SDK records the same Turn before Node receives its first Item and timestamps it.
+  const official = [old, asCompacting(compactTurn('sdk-compact', 10, 'compact-1'))];
+  const { service, readOfficial, setActive } = fixture(local, official);
+  readOfficial.mockImplementation(async (_session, { cursor, limit = 30 }) => {
+    const end = cursor === undefined ? official.length : Number(cursor);
+    const start = Math.max(0, end - limit);
+    return { turns: official.slice(start, end), nextCursor: start > 0 ? String(start) : null };
+  });
+  setActive(true);
+  const segments = new ConversationSegmentService((value, input) => service.read(value, input));
+  const initial = await segments.read(session, { limit: 1 });
+  expect(initial.segments.map((segment) => segment.turnId)).toEqual(['local-compact']);
+  expect(initial.nextCursor).not.toBeNull();
+  expect((await service.readHistoryPage(session, { limit: 2 })).turns).toEqual([old]);
+
+  const older = await segments.read(session, { cursor: initial.nextCursor!, limit: 1 });
+  expect(older.segments.map((segment) => segment.turnId)).toEqual(['earlier-compact']);
+  expect(older.nextCursor).toBeNull();
+
+  local.push({ ...turn('steer', 19), runId, status: 'RUNNING', completedAt: null });
+  local[0] = {
+    ...compact,
+    completedAt: 20,
+    items: compact.items.map((item) => ({ ...item, completedAt: 20 }))
+  };
+  const afterSteer = await segments.read(session, { limit: 2 });
+  expect(afterSteer.segments.map((segment) => segment.turnId)).toEqual(['local-compact', 'steer']);
+  expect(afterSteer.segments[0]?.id).toBe(initial.segments[0]?.id);
+  expect(afterSteer.segments[0]?.items).toMatchObject([
+    { id: initial.segments[0]?.items[0]?.id, kind: 'context_compaction', status: 'COMPLETED' }
+  ]);
+  const olderAfterSteer = await segments.read(session, {
+    cursor: afterSteer.nextCursor!,
+    limit: 1
+  });
+  expect(olderAfterSteer.segments).toEqual(older.segments);
+  expect(olderAfterSteer.nextCursor).toBeNull();
+});
+
 it('uses persisted history for a starting Run before any local Turn exists', async () => {
   const old = turn('old', 1);
   const { service, setActive } = fixture([], [old]);

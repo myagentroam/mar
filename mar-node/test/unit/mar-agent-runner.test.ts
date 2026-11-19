@@ -248,11 +248,20 @@ describe('MAR Agent Node Runner', () => {
         .filter((item) => item.kind === 'command_execution');
       expect(resumedItems.map((item) => [item.itemId, item.status])).toEqual([
         ['mar-agent-tool:poll-command', 'IN_PROGRESS'],
+        // The SDK identifies the cached command source before returning its terminal output.
+        ['mar-agent-tool:poll-command', 'IN_PROGRESS'],
         ['mar-agent-tool:poll-command', 'COMPLETED']
       ]);
       expect(resumedItems[0]?.payload.toolPresentation).toMatchObject({
         kind: 'EXECUTION',
         execution: { kind: 'CONTROL' }
+      });
+      expect(resumedItems[1]?.payload.toolPresentation).toMatchObject({
+        kind: 'EXECUTION',
+        execution: {
+          kind: 'CONTROL',
+          source: { kind: 'SHELL', text: expect.stringContaining('RETAINED') }
+        }
       });
       expect(resumedItems.at(-1)).toMatchObject({
         itemId: 'mar-agent-tool:poll-command',

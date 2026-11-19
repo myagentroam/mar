@@ -202,16 +202,76 @@ describe('Agent Network waiting', () => {
     };
     f.observations.subscribe((snapshot) => snapshot?.acknowledge());
     const waiting = waitForAgentTargets({ ...f, targets: [f.targets[0]!], single: true });
+    f.publish('one', 'message', 'already collected progress');
     f.network.publish({ ...base, kind: 'files', paths: ['changed.ts'] });
     f.network.publish({ ...base, kind: 'message', value: 'finished', final: true });
     f.states.set('one', 'SUCCEEDED');
     f.network.publish({ ...base, kind: 'terminal', value: 'SUCCEEDED' });
-    expect(await waiting).toMatchObject({
+    const result = await waiting;
+    expect(result).toMatchObject({
       status: 'SUCCEEDED',
       summary: 'finished',
       changedFiles: ['changed.ts']
     });
+    expect(result).not.toHaveProperty('updates');
     expect(f.observations.capture('one')).toBeUndefined();
+  });
+
+  it('delivers the same completion to concurrent waiters without replaying progress', async () => {
+    const f = fixture();
+    const input = { ...f, targets: [f.targets[0]!], single: true, waitFor: 'completion' } as const;
+    const first = waitForAgentTargets(input);
+    const second = waitForAgentTargets(input);
+    const identity = {
+      parentId: 'parent',
+      childId: 'one',
+      runId: 'run-one',
+      executionId: 'execution-one'
+    };
+    f.publish('one', 'message', 'first progress');
+    f.publish('one', 'message', 'second progress');
+    f.network.publish({ ...identity, kind: 'files', paths: ['changed.ts'] });
+    f.network.publish({
+      ...identity,
+      kind: 'message',
+      value: 'finished',
+      final: true,
+      turnId: 'turn'
+    });
+    f.states.set('one', 'SUCCEEDED');
+    f.publish('one', 'terminal', 'SUCCEEDED');
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    const completion = {
+      runId: identity.runId,
+      executionId: identity.executionId,
+      status: 'SUCCEEDED',
+      waitOutcome: 'completion',
+      summary: 'finished',
+      turnId: 'turn',
+      changedFiles: ['changed.ts']
+    };
+    expect(firstResult).toMatchObject({
+      ...completion,
+      hasMoreUpdates: true,
+      updates: [
+        { kind: 'message', value: 'first progress' },
+        { kind: 'terminal', value: 'SUCCEEDED' }
+      ]
+    });
+    expect(secondResult).toMatchObject({
+      ...completion,
+      updates: [{ kind: 'message', value: 'second progress' }]
+    });
+    expect(secondResult).not.toHaveProperty('hasMoreUpdates');
+
+    const later = await waitForAgentTargets(input);
+    expect(later).toMatchObject({ status: 'SUCCEEDED', waitOutcome: 'completion' });
+    expect(later).not.toHaveProperty('summary');
+    expect(later).not.toHaveProperty('changedFiles');
+    expect(later).not.toHaveProperty('updates');
+    expect(await f.observations.collect(new AbortController().signal)).toEqual([]);
+    f.observations.close();
   });
 
   it('keeps a captured terminal result when later executions overflow during a group wait', async () => {

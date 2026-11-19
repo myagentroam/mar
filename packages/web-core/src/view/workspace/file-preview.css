@@ -1,13 +1,4 @@
 /* Shared file and diff preview content; document scroll locking stays in the global entry. */
-.mar-file-preview-eyebrow {
-  display: block;
-  margin-bottom: 0.12rem;
-  color: var(--mar-text-tertiary);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-}
-
 .mar-file-preview-actions {
   display: flex;
   flex: none;

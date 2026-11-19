@@ -5,6 +5,7 @@ import {
   conversationTemplatePublishResultSchema,
   type ConversationTemplateDraft,
   type ConversationTemplatePublishJob,
+  type ConversationTemplatePublishResult,
   type ConversationTemplateVersion
 } from '@myagentroam/protocol';
 import { emitAuditAfterCommit, resourceAuditEvent } from './audit.js';
@@ -33,6 +34,7 @@ interface ConversationTemplatePublishContext {
   readonly workspaceId: string;
   readonly revision: number;
 }
+/** Owns Server publish jobs and applies Node receipts in a separate local transaction. */
 export class ConversationTemplatePublisher {
   constructor(
     private readonly database: TemplateStore,
@@ -111,22 +113,13 @@ export class ConversationTemplatePublisher {
       }
     }
 
+    let result: ConversationTemplatePublishResult;
     try {
-      const result = conversationTemplatePublishResultSchema.parse(
-        await dispatch(draft, input.data.requestId, requestedByUserId)
-      );
-      if (
-        result.job.id !== input.data.requestId ||
-        result.job.templateId !== templateId ||
-        result.job.draftRevision !== input.data.draftRevision
-      )
-        throw new Error('CONVERSATION_TEMPLATE_PUBLISH_RESULT_INVALID');
-      return await this.applyPublishResult(
-        actorUserId,
-        requestedByUserId,
+      result = parsePublishResult(
+        await dispatch(draft, input.data.requestId, requestedByUserId),
         draft,
-        { ...result.job, createdAt },
-        result.version
+        input.data.requestId,
+        requestedByUserId
       );
     } catch (error) {
       const code = stableErrorCode(error, 'CONVERSATION_TEMPLATE_PUBLISH_FAILED');
@@ -143,6 +136,15 @@ export class ConversationTemplatePublisher {
       });
       return this.applyPublishResult(actorUserId, requestedByUserId, draft, failed, undefined);
     }
+
+    // Do not mark the job failed when applying a valid receipt fails locally.
+    return this.applyPublishResult(
+      actorUserId,
+      requestedByUserId,
+      draft,
+      { ...result.job, createdAt },
+      result.version
+    );
   }
 
   async publishStatus(
@@ -158,16 +160,9 @@ export class ConversationTemplatePublisher {
     const current = publishJob(stored);
     if (current.status === 'SUCCEEDED' || current.status === 'FAILED') return current;
     const context = publishContext(stored);
-    const result = conversationTemplatePublishResultSchema.parse(
-      await refresh(context.nodeId, context.workspaceId, templateId, jobId)
-    );
-    if (
-      result.job.id !== jobId ||
-      result.job.templateId !== templateId ||
-      result.job.draftRevision !== current.draftRevision
-    )
-      throw new Error('CONVERSATION_TEMPLATE_PUBLISH_RESULT_INVALID');
+    const raw = await refresh(context.nodeId, context.workspaceId, templateId, jobId);
     const requestedByUserId = publishRequester(stored);
+    const result = parsePublishResult(raw, context, jobId, requestedByUserId);
     return this.applyPublishResult(
       actorUserId,
       requestedByUserId,
@@ -179,15 +174,13 @@ export class ConversationTemplatePublisher {
 
   private async applyPublishResult(
     actorUserId: number,
-    expectedPublisherUserId: number,
+    requestedByUserId: number,
     context: ConversationTemplatePublishContext,
     job: ConversationTemplatePublishJob,
     version: ConversationTemplateVersion | undefined
   ): Promise<ConversationTemplatePublishJob> {
-    if (version !== undefined && version.publishedByUserId !== expectedPublisherUserId)
-      throw new Error('CONVERSATION_TEMPLATE_PUBLISH_RESULT_INVALID');
     return withMysqlTransaction(this.database.raw, async (connection) => {
-      await lockMysqlUsers(connection, [expectedPublisherUserId]);
+      await lockMysqlUsers(connection, [requestedByUserId]);
       // Take the exclusive parent lock before the job lock; never upgrade a shared lock.
       const [templateRows] = await connection.execute<RowDataPacket[]>(
         `SELECT template.current_version_id,template.draft_revision,template.status,template.name,
@@ -321,6 +314,23 @@ export class ConversationTemplatePublisher {
       )
     );
   }
+}
+
+function parsePublishResult(
+  raw: unknown,
+  context: ConversationTemplatePublishContext,
+  jobId: string,
+  requestedByUserId: number
+): ConversationTemplatePublishResult {
+  const result = conversationTemplatePublishResultSchema.parse(raw);
+  if (
+    result.job.id !== jobId ||
+    result.job.templateId !== context.templateId ||
+    result.job.draftRevision !== context.revision ||
+    (result.version !== undefined && result.version.publishedByUserId !== requestedByUserId)
+  )
+    throw new Error('CONVERSATION_TEMPLATE_PUBLISH_RESULT_INVALID');
+  return result;
 }
 
 function requireMatchingPublishJob(

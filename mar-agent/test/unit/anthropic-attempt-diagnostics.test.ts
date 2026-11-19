@@ -154,21 +154,28 @@ describe('Anthropic attempt diagnostics', () => {
     }
   );
 
-  it('reports a terminal failure without replaying visible semantic output', async () => {
-    const { model, requestCount } = await fixture([[...success.slice(0, 2), overload]]);
-    const diagnostics: ModelAttemptDiagnostic[] = [];
-    await expect(
-      drain(
-        new AnthropicMessagesAdapter(model).start(
-          request(diagnostics),
-          new AbortController().signal
-        )
-      )
-    ).rejects.toMatchObject({ code: 'system_cpu_overloaded' });
-    expect(requestCount()).toBe(1);
-    expect(diagnostics.map(({ state }) => state)).toEqual(['STARTED', 'FAILED']);
-    expect(diagnostics[1]).toMatchObject({ semanticEventObserved: true, willRetry: false });
-  });
+  it.each([false, true])(
+    'hands off visible stream recovery only with a shared budget (%s)',
+    async (sharedBudget) => {
+      const { model, requestCount } = await fixture([[...success.slice(0, 2), overload]]);
+      const diagnostics: ModelAttemptDiagnostic[] = [];
+      const modelRequest = request(diagnostics);
+      if (!sharedBudget) delete modelRequest.retryState;
+      await expect(
+        drain(new AnthropicMessagesAdapter(model).start(modelRequest, new AbortController().signal))
+      ).rejects.toMatchObject({ code: 'system_cpu_overloaded' });
+      expect(requestCount()).toBe(1);
+      expect(diagnostics.map(({ state }) => state)).toEqual(['STARTED', 'FAILED']);
+      expect(diagnostics[1]).toMatchObject({
+        semanticEventObserved: true,
+        retryable: true,
+        willRetry: sharedBudget,
+        ...(sharedBudget ? { retryDelayMs: 0, retryReason: 'STREAM' } : {})
+      });
+      if (sharedBudget)
+        expect(modelRequest.retryState).toMatchObject({ attempts: 1, retryDelayMs: 0 });
+    }
+  );
 
   it('does not report a request when cancelled before the first attempt', async () => {
     const { model, requestCount } = await fixture();

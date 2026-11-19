@@ -1665,7 +1665,7 @@ describe('MAR Agent runtime credentials', () => {
       this: WebSocket,
       ...args: unknown[]
     ) {
-      if (sendFailures < 8) {
+      if (sendFailures < 5) {
         sendFailures++;
         const callback = args.findLast(
           (value): value is (error?: Error) => void => typeof value === 'function'
@@ -1702,7 +1702,7 @@ describe('MAR Agent runtime credentials', () => {
       expect(failedResult).toMatchObject({
         status: 'failed',
         errorCode: 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
-        errorMessage: expect.stringContaining('Model request failed after 8 attempts (7 retries).')
+        errorMessage: expect.stringContaining('Model request failed after 5 attempts (4 retries).')
       });
       expect(failedResult.errorMessage).toContain('EPIPE');
       expect(await failedEvents).toContainEqual(
@@ -1710,7 +1710,7 @@ describe('MAR Agent runtime credentials', () => {
           type: 'execution.failed',
           code: 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
           message: expect.stringMatching(
-            /Model request failed after 8 attempts \(7 retries\)\.[\s\S]*EPIPE/u
+            /Model request failed after 5 attempts \(4 retries\)\.[\s\S]*EPIPE/u
           )
         })
       );
@@ -1743,7 +1743,7 @@ describe('MAR Agent runtime credentials', () => {
           protocol: 'OPENAI_RESPONSES',
           transport: 'WEBSOCKET',
           attempt: 1,
-          maxAttempts: 8,
+          maxAttempts: 5,
           continuation: false,
           credentialReason: 'REQUEST'
         }),
@@ -1805,23 +1805,20 @@ describe('MAR Agent runtime credentials', () => {
           willRetry: true,
           retryDelayMs: expect.any(Number)
         }),
-        ...[5, 6, 7, 8].flatMap((attempt) => [
-          expect.objectContaining({
-            purpose: 'EXECUTION',
-            state: 'STARTED',
-            attempt,
-            credentialReason: 'RECONNECT'
-          }),
-          expect.objectContaining({
-            purpose: 'EXECUTION',
-            state: 'FAILED',
-            attempt,
-            causeCode: 'EPIPE',
-            retryable: true,
-            willRetry: attempt < 8,
-            ...(attempt < 8 ? { retryDelayMs: expect.any(Number) } : {})
-          })
-        ])
+        expect.objectContaining({
+          purpose: 'EXECUTION',
+          state: 'STARTED',
+          attempt: 5,
+          credentialReason: 'RECONNECT'
+        }),
+        expect.objectContaining({
+          purpose: 'EXECUTION',
+          state: 'FAILED',
+          attempt: 5,
+          causeCode: 'EPIPE',
+          retryable: true,
+          willRetry: false
+        })
       ]);
       const retryDelays = failedAttempts
         .filter(
@@ -1829,7 +1826,7 @@ describe('MAR Agent runtime credentials', () => {
             attempt.state === 'FAILED' && typeof attempt.retryDelayMs === 'number'
         )
         .map((attempt) => attempt.retryDelayMs);
-      expect(retryDelays).toHaveLength(7);
+      expect(retryDelays).toHaveLength(4);
       for (const [index, delay] of retryDelays.entries()) {
         expect(delay).toBeGreaterThanOrEqual((index + 1) * 5_000);
         expect(delay).toBeLessThanOrEqual((index + 1) * 5_000 + 3_000);
@@ -1839,7 +1836,7 @@ describe('MAR Agent runtime credentials', () => {
           purpose: 'EXECUTION',
           state: 'STARTED',
           attempt: 1,
-          maxAttempts: 8,
+          maxAttempts: 5,
           credentialReason: 'REQUEST'
         }),
         expect.objectContaining({
@@ -1849,7 +1846,7 @@ describe('MAR Agent runtime credentials', () => {
           durationMs: expect.any(Number)
         })
       ]);
-      expect(server.connections()).toBe(9);
+      expect(server.connections()).toBe(6);
       expect(server.requests).toHaveLength(1);
     } finally {
       retryWait.mockRestore();

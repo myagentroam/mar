@@ -8,6 +8,7 @@ import { DirectTransferCoordinator } from '@myagentroam/server-core/direct-trans
 import { TerminalDirectCoordinator } from '@myagentroam/server-core/terminal-direct-coordinator';
 import { NodeRequestBroker } from '../../src/service/node-request-broker.js';
 import { MysqlServerDatabase } from '../../src/mysql/server-database.js';
+import { ResourceAccessService } from '../../src/rbac/resource-access-service.js';
 import { ModelUsageStore } from '@myagentroam/server-core/model-usage-store';
 import * as modelComposition from '../../src/composition/server-models.js';
 import { NodeControl } from '../../src/node-control.js';
@@ -492,6 +493,107 @@ describe('Server notification dependency close order', () => {
     await closing;
     expect(mysql.events.filter((event) => event === 'pool-close')).toHaveLength(2);
   });
+
+  it.each([
+    ['close', 'resolves'],
+    ['shutdown', 'rejects']
+  ] as const)('%s drains started Watch authorization that %s', async (entry, outcome) => {
+    const { app, pending, control } = await ready();
+    const watchStarted = gate();
+    const watchPermission = gate();
+    const watchAuthorizations: unknown[] = [];
+    vi.mocked(ResourceAccessService.prototype.canRelay).mockImplementation(
+      async (_userId, _nodeId, operation, message, workspaceId) => {
+        if (operation === 'workbench.event.receive' && workspaceId === 'workspace-watch') {
+          watchAuthorizations.push(message);
+          watchStarted.release();
+          await watchPermission.promise;
+          mysql.events.push('watch-authorization-settled');
+          if (outcome === 'rejects') throw new Error('WATCH_STORAGE_UNAVAILABLE');
+        }
+        return true;
+      }
+    );
+    vi.spyOn(MysqlServerDatabase.prototype, 'authenticateNode').mockResolvedValue({
+      id: 'node-1',
+      ownerUserId: 1,
+      displayName: null,
+      registeredAddress: 'unknown',
+      metadata: '{}',
+      disabled: false,
+      lastHeartbeatAt: null
+    });
+    vi.spyOn(MysqlServerDatabase.prototype, 'updateNodeHeartbeat').mockResolvedValue(undefined);
+
+    const node = new WatchFixtureSocket('node');
+    control.attach(node as unknown as WebSocket);
+    node.receive(createEnvelope('authenticate', { nodeId: 'node-1', credential: 'fixture' }));
+    await nextTurn();
+    expect(node.sent).toContainEqual(expect.objectContaining({ type: 'authenticated' }));
+    const capabilities = createEnvelope('capabilities', {
+      platform: 'linux',
+      architecture: 'x64',
+      nodeVersion: 'v24',
+      nodeAppVersion: '0.11.39',
+      codex: { available: false },
+      claudeCode: { available: false }
+    });
+    node.receive(capabilities);
+    await nextTurn();
+    expect(node.sent).toContainEqual(
+      expect.objectContaining({ replyTo: capabilities.id, type: 'ack' })
+    );
+
+    const browser = new WatchFixtureSocket('browser');
+    control.attachBrowserWorkbench(browser as unknown as WebSocket, {
+      userId: 1,
+      sessionHash: 'session'
+    });
+    browser.receive({ type: 'resume' });
+    const workbenchConnectionId = browser.sent[0]?.workbenchConnectionId;
+    expect(browser.sent[0]).toMatchObject({ type: 'workbench.ready' });
+    const watch = (revision: number) =>
+      createEnvelope('watch.event', {
+        type: 'watch.workspace.snapshot',
+        workbenchConnectionId,
+        nodeId: 'node-1',
+        nodeGeneration: 'generation-1',
+        watchId: 'watch-workspace',
+        workspaceId: 'workspace-watch',
+        topic: 'sessions',
+        revision,
+        snapshotSequence: revision,
+        expiresAt: Date.now() + 60_000,
+        payload: []
+      });
+    const first = watch(1);
+    node.receive(first);
+    await watchStarted.promise;
+    node.receive(watch(2));
+    await nextTurn();
+    expect(watchAuthorizations).toEqual([{ type: 'watch.event', event: first.payload }]);
+
+    const closing = app[entry]();
+    pending.release();
+    await nextTurn();
+    expect(mysql.events).toEqual(
+      expect.arrayContaining(['node-socket-closed', 'browser-socket-closed'])
+    );
+    expect(mysql.events.indexOf('node-socket-closed')).toBeLessThan(
+      mysql.events.indexOf('browser-socket-closed')
+    );
+    node.receive(watch(3));
+    expect(mysql.events).not.toContain('pool-close');
+
+    watchPermission.release();
+    await closing;
+    expect(mysql.events.filter((event) => event === 'pool-close')).toHaveLength(2);
+    expect(mysql.events.indexOf('watch-authorization-settled')).toBeLessThan(
+      mysql.events.indexOf('pool-close')
+    );
+    expect(watchAuthorizations).toHaveLength(1);
+    expect(browser.sent.filter((frame) => frame.type === 'watch.event')).toEqual([]);
+  });
   it.each(['close', 'shutdown'] as const)(
     '%s stops tasks and drains an in-flight Push before closing either pool',
     async (entry) => {
@@ -543,3 +645,28 @@ describe('Server notification dependency close order', () => {
     expect(transport).toHaveBeenCalledOnce();
   });
 });
+
+class WatchFixtureSocket extends EventEmitter {
+  readonly OPEN = 1;
+  readonly bufferedAmount = 0;
+  readonly sent: Array<Record<string, unknown>> = [];
+  readyState = this.OPEN;
+
+  constructor(private readonly name: 'node' | 'browser') {
+    super();
+  }
+
+  send(raw: string) {
+    this.sent.push(JSON.parse(raw));
+  }
+
+  receive(message: unknown) {
+    this.emit('message', JSON.stringify(message), false);
+  }
+
+  close() {
+    this.readyState = 3;
+    mysql.events.push(`${this.name}-socket-closed`);
+    this.emit('close');
+  }
+}

@@ -215,6 +215,7 @@ button.watch-status[aria-disabled='true'] {
   padding: 0;
   list-style: none;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .content-search-results > li + li {

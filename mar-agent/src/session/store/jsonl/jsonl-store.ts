@@ -828,9 +828,11 @@ export class JsonlSessionStore implements SessionStore {
         await this.#refreshIndex();
         const source = this.#shared.index.sessions.find((item) => item.id === sourceSessionId);
         if (!source) throw new AgentError('MAR_AGENT_SESSION_NOT_FOUND', 'Session was not found.');
-        if (source.storage?.encoding !== 2) await preflightV1Session(sourceRoot);
+        if (input.boundaryTurnId !== null && source.storage?.encoding !== 2)
+          await preflightV1Session(sourceRoot);
         await this.#ensureRootV2();
-        const records = await this.#readRecords(sourceSessionId);
+        const records =
+          input.boundaryTurnId === null ? [] : await this.#readRecords(sourceSessionId, source);
         let publicationConfirmed = false;
         return await forkSessionOperation(
           source,

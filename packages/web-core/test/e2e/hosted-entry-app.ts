@@ -17,7 +17,7 @@ themePreferenceService().setTheme(
   new URL(location.href).searchParams.get('theme') === 'daylight' ? 'daylight' : 'vscode-dark-2026'
 );
 
-// Only HTTP responses are controlled by Playwright; the page and domain services are real.
+// The page and domain services are real; Playwright supplies HTTP responses and Watch frames.
 const existing = new URL(location.href).searchParams.has('existing');
 const workspacePage = new URL(location.href).searchParams.has('workspace-page');
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -63,6 +63,11 @@ const workspace = createHostedConversationWorkspaceService({
   requestTimeoutMs: 5000,
   confirmationTimeoutMs: 5000
 });
+if (new URL(location.href).searchParams.has('watch-events')) {
+  window.addEventListener('fixture-hosted-watch', (event) => {
+    if (event instanceof CustomEvent) workspace.handleWatchEvent(event.detail);
+  });
+}
 const entry = createHostedConversationEntryService(request, {
   submission: {
     workspace,

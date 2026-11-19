@@ -41,6 +41,7 @@ const visibleNotifications = computed(() => {
 <template>
   <section
     class="workbench-notification-content"
+    :class="{ 'is-preview': previewId !== undefined }"
     :aria-label="translate('generated.workbenchNotificationCenter.notifications')"
   >
     <header v-if="previewId === undefined" class="workbench-notification-toolbar">
@@ -266,6 +267,8 @@ const visibleNotifications = computed(() => {
 }
 .workbench-notification-list > li.unread {
   border-left: 2px solid var(--mar-border-strong);
+}
+.workbench-notification-content:not(.is-preview) .workbench-notification-list > li.unread {
   background: var(--mar-bg-subtle);
 }
 .workbench-notification-list > li > button:first-child {

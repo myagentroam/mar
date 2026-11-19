@@ -3,8 +3,20 @@ import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import { ref } from 'vue';
-import { ElDrawer } from 'element-plus';
+import {
+  ElCascader,
+  ElDatePicker,
+  ElDrawer,
+  ElInputNumber,
+  ElTimePicker,
+  ElTimeSelect
+} from 'element-plus';
+import 'element-plus/es/components/cascader/style/css';
+import 'element-plus/es/components/date-picker/style/css';
 import 'element-plus/es/components/drawer/style/css';
+import 'element-plus/es/components/input-number/style/css';
+import 'element-plus/es/components/time-picker/style/css';
+import 'element-plus/es/components/time-select/style/css';
 import MarIcon from '../../src/view/common/MarIcon.vue';
 import { marIcon } from '../../src/util/mar-icons.js';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
@@ -132,6 +144,44 @@ function saveFeedbackDialog(): void {
     <el-select v-model="selection" aria-label="Disabled select" disabled>
       <el-option label="One" value="one" />
     </el-select>
+  </section>
+  <section aria-label="Standard field boundaries">
+    <el-input aria-label="Text field" model-value="Value" />
+    <el-input type="textarea" aria-label="Textarea field" model-value="Value" />
+    <el-input-number aria-label="Number field" :model-value="2" />
+    <el-select v-model="selection" aria-label="Select field">
+      <el-option label="One" value="one" />
+    </el-select>
+    <el-cascader placeholder="Cascader field" :options="[{ value: 'one', label: 'One' }]" />
+    <el-date-picker placeholder="Single date field" type="date" />
+    <el-date-picker type="daterange" start-placeholder="Start date" end-placeholder="End date" />
+    <el-time-select aria-label="Time select field" />
+    <el-time-picker placeholder="Single time field" />
+    <el-time-picker is-range start-placeholder="Start time" end-placeholder="End time" />
+    <el-input aria-label="Disabled text field" disabled model-value="Value" />
+    <el-select :model-value="selection" aria-label="Disabled field" disabled>
+      <el-option label="One" value="one" />
+    </el-select>
+    <el-date-picker
+      type="daterange"
+      start-placeholder="Disabled start date"
+      end-placeholder="Disabled end date"
+      disabled
+    />
+    <el-form>
+      <el-form-item error="Select a value">
+        <el-select aria-label="Invalid field">
+          <el-option label="One" value="one" />
+        </el-select>
+      </el-form-item>
+      <el-form-item error="Select a date range">
+        <el-date-picker
+          type="daterange"
+          start-placeholder="Invalid start date"
+          end-placeholder="Invalid end date"
+        />
+      </el-form-item>
+    </el-form>
   </section>
   <section aria-label="Tabs state samples">
     <el-tabs v-model="activeTab">

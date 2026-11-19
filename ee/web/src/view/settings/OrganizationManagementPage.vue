@@ -35,6 +35,7 @@ const loading = ref(false);
 const saving = ref(false);
 const ready = ref(false);
 const refreshLoading = ref(false);
+let organizationLoadSequence = 0;
 const organizationOpen = ref(false);
 const editingOrganizationId = ref<number>();
 const organizationDetail = ref<Organization>();
@@ -112,14 +113,19 @@ function editOrganization(organization: Organization): void {
   };
   organizationOpen.value = true;
 }
-async function load(): Promise<void> {
+async function load(refresh = false): Promise<void> {
+  const sequence = ++organizationLoadSequence;
   loading.value = true;
+  refreshLoading.value = refresh;
   try {
-    organizations.value = (
-      await props.request<{ organizations: readonly Organization[] }>('/api/organizations')
-    ).organizations;
+    const result = await props.request<{ organizations: readonly Organization[] }>(
+      '/api/organizations'
+    );
+    if (sequence !== organizationLoadSequence) return;
+    organizations.value = result.organizations;
     ready.value = true;
   } catch (error) {
+    if (sequence !== organizationLoadSequence) return;
     showMessage(
       error instanceof Error
         ? errorMessage(error)
@@ -128,15 +134,10 @@ async function load(): Promise<void> {
       error
     );
   } finally {
-    loading.value = false;
-  }
-}
-async function refresh(): Promise<void> {
-  refreshLoading.value = true;
-  try {
-    await load();
-  } finally {
-    refreshLoading.value = false;
+    if (sequence === organizationLoadSequence) {
+      loading.value = false;
+      refreshLoading.value = false;
+    }
   }
 }
 async function saveOrganization(): Promise<void> {
@@ -228,13 +229,14 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       <el-button
         :icon="marIcon('refresh')"
         :loading="refreshLoading && ready"
-        @click="refresh"
+        @click="load(true)"
         :loading-icon="marIcon('loading-action')"
         >{{ translate('generated.organizationUserManagementPage.refresh') }}</el-button
       >
     </div>
     <el-table
       v-loading="loading && ready && !refreshLoading"
+      :aria-busy="loading"
       class="organization-tree-table clickable-rows"
       :data="organizationTree"
       row-key="id"

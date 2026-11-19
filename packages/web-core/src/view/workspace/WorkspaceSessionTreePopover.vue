@@ -69,7 +69,7 @@ onBeforeUnmount(() => {
     virtual-triggering
     :placement="placement ?? 'bottom-start'"
     :show-arrow="false"
-    popper-class="session-tree-popover"
+    popper-class="session-tree-popover mar-content-popover"
     width="min(480px, calc(100vw - 24px))"
     :popper-options="{
       modifiers: [{ name: 'preventOverflow', options: { padding: 12, tether: false } }]

@@ -665,7 +665,7 @@ describe('model adapters', () => {
         message: `MAR_AGENT_MODEL_TIMEOUT: Model endpoint returned HTTP ${status}.`,
         retryable: true
       });
-      expect(requests).toBe(8);
+      expect(requests).toBe(5);
     }
   );
 
@@ -1288,7 +1288,7 @@ describe('model adapters', () => {
       code: 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
       retryable: true
     });
-    expect(server.requestCount()).toBe(8);
+    expect(server.requestCount()).toBe(5);
   });
 
   it('does not replay an OpenAI stream after a semantic event was emitted', async () => {
@@ -1518,7 +1518,7 @@ describe('model adapters', () => {
       message: 'system_cpu_overloaded: system cpu overloaded (current: 91.6%, threshold: 90%)',
       retryable: true
     });
-    expect(server.requestCount()).toBe(8);
+    expect(server.requestCount()).toBe(5);
   });
 
   it('does not replay an OpenAI stream overload error after a semantic event was emitted', async () => {
@@ -1638,7 +1638,7 @@ describe('model adapters', () => {
       message: 'system_cpu_overloaded: system cpu overloaded (current: 91.6%, threshold: 90%)',
       retryable: true
     });
-    expect(server.requestCount()).toBe(8);
+    expect(server.requestCount()).toBe(5);
   });
 
   it('does not replay an Anthropic stream overload error after a semantic event was emitted', async () => {

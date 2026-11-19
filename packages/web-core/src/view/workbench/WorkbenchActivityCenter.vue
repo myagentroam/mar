@@ -205,11 +205,7 @@ onBeforeUnmount(() => {
       :show-arrow="!mobileMode && previewId !== undefined"
       :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 8 } }] }"
       :persistent="false"
-      :popper-class="
-        previewId !== undefined
-          ? 'workbench-activity-popover is-preview'
-          : 'workbench-activity-popover'
-      "
+      popper-class="workbench-activity-popover mar-content-popover"
     >
       <WorkbenchNotificationList
         v-if="previewId !== undefined"
@@ -337,8 +333,5 @@ onBeforeUnmount(() => {
 }
 :global(.workbench-activity-popover.el-popover) {
   padding: 0;
-}
-:global(.workbench-activity-popover.el-popover.is-preview) {
-  --el-bg-color-overlay: var(--mar-bg-subtle);
 }
 </style>

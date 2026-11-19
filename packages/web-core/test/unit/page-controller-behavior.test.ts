@@ -45,6 +45,8 @@ const captured = vi.hoisted(() => ({
     connected: boolean;
   }[],
   live: undefined as Parameters<typeof createWorkbenchLiveService>[0] | undefined,
+  liveConnection: undefined as ReturnType<typeof createWorkbenchLiveService> | undefined,
+  useRealWatches: false,
   workspaceWatch: undefined as Parameters<typeof createWorkspaceWatchService>[0] | undefined,
   lifecycle: undefined as Parameters<typeof installWorkbenchPageLifecycle>[0] | undefined,
   authenticated: undefined as
@@ -333,22 +335,30 @@ vi.mock('../../src/service/workspace-watch-service.js', async (original) => {
     }
   };
 });
-// The controller owns callback wiring; transport and watch execution have their own suites.
-vi.mock('../../src/service/workbench-live-service.js', () => ({
-  createWorkbenchLiveService: (options: Parameters<typeof createWorkbenchLiveService>[0]) => {
-    captured.live = options;
-    return {
-      connected: ref(false),
-      waitForReady: captured.waitForReady,
-      restore: vi.fn(),
-      connect: vi.fn(),
-      reconnect: vi.fn(),
-      close: vi.fn(),
-      sendDirect: vi.fn(),
-      sendTerminalDirect: vi.fn()
-    };
-  }
-}));
+vi.mock('../../src/service/workbench-live-service.js', async (original) => {
+  const actual = await original<typeof import('../../src/service/workbench-live-service.js')>();
+  return {
+    createWorkbenchLiveService: (options: Parameters<typeof createWorkbenchLiveService>[0]) => {
+      captured.live = options;
+      if (captured.useRealWatches) {
+        return (captured.liveConnection = actual.createWorkbenchLiveService({
+          ...options,
+          canConnect: () => true
+        }));
+      }
+      return {
+        connected: ref(false),
+        waitForReady: captured.waitForReady,
+        restore: vi.fn(),
+        connect: vi.fn(),
+        reconnect: vi.fn(),
+        close: vi.fn(),
+        sendDirect: vi.fn(),
+        sendTerminalDirect: vi.fn()
+      };
+    }
+  };
+});
 vi.mock('../../src/service/workbench-page-lifecycle-service.js', () => ({
   installWorkbenchPageLifecycle: (options: Parameters<typeof installWorkbenchPageLifecycle>[0]) => {
     captured.lifecycle = options;
@@ -358,13 +368,19 @@ vi.mock('../../src/service/hosted-conversation-watch-coordinator.js', async (ori
   const actual =
     await original<typeof import('../../src/service/hosted-conversation-watch-coordinator.js')>();
   return {
+    ...actual,
     createHostedConversationWatchCoordinator: (
       ...args: Parameters<typeof actual.createHostedConversationWatchCoordinator>
-    ) => ({
-      ...actual.createHostedConversationWatchCoordinator(...args),
-      startWorkspace: captured.startWorkspace,
-      restartWorkspace: captured.restartWorkspace
-    })
+    ) => {
+      const coordinator = actual.createHostedConversationWatchCoordinator(...args);
+      return captured.useRealWatches
+        ? coordinator
+        : {
+            ...coordinator,
+            startWorkspace: captured.startWorkspace,
+            restartWorkspace: captured.restartWorkspace
+          };
+    }
   };
 });
 vi.mock('../../src/service/admin-auth-service.js', async (original) => {
@@ -438,6 +454,10 @@ beforeEach(() => {
 afterEach(() => {
   captured.lifecycle?.disposeWebVersionUpdateCheck();
   for (const view of mounted.splice(0)) view.unmount();
+  captured.liveConnection?.close();
+  captured.liveConnection = undefined;
+  captured.useRealWatches = false;
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -475,6 +495,209 @@ function controller(pwaApplication?: PwaApplicationService, initialView: Workben
 }
 
 describe('Workbench controller composition behavior', () => {
+  it.each(['nodes', 'conversations'] as const)(
+    'recovers only the active %s Watch after fresh and resumed readiness and a matching Node gap',
+    async (view) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+      captured.useRealWatches = true;
+      const sockets: FakeSocket[] = [];
+      class FakeSocket extends EventTarget {
+        static readonly OPEN = 1;
+        readonly readyState = FakeSocket.OPEN;
+        readonly send = vi.fn();
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+        close(): void {
+          this.dispatchEvent(new Event('close'));
+        }
+        frame(message: object): void {
+          this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(message) }));
+        }
+      }
+      vi.stubGlobal('WebSocket', FakeSocket);
+      const { page } = controller(undefined, view);
+      const workspace = { nodeId: node.id, workspaceId: 'workspace-a' };
+      await captured.seedNodes!([node]);
+      captured.setWorkspaces!([{ id: workspace.workspaceId, path: '/project', kind: 'DIRECTORY' }]);
+      captured.setTarget!(workspace);
+      const hosted = page.hosted.hostedConversationWorkspace;
+      hosted.selectConversation(node.id, 'conversation-a');
+      const operations: Array<{
+        path: string;
+        method: string;
+        body: { nodeId?: string; workbenchConnectionId: string; watchId: string; mode?: string };
+      }> = [];
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        const path = String(input);
+        const method = init?.method ?? 'GET';
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        if (path.endsWith('/watch') || path.endsWith('/workbench-capabilities'))
+          operations.push({ path, method, body });
+        return new Response(
+          JSON.stringify({
+            nodes: [node],
+            accepted: true,
+            watchId: body.watchId,
+            expiresAt: Date.now() + 30_000,
+            nodeGeneration: 'generation-a'
+          })
+        );
+      });
+      const initials = () => operations.filter(({ body }) => body.mode === 'initial');
+      const ready = (socket: FakeSocket, connection: string, resumed: boolean) =>
+        socket.frame({
+          type: 'workbench.ready',
+          workbenchConnectionId: connection,
+          workbenchResumeToken: `token-${connection}`,
+          resumed
+        });
+      const watchPath =
+        view === 'nodes'
+          ? '/api/workspaces/workspace-a/watch'
+          : '/api/nodes/node-a/hosted-conversations/conversation-a/watch';
+      const expectInitials = (connections: string[]) => {
+        expect(initials().map(({ path, body }) => [path, body.workbenchConnectionId])).toEqual(
+          connections.map((connection) => [watchPath, connection])
+        );
+        const ids = initials().map(({ body }) => body.watchId);
+        expect(ids.every((id) => typeof id === 'string' && id.length > 0)).toBe(true);
+        expect(new Set(ids).size).toBe(connections.length);
+        if (view === 'nodes')
+          expect(initials().every(({ body }) => body.nodeId === workspace.nodeId)).toBe(true);
+      };
+      const snapshot = (subscription: (typeof operations)[number]['body']) => {
+        const identity = {
+          workbenchConnectionId: subscription.workbenchConnectionId,
+          watchId: subscription.watchId,
+          nodeId: node.id,
+          nodeGeneration: 'generation-a',
+          revision: 1
+        };
+        return {
+          type: 'watch.event',
+          event:
+            view === 'nodes'
+              ? {
+                  ...identity,
+                  type: 'watch.workspace.snapshot',
+                  workspaceId: workspace.workspaceId,
+                  topic: 'sessions',
+                  payload: { sessions: [] }
+                }
+              : {
+                  ...identity,
+                  type: 'watch.hosted-conversation.snapshot',
+                  conversationId: 'conversation-a',
+                  snapshotSequence: 1,
+                  expiresAt: Date.now() + 30_000,
+                  payload: {
+                    conversation: {
+                      id: 'conversation-a',
+                      nodeId: node.id,
+                      sessionId: 'hosted-session',
+                      templateId: 'template-a',
+                      templateName: 'Template',
+                      activeVersionId: 'version-a',
+                      title: 'Conversation',
+                      titleSource: 'CUSTOM',
+                      pinnedAt: null,
+                      status: 'ACTIVE',
+                      modelId: 'model-a',
+                      createdAt: 1,
+                      updatedAt: 1,
+                      lastActivityAt: 1
+                    },
+                    template: {
+                      id: 'template-a',
+                      nodeId: node.id,
+                      name: 'Template',
+                      description: '',
+                      status: 'ACTIVE',
+                      currentVersionId: 'version-a',
+                      available: true,
+                      createdAt: 1,
+                      updatedAt: 1
+                    },
+                    run: null,
+                    turns: [],
+                    historyNextCursor: null,
+                    files: [],
+                    models: [],
+                    error: null,
+                    snapshotSequence: 1
+                  }
+                }
+        };
+      };
+      const watchReady = () =>
+        view === 'nodes'
+          ? page.application.workspaceWatchTopicStatus.sessions === 'ready'
+          : hosted.watchReady.value;
+      const confirm = async (socket: FakeSocket, index: number) => {
+        expect(watchReady()).toBe(false);
+        if (index > 0) {
+          socket.frame(snapshot(initials()[index - 1]!.body));
+          await flushComponent();
+          expect(watchReady()).toBe(false);
+        }
+        socket.frame(snapshot(initials()[index]!.body));
+        await flushComponent();
+        expect(watchReady()).toBe(true);
+      };
+
+      captured.liveConnection!.connect();
+      sockets[0]!.dispatchEvent(new Event('open'));
+      expectInitials([]);
+      ready(sockets[0]!, 'connection-original', false);
+      await flushComponent();
+      expectInitials(['connection-original']);
+      await confirm(sockets[0]!, 0);
+
+      sockets[0]!.close();
+      await vi.advanceTimersByTimeAsync(500);
+      sockets[1]!.dispatchEvent(new Event('open'));
+      expectInitials(['connection-original']);
+      ready(sockets[1]!, 'connection-fresh', false);
+      await flushComponent();
+      expectInitials(['connection-original', 'connection-fresh']);
+      await confirm(sockets[1]!, 1);
+
+      sockets[1]!.close();
+      await vi.advanceTimersByTimeAsync(500);
+      sockets[2]!.dispatchEvent(new Event('open'));
+      expectInitials(['connection-original', 'connection-fresh']);
+      ready(sockets[2]!, 'connection-fresh', true);
+      await flushComponent();
+      const connections = ['connection-original', 'connection-fresh', 'connection-fresh'];
+      expectInitials(connections);
+      if (view === 'conversations') await confirm(sockets[2]!, 2);
+
+      sockets[2]!.frame({ type: 'resync-required', nodeId: 'other-node' });
+      await flushComponent();
+      expectInitials(connections);
+      const recoveryStart = operations.length;
+      sockets[2]!.frame({ type: 'resync-required', nodeId: node.id });
+      await flushComponent();
+      expectInitials([...connections, 'connection-fresh']);
+      const recovery = operations.slice(recoveryStart);
+      if (view === 'nodes') {
+        expect(recovery[0]?.path).toBe('/api/nodes/node-a/workbench-capabilities');
+      } else {
+        expect(recovery.map(({ path, method }) => [path, method])).toEqual([
+          [watchPath, 'DELETE'],
+          [watchPath, 'POST']
+        ]);
+        expect(recovery[0]?.body).toEqual({
+          watchId: initials()[2]!.body.watchId,
+          workbenchConnectionId: 'connection-fresh'
+        });
+        await confirm(sockets[2]!, 3);
+      }
+    }
+  );
+
   it('finishes hosted route restoration when navigation leaves conversations before readiness', async () => {
     window.location.search = '?view=conversations&node=host-node&conversation=old-conversation';
     const { page, navigation } = controller(undefined, 'conversations');

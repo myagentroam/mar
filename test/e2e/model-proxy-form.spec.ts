@@ -68,6 +68,17 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       const save = locale === 'zh-CN' ? '保存' : 'Save';
       await page.getByRole('button', { name: edit, exact: true }).click();
       const dialog = page.getByRole('dialog');
+      const identityFields = dialog.locator('.model-grid').filter({
+        hasText: locale === 'zh-CN' ? '协议' : 'Protocol'
+      });
+      await expect(identityFields.getByRole('textbox')).toHaveValue(inlineModel.name);
+      const modelNameOutline = await identityFields
+        .locator('.el-input__wrapper')
+        .evaluate((element) => getComputedStyle(element).boxShadow);
+      await expect(identityFields.locator('.el-select__wrapper')).toHaveCSS(
+        'box-shadow',
+        modelNameOutline
+      );
       const input = dialog.getByLabel(locale === 'zh-CN' ? 'SOCKS5 代理' : 'SOCKS5 proxy', {
         exact: true
       });

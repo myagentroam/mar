@@ -310,6 +310,9 @@ onBeforeUnmount(() => {
 .workbench-aside-header {
   border-bottom-color: var(--mar-workbench-divider);
 }
+.workbench-aside-tabs :deep(.mar-tab-strip) {
+  overscroll-behavior: contain;
+}
 .workbench-aside-back {
   display: grid;
   width: 30px;
@@ -326,6 +329,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 .workbench-aside-panel {
   display: flex;

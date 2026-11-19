@@ -1190,15 +1190,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   width: 100% !important;
 }
 
-.conversation-panel {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-  background: var(--mar-bg-panel);
-}
-
 .inspector-column {
   position: relative;
   border-left: 1px solid var(--mar-border-subtle);
@@ -1280,13 +1271,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     transition:
       transform 0.16s ease,
       visibility 0s;
-  }
-}
-
-@media (max-width: 767px) {
-  .conversation-panel {
-    grid-area: 1 / 1;
-    min-height: 0;
   }
 }
 
@@ -1401,6 +1385,10 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     flex: 1 1 auto;
     flex-direction: column;
     margin-left: 0;
+  }
+
+  .workspace-grid > .conversation-panel {
+    grid-area: 1 / 1;
   }
 
   .workbench.settings :deep(.settings-content) {

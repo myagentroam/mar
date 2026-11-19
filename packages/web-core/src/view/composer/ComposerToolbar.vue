@@ -521,9 +521,7 @@ function selectFiles(event: Event): void {
 
 .composer-mini-popper {
   z-index: 2500 !important;
-  border: 1px solid var(--mar-border-default) !important;
   border-radius: 8px !important;
-  box-shadow: 0 8px 20px var(--mar-shadow-medium) !important;
 }
 
 .composer-config,

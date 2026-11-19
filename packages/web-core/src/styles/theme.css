@@ -9,6 +9,7 @@ html.console-ui,
 
 :root,
 .mar-theme-preview {
+  --mar-compact-overlay-shadow: 0 4px 12px var(--mar-shadow-medium);
   --mar-font-sans: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color-scheme: light;
   --mar-bg-page: #f7f9fd;
@@ -30,7 +31,7 @@ html.console-ui,
   --mar-border-medium: #7b8da3;
   --mar-border-strong: #7b8da3;
   --mar-input-border: var(--mar-border-default);
-  --mar-input-border-hover: initial;
+  --mar-input-border-hover: var(--mar-border-medium);
   --mar-text-primary: #172033;
   --mar-text-secondary: #52627a;
   --mar-text-tertiary: #5f6f86;
@@ -208,7 +209,7 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-shadow-soft: #0000002e;
   --mar-shadow-medium: #00000047;
   --mar-overlay-scrim: #0000007a;
-  --mar-overlay-border: #313d50;
+  --mar-overlay-border: #414e62;
   --mar-text-neutral-control: #8799b1;
 
   --mar-control-bg-color-overlay: #1a2230;
@@ -223,6 +224,19 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-control-border-color-darker: #313d50;
   --mar-scrollbar-thumb: #8799b185;
   --mar-scrollbar-thumb-hover: #9fb0c7ad;
+}
+
+/* Keep anchored overlays readable over any workspace surface without changing the palette. */
+:root,
+.mar-theme-preview {
+  --mar-overlay-surface: var(--mar-control-bg-color-overlay);
+}
+
+@supports (color: rgb(from black r g b / 1)) {
+  :root,
+  .mar-theme-preview {
+    --mar-overlay-surface: rgb(from var(--mar-control-bg-color-overlay) r g b / 1);
+  }
 }
 
 html.console-ui[data-theme='vscode-dark-2026'] body {

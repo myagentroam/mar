@@ -17,6 +17,7 @@
 
       :root,
       .mar-theme-preview {
+        --mar-compact-overlay-shadow: 0 4px 12px var(--mar-shadow-medium);
         --mar-font-sans: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
         color-scheme: light;
         --mar-bg-page: #f7f9fd;
@@ -37,6 +38,8 @@
         --mar-workbench-divider: var(--mar-border-subtle);
         --mar-border-medium: #7b8da3;
         --mar-border-strong: #7b8da3;
+        --mar-input-border: var(--mar-border-default);
+        --mar-input-border-hover: var(--mar-border-medium);
         --mar-text-primary: #172033;
         --mar-text-secondary: #52627a;
         --mar-text-tertiary: #5f6f86;
@@ -156,11 +159,21 @@
         --mar-fill-hover: #202b3a;
         --mar-table-header-bg: #131922;
         --mar-table-row-hover-bg: #202b3a;
-        --mar-border-default: #252f3e;
-        --mar-border-subtle: #252f3e;
+        --mar-border-default: #374255;
+        --mar-border-subtle: #2f3949;
         --mar-workbench-divider: var(--mar-border-medium);
-        --mar-border-medium: #313d50;
-        --mar-border-strong: #313d50;
+        --mar-border-medium: #414e62;
+        --mar-border-strong: #4a576b;
+        --mar-input-border: color-mix(
+          in srgb,
+          var(--mar-border-default),
+          var(--mar-text-secondary) 40%
+        );
+        --mar-input-border-hover: color-mix(
+          in srgb,
+          var(--mar-input-border),
+          var(--mar-text-primary) 12%
+        );
         --mar-text-primary: #d3dbe7;
         --mar-text-secondary: #a8b8cf;
         --mar-text-tertiary: #8799b1;
@@ -212,7 +225,7 @@
         --mar-shadow-soft: #0000002e;
         --mar-shadow-medium: #00000047;
         --mar-overlay-scrim: #0000007a;
-        --mar-overlay-border: #313d50;
+        --mar-overlay-border: #414e62;
         --mar-text-neutral-control: #8799b1;
 
         --mar-control-bg-color-overlay: #1a2230;
@@ -227,6 +240,19 @@
         --mar-control-border-color-darker: #313d50;
         --mar-scrollbar-thumb: #8799b185;
         --mar-scrollbar-thumb-hover: #9fb0c7ad;
+      }
+
+      /* Keep anchored overlays readable over any workspace surface without changing the palette. */
+      :root,
+      .mar-theme-preview {
+        --mar-overlay-surface: var(--mar-control-bg-color-overlay);
+      }
+
+      @supports (color: rgb(from black r g b / 1)) {
+        :root,
+        .mar-theme-preview {
+          --mar-overlay-surface: rgb(from var(--mar-control-bg-color-overlay) r g b / 1);
+        }
       }
 
       html.console-ui[data-theme='vscode-dark-2026'] body {

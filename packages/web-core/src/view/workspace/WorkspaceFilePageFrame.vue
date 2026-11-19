@@ -52,10 +52,12 @@ defineExpose({ root });
   >
     <header class="file-preview-header workspace-file-page-frame-header">
       <div class="workspace-file-page-frame-title">
-        <span v-if="props.sourceLabel" class="mar-file-preview-eyebrow">{{
-          props.sourceLabel
-        }}</span>
-        <h2 v-tooltip="props.path" :aria-description="props.path">{{ props.fileName }}</h2>
+        <div class="workspace-file-page-frame-heading">
+          <h2 v-tooltip="props.path" :aria-description="props.path">{{ props.fileName }}</h2>
+          <span v-if="props.sourceLabel || slots.metadata" class="mar-file-preview-eyebrow">
+            <slot name="metadata">{{ props.sourceLabel }}</slot>
+          </span>
+        </div>
         <small v-tooltip="props.path" v-if="pathLabel">{{ pathLabel }}</small>
         <slot name="status" />
       </div>
@@ -148,22 +150,24 @@ defineExpose({ root });
   padding: 0.3rem 1rem;
 }
 
-.workspace-file-page-frame-title > h2 {
-  overflow: hidden;
-  max-width: 100%;
+.workspace-file-page-frame-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.workspace-file-page-frame-heading > h2 {
   margin: 0;
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .workspace-file-mobile-actions {
   display: none;
 }
 
-.workspace-file-page-frame-title > h2,
+.workspace-file-page-frame-heading > h2,
 .workspace-file-page-frame-title > small {
   display: block;
   overflow: hidden;
@@ -172,8 +176,13 @@ defineExpose({ root });
   white-space: nowrap;
 }
 
-.workspace-file-page-frame-title :deep(.mar-file-preview-eyebrow) {
+.mar-file-preview-eyebrow {
+  flex: none;
+  color: var(--mar-text-tertiary);
+  font-size: var(--mar-font-size-meta);
+  font-weight: 400;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .workspace-file-page-frame-title > small {
@@ -213,28 +222,6 @@ defineExpose({ root });
 }
 
 @media (min-width: 768px) {
-  .workspace-file-page-frame-title {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 8px;
-    align-items: center;
-  }
-
-  .workspace-file-page-frame-title > h2 {
-    grid-area: 1 / 1;
-  }
-
-  .workspace-file-page-frame-title > small {
-    grid-row: 2;
-    grid-column: 1;
-  }
-
-  .workspace-file-page-frame-title :deep(.mar-file-preview-eyebrow) {
-    grid-area: 1 / 2 / 3 / 3;
-    margin-bottom: 0;
-    white-space: nowrap;
-  }
-
   .workspace-file-page-frame-header {
     box-sizing: border-box;
     min-height: var(--mar-workbench-header-height);

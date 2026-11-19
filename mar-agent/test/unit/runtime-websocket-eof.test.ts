@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost } from '../../src/host.js';
-import { AgentError, SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
+import { RecoverableModelError } from '../../src/model/errors/common.js';
 import {
   type ModelAdapter,
   type ModelEvent,
@@ -177,14 +178,13 @@ class PreludeEarlyEofAdapter implements ModelAdapter {
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
     if (request.retryState !== undefined)
-      request.retryState.attempts = request.retryState.maxAttempts ?? 8;
+      request.retryState.attempts = request.retryState.maxAttempts ?? 5;
     yield* [] as ModelEvent[];
-    throw new AgentError(
+    throw new RecoverableModelError(
       'MAR_AGENT_MODEL_PROTOCOL_ERROR',
       'OpenAI Responses stream ended without a terminal event.',
       {
-        details: { reason: 'OPENAI_RESPONSES_EARLY_EOF', retryAfter: '0' },
-        retryable: true
+        details: { reason: 'OPENAI_RESPONSES_EARLY_EOF', retryAfter: '0' }
       }
     );
   }

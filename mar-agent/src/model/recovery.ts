@@ -1,8 +1,7 @@
 import { AgentError } from '../error.js';
-import { isAnthropicRecoverableStreamError } from './anthropic-messages.js';
 import type { ModelRetryState } from './contracts.js';
-import { isRetryableModelRequestError, modelRetryMaxAttempts, waitForModelRetry } from './http.js';
-import { isOpenAiResponsesRecoverableStreamError } from './openai-responses.js';
+import { isRecoverableModelError, modelRetryAfter } from './errors/common.js';
+import { modelRetryMaxAttempts, waitForModelRetry } from './http.js';
 /** Retry only classified recoverable failures within the attempt budget; never retry cancellation. */
 export async function recoverModelStream(
   error: unknown,
@@ -15,9 +14,7 @@ export async function recoverModelStream(
       (error instanceof AgentError &&
         error.code === 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE' &&
         error.retryable) ||
-      isRetryableModelRequestError(error) ||
-      isOpenAiResponsesRecoverableStreamError(error) ||
-      isAnthropicRecoverableStreamError(error)
+      isRecoverableModelError(error)
     ) ||
     retryState.attempts >= modelRetryMaxAttempts(retryState)
   )
@@ -25,12 +22,7 @@ export async function recoverModelStream(
   const delayMs = retryState.retryDelayMs;
   delete retryState.retryDelayMs;
   try {
-    await waitForModelRetry(
-      typeof error.details?.retryAfter === 'string' ? error.details.retryAfter : null,
-      retryState.attempts - 1,
-      signal,
-      delayMs
-    );
+    await waitForModelRetry(modelRetryAfter(error), retryState.attempts - 1, signal, delayMs);
   } catch (error) {
     signal.throwIfAborted();
     throw error;

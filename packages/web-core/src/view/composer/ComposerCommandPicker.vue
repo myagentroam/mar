@@ -69,7 +69,7 @@ function statusText(): string {
   <div
     v-if="open"
     ref="picker"
-    class="command-picker"
+    class="command-picker mar-compact-overlay"
     role="listbox"
     :aria-label="
       translate(
@@ -150,10 +150,6 @@ function statusText(): string {
   display: grid;
   max-height: 200px;
   overflow: auto;
-  border: 1px solid var(--mar-border-strong);
-  border-radius: 5px;
-  background: var(--mar-control-bg-color-overlay);
-  box-shadow: 0 4px 12px var(--mar-shadow-soft);
 }
 
 .picker-group {

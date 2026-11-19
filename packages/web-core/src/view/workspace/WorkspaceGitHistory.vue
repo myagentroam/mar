@@ -558,6 +558,7 @@ button.file-explorer-utility-button:disabled {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
 }
 

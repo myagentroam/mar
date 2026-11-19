@@ -262,6 +262,13 @@ for (const [width, theme] of [
     await page.locator('.composer-model-effort-select').click();
     const menu = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
     await expectMenuInsideViewport(menu);
+    const surface = page.locator('.el-select__popper:visible').filter({ has: menu });
+    await expect(surface).toHaveCSS('border-top-width', '1px');
+    await expect(surface).toHaveCSS(
+      'border-top-color',
+      theme === 'daylight' ? 'rgb(203, 214, 228)' : 'rgb(65, 78, 98)'
+    );
+    await expect(surface).toHaveCSS('box-shadow', /0px 4px 12px/u);
     const models = menu.locator('.el-select-group__wrap').first();
     const sizes = await models.evaluate((element) => {
       const options = Array.from(element.querySelectorAll('.el-select-dropdown__item'));

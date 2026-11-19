@@ -2,7 +2,7 @@ import { withMysqlTransaction, lockMysqlUsers } from './mysql-reference-store.js
 import type { UserLocale } from './auth-contracts.js';
 import { readMysqlUserLocale, writeMysqlUserLocale } from './mysql-authentication.js';
 import { createHash, randomUUID } from 'node:crypto';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { NotificationStore } from './notification-contracts.js';
 import type { NodeRequestAuthorization } from './node-access-contracts.js';
 import { workbenchNotificationMessages } from './i18n/workbench-notifications.js';
@@ -22,6 +22,7 @@ export type {
 const TTL_MS = 24 * 60 * 60_000;
 const CLEANUP_INTERVAL_MS = 5 * 60_000;
 
+/** Persists authorized Workbench notifications and dispatches new ones after commit. */
 export class WorkbenchNotificationService {
   private lastCleanupAt = Number.NEGATIVE_INFINITY;
 
@@ -99,7 +100,7 @@ export class WorkbenchNotificationService {
               agent
                 ? payload.agentTitle?.trim() || presentation.title
                 : notificationTitle(
-                    await this.workspaceTitle(nodeId, payload.workspaceId),
+                    await this.workspaceTitle(connection, nodeId, payload.workspaceId),
                     payload.sessionTitle,
                     locale
                   ),
@@ -242,8 +243,12 @@ export class WorkbenchNotificationService {
     return rows.map(mapRow);
   }
 
-  private async workspaceTitle(nodeId: string, workspaceId: string): Promise<string> {
-    const [rows] = await this.database.raw.execute<RowDataPacket[]>(
+  private async workspaceTitle(
+    connection: PoolConnection,
+    nodeId: string,
+    workspaceId: string
+  ): Promise<string> {
+    const [rows] = await connection.execute<RowDataPacket[]>(
       'SELECT display_name FROM workspaces WHERE workspace_id=? AND node_id=?',
       [workspaceId, nodeId]
     );

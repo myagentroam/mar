@@ -118,7 +118,8 @@ export function openCodeConversationPage(
       ? []
       : [{ info, parts: array(entry?.parts) }];
   });
-  const parsedTurns = records
+  const messageIndexes = new Map(records.map(({ info }, index) => [info.id, index]));
+  const turns = records
     .filter(({ info }) => info.role === 'user')
     .flatMap(({ info, parts }, sequence) => {
       const assistants = records.filter(
@@ -126,13 +127,19 @@ export function openCodeConversationPage(
       );
       const existing = managedTurn(info.id as string);
       const turn = openCodeTurn(session, info, parts, assistants, sequence, existing);
-      const after = assistants.at(-1)?.info.id ?? info.id;
-      return turn === undefined || typeof after !== 'string' ? [] : [{ after, turn }];
+      if (turn === undefined) return [];
+      const last = assistants.at(-1)?.info.id ?? info.id;
+      const next = records[messageIndexes.get(last)! + 1]?.info.id;
+      return [
+        {
+          ...turn,
+          rewind: {
+            before: `before:${info.id}`,
+            after: next === undefined ? `tip:${last}` : `before:${next}`
+          }
+        }
+      ];
     });
-  const turns = parsedTurns.map(({ after, turn }, index) => ({
-    ...turn,
-    rewind: { before: parsedTurns[index - 1]?.after ?? null, after }
-  }));
   if (turns.length === 0) return undefined;
   const limit = Math.min(Math.max(input.limit ?? 30, 1), 500);
   const end = pageEnd(input.cursor, session.id, turns.length);

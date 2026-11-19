@@ -14,7 +14,7 @@ for (const [width, theme] of [
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${fixture.url}conversation-style.html?file-change-result&theme=${theme}`);
     const process = page.locator('[data-process-id="result-process"]');
-    const heading = process.locator(':scope > .process-heading');
+    const heading = process.locator(':scope > .process-heading-row > button[aria-expanded]');
     await expect(heading).toBeVisible();
     if ((await heading.getAttribute('aria-expanded')) === 'false') await heading.click();
     await expect(process.locator('.conversation-file-change-details')).toBeVisible();
@@ -81,7 +81,7 @@ for (const [width, reducedMotion] of [
     const first = page.locator('[data-process-id="first"]');
     const second = page.locator('[data-process-id="second"]');
     for (const process of [first, second]) {
-      await process.locator(':scope > .process-heading').click();
+      await process.locator(':scope > .process-heading-row > button[aria-expanded]').click();
       await expect(process.locator('.conversation-record-group')).toHaveCount(4);
       for (const group of await process.locator('.conversation-record-group').all()) {
         await group.locator(':scope > summary').click();
@@ -111,10 +111,11 @@ for (const [width, reducedMotion] of [
       await expect(group.locator('.tool-detail')).toHaveCount(1);
     }
 
-    await first.locator(':scope > .process-heading').click();
+    const firstHeading = first.locator(':scope > .process-heading-row > button[aria-expanded]');
+    await firstHeading.click();
     await expect(first.locator('.process-content')).toHaveCount(0);
     await expect(second.locator('details[open]')).toHaveCount(10);
-    await first.locator(':scope > .process-heading').click();
+    await firstHeading.click();
     await expect(first.locator('.conversation-record-group')).toHaveCount(4);
     await expect(first.locator('details[open]')).toHaveCount(0);
     await expect(first.locator('.tool-detail, .mar-conversation-detail-body')).toHaveCount(0);
@@ -134,15 +135,13 @@ test('automatic process collapse also releases its reasoning disclosure state', 
 }) => {
   await page.goto(`${fixture.url}conversation-style.html?reasoning-preview=1`);
   const process = page.locator('[data-process-id="preview-process"]');
-  await expect(process.locator(':scope > .process-heading')).toHaveAttribute(
-    'aria-expanded',
-    'true'
-  );
+  const heading = process.locator(':scope > .process-heading-row > button[aria-expanded]');
+  await expect(heading).toHaveAttribute('aria-expanded', 'true');
   await process.locator('.reasoning-group > details > summary').click();
   await expect(process.locator('.reasoning-group .mar-conversation-detail-body')).toHaveCount(1);
   await page.getByTestId('finish-reasoning-process').click();
   await expect(process.locator('.process-content')).toHaveCount(0);
-  await process.locator(':scope > .process-heading').click();
+  await heading.click();
   await expect(process.locator('.reasoning-group > details')).toHaveCount(1);
   await expect(process.locator('details[open]')).toHaveCount(0);
   await expect(process.locator('.reasoning-group .mar-conversation-detail-body')).toHaveCount(0);

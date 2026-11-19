@@ -1,5 +1,7 @@
+import { setImmediate } from 'node:timers/promises';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SESSION_CONTEXT_PROVIDER } from '../../src/extensions.js';
+import type { AgentEvent, AgentSession } from '../../src/index.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { fixture, answer, call, cleanupCoreFixtures } from './support/core-extension-fixture.js';
 
@@ -28,6 +30,56 @@ it('observes future admitted Executions without observer interference', async ()
   subscription.unsubscribe();
   failedExecutionObserver.unsubscribe();
   executionObserver.unsubscribe();
+});
+
+it('joins from synchronous admission through cleanup and observes the first event', async () => {
+  const { agent, session, adapter } = await fixture([], answer);
+  const cleanupEntered = Promise.withResolvers<'cleanup'>();
+  const releaseCleanup = Promise.withResolvers<void>();
+  Object.assign(adapter, {
+    createTurnSession: () => ({
+      start: adapter.start.bind(adapter),
+      close: async () => {
+        cleanupEntered.resolve('cleanup');
+        await releaseCleanup.promise;
+      }
+    })
+  });
+
+  const events: AgentEvent[] = [];
+  let subscription: ReturnType<AgentSession['subscribe']> | undefined;
+  let joined: ReturnType<AgentSession['joinExecution']>;
+  const observer = agent.observeSessionExecutions((live) => {
+    if (live.id !== session.id) return;
+    subscription = live.subscribe((event) => events.push(event));
+    const executionId = subscription.activeExecutionId;
+    if (executionId !== undefined) joined = session.joinExecution(executionId);
+  });
+  try {
+    const execution = session.run({ prompt: 'observe admission' });
+    expect(subscription?.activeExecutionId).toBe(execution.executionId);
+    expect(joined).toBeInstanceOf(Promise);
+
+    const result = execution.result();
+    expect(await Promise.race([cleanupEntered.promise, result])).toBe('cleanup');
+    expect(events[0]).toMatchObject({
+      type: 'execution.started',
+      executionId: execution.executionId
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'execution.completed' });
+    expect(await Promise.race([joined!, setImmediate('pending')])).toBe('pending');
+
+    releaseCleanup.resolve();
+    const outcome = await joined;
+    expect(session.joinExecution(execution.executionId)).toBeUndefined();
+    expect(session.joinExecution('unknown')).toBeUndefined();
+    expect(outcome).toMatchObject({ status: 'completed', finalAnswer: 'done' });
+    expect(outcome).toEqual(await result);
+  } finally {
+    releaseCleanup.resolve();
+    subscription?.unsubscribe();
+    observer.unsubscribe();
+  }
 });
 
 it('exposes current safe model usage qualifications to extensions', async () => {

@@ -296,15 +296,61 @@ describe('OpenCode runtime', () => {
 
   it('uses session.fork with session, Workspace, and message-boundary parameters', async () => {
     const fork = vi.fn(async () => ({ data: { id: 'forked-session' } }));
+    const message = vi.fn(async () => ({
+      data: { info: { id: 'message-2' } },
+      response: new Response()
+    }));
     const client = new OpenCodeServerClient();
-    Object.assign(client, { client: { session: { fork } } });
-    await expect(client.forkSession('/workspace', 'source-session', 'message-2')).resolves.toEqual({
+    Object.assign(client, { client: { session: { fork, message } } });
+    await expect(
+      client.forkSession('/workspace', 'source-session', 'before:message-2')
+    ).resolves.toEqual({
       id: 'forked-session'
     });
+    expect(message).toHaveBeenCalledExactlyOnceWith(
+      { directory: '/workspace', sessionID: 'source-session', messageID: 'message-2' },
+      { throwOnError: false }
+    );
     expect(fork).toHaveBeenCalledWith({
       directory: '/workspace',
       sessionID: 'source-session',
       messageID: 'message-2'
+    });
+  });
+
+  it('rejects missing or stale OpenCode Rewind boundaries instead of forking the whole session', async () => {
+    const fork = vi.fn(async () => ({ data: { id: 'forked-session' } }));
+    const message = vi.fn(async () => ({
+      error: {},
+      response: new Response(null, { status: 404 })
+    }));
+    const messages = vi.fn(async () => ({
+      data: [{ info: { id: 'current' } }],
+      response: new Response()
+    }));
+    const client = new OpenCodeServerClient();
+    Object.assign(client, { client: { session: { fork, message, messages } } });
+
+    for (const boundary of ['before:missing', 'tip:old', 'legacy-raw-id'])
+      await expect(client.forkSession('/workspace', 'source-session', boundary)).rejects.toThrow(
+        'SESSION_REWIND_TARGET_INVALID'
+      );
+    message.mockResolvedValueOnce({ error: {}, response: new Response(null, { status: 503 }) });
+    await expect(
+      client.forkSession('/workspace', 'source-session', 'before:existing')
+    ).rejects.toThrow('OPENCODE_REQUEST_FAILED');
+    expect(fork).not.toHaveBeenCalled();
+
+    await expect(
+      client.forkSession('/workspace', 'source-session', 'tip:current')
+    ).resolves.toEqual({ id: 'forked-session' });
+    expect(messages).toHaveBeenLastCalledWith(
+      { directory: '/workspace', sessionID: 'source-session', limit: 1 },
+      { signal: null }
+    );
+    expect(fork).toHaveBeenCalledExactlyOnceWith({
+      directory: '/workspace',
+      sessionID: 'source-session'
     });
   });
 

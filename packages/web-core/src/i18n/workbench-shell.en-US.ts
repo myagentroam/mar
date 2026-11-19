@@ -188,7 +188,8 @@ export const workbenchShellEnUS = {
     copy: 'Copy detailed diagnostics',
     copySucceeded: 'Detailed diagnostics copied.',
     copyFailed: 'Unable to copy performance diagnostics. Check browser clipboard permissions.',
-    rateValue: 'Current {current} msg/s · peak {peak} msg/s · traffic {kilobytes} KB/s',
+    rateValue:
+      'Current {current} msg/s · peak {peak} msg/s · payload {codeUnits} UTF-16 code units/s',
     processingValue: 'Average {average} ms · P95 {p95} ms · max {maximum} ms',
     longTaskValue: '{count} {duration} ms',
     pageScaleValue: 'DOM {dom} · message cards {messages}',

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WorkbenchNotificationService } from '../../src/workbench-notification-service.js';
 import { workbenchNotificationMessages } from '../../src/i18n/workbench-notifications.js';
+import { createWorkbenchNotificationPool } from './support/workbench-notification-pool.js';
 
 const zhMessages = workbenchNotificationMessages['zh-CN'];
 
@@ -27,6 +28,96 @@ function transactionalDatabase(
 }
 
 describe('Server Workbench notification service', () => {
+  it('commits both Run terminal notifications when two transactions exhaust the pool', async () => {
+    const pool = createWorkbenchNotificationPool(new Map([['node-1/workspace-1', 'Workspace']]));
+    const assertCommitted = (userId: number) => {
+      expect(pool.committed.some((row) => row.user_id === userId)).toBe(true);
+    };
+    const push = vi.fn(assertCommitted);
+    const offline = vi.fn(assertCommitted);
+    const service = new WorkbenchNotificationService(
+      pool.database,
+      async () => true,
+      push,
+      () => 1_000,
+      undefined,
+      offline
+    );
+    const consumes = [1, 2].map((userId) =>
+      service.consume(`node-${userId}`, {
+        userId,
+        notificationId: `run:workspace-${userId}:run-${userId}`,
+        kind: 'RUN_TERMINAL',
+        workspaceId: `workspace-${userId}`,
+        sessionId: `session-${userId}`,
+        sessionTitle: `Session ${userId}`,
+        runId: `run-${userId}`,
+        occurredAt: 900,
+        outcome: 'SUCCEEDED'
+      })
+    );
+    const completed = Promise.all(consumes);
+
+    try {
+      // Observe two attempts to commit (fixed) or two queued pool reads (unfixed), not a timeout.
+      await Promise.race([
+        pool.boundary,
+        completed.then(() => {
+          throw new Error('Both consumes finished before the transaction checkpoint');
+        })
+      ]);
+      expect({
+        leased: pool.leased(),
+        queuedTitleReads: pool.queuedTitleReads,
+        pendingCommits: pool.pendingCommits(),
+        committed: pool.committed.length
+      }).toEqual({ leased: 2, queuedTitleReads: [], pendingCommits: 2, committed: 0 });
+      expect(pool.lockedUsers.toSorted()).toEqual([1, 2]);
+      expect(pool.poolTitleReads).toEqual([]);
+      expect(pool.transactionTitleReads).toEqual(
+        expect.arrayContaining([
+          { userId: 1, values: ['workspace-1', 'node-1'] },
+          { userId: 2, values: ['workspace-2', 'node-2'] }
+        ])
+      );
+      expect(push).not.toHaveBeenCalled();
+      expect(offline).not.toHaveBeenCalled();
+
+      pool.finishCommit(1);
+      expect(await consumes[0]).toBe(true);
+      expect(pool.leased()).toBe(1);
+      expect(pool.pendingCommits()).toBe(1);
+      expect(pool.committed.map((row) => row.user_id)).toEqual([1]);
+      expect(push.mock.calls.map(([userId]) => userId)).toEqual([1]);
+      expect(offline.mock.calls.map(([userId]) => userId)).toEqual([1]);
+
+      pool.finishCommit(2);
+      expect(await completed).toEqual([true, true]);
+      expect(pool.leased()).toBe(0);
+      expect(pool.committed).toHaveLength(2);
+      expect(push).toHaveBeenCalledTimes(2);
+      expect(offline).toHaveBeenCalledTimes(2);
+      for (const [userId, workspaceName] of [
+        [1, 'Workspace'],
+        [2, 'workspace-2']
+      ] as const) {
+        const title = `${workspaceName}${workbenchNotificationMessages['en-US'].titleSeparator}Session ${userId}`;
+        const stored = pool.committed.find((row) => row.user_id === userId);
+        expect(stored).toMatchObject({
+          source_id: `run:workspace-${userId}:run-${userId}`,
+          node_id: `node-${userId}`,
+          title
+        });
+        const notification = expect.objectContaining({ id: stored?.id, title });
+        expect(push).toHaveBeenCalledWith(userId, { type: 'notification.created', notification });
+        expect(offline).toHaveBeenCalledWith(userId, notification, expect.any(Function));
+      }
+    } finally {
+      pool.stop();
+      await Promise.allSettled(consumes);
+    }
+  });
+
   it('persists explicit Agent messages verbatim without inventing a Run terminal or double-enqueueing Push', async () => {
     let row: Record<string, unknown> | undefined;
     const execute = vi.fn(async (sql: string, values: unknown[] = []) => {

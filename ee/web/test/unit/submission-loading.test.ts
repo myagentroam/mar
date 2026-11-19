@@ -160,6 +160,82 @@ describe('submission and authoritative reread loading', () => {
     }
   });
 
+  it.each(['success', 'failure'] as const)(
+    'keeps the organization reread authoritative after deletion when the older refresh ends in %s',
+    async (outcome) => {
+      const previous = { organizations: [{ id: 2, name: 'Team', parentOrganizationId: 1 }] };
+      const oldRead = deferred<typeof previous>();
+      const freshRead = deferred<typeof previous>();
+      const write = deferred();
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(previous)
+        .mockImplementationOnce(() => oldRead.promise)
+        .mockImplementationOnce(() => write.promise)
+        .mockImplementationOnce(() => freshRead.promise);
+      const view = renderComponent(OrganizationPage, { request, writable: true });
+      const table = () => view.findAll('ElTable')[0]!;
+      const refreshLabel = translate('generated.organizationUserManagementPage.refresh');
+      const readError = new Error('Current organization read failed');
+      try {
+        await flushComponent();
+        const refresh = clickPending(view, refreshLabel);
+        await flushComponent();
+        expect(button(view, refreshLabel).props.loading).toBe(true);
+        expect(textContent(table())).toContain('Team');
+
+        const deletion = clickPending(
+          view,
+          translate('generated.organizationUserManagementPage.delete')
+        );
+        await flushComponent();
+        expect(request).toHaveBeenNthCalledWith(3, '/api/organizations/2', { method: 'DELETE' });
+        expect(request).toHaveBeenCalledTimes(3);
+        write.resolve({});
+        await flushComponent();
+        expect(request).toHaveBeenNthCalledWith(4, '/api/organizations');
+        expect(textContent(table())).toContain('Team');
+
+        if (outcome === 'success') {
+          freshRead.resolve({ organizations: [] });
+          await deletion;
+          await flushComponent();
+          expect(table().props.data).toEqual([]);
+
+          oldRead.resolve(previous);
+          await refresh;
+          await flushComponent();
+          expect(table().props.data).toEqual([]);
+          expect(showMessage).not.toHaveBeenCalled();
+        } else {
+          oldRead.reject(new Error('Stale organization refresh failed'));
+          await refresh;
+          await flushComponent();
+          expect(showMessage).not.toHaveBeenCalled();
+          expect(table().props['aria-busy']).toBe(true);
+          expect(textContent(table())).toContain('Team');
+
+          freshRead.reject(readError);
+          await deletion;
+          await flushComponent();
+          expect(textContent(table())).toContain('Team');
+          expect(showMessage).toHaveBeenCalledExactlyOnceWith(
+            readError.message,
+            'error',
+            readError
+          );
+        }
+        expect(table().props['aria-busy']).toBe(false);
+        expect(button(view, refreshLabel).props.loading).toBe(false);
+      } finally {
+        write.resolve({});
+        oldRead.resolve(previous);
+        freshRead.resolve(previous);
+        view.unmount();
+      }
+    }
+  );
+
   it.each([
     ['create', true],
     ['edit', true],

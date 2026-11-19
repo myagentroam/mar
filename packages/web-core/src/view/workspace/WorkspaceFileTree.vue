@@ -613,7 +613,7 @@ defineExpose({ reveal });
   flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overscroll-behavior: contain;
   padding: 4px 0.375rem 8px;
   outline: none;
 }

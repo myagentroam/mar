@@ -12,6 +12,8 @@ import {
   limitConversationHistory
 } from '../../src/util/conversation-history.js';
 import { createWorkbenchConversationPagingService } from '../../src/service/workbench-conversation-paging-service.js';
+import { createWorkbenchConversationComposition } from '../../src/service/workbench-conversation-composition.js';
+import { createConversationProjectionService } from '../../src/service/conversation-projection-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 import type { ConversationTurn, ConversationTurnPage } from '../../src/model/workbench.js';
 
@@ -36,6 +38,98 @@ function segmentPage(turns: ReturnType<typeof turn>[], nextCursor: string | null
       status: entry.status
     })),
     nextCursor
+  };
+}
+
+function cursorRecoveryFixture() {
+  const workspaceTarget = ref({ nodeId: 'node-1', workspaceId: 'workspace-1' });
+  const selectedSessionId = ref('session-1');
+  const turns = ref<ConversationTurn[]>([]);
+  const nextCursor = ref<string | null>(null);
+  const loadingOlder = ref(false);
+  const projection = createConversationProjectionService({
+    turns,
+    nextCursor,
+    limitHistory: limitConversationHistory,
+    onRecentWindowOverflow: vi.fn(),
+    // Hold frame-batched text until the projection explicitly reconciles it.
+    scheduleTextDeltaFlush: () => () => undefined
+  });
+  const earlier = {
+    ...turn('cached-earlier'),
+    turnId: 'live-turn',
+    segmentIndex: 0,
+    runId: 'run-1'
+  };
+  const reply = (text: string) => ({
+    ...earlier,
+    id: 'live-segment',
+    segmentIndex: 2,
+    items: [{ id: 'reply', kind: 'assistant_message', status: 'IN_PROGRESS', payload: { text } }]
+  });
+  projection.replaceAuthoritative({
+    turns: [earlier, reply('initial')],
+    nextCursor: 'expired',
+    snapshotSequence: 10
+  });
+  const recoveryPage = {
+    unit: 'SEGMENT',
+    segments: [
+      { ...earlier, index: 0, startedAt: 1000 },
+      { ...earlier, id: 'recovery-only', index: 1 },
+      { ...reply('one'), index: 2 }
+    ],
+    nextCursor: 'recovered',
+    snapshotSequence: 10
+  };
+  const recoveryStarted = Promise.withResolvers<void>();
+  const recovery = Promise.withResolvers<typeof recoveryPage>();
+  const request = vi.fn(async (path: string) => {
+    const cursor = new URL(path, 'https://fixture.invalid').searchParams.get('cursor');
+    if (cursor === 'expired') throw new ApiError('EVENT_CURSOR_INVALID', 'Cursor expired');
+    if (cursor === null) {
+      recoveryStarted.resolve();
+      return recovery.promise;
+    }
+    return segmentPage([turn('retry-earlier'), turn('cached-earlier')], 'more');
+  });
+  const scrollElement = {
+    scrollTop: 45,
+    get scrollHeight() {
+      return turns.value.length * 100;
+    }
+  };
+  const capturePrependAnchor = vi.fn(pagingAnchor(scrollElement as never));
+  const composition = createWorkbenchConversationComposition({
+    workspaceTarget,
+    selectedSessionId,
+    nextCursor,
+    turns,
+    projection,
+    loadingOlder,
+    capturePrependAnchor,
+    pageSize: 3,
+    recentSegmentWindowSize: 6,
+    replaceCached: vi.fn(),
+    request: async (path) => (await request(path)) as never,
+    sessionPathId: (value) => value,
+    notice: vi.fn(),
+    errorMessage: String
+  });
+  return {
+    ...composition,
+    workspaceTarget,
+    selectedSessionId,
+    turns,
+    nextCursor,
+    loadingOlder,
+    projection,
+    capturePrependAnchor,
+    scrollElement,
+    request,
+    recoveryStarted: recoveryStarted.promise,
+    finishRecovery: (snapshotSequence = recoveryPage.snapshotSequence) =>
+      recovery.resolve({ ...recoveryPage, snapshotSequence })
   };
 }
 
@@ -198,6 +292,104 @@ describe('Conversation History Pagination', () => {
     expect(notice).not.toHaveBeenCalled();
     expect(scrollElement.scrollTop).toBe(150);
   });
+
+  it.each([
+    ['applied Watch update', 10, 'one two'],
+    ['buffered Watch delta', 10, 'initial two'],
+    ['no Watch update', 10, 'one'],
+    ['Watch update covered by newer recovery', 12, 'one']
+  ] as const)(
+    'repairs the cursor without discarding history or regressing the live Segment: %s',
+    async (update, snapshotSequence, expectedText) => {
+      const fixture = cursorRecoveryFixture();
+      const pending = fixture.paging.loadOlderConversationTurns();
+      await fixture.recoveryStarted;
+      const item = {
+        itemId: 'reply',
+        turnId: 'live-turn',
+        segmentId: 'live-segment',
+        segmentIndex: 2
+      };
+      // An accepted Watch update can reach the projection before the HTTP page arrives.
+      if (
+        update === 'applied Watch update' ||
+        update === 'Watch update covered by newer recovery'
+      ) {
+        expect(
+          fixture.projection.mergeItem(
+            'run-1',
+            {
+              ...item,
+              kind: 'assistant_message',
+              status: 'IN_PROGRESS',
+              payload: { text: 'one two' }
+            },
+            11
+          )
+        ).toBe(true);
+      } else if (update === 'buffered Watch delta') {
+        // The frame-batched append must use the currently displayed text, not the older HTTP text.
+        expect(fixture.projection.mergeTextDelta('run-1', { ...item, text: ' two' }, 11)).toBe(
+          true
+        );
+      }
+      fixture.finishRecovery(snapshotSequence);
+      await pending;
+      fixture.projection.flushPendingTextDeltas();
+
+      const base = '/api/agent-sessions/session-1/turns?nodeId=node-1';
+      expect(fixture.request.mock.calls).toEqual([
+        [`${base}&limit=3&cursor=expired&unit=SEGMENT`],
+        [`${base}&limit=6&unit=SEGMENT`],
+        [`${base}&limit=3&cursor=recovered&unit=SEGMENT`]
+      ]);
+      expect(fixture.turns.value.map(({ id }) => id)).toEqual([
+        'retry-earlier',
+        'cached-earlier',
+        'recovery-only',
+        'live-segment'
+      ]);
+      expect(fixture.turns.value[1]?.startedAt).toBe(1000);
+      expect(fixture.turns.value.at(-1)?.items[0]?.payload).toMatchObject({ text: expectedText });
+      expect(fixture.nextCursor.value).toBe('more');
+      expect(fixture.scrollElement.scrollTop).toBe(145);
+      expect(fixture.loadingOlder.value).toBe(false);
+      expect(fixture.paging.olderHistoryError.value).toBe('');
+    }
+  );
+
+  it.each(['Workspace', 'Session', 'window'] as const)(
+    'rejects a late cursor recovery after a %s change even when the cursor matches again',
+    async (changed) => {
+      const fixture = cursorRecoveryFixture();
+      const pending = fixture.paging.loadOlderConversationTurns();
+      await fixture.recoveryStarted;
+      switch (changed) {
+        case 'Workspace': {
+          const original = fixture.workspaceTarget.value;
+          fixture.workspaceTarget.value = { ...original, workspaceId: 'workspace-2' };
+          fixture.workspaceTarget.value = original;
+          break;
+        }
+        case 'Session':
+          fixture.selectedSessionId.value = 'session-2';
+          fixture.selectedSessionId.value = 'session-1';
+          break;
+      }
+      const current = { turns: [turn('new-window')], nextCursor: 'expired', snapshotSequence: 10 };
+      if (changed === 'window') fixture.applySnapshot('session-1', current, 'reset');
+      else fixture.projection.replaceAuthoritative(current);
+      fixture.finishRecovery();
+      await pending;
+
+      expect(fixture.request).toHaveBeenCalledTimes(2);
+      expect(fixture.turns.value.map(({ id }) => id)).toEqual(['new-window']);
+      expect(fixture.nextCursor.value).toBe('expired');
+      expect(fixture.capturePrependAnchor).not.toHaveBeenCalled();
+      expect(fixture.loadingOlder.value).toBe(false);
+      expect(fixture.paging.olderHistoryError.value).toBe('');
+    }
+  );
 
   it.each([false, true])(
     'preserves the viewport when recovery exhausts history without clearing another session: switch=%s',

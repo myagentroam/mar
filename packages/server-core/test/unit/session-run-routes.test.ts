@@ -77,6 +77,68 @@ function fixture(
 }
 
 describe('shared ordinary Session and Run routes', () => {
+  it('only permits an empty Rewind boundary before a Turn', async () => {
+    const { app, requestNode, headers } = fixture();
+    const base = { nodeId: 'node-one', turnId: 'turn-one', boundary: null };
+    const url = '/api/agent-sessions/session-one/rewind';
+    const invalid = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { ...base, position: 'AFTER' }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(requestNode).not.toHaveBeenCalled();
+
+    const empty = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { ...base, position: 'BEFORE' }
+    });
+    expect(empty.statusCode).toBe(201);
+    expect(requestNode).toHaveBeenLastCalledWith(
+      base.nodeId,
+      'session.rewind',
+      expect.objectContaining({ boundary: null, position: 'BEFORE' }),
+      expect.objectContaining({ userId: 1 }),
+      60_000
+    );
+  });
+
+  it('allows 60 seconds for Rewind without changing the Rollback deadline', async () => {
+    const { app, requestNode, headers } = fixture();
+    const base = { nodeId: 'node-one', turnId: 'turn-one', boundary: 'native-turn' };
+    const rewind = await app.inject({
+      method: 'POST',
+      url: '/api/agent-sessions/session-one/rewind',
+      headers,
+      payload: { ...base, position: 'AFTER' }
+    });
+    expect(rewind.statusCode).toBe(201);
+    expect(requestNode).toHaveBeenLastCalledWith(
+      base.nodeId,
+      'session.rewind',
+      { sessionId: 'session-one', turnId: base.turnId, boundary: base.boundary, position: 'AFTER' },
+      expect.objectContaining({ userId: 1 }),
+      60_000
+    );
+    const rollback = await app.inject({
+      method: 'POST',
+      url: '/api/agent-sessions/session-one/rollback',
+      headers,
+      payload: { ...base, itemId: 'item-one' }
+    });
+    expect(rollback.statusCode).toBe(200);
+    expect(requestNode).toHaveBeenLastCalledWith(
+      base.nodeId,
+      'session.rollback',
+      expect.objectContaining({ sessionId: 'session-one' }),
+      expect.objectContaining({ userId: 1 }),
+      undefined
+    );
+  });
+
   it('forwards validated watch positions and omits an unspecified position', async () => {
     const { app, requestNode, headers, nodeControl } = fixture();
     nodeControl.ownsWorkbenchConnection = () => true;

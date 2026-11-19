@@ -92,10 +92,9 @@ for (const [view, name, title, desktopWidth, actionCount] of [
   });
 }
 
-async function prepare(page: Page, locale = 'en-US') {
+async function prepare(page: Page, locale = 'en-US', users: object[] = []) {
   const writes: UserInput[] = [];
   let reads = 0;
-  const users: object[] = [];
   let respond = async (
     body: UserInput
   ): Promise<{ status: number; json: Record<string, unknown> }> => ({
@@ -346,6 +345,55 @@ for (const outcome of ['success', 'failure'] as const) {
     expect(ui.writes).toHaveLength(1);
   });
 }
+
+test('Registered users refreshes the saved row without closing the next edit draft', async ({
+  page
+}) => {
+  const users = ['alice', 'bob'].map((username, index) => ({
+    id: index + 1,
+    username,
+    nickname: username,
+    role: 'MEMBER',
+    organizationId: 1,
+    fixedAdmin: false,
+    enabled: true
+  }));
+  const ui = await prepare(page, 'en-US', users);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/enterprise/users/1', async (route) => {
+    await pending;
+    users[0]!.nickname = 'Alice saved';
+    await route.fulfill({ json: { user: users[0] } });
+  });
+  const row = (username: string) =>
+    page.locator('.el-table').getByRole('row').filter({ hasText: username });
+  const dialog = page.getByRole('dialog', { name: 'Edit User', exact: true });
+  const name = dialog.getByRole('textbox', { name: 'Display Name' });
+  try {
+    await row('alice').getByRole('button', { name: 'Edit', exact: true }).click();
+    await name.fill('Alice saved');
+    const patch = page.waitForRequest(
+      (request) => request.method() === 'PATCH' && request.url().endsWith('/api/enterprise/users/1')
+    );
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    expect((await patch).postDataJSON()).toMatchObject({ nickname: 'Alice saved' });
+    await dialog.locator('.el-dialog__headerbtn').click();
+    await expect(dialog).toHaveCount(0);
+    await row('bob').getByRole('button', { name: 'Edit', exact: true }).click();
+    await name.fill('Bob draft');
+
+    release();
+    await expect(row('alice')).toContainText('Alice saved');
+    expect(ui.reads()).toBe(2);
+    await expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveValue('bob');
+    await expect(name).toHaveValue('Bob draft');
+  } finally {
+    release();
+  }
+});
 
 test('Registered users preserves both one-time credentials when the old write finishes last', async ({
   page
