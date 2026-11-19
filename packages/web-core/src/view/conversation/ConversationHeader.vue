@@ -130,7 +130,6 @@ const titleButton = ref<HTMLButtonElement>();
   margin: 0;
   font-size: var(--mar-font-size-body);
   font-weight: 500;
-  line-height: 1.25;
 }
 
 .conversation-title-dropdown {
@@ -162,7 +161,10 @@ const titleButton = ref<HTMLButtonElement>();
 
 .conversation-title-text {
   min-width: 0;
+  /* Leave room for glyph ink from fallback fonts inside the ellipsis clip. */
+  padding-block: 0.125em;
   overflow: hidden;
+  line-height: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

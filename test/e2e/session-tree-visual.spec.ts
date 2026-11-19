@@ -110,6 +110,26 @@ test('tree uses the Watch snapshot order and closes on Escape and outside click'
 });
 
 for (const width of [390, 1280]) {
+  test(`the title does not clip glyphs vertically at ${width}px`, async ({ page }, testInfo) => {
+    const text = 'UAT会话 Compacting 回显';
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto(`${fixture.url}session-tree.html?theme=dark&title=${encodeURIComponent(text)}`);
+    const button = page.getByRole('button', { name: text });
+    const title = button.locator('.conversation-title-text');
+    await expect(title).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    const rendered = await button.screenshot({
+      path: testInfo.outputPath('conversation-title.png')
+    });
+    // Widen only the vertical clipping area without moving the centered text.
+    await title.evaluate((el) => {
+      el.style.paddingBlock = `calc(${getComputedStyle(el).paddingBlockStart} + 4px)`;
+    });
+    const unclipped = await button.screenshot({ path: testInfo.outputPath('unclipped-title.png') });
+    expect(rendered.equals(unclipped), 'the clipping box must not cut off glyphs').toBe(true);
+  });
+
   test(`the title stays on one line and leaves room for session tools at ${width}px`, async ({
     page
   }) => {
@@ -151,7 +171,7 @@ for (const width of [390, 1280]) {
   });
 }
 
-test('title and tree menus navigate and copy the targeted session ID', async ({ page }) => {
+test('the title menu copies the session ID and the tree menu also navigates', async ({ page }) => {
   const copies: string[] = [];
   await page.exposeFunction('recordClipboardWrite', (value: string) => {
     copies.push(value);
@@ -169,18 +189,19 @@ test('title and tree menus navigate and copy the targeted session ID', async ({ 
   await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
   const title = page.locator('.conversation-title-button');
   const titleMenu = page.getByRole('menu').filter({ visible: true });
-  const items = ['Open Aside', 'Open Main', 'Copy session ID'];
+  const treeItems = ['Open Aside', 'Open Main', 'Copy session ID'];
   await title.getByText(/Review BMP compatibility/).click();
   await expect(title).toHaveAttribute('aria-expanded', 'true');
-  await expect(titleMenu.getByRole('menuitem')).toHaveText(items);
+  await expect(titleMenu.getByRole('menuitem')).toHaveText(['Copy session ID']);
   await titleMenu.getByRole('menuitem', { name: 'Copy session ID' }).click();
   await expect.poll(() => copies.slice()).toEqual(['child']);
   await expect(title).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByTestId('selected')).toHaveText('');
   await title.press('Enter');
-  await titleMenu.getByRole('menuitem', { name: 'Open Aside' }).press('Enter');
-  await expect(page.getByTestId('selected')).toHaveText('child');
-  await expect(page.getByTestId('target')).toHaveText('aside');
+  await expect(titleMenu.getByRole('menuitem', { name: 'Copy session ID' })).toBeVisible();
+  await titleMenu.getByRole('menuitem', { name: 'Copy session ID' }).press('Enter');
+  await expect.poll(() => copies.slice()).toEqual(['child', 'child']);
+  await expect(title).toHaveAttribute('aria-expanded', 'false');
 
   await page.getByRole('button', { name: 'View session tree' }).click();
   const tree = page.getByRole('dialog', { name: 'View session tree' });
@@ -190,12 +211,20 @@ test('title and tree menus navigate and copy the targeted session ID', async ({ 
   for (const row of [parent, descendant]) {
     await row.hover();
     await row.getByRole('button', { name: 'Session actions' }).click();
-    await expect(treeMenu.getByRole('menuitem')).toHaveText(items);
+    await expect(treeMenu.getByRole('menuitem')).toHaveText(treeItems);
     await treeMenu.getByRole('menuitem', { name: 'Copy session ID' }).click();
     await expect(treeMenu).toHaveCount(0);
     await expect(tree).toBeVisible();
   }
-  await expect.poll(() => copies.slice()).toEqual(['child', 'parent', 'grandchild']);
+  await expect.poll(() => copies.slice()).toEqual(['child', 'child', 'parent', 'grandchild']);
+  await parent.hover();
+  await parent.getByRole('button', { name: 'Session actions' }).click();
+  await treeMenu.getByRole('menuitem', { name: 'Open Aside' }).click();
+  await expect(page.getByTestId('selected')).toHaveText('parent');
+  await expect(page.getByTestId('target')).toHaveText('aside');
+  await expect(tree).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'View session tree' }).click();
   await descendant.hover();
   await descendant.getByRole('button', { name: 'Session actions' }).click();
   await treeMenu.getByRole('menuitem', { name: 'Open Main' }).click();
