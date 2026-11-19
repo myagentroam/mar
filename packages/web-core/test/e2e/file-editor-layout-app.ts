@@ -167,16 +167,17 @@ createApp({
         })
       );
     const source = query.get('diff');
-    if (source === 'HISTORY' || source === 'TOOL_CHANGE' || source === 'WORKING_TREE')
+    if (source === 'HISTORY' || source === 'TOOL_CHANGE' || source === 'WORKING_TREE') {
+      const path = query.has('long-name')
+        ? `/workspace/${'feature-'.repeat(20)}notes.txt`
+        : '/workspace/example.txt';
       return withActions(
         h(GitDiffViewer, {
           ref: handle,
           active: !query.has('inactive'),
           style: 'height: 100dvh',
-          path: '/workspace/example.txt',
-          paths: query.has('shortcuts')
-            ? ['/workspace/example.txt', '/workspace/other.txt']
-            : ['/workspace/example.txt'],
+          path,
+          paths: query.has('shortcuts') ? [path, '/workspace/other.txt'] : [path],
           onMoveFile: (direction: number) => {
             document.documentElement.dataset.movedFile = String(direction);
           },
@@ -206,6 +207,7 @@ createApp({
           previewEnabled: true
         })
       );
+    }
   }
 })
   .use(i18n)

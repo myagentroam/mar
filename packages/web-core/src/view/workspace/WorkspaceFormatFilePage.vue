@@ -119,10 +119,8 @@ defineExpose({
     :inert="active === false"
     :aria-label="translate('generated.filePreviewDialog.filePreview', { value0: file.path })"
   >
-    <template #status>
-      <span class="mar-file-preview-eyebrow">
-        <span v-if="file.size !== undefined">{{ fileSizeLabel(file.size) }}</span>
-      </span>
+    <template v-if="file.size !== undefined" #metadata>
+      {{ fileSizeLabel(file.size) }}
     </template>
     <template #secondary-actions>
       <el-button

@@ -24,6 +24,23 @@ test('standalone Git Diff loads its shared preview actions', async ({ page }) =>
   expect(requests.some((url) => /Workspace(?:Text|Format)FilePage\.vue/u.test(url))).toBe(false);
 });
 
+test('A long Diff filename truncates without hiding the mode on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${fixture.url}file-editor-layout.html?diff=HISTORY&long-name=1`);
+  const header = page.locator('.workspace-file-page-frame-header');
+  const heading = header.getByRole('heading', { name: /^feature-.*\.txt$/u });
+  const mode = header.getByText('Git Diff', { exact: true });
+  await expect(mode).toBeVisible();
+  await expect(heading).toHaveCSS('text-overflow', 'ellipsis');
+  const geometry = await heading.evaluate((element) => ({
+    scroll: element.scrollWidth,
+    available: element.clientWidth
+  }));
+  expect(geometry.scroll).toBeGreaterThan(geometry.available);
+  const modeBox = (await mode.boundingBox())!;
+  expect(modeBox.x + modeBox.width).toBeLessThan(390);
+});
+
 for (const shape of ['small', 'landscape', 'portrait']) {
   test(`File image previews fit their stable surface without upscaling: ${shape}`, async ({
     page
@@ -235,39 +252,47 @@ for (const theme of ['light', 'dark']) {
           }
           const metadata = header.locator('.mar-file-preview-eyebrow');
           await expect(metadata).toBeVisible();
+          await expect(metadata).toHaveCSS('font-weight', '400');
           // Measure in one frame so the preview's entrance transition cannot skew the comparison.
           const alignment = await header.evaluate(
             (element, button) => {
               const metadataBox = element
                 .querySelector('.mar-file-preview-eyebrow')!
                 .getBoundingClientRect();
+              const headingBox = element.querySelector('h2')!.getBoundingClientRect();
               const buttonBox = button!.getBoundingClientRect();
               const headerBox = element.getBoundingClientRect();
               const pathBox = element
                 .querySelector('.workspace-file-page-frame-title > small')
                 ?.getBoundingClientRect();
               return {
-                offset: Math.abs(
-                  metadataBox.y + metadataBox.height / 2 - (buttonBox.y + buttonBox.height / 2)
-                ),
-                pathRight: pathBox?.right,
-                left: metadataBox.left,
-                top: metadataBox.top,
-                bottom: metadataBox.bottom,
-                headerTop: headerBox.top,
-                headerBottom: headerBox.bottom
+                titleGap: metadataBox.left - headingBox.right,
+                verticalOverlap:
+                  Math.min(headingBox.bottom, metadataBox.bottom) -
+                  Math.max(headingBox.top, metadataBox.top),
+                pathOffset: pathBox ? pathBox.left - headingBox.left : undefined,
+                pathGap: pathBox ? pathBox.top - headingBox.bottom : undefined,
+                actionGap: buttonBox.left - metadataBox.right,
+                topInset: metadataBox.top - headerBox.top,
+                bottomInset: headerBox.bottom - metadataBox.bottom
               };
             },
             await find.elementHandle()
           );
-          if (width === 1280) {
-            expect(alignment.offset).toBeLessThan(1);
-            if (alignment.pathRight !== undefined) {
-              expect(alignment.pathRight).toBeLessThan(alignment.left);
-            }
-          } else {
-            expect(alignment.top).toBeGreaterThanOrEqual(alignment.headerTop);
-            expect(alignment.bottom).toBeLessThanOrEqual(alignment.headerBottom);
+          expect(alignment.titleGap).toBeGreaterThan(0);
+          expect(alignment.titleGap).toBeLessThanOrEqual(12);
+          expect(alignment.verticalOverlap).toBeGreaterThan(0);
+          expect(alignment.topInset).toBeGreaterThanOrEqual(0);
+          expect(alignment.bottomInset).toBeGreaterThanOrEqual(0);
+          if (alignment.pathOffset !== undefined) {
+            expect(alignment.pathOffset).toBeCloseTo(0);
+            expect(alignment.pathGap).toBeGreaterThanOrEqual(0);
+          }
+          if (width === 1280) expect(alignment.actionGap).toBeGreaterThan(0);
+          if (mode.startsWith('diff')) {
+            await header.screenshot({
+              path: testInfo.outputPath(`diff-header-${theme}-${width}.png`)
+            });
           }
           const radius = await find.evaluate((element) =>
             getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()

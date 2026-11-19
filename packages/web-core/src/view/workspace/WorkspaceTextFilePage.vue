@@ -779,21 +779,19 @@ defineExpose({
     :inert="active === false"
     :aria-label="translate('generated.filePreviewDialog.filePreview', { value0: file.path })"
   >
-    <template #status>
-      <span class="mar-file-preview-eyebrow"
-        >{{ editing ? translate('fileEditor.editing') : translate('fileEditor.readOnly') }}
-        <span
-          v-if="file.previewEncoding !== undefined"
-          v-tooltip="
-            translate('fileEditor.encodingFallback', {
-              encoding: file.previewEncoding.toUpperCase()
-            })
-          "
-          >· {{ file.previewEncoding.toUpperCase() }}</span
-        >
-        <span v-if="file.size !== undefined" class="file-preview-size"
-          >· {{ fileSizeLabel(file.size) }}</span
-        ></span
+    <template #metadata>
+      {{ editing ? translate('fileEditor.editing') : translate('fileEditor.readOnly') }}
+      <span
+        v-if="file.previewEncoding !== undefined"
+        v-tooltip="
+          translate('fileEditor.encodingFallback', {
+            encoding: file.previewEncoding.toUpperCase()
+          })
+        "
+        >· {{ file.previewEncoding.toUpperCase() }}</span
+      >
+      <span v-if="file.size !== undefined" class="file-preview-size"
+        >· {{ fileSizeLabel(file.size) }}</span
       >
     </template>
     <template #primary-actions>
@@ -1265,7 +1263,6 @@ defineExpose({
 <style scoped>
 .file-preview-size {
   font-variant-numeric: tabular-nums;
-  letter-spacing: normal;
 }
 
 .mar-file-preview-content {
