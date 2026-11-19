@@ -18,7 +18,8 @@ export function buildNativeCompactionMessages(
       .filter(
         (message) =>
           (message.contextKind !== 'private' || message.role === 'provider') &&
-          message.contextualBlock?.kind !== 'loaded-skill'
+          message.contextualBlock?.kind !== 'loaded-skill' &&
+          !message.mcpDiscovery
       )
       .map((message) => {
         if (!message.images?.length) return message;

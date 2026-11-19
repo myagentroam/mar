@@ -13,7 +13,8 @@ export interface ToolHost extends ResourcePublisher {
   executeTool(call: ToolCall, context: ToolExecutionContext): Promise<ToolExecutionResult>;
   requestUserInput?(
     input: { requestId: string; questions: unknown[] },
-    signal: AbortSignal
+    signal: AbortSignal,
+    caller?: import('./contracts.js').ToolCaller
   ): Promise<Record<string, unknown>>;
   callMcpTool?(
     call: ToolCall,
@@ -76,7 +77,8 @@ export interface ToolRuntimeContext {
   recentImages?: readonly ToolRuntimeImage[];
   searchMcpTools?: (
     input: unknown,
-    signal: AbortSignal
+    signal: AbortSignal,
+    caller?: import('./contracts.js').ToolCaller
   ) => Promise<import('./contracts.js').ToolExecutionResult>;
   expectedMcpTool?: import('./contracts.js').McpToolCallContext['expectedTool'];
   invokeTool?: (

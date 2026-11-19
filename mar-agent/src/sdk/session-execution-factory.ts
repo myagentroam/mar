@@ -11,7 +11,7 @@ import type {
 import type { SessionStore } from '../session/store/contracts.js';
 import type { ClientToolDefinition } from '../tools/contracts.js';
 import { executeRoundTools, type RoundToolScope } from '../tools/execution.js';
-import { rebindMcpToolSearchOutputs } from '../tools/mcp/history.js';
+import { pairedMcpToolNames } from '../tools/mcp/history.js';
 import {
   ExecutionToolPermissions,
   projectPermissionTool,
@@ -140,6 +140,10 @@ export function createSessionExecutionFactory(ports: {
   sessionRuntime: Pick<
     SessionRuntime,
     | 'acknowledgeSkillContext'
+    | 'acknowledgeMcpDiscovery'
+    | 'isPendingMcpDiscovery'
+    | 'mcpDiscoveryRevision'
+    | 'publishMcpDiscovery'
     | 'assertCanExecute'
     | 'bindExecutionContext'
     | 'deactivateExecution'
@@ -660,7 +664,6 @@ export function createSessionExecutionFactory(ports: {
         });
         const updateMcpRegistry = () => toolCatalog.updateRegistry();
         updateMcpRegistry();
-        rebindMcpToolSearchOutputs(messages, mcpRegistry);
         const availableTools = toolCatalog.available();
         const instructionContext = await loadAgentInstructions({
           home: description.homeDirectory,
@@ -675,8 +678,12 @@ export function createSessionExecutionFactory(ports: {
         const currentInstructionSnapshot = renderAgentInstructions(instructionEntries, false);
         instructionSkills = instructionContext?.skills;
         const baseTools = () => toolCatalog.base();
-        toolCatalog.refresh();
-        const restoreMcpDiscovery = () => toolCatalog.restore();
+        let discoveryRevision: number;
+        const restoreMcpDiscovery = () => {
+          toolCatalog.restore();
+          discoveryRevision = sessionRuntime.mcpDiscoveryRevision;
+        };
+        restoreMcpDiscovery();
         const loadRetainedSessionResources = async (): Promise<RetainedSessionResources> => {
           const hostResources = (await host.listSessionResources?.(sessionId)) ?? {
             processes: [] as const
@@ -764,6 +771,21 @@ export function createSessionExecutionFactory(ports: {
           waitInterrupt,
           skills: instructionContext?.skills ?? new Map(),
           publishSkillContext: (name, content) => sessionRuntime.publishSkillContext(name, content),
+          withRecordProjection,
+          publishMcpDiscovery: async (names, signal) => {
+            const message: ModelMessage = {
+              role: 'user',
+              contextKind: 'contextual',
+              content: '',
+              mcpDiscovery: { id: randomUUID(), names }
+            };
+            const record = await store.append(
+              sessionId,
+              { type: 'model.context', payload: message, executionId, turnId },
+              { signal }
+            );
+            sessionRuntime.publishMcpDiscovery(record.recordId, message);
+          },
           coreExtensions,
           operations: extensionManager.operations,
           scheduleTool: sessionRuntime.scheduleTool,
@@ -808,7 +830,8 @@ export function createSessionExecutionFactory(ports: {
                     modelContext.worldState.entries,
                     mode !== 'compact' && selectedModel.inputCapabilities.includes('IMAGE'),
                     baseTools().some((tool) => tool.name === 'code_exec'),
-                    permissionPolicy.mode === 'auto'
+                    permissionPolicy.mode === 'auto',
+                    projectTools(toolCatalog.tools)
                   )
           }
         });
@@ -981,7 +1004,15 @@ export function createSessionExecutionFactory(ports: {
             updateBoundary: (value) => {
               contextCoordinator.setBoundary(value);
             },
-            snapshotTools: () => projectTools(toolCatalog.tools),
+            snapshotTools: () => {
+              const resident = new Set(
+                mcpRegistry.projectDirect(baseTools()).map(({ name }) => name)
+              );
+              const paired = pairedMcpToolNames(messages);
+              return projectTools(
+                toolCatalog.tools.filter(({ name }) => resident.has(name) || paired.has(name))
+              );
+            },
             projectRequest: (history, tools) => ({
               messages: projectSessionRequestMessages(
                 history,
@@ -1019,6 +1050,7 @@ export function createSessionExecutionFactory(ports: {
             retainedResources: async () =>
               retainedSessionResourcesSnapshot(await loadRetainedSessionResources()),
             withProjection: withRecordProjection,
+            retainDiscovery: (message) => sessionRuntime.isPendingMcpDiscovery(message),
             recordCommit: (recordId) =>
               inputs.recordCompactCommit({ changed: true, recordId, executionId }),
             invalidateContext: (error) => executionOwner.invalidateContext(error),
@@ -1077,6 +1109,7 @@ export function createSessionExecutionFactory(ports: {
               candidateRequest: ModelRequest;
               request: ModelRequest;
               toolScope: RoundToolScope;
+              discoveryRevision: number;
               skillLoads: ReadonlyMap<string, string>;
               commitSkillContext(): Promise<void>;
             },
@@ -1093,7 +1126,9 @@ export function createSessionExecutionFactory(ports: {
                 },
                 refreshTools: () => {
                   updateMcpRegistry();
-                  toolCatalog.refresh();
+                  if (discoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
+                    restoreMcpDiscovery();
+                  else toolCatalog.refresh();
                 },
                 updateEnvironment: () => {
                   executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
@@ -1101,6 +1136,7 @@ export function createSessionExecutionFactory(ports: {
               }),
             buildCandidate: async (continuation) => {
               const skillLoads = sessionRuntime.pendingSkillContext();
+              const capturedDiscoveryRevision = discoveryRevision;
               const candidate = await prepareExecutionRoundRequest({
                 messages,
                 continuation,
@@ -1126,7 +1162,7 @@ export function createSessionExecutionFactory(ports: {
                 },
                 transform: (candidate, bindings) => transformModelRequest(candidate, bindings)
               });
-              return { ...candidate, skillLoads };
+              return { ...candidate, discoveryRevision: capturedDiscoveryRevision, skillLoads };
             },
             adoptLateInput: async () => {
               const lateCoreChange =
@@ -1144,9 +1180,12 @@ export function createSessionExecutionFactory(ports: {
               candidateRequest,
               request,
               toolScope,
+              discoveryRevision: capturedDiscoveryRevision,
               skillLoads,
               commitSkillContext
             }) => {
+              if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
+                return { retry: true as const };
               resourceInput.observe(candidateRequest.messages);
               const media =
                 selectedModel.gcEnabled === false
@@ -1167,6 +1206,8 @@ export function createSessionExecutionFactory(ports: {
               );
               controller.signal.throwIfAborted();
               await commitSkillContext();
+              if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
+                return { retry: true as const };
               if (skillLoads.size) preparedSkillLoads.set(prepared.messages, skillLoads);
               return { round: { request: prepared, toolScope } };
             }
@@ -1194,12 +1235,10 @@ export function createSessionExecutionFactory(ports: {
             runTools: executeRoundTools,
             startModel: (request) => {
               const skillLoads = preparedSkillLoads.get(request.messages);
-              return modelLifecycle.start(
-                request,
-                skillLoads === undefined
-                  ? undefined
-                  : () => sessionRuntime.acknowledgeSkillContext(skillLoads)
-              );
+              return modelLifecycle.start(request, () => {
+                if (skillLoads) sessionRuntime.acknowledgeSkillContext(skillLoads);
+                sessionRuntime.acknowledgeMcpDiscovery(request.messages);
+              });
             },
             recoverySignal: () => controller.signal,
             compactContext,

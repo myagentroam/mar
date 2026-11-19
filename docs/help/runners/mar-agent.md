@@ -211,7 +211,7 @@ Code Mode 默认关闭。只有在模型配置中开启 **Code Mode** 且 Host �
 
 每个 cell 使用全新的 QuickJS WASM Runtime，由 Host 管理独立工作进程。支持顶层 `await` 和 `Promise.all`，不提供 Node 全局对象、模块导入、原生文件/网络 API 或 `console.*`。使用 `observe.result(result)` 登记未经修改的完整工具结果或捕获的工具错误；对派生值使用 `observe.text(value)`，对图片使用 `observe.image(value)`。观察只选择传给模型的证据，不代表已经读取或检查；没有 `out` 别名。文件、命令、网络等操作只能经显式允许 `programmatic` 的 `tools.NAME(input)` 调用，并保留工具自身的权限和安全检查。工具结果是统一 envelope，原始文件文本取 `result.data.results[0].text`，而不是带行号展示的 `content`。
 
-`code_exec`、`code_exec_wait`、`tool_search`、`question` 和 direct-only 工具不能在 cell 内调用。普通外部 MCP 默认具备 programmatic 权限，开启 Only 模式时通过 Code Mode 调用，显式 direct-only 工具仍直接调用。需发现的工具先直接调用 `tool_search`；搜索结果提供名称、说明和输入定义，不持续改写 Code Mode 描述，只有已发现且获准 programmatic 的工具才可在下一模型请求的 cell 使用。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用；同步 JavaScript 执行预算为 120 秒，异步工具等待不消耗该预算，cell 不设固定墙钟总时限。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。
+`code_exec`、`code_exec_wait`、`question` 和仅限直调的工具不能在 cell 内调用。普通外部 MCP 默认支持程序化调用，明确限定直调的工具仍走直调。开启 Code Mode 时用 `tools.tool_search` 搜索延迟加载的工具；SDK 单独提供匹配定义，无需观察结果，也不会改变当前 cell 的工具列表。发现的工具从下一轮模型请求起可用。关闭 Code Mode 时直接调用 `tool_search`。所有工具调用必须等待完成。语言隔离不替代 Host 的文件权限、进程与操作系统沙箱策略，也不使有写入权限的工具变为只读。输入和文本输出各限 1 MiB，每 cell 最多 128 次工具调用；同步 JavaScript 执行预算为 120 秒，异步工具等待不消耗该预算，cell 不设固定墙钟总时限。取消、超时或结果超限可能发生在部分操作完成之后；失败不会回滚已完成修改。
 
 启动后台进程后，使用返回的 `processId` 调用 `exec_wait`，默认等待，也支持 `action: "write"` 与 `action: "cancel"`。cell 内等待仍遵守工具自身超时及 Host 策略。`exec` 不接受旧的 `action` 参数。首次等待默认 10 秒，`exec_wait` 的等待默认 60 秒；两者最多等待 300 秒。显式传入低于 10000 ms 的 `yieldMs`（包括 0）按 10 秒等待窗口处理，进程提前结束则提前返回。取消等待不会终止进程，等待窗口也不会延长执行总超时。
 

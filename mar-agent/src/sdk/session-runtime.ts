@@ -9,7 +9,10 @@ import type {
 } from '../extensions/session-input.js';
 import type { ModelAdapter } from '../model/contracts.js';
 import type { ModelCredentialProvider } from '../model/configuration.js';
-import type { SessionModelRequest as ModelRequest } from '../session/model-request.js';
+import type {
+  SessionModelMessage,
+  SessionModelRequest as ModelRequest
+} from '../session/model-request.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import {
   assertLoadedSkillCapacity,
@@ -29,6 +32,8 @@ import { SessionModelAdapters } from './session-model-adapters.js';
 /** Owns warm Session state shared across sequential Executions and retained cells. */
 export class SessionRuntime {
   #executionContext: SessionExecutionContext | undefined;
+  #mcpDiscoveryRevision = 0;
+  readonly #pendingMcpDiscovery = new Map<string, string>();
   #todo: TodoStore | undefined;
   readonly scheduleTool = createSessionToolScheduler();
   readonly #modelAdapters: SessionModelAdapters;
@@ -100,6 +105,7 @@ export class SessionRuntime {
     return (this.#inputs ??= create());
   }
   resetAfterClear(generation: number): void {
+    this.#pendingMcpDiscovery.clear();
     this.#modelAdapters.setGeneration(generation);
     this.#todo = undefined;
     this.#contextualWorldState = undefined;
@@ -125,6 +131,34 @@ export class SessionRuntime {
   acknowledgeSkillContext(delivered: ReadonlyMap<string, string>): void {
     for (const [name, content] of delivered)
       if (this.#pendingSkillContext.get(name) === content) this.#pendingSkillContext.delete(name);
+  }
+
+  publishMcpDiscovery(recordId: string, message: SessionModelMessage): void {
+    const receipt = message.mcpDiscovery!;
+    for (const name of receipt.names) this.#pendingMcpDiscovery.set(name, receipt.id);
+    this.execution?.appendedMessages?.append(recordId, message);
+    this.#mcpDiscoveryRevision++;
+  }
+
+  get mcpDiscoveryRevision(): number {
+    return this.#mcpDiscoveryRevision;
+  }
+
+  isPendingMcpDiscovery(message: SessionModelMessage): boolean {
+    const receipt = message.mcpDiscovery;
+    return (
+      receipt?.names.some((name) => this.#pendingMcpDiscovery.get(name) === receipt.id) ?? false
+    );
+  }
+
+  acknowledgeMcpDiscovery(messages: readonly SessionModelMessage[]): void {
+    if (!this.#pendingMcpDiscovery.size) return;
+    for (const { mcpDiscovery: receipt } of messages) {
+      if (!receipt) continue;
+      for (const name of receipt.names)
+        if (this.#pendingMcpDiscovery.get(name) === receipt.id)
+          this.#pendingMcpDiscovery.delete(name);
+    }
   }
 
   recordRequest(modelId: string, request: ModelRequest): ExtensionRequestSnapshot {
