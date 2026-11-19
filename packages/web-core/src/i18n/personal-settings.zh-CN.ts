@@ -4,7 +4,6 @@ export const personalSettingsZhCN = {
     updateRecords: '更新明细',
     recordsSnapshot: '明细未自动更新，保留当前浏览内容。',
     refreshDelayed: '刷新暂不可用，稍后自动重试',
-    refreshed: '上次刷新：{time}',
     overviewScope: '当前统计项 · 不受下方筛选影响',
     title: '用量统计',
     accountScope: '当前账号的 Agent 用量',

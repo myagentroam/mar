@@ -222,6 +222,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.runFor(500);
     await expect(loadingMask).toBeHidden();
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
+    await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     const refreshButton = panel.getByRole('button', { name: labels.refresh, exact: true });
     await expect(refreshButton).toHaveText('');
     await expect(refreshButton.locator('svg')).toHaveCount(1);
@@ -245,7 +246,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       if (mobile) {
         await purposeSelectBox.click();
         await page.getByRole('option', { name: label, exact: true }).click();
-      } else await categories.getByText(label, { exact: true }).click();
+      } else await categories.getByRole('radio', { name: label, exact: true }).click();
     };
     await expect(categories.getByRole('radio')).toHaveCount(mobile ? 0 : 5);
     await expect(purposeSelect).toHaveCount(mobile ? 1 : 0);
@@ -253,7 +254,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(refreshButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     const refreshSize = await refreshButton.boundingBox();
     expect(refreshSize!.width).toBe(refreshSize!.height);
-    const selectionIndicator = categories.locator('.el-segmented__item-selected');
+    const selectionIndicator = categories.locator('.mar-segmented-indicator');
     for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       await page.evaluate(
         (value) => document.documentElement.setAttribute('data-theme', value),
@@ -294,7 +295,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       if (!mobile && theme === 'vscode-dark-2026') {
         await refreshButton.hover();
         await expect(refreshButton).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-        await panel.locator('.refresh-actions').screenshot({
+        await refreshButton.screenshot({
           animations: 'disabled',
           path: testInfo.outputPath('usage-refresh-hover.png')
         });
@@ -650,6 +651,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
     await expect(panel.locator('.records th.ascending')).toHaveCount(1);
     expect(reads('records')).toBe(beforeSorted.records);
+    await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await page.clock.resume();
 
     categoryTesting = true;

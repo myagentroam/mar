@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { SessionGroup } from '@myagentroam/protocol';
+import { computed } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
+import MarSegmented from './MarSegmented.vue';
 
 defineProps<{
   modelValue: SessionGroup;
@@ -8,47 +10,33 @@ defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: SessionGroup];
 }>();
-const groups: readonly SessionGroup[] = ['MAIN', 'CHILD'];
-function label(group: SessionGroup): string {
-  return translate(group === 'MAIN' ? 'sessionGroups.main' : 'sessionGroups.child');
-}
-function navigate(event: KeyboardEvent, group: SessionGroup): void {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  event.preventDefault();
-  const next =
-    event.key === 'Home'
-      ? 'MAIN'
-      : event.key === 'End'
-        ? 'CHILD'
-        : group === 'MAIN'
-          ? 'CHILD'
-          : 'MAIN';
-  emit('update:modelValue', next);
-  const parent = (event.currentTarget as HTMLElement).parentElement;
-  parent?.querySelector<HTMLButtonElement>(`[data-group="${next}"]`)?.focus();
-}
+const options = computed(
+  () =>
+    [
+      {
+        value: 'MAIN',
+        label: translate('sessionGroups.mainTab'),
+        accessibleLabel: translate('sessionGroups.main')
+      },
+      {
+        value: 'CHILD',
+        label: translate('sessionGroups.childTab'),
+        accessibleLabel: translate('sessionGroups.child')
+      }
+    ] satisfies { value: SessionGroup; label: string; accessibleLabel: string }[]
+);
 </script>
 
 <template>
   <div class="session-group-tabs">
-    <div class="group-options" role="tablist" :aria-label="translate('sessionGroups.label')">
-      <button
-        v-for="group in groups"
-        :key="group"
-        type="button"
-        role="tab"
-        :data-group="group"
-        :aria-selected="modelValue === group"
-        :tabindex="modelValue === group ? 0 : -1"
-        :aria-label="label(group)"
-        @click="emit('update:modelValue', group)"
-        @keydown="navigate($event, group)"
-      >
-        <span class="group-label">{{
-          translate(group === 'MAIN' ? 'sessionGroups.mainTab' : 'sessionGroups.childTab')
-        }}</span>
-      </button>
-    </div>
+    <MarSegmented
+      :model-value="modelValue"
+      :options="options"
+      :label="translate('sessionGroups.label')"
+      block
+      compact
+      @update:model-value="emit('update:modelValue', $event)"
+    />
   </div>
 </template>
 
@@ -58,47 +46,5 @@ function navigate(event: KeyboardEvent, group: SessionGroup): void {
   flex-shrink: 0;
   min-width: 0;
   padding-block: 0.25rem;
-}
-.group-options {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--mar-border-default);
-  border-radius: var(--mar-radius-control);
-  background: var(--mar-bg-subtle);
-}
-.session-group-tabs button {
-  flex: 1 1 0;
-  display: inline-flex;
-  min-width: 0;
-  min-height: var(--mar-compact-control-size);
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
-  border: 0;
-  border-radius: calc(var(--mar-radius-control) - 2px);
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font-family: inherit;
-  font-size: var(--mar-font-size-meta);
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: center;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.session-group-tabs button:hover {
-  background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
-}
-.session-group-tabs button[aria-selected='true'] {
-  background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-}
-.session-group-tabs button:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: -2px;
 }
 </style>

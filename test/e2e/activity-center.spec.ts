@@ -525,10 +525,10 @@ for (const width of [1280, 390]) {
         path: testInfo.outputPath(`activity-${width}-${theme}-recent.png`),
         animations: 'disabled'
       });
-      await panel.locator('[data-group="CHILD"]').tap();
+      await panel.locator('input[value="CHILD"]').tap();
       await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(0);
       await expect(page.locator('output')).toHaveText('');
-      await panel.locator('[data-group="MAIN"]').tap();
+      await panel.locator('input[value="MAIN"]').tap();
       await panel.locator('.recent-sessions-list button').first().tap();
       await expect(panel).toHaveCount(0);
       await expect(page.locator('output')).toHaveText('session-0');

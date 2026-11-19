@@ -179,16 +179,16 @@ for (const entry of ['button', 'shortcut'] as const) {
     page
   }) => {
     const { main } = await openWorkspace(page);
-    const mainTab = page.locator('.conversation-sidebar [role="tab"][data-group="MAIN"]');
-    const childTab = page.locator('.conversation-sidebar [role="tab"][data-group="CHILD"]');
+    const mainTab = page.locator('.conversation-sidebar input[value="MAIN"]');
+    const childTab = page.locator('.conversation-sidebar input[value="CHILD"]');
     await childTab.click();
-    await expect(childTab).toHaveAttribute('aria-selected', 'true');
+    await expect(childTab).toBeChecked();
     await expect(page.locator('.session-row')).toContainText('Child session');
     const input = page.locator('.composer-input');
     await input.fill('Keep the explicit new-session draft');
     if (entry === 'button') await page.locator('.new-session-button').click();
     else await input.press('Control+n');
-    await expect(mainTab).toHaveAttribute('aria-selected', 'true');
+    await expect(mainTab).toBeChecked();
     await expect(input).toHaveValue('Keep the explicit new-session draft');
     await expect(page.locator('.composer-send-button')).toBeEnabled();
     const startRequest = page.waitForRequest('**/api/agent-sessions/start');
@@ -253,9 +253,9 @@ test('manual group changes preserve the Composer draft', async ({ page }) => {
   await openWorkspace(page);
   const input = page.locator('.composer-input');
   await input.fill('Manual group changes keep this text');
-  await page.locator('.conversation-sidebar [data-group="CHILD"]').click();
+  await page.locator('.conversation-sidebar input[value="CHILD"]').click();
   await expect(input).toHaveValue('Manual group changes keep this text');
-  await page.locator('.conversation-sidebar [data-group="MAIN"]').click();
+  await page.locator('.conversation-sidebar input[value="MAIN"]').click();
   await expect(input).toHaveValue('Manual group changes keep this text');
 });
 

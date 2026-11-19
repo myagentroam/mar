@@ -168,14 +168,13 @@ test('Cold Node session discovery streams batches through the real relay and slo
     await expect(rows).toHaveCount(2);
     await expect(rows.filter({ hasText: 'Fast native title' })).toHaveCount(1);
     await expect(rows.filter({ hasText: 'New Session' })).toHaveCount(1);
-    await expect(page.getByRole('tab', { name: '主会话', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-    await page.getByRole('tab', { name: '子会话', exact: true }).click();
+    const mainCategory = page.getByRole('radio', { name: '主会话', exact: true });
+    const childCategory = page.getByRole('radio', { name: '子会话', exact: true });
+    await expect(mainCategory).toBeChecked();
+    await childCategory.click();
     await expect(rows.filter({ hasText: 'Child session' }).first()).toBeVisible();
     await expect(rows.filter({ hasText: 'Fast native title' })).toHaveCount(0);
-    await page.getByRole('tab', { name: '主会话', exact: true }).click();
+    await mainCategory.click();
     await expect(rows).toHaveCount(2);
     await expect(rows.filter({ hasText: 'Child session' })).toHaveCount(0);
     await expect(rows.filter({ hasText: 'Pinned slow custom title' })).toHaveCount(0);
@@ -190,22 +189,21 @@ test('Cold Node session discovery streams batches through the real relay and slo
     await expect(rows.first()).toContainText('Pinned slow custom title');
     await expect(rows.filter({ hasText: 'Fast native title' })).toHaveCount(1);
     await expect(rows.filter({ hasText: 'New Session' })).toHaveCount(1);
-    await page.getByRole('tab', { name: '子会话', exact: true }).click();
+    await childCategory.click();
     const child = page.locator('.session-list li').filter({ hasText: 'Child session 44' });
     await child.hover();
     await child.locator('.session-more-button').click();
-    await page.getByRole('menuitem', { name: '移动到主会话' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: '移动', exact: true }).click();
-    await expect(child).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: '子会话', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
+    const menu = page.getByRole('menu', { name: /Child session 44/ });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: '移动到主会话' })).toHaveCount(0);
+    await expect(child).toBeVisible();
+    await expect(childCategory).toBeChecked();
     expect(
       database.getNativeSessionMetadata('mar-agent', 'child-44', workspaceId)?.parentSessionId
-    ).toBeNull();
-    await page.getByRole('tab', { name: '主会话', exact: true }).click();
-    await expect(rows.filter({ hasText: 'Child session 44' })).toHaveCount(1);
+    ).toBe('fast-native');
+    await mainCategory.click();
+    await expect(mainCategory).toBeChecked();
+    await expect(rows.filter({ hasText: 'Child session 44' })).toHaveCount(0);
   } finally {
     fast.resolve();
     firstSlow.resolve();

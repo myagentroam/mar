@@ -6,7 +6,7 @@ import { json, mockConsoleApi } from './support/web-console-api.js';
 // @test-covers packages/web-core/src/styles/theme.css
 // @test-covers packages/web-core/src/styles/element-plus-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchAside.vue
-// @test-covers packages/web-core/src/view/common/SessionGroupTabs.vue
+// @test-covers packages/web-core/src/view/common/MarSegmented.vue
 
 function luminance(color: string): number {
   const hex = resolvedColorToHex(color);
@@ -66,7 +66,8 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
       .locator('.file-explorer > .explorer-toolbar')
       .evaluate((element) => getComputedStyle(element).borderBottomColor);
     const track = await page
-      .locator('.conversation-sidebar .group-options')
+      .locator('.conversation-sidebar')
+      .getByRole('radiogroup')
       .evaluate((element) => getComputedStyle(element).borderTopColor);
     const panel = await aside.evaluate((element) => getComputedStyle(element).backgroundColor);
     const inputWrappers = [

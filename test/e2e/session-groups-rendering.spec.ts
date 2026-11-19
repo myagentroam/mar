@@ -118,10 +118,13 @@ for (const [width, theme, locale] of [
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto(`${fixture.url}session-groups.html?theme=${theme}&locale=${locale}`);
       const chats = page.locator('.conversation-sidebar');
-      const tabs = chats.getByRole('tab');
-      await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-      await expect(tabs.nth(0)).toHaveText(locale === 'zh-CN' ? '主会话' : 'Main');
-      await expect(tabs.nth(1)).toHaveText(locale === 'zh-CN' ? '子会话' : 'Child');
+      const categories = chats.getByRole('radiogroup');
+      const radios = categories.getByRole('radio');
+      const options = categories.locator('.mar-segmented-option');
+      const indicator = categories.locator('.mar-segmented-indicator');
+      await expect(radios.nth(0)).toBeChecked();
+      await expect(options.nth(0)).toHaveText(locale === 'zh-CN' ? '主会话' : 'Main');
+      await expect(options.nth(1)).toHaveText(locale === 'zh-CN' ? '子会话' : 'Child');
       await expect(chats.locator('.session-state-badge')).toHaveCount(0);
       const colors = await chats.evaluate((element) => {
         const probe = document.createElement('span');
@@ -141,20 +144,36 @@ for (const [width, theme, locale] of [
         probe.remove();
         return result;
       });
-      await expect(tabs.nth(0)).toHaveCSS('background-color', colors.selected);
-      await expect(tabs.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(chats.getByRole('tablist')).toHaveCSS('background-color', colors.track);
-      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-width', '1px');
-      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-style', 'solid');
-      await expect(chats.getByRole('tablist')).toHaveCSS('border-top-color', colors.border);
-      await expect(tabs.nth(0)).toHaveCSS('border-top-width', '0px');
-      await tabs.nth(1).hover();
-      await expect(tabs.nth(1)).toHaveCSS('background-color', colors.hover);
-      for (const tab of await tabs.all()) {
-        const bounds = (await tab.boundingBox())!;
-        const text = (await tab.locator('.group-label').boundingBox())!;
+      const expectIndicatorAt = async (option: number) => {
+        await expect
+          .poll(async () => {
+            const [slider, target] = await Promise.all([
+              indicator.boundingBox(),
+              options.nth(option).boundingBox()
+            ]);
+            return slider && target
+              ? Math.max(Math.abs(slider.x - target.x), Math.abs(slider.width - target.width))
+              : Infinity;
+          })
+          .toBeLessThanOrEqual(1);
+      };
+      await expectIndicatorAt(0);
+      await expect(indicator).toHaveCSS('background-color', colors.selected);
+      await expect(indicator).toHaveCSS('transition-duration', '0s');
+      await expect(options.nth(1)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(categories).toHaveCSS('background-color', colors.track);
+      await expect(categories).toHaveCSS('border-top-width', '1px');
+      await expect(categories).toHaveCSS('border-top-style', 'solid');
+      await expect(categories).toHaveCSS('border-top-color', colors.border);
+      await expect(options.nth(0)).toHaveCSS('border-top-width', '0px');
+      await radios.nth(1).hover();
+      await expect(options.nth(1)).toHaveCSS('background-color', colors.hover);
+      for (const option of await options.all()) {
+        const bounds = (await option.boundingBox())!;
+        const text = (await option.locator('span').boundingBox())!;
         expect(bounds.height).toBeLessThanOrEqual(28);
         expect(text.x + text.width / 2).toBeCloseTo(bounds.x + bounds.width / 2, 0);
+        await expect(option).toHaveCSS('font-weight', '400');
       }
       const dots = page.locator('.mar-session-activity.running i');
       await expect(page.locator('.conversation-header .mar-session-activity')).toHaveCount(0);
@@ -174,10 +193,32 @@ for (const [width, theme, locale] of [
       expect(
         await unread.evaluate((e) => parseFloat(getComputedStyle(e).borderTopRightRadius))
       ).toBeGreaterThan(0);
-      await tabs.nth(0).focus();
+      await radios.nth(0).focus();
       await page.keyboard.press('ArrowRight');
-      await expect(tabs.nth(1)).toBeFocused();
-      await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+      await expect(radios.nth(1)).toBeFocused();
+      await expect(radios.nth(1)).toBeChecked();
+      await expectIndicatorAt(1);
+      await page.keyboard.press('ArrowLeft');
+      await expect(radios.nth(0)).toBeFocused();
+      await expect(radios.nth(0)).toBeChecked();
+      await page.keyboard.press('End');
+      await expect(radios.nth(1)).toBeFocused();
+      await expect(radios.nth(1)).toBeChecked();
+      await page.keyboard.press('Home');
+      await expect(radios.nth(0)).toBeFocused();
+      await expect(radios.nth(0)).toBeChecked();
+      await expectIndicatorAt(0);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await indicator.evaluate((element) => {
+        element.addEventListener('transitionrun', (event) => {
+          if ((event as TransitionEvent).propertyName === 'transform')
+            element.dataset.slid = 'true';
+        });
+      });
+      await radios.nth(1).click();
+      await expect(indicator).toHaveAttribute('data-slid', 'true');
+      await expectIndicatorAt(1);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(page.locator('.conversation > p').first()).toHaveText('main');
       await chats.locator('.session-link').click();
       await expect(page.locator('.conversation > p').first()).toHaveText('child');
@@ -206,13 +247,19 @@ for (const [width, theme, locale] of [
         .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions' })
         .click();
       const recent = page.locator('.recent-sessions-panel:visible');
-      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-width', '1px');
-      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-style', 'solid');
-      await expect(recent.getByRole('tablist')).toHaveCSS('border-top-color', colors.border);
-      await expect(recent.getByRole('tab').first()).toHaveCSS('border-top-width', '0px');
+      const recentCategories = recent.getByRole('radiogroup');
+      await expect(recentCategories).toHaveCSS('border-top-width', '1px');
+      await expect(recentCategories).toHaveCSS('border-top-style', 'solid');
+      await expect(recentCategories).toHaveCSS('border-top-color', colors.border);
+      await expect(recentCategories.locator('.mar-segmented-option').first()).toHaveCSS(
+        'border-top-width',
+        '0px'
+      );
       await expect(recent.locator('.session-state-badge')).toHaveCount(0);
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
-      await recent.getByRole('tab').nth(1).click();
+      await recentCategories.getByRole('radio').nth(1).click();
+      await expect(recentCategories.getByRole('radio').nth(1)).toBeChecked();
+      await expect(radios.nth(1)).toBeChecked();
       await expect(recent.locator('.recent-sessions-list > li')).toHaveCount(102);
       await expect(page.locator('.conversation > p').first()).toHaveText('child');
       await expect(recent.locator('.recent-session-unread')).toHaveCount(1);
@@ -232,6 +279,36 @@ for (const [width, theme, locale] of [
     }
   });
 }
+
+test('Session categories retain a visible selection in forced colors', async ({ page }) => {
+  const fixture = await startCustomThemeFixture();
+  try {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto(`${fixture.url}session-groups.html?locale=zh-CN`);
+    const categories = page.locator('.conversation-sidebar').getByRole('radiogroup');
+    const radios = categories.getByRole('radio');
+    const selectionBorders = () =>
+      categories
+        .locator('.mar-segmented-option')
+        .evaluateAll((options) =>
+          options.map((option) => getComputedStyle(option, '::after').borderTopStyle)
+        );
+
+    await expect(radios.nth(0)).toBeChecked();
+    await expect.poll(selectionBorders).toEqual(['solid', 'none']);
+    await radios.nth(0).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(radios.nth(1)).toBeChecked();
+    await expect(radios.nth(1)).toBeFocused();
+    await expect.poll(selectionBorders).toEqual(['none', 'solid']);
+    await expect(categories.locator('.mar-segmented-option').nth(1)).toHaveCSS(
+      'outline-style',
+      'solid'
+    );
+  } finally {
+    await fixture.close();
+  }
+});
 
 for (const [width, theme, locale] of [
   [1280, 'daylight', 'en-US'],
