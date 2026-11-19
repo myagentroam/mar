@@ -9,6 +9,7 @@ const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly view: WorkbenchView;
   readonly sidebarCollapsed: boolean;
+  readonly workspaceStartupBlocked?: boolean;
   readonly settingsSection: SettingsSection;
   readonly managementSection: ManagementSection;
   readonly settingsItems: readonly { readonly id: SettingsSection; readonly label: string }[];
@@ -36,7 +37,7 @@ const emit = defineEmits<{
     :class="['workbench-header', { 'workspace-tabs-active': view === 'nodes' }]"
   >
     <button
-      v-if="!mobileViewport"
+      v-if="!mobileViewport && (view !== 'nodes' || !workspaceStartupBlocked)"
       class="workbench-tree-toggle mar-icon-button mar-icon-action"
       :aria-label="
         sidebarCollapsed ? $t('navigation.expandSidebar') : $t('navigation.collapseSidebar')

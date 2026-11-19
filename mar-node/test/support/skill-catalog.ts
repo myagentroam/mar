@@ -4,8 +4,7 @@ import type { ModelRequest } from '../../../mar-agent/dist/model/contracts.js';
 export function skillCatalog(request: ModelRequest): string | undefined {
   const message = request.messages.findLast(
     (item) =>
-      item.contextualBlock?.id === 'core:skill-catalog' &&
-      item.contextualBlock.authority === 'instruction'
+      item.contextualBlock?.id === 'runtime:skills' && item.contextualBlock.authority === 'context'
   );
   return message?.contextualBlock?.operation === 'replace' ? message.content : undefined;
 }

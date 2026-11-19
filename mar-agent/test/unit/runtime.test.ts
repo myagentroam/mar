@@ -233,7 +233,7 @@ class SkillSelectingAdapter implements ModelAdapter {
       yield {
         type: 'client_tool.call',
         callId: 'skill-call',
-        name: 'skill',
+        name: 'skill_load',
         arguments: { name: 'deploy' }
       };
       yield { type: 'completed', reason: 'tool_use' };
@@ -1405,7 +1405,7 @@ describe('agent runtime', () => {
     const textSession = await textAgent.createSession({ workspace, title: 'Text' });
     await textSession.run({ prompt: 'inspect tools' }).result();
     expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('view_image');
-    expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('skill');
+    expect(textAdapter.requests[0]?.tools.map((tool) => tool.name)).not.toContain('skill_load');
     await textAgent.dispose();
   });
   it('retains recent inline pixels across restart and degrades a missing resource', async () => {
@@ -3158,16 +3158,20 @@ describe('agent runtime', () => {
     expect(instructions).not.toContain('PACKAGE_RULE_SHOULD_NOT_LOAD');
     expect(instructions).not.toContain('NESTED_RULE_NOT_AUTOLOADED');
     expect(system).not.toContain('APP_RULE');
-    expect(system).toContain('from the project root through the current Workspace');
+    expect(system).toContain('The Runtime supplies applicable AGENTS.md instructions');
     expect(system).toContain('Do not independently search for or reread AGENTS.md files');
     expect(system).toContain('explicit user or injected instructions');
     expect(system).not.toContain('check for applicable AGENTS.md');
-    expect(system).toContain('deploy: Deploy safely');
-    expect(system).toContain('source:');
+    const catalog = adapter.requests[0]!.messages.find(
+      (message) => message.contextualBlock?.id === 'runtime:skills'
+    )?.content;
+    expect(catalog).toContain('deploy: Deploy safely');
+    expect(catalog).toContain('source:');
+    expect(catalog).not.toContain('SKILL_BODY');
     expect(system).not.toContain('SKILL_BODY');
-    expect(adapter.requests[0]!.tools.map((tool) => tool.name)).toContain('skill');
+    expect(adapter.requests[0]!.tools.map((tool) => tool.name)).toContain('skill_load');
     const selected = adapter.requests[1]!.messages.find(
-      (message) => message.role === 'tool' && message.callId === 'skill-call'
+      (message) => message.contextualBlock?.id === 'runtime:loaded-skill:deploy'
     )?.content;
     expect(selected).toContain('SKILL_BODY');
     expect(selected).not.toContain('RESOURCE_BODY');
@@ -3229,16 +3233,22 @@ describe('agent runtime', () => {
 
     const system = effectiveInstructions(adapter.requests[0]!);
     const instructions = adapter.requests[0]!.messages[0]!.content;
-    const environment = adapter.requests[0]!.messages[1]!.content;
+    const environment = adapter.requests[0]!.messages.find(
+      (message) => message.contextKind === 'environment'
+    )?.content;
     expect(environment).toContain('<cwd>/workspace</cwd>');
     expect(environment).not.toContain(physicalWorkspace);
     expect(system).not.toContain('HOSTED_WORKSPACE_RULE');
     expect(instructions).toContain('HOSTED_WORKSPACE_RULE');
-    expect(system).toContain('source: /workspace/.agents/skills/deploy');
+    const catalog = adapter.requests[0]!.messages.find(
+      (message) => message.contextualBlock?.id === 'runtime:skills'
+    )?.content;
+    expect(catalog).toContain('source: /workspace/.agents/skills/deploy');
+    expect(catalog).not.toContain(physicalWorkspace);
     expect(system).not.toContain(physicalWorkspace);
     expect(instructions).not.toContain(physicalWorkspace);
     const selected = adapter.requests[1]!.messages.find(
-      (message) => message.role === 'tool' && message.callId === 'skill-call'
+      (message) => message.contextualBlock?.id === 'runtime:loaded-skill:deploy'
     )?.content;
     expect(selected).toContain('baseDirectory="/workspace/.agents/skills/deploy"');
     expect(selected).toContain(
@@ -3372,7 +3382,7 @@ describe('agent runtime', () => {
     expect(childRequest?.system).toContain('explicit user or injected instructions');
     expect(childRequest?.system).not.toContain('check for applicable AGENTS.md');
     expect(childInstructions).toContain('Project instructions');
-    expect(childRequest?.tools.map((tool) => tool.name)).not.toContain('skill');
+    expect(childRequest?.tools.map((tool) => tool.name)).not.toContain('skill_load');
     const childContinuation = requests.filter((request) =>
       effectiveInstructions(request).includes('delegated subagent')
     )[1];
@@ -4276,6 +4286,63 @@ describe('agent runtime', () => {
     });
     expect(adapter.requests.filter((request) => request.toolChoice === 'none')).toHaveLength(1);
     await agent.dispose();
+  });
+
+  it('delivers a pending Skill again when a provider rejection triggers Compact', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-skill-overflow-recovery-'));
+    homes.push(home);
+    const directory = join(home, '.agents', 'skills', 'workflow');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'SKILL.md'), 'Follow the overflow recovery workflow.');
+    const host = new LocalAgentHost({ homeDirectory: home, workspace: home });
+    const configured = { ...model, codeMode: false };
+    const requests: ModelRequest[] = [];
+    let normalRounds = 0;
+    const agent = await createMarAgent({ mode: 'normal', host, models: [configured] }, () => ({
+      configuration: configured,
+      async *start(request): AsyncIterable<ModelEvent> {
+        requests.push(request);
+        if (request.toolChoice === 'none') {
+          yield { type: 'text.completed', itemId: 'summary', text: 'Continue the task.' };
+        } else if (++normalRounds === 1) {
+          yield {
+            type: 'client_tool.call',
+            callId: 'load-workflow',
+            name: 'skill_load',
+            arguments: { name: 'workflow' }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+          return;
+        } else if (normalRounds === 2) {
+          throw new AgentError(
+            'context_length_exceeded',
+            'The request exceeds the context window.'
+          );
+        } else {
+          yield { type: 'text.completed', itemId: 'answer', text: 'Ready.' };
+        }
+        yield { type: 'completed', reason: 'completed' };
+      }
+    }));
+    const skillBodies = (request: ModelRequest) =>
+      request.messages.filter(
+        (message) => message.contextualBlock?.id === 'runtime:loaded-skill:workflow'
+      );
+    try {
+      const session = await agent.createSession({ workspace: home });
+      expect(await session.run({ prompt: 'Load and follow the workflow.' }).result()).toMatchObject(
+        { status: 'completed' }
+      );
+      const [initial, rejected, compact, replay] = requests;
+      expect(requests).toHaveLength(4);
+      expect(skillBodies(initial!)).toEqual([]);
+      expect(skillBodies(rejected!)).toHaveLength(1);
+      expect(compact?.toolChoice).toBe('none');
+      expect(skillBodies(compact!)).toEqual([]);
+      expect(skillBodies(replay!)).toEqual(skillBodies(rejected!));
+    } finally {
+      await agent.dispose();
+    }
   });
 
   it('recovers when a compatible provider rejects an oversized message string', async () => {

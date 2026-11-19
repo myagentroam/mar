@@ -568,8 +568,11 @@ describe('Execution tool sources outside model tool handlers', () => {
       apiVersion: '1.0',
       attachSession(value) {
         value.hooks.intercept('model.request', async (input, _call, next) => {
-          const skill = await value.tools.invoke({ name: 'skill', arguments: { name: 'web' } });
-          expect(skill.content).toContain('Bound web instructions');
+          const skill = await value.tools.invoke({
+            name: 'skill_load',
+            arguments: { name: 'web' }
+          });
+          expect(skill.data).toEqual({ success: true });
           const result = await value.tools.invoke({ name: 'web_probe', arguments: {} });
           expect(result.content).toBe('web-bound');
           invoked++;
@@ -648,17 +651,17 @@ describe('Execution tool sources outside model tool handlers', () => {
             ).toBe(`wrapped:source-${visits}`);
             if (visits < 3) {
               const skill = await value.tools.invoke({
-                name: 'skill',
+                name: 'skill_load',
                 arguments: { name: 'web-helper' }
               });
-              expect(skill.content).toContain(`Web instructions ${visits}`);
+              expect(skill.data).toEqual({ success: true });
               expect((await value.tools.invoke({ name: 'web_fetch', arguments: {} })).content).toBe(
                 `fetch-${visits}`
               );
             } else {
               expect(refs.some((ref) => ref.definition.name === 'web_fetch')).toBe(false);
               await expect(
-                value.tools.invoke({ name: 'skill', arguments: { name: 'web-helper' } })
+                value.tools.invoke({ name: 'skill_load', arguments: { name: 'web-helper' } })
               ).rejects.toThrow(/TOOL_INPUT_INVALID|TOOL_NOT_AVAILABLE/);
             }
             return next(input);

@@ -82,6 +82,7 @@ const selection = createWorkbenchWorkspaceSelectionService({
   },
   profilesLoading: ref(false),
   isCacheActive: cache.isActive,
+  nodeListConfirmed: ref(true),
   hasNode: () => true,
   isHostAvailable: () => true,
   isNetworkUnavailable: () => false,

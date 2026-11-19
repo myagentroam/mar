@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type {
   NavigationSession,
@@ -18,6 +18,7 @@ type TreeNode = NavigationSession;
 
 const props = defineProps<{
   readonly sessionId: string;
+  readonly interactive: boolean;
   readonly tree: NavigationSnapshot['tree'] | undefined;
   readonly status: 'idle' | 'loading' | 'ready' | 'failed';
   readonly mainSessionId?: string | undefined;
@@ -34,6 +35,10 @@ const nodeMenus = ref<Array<{ handleClose: () => void }>>([]);
 const hoveredSessionId = ref<string>();
 const focusedSessionId = ref<string>();
 const openMenuSessionId = ref<string>();
+// Teleported dropdowns need their own interaction state while either layer is leaving.
+function menuInteractive(sessionId: string): boolean {
+  return props.interactive && openMenuSessionId.value === sessionId;
+}
 const hoverQuery =
   typeof window === 'undefined'
     ? undefined
@@ -70,6 +75,15 @@ function closeMenu(): void {
   parentMenu.value?.handleClose();
   for (const menu of nodeMenus.value) menu.handleClose();
 }
+watch(
+  () => props.interactive,
+  (interactive) => {
+    if (!interactive) {
+      closeMenu();
+      if (openMenuSessionId.value !== undefined) updateMenu(openMenuSessionId.value, false);
+    }
+  }
+);
 defineExpose({ closeMenu });
 const rows = computed(() => {
   const tree = props.tree;
@@ -192,6 +206,7 @@ function openContext(event: MouseEvent): void {
           ref="parentMenu"
           trigger="click"
           popper-class="session-tree-menu"
+          :popper-style="menuInteractive(tree.parent.id) ? undefined : { pointerEvents: 'none' }"
           @visible-change="updateMenu(tree.parent.id, $event)"
         >
           <button
@@ -206,6 +221,7 @@ function openContext(event: MouseEvent): void {
             <SessionNavigationMenu
               :session-id="tree.parent.id"
               can-navigate
+              :inert="!menuInteractive(tree.parent.id)"
               @open="(id, destination) => emit('open', id, destination)"
             />
           </template>
@@ -288,6 +304,7 @@ function openContext(event: MouseEvent): void {
             ref="nodeMenus"
             trigger="click"
             popper-class="session-tree-menu"
+            :popper-style="menuInteractive(row.node.id) ? undefined : { pointerEvents: 'none' }"
             @visible-change="updateMenu(row.node.id, $event)"
           >
             <button
@@ -303,6 +320,7 @@ function openContext(event: MouseEvent): void {
               <SessionNavigationMenu
                 :session-id="row.node.id"
                 can-navigate
+                :inert="!menuInteractive(row.node.id)"
                 @open="(id, destination) => emit('open', id, destination)"
               />
             </template>

@@ -237,6 +237,7 @@ export function restoreModelContext(
   if (Buffer.byteLength(JSON.stringify(payload)) > byteLimit) return undefined;
   if (payload.role === 'user' && typeof payload.content === 'string') {
     const blocks = payload.textBlocks;
+    const discovery = payload.mcpDiscovery;
     const textBlocks =
       Array.isArray(blocks) &&
       Array.from(blocks).every((block) => block && typeof block.text === 'string') &&
@@ -247,6 +248,14 @@ export function restoreModelContext(
       role: 'user',
       content: payload.content,
       contextKind: 'contextual',
+      ...(isRecord(discovery) &&
+      typeof discovery.id === 'string' &&
+      discovery.id.length <= 128 &&
+      Array.isArray(discovery.names) &&
+      discovery.names.length <= 20 &&
+      discovery.names.every((name) => typeof name === 'string' && name.length <= 512)
+        ? { mcpDiscovery: { id: discovery.id, names: discovery.names } }
+        : {}),
       ...(textBlocks === undefined ? {} : { textBlocks })
     };
   }

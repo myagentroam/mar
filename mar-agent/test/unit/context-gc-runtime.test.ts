@@ -1,5 +1,5 @@
 import { formatReadContextItem } from '../../src/prompts/read-context.js';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -144,6 +144,89 @@ class ContextGcAdapter implements ModelAdapter {
 }
 
 describe('context GC runtime integration', () => {
+  it('keeps only current loaded Skill guidance across a committed GC and reopen', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-gc-loaded-skill-'));
+    homes.push(home);
+    await writeFile(join(home, 'large.txt'), `before\n${'old context '.repeat(2_000)}\n`);
+    const skillDir = join(home, '.agents', 'skills', 'workflow');
+    const skillFile = join(skillDir, 'SKILL.md');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(skillFile, 'Previous private workflow.');
+    let preGcWorld: unknown;
+    const adapter = new (class extends ContextGcAdapter {
+      loadRounds = 0;
+      override async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
+        if (++this.loadRounds <= 2) {
+          if (this.loadRounds === 2) await writeFile(skillFile, 'Current private workflow.');
+          yield {
+            type: 'client_tool.call',
+            name: 'skill_load',
+            callId: `skill-${this.loadRounds}`,
+            arguments: { name: 'workflow' }
+          };
+          yield { type: 'completed', reason: 'tool_use' };
+          return;
+        }
+        if (this.loadRounds === 3) {
+          const store = await JsonlSessionStore.open(home);
+          try {
+            preGcWorld = await store.readContextualWorldState(sessionId);
+          } finally {
+            await store.close();
+          }
+        }
+        yield* super.start(request);
+      }
+    })();
+    const create = () =>
+      createMarAgent(
+        {
+          mode: 'normal',
+          host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+          models: [model]
+        },
+        () => adapter
+      );
+    let sessionId: string;
+    let agent = await create();
+    const guidance = () =>
+      adapter.requests
+        .at(-1)
+        ?.messages.filter(
+          (message) => message.contextualBlock?.id === 'runtime:loaded-skill:workflow'
+        )
+        .map((message) => message.content);
+    try {
+      const session = await agent.createSession({ workspace: home });
+      sessionId = session.id;
+      expect(await session.run({ prompt: 'Update the file.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(guidance()).toEqual([expect.stringContaining('Current private workflow.')]);
+      await agent.dispose();
+      const store = await JsonlSessionStore.open(home);
+      try {
+        const records = await store.read(session.id);
+        expect(records.some((record) => record.type === 'context.gc.completed')).toBe(true);
+        expect(JSON.stringify(records)).not.toContain('private workflow.');
+        expect(preGcWorld).toMatchObject({ generation: null });
+        expect(JSON.stringify(preGcWorld)).toContain('Current private workflow.');
+        // Simulate interruption after the GC checkpoint but before its sidecar update.
+        await store.writeContextualWorldState(session.id, preGcWorld);
+      } finally {
+        await store.close();
+      }
+      agent = await create();
+      const resumed = await agent.openSession(session.id);
+      expect(await resumed.run({ prompt: 'Continue.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(guidance()).toEqual([expect.stringContaining('Current private workflow.')]);
+    } finally {
+      await agent.dispose();
+    }
+  });
+
   it.each([undefined, true, false])(
     'honors model GC setting %s in a real SDK run',
     async (gcEnabled) => {

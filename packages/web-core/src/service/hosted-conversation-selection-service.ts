@@ -5,6 +5,7 @@ interface HostedConversationTarget {
   readonly conversationId: string;
 }
 
+/** Owns hosted selection and fences route restoration against newer selection intents. */
 export function createHostedConversationSelectionService(options: {
   readonly workspace: {
     selectConversation(
@@ -62,5 +63,5 @@ export function createHostedConversationSelectionService(options: {
     }
   }
 
-  return { select, openTarget, clear, restoreTarget };
+  return { select, openTarget, clear, restoreTarget, revision: () => selectionGeneration };
 }

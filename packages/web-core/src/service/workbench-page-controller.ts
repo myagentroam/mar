@@ -178,6 +178,7 @@ export function createWorkbenchPageController<
   ) => Promise<{ token: string }>;
 }) {
   const managementComposition = options.management;
+  const workspaceStartupStatus = ref<'loading' | 'failed' | 'ready'>('loading');
 
   function refreshRecentConversationWindow(): Promise<void> {
     return conversationPagingService.refreshRecentConversationTurns();
@@ -618,6 +619,7 @@ export function createWorkbenchPageController<
     management: managementComposition,
     admin,
     defaultManagement: options.systemManagementSection,
+    canOpenWorkspaceSidebar: () => workspaceStartupStatus.value === 'ready',
     layout: workbenchLayoutService,
     transition: (previous, next) => navigationWatchService.transition(previous, next),
     recoverNotifications: () => workbenchNotificationService.recover()
@@ -903,6 +905,7 @@ export function createWorkbenchPageController<
 
   const {
     refreshNodes,
+    nodeListConfirmed,
     refreshServerCapabilities,
     refreshNodeManifest,
     invalidateNodeManifest,
@@ -1083,8 +1086,16 @@ export function createWorkbenchPageController<
 
   async function restoreHostedConversationRoute(generation: number): Promise<void> {
     const target = hostedConversationRoute;
+    const selectionRevision = hostedConversationSelection.revision();
     try {
-      if (target === undefined || view.value !== 'conversations') return;
+      const shouldRestore = () =>
+        generation === authenticationRestoreGeneration &&
+        restoringHostedConversationRoute.value &&
+        view.value === 'conversations' &&
+        hostedConversationSelection.revision() === selectionRevision &&
+        hostedConversationWorkspace.selectedConversationId.value === undefined;
+      if (target === undefined || !shouldRestore()) return;
+      if (!(await workbenchLiveConnection.waitForReady()) || !shouldRestore()) return;
       await hostedConversationSelection.restoreTarget(target, syncWorkbenchRoute);
     } finally {
       if (generation === authenticationRestoreGeneration)
@@ -1214,27 +1225,49 @@ export function createWorkbenchPageController<
 
   let authenticationRestoreGeneration = 0;
 
-  async function restoreAuthenticatedRoute(generation: number): Promise<void> {
+  async function restoreAuthenticatedWorkspace(generation: number): Promise<void> {
     await refreshNodes();
-    if (generation !== authenticationRestoreGeneration) return;
-    connectWorkbenchLive();
-    if (
-      !(await workbenchLiveConnection.waitForReady()) ||
-      generation !== authenticationRestoreGeneration
-    )
+    if (generation === authenticationRestoreGeneration) await restoreWorkspaceStartup();
+  }
+
+  async function restoreWorkspaceStartup(): Promise<void> {
+    if (workspaceStartupStatus.value === 'ready') return;
+    if (!nodeListConfirmed.value) {
+      workspaceStartupStatus.value = 'failed';
       return;
-    await restoreWorkbenchRoute();
-    if (generation !== authenticationRestoreGeneration) return;
-    await restoreHostedConversationRoute(generation);
+    }
+    if (view.value !== 'nodes') return;
+    // Selection commits the Workspace target before awaiting session lookup or history.
+    const restoring = restoreWorkbenchRoute();
+    workspaceStartupStatus.value = 'ready';
+    await restoring;
+  }
+
+  function retryWorkspaceStartup(): void {
+    if (workspaceStartupStatus.value !== 'failed') return;
+    workspaceStartupStatus.value = 'loading';
+    const generation = authenticationRestoreGeneration;
+    void refreshNodes()
+      .then(() => {
+        if (generation === authenticationRestoreGeneration) return restoreWorkspaceStartup();
+      })
+      .catch((error: unknown) => {
+        if (generation === authenticationRestoreGeneration) notice(message(error), 'error', error);
+      });
   }
 
   async function handleAuthenticated(): Promise<void> {
     const generation = ++authenticationRestoreGeneration;
     startWebVersionUpdateCheck();
     void refreshServerCapabilities();
-    // Notification snapshots and version display must not delay the active session.
-    // Keep notification navigation/read reconciliation after both initial reads finish.
-    await Promise.all([startWorkbenchNotifications(), restoreAuthenticatedRoute(generation)]);
+    // The Work inventory and hosted route have independent readiness requirements.
+    const workspaceRestore = restoreAuthenticatedWorkspace(generation);
+    connectWorkbenchLive();
+    await Promise.all([
+      startWorkbenchNotifications(),
+      workspaceRestore,
+      restoreHostedConversationRoute(generation)
+    ]);
     if (generation !== authenticationRestoreGeneration) return;
     const openedSystemNotification =
       await workbenchNotificationService.openPendingSystemNotification();
@@ -1265,6 +1298,7 @@ export function createWorkbenchPageController<
     workbenchAsideService.clear();
     clearMessages();
     authenticationRestoreGeneration += 1;
+    workspaceStartupStatus.value = 'loading';
     void workbenchNotificationService.systemNotifications.invalidatePush();
     disposeWorkbenchNotifications();
     workbenchNotificationService.notifications.value = [];
@@ -1341,6 +1375,7 @@ export function createWorkbenchPageController<
     removeWorkspace
   } = createWorkbenchWorkspaceTreeController({
     nodes,
+    nodeListConfirmed,
     workspaces,
     replaceWorkspaces: workbenchCapabilityService.replaceWorkspaces,
     sessions,
@@ -1407,6 +1442,7 @@ export function createWorkbenchPageController<
   } = createWorkbenchPageInteractionService({
     selectedSessionId,
     view,
+    workspaceStartupReady: computed(() => workspaceStartupStatus.value === 'ready'),
     nodes,
     workspaceTabs,
     activeWorkspaceTabId,
@@ -1547,6 +1583,7 @@ export function createWorkbenchPageController<
     setDraftOpen: sessionSelection.setDraftOpen,
     profilesLoading: runnerProfilesLoading,
     isCacheActive: workspaceViewCacheService.isActive,
+    nodeListConfirmed,
     hasNode: (nodeId) => nodes.value.some((node) => node.id === nodeId),
     isHostAvailable: (nodeId) =>
       nodes.value.some((node) => node.id === nodeId && node.connected && !node.disabled),
@@ -1690,6 +1727,18 @@ export function createWorkbenchPageController<
     sync: syncWorkbenchRoute,
     hostedConversationRoute
   } = workbenchRouteService;
+  watch([view, nodeListConfirmed], ([currentView, confirmed], [previousView]) => {
+    if (
+      currentView !== 'nodes' ||
+      !confirmed ||
+      (previousView === 'nodes' && workspaceStartupStatus.value !== 'failed')
+    )
+      return;
+    const generation = authenticationRestoreGeneration;
+    void restoreWorkspaceStartup().catch((error: unknown) => {
+      if (generation === authenticationRestoreGeneration) notice(message(error), 'error', error);
+    });
+  });
   const mobileMenuHistory = createMobileMenuHistoryService({
     isOpen: () =>
       mobileViewport.value &&
@@ -2151,6 +2200,8 @@ export function createWorkbenchPageController<
       reloadSelectedSession
     }),
     selection: proxyRefs({
+      workspaceStartupStatus,
+      retryWorkspaceStartup,
       activateWorkspaceTab: openWorkspaceTab,
       activeWorkspaceTabId,
       closeWorkspaceTab,

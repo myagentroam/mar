@@ -45,6 +45,25 @@ test('Shared file previews keep the conversation visible and reuse its Watch', a
   expect(watches).toBe(1);
 });
 
+test('Shared conversations honor upward scroll intent even with short history', async ({
+  page
+}) => {
+  await mockSharedConversation(page, 'en-US', 'A short shared message.');
+  await page.goto('/share/participants-test');
+  const region = page.locator('.conversation-scroll');
+  const latest = page.getByRole('button', { name: 'Jump to latest', exact: true });
+  await expect(region.getByText('A short shared message.')).toBeInViewport();
+  expect(await region.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  await expect(latest).toBeHidden();
+
+  await region.hover();
+  await page.mouse.wheel(0, -120);
+  await expect(latest).toBeVisible();
+
+  await latest.click();
+  await expect(latest).toBeHidden();
+});
+
 test('Share browser identity synchronizes an already open tab', async ({ page }) => {
   await mockSharedConversation(page, 'en-US');
   await page.goto('/share/participants-test');

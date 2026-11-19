@@ -282,6 +282,7 @@ describe('Web session scrolling status', () => {
     const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
     const state = createConversationScrollService();
     state.setElement(element);
+    state.stopFollowing();
     Object.defineProperty(element, 'scrollHeight', { value: 1500 });
     element.scrollTop = 600;
     state.handleScroll(vi.fn());
@@ -357,6 +358,29 @@ describe('Web session scrolling status', () => {
     expect(element.scrollTop).toBe(1600);
     expect(state.following.value).toBe(true);
   });
+
+  it.each([780, 820])(
+    'stays at the bottom when content grows and the browser adjusts scrollTop to %d',
+    (scrollTop) => {
+      const element = scrollElement({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 });
+      const state = createConversationScrollService();
+      state.setElement(element);
+      let position = scrollTop;
+      Object.defineProperty(element, 'scrollTop', {
+        get: () => position,
+        set: (value: number) =>
+          (position = Math.min(value, element.scrollHeight - element.clientHeight))
+      });
+
+      Object.defineProperty(element, 'scrollHeight', { value: 1120 });
+      const loadOlder = vi.fn();
+      state.handleScroll(loadOlder);
+
+      expect(state.following.value).toBe(true);
+      expect(element.scrollTop).toBe(920);
+      expect(loadOlder).not.toHaveBeenCalled();
+    }
+  );
 
   it('Cancel a pending bottom-follow after the user scrolls up', async () => {
     vi.useFakeTimers();

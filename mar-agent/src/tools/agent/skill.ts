@@ -5,10 +5,11 @@ import { agentSkillSource, loadAgentSkill } from '../../runtime/context/instruct
 import type { ToolRuntimeContext } from '../runtime-context.js';
 
 export const skillToolDefinition: ClientToolDefinition = {
-  name: 'skill',
-  allowedCallers: ['direct'],
+  name: 'skill_load',
+  allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
-  description: "Load a Skill's instructions by its exact catalog name.",
+  description:
+    'Load a Skill by its exact catalog name. On success, returns { success: true } and adds the instructions to the next model context. Read them before acting on them.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -33,11 +34,16 @@ export async function executeSkill(arguments_: unknown, context: ToolRuntimeCont
     throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Skill input is invalid.');
   const skill = context.skills.get(input.name);
   if (!skill) throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Skill is not available.');
+  if (!context.publishSkillContext)
+    throw new AgentError('MAR_AGENT_TOOL_NOT_AVAILABLE', 'Skill context delivery is unavailable.');
   const content = await loadAgentSkill(skill);
   if (!content) throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Skill could not be loaded.');
   context.signal.throwIfAborted();
+  context.publishSkillContext(skill.name, content);
+  const data = { success: true };
   return {
-    content,
-    data: { name: skill.name, description: skill.description, source: agentSkillSource(skill) }
+    content: JSON.stringify(data),
+    data,
+    eventData: { name: skill.name, description: skill.description, source: agentSkillSource(skill) }
   };
 }

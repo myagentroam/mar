@@ -21,7 +21,7 @@ export const TOOL_SEARCH_LIMITS = Object.freeze({
 export const toolSearchToolDefinition: ClientToolDefinition = {
   name: 'tool_search',
   description:
-    'Search deferred MCP metadata and return matching tool definitions for the next model call. Use the full callable name for exact selection, or keywords for BM25 search. Never executes the discovered tools. With Code Mode Only, programmatic tools use code_exec unless explicitly exposed for both direct and programmatic calls. Already exposed tools need not be searched again. The selected definitions must fit the exposure budget or the search fails atomically.',
+    'Search and load deferred MCP tools for the next model request. Use an exact tool name or keywords. Returns matching names, or an empty list; definitions are supplied separately. Does not execute the discovered tools.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -31,7 +31,7 @@ export const toolSearchToolDefinition: ClientToolDefinition = {
     required: ['query'],
     additionalProperties: false
   },
-  allowedCallers: ['direct'],
+  allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   nativeType: 'tool_search'
 };
@@ -237,6 +237,7 @@ export class DeferredMcpRegistry {
       base: readonly ClientToolDefinition[];
       window: number;
       system: string;
+      publish?: (names: readonly string[]) => Promise<void>;
     }
   ): Promise<ToolExecutionResult> {
     const { query, limit } = parseToolSearchInput(input);
@@ -256,13 +257,14 @@ export class DeferredMcpRegistry {
     }
     this.assertBudget(context.base, context.window, context.system, selection, executionSelection);
     context.signal.throwIfAborted();
+    const data = { tools: matches.map((tool) => tool.definition.name) };
+    if (context.publish && data.tools.length) await context.publish(data.tools);
     this.#selected = selection;
     this.#executionSelected = executionSelection;
-    const data = { tools: matches.map((tool) => tool.definition.name) };
     return {
       content: JSON.stringify(data),
       data,
-      toolSearchTools: matches.map((tool) => tool.definition)
+      ...(context.publish ? {} : { toolSearchTools: matches.map((tool) => tool.definition) })
     };
   }
   assertBudget(

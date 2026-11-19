@@ -38,6 +38,7 @@ function workspace(id: string, overrides?: Partial<Workspace>): Workspace {
 
 function fixture() {
   const nodes = ref([node('node-1'), node('node-2')]);
+  const nodeListConfirmed = ref(true);
   const workspaces = ref([workspace('workspace-1')]);
   const selectedNodeId = ref<string>('node-1');
   const selectedWorkspaceId = ref<string>('workspace-1');
@@ -84,6 +85,7 @@ function fixture() {
   const openWorkspaceTabSession = vi.fn(async (_sessionId: string) => undefined);
   const controller = createWorkbenchWorkspaceTreeController({
     nodes,
+    nodeListConfirmed,
     workspaces,
     replaceWorkspaces: (values) => {
       workspaces.value = [...values];
@@ -126,6 +128,7 @@ function fixture() {
 
   return {
     nodes,
+    nodeListConfirmed,
     workspaces,
     selectedNodeId,
     selectedWorkspaceId,
@@ -787,11 +790,19 @@ describe('Public Workspace tree controller', () => {
     expect(f.activateWorkspace).toHaveBeenCalledTimes(2);
   });
 
-  it('still removes an authoritative missing Node tab when pinned', async () => {
+  it('retains a cached tab until a successful Node list confirms the Node is missing', async () => {
     const f = fixture();
+    f.nodeListConfirmed.value = false;
     f.tabs.remember('missing-node', undefined, workspace('orphan'));
     f.tabs.setPinned('missing-node:orphan', true);
-    expect(await f.controller.activateWorkspaceTab(f.tabs.tabs.value[0]!)).toBe(false);
+    const tab = f.tabs.tabs.value[0]!;
+    await f.controller.openWorkspaceTab(tab);
+    expect(await f.controller.activateWorkspaceTab(tab)).toBe(false);
+    expect(f.tabs.tabs.value).toEqual([tab]);
+    expect(f.releaseTerminalDock).not.toHaveBeenCalled();
+
+    f.nodeListConfirmed.value = true;
+    expect(await f.controller.activateWorkspaceTab(tab)).toBe(false);
     expect(f.tabs.tabs.value).toEqual([]);
     expect(f.releaseTerminalDock).toHaveBeenCalledWith('missing-node:orphan');
   });

@@ -48,6 +48,9 @@ export function createExecutionToolScope(input: {
   readonly todo: ToolRuntimeContext['todo'];
   readonly waitInterrupt: ToolRuntimeContext['waitInterrupt'];
   readonly skills: ToolRuntimeContext['skills'];
+  readonly publishSkillContext: NonNullable<ToolRuntimeContext['publishSkillContext']>;
+  withRecordProjection<T>(action: () => Promise<T>): Promise<T>;
+  publishMcpDiscovery(names: readonly string[], signal: AbortSignal): Promise<void>;
   readonly coreExtensions: Pick<
     ExtensionSession,
     | 'epoch'
@@ -177,6 +180,7 @@ export function createExecutionToolScope(input: {
       waitInterrupt,
       emit,
       skills: skills,
+      publishSkillContext: input.publishSkillContext,
       invokeTool: async (call, context, caller) => {
         let active = true;
         const invoke = () =>
@@ -261,13 +265,18 @@ export function createExecutionToolScope(input: {
           coreExtensions.assertLive();
           assertLive?.();
         }),
-      searchMcpTools: (arguments_, searchSignal) =>
-        mcpRegistry.expose(arguments_, {
-          signal: searchSignal,
-          base: baseTools(),
-          window: selectedModel.contextWindowTokens,
-          system: systemPrompt
-        }),
+      searchMcpTools: (arguments_, searchSignal, caller) =>
+        input.withRecordProjection(() =>
+          mcpRegistry.expose(arguments_, {
+            signal: searchSignal,
+            base: baseTools(),
+            window: selectedModel.contextWindowTokens,
+            system: systemPrompt,
+            ...(caller === 'programmatic'
+              ? { publish: (names) => input.publishMcpDiscovery(names, searchSignal) }
+              : {})
+          })
+        ),
       recentImages,
       captureCodeContext: () => ({
         ...toolContext,

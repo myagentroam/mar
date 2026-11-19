@@ -17,7 +17,7 @@ import {
   workflowPrompt
 } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.70';
+export const MAR_AGENT_PROMPT_VERSION = '1.71';
 
 interface SystemPromptInput {
   mode: ExecutionMode;

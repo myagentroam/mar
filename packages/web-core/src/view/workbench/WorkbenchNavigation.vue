@@ -50,6 +50,7 @@ const props = defineProps<{
   readonly mobileSidebarOpen: boolean;
   readonly sidebarContentVisible: boolean;
   readonly nodes: readonly NodeSummary[];
+  readonly workspaceStartupStatus?: 'loading' | 'failed' | 'ready';
   readonly expandedNodeIds: readonly string[];
   readonly workspaceTreeRevealTarget?: WorkspaceTarget | undefined;
   readonly workspaceTarget: WorkspaceTarget | undefined;
@@ -78,9 +79,21 @@ function claimRevealScroll(target: WorkspaceTarget): boolean {
 }
 const scrollPositions = new Map<string, number>();
 const displayKey = computed(() => displayUtility.value ?? displayView.value);
+const workspaceStartupBlocked = computed(
+  () => props.workspaceStartupStatus === 'loading' || props.workspaceStartupStatus === 'failed'
+);
+const mobileMenuOpen = computed(
+  () =>
+    props.mobileSidebarOpen &&
+    !(
+      workspaceStartupBlocked.value &&
+      props.view === 'nodes' &&
+      props.mobileUtilityPanel === undefined
+    )
+);
 const sidebarVisible = computed(() =>
   props.mobileViewport
-    ? props.mobileSidebarOpen
+    ? mobileMenuOpen.value
     : props.sidebarContentVisible && props.view !== 'conversations'
 );
 function finishMenuLeave(): void {
@@ -150,7 +163,7 @@ const menuLabel = computed(() =>
 );
 
 const menuFocus = createMobileSurfaceFocusService({
-  isOpen: () => props.mobileViewport && props.mobileSidebarOpen,
+  isOpen: () => props.mobileViewport && mobileMenuOpen.value,
   regions: () => [treeElement.value, document.querySelector<HTMLElement>('.activity-rail')],
   close: () => emit('closeMobileSidebar')
 });
@@ -304,7 +317,7 @@ function runBlankMenuCommand(command: string): void {
   </aside>
   <Transition name="mobile-menu-scrim">
     <button
-      v-if="mobileViewport && mobileSidebarOpen"
+      v-if="mobileViewport && mobileMenuOpen"
       class="sidebar-scrim"
       type="button"
       :aria-label="$t('workbench.closeSidebar')"
@@ -317,15 +330,20 @@ function runBlankMenuCommand(command: string): void {
     @after-leave="finishMenuLeave"
   >
     <WorkbenchSidebarPanel
-      v-show="mobileViewport ? mobileSidebarOpen : view !== 'conversations'"
+      v-show="mobileViewport ? mobileMenuOpen : view !== 'conversations'"
       ref="sidebarPanel"
       :collapsed="sidebarCollapsed"
       class="workspace-tree"
-      :class="{ 'mobile-open': mobileSidebarOpen }"
-      :inert="mobileViewport && !mobileSidebarOpen"
+      :class="{ 'mobile-open': mobileMenuOpen }"
+      :inert="mobileViewport && !mobileMenuOpen"
       :aria-label="menuLabel"
       tabindex="-1"
-      @contextmenu="view === 'nodes' && mobileUtilityPanel === undefined && openBlankMenu($event)"
+      @contextmenu="
+        view === 'nodes' &&
+        !workspaceStartupBlocked &&
+        mobileUtilityPanel === undefined &&
+        openBlankMenu($event)
+      "
       @keydown.esc="handleBlankMenuEscape"
     >
       <div
@@ -335,7 +353,7 @@ function runBlankMenuCommand(command: string): void {
       />
       <template v-if="displayUtility === undefined && displayView === 'nodes'">
         <el-dropdown
-          v-if="blankMenuAnchor && sidebarVisible"
+          v-if="!workspaceStartupBlocked && blankMenuAnchor && sidebarVisible"
           ref="blankMenu"
           virtual-triggering
           :virtual-ref="blankMenuReference"
@@ -362,6 +380,7 @@ function runBlankMenuCommand(command: string): void {
         <WorkspaceTree
           v-if="sidebarContentVisible || mobileViewport"
           :nodes="nodes"
+          :startup-status="workspaceStartupStatus"
           :expanded-node-ids="expandedNodeIds"
           :reveal-target="workspaceTreeRevealTarget"
           :claim-reveal-scroll="claimRevealScroll"

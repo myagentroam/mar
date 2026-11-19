@@ -199,6 +199,155 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
   }
 });
 
+test('Sending an image in an idle session follows the latest message after its thumbnail loads', async ({
+  page
+}) => {
+  const capabilities = ['history.read', 'turn.start'];
+  await mockConsoleApi(page, 'MANAGED', capabilities, []);
+  const session = {
+    id: 'session-1',
+    workspaceId: 'workspace-1',
+    runner: 'codex',
+    activity: 'IDLE',
+    control: { level: 'MANAGED', capabilities }
+  };
+  const history = watchedConversation([
+    {
+      id: 'history:segment:0',
+      turnId: 'history',
+      index: 0,
+      status: 'SUCCEEDED',
+      items: [
+        {
+          id: 'history-reply',
+          kind: 'assistant_message',
+          status: 'COMPLETED',
+          payload: { text: 'Earlier reply.\n\n'.repeat(60) }
+        }
+      ]
+    }
+  ]);
+  await page.route('**/api/agent-sessions/session-1/watch*', (route) =>
+    fulfillMockSessionWatch(page, route, session, { ...history, session })
+  );
+
+  const name = 'diagram.png';
+  const image = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aM1sAAAAASUVORK5CYII=',
+    'base64'
+  );
+  await page.route('**/api/workspaces/workspace-1/uploads', (route) =>
+    json(route, { upload: { uploadId: 'image-upload', receivedBytes: 0, size: image.length } })
+  );
+  await page.route('**/api/workspaces/workspace-1/uploads/image-upload/chunks?*', (route) =>
+    json(route, { upload: { receivedBytes: image.length } })
+  );
+  await page.route('**/api/workspaces/workspace-1/uploads/image-upload/complete', (route) =>
+    json(route, { upload: { receivedBytes: image.length } })
+  );
+  const path = `mar-attachment://00000000-0000-4000-8000-000000000001/${name}`;
+  const thumbnailPending = Promise.withResolvers<void>();
+  await page.route('**/api/workspaces/workspace-1/files/content?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('path') !== path) return route.fallback();
+    await thumbnailPending.promise;
+    return route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#4b80bd"/></svg>'
+    });
+  });
+  const run = {
+    id: 'image-run',
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    status: 'STARTING',
+    recoveryState: 'ACTIVE'
+  };
+  await page.route('**/api/agent-sessions/session-1/messages', (route) => {
+    const body = route.request().postDataJSON();
+    expect(body.attachmentIds).toHaveLength(1);
+    return json(route, {
+      session: { ...session, activity: 'RUNNING' },
+      run: { ...run, clientMessageId: body.clientMessageId },
+      delivery: 'STARTED'
+    });
+  });
+
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  await page
+    .locator('.workspace-tree')
+    .getByRole('button', { name: /node-1/ })
+    .click();
+  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  await page.locator('.session-list .session-link').first().click();
+  const region = page.locator('.conversation-scroll');
+  const bottomGap = () =>
+    region.evaluate((el) => Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight));
+  await expect(region).toContainText('Earlier reply.');
+  const composer = page.getByRole('textbox', { name: '输入消息' });
+  await composer.fill('Analyze this image');
+  await page
+    .locator('.attachment-file-input')
+    .setInputFiles({ name, mimeType: 'image/png', buffer: image });
+  await expect(page.getByText('已上传', { exact: true })).toBeVisible();
+  await region.hover();
+  await page.mouse.wheel(0, -240);
+  await expect.poll(bottomGap).toBeGreaterThan(100);
+
+  const sent = page.waitForResponse((response) => response.url().endsWith('/session-1/messages'));
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  const request = (await sent).request().postDataJSON();
+  await expect.poll(bottomGap).toBeLessThanOrEqual(1);
+  const turn = {
+    id: 'image-turn',
+    sessionId: session.id,
+    runId: run.id,
+    status: 'RUNNING',
+    items: []
+  };
+  const projected = watchedConversation([
+    {
+      id: 'image-turn:segment:0',
+      turnId: turn.id,
+      runId: run.id,
+      index: 0,
+      status: 'RUNNING',
+      items: [
+        {
+          id: 'sent-image',
+          kind: 'user_message',
+          status: 'COMPLETED',
+          payload: {
+            clientMessageId: request.clientMessageId,
+            text: `${request.content}\n\n${serializeComposerTag('mar_attachments', {
+              files: [{ name, mime: 'image/png', path }]
+            })}`
+          }
+        }
+      ]
+    }
+  ]);
+  try {
+    await emitMockSessionEvent(page, 'conversation', {
+      sessionId: session.id,
+      turn,
+      segments: projected.conversation.segments
+    });
+    const thumbnail = region.getByRole('img', { name: '图片附件', exact: true });
+    await expect(thumbnail).toHaveCount(1);
+    await expect.poll(bottomGap).toBeLessThanOrEqual(1);
+    const height = await region.evaluate((el) => el.scrollHeight);
+    thumbnailPending.resolve();
+    await expect.poll(() => thumbnail.evaluate((el) => el.naturalWidth)).toBe(320);
+    await expect.poll(() => region.evaluate((el) => el.scrollHeight)).toBeGreaterThan(height);
+    await expect.poll(bottomGap).toBeLessThanOrEqual(1);
+    await expect(thumbnail).toBeInViewport();
+  } finally {
+    thumbnailPending.resolve();
+  }
+});
+
 test('Ctrl-click attachment previews do not navigate Workspace directories or show spurious errors', async ({
   page
 }) => {

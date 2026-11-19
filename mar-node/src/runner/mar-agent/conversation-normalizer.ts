@@ -1856,7 +1856,7 @@ function projectToolPresentation(
       ? 'WEB_SEARCH'
       : toolName === 'web_fetch'
         ? 'WEB_FETCH'
-        : toolName === 'skill'
+        : toolName === 'skill_load' || toolName === 'skill'
           ? 'SKILL'
           : toolName === 'sleep'
             ? 'SLEEP'

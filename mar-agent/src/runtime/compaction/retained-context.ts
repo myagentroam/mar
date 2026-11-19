@@ -93,6 +93,7 @@ export function restoreCompactTail(value: unknown): ModelMessage | undefined {
           : {}),
       ...(metadata ? { metadata } : {}),
       ...(projected?.textBlocks ? { textBlocks: projected.textBlocks } : {}),
+      ...(projected?.mcpDiscovery ? { mcpDiscovery: projected.mcpDiscovery } : {}),
       ...(images?.length ? { images } : {})
     };
   }

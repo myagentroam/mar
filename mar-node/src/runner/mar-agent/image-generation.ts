@@ -54,7 +54,7 @@ export const codexImageGenToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Generate or edit one PNG or simple looping GIF with the configured Codex Images API, only when requested or explicitly authorized. First load skill({name:"codex-imagegen"}); reuse it while in context. Omit selectors only for generation without references; otherwise use up to five absolute referenced_image_paths OR the smallest sufficient num_last_images_to_include from this Execution. Set transparent_background for transparency and gif for 2–16 animation frames. Returns a managed file path, not inspected pixels.',
+    'Generate or edit one PNG or simple looping GIF with the configured Codex Images API, only when requested or explicitly authorized. First call skill_load({name:"codex-imagegen"}); reuse it while in context. Omit selectors only for generation without references; otherwise use up to five absolute referenced_image_paths OR the smallest sufficient num_last_images_to_include from this Execution. Set transparent_background for transparency and gif for 2–16 animation frames. Returns a managed file path, not inspected pixels.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -104,7 +104,7 @@ export const bytedArkImageGenToolDefinition: ClientToolDefinition = {
     )
   },
   description:
-    'Generate or edit one PNG using the configured Ark Images API, only when explicitly requested. First load skill({name:"byted_ark-imagegen"}). Omit both selectors for text-to-image; use absolute referenced_image_paths or num_last_images_to_include for image-to-image, never both. Up to five references, exactly one output; no group generation. Returns a managed image path, not inspected pixels.'
+    'Generate or edit one PNG using the configured Ark Images API, only when explicitly requested. First call skill_load({name:"byted_ark-imagegen"}). Omit both selectors for text-to-image; use absolute referenced_image_paths or num_last_images_to_include for image-to-image, never both. Up to five references, exactly one output; no group generation. Returns a managed image path, not inspected pixels.'
 };
 
 export async function executeCodexImageGen(

@@ -57,7 +57,7 @@ export class ExecutionModelLifecycle {
     this.lastUsage = undefined;
   }
 
-  async *start(request: SessionModelRequest): AsyncIterable<ModelEvent> {
+  async *start(request: SessionModelRequest, onCompleted?: () => void): AsyncIterable<ModelEvent> {
     const snapshot = this.ports.runtime.recordRequest(this.ports.modelId, request);
     this.dispatchedInputs = request.messages.length;
     this.dispatchedLocal = this.ports.messages.length;
@@ -68,6 +68,7 @@ export class ExecutionModelLifecycle {
         if (event.type === 'completed' && event.reason !== 'cancelled') {
           completed.add(request.messages);
           ports.runtime.completeRequest(snapshot);
+          onCompleted?.();
         }
         yield event;
       }

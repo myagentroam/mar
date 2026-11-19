@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   fulfillMockHostedConversationWatch,
   json,
@@ -12,6 +12,25 @@ function gate() {
     release = resolve;
   });
   return { promise, release };
+}
+
+async function expectCenteredInNodeSidebar(state: Locator): Promise<void> {
+  await expect
+    .poll(() =>
+      state.evaluate((element) => {
+        const sidebar = element.closest('.workspace-tree');
+        if (!sidebar) throw new Error('NODE_SIDEBAR_MISSING');
+        const panel = sidebar.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        return Math.max(
+          Math.abs(text.x + text.width / 2 - (panel.x + panel.width / 2)),
+          Math.abs(text.y + text.height / 2 - (panel.y + panel.height / 2))
+        );
+      })
+    )
+    .toBeLessThanOrEqual(3);
 }
 
 async function openWorkspace(page: Page, mobile: boolean): Promise<void> {
@@ -40,6 +59,116 @@ function sessions(start: number, count: number) {
     lastActivityAt: 100_000 - start - offset,
     control: { level: 'MANAGED', capabilities: ['history.read', 'turn.start'] }
   }));
+}
+
+for (const { theme, mobile } of [
+  { theme: 'vscode-dark-2026', mobile: false },
+  { theme: 'daylight', mobile: true }
+] as const) {
+  test.describe(`Work startup: ${theme}`, () => {
+    test.use(
+      mobile ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : {}
+    );
+
+    test('uses the page ring and a keyboard-accessible neutral retry', async ({
+      page,
+      browserName
+    }, testInfo) => {
+      test.skip(mobile && browserName !== 'chromium', 'Mobile pointer emulation requires Chromium');
+      await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
+      await mockConsoleApi(page, 'MANAGED', ['history.read'], []);
+      await page.route('**/api/notifications', (route) => json(route, { notifications: [] }));
+      const response = gate();
+      const retryResponse = gate();
+      const recovery = gate();
+      let reads = 0;
+      await page.route('**/api/nodes', async (route) => {
+        const read = ++reads;
+        if (read === 1) await response.promise;
+        if (read === 2) await retryResponse.promise;
+        if (read <= 2)
+          return route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' } });
+        if (read === 3) await recovery.promise;
+        return json(route, { nodes: [] });
+      });
+      try {
+        await page.goto('/console');
+        await page.getByRole('button', { name: '进入控制台' }).click();
+        const work = page.getByRole('button', { name: '工作', exact: true });
+        const ring = page.getByRole('progressbar', { name: '正在恢复工作台' });
+        const readingNodes = page.getByText('正在读取节点…', { exact: true });
+        const unavailableNodes = page.getByText('节点列表暂不可用', { exact: true });
+        const noNodes = page.getByText('尚无节点', { exact: true });
+        await expect(work).toBeVisible();
+        await expect(ring).toBeVisible();
+        if (mobile) {
+          await work.click();
+          await expect(readingNodes).toBeHidden();
+          await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
+        } else {
+          await expect(readingNodes).toBeVisible();
+          await expectCenteredInNodeSidebar(readingNodes);
+        }
+        await expect(noNodes).toBeHidden();
+        await expect(page.getByRole('button', { name: '收起侧栏' })).toHaveCount(0);
+        const indicator = ring.locator('.mar-busy-indicator');
+        expect(await indicator.evaluate((element) => getComputedStyle(element).color)).toBe(
+          await ring.evaluate((element) => getComputedStyle(element).color)
+        );
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await expect(indicator).toHaveCSS('animation-name', 'none');
+        await page.screenshot({ path: testInfo.outputPath('work-startup-loading.png') });
+        response.release();
+
+        const retry = page.getByRole('button', { name: '重试', exact: true });
+        await expect(retry).toBeVisible();
+        if (mobile) {
+          await work.click();
+          await expect(unavailableNodes).toBeHidden();
+          await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
+        } else {
+          await expect(unavailableNodes).toBeVisible();
+          await expectCenteredInNodeSidebar(unavailableNodes);
+        }
+        await expect(noNodes).toBeHidden();
+        await expect(retry).not.toHaveClass(/is-link|el-button--primary/);
+        await retry.focus();
+        await expect(retry).toBeFocused();
+        await page.screenshot({ path: testInfo.outputPath('work-startup-retry.png') });
+        await page.keyboard.press('Enter');
+        await expect(ring).toBeVisible();
+        await expect(page.locator('.session-layout')).toBeFocused();
+        retryResponse.release();
+        await expect(retry).toBeFocused();
+        await page.keyboard.press('Space');
+        await expect(ring).toBeVisible();
+        if (mobile) await work.focus();
+        recovery.release();
+        await expect(page.getByRole('heading', { name: '选择一个工作区' })).toBeVisible();
+        await expect(mobile ? work : page.locator('.session-layout')).toBeFocused();
+        await expect(readingNodes).toHaveCount(0);
+        await expect(unavailableNodes).toHaveCount(0);
+        if (mobile) {
+          await expect(noNodes).toBeHidden();
+          await work.click();
+        } else {
+          await expect(noNodes).toBeVisible();
+          await page.getByRole('button', { name: '收起侧栏' }).click();
+          await expect(noNodes).toBeHidden();
+          await page.getByRole('button', { name: '展开侧栏' }).click();
+        }
+        await expect(noNodes).toBeVisible();
+        await expect(noNodes).toBeInViewport({ ratio: 1 });
+        await expectCenteredInNodeSidebar(noNodes);
+        await page.screenshot({ path: testInfo.outputPath('work-startup-empty.png') });
+        expect(reads).toBe(3);
+      } finally {
+        response.release();
+        retryResponse.release();
+        recovery.release();
+      }
+    });
+  });
 }
 
 for (const theme of ['vscode-dark-2026', 'daylight']) {

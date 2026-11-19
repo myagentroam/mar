@@ -148,6 +148,7 @@ function closeStandaloneFileWindow(): void {
         :mobile-sidebar-open="page.layout.mobileSidebarOpen"
         :sidebar-content-visible="page.layout.sidebarContentVisible"
         :nodes="page.tree.orderedNodes"
+        :workspace-startup-status="page.selection.workspaceStartupStatus"
         :mobile-viewport="page.layout.mobileViewport"
         :mobile-utility-panel="page.layout.mobileUtilityPanel"
         :mobile-history-open="page.hosted.hostedConversationMobileHistoryOpen"

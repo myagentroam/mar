@@ -62,6 +62,35 @@ const SettingsContent = defineAsyncComponent({
 const props = defineProps<{
   page: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
 }>();
+const workContent = ref<HTMLElement>();
+const startupRetry = ref<{ $el: HTMLButtonElement }>();
+const workStartupBlocked = computed(
+  () =>
+    props.page.selection.workspaceStartupStatus === 'loading' ||
+    props.page.selection.workspaceStartupStatus === 'failed'
+);
+let restoreRetryFocus = false;
+function retryWorkspaceStartup(event: MouseEvent): void {
+  const button = event.currentTarget;
+  restoreRetryFocus = event.detail === 0 && button === document.activeElement;
+  if (restoreRetryFocus) workContent.value?.focus({ preventScroll: true });
+  props.page.selection.retryWorkspaceStartup();
+}
+watch(
+  [() => props.page.application.view, () => props.page.selection.workspaceStartupStatus],
+  ([view, status]) => {
+    if (view === 'nodes' && status === 'loading') return;
+    if (
+      restoreRetryFocus &&
+      view === 'nodes' &&
+      status === 'failed' &&
+      document.activeElement === workContent.value
+    )
+      startupRetry.value?.$el.focus({ preventScroll: true });
+    restoreRetryFocus = false;
+  },
+  { flush: 'post' }
+);
 const managementComposition = useManagementComposition<ManagementSection>();
 const managementPage = computed(() =>
   managementComposition.resolve(props.page.application.managementSection, props.page.identity.admin)
@@ -416,6 +445,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       :mobile-viewport="page.layout.mobileViewport"
       :view="page.application.view"
       :sidebar-collapsed="page.layout.sidebarCollapsed"
+      :workspace-startup-blocked="workStartupBlocked"
       :settings-section="page.application.settingsSection"
       :management-section="page.application.managementSection"
       :settings-items="page.application.settingsItems"
@@ -428,7 +458,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
       @toggle-sidebar="page.layout.sidebarCollapsed = !page.layout.sidebarCollapsed"
     >
       <template
-        v-if="page.application.view === 'nodes' && !page.layout.mobileViewport"
+        v-if="
+          page.application.view === 'nodes' && !page.layout.mobileViewport && !workStartupBlocked
+        "
         #workspace-tabs
       >
         <WorkspaceTabs
@@ -453,9 +485,41 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         />
       </template>
     </WorkbenchHeader>
-    <section v-show="page.application.view === 'nodes'" class="session-layout">
+    <section
+      v-show="page.application.view === 'nodes'"
+      ref="workContent"
+      class="session-layout"
+      tabindex="-1"
+    >
+      <div
+        v-if="
+          page.application.view === 'nodes' && page.selection.workspaceStartupStatus === 'loading'
+        "
+        class="mar-page-loading-state"
+        role="progressbar"
+        :aria-label="translate('generated.workbenchSurface.restoringWorkspace')"
+      >
+        <BusyIndicator />
+      </div>
       <section
-        v-if="page.application.view === 'nodes' && page.selection.workspaceTarget === undefined"
+        v-else-if="
+          page.application.view === 'nodes' && page.selection.workspaceStartupStatus === 'failed'
+        "
+        class="welcome-panel compact-welcome workspace-recovery-panel"
+      >
+        <div class="workspace-recovery-state">
+          <p role="status">
+            {{ translate('generated.workbenchSurface.nodeListUnavailable') }}
+          </p>
+          <el-button ref="startupRetry" size="small" @click="retryWorkspaceStartup">
+            {{ translate('common.retry') }}
+          </el-button>
+        </div>
+      </section>
+      <section
+        v-else-if="
+          page.application.view === 'nodes' && page.selection.workspaceTarget === undefined
+        "
         class="welcome-panel compact-welcome"
       >
         <h1>{{ translate('generated.workbenchSurface.selectAWorkspace') }}</h1>

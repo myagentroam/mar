@@ -8,6 +8,8 @@ export interface SessionModelMessage extends ModelMessage {
   observations?: readonly CodeObservation[];
   observationId?: string;
   toolSearchTools?: readonly ClientToolDefinition[];
+  /** SDK discovery receipt; names are rebound to the current authorized catalog. */
+  mcpDiscovery?: { id: string; names: readonly string[] };
 }
 
 export interface SessionModelRequest extends ModelRequest {

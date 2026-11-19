@@ -49,6 +49,11 @@ export function createConversationScrollService() {
     const current = element.value;
     if (current === undefined || positioningInitialConversation.value) return;
     const layoutChanged = updateLayout(current);
+    // Layout can also move scrollTop. Explicit upward intent stops following before the scroll event.
+    if (layoutChanged && following.value) {
+      scrollToLatest();
+      return;
+    }
     // Height can also change below the reader; compare the actual visible element instead.
     const anchored =
       readingAnchor !== undefined &&
@@ -58,12 +63,8 @@ export function createConversationScrollService() {
     const movedDown = !anchored && current.scrollTop > lastScrollTop;
     const distanceFromBottom = current.scrollHeight - current.scrollTop - current.clientHeight;
     lastScrollTop = current.scrollTop;
-    if (
-      layoutChanged &&
-      ((!movedUp && !movedDown) || (following.value && distanceFromBottom <= 1))
-    ) {
-      if (following.value) scrollToLatest();
-      else if (readingAnchor === undefined) captureReadingAnchor(current);
+    if (layoutChanged && !movedUp && !movedDown) {
+      if (readingAnchor === undefined) captureReadingAnchor(current);
       return;
     }
     following.value =

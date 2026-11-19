@@ -40,7 +40,7 @@ export const AGENT_TOOL_HANDLERS: ReadonlyMap<string, RuntimeHandler> = new Map<
   string,
   RuntimeHandler
 >([
-  ['skill', executeSkill],
+  [skillToolDefinition.name, executeSkill],
   ['sleep', executeSleep],
   ['smart_compact', executeSmartCompact],
   ['tool_search', executeToolSearch],

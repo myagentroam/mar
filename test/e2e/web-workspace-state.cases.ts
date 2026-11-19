@@ -2613,7 +2613,9 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
     tree.getByRole('button', { name: '展开工作区分组 产品', exact: true })
   ).toBeVisible();
   await expect(tree.getByRole('button', { name: '控制台', exact: true })).toHaveCount(0);
-  const frontendTreeItem = tree.locator('.node-tree > li:has(.tree-node[title="前端节点"])');
+  const frontendTreeItem = tree.locator('.node-tree > li').filter({
+    has: page.getByRole('button', { name: '前端节点', exact: true })
+  });
   const firstLevelEntries = frontendTreeItem.locator(':scope > .workspace-branches > li');
   await expect(firstLevelEntries).toHaveCount(2);
   await expect(firstLevelEntries.nth(0)).toHaveClass(/workspace-group/);
@@ -2644,10 +2646,10 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
   )
     throw new Error('WORKSPACE_GROUP_LAYOUT_MISSING');
   expect(workspaceBox.y).toBeGreaterThan(groupBox.y);
-  expect(workspaceRowBox.x).toBe(groupBox.x + 6);
-  expect(workspaceRowBox.width).toBe(groupBox.width - 12);
+  expect(workspaceRowBox.x).toBe(groupBox.x);
+  expect(workspaceRowBox.width).toBe(groupBox.width);
   expect(workspaceBox.x).toBe(workspaceRowBox.x + 36);
-  expect(Math.abs(assetsBox.x - groupIconBox.x - 6)).toBeLessThanOrEqual(1);
+  expect(Math.abs(assetsBox.x - groupIconBox.x)).toBeLessThanOrEqual(1);
   expect(workspaceLabelBox.x - assetsBox.x).toBe(16);
   await expect(frontendTreeItem.locator('.tree-node-icon .tree-type-icon')).toBeVisible();
   await expect(productGroup.locator('.workspace-group-toggle .tree-type-icon')).toBeVisible();
@@ -2712,7 +2714,7 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
   ]) {
     await expect(control).toBeVisible();
     const bounds = await control.boundingBox();
-    expect(bounds?.height).toBeGreaterThanOrEqual(36);
+    expect(bounds?.height).toBeGreaterThanOrEqual(30);
   }
   const mobileOffsets = await frontendTreeItem.evaluate((element) => {
     const left = element.getBoundingClientRect().left;
@@ -2732,7 +2734,7 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
   });
   expect(mobileOffsets).toEqual({
     nodeIcon: 26,
-    groupIcon: 36,
+    groupIcon: 42,
     workspace: 42,
     groupedWorkspace: 58
   });
@@ -3045,7 +3047,7 @@ test('Work resource trees do not substitute Workspace-management permission for 
 
 test('Reload restores Workspace Tabs and sessions, falls back to the first valid item, and creates only for empty lists', async ({
   page
-}) => {
+}, testInfo) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
   await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
   await page.route(/\/api\/workspaces\/workspace-2\/changes(?:\?.*)?$/, (route) =>
@@ -3145,13 +3147,51 @@ test('Reload restores Workspace Tabs and sessions, falls back to the first valid
     )
     .toEqual(['session-1', 'session-2']);
 
-  await page.reload();
+  await test.step('Hold and fail the first Node read without showing the welcome page or losing saved tabs', async () => {
+    let releaseNodes!: () => void;
+    const delayedNodes = new Promise<void>((resolve) => {
+      releaseNodes = resolve;
+    });
+    await page.route(
+      '**/api/nodes',
+      async (route) => {
+        await delayedNodes;
+        await route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' } });
+      },
+      { times: 1 }
+    );
+    try {
+      await page.reload();
+      await expect(page.getByRole('progressbar', { name: '正在恢复工作台' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '选择一个工作区' })).toHaveCount(0);
+      await expect(page.locator('.workspace-tab')).toHaveCount(0);
+      await page.keyboard.press('Alt+Shift+W');
+      await page.screenshot({ path: testInfo.outputPath('workspace-restoring.png') });
+      await page.route('**/api/conversation-templates', (route) => json(route, { templates: [] }));
+      await page.route(/\/api\/hosted-conversations\?limit=20$/, (route) =>
+        json(route, { items: [], nextCursor: null })
+      );
+      await page.getByRole('button', { name: '对话', exact: true }).click();
+      await expect(page).toHaveURL(/view=conversations/);
+      await page.getByRole('button', { name: '工作', exact: true }).click();
+      await expect(page.getByRole('progressbar', { name: '正在恢复工作台' })).toBeVisible();
+    } finally {
+      releaseNodes();
+    }
+    await expect(
+      page.getByText('暂时无法加载节点列表，已打开的工作区标签仍会保留。')
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '选择一个工作区' })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('workspace-retry.png') });
+    await page.getByRole('button', { name: '重试', exact: true }).click();
+  });
   await expect(page.locator('.workspace-tab')).toHaveCount(2);
   await expect(page.getByText('恢复内容 session-2', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: /^another-project\b/ })).toHaveAttribute(
     'aria-selected',
     'true'
   );
+  await page.screenshot({ path: testInfo.outputPath('workspace-restored.png') });
   holdSessionOne = true;
   try {
     await page.getByRole('tab', { name: /^project\b/ }).click();

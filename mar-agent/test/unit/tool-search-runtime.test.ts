@@ -1,9 +1,12 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalAgentHost, type McpToolCatalog } from '../../src/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
+import { AgentError } from '../../src/error.js';
+import { anthropicMessages } from '../../src/model/anthropic-messages.js';
+import { openAiInput } from '../../src/model/responses-request.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import type { AgentExtension } from '../../src/extensions/contracts.js';
@@ -40,6 +43,10 @@ const model: AgentModelConfiguration = {
 const externalName = 'mcp__external__lookup';
 const programmaticOnlyName = 'mcp__external__programmatic';
 const internalName = 'mcp__builtin__status';
+const searchInCell = (name: string) => ({
+  name: 'code_exec',
+  arguments: { code: `await tools.tool_search({ query: ${JSON.stringify(name)} });` }
+});
 function catalog({
   externalExposure = 'deferred',
   externalCallers = ['direct', 'programmatic']
@@ -114,8 +121,17 @@ class Adapter implements ModelAdapter {
   ) {}
   readonly requests: ModelRequest[] = [];
   readonly batches: Array<Array<{ name: string; arguments: unknown }>> = [];
+  rejectDiscoveryOnce = false;
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
+    if (
+      this.rejectDiscoveryOnce &&
+      request.toolChoice !== 'none' &&
+      request.messages.some((m) => m.mcpDiscovery)
+    ) {
+      this.rejectDiscoveryOnce = false;
+      throw new AgentError('context_length_exceeded', 'The request exceeds the context window.');
+    }
     const calls = this.batches.shift() ?? [];
     for (const [index, call] of calls.entries())
       yield {
@@ -140,36 +156,41 @@ async function fixture(
   let current = catalog(catalogOptions);
   let catalogReads = 0;
   const calls: string[] = [];
-  const host = new LocalAgentHost({
-    homeDirectory: home,
-    workspace: home,
-    mcpCatalog: () => {
-      catalogReads++;
-      return current;
-    },
-    callMcp: async (call) => {
-      calls.push(call.name);
-      await onMcpCall?.();
-      return { content: 'Record found.' };
-    }
-  });
+  const createHost = () =>
+    new LocalAgentHost({
+      homeDirectory: home,
+      workspace: home,
+      mcpCatalog: () => {
+        catalogReads++;
+        return current;
+      },
+      callMcp: async (call) => {
+        calls.push(call.name);
+        await onMcpCall?.();
+        return { content: 'Record found.' };
+      }
+    });
+  const host = createHost();
   const configuration = { ...model, ...overrides, codeMode };
   const adapter = new Adapter(configuration);
-  const agent = await createAgentWithAdapter(
-    {
-      mode: 'normal',
-      host,
-      models: [configuration],
-      defaultModelId: model.id,
-      extensions
-    },
-    () => adapter
-  );
+  const create = (activeHost = createHost()) =>
+    createAgentWithAdapter(
+      {
+        mode: 'normal',
+        host: activeHost,
+        models: [configuration],
+        defaultModelId: model.id,
+        extensions
+      },
+      () => adapter
+    );
+  const agent = await create(host);
   const session = await agent.createSession({ workspace: home, title: 'Discovery test' });
   return {
     home,
     host,
     agent,
+    create,
     session,
     adapter,
     calls,
@@ -306,7 +327,11 @@ describe('MCP discovery runtime', () => {
         : { name: externalName, arguments: { record: 'record' } };
       try {
         f.adapter.batches.push(
-          [{ name: 'tool_search', arguments: { query: externalName } }],
+          [
+            codeMode
+              ? searchInCell(externalName)
+              : { name: 'tool_search', arguments: { query: externalName } }
+          ],
           [call]
         );
         expect(
@@ -330,7 +355,11 @@ describe('MCP discovery runtime', () => {
             .some((tool) => tool.name === externalName)
         ).toBe(false);
         f.adapter.batches.push(
-          [{ name: 'tool_search', arguments: { query: externalName } }],
+          [
+            codeMode
+              ? searchInCell(externalName)
+              : { name: 'tool_search', arguments: { query: externalName } }
+          ],
           [call]
         );
         expect(
@@ -343,11 +372,15 @@ describe('MCP discovery runtime', () => {
     }
   );
 
-  it('keeps deferred direct-only MCP callable directly and excludes it from the cell', async () => {
-    const f = await fixture(true, { externalCallers: ['direct'] });
+  it('keeps direct-only MCP discovered in a cell callable directly in Responses', async () => {
+    const f = await fixture(
+      true,
+      { externalCallers: ['direct'] },
+      { protocol: 'OPENAI_RESPONSES' }
+    );
     try {
       f.adapter.batches.push(
-        [{ name: 'tool_search', arguments: { query: externalName } }],
+        [searchInCell(externalName)],
         [{ name: externalName, arguments: { record: 'direct-only' } }],
         [
           {
@@ -366,11 +399,9 @@ describe('MCP discovery runtime', () => {
       expect(request.tools.find((tool) => tool.name === 'code_exec')!.description).not.toContain(
         externalName
       );
-      expect(
-        JSON.parse(request.messages.find((message) => message.toolSearchTools)!.content)
-      ).toMatchObject({
-        tools: [{ name: externalName, caller: 'direct' }]
-      });
+      expect(request.messages.find((message) => message.mcpDiscovery)?.content).toContain(
+        '"caller":"direct"'
+      );
       expect(events).toContainEqual(
         expect.objectContaining({
           type: 'tool.failed',
@@ -390,10 +421,7 @@ describe('MCP discovery runtime', () => {
       arguments: { code: `observe.text(await tools.${externalName}({record:"visible"}));` }
     };
     try {
-      f.adapter.batches.push(
-        [{ name: 'tool_search', arguments: { query: externalName } }, cell],
-        [cell]
-      );
+      f.adapter.batches.push([searchInCell(externalName), cell], [cell]);
       const execution = f.session.run({ prompt: 'Search, then call in the next response.' });
       const events = [];
       for await (const event of execution) events.push(event);
@@ -491,28 +519,277 @@ describe('MCP discovery runtime', () => {
     }
   });
 
-  it('rejects tool_search from inside a Code Mode cell', async () => {
+  it.each(['ANTHROPIC_MESSAGES', 'OPENAI_RESPONSES'] as const)(
+    'loads tool discovery without observing the result and restores it after restart: %s',
+    async (protocol) => {
+      const f = await fixture(true, undefined, { protocol });
+      let reopened: Awaited<ReturnType<typeof f.create>> | undefined;
+      try {
+        f.adapter.batches.push([
+          {
+            name: 'code_exec',
+            arguments: {
+              code: `const {data,content} = await tools.tool_search({query:${JSON.stringify(externalName)}});
+            if (JSON.stringify(data) !== ${JSON.stringify(JSON.stringify({ tools: [externalName] }))} || content !== undefined) throw Error('unexpected search result');
+            const miss = await tools.tool_search({query:'nothing_matches_this'});
+            if (miss.data.tools.length !== 0) throw Error('unexpected match');
+            if (catalog.tools().some(tool => tool.name === ${JSON.stringify(externalName)})) throw Error('cell directory changed');`
+            }
+          }
+        ]);
+        const events = [];
+        const execution = f.session.run({ prompt: 'Try nested search.' });
+        for await (const event of execution) events.push(event);
+        expect((await execution.result()).status).toBe('completed');
+        expect(f.calls).toEqual([]);
+        expect(events.filter((event) => event.type === 'tool.failed')).toEqual([]);
+        const [first, next] = f.adapter.requests;
+        expect(first!.tools.map((tool) => tool.name)).not.toContain('tool_search');
+        expect(first!.tools.find((tool) => tool.name === 'code_exec')?.description).toContain(
+          'tools.tool_search'
+        );
+        const receipt = next!.messages.filter((message) => message.mcpDiscovery);
+        expect(receipt).toHaveLength(1);
+        expect(receipt[0]).toMatchObject({ role: 'user', contextKind: 'contextual' });
+        expect(receipt[0]!.content).toContain('Private detailed lookup documentation');
+        expect(next!.messages.some((message) => message.toolSearchTools)).toBe(false);
+        const wire =
+          protocol === 'OPENAI_RESPONSES'
+            ? openAiInput(next!.messages, next!.images, f.adapter.configuration.id, false)
+            : anthropicMessages(next!.messages, next!.images, next!.tools);
+        const content = JSON.stringify(wire);
+        expect(content).toContain('mcp_discovery');
+        expect(content.indexOf('mcp_discovery')).toBeGreaterThan(
+          content.indexOf(
+            protocol === 'OPENAI_RESPONSES' ? 'custom_tool_call_output' : 'tool_result'
+          )
+        );
+        await f.agent.dispose();
+        f.update({
+          ...catalog(),
+          revision: 'after-restart',
+          tools: catalog().tools.map((tool) =>
+            tool.definition.name === externalName
+              ? {
+                  ...tool,
+                  definitionRevision: 'updated',
+                  definition: { ...tool.definition, description: 'Fresh lookup definition.' }
+                }
+              : tool
+          )
+        });
+        reopened = await f.create();
+        const session = await reopened.openSession(f.session.id);
+        f.adapter.batches.push([
+          {
+            name: 'code_exec',
+            arguments: { code: `await tools.${externalName}({record:'after restart'});` }
+          }
+        ]);
+        const resumed = session.run({ prompt: 'Call the previously discovered tool.' });
+        const failed = [];
+        for await (const event of resumed) if (event.type === 'tool.failed') failed.push(event);
+        expect(await resumed.result()).toMatchObject({ status: 'completed' });
+        expect(failed).toEqual([]);
+        expect(f.calls).toEqual([externalName]);
+        expect(
+          f.adapter.requests.at(-1)!.messages.find((message) => message.mcpDiscovery)?.content
+        ).toContain('Fresh lookup definition.');
+      } finally {
+        await reopened?.dispose();
+        await f.agent.dispose();
+      }
+    }
+  );
+
+  it.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
+    'retries pending %s discovery after overflow without adding definitions to Compact',
+    async (protocol) => {
+      const f = await fixture(true, undefined, { protocol });
+      try {
+        f.adapter.rejectDiscoveryOnce = true;
+        f.adapter.batches.push(
+          [searchInCell(externalName)],
+          [],
+          [
+            {
+              name: 'code_exec',
+              arguments: {
+                code: `await tools.${externalName}({record:'after recovery'});`
+              }
+            }
+          ]
+        );
+        expect(
+          await f.session.run({ prompt: 'Discover and use the lookup.' }).result()
+        ).toMatchObject({ status: 'completed' });
+        const compact = f.adapter.requests.findIndex((request) => request.toolChoice === 'none');
+        expect(compact).toBeGreaterThan(0);
+        expect(f.adapter.requests[compact]!.messages.some((message) => message.mcpDiscovery)).toBe(
+          false
+        );
+        expect(f.adapter.requests[compact]!.tools.map((tool) => tool.name)).not.toContain(
+          externalName
+        );
+        expect(
+          f.adapter.requests[compact + 1]!.messages.find((message) => message.mcpDiscovery)?.content
+        ).toContain(externalName);
+        expect(f.calls).toEqual([externalName]);
+      } finally {
+        await f.agent.dispose();
+      }
+    }
+  );
+
+  it('keeps a successful discovery even when the originating cell fails', async () => {
     const f = await fixture(true);
+    try {
+      const call = {
+        name: 'code_exec',
+        arguments: {
+          code: `await tools.${externalName}({record:'next cell'});`
+        }
+      };
+      f.adapter.batches.push(
+        [
+          {
+            name: 'code_exec',
+            arguments: {
+              code: `await tools.tool_search({query:${JSON.stringify(externalName)}});
+          await tools.${externalName}({record:'same cell'});`
+            }
+          }
+        ],
+        [call]
+      );
+      const execution = f.session.run({ prompt: 'Search before using the lookup.' });
+      const failures = [];
+      for await (const event of execution) if (event.type === 'tool.failed') failures.push(event);
+      expect(await execution.result()).toMatchObject({ status: 'completed' });
+      expect(failures).toEqual([
+        expect.objectContaining({
+          toolName: 'code_exec',
+          code: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
+        })
+      ]);
+      expect(f.calls).toEqual([externalName]);
+    } finally {
+      await f.agent.dispose();
+    }
+  });
+
+  it('delivers discovery from a retained cell to a later Execution', async () => {
+    const waiting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const f = await fixture(true, undefined, {}, [], async () => {
+      waiting.resolve();
+      await release.promise;
+    });
     try {
       f.adapter.batches.push([
         {
           name: 'code_exec',
-          arguments: { code: `await tools.tool_search({ query: "${externalName}" });` }
+          arguments: {
+            code: `
+        await cell.yield_control();
+        await tools.${internalName}({record:'pause'});
+        await tools.tool_search({query:${JSON.stringify(externalName)}});`
+          }
         }
       ]);
-      const events = [];
-      const execution = f.session.run({ prompt: 'Try nested search.' });
-      for await (const event of execution) events.push(event);
-      expect((await execution.result()).status).toBe('completed');
-      expect(f.calls).toEqual([]);
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: 'tool.failed',
-          toolName: 'code_exec',
-          code: 'MAR_AGENT_TOOL_NOT_AVAILABLE'
-        })
-      );
+      expect(
+        await f.session.run({ prompt: 'Start the background lookup.' }).result()
+      ).toMatchObject({ status: 'completed' });
+      await waiting.promise;
+      const result = f.adapter.requests
+        .at(-1)!
+        .messages.findLast((message) => message.role === 'tool');
+      const { cellId } = JSON.parse(result!.content);
+      f.adapter.batches.push([{ name: 'code_exec_wait', arguments: { cellId } }]);
+      const next = f.session.run({ prompt: 'Wait for discovery.' });
+      for await (const event of next)
+        if (event.type === 'tool.started' && event.toolName === 'code_exec_wait') release.resolve();
+      expect(await next.result()).toMatchObject({ status: 'completed' });
+      expect(
+        f.adapter.requests.at(-1)!.messages.find((message) => message.mcpDiscovery)?.content
+      ).toContain(externalName);
     } finally {
+      release.resolve();
+      await f.agent.dispose();
+    }
+  });
+
+  it('rebuilds a candidate when a retained cell discovers a tool during a request hook', async () => {
+    const waiting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let onCandidate: (() => Promise<void>) | undefined;
+    const f = await fixture(
+      true,
+      undefined,
+      {},
+      [
+        {
+          id: 'synchronize-discovery',
+          apiVersion: '1.0',
+          attachSession(context) {
+            context.hooks.intercept('model.request', async (request, _call, next) => {
+              const wait = onCandidate;
+              onCandidate = undefined;
+              await wait?.();
+              return next(request);
+            });
+          }
+        }
+      ],
+      async () => {
+        waiting.resolve();
+        await release.promise;
+      }
+    );
+    try {
+      f.adapter.batches.push([
+        {
+          name: 'code_exec',
+          arguments: {
+            code: `
+        await cell.yield_control();
+        await tools.${internalName}({record:'pause'});
+        await tools.tool_search({query:${JSON.stringify(externalName)}});`
+          }
+        }
+      ]);
+      expect(
+        await f.session.run({ prompt: 'Start the background lookup.' }).result()
+      ).toMatchObject({ status: 'completed' });
+      await waiting.promise;
+      const start = f.adapter.requests.length;
+      onCandidate = async () => {
+        const store = await JsonlSessionStore.open(f.home);
+        try {
+          release.resolve();
+          await vi.waitFor(async () => {
+            const records = await store.read(f.session.id);
+            expect(
+              records.some(
+                (record) =>
+                  record.type === 'tool.completed' &&
+                  (record.payload as { toolName?: string }).toolName === 'tool_search'
+              )
+            ).toBe(true);
+          });
+        } finally {
+          await store.close();
+        }
+      };
+      expect(await f.session.run({ prompt: 'Continue.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(f.adapter.requests.slice(start)).toHaveLength(1);
+      expect(
+        f.adapter.requests[start]!.messages.find((message) => message.mcpDiscovery)?.content
+      ).toContain(externalName);
+    } finally {
+      release.resolve();
       await f.agent.dispose();
     }
   });

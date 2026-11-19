@@ -100,9 +100,11 @@ describe('Public workbench capabilities', () => {
     let resolveOld!: (value: unknown) => void;
     const request = vi
       .fn()
+      .mockResolvedValueOnce({ nodes: [] })
       .mockImplementationOnce(() => new Promise((resolve) => (resolveOld = resolve)))
       .mockResolvedValueOnce({ nodes: [] });
     const current = state(request);
+    await current.service.refreshNodes();
     const old = current.service.refreshNodes();
     await current.service.refreshNodes();
     resolveOld({
@@ -111,6 +113,37 @@ describe('Public workbench capabilities', () => {
     await old;
     expect(current.nodes.value).toEqual([]);
     expect(current.onNodeConnected).not.toHaveBeenCalled();
+  });
+
+  it('shares the first Node read and only confirms a successful response', async () => {
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Node inventory unavailable'))
+      .mockResolvedValueOnce({ nodes: [] });
+    const { service } = state(request);
+    const first = service.refreshNodes();
+    expect(service.refreshNodes()).toBe(first);
+    await first;
+    expect(service.nodeListConfirmed.value).toBe(false);
+    expect(request).toHaveBeenCalledTimes(1);
+    await service.refreshNodes();
+    expect(service.nodeListConfirmed.value).toBe(true);
+    expect(service.nodes.value).toEqual([]);
+    service.resetResources();
+    expect(service.nodeListConfirmed.value).toBe(false);
+  });
+
+  it('preserves a realtime disconnect received while the first Node read is pending', async () => {
+    let finish!: (value: unknown) => void;
+    const request = vi.fn(() => new Promise((resolve) => (finish = resolve)));
+    const { service } = state(request);
+    const initial = service.refreshNodes();
+    service.setNodeConnection('node', false);
+    finish({ nodes: [{ id: 'node', connected: true }] });
+    await initial;
+
+    expect(service.nodeListConfirmed.value).toBe(true);
+    expect(service.nodes.value).toEqual([{ id: 'node', connected: false }]);
   });
 
   it('restores each Node manifest independently during background revalidation and prunes closed tabs', async () => {

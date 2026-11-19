@@ -32,6 +32,7 @@ type Payload<T = ToolEvent> = T extends ToolEvent
 /** Capture only the cell's immutable dispatch identity, never the model loop or its AbortSignal. */
 export function createCodeToolDispatch(input: {
   context: Omit<ToolRuntimeContext, 'signal' | 'codeMode' | 'expectedMcpTool' | 'searchMcpTools'>;
+  searchMcpTools?: NonNullable<ToolRuntimeContext['searchMcpTools']>;
   tools: readonly ClientToolDefinition[];
   expectations: ReadonlyMap<string, McpToolCallContext['expectedTool']>;
   parentCallId: string;
@@ -77,6 +78,12 @@ export function createCodeToolDispatch(input: {
                 : input.context.emit(event),
             parentCallId: input.parentCallId,
             signal,
+            ...(input.searchMcpTools
+              ? {
+                  searchMcpTools: (args, signal) =>
+                    input.searchMcpTools!(args, signal, 'programmatic')
+                }
+              : {}),
             ...(expected ? { expectedMcpTool: expected } : {})
           },
           'programmatic'

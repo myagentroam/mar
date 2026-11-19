@@ -20,6 +20,7 @@ export async function commitExecutionCompaction(input: {
   ): Omit<SessionStoreCompactInput, 'retainedModelContext' | 'inlineMediaState'>;
   readonly checkpoint: ResourceInputProjection['checkpoint'];
   readonly withProjection: <T>(action: () => Promise<T>) => Promise<T>;
+  readonly retainDiscovery: (message: SessionModelMessage) => boolean;
   readonly currentGeneration: () => string | undefined;
   readonly recordCommit: (recordId: string) => void;
   readonly replace: (retained: SessionModelMessage[]) => void;
@@ -33,9 +34,12 @@ export async function commitExecutionCompaction(input: {
       throw new AgentError('MAR_AGENT_COMPACT_STALE', 'The compaction prefix has changed.');
     const retainedStart = compactRetainedStart(input.messages, input.prefix.length, input.model);
     if (retainedStart === 0) return undefined;
-    const retained = input.messages
-      .slice(retainedStart)
-      .filter((message) => message.contextKind !== 'private' || message.role === 'provider');
+    const retained = [
+      ...input.messages.slice(0, retainedStart).filter(input.retainDiscovery),
+      ...input.messages
+        .slice(retainedStart)
+        .filter((message) => message.contextKind !== 'private' || message.role === 'provider')
+    ];
     const retainedModelContext = retained.map((message) => {
       const source = input.messageSources.get(message);
       const saved =

@@ -115,6 +115,7 @@ export async function createRoundToolRuntimeContext(
           ...scope.captureCodeContext(),
           ...(recentImages === undefined ? {} : { recentImages })
         },
+        searchMcpTools: scope.searchMcpTools,
         tools: scope.tools,
         expectations: scope.expectations,
         parentCallId: call.callId,
