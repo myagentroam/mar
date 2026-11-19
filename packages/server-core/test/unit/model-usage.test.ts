@@ -78,6 +78,48 @@ describe('ModelUsageGrants', () => {
 });
 
 describe('ModelUsageStore', () => {
+  it('continues a full retention batch with the same cutoff and stops after a partial batch', async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([{ affectedRows: 1000 }, []])
+      .mockResolvedValueOnce([{ affectedRows: 347 }, []]);
+    const now = vi
+      .fn()
+      .mockReturnValueOnce(NOW)
+      .mockReturnValue(NOW + 1000);
+    const grants = new ModelUsageGrants(Buffer.from('test-signing-key'), now);
+    const store = new ModelUsageStore({ execute } as never, grants, now);
+
+    await store.cleanup();
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    for (const [, values] of execute.mock.calls) {
+      expect(values[0]).toBe(NOW - MODEL_USAGE_RETENTION_MS);
+    }
+  });
+
+  it('leaves remaining retention work for the next round when all batches fill', async () => {
+    let remaining = 12_347;
+    const execute = vi.fn(async () => {
+      const affectedRows = Math.min(remaining, 1000);
+      remaining -= affectedRows;
+      return [{ affectedRows }, []];
+    });
+    const grants = new ModelUsageGrants(Buffer.from('test-signing-key'), () => NOW);
+    const store = new ModelUsageStore({ execute } as never, grants, () => NOW);
+
+    await store.cleanup();
+
+    expect(execute).toHaveBeenCalledTimes(12);
+    expect(remaining).toBe(347);
+
+    execute.mockClear();
+    await store.cleanup();
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(remaining).toBe(0);
+  });
+
   it('accepts replay of legacy records whose hashes precede zero-filling', async () => {
     const fixture = storeFixture();
     const grant = fixture.grants.issue(NODE_ID, USER_ID, 'work');

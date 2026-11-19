@@ -18,6 +18,7 @@ import {
 } from '../../packages/server-core/src/model-usage-schema.js';
 import { SESSION_COOKIE_NAME } from '../../packages/server-core/src/auth.js';
 import {
+  MODEL_USAGE_RETENTION_MS,
   createEnvelope,
   personalUsageQuerySchema,
   type ModelUsageBatch,
@@ -32,6 +33,71 @@ import {
 const Fastify = createRequire(new URL('../../packages/server-core/package.json', import.meta.url))(
   'fastify'
 );
+
+test('Personal usage retention removes a multi-batch backlog without deleting records at the cutoff', async () => {
+  const database = resolvePlaywrightTestDatabase(`usage_retention_${randomUUID()}`);
+  await createPlaywrightTestDatabase(database);
+  const pool = mysql.createPool(database.databaseUrl);
+  const now = Date.now();
+  const cutoff = now - MODEL_USAGE_RETENTION_MS;
+  const grants = new ModelUsageGrants(Buffer.from('fixture-usage-key'), () => now);
+  try {
+    const connection = await pool.getConnection();
+    try {
+      await MODEL_USAGE_MIGRATION.up(connection);
+    } finally {
+      connection.release();
+    }
+    const records: [id: string, startedAt: number, endedAt: number | null][] = [
+      ...Array.from({ length: 1001 }, (_, index): [string, number, number] => [
+        `expired-${index}`,
+        cutoff - 2,
+        cutoff - 1
+      ]),
+      ['expired-without-end', cutoff - 1, null],
+      ['started-at-cutoff', cutoff, null],
+      ['ended-at-cutoff', cutoff - 1, cutoff]
+    ];
+    await pool.query(
+      `INSERT INTO model_usage_records
+      (source_key,user_id,source_node_id,record_id,revision,payload_hash,identity_hash,runner,mode,
+       purpose,model_key,model_name,started_at,ended_at,received_at,record) VALUES ?`,
+      [
+        records.map(([id, startedAt, endedAt]) => [
+          id,
+          1,
+          'fixture-node',
+          id,
+          1,
+          '',
+          '',
+          'mar-agent',
+          'work',
+          'conversation',
+          '',
+          '',
+          startedAt,
+          endedAt,
+          now,
+          '{}'
+        ])
+      ]
+    );
+
+    await new ModelUsageStore(pool, grants, () => now).cleanup();
+
+    const [remaining] = await pool.query<mysql.RowDataPacket[]>(
+      'SELECT record_id FROM model_usage_records ORDER BY record_id'
+    );
+    expect(remaining.map(({ record_id }) => record_id)).toEqual([
+      'ended-at-cutoff',
+      'started-at-cutoff'
+    ]);
+  } finally {
+    await pool.end();
+    await dropPlaywrightTestDatabase(database);
+  }
+});
 
 test('Personal usage configuration migration preserves boundary totals and covers metadata and paging counts', async () => {
   const database = resolvePlaywrightTestDatabase(`usage_query_${randomUUID()}`);

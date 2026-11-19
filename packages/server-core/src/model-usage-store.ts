@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Pool, RowDataPacket } from 'mysql2/promise';
+import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
   MODEL_USAGE_RETENTION_MS,
   MODEL_USAGE_BATCH_BYTES,
@@ -11,6 +11,9 @@ import {
 import { withMysqlTransaction } from './mysql-reference-store.js';
 import { ModelUsageGrants } from './model-usage-grant.js';
 import { recordedUsage } from './model-usage-record.js';
+
+const CLEANUP_BATCH_SIZE = 1000;
+const MAX_CLEANUP_BATCHES = 12;
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 export function usageModelKey(record: ModelUsageRecord): string {
@@ -30,10 +33,14 @@ export class ModelUsageStore {
   ) {}
 
   async cleanup(): Promise<void> {
-    await this.pool.execute(
-      'DELETE FROM model_usage_records WHERE COALESCE(ended_at,started_at) < ? LIMIT 1000',
-      [this.now() - MODEL_USAGE_RETENTION_MS]
-    );
+    const cutoff = this.now() - MODEL_USAGE_RETENTION_MS;
+    for (let batch = 0; batch < MAX_CLEANUP_BATCHES; batch++) {
+      const [result] = await this.pool.execute<ResultSetHeader>(
+        `DELETE FROM model_usage_records WHERE COALESCE(ended_at,started_at) < ? LIMIT ${CLEANUP_BATCH_SIZE}`,
+        [cutoff]
+      );
+      if (result.affectedRows < CLEANUP_BATCH_SIZE) break;
+    }
   }
 
   async consume(nodeId: string, value: unknown): Promise<ModelUsageAck> {
