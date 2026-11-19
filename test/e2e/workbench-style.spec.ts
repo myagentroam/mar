@@ -69,7 +69,24 @@ for (const { theme, width } of [
     });
     expect(primary).not.toBe(secondary);
     const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
-    await expect(tree.locator('li.selected .workspace-branch-button')).toHaveCSS('color', primary);
+    const plain = tree.getByRole('button', { name: 'plain', exact: true });
+    const group = tree.locator('.workspace-group-toggle').filter({ hasText: 'Team' });
+    await expect(tree.getByRole('button', { name: 'Node', exact: true })).toHaveCSS(
+      'color',
+      secondary
+    );
+    await expect(group).toHaveCSS('color', secondary);
+    await expect(plain).toHaveCSS('color', primary);
+    if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
+    const grouped = tree.getByRole('button', { name: 'grouped', exact: true });
+    await expect(grouped).toHaveCSS('color', secondary);
+    if (width >= 768) {
+      await grouped.hover();
+      await expect(grouped).toHaveCSS('color', secondary);
+    }
+    await grouped.click();
+    await expect(grouped).toHaveCSS('color', primary);
+    await expect(plain).toHaveCSS('color', secondary);
     const row = (title: string) =>
       list.locator('.session-link').filter({ has: page.getByText(title, { exact: true }) });
     for (const [title, icon, name] of [
@@ -82,8 +99,12 @@ for (const { theme, width } of [
       await expect(marker).toHaveAttribute('data-mar-icon', icon);
       await expect(marker).toHaveCSS('color', primary);
     }
-    for (const title of await list.locator('strong').all()) {
-      await expect(title).toHaveCSS('color', primary);
+    for (const entry of await list.locator('.session-link').all()) {
+      const title = entry.locator('strong');
+      await expect(title).toHaveCSS(
+        'color',
+        (await entry.getAttribute('aria-current')) === 'page' ? primary : secondary
+      );
       await expect(title).toHaveCSS('font-size', fontSize);
       await expect(title).toHaveCSS('font-weight', '400');
     }
@@ -96,7 +117,7 @@ for (const { theme, width } of [
     const pinned = row('Paused, still pinned');
     if (width >= 768) {
       await scheduled.hover();
-      await expect(scheduled.locator('strong')).toHaveCSS('color', primary);
+      await expect(scheduled.locator('strong')).toHaveCSS('color', secondary);
     }
     for (const active of [scheduled, pinned]) {
       await active.click();
@@ -111,7 +132,7 @@ for (const { theme, width } of [
       );
     }
     await expect(scheduled).not.toHaveAttribute('aria-current', 'page');
-    await expect(scheduled.locator('strong')).toHaveCSS('color', primary);
+    await expect(scheduled.locator('strong')).toHaveCSS('color', secondary);
     await expect(scheduled.getByRole('img', { name: 'Scheduled task enabled' })).toHaveCSS(
       'color',
       primary

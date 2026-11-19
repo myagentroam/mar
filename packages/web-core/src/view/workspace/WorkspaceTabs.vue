@@ -727,10 +727,14 @@ function activate(tab: WorkspaceTab): void {
   border: 0;
   border-radius: inherit;
   background: transparent;
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   padding: 3px 34px 2px 8px;
   text-align: left;
   cursor: pointer;
+}
+
+.workspace-tab > button[aria-selected='true'] {
+  color: var(--mar-text-primary);
 }
 
 .workspace-tab > button:first-child:focus-visible {
