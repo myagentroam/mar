@@ -21,8 +21,8 @@ export function usageModelKey(record: ModelUsageRecord): string {
   ]);
 }
 
+/** Persists usage and exposes retention cleanup for the Server's maintenance lifecycle. */
 export class ModelUsageStore {
-  private lastCleanup = 0;
   constructor(
     readonly pool: Pool,
     readonly grants: ModelUsageGrants,
@@ -42,10 +42,6 @@ export class ModelUsageStore {
     const batch = modelUsageBatchSchema.parse(value);
     const results: ModelUsageAck['results'] = [];
     for (const entry of batch.entries) results.push(await this.accept(nodeId, entry));
-    if (this.now() - this.lastCleanup >= 300_000) {
-      await this.cleanup();
-      this.lastCleanup = this.now();
-    }
     return { apiVersion: 1, results };
   }
 

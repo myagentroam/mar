@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { hostedConversationSnapshotSchema } from '../../packages/protocol/src/index.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -101,6 +102,222 @@ async function sendDraft(page: Page, f: Awaited<ReturnType<typeof openEntry>>) {
   await expect.poll(() => f.creations.length).toBe(count + 1);
   await expect(page.locator('.hosted-send-button')).toBeEnabled();
 }
+
+async function openHostedSend(page: Page) {
+  const snapshot = hostedConversationSnapshotSchema.parse({
+    conversation: {
+      id: 'conversation-1',
+      nodeId: 'node-1',
+      sessionId: 'session-1',
+      templateId: template.id,
+      templateName: template.name,
+      activeVersionId: 'version-1',
+      title: 'Existing conversation',
+      titleSource: 'CUSTOM',
+      pinnedAt: null,
+      status: 'ACTIVE',
+      modelId: 'model-1',
+      createdAt: 1,
+      updatedAt: 1,
+      lastActivityAt: 1
+    },
+    template,
+    run: null,
+    turns: [],
+    historyNextCursor: null,
+    files: [],
+    models,
+    error: null,
+    snapshotSequence: 1
+  });
+  const requests: { prompt: string; clientMessageId: string }[] = [];
+  const replies: ((failure: boolean) => void)[] = [];
+  const run = {
+    id: 'run-1',
+    status: 'RUNNING',
+    startedAt: Date.now() - 5_000,
+    completedAt: null
+  } as const;
+  let watchId: string;
+  let sequence = 1;
+  await page.route('**/api/hosted-template-fixture/current', (route) =>
+    route.fulfill({ json: snapshot })
+  );
+  await page.route('**/api/hosted-conversations?limit=*', (route) =>
+    route.fulfill({ json: { items: [snapshot.conversation], nextCursor: null } })
+  );
+  await page.route('**/hosted-conversations/conversation-1/watch', (route) => {
+    if (route.request().method() === 'DELETE') return route.fulfill({ json: {} });
+    watchId = route.request().postDataJSON().watchId;
+    return route.fulfill({
+      json: {
+        accepted: true,
+        watchId,
+        nodeGeneration: 'fixture-generation',
+        expiresAt: Date.now() + 30_000
+      }
+    });
+  });
+  await page.route('**/hosted-conversations/conversation-1/messages', async (route) => {
+    requests.push(route.request().postDataJSON());
+    const failure = await new Promise<boolean>((resolve) => replies.push(resolve));
+    if (failure) {
+      return route.fulfill({
+        status: 409,
+        json: { error: { code: 'HOSTED_CONVERSATION_RUN_ACTIVE' } }
+      });
+    }
+    return route.fulfill({ json: { conversation: snapshot.conversation, run } });
+  });
+
+  await page.goto(`${fixture.url}hosted-entry.html?existing=1&workspace-page=1&watch-events=1`);
+  const composer = page.locator('form.composer-host');
+  const input = composer.locator('textarea');
+  const send = composer.locator('.hosted-send-button');
+  const sending = composer.locator('.composer-submitting');
+  const working = composer.locator('.composer-working.is-active');
+  const elapsed = composer.locator('.composer-elapsed');
+  const prompt = 'Display this only from Hosted Watch.';
+  const message = page.locator('.hosted-timeline-scroll').getByText(prompt, { exact: true });
+
+  async function emitRun(terminal = false) {
+    const { clientMessageId } = requests.at(-1)!;
+    async function emit(payload: object) {
+      await page.evaluate(
+        (detail) => window.dispatchEvent(new CustomEvent('fixture-hosted-watch', { detail })),
+        {
+          type: 'watch.hosted-conversation.event',
+          workbenchConnectionId: 'fixture-connection',
+          watchId,
+          nodeGeneration: 'fixture-generation',
+          nodeId: snapshot.conversation.nodeId,
+          conversationId: snapshot.conversation.id,
+          event: {
+            sequence: ++sequence,
+            category: 'hosted-conversation',
+            payload: { conversationId: snapshot.conversation.id, ...payload }
+          }
+        }
+      );
+    }
+    await emit({
+      kind: 'run',
+      run: terminal ? { ...run, status: 'SUCCEEDED', completedAt: Date.now() } : run
+    });
+    if (!terminal)
+      await emit({
+        kind: 'runtime',
+        runtimeEvent: {
+          kind: 'ITEM',
+          executionId: run.id,
+          turnId: 'turn-1',
+          sequence: 1,
+          createdAt: run.startedAt,
+          payload: {
+            item: {
+              itemId: 'user-1',
+              kind: 'user_message',
+              status: 'COMPLETED',
+              payload: { clientMessageId, text: prompt, contexts: [], delivery: 'ACCEPTED' }
+            }
+          }
+        }
+      });
+  }
+  return {
+    composer,
+    input,
+    send,
+    sending,
+    working,
+    elapsed,
+    prompt,
+    message,
+    requests,
+    emitRun,
+    reply(failure = false) {
+      const resolve = replies.shift();
+      if (resolve === undefined) throw new Error('No pending Hosted message POST');
+      resolve(failure);
+    },
+    release() {
+      for (const resolve of replies.splice(0)) resolve(false);
+    }
+  };
+}
+
+test('Hosted send displays only request feedback before Watch, including after HTTP settlement', async ({
+  page
+}) => {
+  const f = await openHostedSend(page);
+  try {
+    await f.input.fill(f.prompt);
+    await f.send.click();
+    await expect.poll(() => f.requests.length).toBe(1);
+    await expect(f.sending).toBeVisible();
+    await expect(f.send).toBeDisabled();
+    await expect(f.input).toHaveValue(f.prompt);
+    await expect(f.message).toHaveCount(0);
+    await expect(f.working).toHaveCount(0);
+    await expect(f.elapsed).toHaveCount(0);
+    await f.composer.evaluate((form: HTMLFormElement) => form.requestSubmit());
+
+    f.reply(true);
+    await expect(page.locator('.el-message--error')).toBeVisible();
+    await expect(f.sending).toHaveCount(0);
+    await expect(f.input).toHaveValue(f.prompt);
+    await expect(f.message).toHaveCount(0);
+    await expect(f.working).toHaveCount(0);
+    await expect(f.elapsed).toHaveCount(0);
+    expect(f.requests).toHaveLength(1);
+
+    await f.send.click();
+    await expect.poll(() => f.requests.length).toBe(2);
+    expect(f.requests[1]?.clientMessageId).not.toBe(f.requests[0]?.clientMessageId);
+    f.reply();
+    await expect(f.sending).toHaveCount(0);
+    await expect(f.input).toHaveValue('');
+    await expect(f.message).toHaveCount(0);
+    await expect(f.working).toHaveCount(0);
+    await expect(f.elapsed).toHaveCount(0);
+
+    await f.emitRun();
+    await expect(f.message).toBeVisible();
+    await expect(f.working).toBeVisible();
+    await expect(f.elapsed).toBeVisible();
+  } finally {
+    f.release();
+  }
+});
+
+test('Hosted send shows Watch activity immediately and does not revive a terminal Run on HTTP success', async ({
+  page
+}) => {
+  const f = await openHostedSend(page);
+  try {
+    await f.input.fill(f.prompt);
+    await f.send.click();
+    await expect.poll(() => f.requests.length).toBe(1);
+    await f.emitRun();
+    await expect(f.sending).toBeVisible();
+    await expect(f.message).toBeVisible();
+    await expect(f.working).toBeVisible();
+    await expect(f.elapsed).toBeVisible();
+
+    await f.emitRun(true);
+    await expect(f.working).toHaveCount(0);
+    await expect(f.elapsed).toHaveCount(0);
+    await expect(f.sending).toBeVisible();
+    f.reply();
+    await expect(f.sending).toHaveCount(0);
+    await expect(f.input).toHaveValue('');
+    await expect(f.message).toHaveCount(1);
+    await expect(f.working).toHaveCount(0);
+    await expect(f.elapsed).toHaveCount(0);
+  } finally {
+    f.release();
+  }
+});
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Restored conversation keeps the normal composer surface while syncing in ${theme}`, async ({
