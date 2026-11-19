@@ -20,6 +20,7 @@ import { SESSION_COOKIE_NAME } from '../../packages/server-core/src/auth.js';
 import {
   MODEL_USAGE_RETENTION_MS,
   createEnvelope,
+  modelUsageBatchSchema,
   personalUsageQuerySchema,
   type ModelUsageBatch,
   type ModelUsageRecord
@@ -619,22 +620,22 @@ test('Personal usage carries SDK facts through durable delivery, MySQL revisions
   const sends: Promise<void>[] = [];
   let deliveryError: unknown;
   let dropAck = true;
+  const deliver = async (payload: unknown) => {
+    const batch = modelUsageBatchSchema.parse(payload);
+    batches.push(batch);
+    const ack = await store.consume('usage-node', batch);
+    if (!dropAck) outbox.handle(createEnvelope('usage.ack', ack));
+  };
   const outbox = new ModelUsageOutbox({
     database: () => node.raw,
     namespace: () => 'test-server:usage-node',
     now: () => now,
     diagnose: (code) => diagnostics.push(code),
     send: (_type, payload) => {
-      batches.push(payload as ModelUsageBatch);
       sends.push(
-        store
-          .consume('usage-node', payload)
-          .then((ack) => {
-            if (!dropAck) outbox.handle(createEnvelope('usage.ack', ack));
-          })
-          .catch((error) => {
-            deliveryError = error;
-          })
+        deliver(payload).catch((error) => {
+          deliveryError = error;
+        })
       );
     }
   });
@@ -1014,7 +1015,7 @@ test('Personal usage carries SDK facts through durable delivery, MySQL revisions
     });
     await pool.query('DELETE FROM model_usage_records WHERE user_id=1');
     await pool.query('DELETE FROM users WHERE id=1');
-    expect((await store.consume('usage-node', batches[0])).results[0]?.code).toBe(
+    expect((await store.consume('usage-node', batches[0]!)).results[0]?.code).toBe(
       'USAGE_USER_DELETED'
     );
     expect(diagnostics).toEqual([]);
