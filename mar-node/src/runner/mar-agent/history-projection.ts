@@ -23,18 +23,23 @@ type MarAgentHistoryItem = NodeConversationItem & {
   readonly permissionStop?: MarAgentPermissionStop;
 };
 
+type MarAgentHistoryTurn = Omit<NodeConversationTurn, 'items'> & {
+  readonly itemsById: Map<string, NodeConversationItem>;
+};
+
+/** Folds SDK history for both ordinary and Hosted conversations into one request-local snapshot. */
 export function projectMarAgentHistory(
   session: NodeAgentSession,
   entries: readonly AgentSessionHistoryEntry[],
   options: MarAgentHistoryProjectionOptions = {}
 ): NodeConversationTurn[] {
-  const turns = new Map<string, NodeConversationTurn>();
+  const turns = new Map<string, MarAgentHistoryTurn>();
   const normalizer = new MarAgentConversationNormalizer();
+  let lastTurnId: string | null = null;
   const ensure = (turnId: string, at: number) => {
     const existing = turns.get(turnId);
     if (existing) return existing;
-    const previous = [...turns.values()].at(-1);
-    const created: NodeConversationTurn = {
+    const created: MarAgentHistoryTurn = {
       id: turnId,
       sessionId: session.id,
       runId: null,
@@ -43,29 +48,29 @@ export function projectMarAgentHistory(
       model: session.modelId,
       effort: session.effort,
       access: session.access,
-      rewind: { before: previous?.id ?? null, after: turnId },
-      items: [],
+      rewind: { before: lastTurnId, after: turnId },
+      itemsById: new Map(),
       startedAt: at,
       completedAt: null
     };
     turns.set(turnId, created);
+    lastTurnId = turnId;
     return created;
   };
-  const replace = (turn: NodeConversationTurn, item: NodeConversationItem) => {
-    turn = turns.get(turn.id) ?? turn;
-    const index = turn.items.findIndex((candidate) => candidate.id === item.id);
-    const items = [...turn.items];
-    if (index < 0) items.push(item);
-    else {
-      const existing = items[index]!;
-      items[index] = {
-        ...existing,
-        ...item,
-        payload: mergeCompactLifecycleFacts(existing, item),
-        startedAt: existing.startedAt
-      };
-    }
-    turns.set(turn.id, { ...turn, items });
+  const replace = (turn: MarAgentHistoryTurn, item: NodeConversationItem) => {
+    const existing = turn.itemsById.get(item.id);
+    // Replacing a Map value keeps the item's first insertion position.
+    turn.itemsById.set(
+      item.id,
+      existing === undefined
+        ? item
+        : {
+            ...existing,
+            ...item,
+            payload: mergeCompactLifecycleFacts(existing, item),
+            startedAt: existing.startedAt
+          }
+    );
   };
   for (const entry of entries) {
     if (entry.kind === 'user') {
@@ -110,8 +115,7 @@ export function projectMarAgentHistory(
           at
         )
       );
-      if (turn.userItemId === null)
-        turns.set(entry.turnId, { ...turns.get(entry.turnId)!, userItemId: id });
+      if (turn.userItemId === null) turns.set(entry.turnId, { ...turn, userItemId: id });
       continue;
     }
     const event = entry.event;
@@ -137,17 +141,16 @@ export function projectMarAgentHistory(
       });
       if (event.type !== 'execution.failed') continue;
     }
-    const projectionTurn = turns.get(event.turnId) ?? turn;
     for (const projected of normalizer.normalize(event)) {
       const attachments =
         projected.generatedImages === undefined
           ? []
           : (options.registerGeneratedImages?.(event.sessionId, projected.generatedImages) ?? []);
       replace(
-        projectionTurn,
+        turn,
         historyItem(
           session,
-          projectionTurn,
+          turn,
           projected.itemId,
           projected.kind,
           projected.status,
@@ -158,7 +161,10 @@ export function projectMarAgentHistory(
       );
     }
   }
-  return [...turns.values()];
+  return Array.from(turns.values(), ({ itemsById, ...turn }) => ({
+    ...turn,
+    items: [...itemsById.values()]
+  }));
 }
 
 function mergeCompactLifecycleFacts(
@@ -189,7 +195,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function historyItem(
   session: NodeAgentSession,
-  turn: NodeConversationTurn,
+  turn: Pick<NodeConversationTurn, 'id' | 'runId'>,
   id: string,
   kind: string,
   status: string,
