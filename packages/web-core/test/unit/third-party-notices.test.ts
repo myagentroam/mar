@@ -41,19 +41,10 @@ function packageModule(name: string, license: string, text?: string) {
 describe('shared third-party notices generation', () => {
   it('retains all bundled icon license and notice texts without enterprise paths', async () => {
     const result = await notices();
-    for (const file of [
-      'seti/assets/NOTICE.md',
-      'seti/assets/LICENSE.txt',
-      'material/LICENSE.txt',
-      'material/UPSTREAM_LICENSE.txt'
-    ]) {
-      expect(result).toContain(
-        readFileSync(new URL(`../../src/icon-themes/${file}`, import.meta.url), 'utf8').trim()
-      );
-    }
     expect(result).toContain(
       readFileSync(new URL('../../src/util/icon-shapes.NOTICE.txt', import.meta.url), 'utf8').trim()
     );
+    expect(result).not.toMatch(/Seti File Icon Theme|Material (?:Design Icons|Icon Theme)/u);
     expect(result).not.toContain('packages/enterprise-web');
   });
 

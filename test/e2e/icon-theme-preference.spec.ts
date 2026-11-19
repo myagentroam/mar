@@ -11,7 +11,7 @@ test.afterAll(async () => {
 });
 
 for (const locale of ['en-US', 'zh-CN'] as const) {
-  test(`icon theme keeps the saved selection and rendered icon on write failure, then retries: ${locale}`, async ({
+  test(`appearance offers only MAR File Icons and ignores the old storage key: ${locale}`, async ({
     page
   }, testInfo) => {
     const messages = commonMessages[locale];
@@ -22,18 +22,19 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url());
     });
     await page.goto(`${fixture.url}custom-theme.html?locale=${locale}&appearance-only`);
+    await page.evaluate(() => localStorage.setItem('mar.icon-theme', 'material'));
+    await page.reload();
     const openAppearance = () =>
       page.getByRole('button', { name: messages.settings.appearance, exact: true }).click();
     const select = page
       .locator('.el-select')
       .filter({ has: page.locator('#appearance-icon-theme') });
     const preview = page.getByTestId('icon-theme-preview');
-    const choose = async (name: string) => {
-      await select.click();
-      await page.getByRole('option', { name, exact: true }).click();
-    };
     await openAppearance();
     await expect(select).toContainText(messages.settings.iconThemeMar);
+    await select.click();
+    await expect(page.getByRole('option')).toHaveText([messages.settings.iconThemeMar]);
+    await page.keyboard.press('Escape');
     const marIcon = preview.locator('.mar-file-icon svg');
     await expect(marIcon).toBeVisible();
     // A visible wrapper is not enough: the bundled external symbol must resolve and draw.
@@ -45,68 +46,19 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
           .evaluate((el: SVGUseElement) => el.getBBox().width)
       )
       .toBeGreaterThan(0);
-    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('material');
     await preview.screenshot({ path: testInfo.outputPath(`mar-file-icons-${locale}.png`) });
 
-    await choose('Seti');
-    await expect(preview.locator('.seti-file-icon')).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('seti');
-    await page.reload();
-    await openAppearance();
-    await expect(select).toContainText('Seti');
-    await expect(preview.locator('.seti-file-icon')).toBeVisible();
-    const savedIcon = await preview.innerHTML();
-
-    // Fault only this browser's icon preference writes; other settings remain real.
-    await page.evaluate(() => {
-      const setItem = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (key, value) {
-        if (this === localStorage && key === 'mar.icon-theme') {
-          throw new DOMException('Storage unavailable', 'QuotaExceededError');
-        }
-        setItem.call(this, key, value);
-      };
-    });
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      await choose('Material');
-      const feedback = page.locator('.el-message--error');
-      await expect(feedback).toHaveCount(1);
-      await expect(feedback).toHaveText(messages.customThemes.storageFailed);
-      await expect(feedback).toBeInViewport();
-      await expect(feedback).toHaveCSS('opacity', '1');
-      await expect(select).toContainText('Seti');
-      expect(await preview.innerHTML()).toBe(savedIcon);
-      expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('seti');
-      if (attempt === 0) {
-        await page.screenshot({
-          path: testInfo.outputPath(`storage-failure-${locale}.png`),
-          animations: 'disabled'
-        });
-      }
-      await feedback.locator('.el-message__closeBtn').click();
-      await expect(feedback).toHaveCount(0);
-    }
-    expect(pageErrors).toEqual([]);
-
-    // Reload removes the injected failure and restores the last committed value.
-    await page.reload();
-    await openAppearance();
-    await expect(select).toContainText('Seti');
-    await choose('Material');
-    await expect(preview.locator('.material-file-icon svg')).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('material');
-    await page.reload();
-    await openAppearance();
-    await expect(select).toContainText('Material');
-    await expect(preview.locator('.material-file-icon svg')).toBeVisible();
-    await choose(messages.settings.iconThemeMar);
-    await expect(marIcon).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('mar');
+    // A removed theme on the current key is also ignored, without rewriting the stored value.
+    await page.evaluate(() => localStorage.setItem('mar.icon-theme.v2', 'seti'));
     await page.reload();
     await openAppearance();
     await expect(select).toContainText(messages.settings.iconThemeMar);
     await expect(marIcon).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBe('seti');
     expect(pageErrors).toEqual([]);
     expect(apiRequests).toEqual([]);
+    expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('material');
   });
 }

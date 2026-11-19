@@ -430,8 +430,6 @@ export const zhCN = {
     dark: personalSettingsZhCN.settings.dark,
     iconTheme: personalSettingsZhCN.settings.iconTheme,
     iconThemeMar: fileNavigationZhCN.settings.iconThemeMar,
-    iconThemeSeti: fileNavigationZhCN.settings.iconThemeSeti,
-    iconThemeMaterial: fileNavigationZhCN.settings.iconThemeMaterial,
     defaultFileMode: personalSettingsZhCN.settings.defaultFileMode,
     fileModeEdit: personalSettingsZhCN.settings.fileModeEdit,
     fileModeReadOnly: personalSettingsZhCN.settings.fileModeReadOnly

@@ -794,7 +794,7 @@ test('Personalized prompts put the common option first and select it by default'
   await expect(page.getByRole('textbox', { name: '个性化提示词' })).toHaveValue('公共规则');
 });
 
-test('Appearance switches UI and file icon themes independently in local browser storage', async ({
+test('Appearance changes UI and file preferences independently of the MAR icon theme', async ({
   page
 }) => {
   const writes: {
@@ -816,11 +816,11 @@ test('Appearance switches UI and file icon themes independently in local browser
   await selectAppearanceOption(page, '主题', '暗色');
   await expect(root).toHaveAttribute('data-theme', 'vscode-dark-2026');
   await expect(root).toHaveClass(/dark/);
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(14, 17, 22)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(20, 24, 30)');
 
   await page.reload();
   await expect(root).toHaveAttribute('data-theme', 'vscode-dark-2026');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(14, 17, 22)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(20, 24, 30)');
 
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '外观', exact: true }).click();
@@ -828,16 +828,11 @@ test('Appearance switches UI and file icon themes independently in local browser
   await expect(root).not.toHaveAttribute('data-theme', /.*/);
   await expect(root).not.toHaveClass(/dark/);
 
-  // Choose a non-default value first so the Select emits an actual preference change.
-  await selectAppearanceOption(page, '图标主题', 'Seti');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBe('seti');
+  await selectAppearanceOption(page, '图标主题', 'MAR File Icons');
+  expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
   await expect(root).not.toHaveAttribute('data-theme', /.*/);
   await expect(root).not.toHaveClass(/dark/);
-  await selectAppearanceOption(page, '图标主题', 'Material');
   await selectAppearanceOption(page, '文件默认打开方式', '只读');
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem('mar.icon-theme')))
-    .toBe('material');
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('mar.file-editor.default-mode')))
     .toBe('read-only');
@@ -851,7 +846,7 @@ test('Appearance switches UI and file icon themes independently in local browser
       .locator(
         'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " el-select ")][1]'
       )
-  ).toContainText('Material');
+  ).toContainText('MAR File Icons');
   await expect(
     page
       .getByRole('combobox', { name: '文件默认打开方式', exact: true })
@@ -873,7 +868,7 @@ test('About shows versions, documentation, and third-party notices without dupli
   await expect(page.getByLabel('关于').getByText('MyAgentRoam', { exact: true })).toBeVisible();
   await expect(page.getByText('运行方式', { exact: true })).toBeVisible();
   await expect(page.getByText('浏览器标签页', { exact: true })).toBeVisible();
-  await expect(page.getByText('Visual Studio Code Seti File Icon Theme')).toBeVisible();
+  await expect(page.getByText('Tabler Icons', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '打开文档中心' })).toHaveAttribute(
     'href',
     '/docs/getting-started/overview'

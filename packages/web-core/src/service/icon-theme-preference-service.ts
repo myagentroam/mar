@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { DEFAULT_ICON_THEME_ID, isIconThemeId, type IconThemeId } from '../icon-themes/index.js';
 
-export const ICON_THEME_STORAGE_KEY = 'mar.icon-theme';
+export const ICON_THEME_STORAGE_KEY = 'mar.icon-theme.v2';
 
 export interface IconThemePreferenceService {
   readonly theme: Ref<IconThemeId>;

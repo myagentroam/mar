@@ -381,33 +381,28 @@ for (const theme of ['dark', 'light']) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`Composer attachment file icon follows the file theme and fits the row: ${theme}`, async ({
-    page
-  }) => {
+  test(`Composer attachment file icon uses MAR and fits the row: ${theme}`, async ({ page }) => {
     await page.goto(`${fixture.url}icon-system.html?attachment-icons=1&theme=${theme}`);
     await expect(page.locator('.composer-attachments .attachment-name')).toHaveText('notes.txt');
-    for (const iconTheme of ['mar', 'material', 'seti']) {
-      await page.evaluate((value) => localStorage.setItem('mar.icon-theme', value), iconTheme);
-      await page.reload();
-      const row = page.locator('.composer-attachments li');
-      const icon = row.locator(`.${iconTheme}-file-icon`);
-      const name = row.locator('.attachment-name');
-      const remove = row.locator('.composer-attachment-remove');
-      await expect(icon).toBeVisible();
-      await expect(name).toHaveText('notes.txt');
-      for (const width of [320, 1280]) {
-        await page.setViewportSize({ width, height: 844 });
-        const [rowBox, iconBox, nameBox, removeBox] = await Promise.all([
-          row.boundingBox(),
-          icon.boundingBox(),
-          name.boundingBox(),
-          remove.boundingBox()
-        ]);
-        expect(iconBox!.x).toBeGreaterThanOrEqual(rowBox!.x);
-        expect(iconBox!.x + iconBox!.width).toBeLessThanOrEqual(nameBox!.x);
-        expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(removeBox!.x);
-        expect(removeBox!.x + removeBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
-      }
+    const row = page.locator('.composer-attachments li');
+    const icon = row.locator('.mar-file-icon');
+    const name = row.locator('.attachment-name');
+    const remove = row.locator('.composer-attachment-remove');
+    await expect(icon).toBeVisible();
+    await expect(name).toHaveText('notes.txt');
+    await expect(icon.locator('use')).toHaveAttribute('href', /#mar-file-txt$/u);
+    for (const width of [320, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      const [rowBox, iconBox, nameBox, removeBox] = await Promise.all([
+        row.boundingBox(),
+        icon.boundingBox(),
+        name.boundingBox(),
+        remove.boundingBox()
+      ]);
+      expect(iconBox!.x).toBeGreaterThanOrEqual(rowBox!.x);
+      expect(iconBox!.x + iconBox!.width).toBeLessThanOrEqual(nameBox!.x);
+      expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(removeBox!.x);
+      expect(removeBox!.x + removeBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
     }
   });
 

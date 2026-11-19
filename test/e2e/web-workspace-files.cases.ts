@@ -1970,9 +1970,9 @@ test('Files filtering affects only loaded tree entries and clearing restores the
   await expect(tree.getByRole('treeitem', { name: /main\.ts/ })).toBeVisible();
 });
 
-test('The Material icon theme renders SVG icons in the file tree', async ({ page }) => {
+test('The file tree renders MAR sprites when a removed icon theme is stored', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
-  await page.addInitScript(() => localStorage.setItem('mar.icon-theme', 'material'));
+  await page.addInitScript(() => localStorage.setItem('mar.icon-theme.v2', 'material'));
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
@@ -1985,7 +1985,10 @@ test('The Material icon theme renders SVG icons in the file tree', async ({ page
 
   const tree = page.getByRole('tree', { name: '文件树' });
   await expect(tree.getByRole('treeitem', { name: /main\.ts/ })).toBeVisible();
-  await expect(tree.locator('.material-file-icon svg')).not.toHaveCount(0);
+  await expect(tree.getByRole('treeitem', { name: /main\.ts/ }).locator('use')).toHaveAttribute(
+    'href',
+    /#mar-file-ts$/u
+  );
 });
 
 test('Quick Open narrows duplicate filenames with space-separated terms and clears stale results on input changes', async ({

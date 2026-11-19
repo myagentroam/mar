@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-18
+lastUpdated: 2026-11-19
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -33,7 +33,7 @@ An offline or disabled Node keeps its registered resources visible but blocks li
 
 On mobile, use **Work** in the top bar to open the same resource tree. Selecting a Workspace closes the drawer and returns to the Agent conversation. Use **Chat** to enter Conversation mode; selecting it again while active opens the chat-history drawer. The top-level navigation contains Work, Chat, Admin, and Settings. Admin no longer has a separate Skill Center entry. Skill Configuration, Skill Sources, and Environment Secrets appear consecutively, while MCP Sources remains a separate Admin section; Skill Configuration switches between Skill and MCP in the page.
 
-Settings contains Account Security, Appearance, System Notifications, Quick Prompts, Personal Instructions, Keyboard Shortcuts, and About. Personal Instructions provides additional guidance for later Agent runs by the current account and saves Common, MAR Agent, Codex, Claude Code, and OpenCode values separately; the MAR Agent label remains `MAR Agent` in every interface language; each run combines Common with the current Agent's instructions without modifying Node or Workspace `AGENTS.md` or `CLAUDE.md`. Appearance defaults to the dark color theme and MAR File Icons. Choose Material or Seti under Icon Theme to change file icons without changing the interface colors. Changes apply immediately and are saved only in the current browser; valid saved choices are not overridden by the defaults. About shows the current Web version, links to the documentation center, and groups major open-source components across Web, Server, Node/MAR Agent, bundled tools, icons, and the optional Computer Use Runtime. This is a selection, not a complete dependency inventory. "View Web third-party notices" covers Web only; consult the corresponding Server, Node, and optional runtime distributions for their license and notice files. The `@myagentroam/binaries` package used by Node contains tool materials under `vendor/ripgrep/` and `vendor/ctags/`. External Agents, SDKs, and separately installed tools remain subject to their own terms. Runtime status and License management remain under Admin > System Information.
+Settings contains Account Security, Appearance, System Notifications, Quick Prompts, Personal Instructions, Keyboard Shortcuts, and About. Personal Instructions provides additional guidance for later Agent runs by the current account and saves Common, MAR Agent, Codex, Claude Code, and OpenCode values separately; the MAR Agent label remains `MAR Agent` in every interface language; each run combines Common with the current Agent's instructions without modifying Node or Workspace `AGENTS.md` or `CLAUDE.md`. Appearance defaults to the dark color theme. Under **Settings → Appearance → Icon theme**, MAR File Icons is the only option. File icons are independent of interface colors, and appearance preferences stay in the current browser. About shows the current Web version, links to the documentation center, and groups major open-source components across Web, Server, Node/MAR Agent, bundled tools, icons, and the optional Computer Use Runtime. This is a selection, not a complete dependency inventory. "View Web third-party notices" covers Web only; consult the corresponding Server, Node, and optional runtime distributions for their license and notice files. The `@myagentroam/binaries` package used by Node contains tool materials under `vendor/ripgrep/` and `vendor/ctags/`. External Agents, SDKs, and separately installed tools remain subject to their own terms. Runtime status and License management remain under Admin > System Information.
 
 The **Sessions & notifications** icon after Chat opens one panel with separate recent-session and notification tabs. The upper-right number counts unread notifications; the lower-right green dot indicates running workspace sessions. There is no separate top-right bell. See [Reading conversations](conversation.md) for retention and ordering.
 
@@ -42,6 +42,8 @@ Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Se
 ## Themes
 
 Themes stay only in this browser. They are not uploaded or synced with accounts or devices. Clearing browser data deletes custom themes; export JSON files for backup or manual transfer.
+
+After updating, an old file icon choice falls back to MAR File Icons. Your interface colors and other preferences are unchanged.
 
 1. Open **Settings → Themes**. The theme picker shows color swatches for built-in light, default dark, and saved themes. Select a theme to inspect it without changing the active palette; use **Apply theme** to switch. Built-ins can be viewed, copied, and exported, but not overwritten or deleted.
 2. Open a theme’s more-actions menu and choose **Duplicate** to start with its complete palette, or **Import JSON**. Import does not overwrite themes with the same name. Copies and imported drafts both need saving.

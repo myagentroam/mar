@@ -21,14 +21,6 @@ const icon = computed(() => {
 
 <template>
   <span
-    v-if="icon.kind === 'glyph'"
-    class="file-type-icon seti-file-icon"
-    aria-hidden="true"
-    :style="{ color: icon.color }"
-    >{{ icon.character }}</span
-  >
-  <span
-    v-else-if="icon.kind === 'sprite'"
     class="file-type-icon mar-file-icon mar-file-icon-svg"
     aria-hidden="true"
     :style="{ color: icon.color, '--icon-cut': icon.cutColor }"
@@ -37,23 +29,9 @@ const icon = computed(() => {
       <use :href="icon.href" />
     </svg>
   </span>
-  <span
-    v-else
-    class="file-type-icon material-file-icon mar-file-icon-svg"
-    aria-hidden="true"
-    :style="{ color: icon.color }"
-    v-html="icon.markup"
-  />
 </template>
 
 <style scoped>
-@font-face {
-  font-family: 'MAR Seti';
-  src: url('../../icon-themes/seti/assets/seti.woff') format('woff');
-  font-style: normal;
-  font-weight: normal;
-  font-display: block;
-}
 .file-type-icon {
   display: inline-grid;
   width: 1em;
@@ -61,11 +39,6 @@ const icon = computed(() => {
   place-items: center;
   font-size: 1rem;
   line-height: 1;
-}
-.seti-file-icon {
-  font-family: 'MAR Seti', sans-serif;
-  font-style: normal;
-  font-weight: normal;
 }
 .mar-file-icon-svg {
   height: 1em;

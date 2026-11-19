@@ -9,7 +9,10 @@ import { i18n, localePreferenceService } from '../../src/service/locale-preferen
 import { commonMessages } from '../../src/i18n/messages.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import InteractiveSettingsContent from '../../src/view/settings/SettingsContent.vue?unit-render';
-import { iconThemePreferenceService } from '../../src/service/icon-theme-preference-service.js';
+import {
+  ICON_THEME_STORAGE_KEY,
+  iconThemePreferenceService
+} from '../../src/service/icon-theme-preference-service.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 import {
   flushComponent,
@@ -133,15 +136,15 @@ describe('Shared personal settings components', () => {
   });
 
   it.each(['en-US', 'zh-CN'] as const)(
-    'retains the saved icon selection, reports each failed save and allows retry: %s',
+    'reports each failed file icon preference save and allows retry: %s',
     async (locale) => {
       localePreferenceService().setLocale(locale);
       const service = iconThemePreferenceService();
-      service.setTheme('seti');
+      service.setTheme('mar');
       const setItem = vi.fn((key: string): void => {
-        if (key === 'mar.icon-theme') throw new Error('Storage unavailable');
+        if (key === ICON_THEME_STORAGE_KEY) throw new Error('Storage unavailable');
       });
-      vi.stubGlobal('localStorage', { getItem: () => 'seti', setItem });
+      vi.stubGlobal('localStorage', { getItem: () => 'mar', setItem });
       const view = renderComponent(InteractiveSettingsContent, {
         section: 'appearance',
         webVersion: 'test-version',
@@ -162,11 +165,11 @@ describe('Shared personal settings components', () => {
       try {
         const select = () =>
           view.findAll('ElSelect').find((node) => node.props['id'] === 'appearance-icon-theme')!;
-        expect(select().props['modelValue']).toBe('seti');
+        expect(select().props['modelValue']).toBe('mar');
         for (let attempt = 1; attempt <= 2; attempt += 1) {
-          await trigger(select(), 'onUpdate:modelValue', 'material');
-          expect(service.theme.value).toBe('seti');
-          expect(select().props['modelValue']).toBe('seti');
+          await trigger(select(), 'onUpdate:modelValue', 'mar');
+          expect(service.theme.value).toBe('mar');
+          expect(select().props['modelValue']).toBe('mar');
           expect(showMessage).toHaveBeenCalledTimes(attempt);
           expect(showMessage).toHaveBeenLastCalledWith(
             commonMessages[locale].customThemes.storageFailed,
@@ -174,9 +177,9 @@ describe('Shared personal settings components', () => {
           );
         }
         setItem.mockImplementation(() => undefined);
-        await trigger(select(), 'onUpdate:modelValue', 'material');
-        expect(service.theme.value).toBe('material');
-        expect(select().props['modelValue']).toBe('material');
+        await trigger(select(), 'onUpdate:modelValue', 'mar');
+        expect(setItem).toHaveBeenLastCalledWith(ICON_THEME_STORAGE_KEY, 'mar');
+        expect(select().props['modelValue']).toBe('mar');
         expect(showMessage).toHaveBeenCalledTimes(2);
       } finally {
         view.unmount();
@@ -253,7 +256,7 @@ describe('Shared personal settings components', () => {
         'MCP SDK',
         'ripgrep',
         'Universal Ctags',
-        'Material Icon Theme'
+        'Tabler Icons'
       ]) {
         expect(about.html).toContain(component);
       }
