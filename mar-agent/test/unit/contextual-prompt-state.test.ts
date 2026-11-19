@@ -156,7 +156,6 @@ describe('Contextual prompt state', () => {
         environmentState: undefined
       },
       initialContextualWorldState: initial,
-      store: { writeContextualWorldState: write },
       sessionId: 'session',
       executionId: 'execution',
       turnId: 'turn',
@@ -165,7 +164,7 @@ describe('Contextual prompt state', () => {
       contextualWorldStateGeneration: undefined,
       compactMayContainAgentInstructions: false,
       messageSources: new WeakMap(),
-      updateWorldState: () => {},
+      persistWorldState: write,
       instructionSnapshot: () => undefined,
       renderInstructions: () => undefined
     } as unknown as Parameters<typeof createExecutionModelContext>[0]);

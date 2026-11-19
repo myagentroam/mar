@@ -168,6 +168,12 @@ const MAX_LOADED_SKILLS = 64;
 const MAX_LOADED_SKILL_CONTENT_BYTES = 1024 * 1024;
 const LOADED_SKILL_ID_PREFIX = 'runtime:loaded-skill:';
 
+function loadedSkillContentBytes(bodies: Iterable<string>): number {
+  let bytes = 0;
+  for (const body of bodies) bytes += Buffer.byteLength(JSON.stringify(body));
+  return bytes;
+}
+
 /** Check both accepted loads and delivered guidance before admitting a new load. */
 export function assertLoadedSkillCapacity(
   entries: readonly ContextualWorldState['entries'][number][],
@@ -181,9 +187,10 @@ export function assertLoadedSkillCapacity(
       selected.set(entry.block!.id.slice(LOADED_SKILL_ID_PREFIX.length), entry.content);
   for (const [pendingName, body] of pending) selected.set(pendingName, body);
   selected.set(name, content);
-  let bytes = 0;
-  for (const body of selected.values()) bytes += Buffer.byteLength(JSON.stringify(body));
-  if (selected.size > MAX_LOADED_SKILLS || bytes > MAX_LOADED_SKILL_CONTENT_BYTES)
+  if (
+    selected.size > MAX_LOADED_SKILLS ||
+    loadedSkillContentBytes(selected.values()) > MAX_LOADED_SKILL_CONTENT_BYTES
+  )
     throw new AgentError(
       'MAR_AGENT_HOST_LIMIT_EXCEEDED',
       'Loaded Skill context exceeds the Session limit. Compact before loading more Skills.'
@@ -324,10 +331,31 @@ function nullableWorldStateString(value: unknown): string | undefined | null {
     : null;
 }
 
+const pendingSkillsSchema = z
+  .array(z.tuple([z.string().min(1).max(128), z.string().min(1)]))
+  .max(MAX_LOADED_SKILLS);
+
+/** Pending loads have no history anchor and survive a Compact/GC generation change. */
+export function parsePendingSkillContext(payload: unknown): Map<string, string> {
+  if (payload === null || typeof payload !== 'object') return new Map();
+  const record = payload as Record<string, unknown>;
+  if (record.version !== 2 || record.pendingSkills === undefined) return new Map();
+  const parsed = pendingSkillsSchema.safeParse(record.pendingSkills);
+  if (!parsed.success) return new Map();
+  const pending = new Map(parsed.data);
+  if (
+    pending.size !== parsed.data.length ||
+    loadedSkillContentBytes(pending.values()) > MAX_LOADED_SKILL_CONTENT_BYTES
+  )
+    return new Map();
+  return pending;
+}
+
 export async function persistContextualWorldState(
   store: Pick<import('../../session/store/contracts.js').SessionStore, 'writeContextualWorldState'>,
   sessionId: string,
-  state: ContextualWorldState
+  state: ContextualWorldState,
+  pendingSkills?: ReadonlyMap<string, string>
 ): Promise<void> {
   if (state.entries.length > MAX_CONTEXTUAL_WORLD_STATE_ENTRIES)
     throw new AgentError(
@@ -336,6 +364,7 @@ export async function persistContextualWorldState(
     );
   await store.writeContextualWorldState(sessionId, {
     version: 2,
+    ...(pendingSkills?.size ? { pendingSkills: [...pendingSkills] } : {}),
     ...(state.promptSnapshot === undefined ? {} : { promptSnapshot: state.promptSnapshot }),
     generation: state.generation ?? null,
     instructionSnapshot: state.instructionSnapshot ?? null,
