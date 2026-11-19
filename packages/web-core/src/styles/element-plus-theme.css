@@ -353,6 +353,12 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
 .el-select {
   font-family: inherit;
 }
+
+:is(html.console-ui, .mar-theme-preview) :is(.el-input, .el-textarea) {
+  --el-input-border-color: var(--mar-input-border);
+  --el-input-hover-border-color: var(--mar-input-border-hover, var(--el-border-color-hover));
+}
+
 :is(html.console-ui, .mar-theme-preview) .el-tabs .el-tabs__nav {
   gap: 0.25rem;
 }

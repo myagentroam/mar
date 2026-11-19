@@ -1347,6 +1347,27 @@ test('theme choices apply immediately without replacing an unsaved draft', async
   });
 });
 
+test('theme preview input uses its own palette independently of the active theme', async ({
+  page
+}) => {
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  const preview = page.locator('.mar-theme-preview');
+  const input = preview.locator('.preview-label input');
+  await expect(preview).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  const realInput = page
+    .getByRole('region', { name: 'Real theme controls' })
+    .locator('.el-input__wrapper')
+    .filter({ has: page.getByRole('textbox', { name: 'Sample input', exact: true }) });
+  const inputShadow = await realInput.evaluate((element) => getComputedStyle(element).boxShadow);
+  const normalBorder = await input.evaluate((element) => getComputedStyle(element).borderTopColor);
+  expect(inputShadow).toContain(normalBorder);
+  await page.getByRole('button', { name: 'Inspect Light', exact: true }).click();
+  await expect(preview).toHaveAttribute('data-theme', 'daylight');
+  await expect(input).toHaveCSS('border-top-color', 'rgb(203, 214, 228)');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'vscode-dark-2026');
+  await expect(realInput).toHaveCSS('box-shadow', inputShadow);
+});
+
 test('filled primary controls use the same foreground as the theme preview', async ({ page }) => {
   const editor = page.getByRole('textbox', { name: 'Theme JSON', exact: true });
   const options = page.locator('.theme-option');
