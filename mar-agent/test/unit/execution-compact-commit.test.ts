@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { commitExecutionCompaction } from '../../src/sdk/execution-compact-commit.js';
+import { restoreCompactTail } from '../../src/runtime/compaction/retained-context.js';
+import {
+  MCP_DISCOVERY_DELIVERED,
+  restorePendingMcpDiscovery
+} from '../../src/session/mcp-discovery.js';
 import type { SessionRecord } from '../../src/session/record-contract.js';
 import type { SessionModelMessage } from '../../src/session/model-request.js';
 import type { SessionStoreCompactInput } from '../../src/session/store/contracts.js';
@@ -25,7 +30,8 @@ async function commitMessages(
   messages: SessionModelMessage[],
   snapshotLength: number,
   protocol: 'OPENAI_RESPONSES' | 'ANTHROPIC_MESSAGES' = 'OPENAI_RESPONSES',
-  messageSources = new WeakMap<SessionModelMessage, SessionRecord>()
+  messageSources = new WeakMap<SessionModelMessage, SessionRecord>(),
+  pending = new Map<string, string>()
 ) {
   const compact = vi.fn(
     async (_sessionId: string, input: SessionStoreCompactInput) =>
@@ -51,6 +57,10 @@ async function commitMessages(
     draft: () => ({ summary: 'summary' }),
     checkpoint: () => ({ version: 1 }),
     withProjection: (action) => action(),
+    pendingDiscoveryNames: (message) =>
+      message.mcpDiscovery?.names.filter(
+        (name) => pending.get(name) === message.mcpDiscovery!.id
+      ) ?? [],
     currentGeneration: () => 'generation',
     recordCommit: () => {},
     replace
@@ -59,6 +69,51 @@ async function commitMessages(
 }
 
 describe('execution compact commit', () => {
+  it('restores only pending names from a retained receipt and ignores acknowledgements for older receipts', async () => {
+    const { result } = await commitMessages(
+      [{ role: 'user', content: '', mcpDiscovery: { id: 'current', names: ['one', 'two'] } }],
+      1,
+      'OPENAI_RESPONSES',
+      undefined,
+      new Map([['two', 'current']])
+    );
+    expect(result?.retained.flatMap((message) => message.mcpDiscovery?.names ?? [])).toEqual([
+      'two'
+    ]);
+    const checkpoint = result!.record;
+    const saved = (checkpoint.payload as SessionStoreCompactInput).retainedModelContext!;
+    expect(
+      saved.flatMap((message) => restoreCompactTail(message)?.mcpDiscovery?.names ?? [])
+    ).toEqual(['two']);
+    const delivered = (id: string, sequence: number): SessionRecord => ({
+      ...checkpoint,
+      recordId: `delivered-${id}`,
+      sequence,
+      type: MCP_DISCOVERY_DELIVERED,
+      payload: { receipts: [{ id, names: ['two'] }] }
+    });
+    expect(restorePendingMcpDiscovery([checkpoint, delivered('older', 2)])).toEqual(
+      new Map([['two', 'current']])
+    );
+    expect(restorePendingMcpDiscovery([checkpoint, delivered('current', 2)]).size).toBe(0);
+  });
+
+  it('retains delivered definitions in the live tail without marking them as pending', async () => {
+    const receipt = { id: 'current', names: ['one', 'two'] };
+    const { result } = await commitMessages(
+      [
+        { role: 'user', content: 'old' },
+        { role: 'user', content: '', mcpDiscovery: receipt }
+      ],
+      1,
+      'OPENAI_RESPONSES',
+      undefined,
+      new Map([['two', 'current']])
+    );
+    expect(result?.retained[0]?.mcpDiscovery).toEqual(receipt);
+    expect(restorePendingMcpDiscovery([result!.record])).toEqual(new Map([['two', 'current']]));
+  });
+
   for (const protocol of ['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const) {
     it.each([0, 1, 2, 3, 5])(
       `only fills the missing complete blocks behind an async tail with %s blocks (${protocol})`,

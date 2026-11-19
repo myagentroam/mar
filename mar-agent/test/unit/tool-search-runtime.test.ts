@@ -719,6 +719,78 @@ describe('MCP discovery runtime', () => {
     }
   });
 
+  it('retains an unconsumed background discovery through cold Compact but not after delivery', async () => {
+    const waiting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const f = await fixture(true, undefined, {}, [], async () => {
+      waiting.resolve();
+      await release.promise;
+    });
+    let agent = f.agent;
+    const reopen = async () => {
+      await agent.dispose();
+      agent = await f.create();
+      return agent.openSession(f.session.id);
+    };
+    const discoveries = (request: ModelRequest) =>
+      request.messages.filter((message) => message.mcpDiscovery);
+    try {
+      f.adapter.batches.push([
+        {
+          name: 'code_exec',
+          arguments: {
+            code: `await cell.yield_control();
+await tools.${internalName}({record:'pause'});
+await tools.tool_search({query:${JSON.stringify(externalName)}});`
+          }
+        }
+      ]);
+      expect(await f.session.run({ prompt: 'Search in the background.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      await waiting.promise;
+      expect(f.adapter.requests.flatMap(discoveries)).toEqual([]);
+      const store = await JsonlSessionStore.open(f.home);
+      try {
+        release.resolve();
+        await vi.waitFor(async () => {
+          expect(await store.read(f.session.id)).toContainEqual(
+            expect.objectContaining({
+              type: 'tool.completed',
+              payload: expect.objectContaining({ toolName: 'tool_search' })
+            })
+          );
+        });
+      } finally {
+        await store.close();
+      }
+
+      let session = await reopen();
+      expect(await session.compact({}).result()).toMatchObject({ status: 'completed' });
+      expect(discoveries(f.adapter.requests.at(-1)!)).toEqual([]);
+      session = await reopen();
+      expect(await session.compact({}).result()).toMatchObject({ status: 'completed' });
+      f.adapter.batches.push([
+        { name: 'code_exec', arguments: { code: `await tools.${externalName}({record:'found'});` } }
+      ]);
+      expect(await session.run({ prompt: 'Use the discovered tool.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(discoveries(f.adapter.requests.at(-1)!)).toHaveLength(1);
+      expect(f.calls).toEqual([internalName, externalName]);
+
+      session = await reopen();
+      expect(await session.compact({}).result()).toMatchObject({ status: 'completed' });
+      expect(await session.run({ prompt: 'Continue.' }).result()).toMatchObject({
+        status: 'completed'
+      });
+      expect(discoveries(f.adapter.requests.at(-1)!)).toEqual([]);
+    } finally {
+      release.resolve();
+      await agent.dispose();
+    }
+  });
+
   it('rebuilds a candidate when a retained cell discovers a tool during a request hook', async () => {
     const waiting = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

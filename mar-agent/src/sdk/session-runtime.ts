@@ -14,6 +14,7 @@ import type {
   SessionModelRequest as ModelRequest
 } from '../session/model-request.js';
 import type { SessionStore } from '../session/store/contracts.js';
+import { restorePendingMcpDiscovery, type McpDiscoveryReceipt } from '../session/mcp-discovery.js';
 import {
   assertLoadedSkillCapacity,
   latestContextualWorldStateGeneration,
@@ -33,7 +34,7 @@ import { SessionModelAdapters } from './session-model-adapters.js';
 export class SessionRuntime {
   #executionContext: SessionExecutionContext | undefined;
   #mcpDiscoveryRevision = 0;
-  readonly #pendingMcpDiscovery = new Map<string, string>();
+  #pendingMcpDiscovery = new Map<string, string>();
   #todo: TodoStore | undefined;
   readonly scheduleTool = createSessionToolScheduler();
   readonly #modelAdapters: SessionModelAdapters;
@@ -144,21 +145,28 @@ export class SessionRuntime {
     return this.#mcpDiscoveryRevision;
   }
 
-  isPendingMcpDiscovery(message: SessionModelMessage): boolean {
+  pendingMcpDiscoveryNames(message: SessionModelMessage): readonly string[] {
     const receipt = message.mcpDiscovery;
     return (
-      receipt?.names.some((name) => this.#pendingMcpDiscovery.get(name) === receipt.id) ?? false
+      receipt?.names.filter((name) => this.#pendingMcpDiscovery.get(name) === receipt.id) ?? []
     );
   }
 
-  acknowledgeMcpDiscovery(messages: readonly SessionModelMessage[]): void {
+  async acknowledgeMcpDiscovery(
+    messages: readonly SessionModelMessage[],
+    persist: (receipts: readonly McpDiscoveryReceipt[]) => Promise<unknown>
+  ): Promise<void> {
     if (!this.#pendingMcpDiscovery.size) return;
-    for (const { mcpDiscovery: receipt } of messages) {
-      if (!receipt) continue;
-      for (const name of receipt.names)
-        if (this.#pendingMcpDiscovery.get(name) === receipt.id)
-          this.#pendingMcpDiscovery.delete(name);
-    }
+    await this.withRecordProjection(async () => {
+      const receipts = messages.flatMap((message) => {
+        const names = this.pendingMcpDiscoveryNames(message);
+        return names.length ? [{ id: message.mcpDiscovery!.id, names }] : [];
+      });
+      if (!receipts.length) return;
+      await persist(receipts);
+      for (const receipt of receipts)
+        for (const name of receipt.names) this.#pendingMcpDiscovery.delete(name);
+    });
   }
 
   recordRequest(modelId: string, request: ModelRequest): ExtensionRequestSnapshot {
@@ -209,7 +217,11 @@ export class SessionRuntime {
     writerOwner: object
   ) {
     const sessionId = this.storedSession.id;
-    const state = await store.readExecutionState(sessionId);
+    const state = await this.withRecordProjection(async () => {
+      const state = await store.readExecutionState(sessionId);
+      this.#pendingMcpDiscovery = restorePendingMcpDiscovery(state.contextRecords);
+      return state;
+    });
     const todo = this.restoreTodo(
       state.todo,
       store.hasRetainedSessionLease(sessionId, writerOwner)
