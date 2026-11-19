@@ -895,38 +895,174 @@ describe('Server conversation template service', () => {
     expect(fixture.connection.commit).toHaveBeenCalledTimes(2);
   });
 
-  it('stores a safe failed job when successful registration cannot be committed', async () => {
-    const fixture = serviceFixture();
-    fixture.database.raw.execute
-      .mockResolvedValueOnce([[templateRow()], []])
-      .mockResolvedValueOnce([[], []]);
-    fixture.transactionState.versionInsertError = new Error('write failed');
-    const service = new ConversationTemplateService(
-      fixture.database,
-      fixture.resources,
-      fixture.models,
-      () => 2_100
-    );
+  it.each([
+    ['publish', 'publish'],
+    ['publish', 'status'],
+    ['status', 'status']
+  ] as const)(
+    'rolls back failed registration in %s and recovers the same job via %s',
+    async (entry, recovery) => {
+      const fixture = serviceFixture();
+      const { connection, database, transactionState } = fixture;
+      transactionState.publishTemplateRow = {
+        current_version_id: 'previous-version',
+        current_version_number: 1
+      };
+      database.raw.execute
+        .mockResolvedValueOnce([[templateRow()], []])
+        .mockResolvedValueOnce([[], []])
+        .mockImplementation(async (sql) =>
+          String(sql).includes('FROM conversation_template_publish_jobs')
+            ? [[{ ...transactionState.jobRow }], []]
+            : [[templateRow()], []]
+        );
+      const service = new ConversationTemplateService(
+        database,
+        fixture.resources,
+        fixture.models,
+        () => 1_950
+      );
+      const receipt = { job: succeededJob, version: { ...version, version: 2 } };
+      const running = entry === 'status';
+      const dispatch = vi
+        .fn()
+        .mockResolvedValue(receipt)
+        .mockResolvedValueOnce({
+          job: {
+            ...succeededJob,
+            status: running ? 'RUNNING' : 'QUEUED',
+            stage: running ? 'COPYING' : 'VALIDATING',
+            versionId: undefined
+          }
+        });
+      const refresh = vi.fn().mockResolvedValue(receipt);
+      const submit = () =>
+        service.publish(
+          1,
+          'template-1',
+          { templateId: 'template-1', draftRevision: 1, requestId: 'request-1' },
+          dispatch
+        );
+      const status = () => service.publishStatus(2, 'template-1', 'request-1', refresh);
+      const pending = await submit();
+      expect(pending.status).toBe(running ? 'RUNNING' : 'QUEUED');
+      expect(pending.createdAt).toBe(1_950);
+      const pendingRow = { ...transactionState.jobRow };
+      const commitsBeforeRegistration = connection.commit.mock.calls.length;
 
-    await expect(
-      service.publish(
-        1,
-        'template-1',
-        { templateId: 'template-1', draftRevision: 1, requestId: 'request-1' },
-        async () => ({ job: succeededJob, version })
-      )
-    ).resolves.toMatchObject({
-      status: 'FAILED',
-      errorCode: 'CONVERSATION_TEMPLATE_PUBLISH_FAILED',
-      createdAt: 2_100
-    });
-    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
-    expect(fixture.connection.commit).toHaveBeenCalledTimes(2);
-    expect(fixture.connection.execute).toHaveBeenLastCalledWith(
-      expect.stringContaining('UPDATE conversation_template_publish_jobs'),
-      expect.arrayContaining(['FAILED', 'CONVERSATION_TEMPLATE_PUBLISH_FAILED'])
-    );
-  });
+      const registrationError = new Error('registration commit failed');
+      connection.commit.mockImplementationOnce(async () => {
+        expect(transactionState.registeredVersions).toEqual([{ id: 'version-1', version: 2 }]);
+        expect(transactionState.publishTemplateRow['current_version_id']).toBe('version-1');
+        expect(transactionState.jobRow['status']).toBe('SUCCEEDED');
+        expect(database.audit).not.toHaveBeenCalled();
+        throw registrationError;
+      });
+      await expect(entry === 'publish' ? submit() : status()).rejects.toBe(registrationError);
+      expect(connection.commit).toHaveBeenCalledTimes(commitsBeforeRegistration + 1);
+      expect(connection.rollback).toHaveBeenCalledOnce();
+      expect(transactionState.jobRow).toEqual(pendingRow);
+      expect(transactionState.registeredVersions).toEqual([]);
+      expect(transactionState.publishTemplateRow).toEqual({
+        current_version_id: 'previous-version',
+        current_version_number: 1
+      });
+      expect(database.audit).not.toHaveBeenCalled();
+
+      const success = { ...succeededJob, createdAt: pending.createdAt };
+      await expect(recovery === 'publish' ? submit() : status()).resolves.toEqual(success);
+      expect(dispatch).toHaveBeenCalledTimes(
+        1 + Number(entry === 'publish') + Number(recovery === 'publish')
+      );
+      expect(dispatch).toHaveBeenLastCalledWith(
+        expect.objectContaining({ revision: 1 }),
+        'request-1',
+        1
+      );
+      expect(refresh).toHaveBeenCalledTimes(
+        Number(entry === 'status') + Number(recovery === 'status')
+      );
+      if (recovery === 'status')
+        expect(refresh).toHaveBeenLastCalledWith(
+          'node-1',
+          'workspace-1',
+          'template-1',
+          'request-1'
+        );
+      dispatch.mockClear();
+      refresh.mockClear();
+      await expect(submit()).resolves.toEqual(success);
+      await expect(status()).resolves.toEqual(success);
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(transactionState.registeredVersions).toEqual([{ id: 'version-1', version: 2 }]);
+      expect(transactionState.publishTemplateRow).toEqual({
+        current_version_id: 'version-1',
+        current_version_number: 2
+      });
+      expect(database.audit).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          eventType: 'conversation_template.published',
+          actorUserId: recovery === 'publish' ? 1 : 2,
+          targetId: 'template-1'
+        })
+      );
+      const audit = database.audit.mock.calls[0]?.[0] as { metadata: string };
+      expect(JSON.parse(audit.metadata)).toMatchObject({
+        jobId: 'request-1',
+        versionId: 'version-1',
+        revision: 1
+      });
+    }
+  );
+
+  it.each(['failed receipt', 'dispatch rejection'] as const)(
+    'records a Node %s as terminal without registering a version',
+    async (failure) => {
+      const { database, resources, models, transactionState } = serviceFixture();
+      database.raw.execute.mockImplementation(async (sql) =>
+        String(sql).includes('FROM conversation_template_publish_jobs')
+          ? [[{ ...transactionState.jobRow }], []]
+          : [[templateRow()], []]
+      );
+      const service = new ConversationTemplateService(database, resources, models, () => 2_200);
+      const failed = {
+        ...succeededJob,
+        status: 'FAILED',
+        stage: 'COPYING',
+        versionId: undefined,
+        errorCode: 'PUBLISH_FAILED',
+        errorSummary: 'Publishing failed.'
+      } as const;
+      const dispatch =
+        failure === 'failed receipt'
+          ? vi.fn().mockResolvedValue({ job: failed })
+          : vi.fn().mockRejectedValue(new Error('TRANSPORT_FAILED'));
+      const input = { templateId: 'template-1', draftRevision: 1, requestId: 'request-1' };
+      const result = await service.publish(1, 'template-1', input, dispatch);
+      expect(result).toMatchObject(
+        failure === 'failed receipt'
+          ? failed
+          : {
+              status: 'FAILED',
+              stage: 'VALIDATING',
+              errorCode: 'TRANSPORT_FAILED',
+              updatedAt: 2_200
+            }
+      );
+      expect(transactionState.jobRow['status']).toBe('FAILED');
+      await expect(service.publish(1, 'template-1', input, dispatch)).resolves.toEqual(result);
+      const refresh = vi.fn();
+      await expect(service.publishStatus(2, 'template-1', 'request-1', refresh)).resolves.toEqual(
+        result
+      );
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(transactionState.registeredVersions).toEqual([]);
+      expect(transactionState.publishTemplateRow).toEqual({});
+      expect(database.audit).not.toHaveBeenCalled();
+    }
+  );
 
   it('logically deletes a template without clearing version history or requesting Node cleanup', async () => {
     const fixture = serviceFixture();
@@ -1143,19 +1279,24 @@ describe('Server conversation template service', () => {
 function serviceFixture() {
   const transactionState: {
     readonly publishInsert: { affectedRows: number };
-    versionInsertError?: Error;
-    publishTemplateRow?: Record<string, unknown>;
+    publishTemplateRow: Record<string, unknown>;
+    registeredVersions: { id: string; version: number }[];
     jobRow: Record<string, unknown>;
   } = {
     publishInsert: { affectedRows: 1 },
+    publishTemplateRow: {},
+    registeredVersions: [],
     jobRow: publishJobRow({
       stage: 'VALIDATING',
       status: 'QUEUED',
       version_id: null
     })
   };
+  let beforeTransaction: typeof transactionState;
   const connection = {
-    beginTransaction: vi.fn(async () => undefined),
+    beginTransaction: vi.fn(async () => {
+      beforeTransaction = structuredClone(transactionState);
+    }),
     execute: vi.fn<(...args: unknown[]) => Promise<[unknown, unknown]>>(async (sql, values) => {
       const statement = String(sql);
       const parameters = Array.isArray(values) ? values : [];
@@ -1227,14 +1368,24 @@ function serviceFixture() {
         return [transactionState.publishInsert, []];
       }
       if (statement.includes('INSERT INTO conversation_template_versions')) {
-        if (transactionState.versionInsertError !== undefined)
-          throw transactionState.versionInsertError;
+        transactionState.registeredVersions.push({
+          id: String(parameters[0]),
+          version: Number(parameters[2])
+        });
+        return [{ affectedRows: 1 }, []];
+      }
+      if (/UPDATE conversation_templates\s+SET current_version_id=/u.test(statement)) {
+        transactionState.publishTemplateRow['current_version_id'] = parameters[0];
+        transactionState.publishTemplateRow['current_version_number'] =
+          transactionState.registeredVersions.find(({ id }) => id === parameters[0])?.version;
         return [{ affectedRows: 1 }, []];
       }
       return statement.includes('FOR UPDATE') ? [[templateRow()], []] : [{ affectedRows: 1 }, []];
     }),
     commit: vi.fn(async () => undefined),
-    rollback: vi.fn(async () => undefined),
+    rollback: vi.fn(async () => {
+      Object.assign(transactionState, beforeTransaction);
+    }),
     release: vi.fn()
   };
   const raw = {
