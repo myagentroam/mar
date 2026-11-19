@@ -70,15 +70,24 @@ for (const { theme, mobile } of [
         if (read <= 2)
           return route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' } });
         if (read === 3) await recovery.promise;
-        return route.fallback();
+        return json(route, { nodes: [] });
       });
       try {
         await page.goto('/console');
         await page.getByRole('button', { name: '进入控制台' }).click();
         const work = page.getByRole('button', { name: '工作', exact: true });
         const ring = page.getByRole('progressbar', { name: '正在恢复工作台' });
+        const readingNodes = page.getByText('正在读取节点', { exact: true });
+        const unavailableNodes = page.getByText('节点列表暂不可用', { exact: true });
+        const noNodes = page.getByText('尚无节点', { exact: true });
         await expect(work).toBeVisible();
         await expect(ring).toBeVisible();
+        if (mobile) {
+          await work.click();
+          await expect(readingNodes).toBeHidden();
+          await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
+        } else await expect(readingNodes).toBeVisible();
+        await expect(noNodes).toBeHidden();
         await expect(page.getByRole('button', { name: '收起侧栏' })).toHaveCount(0);
         const indicator = ring.locator('.mar-busy-indicator');
         expect(await indicator.evaluate((element) => getComputedStyle(element).color)).toBe(
@@ -91,6 +100,12 @@ for (const { theme, mobile } of [
 
         const retry = page.getByRole('button', { name: '重试', exact: true });
         await expect(retry).toBeVisible();
+        if (mobile) {
+          await work.click();
+          await expect(unavailableNodes).toBeHidden();
+          await expect(page.locator('.sidebar-scrim')).toHaveCount(0);
+        } else await expect(unavailableNodes).toBeVisible();
+        await expect(noNodes).toBeHidden();
         await expect(retry).not.toHaveClass(/is-link|el-button--primary/);
         await retry.focus();
         await expect(retry).toBeFocused();
@@ -106,7 +121,20 @@ for (const { theme, mobile } of [
         recovery.release();
         await expect(page.getByRole('heading', { name: '选择一个工作区' })).toBeVisible();
         await expect(mobile ? work : page.locator('.session-layout')).toBeFocused();
-        if (!mobile) await expect(page.getByRole('button', { name: '收起侧栏' })).toBeVisible();
+        await expect(readingNodes).toHaveCount(0);
+        await expect(unavailableNodes).toHaveCount(0);
+        if (mobile) {
+          await expect(noNodes).toBeHidden();
+          await work.click();
+        } else {
+          await expect(noNodes).toBeVisible();
+          await page.getByRole('button', { name: '收起侧栏' }).click();
+          await expect(noNodes).toBeHidden();
+          await page.getByRole('button', { name: '展开侧栏' }).click();
+        }
+        await expect(noNodes).toBeVisible();
+        await expect(noNodes).toBeInViewport({ ratio: 1 });
+        await page.screenshot({ path: testInfo.outputPath('work-startup-empty.png') });
         expect(reads).toBe(3);
       } finally {
         response.release();

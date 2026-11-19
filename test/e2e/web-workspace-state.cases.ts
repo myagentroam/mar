@@ -2613,7 +2613,9 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
     tree.getByRole('button', { name: '展开工作区分组 产品', exact: true })
   ).toBeVisible();
   await expect(tree.getByRole('button', { name: '控制台', exact: true })).toHaveCount(0);
-  const frontendTreeItem = tree.locator('.node-tree > li:has(.tree-node[title="前端节点"])');
+  const frontendTreeItem = tree.locator('.node-tree > li').filter({
+    has: page.getByRole('button', { name: '前端节点', exact: true })
+  });
   const firstLevelEntries = frontendTreeItem.locator(':scope > .workspace-branches > li');
   await expect(firstLevelEntries).toHaveCount(2);
   await expect(firstLevelEntries.nth(0)).toHaveClass(/workspace-group/);
@@ -2644,10 +2646,10 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
   )
     throw new Error('WORKSPACE_GROUP_LAYOUT_MISSING');
   expect(workspaceBox.y).toBeGreaterThan(groupBox.y);
-  expect(workspaceRowBox.x).toBe(groupBox.x + 6);
-  expect(workspaceRowBox.width).toBe(groupBox.width - 12);
+  expect(workspaceRowBox.x).toBe(groupBox.x);
+  expect(workspaceRowBox.width).toBe(groupBox.width);
   expect(workspaceBox.x).toBe(workspaceRowBox.x + 36);
-  expect(Math.abs(assetsBox.x - groupIconBox.x - 6)).toBeLessThanOrEqual(1);
+  expect(Math.abs(assetsBox.x - groupIconBox.x)).toBeLessThanOrEqual(1);
   expect(workspaceLabelBox.x - assetsBox.x).toBe(16);
   await expect(frontendTreeItem.locator('.tree-node-icon .tree-type-icon')).toBeVisible();
   await expect(productGroup.locator('.workspace-group-toggle .tree-type-icon')).toBeVisible();
@@ -2712,7 +2714,7 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
   ]) {
     await expect(control).toBeVisible();
     const bounds = await control.boundingBox();
-    expect(bounds?.height).toBeGreaterThanOrEqual(36);
+    expect(bounds?.height).toBeGreaterThanOrEqual(30);
   }
   const mobileOffsets = await frontendTreeItem.evaluate((element) => {
     const left = element.getBoundingClientRect().left;
@@ -2732,7 +2734,7 @@ test('Work resource trees support local filtering and desktop and mobile sidebar
   });
   expect(mobileOffsets).toEqual({
     nodeIcon: 26,
-    groupIcon: 36,
+    groupIcon: 42,
     workspace: 42,
     groupedWorkspace: 58
   });

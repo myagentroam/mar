@@ -50,7 +50,7 @@ const props = defineProps<{
   readonly mobileSidebarOpen: boolean;
   readonly sidebarContentVisible: boolean;
   readonly nodes: readonly NodeSummary[];
-  readonly workspaceStartupBlocked?: boolean;
+  readonly workspaceStartupStatus?: 'loading' | 'failed' | 'ready';
   readonly expandedNodeIds: readonly string[];
   readonly workspaceTreeRevealTarget?: WorkspaceTarget | undefined;
   readonly workspaceTarget: WorkspaceTarget | undefined;
@@ -79,11 +79,14 @@ function claimRevealScroll(target: WorkspaceTarget): boolean {
 }
 const scrollPositions = new Map<string, number>();
 const displayKey = computed(() => displayUtility.value ?? displayView.value);
+const workspaceStartupBlocked = computed(
+  () => props.workspaceStartupStatus === 'loading' || props.workspaceStartupStatus === 'failed'
+);
 const mobileMenuOpen = computed(
   () =>
     props.mobileSidebarOpen &&
     !(
-      props.workspaceStartupBlocked &&
+      workspaceStartupBlocked.value &&
       props.view === 'nodes' &&
       props.mobileUtilityPanel === undefined
     )
@@ -375,8 +378,9 @@ function runBlankMenuCommand(command: string): void {
           </template>
         </el-dropdown>
         <WorkspaceTree
-          v-if="!workspaceStartupBlocked && (sidebarContentVisible || mobileViewport)"
+          v-if="sidebarContentVisible || mobileViewport"
           :nodes="nodes"
+          :startup-status="workspaceStartupStatus"
           :expanded-node-ids="expandedNodeIds"
           :reveal-target="workspaceTreeRevealTarget"
           :claim-reveal-scroll="claimRevealScroll"

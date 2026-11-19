@@ -12,6 +12,7 @@ import { filterWorkspaceTree, groupWorkspaceTree } from '../../util/workspace-tr
 
 const props = defineProps<{
   readonly nodes: readonly NodeSummary[];
+  readonly startupStatus?: 'loading' | 'failed' | 'ready' | undefined;
   readonly expandedNodeIds: readonly string[];
   readonly workspaceTarget: WorkspaceTarget | undefined;
   readonly revealTarget?: WorkspaceTarget | undefined;
@@ -487,7 +488,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 </script>
 
 <template>
-  <template v-if="nodes.length">
+  <p v-if="startupStatus === 'loading'" class="tree-empty">
+    {{ translate('generated.workspaceTree.readingNodes') }}
+  </p>
+  <p v-else-if="startupStatus === 'failed'" class="tree-empty">
+    {{ translate('generated.workspaceTree.nodeListUnavailable') }}
+  </p>
+  <template v-else-if="nodes.length">
     <div class="workspace-tree-filter">
       <el-input
         v-model="filterQuery"
