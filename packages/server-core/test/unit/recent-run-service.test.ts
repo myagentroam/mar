@@ -139,6 +139,127 @@ describe('Server recent-run in-memory index', () => {
     service.dispose();
   });
 
+  it('caps terminal runs across two Node snapshots immediately while preserving active runs and TTL', async () => {
+    const cleanupInterval = 5 * 60_000;
+    const ttl = 12 * 60 * 60_000;
+    let now = 2_000_000_000;
+    const push = vi.fn();
+    const service = createRecentRunService(database(), push, () => now);
+    const terminal = (nodeId: string, index: number) =>
+      projection({
+        nodeId,
+        runId: `done-${index}`,
+        sessionId: `session-${index}`,
+        status: 'SUCCEEDED',
+        sortAt: index < 3 ? now - ttl + cleanupInterval - 12 + index : now - 1_000 + index
+      }).run;
+    const first = Array.from({ length: 51 }, (_, index) => terminal('node-1', index));
+    const second = Array.from({ length: 51 }, (_, index) => terminal('node-2', 51 + index));
+    const active = (nodeId: string, sortAt: number) =>
+      projection({ nodeId, runId: `active-${nodeId}`, sessionId: 'active-session', sortAt }).run;
+    const firstActive = active('node-1', now - 2_000);
+    const secondActive = active('node-2', now - 20);
+
+    try {
+      await service.consume('node-1', { kind: 'SNAPSHOT', runs: [firstActive, ...first] });
+      await service.consume(
+        'node-1',
+        projection({ userId: 8, runId: 'other-user', status: 'SUCCEEDED', sortAt: now - 500 })
+      );
+      push.mockClear();
+
+      await service.consume('node-2', { kind: 'SNAPSHOT', runs: [secondActive, ...second] });
+      const runs = await service.list(7);
+      expect(runs.filter(({ status }) => status === 'SUCCEEDED')).toHaveLength(100);
+      const retained = [secondActive, ...second.toReversed(), ...first.slice(3).toReversed()];
+      expect(runs.map(({ runId }) => runId)).toEqual([
+        ...retained.map(({ runId }) => runId),
+        firstActive.runId,
+        'done-2'
+      ]);
+      expect(
+        push.mock.calls.filter(([, message]) => message.type === 'recent-run.removed')
+      ).toEqual([
+        [7, { type: 'recent-run.removed', nodeId: 'node-1', runId: 'done-0' }],
+        [7, { type: 'recent-run.removed', nodeId: 'node-1', runId: 'done-1' }]
+      ]);
+      expect(push.mock.calls.slice(-2)).toEqual([
+        [7, { type: 'recent-run.removed', nodeId: 'node-1', runId: 'done-1' }],
+        [
+          7,
+          expect.objectContaining({
+            type: 'recent-run.updated',
+            run: expect.objectContaining({ runId: 'done-101' })
+          })
+        ]
+      ]);
+      expect((await service.list(8)).map(({ runId }) => runId)).toEqual(['other-user']);
+
+      push.mockClear();
+      now += cleanupInterval - 1;
+      expect(await service.list(7)).toHaveLength(102);
+      expect(push).not.toHaveBeenCalled();
+      now++;
+      expect((await service.list(7)).map(({ runId }) => runId)).toEqual([
+        ...retained.map(({ runId }) => runId),
+        firstActive.runId
+      ]);
+      expect(push.mock.calls).toEqual([
+        [7, { type: 'recent-run.removed', nodeId: 'node-1', runId: 'done-2' }]
+      ]);
+
+      push.mockClear();
+      await service.consume('node-2', { kind: 'UPDATE', run: terminal('node-2', 102) });
+      expect(await service.list(7)).toHaveLength(102);
+      expect(push).toHaveBeenCalledTimes(1);
+      expect((await service.list(8)).map(({ runId }) => runId)).toEqual(['other-user']);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it('does not publish an out-of-retention terminal update but removes its formerly active run', async () => {
+    const push = vi.fn();
+    const service = createRecentRunService(database(), push, () => 1_000);
+    const runs = Array.from(
+      { length: 100 },
+      (_, index) =>
+        projection({ runId: `done-${index}`, sessionId: `session-${index}`, status: 'SUCCEEDED' })
+          .run
+    );
+    const late = projection({
+      nodeId: 'node-2',
+      runId: 'late',
+      sessionId: 'late-session',
+      status: 'SUCCEEDED',
+      sortAt: 100
+    });
+    const live = projection({ nodeId: 'node-2', runId: 'live', sortAt: 100 });
+
+    try {
+      await service.consume('node-1', { kind: 'SNAPSHOT', runs });
+      await service.consume('node-2', live);
+      push.mockClear();
+
+      await service.consume('node-2', late);
+      expect(push).not.toHaveBeenCalled();
+      expect(await service.list(7)).toHaveLength(101);
+
+      await service.consume('node-2', {
+        kind: 'UPDATE',
+        run: { ...live.run, status: 'SUCCEEDED', completedAt: late.run.completedAt, version: 2 }
+      });
+      expect(push.mock.calls).toEqual([
+        [7, { type: 'recent-run.removed', nodeId: 'node-2', runId: 'live' }]
+      ]);
+      expect((await service.list(7)).map(({ runId }) => runId)).toEqual(
+        runs.map(({ runId }) => runId).sort((left, right) => right.localeCompare(left))
+      );
+    } finally {
+      service.dispose();
+    }
+  });
+
   it('reclassifies all authorized users for one exact Session scope without extending terminal TTL', async () => {
     let now = 2_000_000_000;
     let deniedUser: number | undefined;
@@ -244,6 +365,83 @@ describe('Server recent-run in-memory index', () => {
       runId: 'run-1'
     });
     service.dispose();
+  });
+
+  it('does not republish a terminal run evicted by another Node during reclassification', async () => {
+    const db = database();
+    const push = vi.fn();
+    const service = createRecentRunService(db, push, () => 1_000);
+    const entered = Promise.withResolvers<void>();
+    const authorization = Promise.withResolvers<boolean>();
+    let reclassify: Promise<void> | undefined;
+
+    try {
+      await service.consume(
+        'node-1',
+        projection({ runId: 'old', status: 'SUCCEEDED', sessionGroup: 'CHILD', sortAt: 100 })
+      );
+      await service.consume('node-2', {
+        kind: 'SNAPSHOT',
+        runs: Array.from(
+          { length: 99 },
+          (_, index) =>
+            projection({
+              nodeId: 'node-2',
+              runId: `done-${index}`,
+              sessionId: `session-${index}`,
+              status: 'SUCCEEDED'
+            }).run
+        )
+      });
+      push.mockClear();
+      db.userCanRequestNode.mockImplementationOnce(() => {
+        entered.resolve();
+        return authorization.promise;
+      });
+      reclassify = service.reclassify({
+        nodeId: 'node-1',
+        workspaceId: 'workspace-1',
+        sessionId: 'session-1',
+        sessionGroup: 'MAIN'
+      });
+      await Promise.race([
+        entered.promise,
+        reclassify.then(() => {
+          throw new Error('Reclassification finished without requesting authorization');
+        })
+      ]);
+
+      await service.consume(
+        'node-2',
+        projection({
+          nodeId: 'node-2',
+          runId: 'newest',
+          status: 'SUCCEEDED',
+          sortAt: 200,
+          sessionId: 'newest-session'
+        })
+      );
+      authorization.resolve(true);
+      await reclassify;
+
+      expect(push.mock.calls).toEqual([
+        [7, { type: 'recent-run.removed', nodeId: 'node-1', runId: 'old' }],
+        [
+          7,
+          expect.objectContaining({
+            type: 'recent-run.updated',
+            run: expect.objectContaining({ runId: 'newest' })
+          })
+        ]
+      ]);
+      const runs = await service.list(7);
+      expect(runs).toHaveLength(100);
+      expect(runs.some(({ runId }) => runId === 'old')).toBe(false);
+    } finally {
+      authorization.resolve(false);
+      service.dispose();
+      await reclassify;
+    }
   });
 
   it('defaults legacy RecentRun projections without a group to MAIN', async () => {

@@ -15,11 +15,13 @@ interface StoredRecentRun extends RecentRunProjection {
   readonly workspaceName?: string;
 }
 
+/** Owns the in-memory recent-run projection, its retention, and user-scoped deltas. */
 export class RecentRunService {
   private lastCleanupAt = Number.NEGATIVE_INFINITY;
   private readonly cleanupTimer: NodeJS.Timeout;
   private readonly nodeQueues = new Map<string, Promise<unknown>>();
   private readonly runsBySession = new Map<string, StoredRecentRun>();
+  private readonly terminalRunsByUser = new Map<number, Map<string, StoredRecentRun>>();
 
   constructor(
     private readonly database: { readonly raw: Pool },
@@ -58,8 +60,8 @@ export class RecentRunService {
     await this.enqueue(nodeId, async () => {
       for (const [key, run] of this.runsBySession) {
         if (run.nodeId !== nodeId || TERMINAL.has(run.status)) continue;
-        this.runsBySession.delete(key);
-        this.push(run.userId, { type: 'recent-run.removed', nodeId, runId: run.runId });
+        this.deleteRun(key, run);
+        this.pushRemoval(run);
       }
     });
   }
@@ -84,8 +86,10 @@ export class RecentRunService {
           ))
         )
           continue;
+        // Another Node can evict this run while authorization is pending.
+        if (this.runsBySession.get(key) !== run) continue;
         const next = { ...run, sessionGroup: change.sessionGroup };
-        this.runsBySession.set(key, next);
+        this.storeRun(key, next);
         this.push(run.userId, { type: 'recent-run.updated', run: publicRun(next) });
       }
     });
@@ -119,15 +123,54 @@ export class RecentRunService {
         ? { workspaceName: existing.workspaceName }
         : await this.workspaceName(nodeId, run.workspaceId))
     };
-    this.runsBySession.set(key, stored);
-    if (existing !== undefined && existing.runId !== run.runId)
-      this.push(existing.userId, {
-        type: 'recent-run.removed',
-        nodeId,
-        runId: existing.runId
-      });
-    this.push(run.userId, { type: 'recent-run.updated', run: publicRun(stored) });
+    // The workspace lookup may yield to a write from another Node.
+    const previous = this.runsBySession.get(key);
+    const evicted = this.storeRun(key, stored);
+    if (previous !== undefined && (previous.runId !== run.runId || evicted === stored))
+      this.pushRemoval(previous);
+    if (evicted !== undefined && evicted !== stored) this.pushRemoval(evicted);
+    if (evicted !== stored)
+      this.push(run.userId, { type: 'recent-run.updated', run: publicRun(stored) });
     return true;
+  }
+
+  private storeRun(key: string, run: StoredRecentRun): StoredRecentRun | undefined {
+    this.runsBySession.set(key, run);
+    if (!TERMINAL.has(run.status)) {
+      this.untrackTerminal(key, run.userId);
+      return;
+    }
+
+    const terminals = this.terminalRunsByUser.get(run.userId) ?? new Map<string, StoredRecentRun>();
+    this.terminalRunsByUser.set(run.userId, terminals);
+    terminals.set(key, run);
+    if (terminals.size <= TERMINAL_LIMIT) return;
+
+    let oldestKey = key;
+    let oldest = run;
+    for (const [candidateKey, candidate] of terminals) {
+      if (compareRecentRuns(candidate, oldest) < 0) continue;
+      oldestKey = candidateKey;
+      oldest = candidate;
+    }
+    this.deleteRun(oldestKey, oldest);
+    return oldest;
+  }
+
+  private deleteRun(key: string, run: StoredRecentRun): void {
+    this.runsBySession.delete(key);
+    this.untrackTerminal(key, run.userId);
+  }
+
+  private untrackTerminal(key: string, userId: number): void {
+    const terminals = this.terminalRunsByUser.get(userId);
+    if (terminals === undefined) return;
+    terminals.delete(key);
+    if (terminals.size === 0) this.terminalRunsByUser.delete(userId);
+  }
+
+  private pushRemoval(run: StoredRecentRun): void {
+    this.push(run.userId, { type: 'recent-run.removed', nodeId: run.nodeId, runId: run.runId });
   }
 
   private async workspaceName(
@@ -151,8 +194,8 @@ export class RecentRunService {
         present.has(taskKey(run.userId, nodeId, run.sessionId))
       )
         continue;
-      this.runsBySession.delete(key);
-      this.push(run.userId, { type: 'recent-run.removed', nodeId, runId: run.runId });
+      this.deleteRun(key, run);
+      this.pushRemoval(run);
     }
   }
 
@@ -162,20 +205,8 @@ export class RecentRunService {
     const cutoff = timestamp - TTL_MS;
     for (const [key, run] of this.runsBySession)
       if (run.completedAt !== null && run.completedAt <= cutoff) {
-        this.runsBySession.delete(key);
-        this.push(run.userId, { type: 'recent-run.removed', nodeId: run.nodeId, runId: run.runId });
-      }
-    const byUser = new Map<number, RecentRunProjection[]>();
-    for (const run of this.runsBySession.values()) {
-      if (run.completedAt === null) continue;
-      const values = byUser.get(run.userId) ?? [];
-      values.push(run);
-      byUser.set(run.userId, values);
-    }
-    for (const values of byUser.values())
-      for (const run of values.sort(compareRecentRuns).slice(TERMINAL_LIMIT)) {
-        this.runsBySession.delete(taskKey(run.userId, run.nodeId, run.sessionId));
-        this.push(run.userId, { type: 'recent-run.removed', nodeId: run.nodeId, runId: run.runId });
+        this.deleteRun(key, run);
+        this.pushRemoval(run);
       }
     this.lastCleanupAt = timestamp;
   }
