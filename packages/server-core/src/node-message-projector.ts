@@ -31,9 +31,10 @@ const PROJECTED_TYPES = new Set([
   'session.group.changed'
 ]);
 
+/** Projects admitted Node messages and owns the drain of their asynchronous database work. */
 export class NodeMessageProjector {
   private readonly sessionProjectionTails = new Map<string, Promise<void>>();
-  private readonly hostedActivity = new Set<Promise<void>>();
+  private readonly detachedProjections = new Set<Promise<void>>();
 
   constructor(private readonly options: NodeMessageProjectorOptions) {}
 
@@ -55,7 +56,16 @@ export class NodeMessageProjector {
 
   /** Drain admitted database projections before their storage owner closes. */
   async drain(): Promise<void> {
-    await Promise.all([...this.sessionProjectionTails.values(), ...this.hostedActivity]);
+    await Promise.all([...this.sessionProjectionTails.values(), ...this.detachedProjections]);
+  }
+
+  private trackDetachedProjection(task: Promise<unknown>): void {
+    const settled = task.then(
+      () => undefined,
+      () => undefined
+    );
+    this.detachedProjections.add(settled);
+    void settled.then(() => this.detachedProjections.delete(settled));
   }
 
   handles(type: string): boolean {
@@ -106,25 +116,26 @@ export class NodeMessageProjector {
       this.options.sendInvalid(socket, envelope.id);
       return;
     }
-    void (
+    const task = (
       this.options.sendWatchEvent?.(parsed.data.workbenchConnectionId, parsed.data) ??
       Promise.resolve('unavailable')
-    )
-      .catch(() => 'unavailable' as const)
-      .then((delivery) => {
-        if (parsed.data.type === 'watch.failed')
-          this.options.log?.('workbench.watch.failed.relayed', {
-            nodeId,
-            workspaceId: parsed.data.workspaceId,
-            ...(parsed.data.sessionId === undefined ? {} : { sessionId: parsed.data.sessionId }),
-            workbenchConnectionId: parsed.data.workbenchConnectionId,
-            watchId: parsed.data.watchId,
-            watchType: parsed.data.watchType,
-            code: parsed.data.code,
-            delivery
-          });
-        this.options.send(socket, 'ack', { type: 'watch.event', delivery }, envelope.id);
-      });
+    ).catch(() => 'unavailable' as const);
+    // Closing the relay removes routes, but any authorization it started still has to settle.
+    this.trackDetachedProjection(task);
+    void task.then((delivery) => {
+      if (parsed.data.type === 'watch.failed')
+        this.options.log?.('workbench.watch.failed.relayed', {
+          nodeId,
+          workspaceId: parsed.data.workspaceId,
+          ...(parsed.data.sessionId === undefined ? {} : { sessionId: parsed.data.sessionId }),
+          workbenchConnectionId: parsed.data.workbenchConnectionId,
+          watchId: parsed.data.watchId,
+          watchType: parsed.data.watchType,
+          code: parsed.data.code,
+          delivery
+        });
+      this.options.send(socket, 'ack', { type: 'watch.event', delivery }, envelope.id);
+    });
   }
 
   workbenchEvent(nodeId: string, socket: WebSocket, envelope: NodeEnvelope): void {
@@ -172,12 +183,7 @@ export class NodeMessageProjector {
     ) {
       const projection = { ...event.payload };
       delete projection.kind;
-      const task = this.options.hostedConversationActivity(nodeId, projection).then(
-        () => undefined,
-        () => undefined
-      );
-      this.hostedActivity.add(task);
-      void task.then(() => this.hostedActivity.delete(task));
+      this.trackDetachedProjection(this.options.hostedConversationActivity(nodeId, projection));
       return;
     }
     this.options.relay.publish(event);
