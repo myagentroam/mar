@@ -1078,13 +1078,13 @@ for (const scheme of ['Light', 'Dark']) {
       const branchName = branch.locator('.workspace-branch-name');
       const gitIcon = branch.getByRole('img', { name: 'Git' });
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
-      const colors =
-        scheme === 'Light' ? ['#52627a', '#e8f0f9', '#cbd6e4'] : ['#a8b8cf', '#182739', '#414e62'];
+      const colors = scheme === 'Light' ? ['#52627a', '#cbd6e4'] : ['#a8b8cf', '#414e62'];
       async function expectColors(expected: string[]): Promise<void> {
+        await expect(branch).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(async () => {
           const actual = await branch.evaluate((element) => {
             const style = getComputedStyle(element);
-            return [style.color, style.backgroundColor, style.borderTopColor];
+            return [style.color, style.borderTopColor];
           });
           expect(actual.map(resolvedColorToHex)).toEqual(expected);
           const nameColor = await branchName.evaluate((el) => getComputedStyle(el).color);
@@ -1164,7 +1164,7 @@ for (const scheme of ['Light', 'Dark']) {
         .click();
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
-        await expectColors(['#bacac0', '#26342e', scheme === 'Light' ? '#617469' : '#758a7e']);
+        await expectColors(['#bacac0', scheme === 'Light' ? '#617469' : '#758a7e']);
         await workspace.locator('.session-heading').screenshot({
           path: testInfo.outputPath('workspace-labels-custom-' + width + '.png')
         });

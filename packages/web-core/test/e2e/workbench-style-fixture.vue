@@ -120,6 +120,7 @@ const lateTreeFixture = new URL(location.href).searchParams.has('late-tree');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
 const sessionMarkersFixture = new URL(location.href).searchParams.has('session-markers');
+const gitPreviewFixture = new URL(location.href).searchParams.has('git-previews');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref<string | undefined>('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
@@ -128,7 +129,7 @@ const inspectorFixture =
   overlappingWatchFixture ||
   contentSearchFixture ||
   lateTreeFixture ||
-  new URL(location.href).searchParams.has('git-previews');
+  gitPreviewFixture;
 const toolTarget = { nodeId: 'node', workspaceId: 'workspace' };
 const selectedTool = ref<AsideTool>(lateTreeFixture ? 'search' : 'files');
 const toolState = computed(() => ({
@@ -329,9 +330,9 @@ const sessionProps = {
   watchStatus: 'ready' as const,
   nodeReady: true,
   loading: false,
-  workspaceKind: 'DIRECTORY' as const,
-  workspaceKindLabel: 'Directory',
-  workspaceBranch: undefined,
+  workspaceKind: gitPreviewFixture ? ('GIT_WORKSPACE' as const) : ('DIRECTORY' as const),
+  workspaceKindLabel: gitPreviewFixture ? 'Git workspace' : 'Directory',
+  workspaceBranch: gitPreviewFixture ? 'develop' : undefined,
   title: (session: Session) => session.id,
   runnerIcon: sessionMarkersFixture ? runnerBrandIcon : () => '',
   activity: (session: Session) => (session.id === 'active' ? 'RUNNING' : 'IDLE'),

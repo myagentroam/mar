@@ -806,6 +806,26 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const headings = inspector.locator('.change-repository-heading');
       await expect(headings).toHaveCount(3);
       const root = headings.first();
+      const sessionHeading = page
+        .getByRole('region', { name: 'Session fixture' })
+        .locator('.session-heading');
+      const branchTag = sessionHeading.locator('.workspace-branch-tag');
+      const repositoryTag = headings.nth(1).locator('.repository-kind');
+      await expect(branchTag).toHaveText('develop');
+      await expect(branchTag).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      for (const property of ['padding-inline-start', 'padding-inline-end', 'border-top-color']) {
+        const expected = await repositoryTag.evaluate(
+          (element, name) => getComputedStyle(element).getPropertyValue(name),
+          property
+        );
+        await expect(branchTag).toHaveCSS(property, expected);
+      }
+      if (width === 1280) {
+        await sessionHeading.screenshot({
+          path: testInfo.outputPath('session-branch.png'),
+          animations: 'disabled'
+        });
+      }
       const titleRows = headings.locator('.repository-title-row');
       await page.evaluate(() => document.fonts.ready);
       for (const name of await titleRows.locator('strong').all()) {
@@ -865,20 +885,26 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(tag).toHaveCSS('font-weight', '400');
         await expect(tag).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
       }
-      const colors = await root.evaluate((element) => {
+      const colors = await root.evaluate((element, scheme) => {
         const probe = document.createElement('span');
         element.append(probe);
         probe.style.color = 'var(--mar-border-default)';
-        const border = getComputedStyle(probe).color;
+        const syncBorder = getComputedStyle(probe).color;
+        if (scheme !== 'daylight') probe.style.color = 'var(--mar-border-medium)';
+        const kindBorder = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-text-secondary)';
         const secondary = getComputedStyle(probe).color;
         probe.remove();
-        return { border, secondary };
-      });
+        return { kindBorder, syncBorder, secondary };
+      }, theme);
       await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
-      for (const selector of ['.repository-kind', '.repository-current', '.repository-sync-tag']) {
-        await expect(root.locator(selector)).toHaveCSS('border-color', colors.border);
+      for (const selector of ['.repository-kind', '.repository-current']) {
+        await expect(root.locator(selector)).toHaveCSS('border-color', colors.kindBorder);
       }
+      await expect(root.locator('.repository-sync-tag')).toHaveCSS(
+        'border-color',
+        colors.syncBorder
+      );
       await expect(root.locator('.repository-sync-tag')).toHaveText('↓ 0 ↑ 25');
       const syncTag = root.locator('.repository-sync-tag');
       await expect(syncTag).not.toHaveAttribute('title');

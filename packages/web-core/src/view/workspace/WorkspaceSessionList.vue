@@ -807,10 +807,9 @@ function submitSessionSearch(): void {
   min-height: 1.5em;
   align-items: center;
   gap: 0.25rem;
-  padding: 0 0.375rem;
+  padding-inline: 0.28rem;
   border: 1px solid light-dark(var(--mar-border-default), var(--mar-border-medium));
   border-radius: var(--mar-radius-marker);
-  background: var(--mar-fill-muted);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.2;
