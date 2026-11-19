@@ -206,6 +206,7 @@ onBeforeUnmount(() => {
             if (!chat.paging.olderHistoryError.value) void chat.paging.loadOlderConversationTurns();
           })
         "
+        @scroll-intent="chat.scroll.stopFollowing"
         @load-older="chat.paging.loadOlderConversationTurns"
         @latest="chat.scroll.scrollToLatest"
         @reload="chat.restartWatch"
