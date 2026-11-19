@@ -29,6 +29,8 @@ html.console-ui,
   --mar-workbench-divider: var(--mar-border-subtle);
   --mar-border-medium: #7b8da3;
   --mar-border-strong: #7b8da3;
+  --mar-input-border: var(--mar-border-default);
+  --mar-input-border-hover: initial;
   --mar-text-primary: #172033;
   --mar-text-secondary: #52627a;
   --mar-text-tertiary: #5f6f86;
@@ -148,11 +150,17 @@ html.console-ui[data-theme='vscode-dark-2026'],
   --mar-fill-hover: #202b3a;
   --mar-table-header-bg: #131922;
   --mar-table-row-hover-bg: #202b3a;
-  --mar-border-default: #252f3e;
-  --mar-border-subtle: #252f3e;
+  --mar-border-default: #374255;
+  --mar-border-subtle: #2f3949;
   --mar-workbench-divider: var(--mar-border-medium);
-  --mar-border-medium: #313d50;
-  --mar-border-strong: #313d50;
+  --mar-border-medium: #414e62;
+  --mar-border-strong: #4a576b;
+  --mar-input-border: color-mix(in srgb, var(--mar-border-default), var(--mar-text-secondary) 40%);
+  --mar-input-border-hover: color-mix(
+    in srgb,
+    var(--mar-input-border),
+    var(--mar-text-primary) 12%
+  );
   --mar-text-primary: #d3dbe7;
   --mar-text-secondary: #a8b8cf;
   --mar-text-tertiary: #8799b1;

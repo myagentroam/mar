@@ -3469,24 +3469,26 @@ test('Node reconnection and page realtime recovery resynchronize Node facts and 
 
 test('Switching Git Workspaces immediately uses the target current branch without manual refresh', async ({
   page
-}) => {
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   const writes: {
     readonly url: string;
     readonly csrf: string | undefined;
     readonly body: string;
   }[] = [];
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], writes);
+  await mockEmptyWorkspaceFiles(page, ['workspace-1', 'workspace-2']);
   await page.route('**/api/workspaces?nodeId=node-1', (route) =>
     json(route, {
       workspaces: [
         {
-          id: 'workspace-master',
+          id: 'workspace-1',
           path: '/master-project',
           kind: 'GIT_WORKSPACE',
           gitSummary: { branch: 'master' }
         },
         {
-          id: 'workspace-develop',
+          id: 'workspace-2',
           path: '/develop-project',
           kind: 'GIT_WORKSPACE',
           gitSummary: { branch: 'master' }
@@ -3494,10 +3496,10 @@ test('Switching Git Workspaces immediately uses the target current branch withou
       ]
     })
   );
-  await page.route(/\/api\/workspaces\/workspace-master\/changes(?:\?.*)?$/, (route) =>
+  await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, (route) =>
     json(route, { branch: 'master', changes: [] })
   );
-  await page.route(/\/api\/workspaces\/workspace-develop\/changes(?:\?.*)?$/, (route) =>
+  await page.route(/\/api\/workspaces\/workspace-2\/changes(?:\?.*)?$/, (route) =>
     json(route, { branch: 'develop', changes: [] })
   );
 
@@ -3522,7 +3524,22 @@ test('Switching Git Workspaces immediately uses the target current branch withou
 
   await tree.getByRole('button', { name: 'develop-project' }).click();
 
-  await expect(page.locator('.workspace-branch-tag')).toHaveText('develop');
+  const branch = page.locator('.workspace-branch-tag');
+  await expect(branch).toHaveText('develop');
+  await expect(branch.getByRole('img', { name: 'Git' })).toBeVisible();
+  const sidebar = page.locator('.conversation-sidebar');
+  await sidebar.screenshot({
+    path: testInfo.outputPath('git-branch-desktop.png'),
+    animations: 'disabled'
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '打开会话列表' }).click();
+  await expect(branch).toBeInViewport({ ratio: 1 });
+  await page.screenshot({
+    path: testInfo.outputPath('git-branch-mobile.png'),
+    animations: 'disabled'
+  });
 });
 
 test('Workspace Tabs support Alt switching and Alt+W closure while bulk close preserves pinned tabs', async ({

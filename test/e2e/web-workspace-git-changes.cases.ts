@@ -1295,10 +1295,9 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(page.locator('.change-repository-heading .current-branch').first()).toHaveText(
     'feature/inspector'
   );
-  await expect(page.locator('.session-heading-meta .workspace-kind-tag')).toHaveText('Git');
-  await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveText(
-    'feature/inspector'
-  );
+  const branchTag = page.locator('.session-heading-meta .workspace-branch-tag');
+  await expect(branchTag.getByRole('img', { name: 'Git' })).toBeVisible();
+  await expect(branchTag).toHaveText('feature/inspector');
   await page.getByRole('tab', { name: '文件', exact: true }).click();
   await expect(refreshFilesButton).toBeEnabled();
   holdFileRefresh = true;

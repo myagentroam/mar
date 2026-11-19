@@ -273,11 +273,14 @@ input {
   width: 100%;
   padding: 0.35rem 0.5rem;
   margin-top: 0.2rem;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--mar-input-border);
   border-radius: var(--mar-radius-control);
   background: var(--el-fill-color-blank);
   color: var(--el-text-color-primary);
   font: inherit;
+}
+input:hover {
+  border-color: var(--mar-input-border-hover, var(--mar-input-border));
 }
 input::placeholder {
   color: var(--el-text-color-placeholder);

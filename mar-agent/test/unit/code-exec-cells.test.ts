@@ -328,8 +328,7 @@ describe('Code Exec retained cells', () => {
     );
     expect(JSON.parse(terminal.content)).toEqual({
       ...JSON.parse(direct.content),
-      cached: true,
-      waitOutcome: 'snapshot'
+      cached: true
     });
     expect(terminal.data).toMatchObject({ stdoutBytes: 7, stderrBytes: 0, cached: true });
   });

@@ -34,6 +34,7 @@ const context = (): ToolExecutionContext => ({
   mode: 'run',
   signal: new AbortController().signal
 });
+const pendingSteer = () => ({ ...context(), waitInterrupt: createToolWaitInterrupt(() => true) });
 async function fixture(processExecutor?: LocalProcessExecutor) {
   const root = await mkdtemp(join(tmpdir(), 'mar-exec-wait-'));
   roots.push(root);
@@ -55,7 +56,8 @@ async function fixture(processExecutor?: LocalProcessExecutor) {
   hosts.push(host);
   const call = async (name: string, args: unknown, ctx = context()) =>
     (await host.executeTool({ name, arguments: args }, ctx)).data as ExecResult;
-  return { call, host };
+  const startRunning = (command: string) => call('exec', { command }, pendingSteer());
+  return { call, host, startRunning };
 }
 const command = (script: string) => `"${process.execPath}" -e ${JSON.stringify(script)}`;
 
@@ -67,12 +69,12 @@ describe('exec_wait', () => {
       stderr: new PassThrough(),
       exitCode: null as number | null
     });
-    const { call, host } = await fixture({
+    const { call, host, startRunning } = await fixture({
       async spawn() {
         return child as unknown as ChildProcessWithoutNullStreams;
       }
     });
-    const { processId } = await call('exec', { command: 'original command', yieldMs: 0 });
+    const { processId } = await startRunning('original command');
     const onExecutionSource = vi.fn();
     await expect(
       call(
@@ -139,18 +141,18 @@ describe('exec_wait', () => {
     });
     const first = await host.executeTool(
       { name: 'exec', arguments: { command: 'fixture', yieldMs: 0 } },
-      context()
+      pendingSteer()
     );
     const processId = (first.data as ExecResult).processId;
     child.stdout.write('first');
     const poll1 = await host.executeTool(
       { name: 'exec_wait', arguments: { processId, yieldMs: 0 } },
-      context()
+      pendingSteer()
     );
     child.stdout.write(' second');
     const poll2 = await host.executeTool(
       { name: 'exec_wait', arguments: { processId, yieldMs: 0 } },
-      context()
+      pendingSteer()
     );
     expect(poll1.eventData).toMatchObject({ displayOutput: { stdout: 'first' } });
     expect(poll2.eventData).toMatchObject({ displayOutput: { stdout: 'first second' } });
@@ -177,7 +179,7 @@ describe('exec_wait', () => {
     });
     const first = await host.executeTool(
       { name: 'exec', arguments: { command: 'fixture', yieldMs: 0 } },
-      context()
+      pendingSteer()
     );
     child.emit('error', new Error('Unable to start fixture'));
     child.exitCode = 1;
@@ -237,13 +239,13 @@ describe('exec_wait', () => {
         stderr: new PassThrough(),
         exitCode: null as number | null
       });
-      const { call } = await fixture({
+      const { call, startRunning } = await fixture({
         async spawn() {
           return child as unknown as ChildProcessWithoutNullStreams;
         }
       });
       try {
-        const started = await call('exec', { command: 'ignored', yieldMs: 0 });
+        const started = await startRunning('ignored');
         child[stream].write('ready');
         const ctx = { ...context(), waitInterrupt: createToolWaitInterrupt(() => true) };
         expect(
@@ -278,13 +280,12 @@ describe('exec_wait', () => {
         stderr: new PassThrough(),
         exitCode: null as number | null
       });
-      const { call } = await fixture({
+      const { call, startRunning } = await fixture({
         async spawn() {
           return child as unknown as ChildProcessWithoutNullStreams;
         }
       });
-      const started =
-        name === 'exec_wait' ? await call('exec', { command: 'fixture', yieldMs: 0 }) : undefined;
+      const started = name === 'exec_wait' ? await startRunning('fixture') : undefined;
       vi.useFakeTimers();
       const snapshots: unknown[] = [];
       const ctx = {
@@ -346,12 +347,12 @@ describe('exec_wait', () => {
       stderr: new PassThrough(),
       exitCode: null as number | null
     });
-    const { call } = await fixture({
+    const { call, startRunning } = await fixture({
       async spawn() {
         return child as unknown as ChildProcessWithoutNullStreams;
       }
     });
-    const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+    const started = await startRunning('fixture');
     vi.useFakeTimers();
     const onOutput = vi.fn(async () => {});
     const waiting = call(
@@ -363,6 +364,7 @@ describe('exec_wait', () => {
       child.stdout.write('🙂'.repeat(5000));
       await vi.advanceTimersByTimeAsync(100);
     }
+    await vi.advanceTimersByTimeAsync(9000);
     const result = await waiting;
     expect(result).toMatchObject({
       status: 'running',
@@ -385,12 +387,12 @@ describe('exec_wait', () => {
       });
     }
     child.stdout.write('next');
-    expect(await call('exec_wait', { processId: started.processId, yieldMs: 0 })).toMatchObject({
-      stdout: 'next',
-      waitOutcome: 'snapshot'
-    });
     child.exitCode = 0;
     child.emit('close', 0, null);
+    expect(await call('exec_wait', { processId: started.processId, yieldMs: 0 })).toMatchObject({
+      stdout: 'next',
+      waitOutcome: 'completion'
+    });
   });
 
   it('resynchronizes after slow-consumer frame overflow with the contiguous display tail', async () => {
@@ -400,12 +402,12 @@ describe('exec_wait', () => {
       stderr: new PassThrough(),
       exitCode: null as number | null
     });
-    const { call } = await fixture({
+    const { call, startRunning } = await fixture({
       async spawn() {
         return child as unknown as ChildProcessWithoutNullStreams;
       }
     });
-    const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+    const started = await startRunning('fixture');
     vi.useFakeTimers();
     let release!: () => void;
     const onOutput = vi
@@ -453,12 +455,12 @@ describe('exec_wait', () => {
         stderr: new PassThrough(),
         exitCode: null as number | null
       });
-      const { call } = await fixture({
+      const { call, startRunning } = await fixture({
         async spawn() {
           return child as unknown as ChildProcessWithoutNullStreams;
         }
       });
-      const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+      const started = await startRunning('fixture');
       vi.useFakeTimers();
       let release!: () => void;
       const onOutput = vi.fn(
@@ -499,7 +501,9 @@ describe('exec_wait', () => {
       release();
       await vi.advanceTimersByTimeAsync(1000);
       expect(onOutput).toHaveBeenCalledTimes(1);
-      expect(await call('exec_wait', { processId: started.processId, yieldMs: 0 })).toMatchObject({
+      expect(
+        await call('exec_wait', { processId: started.processId }, pendingSteer())
+      ).toMatchObject({
         stdout: reason === 'cancel' ? 'first..........' : '',
         status: 'running'
       });
@@ -517,12 +521,12 @@ describe('exec_wait', () => {
         stderr: new PassThrough(),
         exitCode: null as number | null
       });
-      const { call } = await fixture({
+      const { call, startRunning } = await fixture({
         async spawn() {
           return child as unknown as ChildProcessWithoutNullStreams;
         }
       });
-      const started = await call('exec', { command: 'fixture', yieldMs: 0 });
+      const started = await startRunning('fixture');
       vi.useFakeTimers();
       let release = () => {};
       const onOutput = vi.fn(() =>
@@ -538,7 +542,7 @@ describe('exec_wait', () => {
         { ...context(), onOutput }
       );
       child.stdout.write('progress');
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(10_000);
       expect(await waiting).toMatchObject({
         status: 'running',
         waitOutcome: 'timeout',
@@ -561,31 +565,39 @@ describe('exec_wait', () => {
     }
   );
 
-  it('distinguishes initial and poll timeout, snapshot, steer, and terminal replay without cancelling the process', async () => {
+  it('floors zero waits and distinguishes timeout, steer, and terminal replay', async () => {
     const { call } = await fixture();
     let pending = false;
-    const waitInterrupt = createToolWaitInterrupt(() => pending);
+    const waitInterrupt = createToolWaitInterrupt(vi.fn(() => pending));
     const ctx = { ...context(), waitInterrupt };
-    const initial = await call(
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const starting = call(
       'exec',
       {
         command: command(
           "process.stdin.once('data', () => process.exit(0)); process.stdin.resume();"
         ),
-        yieldMs: 10
+        yieldMs: 0
       },
       ctx
     );
+    await vi.waitFor(() => expect(waitInterrupt.pending).toHaveBeenCalled());
+    await vi.advanceTimersToNextTimerAsync();
+    const initial = await starting;
     expect(initial).toMatchObject({ status: 'running', waitOutcome: 'timeout' });
     const processId = initial.processId;
-    expect(await call('exec_wait', { processId, yieldMs: 0 }, ctx)).toMatchObject({
-      status: 'running',
-      waitOutcome: 'snapshot'
-    });
-    expect(await call('exec_wait', { processId, yieldMs: 10 }, ctx)).toMatchObject({
-      status: 'running',
-      waitOutcome: 'timeout'
-    });
+    const polled = vi.fn();
+    const polling = call('exec_wait', { processId, yieldMs: 0 }, ctx).then(polled);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(polled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await polling;
+    expect(polled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'running',
+        waitOutcome: 'timeout'
+      })
+    );
     pending = true;
     waitInterrupt.notify();
     const interrupted = await call('exec_wait', { processId, yieldMs: 300000 }, ctx);
@@ -599,6 +611,7 @@ describe('exec_wait', () => {
     const written = await call('exec_wait', { processId, action: 'write', data: 'finish' }, ctx);
     expect(written).not.toHaveProperty('waitOutcome');
     pending = false;
+    vi.useRealTimers();
     const final = await call('exec_wait', { processId, yieldMs: 10000 }, ctx);
     expect(final).toMatchObject({ status: 'completed', waitOutcome: 'completion', exitCode: 0 });
     expect(final).not.toHaveProperty('reason');
@@ -610,7 +623,7 @@ describe('exec_wait', () => {
     });
     expect(await call('exec_wait', { processId, yieldMs: 0 }, ctx)).toMatchObject({
       status: 'completed',
-      waitOutcome: 'snapshot',
+      waitOutcome: 'completion',
       cached: true
     });
   });
@@ -684,11 +697,14 @@ describe('exec_wait', () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       try {
         let started: ExecResult | undefined;
-        const starting = call('exec', {
-          command: command('process.stdin.resume()'),
-          yieldMs: 0,
-          ...(timeoutMs === undefined ? {} : { timeoutMs })
-        }).then((result) => {
+        const starting = call(
+          'exec',
+          {
+            command: command('process.stdin.resume()'),
+            ...(timeoutMs === undefined ? {} : { timeoutMs })
+          },
+          pendingSteer()
+        ).then((result) => {
           started = result;
         });
         await vi.waitFor(() => expect(started).toBeDefined(), { timeout: 5000 });
@@ -699,7 +715,7 @@ describe('exec_wait', () => {
           await call(
             'exec_wait',
             { processId: started!.processId, yieldMs: 0 },
-            { ...context(), executionId: 'second' }
+            { ...pendingSteer(), executionId: 'second' }
           )
         ).toMatchObject({ status: 'running' });
         vi.useRealTimers();
@@ -714,11 +730,15 @@ describe('exec_wait', () => {
 
   it('terminates only at an explicit process timeout even when the poll window is longer', async () => {
     const { call } = await fixture();
-    const started = await call('exec', {
-      command: command('process.stdin.resume()'),
-      yieldMs: 0,
-      timeoutMs: 250
-    });
+    const started = await call(
+      'exec',
+      {
+        command: command('process.stdin.resume()'),
+        yieldMs: 0,
+        timeoutMs: 250
+      },
+      pendingSteer()
+    );
     expect(started.status).toBe('running');
     const result = await call('exec_wait', { processId: started.processId, yieldMs: 10_000 });
     expect(result.status).toBe('cancelled');
@@ -728,7 +748,7 @@ describe('exec_wait', () => {
     });
   });
 
-  it('uses separate start and poll defaults with a five-minute poll limit', () => {
+  it('uses separate defaults with the same accepted start and poll range', () => {
     expect(execToolDefinition.inputSchema.properties.timeoutMs).toMatchObject({
       maximum: TOOL_EXECUTION_LIMITS.execMaxTimeoutMs,
       description: expect.stringContaining('Omitted means no process timeout')
@@ -736,7 +756,9 @@ describe('exec_wait', () => {
     expect(execToolDefinition.inputSchema.properties.timeoutMs).not.toHaveProperty('default');
     expect(execToolDefinition.inputSchema.properties.yieldMs).toMatchObject({
       default: 10_000,
-      maximum: 30_000
+      minimum: 0,
+      maximum: 300_000,
+      description: expect.stringContaining('floor: 10000')
     });
     expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
     expect(execWaitToolDefinition.inputSchema).toMatchObject({
@@ -744,8 +766,11 @@ describe('exec_wait', () => {
       properties: {
         yieldMs: {
           default: 60_000,
-          maximum: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs,
-          description: expect.stringContaining('default 60000')
+          minimum: 0,
+          maximum: 300_000,
+          description: expect.stringContaining(
+            'Use the 60000 ms default when just waiting for completion.'
+          )
         }
       }
     });
@@ -759,7 +784,7 @@ describe('exec_wait', () => {
       processId: 'p',
       yieldMs: 60_000
     });
-    for (const yieldMs of [0, 10_000, 60_000])
+    for (const yieldMs of [10_000, 60_000])
       expect(execToolInput('exec_wait', { processId: 'p', yieldMs })).toEqual({
         action: 'poll',
         processId: 'p',
@@ -773,15 +798,12 @@ describe('exec_wait', () => {
   });
 
   it('waits by default, writes stdin and shares terminal snapshots across executions', async () => {
-    const { call } = await fixture();
-    const started = await call('exec', {
-      command: command(
-        'process.stdin.once("data", d => { process.stdout.write(d); process.exit(0); });'
-      ),
-      yieldMs: 0
-    });
+    const { call, startRunning } = await fixture();
+    const started = await startRunning(
+      command('process.stdin.once("data", d => { process.stdout.write(d); process.exit(0); });')
+    );
     const processId = started.processId;
-    expect(await call('exec_wait', { processId, yieldMs: 0 })).toMatchObject({ status: 'running' });
+    expect(started.status).toBe('running');
     await call('exec_wait', { action: 'write', processId, data: 'hello\n' });
     let result: ExecResult;
     let output = '';
@@ -804,16 +826,15 @@ describe('exec_wait', () => {
   });
 
   it('aborting a wait keeps the process alive; explicit cancel terminates it', async () => {
-    const { call } = await fixture();
-    const { processId } = await call('exec', {
-      command: command('setInterval(() => {}, 1000)'),
-      yieldMs: 0
-    });
+    const { call, startRunning } = await fixture();
+    const { processId } = await startRunning(command('setInterval(() => {}, 1000)'));
     const abort = new AbortController();
     const waiting = call('exec_wait', { processId }, { ...context(), signal: abort.signal });
     abort.abort(new Error('stop waiting'));
     await expect(waiting).rejects.toThrow('stop waiting');
-    expect(await call('exec_wait', { processId, yieldMs: 0 })).toMatchObject({ status: 'running' });
+    expect(await call('exec_wait', { processId }, pendingSteer())).toMatchObject({
+      status: 'running'
+    });
     expect(await call('exec_wait', { processId, action: 'cancel' })).toMatchObject({
       status: 'cancelled'
     });

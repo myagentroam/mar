@@ -14,12 +14,32 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ error: [source: string]; ready: [resized: boolean] }>();
 const image = shallowRef<HTMLImageElement>();
+const actions = shallowRef<HTMLElement>();
+const actionSpace = ref(0);
 const preview = shallowRef<LoadedImagePreview>();
 const ready = ref(false);
 const failed = ref(false);
 const generation = ref(0);
 const retry = ref(0);
 const loading = computed(() => Boolean(props.source) && !ready.value && !failed.value);
+
+watch(
+  actions,
+  (element, _, onCleanup) => {
+    if (!element) {
+      actionSpace.value = 0;
+      return;
+    }
+    const measure = () => {
+      actionSpace.value = element.offsetHeight;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element, { box: 'border-box' });
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: 'post' }
+);
 
 function reset(): void {
   retry.value += 1;
@@ -84,18 +104,26 @@ async function loaded(event: Event): Promise<void> {
 <template>
   <div class="decoded-preview-image" :aria-busy="loading">
     <FilePreviewLoading v-if="loading" />
-    <img
+    <div
       v-if="preview && !failed"
-      v-show="ready"
-      ref="image"
-      :key="generation"
-      class="attachment-preview-image"
-      :src="preview.url"
-      :alt="name"
-      decoding="async"
-      @load="loaded"
-      @error="unavailable($event.target as HTMLImageElement)"
-    />
+      class="decoded-preview-media"
+      :style="{ '--preview-action-space': `${actionSpace}px` }"
+    >
+      <img
+        v-show="ready"
+        ref="image"
+        :key="generation"
+        class="attachment-preview-image"
+        :src="preview.url"
+        :alt="name"
+        decoding="async"
+        @load="loaded"
+        @error="unavailable($event.target as HTMLImageElement)"
+      />
+      <div v-if="ready && $slots.actions" ref="actions" class="decoded-preview-actions">
+        <slot name="actions" />
+      </div>
+    </div>
     <div v-if="failed" class="image-preview-failure" role="alert">
       <span>{{ translate('generated.imagePreview.loadFailed') }}</span>
       <el-button @click="reset">{{ translate('generated.imagePreview.retry') }}</el-button>
@@ -105,22 +133,41 @@ async function loaded(event: Event): Promise<void> {
 
 <style scoped>
 .decoded-preview-image {
-  display: flex;
+  display: grid;
   position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  align-items: center;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+}
+.decoded-preview-image > * {
+  grid-area: 1 / 1;
+}
+.decoded-preview-media {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
+  height: 100%;
+  max-width: 100%;
 }
 .attachment-preview-image {
   display: block;
+  flex: none;
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: 100%;
+  max-height: max(0px, calc(100% - var(--preview-action-space)));
   object-fit: contain;
+}
+.decoded-preview-actions {
+  display: flex;
+  flex: none;
+  padding-top: 6px;
+  /* Keep a narrow image centered without counting the action toward its width. */
+  width: 0;
 }
 .image-preview-failure {
   display: flex;

@@ -159,7 +159,9 @@ test.afterEach(() => finishTransfer());
 
 async function expectImageFits(image: Locator): Promise<void> {
   const metrics = await image.evaluate((element: HTMLImageElement) => {
-    const area = element.parentElement!;
+    const area = element.closest('.decoded-preview-image')!;
+    const actionSpace =
+      area.querySelector<HTMLElement>('.decoded-preview-actions')?.offsetHeight ?? 0;
     const bounds = element.getBoundingClientRect();
     return {
       width: bounds.width,
@@ -167,7 +169,10 @@ async function expectImageFits(image: Locator): Promise<void> {
       naturalWidth: element.naturalWidth,
       naturalHeight: element.naturalHeight,
       availableWidth: area.clientWidth,
-      availableHeight: area.clientHeight,
+      availableHeight: area.clientHeight - actionSpace,
+      areaHeight: area.clientHeight,
+      centerOffset:
+        bounds.x + bounds.width / 2 - (area.getBoundingClientRect().x + area.clientWidth / 2),
       scrollWidth: area.scrollWidth,
       scrollHeight: area.scrollHeight
     };
@@ -179,8 +184,24 @@ async function expectImageFits(image: Locator): Promise<void> {
   );
   expect(Math.abs(metrics.width - metrics.naturalWidth * scale)).toBeLessThan(1);
   expect(Math.abs(metrics.height - metrics.naturalHeight * scale)).toBeLessThan(1);
+  expect(Math.abs(metrics.centerOffset)).toBeLessThan(1);
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.availableWidth + 1);
-  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.availableHeight + 1);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.areaHeight + 1);
+}
+
+async function expectOriginalActionPosition(action: Locator): Promise<void> {
+  const { gap, leftOffset } = await action.evaluate((button: HTMLElement) => {
+    const image = button.closest('.decoded-preview-media')!.querySelector('img')!;
+    const imageBox = image.getBoundingClientRect();
+    const actionBox = button.getBoundingClientRect();
+    return {
+      gap: actionBox.top - imageBox.bottom,
+      leftOffset: actionBox.left - imageBox.left
+    };
+  });
+  expect(Math.abs(leftOffset)).toBeLessThan(1);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThanOrEqual(8);
 }
 
 for (const viewport of [
@@ -203,8 +224,10 @@ for (const viewport of [
     await listImage.click();
     const dialog = page.getByRole('dialog', { name: 'Image preview', exact: true });
     const image = dialog.locator('img');
+    const original = dialog.getByRole('button', { name: 'View original', exact: true });
     await expect.poll(() => halfSent).toBe(true);
     await expect(image).toBeHidden();
+    await expect(original).toHaveCount(0);
     await expect(dialog.getByRole('status')).toBeVisible();
     finishTransfer();
     await expect
@@ -227,12 +250,9 @@ for (const viewport of [
     await expect(image).toBeVisible();
     expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(2560);
     expect(requests.some((url) => url.includes('maxWidth=2560&maxHeight=2560'))).toBe(true);
-    const original = dialog.getByRole('button', { name: 'View original', exact: true });
     await expect(original).toBeVisible();
-    await expect(original).toHaveText('');
-    await expect(original.locator('svg')).toBeVisible();
-    const originalBounds = await original.boundingBox();
-    expect(originalBounds!.width).toBeLessThanOrEqual(40);
+    await expect(original).toHaveText('View original');
+    await expect(original.locator('[data-mar-icon="image"]')).toBeVisible();
     const bounds = await image.boundingBox();
     expect(bounds!.width).toBeLessThan(viewport.width);
     expect(bounds!.height).toBeLessThan(viewport.height);
@@ -275,8 +295,18 @@ for (const [name, width, height] of [
       const dialog = page.getByRole('dialog', { name: 'Image preview', exact: true });
       const image = dialog.locator('img');
       await expect(image).toBeVisible();
+      const original = dialog.getByRole('button', { name: 'View original', exact: true });
+      await expect(original).toBeVisible();
       await expectImageFits(image);
-      await dialog.getByRole('button', { name: 'View original', exact: true }).click();
+      await expectOriginalActionPosition(original);
+      if (name === 'portrait' && viewport.width === 1440) {
+        await original.evaluate((button) => button.style.setProperty('block-size', '48px'));
+        await expect(() => expectImageFits(image)).toPass({ timeout: 3000 });
+        await expectOriginalActionPosition(original);
+        await original.evaluate((button) => button.style.removeProperty('block-size'));
+        await expect(() => expectImageFits(image)).toPass({ timeout: 3000 });
+      }
+      await original.click();
       await expect(image).toBeVisible();
       await expect
         .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalHeight))
@@ -400,7 +430,7 @@ test('a valid Workspace attachment keeps its failed preview open for retry', asy
 });
 
 for (const width of [1440, 390]) {
-  test(`localized original-image icon remains accessible beside a long filename at ${width}px`, async ({
+  test(`localized original-image action sits below the preview at ${width}px`, async ({
     page
   }, info) => {
     await page.setViewportSize({ width, height: 900 });
@@ -417,18 +447,30 @@ for (const width of [1440, 390]) {
     await expect(dialog.locator('img')).toBeVisible();
     const original = dialog.getByRole('button', { name: '查看原图', exact: true });
     await expect(original.locator('[data-mar-icon="image"]')).toBeVisible();
-    await expect(original).toHaveText('');
-    await expect(original).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
-    const originalBox = (await original.boundingBox())!;
+    await expect(original).toHaveText('查看原图');
+    await expect(original).not.toHaveClass(/is-text|is-link|el-button--(?:primary|danger)/);
+    await expect(original).toHaveCSS('height', '32px');
+    await expect(original).toHaveCSS('border-top-style', 'solid');
+    await expect(original).toHaveCSS('border-top-width', '1px');
+    await expect(original).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await expect(original).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(dialog.locator('.el-dialog__header').getByRole('button')).toHaveCount(1);
+    await expectOriginalActionPosition(original);
     const close = dialog.locator('.el-dialog__headerbtn');
-    const closeBox = (await close.boundingBox())!;
     await expect(close).toHaveCSS('width', '32px');
     await expect(close).toHaveCSS('height', '32px');
-    expect(originalBox.x + originalBox.width).toBeLessThanOrEqual(closeBox.x);
     await close.hover();
     await expect(close).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await page.screenshot({ path: info.outputPath('original-button.png'), animations: 'disabled' });
-    await original.click();
+    await page.mouse.move(0, 0);
+    await dialog.screenshot({
+      path: info.outputPath('original-button.png'),
+      animations: 'disabled'
+    });
+    await close.focus();
+    await page.keyboard.press('Tab');
+    await expect(original).toBeFocused();
+    await expect(original).toHaveCSS('outline-style', 'solid');
+    await original.press('Enter');
     await expect(dialog.locator('img')).toBeVisible();
     expect(
       await dialog.locator('img').evaluate((element: HTMLImageElement) => element.naturalWidth)

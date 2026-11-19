@@ -173,14 +173,18 @@ it.each([
         if (event.type === 'tool.failed') failures.push(event);
         await emit(event);
       };
-      if (completedCell) {
-        const execute = host.executeTool.bind(host);
-        host.executeTool = async (call, context) => {
-          const result = await execute(call, context);
-          if (call.name === 'code_exec_wait') cellResults.push(result.content);
-          return result;
-        };
-      }
+      const execute = host.executeTool.bind(host);
+      host.executeTool = async (call, context) => {
+        // This fixture checks warm resource ownership, not the process wait duration.
+        const result = await execute(
+          call,
+          call.name === 'exec' || call.name === 'exec_wait'
+            ? { ...context, waitInterrupt: { pending: () => true, subscribe: () => () => {} } }
+            : context
+        );
+        if (completedCell && call.name === 'code_exec_wait') cellResults.push(result.content);
+        return result;
+      };
       const agent = await createAgentWithAdapter(
         {
           ...options
@@ -206,7 +210,7 @@ it.each([
                 name: 'code_exec',
                 inputMode: 'freeform',
                 arguments: `// @options: {"yieldMs":${completedCell ? 0 : 1000}}
-observe.result(await tools.exec({command:${JSON.stringify(`${JSON.stringify(process.execPath)} -e "setInterval(() => {}, 1000)"`)},yieldMs:0,timeoutMs:60000}));
+observe.result(await tools.exec({command:${JSON.stringify(`${JSON.stringify(process.execPath)} -e "setInterval(() => {}, 1000)"`)},timeoutMs:60000}));
 await cell.sleep(${completedCell ? 25 : 30000});
 observe.text("retained fixture result");`
               };
@@ -237,7 +241,7 @@ observe.text("retained fixture result");`
                 callId: `poll-process-${phase}`,
                 name: 'code_exec',
                 inputMode: 'freeform',
-                arguments: `observe.result(await tools.exec_wait({processId:${JSON.stringify(processId)},yieldMs:0}));`
+                arguments: `observe.result(await tools.exec_wait({processId:${JSON.stringify(processId)}}));`
               };
               yield {
                 type: 'client_tool.call',

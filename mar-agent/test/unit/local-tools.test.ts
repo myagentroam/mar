@@ -22,8 +22,10 @@ import { parseReadContextOutput } from '../../src/prompts/read-context.js';
 import { viewImageToolDefinition } from '../../src/tools/local/view-image.js';
 import { AGENT_TOOL_HANDLERS, BUILTIN_TOOL_DEFINITIONS } from '../../src/tools/registry.js';
 import { WorkspacePathResolver } from '../../src/tools/shared/path-resolver.js';
+import { createToolWaitInterrupt } from '../../src/tools/wait.js';
 
 const roots: string[] = [];
+const stopWaiting = createToolWaitInterrupt(() => true);
 afterEach(async () =>
   Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 );
@@ -93,12 +95,12 @@ describe('local workspace tools', () => {
     expect(readToolDefinition.description).toContain('nextOffset');
     expect(execProperties.timeoutMs?.maximum).toBe(TOOL_EXECUTION_LIMITS.execMaxTimeoutMs);
     expect(execProperties.yieldMs?.default).toBe(TOOL_EXECUTION_LIMITS.execDefaultYieldMs);
-    expect(execProperties.yieldMs?.maximum).toBe(30_000);
-    expect(execProperties.yieldMs?.description).toContain('Defaults to 10000 ms');
+    expect(execProperties.yieldMs?.maximum).toBe(300_000);
+    expect(execProperties.yieldMs?.description).toContain('default: 10000; floor: 10000');
     expect(execToolDefinition.inputSchema.required).toEqual(['command']);
     expect(execProperties.action).toBeUndefined();
     expect(TOOL_EXECUTION_LIMITS.execDefaultYieldMs).toBe(10_000);
-    expect(TOOL_EXECUTION_LIMITS.execMaxYieldMs).toBe(30_000);
+    expect(TOOL_EXECUTION_LIMITS.execMaxYieldMs).toBe(300_000);
     expect(TOOL_EXECUTION_LIMITS.viewImageMaxBytes).toBe(3_145_728);
     expect(TOOL_EXECUTION_LIMITS.viewImageMaxSourceBytes).toBe(20_971_520);
     expect(viewImageToolDefinition.description).not.toMatch(
@@ -1476,10 +1478,14 @@ describe('local workspace tools', () => {
         executionId: 'second'
       })
     ).rejects.toMatchObject({ code: 'MAR_AGENT_PROCESS_NOT_FOUND' });
-    const running = await tool.execute({
-      command: `${process.execPath} -e "setTimeout(() => {}, 30000)"`,
-      yieldMs: 0
-    });
+    const running = await tool.execute(
+      {
+        command: `${process.execPath} -e "setTimeout(() => {}, 30000)"`
+      },
+      undefined,
+      undefined,
+      stopWaiting
+    );
     expect(running.status).toBe('running');
     const recalled = await tool.execute(
       { action: 'poll', processId: completed.processId! },
@@ -1521,18 +1527,23 @@ describe('local workspace tools', () => {
     const { root } = await fixture();
     const tool = new ExecTool(new WorkspacePathResolver(root));
     try {
-      const started = await tool.execute({
-        command: `${process.execPath} -e "process.stdin.once('data', () => process.stderr.write('late', () => process.exit(3))); process.stdout.write('early');"`,
-        yieldMs: 0
-      });
-      const first = started.stdout
-        ? started
-        : await tool.execute({
-            action: 'poll',
-            processId: started.processId!,
-            yieldMs: 1_000
-          });
-      expect(first).toMatchObject({ status: 'running', stdout: 'early' });
+      let pending = false;
+      const interrupt = createToolWaitInterrupt(() => pending);
+      const started = await tool.execute(
+        {
+          command: `${process.execPath} -e "process.stdin.once('data', () => process.stderr.write('late', () => process.exit(3))); process.stdout.write('early');"`
+        },
+        undefined,
+        undefined,
+        interrupt,
+        async (output) => {
+          if (output.stdout.includes('early')) {
+            pending = true;
+            interrupt.notify();
+          }
+        }
+      );
+      expect(started).toMatchObject({ status: 'running', stdout: 'early' });
       await tool.execute({ action: 'write', processId: started.processId!, data: 'finish\n' });
       let terminal = started;
       await expect
@@ -1591,7 +1602,7 @@ describe('local workspace tools', () => {
   it.each([
     { options: {}, expected: 60_000 },
     { options: { yieldMs: null }, expected: 60_000 },
-    { options: { yieldMs: 0 }, expected: 0 },
+    { options: { yieldMs: 0 }, expected: 10_000 },
     { options: { yieldMs: 10_000 }, expected: 10_000 },
     { options: { yieldMs: 30_000 }, expected: 30_000 },
     { options: { yieldMs: 60_000 }, expected: 60_000 },
@@ -1611,7 +1622,7 @@ describe('local workspace tools', () => {
         }
       }
     );
-    const started = await tool.execute({ command: 'ignored', yieldMs: 0 });
+    const started = await tool.execute({ command: 'ignored' }, undefined, undefined, stopWaiting);
     vi.useFakeTimers();
     try {
       let settled = false;
@@ -1621,11 +1632,9 @@ describe('local workspace tools', () => {
           settled = true;
           return result;
         });
-      if (expected > 0) {
-        await vi.advanceTimersByTimeAsync(expected - 1);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-      }
+      await vi.advanceTimersByTimeAsync(expected - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
       expect(await poll).toMatchObject({ status: 'running' });
       const next = tool.execute({ action: 'poll', processId: started.processId });
       state.stdout.write('ready');
@@ -1663,10 +1672,15 @@ describe('local workspace tools', () => {
         }
       }
     );
-    const started = await tool.execute({ command: 'ignored', yieldMs: 0 }, undefined, {
-      sessionId: 'session',
-      executionId: 'start'
-    });
+    const started = await tool.execute(
+      { command: 'ignored' },
+      undefined,
+      {
+        sessionId: 'session',
+        executionId: 'start'
+      },
+      stopWaiting
+    );
     vi.useFakeTimers();
     try {
       state.exitCode = 0;
@@ -1736,53 +1750,65 @@ describe('local workspace tools', () => {
   });
 
   it('waits for process output through bounded poll instead of busy polling', async () => {
-    const { tools } = await fixture();
-    const started = await tools.exec({
-      action: 'start',
-      command: `${process.execPath} -e "setTimeout(() => process.stdout.write('ready'), 100)"`,
-      yieldMs: 10
-    });
+    const { root } = await fixture();
+    const tool = new ExecTool(new WorkspacePathResolver(root));
+    const started = await tool.execute(
+      {
+        command: `${process.execPath} -e "process.stdin.once('data', () => process.stdout.write('ready', () => process.exit(0))); process.stdin.resume();"`
+      },
+      undefined,
+      undefined,
+      stopWaiting
+    );
     expect(started.status).toBe('running');
-    const polled = await tools.exec({
+    const polling = tool.execute({
       action: 'poll',
-      processId: started.processId!,
-      yieldMs: 1_000
+      processId: started.processId!
     });
-    expect(polled.stdout).toBe('ready');
-    await tools.dispose();
+    try {
+      await tool.execute({ action: 'write', processId: started.processId!, data: 'finish' });
+      expect(await polling).toMatchObject({ status: 'completed', stdout: 'ready' });
+    } finally {
+      await tool.dispose();
+    }
   });
 
   it('returns only new process output on poll while retaining cumulative byte counters', async () => {
-    const { tools } = await fixture();
+    const { root } = await fixture();
+    const tool = new ExecTool(new WorkspacePathResolver(root));
     try {
-      const started = await tools.exec({
-        action: 'start',
-        command: `${process.execPath} -e "let stage = 0; process.stdin.on('data', () => { if (stage++ === 0) process.stdout.write('second'); else process.exit(0); }); process.stdout.write('first');"`,
-        yieldMs: 0
-      });
-      // Login startup has no fixed latency; advance the child only after consuming each chunk.
-      const first = started.stdout
-        ? started
-        : await tools.exec({
-            action: 'poll',
-            processId: started.processId!,
-            yieldMs: 1_000
-          });
-      expect(first).toMatchObject({ status: 'running', stdout: 'first', stdoutBytes: 5 });
-      await tools.exec({ action: 'write', processId: started.processId!, data: 'next\n' });
-      const updated = await tools.exec({
-        action: 'poll',
-        processId: started.processId!,
-        yieldMs: 1_000
-      });
-      expect(updated).toMatchObject({
+      const waitForChunk = (input: Parameters<ExecTool['execute']>[0], chunk: string) => {
+        let pending = false;
+        const interrupt = createToolWaitInterrupt(() => pending);
+        return tool.execute(input, undefined, undefined, interrupt, async (output) => {
+          if (!output.stdout.endsWith(chunk)) return;
+          pending = true;
+          interrupt.notify();
+        });
+      };
+      const started = await waitForChunk(
+        {
+          command: `${process.execPath} -e "let stage = 0; process.stdin.on('data', () => { if (stage++ === 0) process.stdout.write('second'); else process.exit(0); }); process.stdout.write('first');"`
+        },
+        'first'
+      );
+      expect(started).toMatchObject({ status: 'running', stdout: 'first', stdoutBytes: 5 });
+      const polling = waitForChunk(
+        {
+          action: 'poll',
+          processId: started.processId!
+        },
+        'second'
+      );
+      await tool.execute({ action: 'write', processId: started.processId!, data: 'next\n' });
+      expect(await polling).toMatchObject({
         status: 'running',
         stdout: 'second',
         stdoutBytes: 11,
         stdoutDroppedBytes: 0
       });
-      await tools.exec({ action: 'write', processId: started.processId!, data: 'exit\n' });
-      const completed = await tools.exec({
+      await tool.execute({ action: 'write', processId: started.processId!, data: 'exit\n' });
+      const completed = await tool.execute({
         action: 'poll',
         processId: started.processId!,
         yieldMs: 1_000
@@ -1794,7 +1820,7 @@ describe('local workspace tools', () => {
         stdoutDroppedBytes: 0
       });
     } finally {
-      await tools.dispose();
+      await tool.dispose();
     }
   });
 
@@ -1917,7 +1943,8 @@ describe('local workspace tools', () => {
         mode: 'run',
         signal: new AbortController().signal,
         sessionId: 'session',
-        executionId: 'start'
+        executionId: 'start',
+        waitInterrupt: stopWaiting
       }
     );
     const processId = (started.data as { processId?: string }).processId!;
@@ -1991,7 +2018,8 @@ describe('local workspace tools', () => {
     const started = await tool.execute(
       { action: 'start', command: 'ignored', yieldMs: 0, timeoutMs: 30_000 },
       undefined,
-      { sessionId: 'session', executionId: 'execution' }
+      { sessionId: 'session', executionId: 'execution' },
+      stopWaiting
     );
     expect(started).toMatchObject({ status: 'running', processId: expect.any(String) });
 
@@ -2139,8 +2167,8 @@ describe('local workspace tools', () => {
       }
     );
 
-    const first = tool.execute({ command: 'first', yieldMs: 0 });
-    const second = tool.execute({ command: 'second', yieldMs: 0 });
+    const first = tool.execute({ command: 'first' }, undefined, undefined, stopWaiting);
+    const second = tool.execute({ command: 'second' }, undefined, undefined, stopWaiting);
     await entered.promise;
     expect(commands.toSorted()).toEqual(['first', 'second']);
 
@@ -2178,7 +2206,7 @@ describe('local workspace tools', () => {
       }
     );
 
-    const first = tool.execute({ command: 'first', yieldMs: 0 });
+    const first = tool.execute({ command: 'first' }, undefined, undefined, stopWaiting);
     await firstSpawnEntered.promise;
     await expect(tool.execute({ command: 'blocked', yieldMs: 0 })).rejects.toMatchObject({
       code: 'MAR_AGENT_PROCESS_LIMIT'
@@ -2209,7 +2237,9 @@ describe('local workspace tools', () => {
     await expect(recovering.execute({ command: 'fails', yieldMs: 0 })).rejects.toThrow(
       'expected spawn failure'
     );
-    await expect(recovering.execute({ command: 'recovers', yieldMs: 0 })).resolves.toMatchObject({
+    await expect(
+      recovering.execute({ command: 'recovers' }, undefined, undefined, stopWaiting)
+    ).resolves.toMatchObject({
       status: 'running'
     });
     recoveredChild.state.exitCode = 0;
@@ -2238,10 +2268,15 @@ describe('local workspace tools', () => {
     );
     expect(tool.maxProcesses).toBe(64);
     const starts = releases.map((_release, index) =>
-      tool.execute({ command: String(index), yieldMs: 0 }, undefined, {
-        sessionId: `child-${index % 4}`,
-        executionId: 'execution'
-      })
+      tool.execute(
+        { command: String(index) },
+        undefined,
+        {
+          sessionId: `child-${index % 4}`,
+          executionId: 'execution'
+        },
+        stopWaiting
+      )
     );
     try {
       await expect.poll(() => spawnCount).toBe(64);
@@ -2265,10 +2300,15 @@ describe('local workspace tools', () => {
         executionId: 'execution'
       });
       await expect(
-        tool.execute({ command: 'replacement', yieldMs: 0 }, undefined, {
-          sessionId: 'parent',
-          executionId: 'execution'
-        })
+        tool.execute(
+          { command: 'replacement' },
+          undefined,
+          {
+            sessionId: 'parent',
+            executionId: 'execution'
+          },
+          stopWaiting
+        )
       ).resolves.toMatchObject({ status: 'running' });
       await expect(tool.execute({ command: 'blocked', yieldMs: 0 })).rejects.toMatchObject({
         code: 'MAR_AGENT_PROCESS_LIMIT'

@@ -331,22 +331,20 @@ function submitSessionSearch(): void {
     <div class="mar-sidebar-heading session-heading">
       <div class="session-heading-meta">
         <h2>{{ translate('generated.workspaceSessionList.sessions') }}</h2>
-        <el-tag
-          v-if="workspaceKind === 'GIT_WORKSPACE'"
-          class="workspace-kind-tag"
-          type="info"
-          effect="plain"
-          size="small"
-          >{{ workspaceKindLabel }}</el-tag
-        >
-        <el-tag
-          v-if="workspaceBranch !== undefined"
+        <span
+          v-if="workspaceKind === 'GIT_WORKSPACE' && workspaceBranch !== undefined"
+          v-tooltip="{ content: workspaceBranch, touch: true }"
           class="workspace-branch-tag"
-          type="info"
-          effect="plain"
-          size="small"
-          >{{ workspaceBranch }}</el-tag
         >
+          <MarIcon
+            name="branch"
+            size="1.15em"
+            role="img"
+            aria-hidden="false"
+            :aria-label="workspaceKindLabel"
+          />
+          <span class="workspace-branch-name">{{ workspaceBranch }}</span>
+        </span>
       </div>
     </div>
     <form
@@ -802,35 +800,31 @@ function submitSessionSearch(): void {
   line-height: 1.4;
 }
 
-.workspace-kind-tag,
 .workspace-branch-tag {
-  color: var(--el-tag-text-color);
+  display: inline-flex;
+  min-width: 0;
+  max-width: 10rem;
   min-height: 1.5em;
-  height: auto;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.375rem;
+  border: 1px solid light-dark(var(--mar-border-default), var(--mar-border-medium));
   border-radius: var(--mar-radius-marker);
+  background: var(--mar-fill-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.2;
-  padding: 0 5px;
 }
 
-.workspace-kind-tag {
-  --el-tag-bg-color: var(--mar-color-warning-bg);
-  --el-tag-border-color: color-mix(in srgb, var(--mar-color-warning-text) 55%, transparent);
-  --el-tag-text-color: var(--mar-color-warning-text);
+.workspace-branch-tag .mar-icon {
+  flex: none;
 }
 
-.workspace-branch-tag {
-  --el-tag-bg-color: var(--mar-color-brand-subtle);
-  --el-tag-border-color: var(--mar-color-brand-border);
-  --el-tag-text-color: var(--mar-color-brand-text);
-  max-width: 10rem;
+.workspace-branch-name {
   overflow: hidden;
+  color: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.session-heading-meta :deep(.el-tag__content) {
-  color: inherit;
 }
 
 .new-session-form {

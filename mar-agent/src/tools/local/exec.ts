@@ -39,12 +39,14 @@ export type ExecInput =
   | { action: 'poll'; processId: string; yieldMs?: number }
   | { action: 'write'; processId: string; data: string }
   | { action: 'cancel'; processId: string };
+type ParsedExecInput =
+  Exclude<ExecInput, { action: 'poll' }> | { action: 'poll'; processId: string; yieldMs: number };
 export const execToolDefinition: ClientToolDefinition = {
   name: 'exec',
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, use exec_wait with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes snapshot, completion, and timeout. A direct foreground call may return interrupted with reason=steer. Inside a cell, steer interrupts only the outer foreground wait, not the inner exec wait. In either case the process keeps running.',
+    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, use exec_wait with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes completion from a wait timeout. A direct foreground call may return interrupted with reason=steer. Inside a cell, steer interrupts only the outer foreground wait, not the inner exec wait. In either case the process keeps running.',
   outputSchema: {
     type: 'object',
     required: ['content', 'data'],
@@ -110,7 +112,7 @@ export const execToolDefinition: ClientToolDefinition = {
         minimum: 0,
         maximum: TOOL_EXECUTION_LIMITS.execMaxYieldMs,
         default: TOOL_EXECUTION_LIMITS.execDefaultYieldMs,
-        description: `Wait before yielding output. Defaults to ${TOOL_EXECUTION_LIMITS.execDefaultYieldMs} ms. Maximum ${TOOL_EXECUTION_LIMITS.execMaxYieldMs} ms. Zero returns immediately. This does not extend the process timeout.`
+        description: `Initial wait window in milliseconds (default: ${TOOL_EXECUTION_LIMITS.execDefaultYieldMs}; floor: ${TOOL_EXECUTION_LIMITS.execMinYieldMs}).`
       }
     },
     required: ['command'],
@@ -139,9 +141,9 @@ export const execWaitToolDefinition: ClientToolDefinition = {
       yieldMs: {
         type: 'integer',
         minimum: 0,
-        maximum: TOOL_EXECUTION_LIMITS.execMaxPollYieldMs,
+        maximum: TOOL_EXECUTION_LIMITS.execMaxYieldMs,
         default: TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs,
-        description: `Poll wait window in milliseconds; default ${TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs}, maximum ${TOOL_EXECUTION_LIMITS.execMaxPollYieldMs}. Zero returns immediately. Not a process timeout.`
+        description: `Poll wait window in milliseconds (floor: ${TOOL_EXECUTION_LIMITS.execMinYieldMs}). Use the ${TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs} ms default when just waiting for completion.`
       },
       data: { type: 'string', description: 'Required stdin data for write.' }
     },
@@ -151,7 +153,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
 };
 
 /** Validate the public entry points before delegating to the single process manager. */
-export function execToolInput(name: 'exec' | 'exec_wait', value: unknown): ExecInput {
+export function execToolInput(name: 'exec' | 'exec_wait', value: unknown): ParsedExecInput {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return invalidExecInput('Expected an object containing tool arguments.');
   const input = value as Record<string, unknown>;
@@ -168,21 +170,23 @@ export function execToolInput(name: 'exec' | 'exec_wait', value: unknown): ExecI
   return parseExecInput({ ...input, action });
 }
 
-export function parseExecInput(value: unknown): ExecInput {
+export function parseExecInput(value: unknown): ParsedExecInput {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return invalidExecInput('Expected an object containing tool arguments.');
   const input = value as Record<string, unknown>;
   const action = input.action ?? 'start';
   if (typeof action !== 'string' || !['start', 'poll', 'write', 'cancel'].includes(action))
     return invalidExecInput("Field 'action' must be one of: start, poll, write, cancel.");
-  const yieldMs = optionalBoundedInteger(
+  const requestedYieldMs = optionalBoundedInteger(
     'yieldMs',
     input.yieldMs,
     0,
-    action === 'poll'
-      ? TOOL_EXECUTION_LIMITS.execMaxPollYieldMs
-      : TOOL_EXECUTION_LIMITS.execMaxYieldMs
+    TOOL_EXECUTION_LIMITS.execMaxYieldMs
   );
+  const yieldMs =
+    requestedYieldMs === undefined
+      ? undefined
+      : Math.max(requestedYieldMs, TOOL_EXECUTION_LIMITS.execMinYieldMs);
   if (action === 'start') {
     if (typeof input.command !== 'string' || input.command.trim() === '')
       return invalidExecInput("Field 'command' must be a nonblank string.");

@@ -108,18 +108,23 @@ const runCredentialLifecycle = async (usesGit: boolean, explicitLifecycle: boole
               ...(oldCredential === undefined ? {} : { oldCredential }),
               ...(mcp ? { mcp: mcp.content } : {})
             });
+            // Observe the live handle without making the credential fixture wait on the process.
+            const processContext = {
+              ...context,
+              waitInterrupt: { pending: () => true, subscribe: () => () => {} }
+            };
             if (processId) {
               const result = await host.executeTool(
-                { name: 'exec_wait', arguments: { processId, yieldMs: 0 } },
-                context
+                { name: 'exec_wait', arguments: { processId } },
+                processContext
               );
               expect(result.data).toMatchObject({ status: 'running', processId });
               retained.push(processId);
             } else {
               const command = `${JSON.stringify(process.execPath)} -e "setInterval(() => {}, 1000)"`;
               const started = await host.executeTool(
-                { name: 'exec', arguments: { command, yieldMs: 0 } },
-                context
+                { name: 'exec', arguments: { command } },
+                processContext
               );
               processId = (started.data as { processId: string }).processId;
             }

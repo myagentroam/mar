@@ -2271,6 +2271,7 @@ test('Standalone Markdown previews render Mermaid and allow HTTP images', async 
 test('Refreshing Files upgrades a plain directory to a Git Workspace', async ({ page }) => {
   await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], [], 'DIRECTORY');
   const initialWatchTopics: Record<string, unknown>[] = [];
+  let gitInitialized = false;
   let fileReads = 0;
   await page.route(/\/api\/workspaces\/workspace-1\/watch$/, async (route) => {
     const request = JSON.parse(route.request().postData() ?? '{}') as {
@@ -2299,14 +2300,16 @@ test('Refreshing Files upgrades a plain directory to a Git Workspace', async ({ 
       workspace: {
         id: 'workspace-1',
         path: '/project',
-        kind: 'GIT_WORKSPACE',
-        gitSummary: {
-          commonDir: '.git',
-          head: '',
-          branch: 'main',
-          dirty: true,
-          snapshot: 'README.md'
-        }
+        kind: gitInitialized ? 'GIT_WORKSPACE' : 'DIRECTORY',
+        gitSummary: gitInitialized
+          ? {
+              commonDir: '.git',
+              head: '',
+              branch: 'main',
+              dirty: true,
+              snapshot: 'README.md'
+            }
+          : undefined
       }
     });
   });
@@ -2324,17 +2327,21 @@ test('Refreshing Files upgrades a plain directory to a Git Workspace', async ({ 
   await expect(page.getByRole('tab', { name: 'Git 变更' })).toHaveCount(0);
   await expect.poll(() => initialWatchTopics.length).toBeGreaterThanOrEqual(1);
   expect(initialWatchTopics[0]).not.toHaveProperty('changes');
+  gitInitialized = true;
   await page.getByRole('button', { name: '刷新文件', exact: true }).click();
 
   await expect(page.getByRole('tab', { name: 'Git 变更' })).toBeVisible();
-  await expect(page.locator('.session-heading-meta .workspace-kind-tag')).toHaveText('Git');
-  await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveText('main');
+  const branchTag = page.locator('.session-heading-meta .workspace-branch-tag');
+  await expect(branchTag.getByRole('img', { name: 'Git' })).toBeVisible();
+  await expect(branchTag).toHaveText('main');
   await expect.poll(() => initialWatchTopics.length).toBe(2);
   expect(initialWatchTopics.at(-1)).toMatchObject({ changes: true });
 
+  const fileReadsBeforeRefresh = fileReads;
   await page.getByRole('button', { name: '刷新文件', exact: true }).click();
-  await expect.poll(() => fileReads).toBe(2);
+  await expect.poll(() => fileReads).toBe(fileReadsBeforeRefresh + 1);
   await page.waitForTimeout(200);
+  expect(fileReads).toBe(fileReadsBeforeRefresh + 1);
   expect(initialWatchTopics).toHaveLength(2);
 });
 
@@ -2488,7 +2495,6 @@ test('Git Workspace downgrades clear Inspector state and reject stale Changes re
     'aria-selected',
     'true'
   );
-  await expect(page.locator('.session-heading-meta .workspace-kind-tag')).toHaveCount(0);
   await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveCount(0);
   await expect.poll(() => initialWatchTopics.length).toBeGreaterThanOrEqual(2);
   expect(initialWatchTopics.at(-1)).not.toHaveProperty('changes');
