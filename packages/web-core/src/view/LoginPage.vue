@@ -71,7 +71,7 @@ function submit(): void {
 
 .lede {
   margin: 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }

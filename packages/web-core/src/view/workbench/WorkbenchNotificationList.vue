@@ -243,7 +243,7 @@ const visibleNotifications = computed(() => {
 }
 .workbench-notification-upload small,
 .workbench-notification-list small {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .workbench-notification-list > li > button:first-child strong {
   font-size: var(--mar-font-size-meta);
@@ -295,7 +295,7 @@ const visibleNotifications = computed(() => {
   color: inherit;
 }
 .workbench-notification-list time {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
 }
@@ -309,7 +309,7 @@ const visibleNotifications = computed(() => {
 .workbench-notification-empty {
   margin: 0;
   padding: 1.2rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   text-align: center;
 }

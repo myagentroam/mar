@@ -98,7 +98,7 @@ function disableLeavingBranch(branch: Element): void {
   border: 0;
   border-radius: var(--mar-radius-selection);
   background: transparent;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
   padding: 4px 8px 4px calc(8px + var(--file-depth) * 16px);
   text-align: left;
   font-weight: 400;
@@ -108,7 +108,6 @@ function disableLeavingBranch(branch: Element): void {
 .file-directory:hover,
 .file-directory:focus-visible {
   background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
 }
 
 .file-directory:focus-visible {
@@ -125,6 +124,7 @@ function disableLeavingBranch(branch: Element): void {
 }
 
 .file-directory-chevron {
+  color: var(--mar-text-secondary);
   font-size: 12px;
   transition: transform var(--mar-motion-duration-collapse) var(--mar-motion-easing-collapse);
 }
@@ -135,7 +135,7 @@ function disableLeavingBranch(branch: Element): void {
 
 .file-directory-kind {
   font-size: 16px;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .file-branch {
@@ -204,7 +204,7 @@ function disableLeavingBranch(branch: Element): void {
 
 .file-open small {
   justify-self: end;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   line-height: 1.35;
   text-align: right;
 }

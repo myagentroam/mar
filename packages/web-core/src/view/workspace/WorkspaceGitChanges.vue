@@ -519,7 +519,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .git-worktree-heading small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
 }
@@ -574,7 +574,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   margin: 0;
   border-bottom: 1px solid var(--mar-border-subtle);
   padding: 0.25rem 2px 0.4rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -634,7 +634,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   grid-column: 1 / -1;
   border-top: 0;
   padding: 0.2rem 2px 0.25rem;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -710,7 +710,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 
 .change-repository-heading code {
   margin-left: 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
 }
@@ -731,7 +731,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 .repository-relative-path {
   display: block;
   overflow-wrap: anywhere;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   line-height: 1.35;
   white-space: normal;
 }
@@ -773,7 +773,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .change-list small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -905,7 +905,7 @@ button.file-explorer-utility-button:disabled {
   overflow: hidden;
   min-width: 0;
   margin-left: 0.45rem;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-family: inherit;
   font-size: var(--mar-font-size-nano);
   text-overflow: ellipsis;
@@ -913,7 +913,7 @@ button.file-explorer-utility-button:disabled {
 }
 
 .change-list > li > small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1;
 }

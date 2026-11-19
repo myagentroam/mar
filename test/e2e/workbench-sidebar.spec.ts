@@ -214,7 +214,11 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       (row) => getComputedStyle(row).color
     );
     const otherWorkspaceColor = await otherWorkspace.evaluate((row) => getComputedStyle(row).color);
-    expect(selectedWorkspaceColor).not.toBe(otherWorkspaceColor);
+    expect(selectedWorkspaceColor).toBe(otherWorkspaceColor);
+    const selectedRow = selectedWorkspace.locator('..');
+    await expect(selectedRow).toHaveClass(/\bselected\b/);
+    const background = await selectedRow.evaluate((row) => getComputedStyle(row).backgroundColor);
+    await expect(otherWorkspace.locator('..')).not.toHaveCSS('background-color', background);
     const geometry = await sidebarGeometry(tree);
     expect(geometry.top).toBeGreaterThan(0);
     expect(geometry.bottom).toBeCloseTo(geometry.top, 1);
@@ -355,7 +359,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return colors;
       });
       expect(primary).toBe(selectedWorkspaceColor);
-      expect(secondary).toBe(otherWorkspaceColor);
+      expect(primary).toBe(otherWorkspaceColor);
       const current = history.locator('.history-open[aria-current="page"]');
       await expect(current).toContainText('Current chat');
       await expect(current.locator('time')).toHaveCSS('color', secondary);
@@ -364,12 +368,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const row = history.locator('article').filter({ hasText: title });
         const text = row.getByText(title, { exact: true });
         const pin = row.getByRole('img', { name: 'Pinned', exact: true });
-        await expect(text).toHaveCSS('color', selected ? primary : secondary);
+        await expect(text).toHaveCSS('color', primary);
         await expect(text).toHaveCSS('font-size', fontSize);
         await expect(text).toHaveCSS('font-weight', '400');
         await expect(pin).toBeVisible();
         await expect(pin).toHaveAttribute('data-mar-icon', 'pin');
-        await expect(pin).toHaveCSS('color', selected ? primary : secondary);
+        await expect(pin).toHaveCSS('color', primary);
         if (selected) await expect(row).toHaveCSS('background-color', selection);
         else await expect(row).not.toHaveCSS('background-color', selection);
       }
@@ -391,8 +395,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(create).toHaveCSS('border-top-width', '1px');
     await expect(create).toHaveCSS('height', '32px');
     await expectCreateAlignedToSearch();
-    const { createFill, createBorder, hoverFill, folderColor } = await create.evaluate(
-      (button, dark) => {
+    const { createFill, createBorder, hoverFill, folderColor, fileNameColor } =
+      await create.evaluate((button, dark) => {
         const probe = document.createElement('span');
         button.append(probe);
         const resolveColor = (color: string) => {
@@ -411,13 +415,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               : 'var(--mar-border-default)'
           ),
           hoverFill: resolveColor('var(--mar-fill-row-hover)'),
-          folderColor: resolveColor('var(--mar-text-tertiary)')
+          folderColor: resolveColor('var(--mar-text-secondary)'),
+          fileNameColor: resolveColor('var(--mar-text-primary)')
         };
         probe.remove();
         return colors;
-      },
-      theme === 'vscode-dark-2026'
-    );
+      }, theme === 'vscode-dark-2026');
     await expect(create).toHaveCSS('background-color', createFill);
     await expect(create).toHaveCSS('border-top-color', createBorder);
     const searchControl = history.locator('.history-search-row .el-input__wrapper');
@@ -446,11 +449,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const reports = files.getByRole('button', { name: /folder “assets\/reports”$/u });
     const summary = files.getByRole('button', { name: 'assets/reports/summary.txt', exact: true });
     await expect(assets).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(assets).toHaveCSS('color', fileNameColor);
     await expect(assets.locator('svg[data-mar-icon="folder"]')).toHaveCSS('color', folderColor);
     await expect(assets).toHaveAttribute('aria-expanded', 'false');
     await expect(reports).toHaveCount(0);
     await assets.hover();
     await expect(assets).toHaveCSS('background-color', hoverFill);
+    await expect(assets).toHaveCSS('color', fileNameColor);
     await page.addStyleTag({ content: ':root { --mar-motion-duration-collapse: 600ms; }' });
     await assets.click();
     await expect(files.locator('.file-branch-enter-active')).toHaveCSS(
@@ -461,6 +466,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(reports).toHaveAttribute('aria-expanded', 'false');
     await reports.click();
     await expect(summary).toBeVisible();
+    await expect(summary).toHaveCSS('color', fileNameColor);
     await expect(assets.locator('.file-directory-chevron')).toHaveCSS(
       'transform',
       'matrix(0, 1, -1, 0, 0, 0)'

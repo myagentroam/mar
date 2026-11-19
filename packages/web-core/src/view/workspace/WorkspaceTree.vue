@@ -1048,7 +1048,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border: 0;
   border-radius: var(--mar-radius-selection);
   background: transparent;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
   padding: var(--workspace-tree-row-padding) 6px var(--workspace-tree-row-padding)
     calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
   text-align: left;
@@ -1059,7 +1059,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .workspace-group-toggle:hover,
 .workspace-group-toggle:focus-visible {
   background: var(--mar-fill-row-hover);
-  color: var(--mar-text-primary);
 }
 
 .workspace-group.drop-target > .workspace-group-toggle,
@@ -1142,7 +1141,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .workspace-group-move-hint {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .workspace-group-move-error {
@@ -1186,7 +1185,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-node-content > small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -1204,7 +1203,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   width: var(--workspace-tree-icon);
   height: var(--workspace-tree-icon);
   font-size: var(--workspace-tree-icon);
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .tree-node-icon {
@@ -1259,18 +1258,9 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   background: var(--mar-fill-row-hover);
 }
 
-.workspace-branches > li:hover > .workspace-branch-button {
-  color: var(--mar-text-primary);
-}
-
 .workspace-branches > li.selected,
 .workspace-branches > li.selected:hover {
   background: var(--mar-fill-selection);
-}
-
-.workspace-branches > li.selected .workspace-branch-button {
-  color: var(--mar-text-primary);
-  font-weight: 400;
 }
 
 .workspace-branches > li.dragging {
@@ -1285,7 +1275,8 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
+  font-weight: 400;
   padding: var(--workspace-tree-row-padding) 6px var(--workspace-tree-row-padding)
     var(--workspace-tree-label-leading);
   min-height: var(--workspace-tree-row-height);
@@ -1399,7 +1390,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   place-items: center;
   border: 0;
   background: transparent;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   padding: 0;
   cursor: pointer;
 }
@@ -1462,7 +1453,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .tree-empty,
 .tree-foot,
 .tree-filter-empty {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
@@ -1485,7 +1476,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .tree-foot {
   margin: 0 0.9rem;
   padding: 0.25rem 0.1rem 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }

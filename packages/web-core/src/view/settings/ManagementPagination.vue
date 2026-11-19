@@ -141,7 +141,7 @@ onUnmounted(() => observer?.disconnect());
 }
 
 .management-mobile-status {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 20px;
   text-align: center;

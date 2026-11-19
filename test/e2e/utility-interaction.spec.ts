@@ -26,8 +26,6 @@ async function palette(page: Page) {
     const colors = {
       primary: resolve('--mar-text-primary'),
       secondary: resolve('--mar-text-secondary'),
-      tertiary: resolve('--mar-text-tertiary'),
-      faint: resolve('--mar-text-faint'),
       focus: resolve('--mar-color-brand'),
       hover: resolve('--mar-fill-row-hover'),
       selected: resolve('--mar-fill-selection')
@@ -42,8 +40,6 @@ async function customPalette(page: Page) {
     for (const [token, value] of Object.entries({
       '--mar-text-primary': '#d6dfc9',
       '--mar-text-secondary': '#8295a4',
-      '--mar-text-tertiary': '#68788b',
-      '--mar-text-faint': '#53616e',
       '--mar-color-brand': '#9672d1',
       '--mar-color-brand-text': '#af79d0',
       '--mar-fill-row-hover': '#25334280',
@@ -561,7 +557,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             });
           }
           const colors = custom ? await customPalette(page) : await palette(page);
-          await expect(kind).toHaveCSS('color', colors.tertiary);
+          await expect(kind).toHaveCSS('color', colors.secondary);
           await expect(kind).toHaveCSS('font-weight', '400');
           await expect(queue.locator('.queue-item-content > p')).toHaveCSS('color', colors.primary);
           if (!custom)
@@ -633,7 +629,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       ];
       if (width < 768)
         controls.push(
-          ...(await page.locator('.mobile-conversation-tool').all()).map(
+          ...(await header.locator('.conversation-header-tools').getByRole('button').all()).map(
             (control): [Locator, boolean] => [control, false]
           )
         );
@@ -661,7 +657,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         .press('Enter');
       await expect(page.getByTestId('events')).toHaveText('native|edit');
       if (width < 768) {
-        await page.locator('.mobile-conversation-tools button').first().press('Enter');
+        await header.getByRole('button', { name: 'Open session list' }).press('Enter');
         await expect(page.getByTestId('events')).toHaveText('native|edit|surface:sessions');
       }
       await page.getByTestId('disable').click();
@@ -791,9 +787,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(options.first().locator('.candidate-name')).toHaveCSS('color', colors.primary);
         await expect(
           options.first().locator(kind === 'commands' ? '.candidate-description' : 'code')
-        ).toHaveCSS('color', colors.tertiary);
+        ).toHaveCSS('color', colors.secondary);
         if (kind === 'files')
-          await expect(options.first().locator('.entry-kind')).toHaveCSS('color', colors.faint);
+          await expect(options.first().locator('.entry-kind')).toHaveCSS('color', colors.secondary);
       }
     }
     const commands = page.getByTestId('commands').getByRole('option');

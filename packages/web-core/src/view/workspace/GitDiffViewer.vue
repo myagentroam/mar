@@ -1145,7 +1145,7 @@ defineExpose({
   border-radius: 3px;
   background: var(--mar-bg-panel);
   padding: 0.2rem 0.4rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 500;
 }
@@ -1195,7 +1195,7 @@ defineExpose({
   display: block;
   min-width: 0;
   overflow: hidden;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   opacity: 0.42;
   white-space: pre;
 }
@@ -1240,7 +1240,7 @@ defineExpose({
 .unified-diff-line-number,
 .unified-diff-line-prefix {
   user-select: none;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   text-align: right;
 }
 .unified-diff-line-number {
@@ -1279,7 +1279,7 @@ defineExpose({
 .unified-diff-empty {
   display: block;
   padding: 0.55rem 1rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 @media (max-width: 767px) {
   .unified-diff-content {

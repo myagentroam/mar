@@ -237,6 +237,7 @@ export const conversationUiEnUS = {
       workspaceTools: 'Workspace tools',
       openSessionList: 'Open session list',
       openAside: 'Open auxiliary workspace',
+      collapseAside: 'Collapse auxiliary workspace',
       openFiles: 'Open files',
       files: 'Files',
       openTerminal: 'Open terminal',

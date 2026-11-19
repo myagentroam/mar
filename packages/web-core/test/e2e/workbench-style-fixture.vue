@@ -120,6 +120,7 @@ const lateTreeFixture = new URL(location.href).searchParams.has('late-tree');
 const listStateFixture = new URL(location.href).searchParams.has('list-state');
 const reorderFixture = new URL(location.href).searchParams.has('session-reorder');
 const sessionMarkersFixture = new URL(location.href).searchParams.has('session-markers');
+const gitPreviewFixture = new URL(location.href).searchParams.has('git-previews');
 const listState = ref(new URL(location.href).searchParams.get('list-state') ?? 'ready');
 const fileRootPath = ref<string | undefined>('/home/example/my-agent-roam');
 const fileFeedback = ref({ message: '', type: '' });
@@ -128,7 +129,7 @@ const inspectorFixture =
   overlappingWatchFixture ||
   contentSearchFixture ||
   lateTreeFixture ||
-  new URL(location.href).searchParams.has('git-previews');
+  gitPreviewFixture;
 const toolTarget = { nodeId: 'node', workspaceId: 'workspace' };
 const selectedTool = ref<AsideTool>(lateTreeFixture ? 'search' : 'files');
 const toolState = computed(() => ({
@@ -269,7 +270,12 @@ const markerSessions: Session[] = [
   { id: 'Paused, still pinned', pinOrder: 2, schedule: { enabled: false, nextRunAt: null } },
   { id: 'Paused, not pinned', pinOrder: null, schedule: { enabled: false, nextRunAt: null } },
   { id: 'Normal', pinOrder: null }
-].map((session) => ({ ...session, runner: 'mar-agent', workspaceId: 'workspace' }));
+].map((session) => ({
+  ...session,
+  lastActivityAt: Date.now() - 60_000,
+  runner: 'mar-agent',
+  workspaceId: 'workspace'
+}));
 const sessions = ref(
   (reorderFixture
     ? ['pinned-one', 'pinned-two', 'pinned-three', 'active', 'idle']
@@ -329,9 +335,9 @@ const sessionProps = {
   watchStatus: 'ready' as const,
   nodeReady: true,
   loading: false,
-  workspaceKind: 'DIRECTORY' as const,
-  workspaceKindLabel: 'Directory',
-  workspaceBranch: undefined,
+  workspaceKind: gitPreviewFixture ? ('GIT_WORKSPACE' as const) : ('DIRECTORY' as const),
+  workspaceKindLabel: gitPreviewFixture ? 'Git workspace' : 'Directory',
+  workspaceBranch: gitPreviewFixture ? 'develop' : undefined,
   title: (session: Session) => session.id,
   runnerIcon: sessionMarkersFixture ? runnerBrandIcon : () => '',
   activity: (session: Session) => (session.id === 'active' ? 'RUNNING' : 'IDLE'),
@@ -468,6 +474,14 @@ let composerSurfacePage: ReturnType<typeof createWorkbenchPageController> | unde
 if (composerFixture) {
   const originalFetch = window.fetch;
   window.fetch = (input, init) => {
+    if (input === '/api/auth/me') {
+      return Promise.resolve(
+        Response.json({ authenticated: true, userId: 1, mustChangePassword: false })
+      );
+    }
+    if (input === '/api/auth/csrf') {
+      return Promise.resolve(Response.json({ csrfToken: 'fixture-csrf-token' }));
+    }
     if (typeof input === 'string' && input === '/api/nodes') {
       return Promise.resolve(Response.json({ nodes: [node] }));
     }

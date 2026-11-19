@@ -356,7 +356,7 @@ const emit = defineEmits<{
 }
 
 .composer-input::placeholder {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   opacity: 1;
 }
 

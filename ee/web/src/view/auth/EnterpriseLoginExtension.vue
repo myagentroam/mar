@@ -47,7 +47,7 @@ onMounted(async () => {
   grid-template-columns: 1fr auto 1fr;
   gap: 8px;
   align-items: center;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

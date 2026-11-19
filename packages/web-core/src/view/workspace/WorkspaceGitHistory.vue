@@ -760,7 +760,7 @@ button.history-refresh {
 
 .history-content small {
   overflow: hidden;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-nano);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -857,7 +857,7 @@ button.history-refresh {
 }
 
 .history-load-more[aria-disabled='true'] {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-disabled);
   cursor: default;
   text-decoration: none;
 }

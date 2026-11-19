@@ -45,6 +45,8 @@ Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Se
 
 Themes stay only in this browser. They are not uploaded or synced with accounts or devices. Clearing browser data deletes custom themes; export JSON files for backup or manual transfer.
 
+Set `--mar-text-primary` for headings, names, message text, and input values; set `--mar-text-secondary` for timestamps, descriptions, and placeholders. `--mar-text-disabled` is separate. To update an older palette, move any separate conversation or muted text colors you still want to use into these fields.
+
 After updating, an old file icon choice falls back to MAR File Icons. Your interface colors and other preferences are unchanged.
 
 1. Open **Settings → Themes**. The theme picker shows color swatches for built-in light, default dark, and saved themes. Select a theme to inspect it without changing the active palette; use **Apply theme** to switch. Built-ins can be viewed, copied, and exported, but not overwritten or deleted.

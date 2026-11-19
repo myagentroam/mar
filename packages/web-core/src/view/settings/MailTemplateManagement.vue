@@ -299,7 +299,7 @@ async function sendTest(): Promise<void> {
 }
 .template-choice__meta,
 .template-choice__subject {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .template-choice__meta {

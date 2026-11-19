@@ -254,7 +254,7 @@ defineExpose({ open: openShare });
 }
 .resource-context code {
   font-size: var(--mar-font-size-meta);
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 @media (max-width: 767px) {
   .grant-create {

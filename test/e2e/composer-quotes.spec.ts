@@ -2,6 +2,8 @@ import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test, type Page } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
+test.use({ locale: 'en-US' });
+
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/composer-quotes.html');
@@ -149,6 +151,131 @@ test('an unchanged selection stays dismissed until explicitly quoted again', asy
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(2);
   const references = (await result(page, 'references')) as { id: string }[];
   expect(references[0]!.id).not.toBe(references[1]!.id);
+});
+
+test('a focused Quote button closes when the browser selection clears and can reopen', async ({
+  page
+}) => {
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  const button = bubble.getByRole('button');
+  await selectReply(page);
+  await button.focus();
+  await expect(button).toBeFocused();
+  await page.evaluate(() => window.getSelection()!.removeAllRanges());
+  await expect(bubble).toHaveCount(0);
+
+  await selectReply(page);
+  await button.click();
+  expect(await result(page, 'references')).toMatchObject([{ text: 'Select this reply excerpt.' }]);
+  await expect(bubble).toHaveCount(0);
+});
+
+test('Quote does not add a stale selection before selectionchange is delivered', async ({
+  page
+}) => {
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await selectReply(page);
+  await bubble.getByRole('button').evaluate((button) => {
+    window.getSelection()!.removeAllRanges();
+    // Activation is synchronous, but clearing the native selection queues selectionchange.
+    (button as HTMLButtonElement).click();
+  });
+  await expect(bubble).toHaveCount(0);
+  expect(await result(page, 'references')).toEqual([]);
+});
+
+test('the open Quote bubble follows a changed text selection', async ({ page }) => {
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await selectReply(page);
+  await expect(bubble).toBeVisible();
+  const initial = (await bubble.boundingBox())!;
+  const text = await page
+    .locator('[data-quote-message-id] p')
+    .nth(1)
+    .evaluate((paragraph) => {
+      const plainText = paragraph.firstChild!;
+      const range = document.createRange();
+      range.setStart(plainText, 0);
+      range.setEnd(plainText, plainText.textContent!.trimEnd().length);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return selection.toString();
+    });
+  await expect.poll(async () => (await bubble.boundingBox())?.y).toBeGreaterThan(initial.y + 10);
+  await bubble.getByRole('button').click();
+  expect(await result(page, 'references')).toMatchObject([{ text }]);
+});
+
+test('a consumed outside press dismisses Quote without clearing or reopening the selection', async ({
+  page
+}) => {
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await selectReply(page);
+  await expect(bubble).toBeVisible();
+  await page.locator('#send').evaluate((outside) => {
+    // A control can handle the pointer press and preserve the native selection.
+    outside.addEventListener(
+      'pointerdown',
+      (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+      },
+      { once: true }
+    );
+    outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await expect(bubble).toHaveCount(0);
+  expect(await page.evaluate(() => window.getSelection()!.toString())).toBe(
+    'Select this reply excerpt.'
+  );
+  expect(await result(page, 'references')).toEqual([]);
+});
+
+test('selection resumes after a consumed pointer release', async ({ page }) => {
+  const paragraph = page.locator('[data-quote-message-id] p').first();
+  const point = await paragraph.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rect = range.getBoundingClientRect();
+    element.addEventListener('pointerup', (event) => event.stopPropagation(), { once: true });
+    return { left: rect.left + 1, right: rect.right - 1, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(point.left, point.y);
+  await page.mouse.down();
+  await page.mouse.move(point.right, point.y, { steps: 4 });
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await expect(bubble).toHaveCount(0);
+  await page.mouse.up();
+  const selectedText = await page.evaluate(() => window.getSelection()!.toString());
+  expect(selectedText).toContain('reply excerpt');
+  await bubble.getByRole('button').click();
+  expect(await result(page, 'references')).toMatchObject([{ text: selectedText }]);
+});
+
+test('a new primary pointer recovers when a previous release never reached the document', async ({
+  page
+}) => {
+  const paragraph = page.locator('[data-quote-message-id] p').first();
+  await paragraph.evaluate((element) => {
+    const press = (pointerId: number) =>
+      element.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          pointerType: 'touch',
+          pointerId,
+          isPrimary: true
+        })
+      );
+    press(10);
+    // The old pointer ended outside this document. The next gesture has a new ID.
+    press(11);
+    element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 11 }));
+  });
+  await selectReply(page);
+  await page.getByRole('group', { name: 'Quote', exact: true }).getByRole('button').click();
+  expect(await result(page, 'references')).toMatchObject([{ text: 'Select this reply excerpt.' }]);
 });
 
 test('context menu replaces the bubble, keeps native link menus, and rejects a stale target', async ({
@@ -462,6 +589,8 @@ test('the Chat context menu stays available for a scrolled multiline selection',
     text
   );
   await selectReply(page);
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await expect(bubble).toBeVisible();
   await page.locator('main').evaluate(
     (element) =>
       new Promise<void>((resolve) => {
@@ -469,6 +598,7 @@ test('the Chat context menu stays available for a scrolled multiline selection',
         element.scrollTop = 300;
       })
   );
+  await expect(bubble).toHaveCount(0);
   const point = await page.evaluate(() => {
     const viewport = document.querySelector('main')!.getBoundingClientRect();
     const rect = [...window.getSelection()!.getRangeAt(0).getClientRects()].find(

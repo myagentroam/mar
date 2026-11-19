@@ -493,6 +493,13 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   const header = main.locator('.conversation-header');
   const title = header.locator('.conversation-title-button');
   const treeButton = main.getByRole('button', { name: '查看会话树' });
+  const tools = header.locator('.conversation-header-tools');
+  const asideToggle = tools.getByRole('button', { name: '收起辅助工作面' });
+  const aside = page.locator('.workspace-aside');
+  await expect(tools.getByRole('button')).toHaveCount(2);
+  await expect(tools.getByRole('button').first()).toHaveAccessibleName('查看会话树');
+  await expect(asideToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(asideToggle).toHaveAttribute('aria-controls', (await aside.getAttribute('id'))!);
   await expect(header).not.toContainText('tree-1');
   await expect(header).toHaveCSS('border-bottom-width', '0px');
   const scroll = main.locator('.conversation-scroll');
@@ -522,6 +529,8 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
     path: test.info().outputPath('conversation-header-desktop.png'),
     animations: 'disabled'
   });
+  await asideToggle.click();
+  await expect(aside).toBeHidden();
   await expect(treeButton.locator('.tree-active-indicator')).toBeVisible();
   await treeButton.click();
   const tree = page.locator('.session-tree-popup');
@@ -571,6 +580,30 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await page.keyboard.press('Escape');
   await expect(page.locator('.workspace-grid > .conversation-panel')).toContainText('正文 tree-3');
   await expect(page.locator('.workspace-aside')).toContainText('正文 tree-2');
+  const mainHeader = page.locator('.workspace-grid > .conversation-panel .conversation-header');
+  const collapse = mainHeader.getByRole('button', { name: '收起辅助工作面' });
+  await collapse.press('Space');
+  const expand = mainHeader.getByRole('button', { name: '打开辅助工作面' });
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expect(expand).toBeFocused();
+  await expect(aside).toBeHidden();
+  await expand.press('Enter');
+  await expect(aside.getByText('正文 tree-2', { exact: true })).toBeVisible();
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    aside.locator('.conversation-header').getByRole('button', { name: '收起辅助工作面' })
+  ).toHaveCount(0);
+  await collapse.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expand.click();
+  const filesTab = aside.getByRole('tab', { name: '文件', exact: true });
+  await filesTab.click();
+  await expect(filesTab).toHaveAttribute('aria-selected', 'true');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(aside).toBeHidden();
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expand.click();
+  await expect(filesTab).toHaveAttribute('aria-selected', 'true');
   expect(legacyTreeReads()).toBe(0);
 });
 
@@ -582,13 +615,13 @@ test('Mobile session title opens its actions without overlapping the session tre
   const header = page.locator('.conversation-header');
   const title = header.locator('.conversation-title-button');
   const tree = header.getByRole('button', { name: '查看会话树' });
-  const tools = header.locator('.mobile-conversation-tools');
-  await expect(tools.getByRole('button')).toHaveCount(2);
-  await expect(tools.locator('[data-mar-icon]')).toHaveCount(2);
+  const tools = header.locator('.conversation-header-tools');
+  await expect(tools.getByRole('button')).toHaveCount(3);
+  await expect(tools.locator('[data-mar-icon]')).toHaveCount(3);
   const icons = await tools
     .locator('[data-mar-icon]')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-mar-icon')));
-  expect(icons).toEqual(['session-list', 'split']);
+  expect(icons).toEqual(['session-list', 'session-tree', 'split']);
   const [titleBounds, treeBounds, listBounds, asideBounds, headerBounds] = await Promise.all([
     title.boundingBox(),
     tree.boundingBox(),
@@ -596,9 +629,9 @@ test('Mobile session title opens its actions without overlapping the session tre
     tools.getByRole('button', { name: '打开辅助工作面' }).boundingBox(),
     header.boundingBox()
   ]);
-  const titleGap = treeBounds!.x - (titleBounds!.x + titleBounds!.width);
-  const treeGap = listBounds!.x - (treeBounds!.x + treeBounds!.width);
-  const toolsGap = asideBounds!.x - (listBounds!.x + listBounds!.width);
+  const titleGap = listBounds!.x - (titleBounds!.x + titleBounds!.width);
+  const treeGap = treeBounds!.x - (listBounds!.x + listBounds!.width);
+  const toolsGap = asideBounds!.x - (treeBounds!.x + treeBounds!.width);
   const rightInset = headerBounds!.x + headerBounds!.width - (asideBounds!.x + asideBounds!.width);
   expect(treeGap).toBeGreaterThan(0);
   expect(treeGap).toBeCloseTo(toolsGap, 1);
@@ -1827,7 +1860,7 @@ test('Main and Aside keep independent session watches through width constraints 
   await expect(aside.getByRole('tab', { name: /^session-/ })).toHaveCount(1);
   await expect(aside.getByRole('tab', { name: 'session-2', exact: true })).toHaveCount(0);
   await expect(asideComposer).toHaveValue('retained Aside draft');
-  await expect(aside.locator('.composer-attachments')).toHaveCount(0);
+  await expect(aside.locator('.composer-attachments')).toContainText('aside-note.txt');
   await expect
     .poll(() =>
       watches

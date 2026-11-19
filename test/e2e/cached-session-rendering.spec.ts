@@ -179,7 +179,8 @@ for (const [width, itemsPerSegment, running] of [
     await page.getByRole('button', { name: 'Workspace A', exact: true }).click();
     await expect(page.locator('.composer-input')).toBeVisible();
     await page.setViewportSize({ width, height: 900 });
-    if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+    const openSessionList = page.getByRole('button', { name: /打开会话列表|Open session list/u });
+    if (width < 768) await openSessionList.click();
     const cachedRow = page.locator('.session-row').filter({ hasText: 'cached conversation' });
     const otherRow = page.locator('.session-row').filter({ hasText: 'other conversation' });
     await cachedRow.locator('.session-link').click();
@@ -196,14 +197,14 @@ for (const [width, itemsPerSegment, running] of [
     }
     await page.locator('.conversation-scroll').focus();
     await page.locator('.conversation-scroll').press('Home');
-    if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+    if (width < 768) await openSessionList.click();
     await otherRow.locator('.session-link').click();
     await expect(latest('other', 0)).toBeInViewport();
     await expect.poll(() => snapshots).toBe(2);
     await page.locator('.conversation-scroll').focus();
     await page.locator('.conversation-scroll').press('Home');
     holdWatch = true;
-    if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+    if (width < 768) await openSessionList.click();
     await cachedRow.locator('.session-link').click();
     await expect.poll(() => pendingWatch !== undefined).toBe(true);
     await expect(latest('cached', 0)).toBeInViewport();
@@ -240,10 +241,10 @@ for (const [width, itemsPerSegment, running] of [
     holdWatch = false;
     for (let cycle = 0; cycle < 3; cycle++) {
       generation++;
-      if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+      if (width < 768) await openSessionList.click();
       await otherRow.locator('.session-link').click();
       await expect(latest('other', generation)).toBeInViewport();
-      if (width < 768) await page.locator('.mobile-conversation-tools button').first().click();
+      if (width < 768) await openSessionList.click();
       await cachedRow.locator('.session-link').click();
       await expect(latest('cached', generation)).toBeInViewport();
     }

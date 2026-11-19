@@ -17,6 +17,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  useId,
   watch
 } from 'vue';
 import type { Session, Workspace } from '../../model/workbench.js';
@@ -98,6 +99,7 @@ const managementPage = computed(() =>
 const cleanupDialogOpen = ref(false);
 const workspaceGrid = ref<HTMLElement>();
 const terminalMount = ref<HTMLElement>();
+const asideSurfaceId = `workspace-aside-${useId()}`;
 const asideAvailableWidth = ref(0);
 watch(
   workspaceGrid,
@@ -166,9 +168,10 @@ const asideVisible = computed(
     props.page.aside.asideState !== undefined &&
     asideWidth.value !== undefined &&
     asideWidth.value > 0 &&
-    (!props.page.layout.mobileViewport ||
-      props.page.layout.mobileWorkspaceSurface === 'inspector' ||
-      props.page.layout.mobileWorkspaceSurface === 'terminal')
+    (props.page.layout.mobileViewport
+      ? props.page.layout.mobileWorkspaceSurface === 'inspector' ||
+        props.page.layout.mobileWorkspaceSurface === 'terminal'
+      : !props.page.aside.asideState.collapsed)
 );
 watch(asideVisible, (visible) => props.page.aside.setAsideSurfaceVisible(visible), {
   immediate: true
@@ -182,7 +185,11 @@ const terminalVisible = computed(
 );
 function openPaneSurface(surface: 'sessions' | 'inspector' | 'terminal'): void {
   if (surface === 'terminal') props.page.aside.toggleAsideTerminal();
-  else props.page.layout.openMobileWorkspaceSurface(surface);
+  else if (props.page.layout.mobileViewport) props.page.layout.openMobileWorkspaceSurface(surface);
+  else if (surface === 'inspector') {
+    const target = props.page.selection.workspaceTarget;
+    if (target) props.page.aside.setAsideCollapsed(target, asideVisible.value);
+  }
 }
 const asideTools = computed(() => [
   { id: 'files' as const, label: translate('generated.workspaceInspector.files3') },
@@ -609,7 +616,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           v-else-if="page.resources.selectedWorkspace !== undefined"
           v-show="!workspaceOffline"
           :class="['workspace-grid', `mobile-surface-${page.layout.mobileWorkspaceSurface}`]"
-          :style="{ '--aside-width': `${asideWidth ?? 0}px` }"
+          :style="{ '--aside-width': `${asideVisible ? (asideWidth ?? 0) : 0}px` }"
         >
           <WorkspaceSessionList
             :aside-supported="page.aside.asideSupported"
@@ -716,6 +723,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           <WorkspaceSessionPane
             :controller="page.mainPaneController"
             :aside-ready="page.aside.asideState?.active !== undefined"
+            :aside-controls="asideSurfaceId"
+            :aside-expanded="asideVisible"
+            :aside-disabled="!page.layout.mobileViewport && asideWidth === undefined"
             :tree-supported="page.aside.asideSupported"
             :tree-open-session-id="openTreeSessionId"
             :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
@@ -760,6 +770,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             <div
               v-if="page.aside.asideState"
               v-show="asideVisible"
+              :id="asideSurfaceId"
               class="workspace-aside"
               tabindex="-1"
               :aria-hidden="!asideVisible"
@@ -1183,7 +1194,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 .workspace-selection-hint {
-  color: var(--mar-text-tertiary) !important;
+  color: var(--mar-text-secondary) !important;
   font-size: var(--mar-font-size-meta) !important;
 }
 
@@ -1224,7 +1235,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 .workspace-offline-icon {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: 1.75rem;
 }
 
@@ -1368,7 +1379,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 <style scoped>
 .workspace-tool-loading {
   margin: 0.2rem 0.55rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

@@ -452,7 +452,7 @@ test('Ctrl-click attachment previews do not navigate Workspace directories or sh
 });
 
 for (const locale of ['zh-CN', 'en-US'] as const) {
-  test(`Unified user tags hide resource input, preview attachments, and revalidate expired data ${locale}`, async ({
+  test(`Unified user tags show references, preview attachments, and revalidate expired data ${locale}`, async ({
     page
   }, testInfo) => {
     const english = locale === 'en-US';
@@ -461,22 +461,20 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     const fileName = 'Reference_20261010_185346_com.microsoft.emmx_笔记 with spaces.txt';
     const path = `mar-attachment://00000000-0000-4000-8000-000000000001/${fileName}`;
     const imageName = 'Screenshot_20261010_185346_com.microsoft.emmx_原图 with spaces.jpg';
-    const resources = [
-      serializeComposerTag('mar_skills', {
-        action: 'use',
-        instruction: COMPOSER_SKILL_INSTRUCTION,
-        skills: [
-          {
-            name: 'hidden-skill',
-            source: 'WORKSPACE',
-            path: '.agents/skills/hidden-skill/SKILL.md'
-          }
-        ]
-      }),
-      serializeComposerTag('mar_references', {
-        references: [{ type: 'file', path: 'hidden-reference.ts', label: 'hidden-reference.ts' }]
-      })
-    ].join('\n');
+    const skills = serializeComposerTag('mar_skills', {
+      action: 'use',
+      instruction: COMPOSER_SKILL_INSTRUCTION,
+      skills: [
+        {
+          name: 'hidden-skill',
+          source: 'WORKSPACE',
+          path: '.agents/skills/hidden-skill/SKILL.md'
+        }
+      ]
+    });
+    const references = serializeComposerTag('mar_references', {
+      references: [{ type: 'file', path: 'reference.ts', label: 'reference.ts' }]
+    });
     const files = serializeComposerTag('mar_attachments', {
       files: [
         { name: fileName, mime: 'text/plain', path },
@@ -495,16 +493,23 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         payload: {
           text: [
             serializeComposerTag('mar_goal_start', { objective: '检查目标' }),
-            resources,
+            skills,
+            references,
             files
           ].join('\n')
         }
       },
       {
-        id: 'hidden-user',
+        id: 'skill-only-user',
         kind: 'user_message',
         status: 'COMPLETED',
-        payload: { text: resources }
+        payload: { text: skills }
+      },
+      {
+        id: 'reference-only-user',
+        kind: 'user_message',
+        status: 'COMPLETED',
+        payload: { text: references }
       },
       {
         id: 'continue-user',
@@ -538,6 +543,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     let imageReads = 0;
     const imagePath = `mar-attachment://00000000-0000-4000-8000-000000000001/${imageName}`;
     let reads = 0;
+    await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+      json(route, { preparation: { state: 'UNAVAILABLE' } })
+    );
     await page.route(/\/api\/workspaces\/workspace-1\/files\/read(?:\?.*)?$/, (route) => {
       if (new URL(route.request().url()).searchParams.get('path') === imagePath) {
         imageReads += 1;
@@ -580,7 +588,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       }
       return route.fulfill({
         contentType: 'image/svg+xml',
-        headers: { 'cache-control': 'private, no-store' },
+        headers: { 'cache-control': 'private, no-store', 'x-mar-image-resized': '0' },
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#59758d" /></svg>'
       });
     });
@@ -593,13 +601,12 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       .click();
     await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
     await page.locator('.session-list .session-link').first().click();
-    await expect(page.locator('.conversation-item.user_message')).toHaveCount(2);
-    await expect(page.locator('.conversation-item.user_message').first()).toContainText(
-      english ? 'Goal started' : '目标开始'
-    );
-    await expect(page.locator('.conversation-item.user_message').last()).toContainText(
-      english ? 'Goal continued' : '目标继续'
-    );
+    const userMessages = page.locator('.conversation-item.user_message');
+    await expect(userMessages).toHaveCount(3);
+    await expect(userMessages.first()).toContainText(english ? 'Goal started' : '目标开始');
+    await expect(userMessages.nth(1).locator('.message-reference-tag')).toHaveText('reference.ts');
+    await expect(userMessages.nth(1).locator('.conversation-message')).toHaveCount(0);
+    await expect(userMessages.last()).toContainText(english ? 'Goal continued' : '目标继续');
     await expect(page.locator('.conversation-file-attachment')).toHaveCount(2);
     const imageFile = page.locator('.conversation-file-attachment').last();
     await expect(imageFile).toHaveText('');
@@ -655,7 +662,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         if (enabled) document.documentElement.dataset.theme = 'vscode-dark-2026';
         else delete document.documentElement.dataset.theme;
       }, dark);
-      const card = page.locator('.conversation-item.user_message').first();
+      const card = userMessages.first();
       const colors = await card.evaluate((element) => {
         const style = getComputedStyle(element);
         const sample = document.createElement('canvas').getContext('2d')!;
@@ -678,12 +685,12 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             rgb(style.getPropertyValue('--mar-conversation-surface'))
           ),
           titleColor: rgb(getComputedStyle(element.querySelector('strong')!).color),
-          mutedColor: rgb(style.getPropertyValue('--mar-conversation-muted').trim())
+          secondaryColor: rgb(style.getPropertyValue('--mar-text-secondary').trim())
         };
       });
       expect(colors.borderDistance).toBeLessThan(colors.oldBorderDistance);
       expect(colors.surfaceDistance).toBeLessThan(30);
-      expect(colors.titleColor).toEqual(colors.mutedColor);
+      expect(colors.titleColor).toEqual(colors.secondaryColor);
       await page.screenshot({
         path: testInfo.outputPath(`attachment-${dark ? 'dark' : 'light'}.png`)
       });
@@ -1674,7 +1681,7 @@ test('Work processes preserve manual disclosure, static reasoning and authoritat
   expect(
     await heading.locator('.process-activity-label').evaluate((element) => {
       const expected = document.createElement('span');
-      expected.style.color = 'var(--mar-conversation-text)';
+      expected.style.color = 'var(--mar-text-primary)';
       element.parentElement!.append(expected);
       const matches = getComputedStyle(element).color === getComputedStyle(expected).color;
       expected.remove();

@@ -332,7 +332,7 @@ function onLinkClick(event: MouseEvent): void {
 <style scoped>
 .agent-markdown {
   min-width: 0;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   line-height: 1.75;
   overflow-wrap: anywhere;
@@ -392,7 +392,7 @@ function onLinkClick(event: MouseEvent): void {
 .agent-markdown :deep(h5),
 .agent-markdown :deep(h6) {
   margin: 1.1rem 0 0.5rem;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-weight: 650;
   line-height: 1.45;
 }
@@ -445,7 +445,7 @@ function onLinkClick(event: MouseEvent): void {
   border-left: 3px solid color-mix(in srgb, var(--mar-color-brand) 45%, var(--mar-border-medium));
   border-radius: 0 5px 5px 0;
   background: color-mix(in srgb, var(--mar-color-brand) 4%, var(--mar-fill-subtle));
-  color: color-mix(in srgb, var(--mar-conversation-text) 90%, var(--mar-text-secondary));
+  color: var(--mar-text-primary);
   padding: 0.6rem 0.8rem;
 }
 
@@ -482,7 +482,7 @@ function onLinkClick(event: MouseEvent): void {
 
 .agent-markdown :deep(th) {
   background: var(--mar-fill-muted);
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-weight: 650;
 }
 
@@ -498,7 +498,7 @@ function onLinkClick(event: MouseEvent): void {
   border-radius: 3px;
   background: var(--mar-conversation-code);
   padding: 0.08rem 0.25rem;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
   word-break: normal;
   box-decoration-break: clone;
@@ -524,7 +524,7 @@ function onLinkClick(event: MouseEvent): void {
   display: block;
   padding: 0;
   background: transparent;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
   word-break: normal;
 }

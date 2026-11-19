@@ -178,7 +178,7 @@ defineExpose({ root });
 
 .mar-file-preview-eyebrow {
   flex: none;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
   line-height: 1.2;

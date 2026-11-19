@@ -221,7 +221,7 @@ watch(
 
 .command-picker p {
   margin: 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   padding: 0.65rem;
   font-size: var(--mar-font-size-meta);
 }
@@ -237,7 +237,7 @@ watch(
 
 .file-reference-picker button code,
 .file-reference-picker button .candidate-meta {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -246,7 +246,7 @@ watch(
 }
 
 .entry-kind {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   white-space: nowrap;
 }

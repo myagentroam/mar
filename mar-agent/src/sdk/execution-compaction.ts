@@ -54,7 +54,7 @@ export function createExecutionCompaction(ports: {
   ): ReturnType<typeof generateExecutionCompaction>;
   retainedResources(): Promise<string | undefined>;
   withProjection<T>(action: () => Promise<T>): Promise<T>;
-  retainDiscovery(message: SessionModelMessage): boolean;
+  pendingDiscoveryNames(message: SessionModelMessage): readonly string[];
   recordCommit(recordId: string): void;
   invalidateContext(error: unknown): void;
   invalidateUsage(): void;
@@ -150,7 +150,7 @@ export function createExecutionCompaction(ports: {
         messageSources: ports.messageSources,
         checkpoint: (value) => ports.resourceInput.checkpoint(value),
         withProjection: ports.withProjection,
-        retainDiscovery: ports.retainDiscovery,
+        pendingDiscoveryNames: ports.pendingDiscoveryNames,
         currentGeneration: () => modelContext.worldState.generation,
         recordCommit: (recordId) => {
           committed = true;

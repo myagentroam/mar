@@ -149,8 +149,9 @@ html.console-ui,
   --el-fill-color-blank: var(--mar-bg-panel);
   --el-text-color-primary: var(--mar-text-primary);
   --el-text-color-regular: var(--mar-text-secondary);
-  --el-text-color-secondary: var(--mar-text-tertiary);
-  --el-text-color-placeholder: var(--mar-text-faint);
+  --el-text-color-secondary: var(--mar-text-secondary);
+  --el-text-color-placeholder: var(--mar-text-secondary);
+  --el-text-color-disabled: var(--mar-text-disabled);
   --el-border-color: var(--mar-border-default);
   --el-border-color-light: var(--mar-border-subtle);
   --el-border-color-lighter: var(--mar-control-border-color-lighter);
@@ -158,7 +159,7 @@ html.console-ui,
   --el-border-color-dark: var(--mar-control-border-color-dark);
   --el-border-color-darker: var(--mar-control-border-color-darker);
   --el-disabled-bg-color: var(--mar-fill-soft);
-  --el-disabled-text-color: var(--mar-text-faint);
+  --el-disabled-text-color: var(--mar-text-disabled);
   --el-disabled-border-color: var(--mar-border-subtle);
   --el-mask-color: var(--mar-overlay-scrim);
   --el-mask-color-extra-light: var(--mar-overlay-scrim);
@@ -412,17 +413,21 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
 }
 
 :is(html.console-ui, .mar-theme-preview) :is(.el-input, .el-textarea, .el-date-editor) {
+  --el-input-text-color: var(--mar-text-primary);
   --el-input-border-color: var(--mar-input-border);
   --el-input-hover-border-color: var(--mar-input-border-hover);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-select__wrapper {
+  --el-input-text-color: var(--mar-text-primary);
+  --el-select-multiple-input-color: var(--mar-text-primary);
   --el-border-color: var(--mar-input-border);
   --el-border-color-hover: var(--mar-input-border-hover);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-select__wrapper.is-disabled {
   --el-fill-color-light: var(--el-disabled-bg-color);
+  --el-select-input-color: var(--mar-text-disabled);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-range-editor.is-disabled {
@@ -461,7 +466,7 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-tabs .el-tabs__item.is-disabled {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-disabled);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-tabs .el-tabs__item:focus-visible {
@@ -483,13 +488,13 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   --el-segmented-item-hover-color: var(--mar-text-primary);
   --el-segmented-item-hover-bg-color: var(--mar-fill-row-hover);
   --el-segmented-item-active-bg-color: var(--mar-fill-row-hover);
-  --el-segmented-item-disabled-color: var(--mar-text-faint);
+  --el-segmented-item-disabled-color: var(--mar-text-disabled);
   box-shadow: inset 0 0 0 1px var(--mar-border-default);
   font-size: var(--mar-font-size-body);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-segmented .el-segmented__item.is-selected.is-disabled {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-disabled);
 }
 
 :is(html.console-ui, .mar-theme-preview)
@@ -501,7 +506,6 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
 :is(html.console-ui, .mar-theme-preview) .el-dropdown-menu {
   --el-dropdown-menuItem-hover-fill: var(--mar-fill-row-hover);
   --el-dropdown-menuItem-hover-color: var(--mar-text-primary);
-  --el-text-color-disabled: var(--mar-text-faint);
 }
 
 :is(html.console-ui, .mar-theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
@@ -520,6 +524,10 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   font-weight: 400;
 }
 
+:is(html.console-ui, .mar-theme-preview) .el-select-dropdown__item.is-disabled {
+  color: var(--mar-text-disabled);
+}
+
 :is(html.console-ui, .mar-theme-preview) .el-select-dropdown__item.is-hovering:not(.is-disabled) {
   background-color: var(--mar-fill-row-hover);
 }
@@ -532,7 +540,7 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
 
 :is(html.console-ui, .mar-theme-preview)
   .el-select-dropdown.is-multiple
-  .el-select-dropdown__item.is-selected:not(.is-disabled)::after {
+  .el-select-dropdown__item.is-selected::after {
   background-color: currentColor;
 }
 

@@ -1,8 +1,4 @@
 .mar-session-list-title {
-  color: var(--mar-text-secondary);
-}
-
-button[aria-current='page'] .mar-session-list-title {
   color: var(--mar-text-primary);
 }
 

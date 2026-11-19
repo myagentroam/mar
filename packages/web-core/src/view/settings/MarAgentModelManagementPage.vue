@@ -2888,7 +2888,7 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   margin-top: 6px;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
@@ -2916,7 +2916,7 @@ onBeforeUnmount(() => {
 .catalog-model-id {
   display: block;
   margin-top: 4px;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   overflow-wrap: anywhere;
 }
 .catalog-reasoning {
@@ -2929,7 +2929,7 @@ onBeforeUnmount(() => {
   line-height: 1.45;
 }
 .catalog-reasoning-label {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .dialog-footer-summary {
   float: left;

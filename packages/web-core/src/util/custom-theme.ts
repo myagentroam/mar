@@ -69,6 +69,8 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     }
   // Assess only explicit opaque pairs; inherited/translucent colors need visual inspection.
   for (const [foreground, background] of [
+    ['--mar-text-primary', '--mar-bg-page'],
+    ['--mar-text-secondary', '--mar-bg-page'],
     ['--mar-text-primary', '--mar-bg-panel'],
     ['--mar-text-secondary', '--mar-bg-panel'],
     ['--mar-text-primary', '--mar-bg-chrome'],
@@ -77,8 +79,13 @@ export function analyzeCustomTheme(source: string): ThemeAnalysis {
     ['--mar-text-secondary', '--mar-fill-selection'],
     ['--mar-text-primary', '--mar-fill-row-hover'],
     ['--mar-text-secondary', '--mar-fill-row-hover'],
-    ['--mar-conversation-text', '--mar-conversation-surface'],
-    ['--mar-conversation-muted', '--mar-conversation-surface'],
+    ['--mar-text-primary', '--mar-conversation-canvas'],
+    ['--mar-text-secondary', '--mar-conversation-canvas'],
+    ['--mar-text-primary', '--mar-conversation-surface'],
+    ['--mar-text-secondary', '--mar-conversation-surface'],
+    ['--mar-text-primary', '--mar-conversation-process'],
+    ['--mar-text-secondary', '--mar-conversation-process'],
+    ['--mar-text-primary', '--mar-conversation-code'],
     ['--mar-color-on-accent', '--mar-color-brand'],
     ['--mar-color-on-accent', '--mar-color-brand-hover'],
     ['--mar-color-success-text', '--mar-color-success-bg'],

@@ -56,22 +56,20 @@ for (const { theme, width } of [
       'Paused, not pinned',
       'Normal'
     ]);
-    const {
-      normal,
-      selected: selectedColor,
-      fontSize
-    } = await list.evaluate((element) => {
+    const { primary, secondary, fontSize } = await list.evaluate((element) => {
       const probe = document.createElement('span');
       probe.style.fontSize = 'var(--mar-font-size-body)';
       element.append(probe);
       probe.style.color = 'var(--mar-text-secondary)';
-      const normal = getComputedStyle(probe).color;
+      const secondary = getComputedStyle(probe).color;
       probe.style.color = 'var(--mar-text-primary)';
-      const { color: selected, fontSize } = getComputedStyle(probe);
+      const { color: primary, fontSize } = getComputedStyle(probe);
       probe.remove();
-      return { normal, selected, fontSize };
+      return { primary, secondary, fontSize };
     });
-    expect(normal).not.toBe(selectedColor);
+    expect(primary).not.toBe(secondary);
+    const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+    await expect(tree.locator('li.selected .workspace-branch-button')).toHaveCSS('color', primary);
     const row = (title: string) =>
       list.locator('.session-link').filter({ has: page.getByText(title, { exact: true }) });
     for (const [title, icon, name] of [
@@ -82,10 +80,10 @@ for (const { theme, width } of [
       await expect(row(title).locator('svg[data-mar-icon]')).toHaveCount(1);
       const marker = row(title).getByRole('img', { name, exact: true });
       await expect(marker).toHaveAttribute('data-mar-icon', icon);
-      await expect(marker).toHaveCSS('color', normal);
+      await expect(marker).toHaveCSS('color', primary);
     }
     for (const title of await list.locator('strong').all()) {
-      await expect(title).toHaveCSS('color', normal);
+      await expect(title).toHaveCSS('color', primary);
       await expect(title).toHaveCSS('font-size', fontSize);
       await expect(title).toHaveCSS('font-weight', '400');
     }
@@ -98,24 +96,25 @@ for (const { theme, width } of [
     const pinned = row('Paused, still pinned');
     if (width >= 768) {
       await scheduled.hover();
-      await expect(scheduled.locator('strong')).toHaveCSS('color', normal);
+      await expect(scheduled.locator('strong')).toHaveCSS('color', primary);
     }
     for (const active of [scheduled, pinned]) {
       await active.click();
       await page.mouse.move(0, 0);
       await expect(active).toHaveAttribute('aria-current', 'page');
-      await expect(active.locator('strong')).toHaveCSS('color', selectedColor);
+      await expect(active.locator('strong')).toHaveCSS('color', primary);
+      await expect(active.locator('.session-relative-time')).toHaveCSS('color', secondary);
       await expect(active.locator('strong')).toHaveCSS('font-weight', '400');
       await expect(active.getByRole('img', { name: /Pinned|Scheduled task enabled/ })).toHaveCSS(
         'color',
-        selectedColor
+        primary
       );
     }
     await expect(scheduled).not.toHaveAttribute('aria-current', 'page');
-    await expect(scheduled.locator('strong')).toHaveCSS('color', normal);
+    await expect(scheduled.locator('strong')).toHaveCSS('color', primary);
     await expect(scheduled.getByRole('img', { name: 'Scheduled task enabled' })).toHaveCSS(
       'color',
-      normal
+      primary
     );
     await list.screenshot({ path: testInfo.outputPath('session-list-markers.png') });
   });
@@ -806,6 +805,26 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const headings = inspector.locator('.change-repository-heading');
       await expect(headings).toHaveCount(3);
       const root = headings.first();
+      const sessionHeading = page
+        .getByRole('region', { name: 'Session fixture' })
+        .locator('.session-heading');
+      const branchTag = sessionHeading.locator('.workspace-branch-tag');
+      const repositoryTag = headings.nth(1).locator('.repository-kind');
+      await expect(branchTag).toHaveText('develop');
+      await expect(branchTag).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      for (const property of ['padding-inline-start', 'padding-inline-end', 'border-top-color']) {
+        const expected = await repositoryTag.evaluate(
+          (element, name) => getComputedStyle(element).getPropertyValue(name),
+          property
+        );
+        await expect(branchTag).toHaveCSS(property, expected);
+      }
+      if (width === 1280) {
+        await sessionHeading.screenshot({
+          path: testInfo.outputPath('session-branch.png'),
+          animations: 'disabled'
+        });
+      }
       const titleRows = headings.locator('.repository-title-row');
       await page.evaluate(() => document.fonts.ready);
       for (const name of await titleRows.locator('strong').all()) {
@@ -865,20 +884,26 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(tag).toHaveCSS('font-weight', '400');
         await expect(tag).toHaveCSS('font-size', width >= 768 ? '12px' : '11px');
       }
-      const colors = await root.evaluate((element) => {
+      const colors = await root.evaluate((element, scheme) => {
         const probe = document.createElement('span');
         element.append(probe);
         probe.style.color = 'var(--mar-border-default)';
-        const border = getComputedStyle(probe).color;
+        const syncBorder = getComputedStyle(probe).color;
+        if (scheme !== 'daylight') probe.style.color = 'var(--mar-border-medium)';
+        const kindBorder = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-text-secondary)';
         const secondary = getComputedStyle(probe).color;
         probe.remove();
-        return { border, secondary };
-      });
+        return { kindBorder, syncBorder, secondary };
+      }, theme);
       await expect(root.locator('.repository-current')).toHaveCSS('color', colors.secondary);
-      for (const selector of ['.repository-kind', '.repository-current', '.repository-sync-tag']) {
-        await expect(root.locator(selector)).toHaveCSS('border-color', colors.border);
+      for (const selector of ['.repository-kind', '.repository-current']) {
+        await expect(root.locator(selector)).toHaveCSS('border-color', colors.kindBorder);
       }
+      await expect(root.locator('.repository-sync-tag')).toHaveCSS(
+        'border-color',
+        colors.syncBorder
+      );
       await expect(root.locator('.repository-sync-tag')).toHaveText('↓ 0 ↑ 25');
       const syncTag = root.locator('.repository-sync-tag');
       await expect(syncTag).not.toHaveAttribute('title');
@@ -1638,7 +1663,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(retry).not.toHaveClass(/failed/);
     const mutedColor = await page.locator('body').evaluate((body) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-text-muted)';
+      probe.style.color = 'var(--mar-text-secondary)';
       probe.style.position = 'fixed';
       probe.style.visibility = 'hidden';
       body.append(probe);

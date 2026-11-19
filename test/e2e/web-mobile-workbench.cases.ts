@@ -323,7 +323,7 @@ test('Mobile conversation tools stay aligned to the right of the title bar', asy
   for (const width of [390, 420]) {
     await page.setViewportSize({ width, height: 844 });
     const bounds = await page.locator('.conversation-header').evaluate((header) => {
-      const tools = header.querySelector('.mobile-conversation-tools');
+      const tools = header.querySelector('.conversation-header-tools');
       if (tools === null) throw new Error('Mobile conversation tools are missing');
       return {
         headerRight: header.getBoundingClientRect().right,

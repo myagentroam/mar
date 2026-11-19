@@ -918,7 +918,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         runnerDisabled: true
       });
       expect(runnerInputPattern.exec(submitting)?.[0]).toMatch(/\sdisabled(?:[\s=>])/u);
-      expect(submitting).toMatch(/class="composer-submitting"[^>]*role="status"/u);
+      expect(submitting).toMatch(
+        /<span\b(?=[^>]*class="[^"]*\bcomposer-submitting\b)(?=[^>]*role="status")[^>]*>/u
+      );
       expect(submitting).toContain(locale === 'zh-CN' ? '发送中...' : 'Sending...');
       expect(submitting).toMatch(
         /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)(?=[^>]*aria-busy="true")(?=[^>]*\sdisabled)[^>]*>/u

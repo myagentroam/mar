@@ -486,7 +486,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 }
 .git-page-hint {
   margin: 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }

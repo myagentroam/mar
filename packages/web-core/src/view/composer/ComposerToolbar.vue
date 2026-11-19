@@ -2,6 +2,7 @@
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from './ComposerSendButton.vue';
+import './composer-toolbar.css';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   composerSendKeys,
@@ -224,7 +225,7 @@ function selectFiles(event: Event): void {
 <template>
   <div
     :class="[
-      'composer-toolbar',
+      'composer-toolbar mar-composer-toolbar',
       {
         'has-runner-select': draftSessionOpen,
         'has-mobile-send': canInterrupt && inputHasContent,
@@ -242,7 +243,7 @@ function selectFiles(event: Event): void {
     <div :class="['composer-configuration', { 'has-runner-select': draftSessionOpen }]">
       <button
         v-tooltip="translate('generated.composerToolbar.addAttachment2')"
-        class="composer-icon-button composer-attachment-button mar-icon-action"
+        class="composer-attachment-button mar-composer-attachment mar-icon-action"
         type="button"
         :aria-label="translate('generated.composerToolbar.addAttachment')"
         @click="fileInput?.click()"
@@ -376,7 +377,7 @@ function selectFiles(event: Event): void {
     <span
       v-if="!mobileViewport || submitting"
       class="composer-hint"
-      :class="{ 'is-submitting': submitting }"
+      :class="{ 'is-submitting mar-composer-mobile-status': submitting }"
     >
       <span
         v-if="!mobileViewport"
@@ -393,7 +394,7 @@ function selectFiles(event: Event): void {
               })
         }}</span
       >
-      <span v-if="submitting" class="composer-submitting" role="status">{{
+      <span v-if="submitting" class="composer-submitting mar-composer-submitting" role="status">{{
         translate('workbench.sending')
       }}</span>
     </span>
@@ -406,7 +407,7 @@ function selectFiles(event: Event): void {
             })
       "
       v-if="interruptVisible"
-      class="composer-stop-button"
+      class="composer-stop-button mar-composer-action mar-composer-stop-action"
       :disabled="!canInterrupt"
       type="button"
       :aria-label="translate('generated.composerToolbar.stopRun')"
@@ -417,7 +418,7 @@ function selectFiles(event: Event): void {
     <ComposerSendButton
       v-tooltip="translate(submitting ? 'workbench.sending' : 'generated.composerToolbar.send2')"
       v-if="!canInterrupt || inputHasContent"
-      class="composer-send-button"
+      class="composer-send-button mar-composer-action"
       :disabled="
         (!inputHasContent && !hasSelectedCommand) ||
         loading ||
@@ -436,26 +437,8 @@ function selectFiles(event: Event): void {
 </template>
 
 <style scoped>
-.composer-submitting {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  flex-shrink: 0;
-}
-
 .attachment-file-input {
   display: none;
-}
-
-.composer-toolbar {
-  position: relative;
-  container-type: inline-size;
-  display: flex;
-  min-width: 0;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 0.4rem;
-  border-top: 1px solid var(--mar-border-subtle);
-  padding: 0.18rem 0.62rem 0.18rem 0.25rem;
 }
 
 .composer-configuration {
@@ -526,7 +509,7 @@ function selectFiles(event: Event): void {
 
 .composer-config,
 .composer-hint {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -585,147 +568,39 @@ function selectFiles(event: Event): void {
   content: '';
 }
 
-.composer-icon-button {
-  width: var(--mar-compact-control-size);
-  min-width: var(--mar-compact-control-size);
-  height: var(--mar-compact-control-size);
-  border: 1px solid var(--mar-border-default);
-  border-radius: var(--mar-radius-control);
-  background: var(--mar-bg-panel);
-  color: var(--mar-text-tertiary);
-  padding: 0;
-}
-
-.composer-attachment-button {
-  display: inline-grid;
-  flex: 0 0 auto;
-  align-self: center;
-  place-items: center;
-  border: 0;
-  background: transparent;
-  color: var(--mar-text-secondary);
-  cursor: pointer;
-}
-
-@media (max-width: 767px) {
-  .composer-attachment-button :deep(.mar-icon) {
-    font-size: 16px;
-  }
-}
-
-.composer-send-button,
-.composer-stop-button {
-  display: inline-grid;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1px solid var(--mar-color-brand);
-  border-radius: 50%;
-  background: var(--mar-color-brand);
-  color: var(--mar-color-on-accent);
-  padding: 0;
-  cursor: pointer;
-}
-
-@media (min-width: 768px) {
-  .composer-toolbar {
-    padding-top: 4px;
-    padding-right: 0.75rem;
-    padding-bottom: 4px;
-  }
-}
-
-.composer-stop-button {
-  border-color: var(--mar-color-danger-text);
-  background: var(--mar-bg-panel);
-  color: var(--mar-color-danger-text);
-}
-
-.composer-send-button:not(:disabled):hover {
-  border-color: var(--mar-color-brand-hover);
-  background: var(--mar-color-brand-hover);
-}
-
-.composer-stop-button:not(:disabled):hover {
-  background: var(--mar-color-danger-bg);
-}
-
-.composer-send-button:not(:disabled):focus-visible,
-.composer-stop-button:not(:disabled):focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
-}
-
-.composer-stop-button:not(:disabled):focus-visible {
-  outline-color: var(--mar-color-danger-text);
-}
-
-.composer-send-button:disabled:not([aria-busy='true']),
-.composer-stop-button:disabled {
-  cursor: not-allowed;
-  border-color: var(--mar-border-default);
-  background: var(--mar-fill-soft);
-  color: var(--mar-text-faint);
-}
-
-.composer-send-button[aria-busy='true'] {
-  cursor: progress;
-}
-
-.composer-send-button[aria-busy='true'] :deep(.mar-icon[data-mar-icon='loading-action']) {
-  animation-duration: 1s;
-}
-
 @media (max-width: 767px) {
   .composer-context-button {
-    min-height: 36px;
-  }
-}
-
-@media (max-width: 767px) {
-  .composer-send-button,
-  .composer-stop-button {
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    min-height: 28px;
-  }
-}
-
-@media (max-width: 767px) {
-  .composer-toolbar.is-mobile .composer-hint.is-submitting {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    min-height: var(--composer-toolbar-row-height);
   }
 
   .composer-toolbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto 28px;
-    align-items: center;
-    gap: 0.28rem;
+    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto var(--composer-action-size);
   }
 }
 
 @media (max-width: 767px) {
   .composer-toolbar.has-runner-select {
-    grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto 28px;
+    grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto var(
+        --composer-action-size
+      );
   }
 }
 
 @media (max-width: 767px) {
   .composer-toolbar.has-mobile-send {
-    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto 28px 28px;
+    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 0.9fr) auto repeat(
+        2,
+        var(--composer-action-size)
+      );
   }
 }
 
 @media (max-width: 767px) {
   .composer-toolbar.has-runner-select.has-mobile-send {
-    grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto 28px 28px;
+    grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1.15fr) minmax(0, 0.8fr) auto repeat(
+        2,
+        var(--composer-action-size)
+      );
   }
 }
 
@@ -740,9 +615,6 @@ function selectFiles(event: Event): void {
     grid-column: 1;
     grid-row: 1;
     justify-self: start;
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
   }
 }
 
@@ -914,12 +786,6 @@ function selectFiles(event: Event): void {
   transform: none;
 }
 
-:global(.composer-runner-select .el-select__caret),
-:global(.composer-access-select .el-select__caret),
-:global(.composer-model-effort-select .el-select__caret) {
-  color: var(--mar-text-faint);
-}
-
 :global(.composer-mini-popper .el-select-dropdown__item),
 :global(.composer-model-effort-popper .el-select-dropdown__item) {
   height: var(--mar-compact-control-size);
@@ -990,7 +856,7 @@ function selectFiles(event: Event): void {
   display: block;
   height: 2rem;
   padding: 0.25rem 0.75rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: var(--mar-compact-control-size);
 }
@@ -1005,17 +871,5 @@ function selectFiles(event: Event): void {
 
 :global(.composer-model-menu-single-column .el-select-dropdown__list) {
   grid-template-columns: minmax(0, 1fr);
-}
-
-:global(.composer-send-button .mar-icon),
-:global(.composer-stop-button .mar-icon) {
-  font-size: 0.92rem;
-}
-
-@media (max-width: 767px) {
-  :global(.composer-send-button .mar-icon),
-  :global(.composer-stop-button .mar-icon) {
-    font-size: var(--mar-action-icon-size, 18px);
-  }
 }
 </style>

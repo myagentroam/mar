@@ -228,7 +228,7 @@ void load();
   font-size: var(--mar-font-size-body);
 }
 .license-ledger > div > span {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .license-version {
   display: flex;
@@ -275,7 +275,7 @@ void load();
 }
 .license-request p {
   margin: 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 18px;
 }

@@ -773,7 +773,7 @@ function submitSessionSearch(): void {
 
 .watch-status {
   margin: 0.25rem 0.45rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -794,7 +794,7 @@ function submitSessionSearch(): void {
 
 .session-heading-meta h2 {
   flex: none;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
   line-height: 1.4;
@@ -807,10 +807,9 @@ function submitSessionSearch(): void {
   min-height: 1.5em;
   align-items: center;
   gap: 0.25rem;
-  padding: 0 0.375rem;
+  padding-inline: 0.28rem;
   border: 1px solid light-dark(var(--mar-border-default), var(--mar-border-medium));
   border-radius: var(--mar-radius-marker);
-  background: var(--mar-fill-muted);
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.2;
@@ -978,15 +977,11 @@ function submitSessionSearch(): void {
 
 .session-relative-time {
   flex: none;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
-}
-
-.session-row.selected .session-relative-time {
-  color: var(--mar-text-secondary);
 }
 
 .sidebar-empty {
@@ -1065,7 +1060,7 @@ function submitSessionSearch(): void {
 }
 
 .effective-skill-row .effective-mcp-meta {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

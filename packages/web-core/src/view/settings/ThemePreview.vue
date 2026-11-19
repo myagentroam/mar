@@ -118,7 +118,7 @@ const { t } = useI18n();
   min-width: 0;
 }
 .caption {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 .preview-sidebar > .caption {
   display: block;
@@ -132,7 +132,7 @@ const { t } = useI18n();
   border: 1px solid transparent;
   border-radius: var(--mar-radius-selection);
   background: transparent;
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-primary);
   text-align: left;
   font: inherit;
   font-family: var(--mar-font-mono);
@@ -140,7 +140,6 @@ const { t } = useI18n();
   overflow-wrap: anywhere;
 }
 .file.selected {
-  color: var(--mar-text-primary);
   background: var(--mar-fill-selection);
 }
 .file:not(.selected):hover {
@@ -159,7 +158,7 @@ const { t } = useI18n();
 .tab {
   padding: 0.35rem 0.55rem;
   background: var(--mar-bg-tab-inactive);
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   border-radius: var(--mar-radius-selection);
 }
 .tab.active {
@@ -174,19 +173,18 @@ const { t } = useI18n();
   margin-bottom: 0.5rem;
   padding: 0.4rem 0.5rem;
   background: color-mix(in srgb, var(--mar-color-brand) 6%, var(--mar-conversation-surface));
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   border: 1px solid color-mix(in srgb, var(--mar-color-brand) 8%, var(--mar-conversation-border));
   border-radius: var(--mar-radius-surface);
 }
 .assistant-message {
   padding: 0.5rem;
   background: var(--mar-conversation-surface);
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   border: 1px solid var(--mar-conversation-border);
   border-radius: var(--mar-radius-surface);
 }
 .assistant-message p {
-  color: var(--mar-conversation-muted);
   margin: 0.3rem 0;
 }
 .code {
@@ -226,7 +224,7 @@ const { t } = useI18n();
   margin-top: 0.5rem;
   padding: 0.35rem 0.5rem;
   background: var(--mar-conversation-process);
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   border: 1px solid var(--mar-conversation-process-border);
   border-radius: var(--mar-radius-surface);
 }
@@ -320,7 +318,7 @@ input::placeholder {
 }
 .preview-button:disabled {
   background: var(--el-fill-color-light);
-  color: var(--el-text-color-placeholder);
+  color: var(--mar-text-disabled);
   border-color: var(--el-border-color-light);
   cursor: not-allowed;
 }

@@ -70,7 +70,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
           };
     const now = Date.UTC(2026, 9, 14, 1, 44, 5);
     await page.clock.install({ time: new Date(now) });
-    await page.clock.pauseAt(new Date(now + 1000));
     const numericHeaders = [
       labels.inputTokens,
       labels.cache,
@@ -172,7 +171,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         models: [{ ...totals, key: 'fixture-model', label: 'Fixture model' }]
       });
     });
-    await page.goto('/console?view=settings&settings=usage');
+    await page.goto('/console?view=settings&settings=account');
+    // An uncached console boot compiles the settings route on the Vite server.
+    await expect(page.getByRole('heading', { name: /^(Account Security|账户安全)$/ })).toBeVisible({
+      timeout: 15_000
+    });
     if (locale === 'zh-CN') await page.getByRole('button', { name: '设置', exact: true }).click();
     await page.getByRole('button', { name: labels.title, exact: true }).click();
     const panel = page.getByTestId('usage-statistics');
@@ -196,6 +199,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(loadingMask).toHaveText('');
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await expect(panel.getByText('Loading usage…', { exact: true })).toHaveCount(0);
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     await page.clock.runFor(250);
     await expectLoadingInViewport();
     await page.screenshot({
@@ -208,22 +212,24 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.runFor(500);
     await expect(loadingMask).toBeHidden();
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
-    await expect(
-      panel.getByText(
+    const refreshButton = panel.getByRole('button', { name: labels.refresh, exact: true });
+    await expect(refreshButton).toHaveText('');
+    await expect(refreshButton.locator('svg')).toHaveCount(1);
+    const summary = panel
+      .locator('header')
+      .getByText(
         locale === 'en-US' ? 'Agent usage for the current account' : '当前账号的 Agent 用量',
         { exact: true }
-      )
-    ).toBeVisible();
-    const categories = panel.locator('.usage-purposes');
-    const categoryFontSize = await categories.evaluate((element) =>
-      getComputedStyle(element).getPropertyValue('--mar-font-size-meta').trim()
-    );
-    for (const button of await categories.getByRole('button').all()) {
-      await expect(button).toHaveCSS('font-size', categoryFontSize);
-      await expect(button).toHaveCSS('border-radius', '6px');
-      await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
-    }
-    const selectedCategory = categories.locator('[aria-pressed="true"]');
+      );
+    await expect(summary).toBeVisible();
+    const categories = panel.getByRole('radiogroup', {
+      name: locale === 'en-US' ? 'Purpose' : '用途'
+    });
+    const radios = categories.getByRole('radio');
+    await expect(radios).toHaveCount(5);
+    const selectedCategory = radios.first();
+    await expect(selectedCategory).toBeChecked();
+    const selectionIndicator = categories.locator('.el-segmented__item-selected');
     for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       await page.evaluate(
         (value) => document.documentElement.setAttribute('data-theme', value),
@@ -232,7 +238,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       const selection = await categories.evaluate((element) => {
         const reference = document.createElement('span');
         reference.style.backgroundColor = 'var(--mar-fill-selection)';
-        reference.style.color = 'var(--mar-text-primary)';
+        reference.style.color = 'var(--mar-text-secondary)';
         element.append(reference);
         const style = getComputedStyle(reference);
         const result = { background: style.backgroundColor, color: style.color };
@@ -240,20 +246,18 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         return result;
       });
       expect(selection.background).not.toBe('rgba(0, 0, 0, 0)');
-      await expect(selectedCategory).toHaveCSS('background-color', selection.background);
-      await expect(selectedCategory).toHaveCSS('color', selection.color);
-      await selectedCategory.hover();
-      await expect(selectedCategory).toHaveCSS('background-color', selection.background);
-      await expect(selectedCategory).toHaveCSS('color', selection.color);
-      await selectedCategory.focus();
-      await page.keyboard.press('Tab');
-      const nextCategory = categories.getByRole('button').nth(1);
-      await expect(nextCategory).toBeFocused();
-      await expect(nextCategory).toHaveCSS('outline-style', 'solid');
-      await expect(nextCategory).toHaveCSS('outline-width', '2px');
-      await expect(nextCategory).toHaveAttribute('aria-pressed', 'false');
-      await categories.screenshot({
-        path: testInfo.outputPath(`usage-category-labels-${theme}.png`)
+      await expect(selectionIndicator).toHaveCSS('background-color', selection.background);
+      await expect(summary).toHaveCSS('color', selection.color);
+      await expect(summary).toHaveCSS(
+        'font-size',
+        await summary.evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--mar-font-size-body').trim()
+        )
+      );
+      await page.screenshot({
+        animations: 'disabled',
+        clip: { x: 0, y: 0, width: page.viewportSize()!.width, height: 610 },
+        path: testInfo.outputPath(`usage-segmented-${theme}.png`)
       });
     }
     const panelLayout = await panel.evaluate((element) => {
@@ -296,7 +300,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.locator('.overview')).not.toContainText(
       locale === 'en-US' ? 'Partial usage' : '部分用量'
     );
-    await expect(panel.getByRole('img', { name: labels.trend })).toBeVisible();
+    const trend = panel.getByRole('img', { name: labels.trend });
+    await expect(trend).toBeVisible();
+    await expect(trend).toHaveAccessibleDescription(
+      new RegExp(`2026-10-14 08:44:05.*2026-10-14 09:44:05.*${labels.totalTokens}`)
+    );
     await expect(panel.locator('.axis-labels')).toHaveText(
       '2026-10-14 08:44:052026-10-14 09:44:05'
     );
@@ -329,19 +337,24 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(cacheHeight).toBeCloseTo(0.25, 3);
     await expect(total).toHaveCSS('cursor', 'pointer');
     await expect(total).not.toHaveAttribute('title');
-    await total.hover();
-    await page.clock.runFor(200);
+    // The tooltip provider dismisses on scroll. Position each target before hovering and
+    // let browser pointer events, scroll events and the tooltip timer run on the same clock.
+    await page.clock.resume();
     const tooltip = page.getByRole('tooltip').filter({ visible: true });
+    const hoverForTooltip = async (target: Locator) => {
+      await page.mouse.move(0, 0);
+      await expect(tooltip).toHaveCount(0);
+      await target.scrollIntoViewIfNeeded();
+      await target.hover();
+    };
+    await hoverForTooltip(total);
     await expect(tooltip).toHaveText(exact(totals.totalTokens));
-    await panel.getByRole('heading', { name: labels.title, exact: true }).hover();
-    await page.clock.runFor(300);
     const bucket = panel.locator('.trend-bucket').first();
     await expect(bucket).toHaveCSS('cursor', 'pointer');
     await expect(bucket).toHaveAccessibleName(
       new RegExp(`2026-10-14 08:44:05.*${locale === 'en-US' ? 'Input tokens' : '输入 Token'}`)
     );
-    await bucket.hover();
-    await page.clock.runFor(200);
+    await hoverForTooltip(bucket);
     await expect(tooltip).toContainText('2026-10-14 08:44:05 – 2026-10-14 09:44:05');
     await expect(tooltip).toContainText(
       `${compact(totals.inputTokens)} (${exact(totals.inputTokens)})`
@@ -358,18 +371,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         `${labels.inputTokens}.*${labels.cache}.*${labels.outputTokens}.*${labels.totalTokens}`
       )
     );
-    await panel.getByRole('heading', { name: labels.title, exact: true }).hover();
-    await page.clock.runFor(300);
+    await page.mouse.move(0, 0);
     await expect(tooltip).toHaveCount(0);
-    await panel.getByText(labels.chart, { exact: true }).click();
-    await expect(panel.locator('.trend details')).toHaveAttribute('open', '');
-    expect(
-      (await panel.locator('.trend details .el-table').getByRole('columnheader').allTextContents())
-        .map((text) => text.trim())
-        .filter((text) => numericHeaders.includes(text))
-    ).toEqual(numericHeaders);
+    await expect(panel.getByText(labels.chart, { exact: true })).toHaveCount(0);
     await expect(panel.getByText(labels.notes, { exact: true })).toHaveCount(0);
-    await expect(panel.locator('.el-table__body-wrapper').last()).toContainText(labels.unknown);
+    await expect(panel.locator('.records .el-table__body-wrapper')).toContainText(labels.unknown);
     const rows = panel.locator('.records .el-table__body-wrapper tr.el-table__row');
     await expect(rows).toHaveCount(20);
     await expect(rows.first()).toContainText('2026-10-14 09:44:04');
@@ -382,19 +388,15 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
     const inputCount = rows.first().getByText(compact('1234567'), { exact: true });
     await expect(inputCount).toHaveCSS('cursor', 'pointer');
-    await inputCount.hover();
-    await page.clock.runFor(200);
+    await hoverForTooltip(inputCount);
     await expect(tooltip).toHaveText(exact('1234567'));
-    await panel.getByRole('heading', { name: labels.title, exact: true }).hover();
-    await page.clock.runFor(300);
     const mobile = locale === 'zh-CN';
     const cacheWithoutRead = rows.nth(2).getByText('0 (0%)', { exact: true });
     await expect(cacheWithoutRead).toHaveCSS('cursor', 'pointer');
-    await cacheWithoutRead.hover();
-    await page.clock.runFor(300);
+    await hoverForTooltip(cacheWithoutRead);
     await expect(tooltip).toContainText(`${labels.cacheWrite}: 0`);
-    await panel.getByRole('heading', { name: labels.title, exact: true }).hover();
-    await page.clock.runFor(300);
+    await page.mouse.move(0, 0);
+    await expect(tooltip).toHaveCount(0);
     const pager = panel.locator('.management-pagination');
     await panel.locator('.records .el-table__expand-icon').first().click();
     const detail = panel.locator('.record-detail');
@@ -405,10 +407,18 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     if (mobile) {
       await expect(pager.locator('.el-pagination')).toHaveCount(0);
       for (const expected of [40, 60]) {
+        // Each automatic append requires a new intersection with the pagination boundary.
+        await panel
+          .getByRole('heading', { name: labels.title, exact: true })
+          .scrollIntoViewIfNeeded();
+        await expect(pager).not.toBeInViewport();
         await pager.scrollIntoViewIfNeeded();
-        await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(expected);
-        await page.clock.runFor(500);
+        await expect(rows).toHaveCount(expected);
       }
+      await panel
+        .getByRole('heading', { name: labels.title, exact: true })
+        .scrollIntoViewIfNeeded();
+      await expect(pager).not.toBeInViewport();
       await pager.scrollIntoViewIfNeeded();
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await expect(loadingMask).toBeHidden();
@@ -455,6 +465,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       path: testInfo.outputPath(`usage-pager-${locale}.png`)
     });
     const recordReads = requests.filter((url) => url.pathname.endsWith('/records')).length;
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     await page.clock.fastForward(60_000);
     await expect
       .poll(() => requests.filter((url) => url.pathname.endsWith('/overview')).length)
@@ -491,12 +502,19 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     if (!mobile) await expect(pager.locator('.el-pager .is-active')).toContainText('1');
     else await expect(rows).toHaveCount(20);
     failure = true;
-    await panel.getByRole('button', { name: labels.refresh, exact: true }).focus();
+    await refreshButton.focus();
     await page.keyboard.press('Enter');
-    await expect(page.locator('.el-message')).toContainText('Usage is temporarily unavailable.');
+    const failureNotice = page
+      .getByRole('alert')
+      .filter({ hasText: 'Usage is temporarily unavailable.' });
+    await expect(failureNotice).toBeVisible();
     await expect(rows).toHaveCount(20);
+    await failureNotice
+      .getByRole('button', { name: locale === 'en-US' ? 'Close' : '关闭', exact: true })
+      .click();
+    await expect(failureNotice).toBeHidden();
     failure = false;
-    await panel.getByRole('button', { name: labels.refresh, exact: true }).click();
+    await refreshButton.click();
     await expect(panel.locator('.overview-cell')).toHaveCount(2);
     await expect(panel).toHaveAttribute('aria-busy', 'false');
     await panel.getByRole('combobox', { name: labels.range, exact: true }).press('Enter');
@@ -537,8 +555,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(pickerBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     await panel.getByRole('heading', { name: labels.title, exact: true }).click();
 
-    await panel.getByRole('button', { name: labels.refresh, exact: true }).click();
+    const beforeInvalidCategory = requests.length;
+    await categories
+      .getByText(locale === 'en-US' ? 'Compact' : '上下文压缩', { exact: true })
+      .click();
     await expect(panel.locator('.el-form-item__error')).toBeVisible();
+    await expect(selectedCategory).toBeChecked();
+    expect(requests).toHaveLength(beforeInvalidCategory);
     const range = await page.evaluate((now) => {
       const format = (value: number) => {
         const date = new Date(value);
@@ -594,14 +617,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     categoryTesting = true;
     for (const [purpose, label, tokens] of [
       ['compact', locale === 'en-US' ? 'Compact' : '上下文压缩', '700'],
-      ['prompt_completion', locale === 'en-US' ? 'Composer Prediction' : '输入预测', '900']
+      ['prompt_completion', locale === 'en-US' ? 'Composer Prediction' : '输入预测', '900'],
+      ['other', locale === 'en-US' ? 'Other model request' : '其他模型请求', '900']
     ] as const) {
-      const category = panel
-        .locator('.usage-purposes')
-        .getByRole('button', { name: label, exact: true });
       const before = { overview: reads('overview'), records: reads('records') };
-      await category.click();
-      await expect(category).toHaveAttribute('aria-pressed', 'true');
+      if (purpose === 'compact') await selectedCategory.press('ArrowRight');
+      else await categories.getByText(label, { exact: true }).click();
+      await expect(categories.getByRole('radio', { name: label, exact: true })).toBeChecked();
       await expect.poll(() => reads('overview')).toBe(before.overview + 1);
       await expect.poll(() => reads('records')).toBe(before.records + 1);
       for (const endpoint of ['overview', 'records'])

@@ -418,9 +418,6 @@ function openContext(event: MouseEvent): void {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: -2px;
 }
-.session-tree-node[aria-current='true'] .session-tree-time {
-  color: var(--mar-text-secondary);
-}
 .session-tree-title {
   flex: 1;
   min-width: 0;
@@ -431,14 +428,14 @@ function openContext(event: MouseEvent): void {
 }
 .session-tree-time {
   flex: none;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
 }
 .session-tree-truncated {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .session-tree-row {
@@ -496,7 +493,7 @@ function openContext(event: MouseEvent): void {
   height: 8px;
   box-sizing: border-box;
   transform: translate(-50%, -50%);
-  border: 1.5px solid var(--mar-text-tertiary);
+  border: 1.5px solid var(--mar-text-secondary);
   border-radius: 50%;
   background: var(--mar-control-bg-color-overlay);
   box-shadow: 0 0 0 3px var(--mar-control-bg-color-overlay);

@@ -48,7 +48,7 @@ for (const scheme of ['Light', 'Dark']) {
               '--mar-color-brand': '#bf6ac9',
               '--mar-text-primary': '#dae5cf',
               '--mar-text-secondary': '#b6c3af',
-              '--mar-text-faint': '#8293a4',
+              '--mar-text-disabled': '#8293a4',
               '--mar-bg-subtle': '#26303d',
               '--mar-fill-muted': '#2b3540',
               '--mar-fill-row-hover': '#334455',
@@ -70,7 +70,7 @@ for (const scheme of ['Light', 'Dark']) {
             background: color('--mar-bg-subtle'),
             selected: color('--mar-fill-selection'),
             hover: color('--mar-fill-row-hover'),
-            disabled: color('--mar-text-faint'),
+            disabled: color('--mar-text-disabled'),
             disabledSelection: color('--mar-fill-muted'),
             border: color('--mar-border-default'),
             focus: color('--mar-color-brand')

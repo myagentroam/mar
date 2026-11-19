@@ -101,7 +101,7 @@ const emit = defineEmits<{ extensionChanged: [] }>();
   letter-spacing: -0.02em;
 }
 .system-brand code {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .system-status {
@@ -124,7 +124,7 @@ const emit = defineEmits<{ extensionChanged: [] }>();
   padding: 0.5rem 0;
 }
 .system-status dt {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .system-status dd {
   margin: 0;

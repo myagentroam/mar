@@ -20,7 +20,6 @@ async function colors(page: Page) {
     const result = {
       primary: color('--mar-text-primary'),
       secondary: color('--mar-text-secondary'),
-      tertiary: color('--mar-text-tertiary'),
       success: color('--mar-color-success-text'),
       link: color('--mar-control-link-text'),
       selected: color('--mar-fill-selection'),
@@ -291,6 +290,24 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     });
   }
 
+  test(`Disabled Composer model keeps its separate foreground in ${theme}`, async ({ page }) => {
+    await page.goto(
+      `${fixture.url}visual-alignment.html?model-options&disabled-model&theme=${theme}`
+    );
+    const select = page.locator('.composer-model-effort-select');
+    await expect(select.getByRole('combobox')).toBeDisabled();
+    const disabled = await select.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--mar-text-disabled)';
+      element.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    await expect(select.locator('.el-select__placeholder')).toHaveCSS('color', disabled);
+    await expect(select.locator('.el-select__caret')).toHaveCSS('color', disabled);
+  });
+
   test(`Settings navigation and model choices keep regular selected text in ${theme}`, async ({
     page
   }) => {
@@ -351,7 +368,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       );
       await expect(choices.first().locator('.template-choice__meta')).toHaveCSS(
         'color',
-        palette.tertiary
+        palette.secondary
       );
       await choices.last().click();
       await expect(choices.last().locator('.template-choice__name')).toHaveCSS(

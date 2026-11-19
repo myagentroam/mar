@@ -1503,7 +1503,7 @@ onBeforeUnmount(() => {
 }
 
 .pane-header span {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1592,14 +1592,14 @@ onBeforeUnmount(() => {
 .history-filter-note {
   margin: 0;
   padding: 0.5rem;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
 .history-empty-text {
   margin: 0;
   padding: 34px 12px;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.6;
   text-align: center;
@@ -1654,15 +1654,11 @@ onBeforeUnmount(() => {
 }
 
 .history-open time {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.history-list article.selected .history-open time {
-  color: var(--mar-text-secondary);
 }
 
 .history-pin-indicator {
@@ -1795,7 +1791,7 @@ onBeforeUnmount(() => {
 
 .files-draft-empty {
   padding: 20px;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   text-align: center;
 }
 
@@ -1869,7 +1865,7 @@ onBeforeUnmount(() => {
 
 .files-list p {
   margin: 0;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

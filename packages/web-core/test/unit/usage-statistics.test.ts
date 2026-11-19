@@ -740,22 +740,13 @@ describe('usage statistics settings contract', () => {
         path.includes('/overview') ? pendingOverview.promise : pendingRecords.promise
       );
       const changeFilter = () => {
-        if (field === 'purpose') {
-          const button = view
-            .findAll('button')
-            .find(
-              (node) =>
-                textContent(node) ===
-                commonMessages[localePreferenceService().locale.value].usageStatistics.purposes
-                  .compact
-            )!;
-          (button.props['onClick'] as () => void)();
-        } else {
-          const index = ['period', 'runner', 'model', 'mode'].indexOf(field);
-          const select = view.findAll('ElSelect')[index]!;
-          (select.props['onUpdate:modelValue'] as (value: string) => void)(value);
-          (select.props['onChange'] as () => void)();
-        }
+        const control =
+          field === 'purpose'
+            ? view.findAll('ElSegmented')[0]!
+            : view.findAll('ElSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
+        const next = field === 'purpose' && control.props['modelValue'] === value ? 'title' : value;
+        (control.props['onUpdate:modelValue'] as (value: string) => void)(next);
+        (control.props['onChange'] as () => void)();
       };
       changeFilter();
       await flushComponent();
@@ -1006,13 +997,9 @@ describe('usage statistics settings contract', () => {
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
         ).toBe(commonMessages[locale].usageStatistics.trend);
-        expect(textContent(view.findAll('summary')[0]!)).toBe(
-          commonMessages[locale].usageStatistics.chartData
-        );
-        const recordTable = view
-          .findAll('ElTable')
-          .find((node) => typeof node.props['row-key'] === 'function')!;
-        const key = recordTable.props['row-key'] as (record: UsageRecord) => string;
+        const tables = view.findAll('ElTable');
+        expect(tables).toHaveLength(1);
+        const key = tables[0]!.props['row-key'] as (record: UsageRecord) => string;
         expect(service.state.records.map(key)).toEqual(['ledger-one', 'ledger-two']);
         expect(key(record('legacy-record'))).toBe('legacy-record');
       } finally {
@@ -1042,7 +1029,9 @@ describe('usage statistics settings contract', () => {
       expect(html).toContain(commonMessages[locale].usageStatistics.range);
       const refreshButton = html.match(/<button\b[\s\S]*?<\/button>/u)?.[0];
       expect(refreshButton).toContain('<svg');
-      expect(refreshButton).toContain(commonMessages[locale].usageStatistics.refresh);
+      expect(refreshButton).toContain(
+        `aria-label="${commonMessages[locale].usageStatistics.refresh}"`
+      );
       expect(request).not.toHaveBeenCalled();
     }
   );

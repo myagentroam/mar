@@ -690,7 +690,7 @@ onMounted(() => {
 <style scoped>
 code {
   font-size: var(--mar-font-size-meta);
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .clickable-rows :deep(.el-table__row) {
   cursor: pointer;

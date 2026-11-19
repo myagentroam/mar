@@ -1,6 +1,7 @@
 import type { ModelMessage, ModelRequest } from '../model/contracts.js';
 import type { ClientToolDefinition } from '../tools/contracts.js';
 import type { CodeObservation, CodeToolCallRecord } from './code-observation-contract.js';
+import type { McpDiscoveryReceipt } from './mcp-discovery.js';
 
 /** Durable execution facts, projected to protocol input at the SDK adapter boundary. */
 export interface SessionModelMessage extends ModelMessage {
@@ -9,7 +10,7 @@ export interface SessionModelMessage extends ModelMessage {
   observationId?: string;
   toolSearchTools?: readonly ClientToolDefinition[];
   /** SDK discovery receipt; names are rebound to the current authorized catalog. */
-  mcpDiscovery?: { id: string; names: readonly string[] };
+  mcpDiscovery?: McpDiscoveryReceipt;
 }
 
 export interface SessionModelRequest extends ModelRequest {

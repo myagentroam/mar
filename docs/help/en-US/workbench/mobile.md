@@ -7,7 +7,7 @@ lastUpdated: 2026-11-19
 
 Mobile Workbench keeps the current Agent conversation as the main Work surface. Selecting **Work** or **Chat** when that mode is not active switches modes and restores the existing content without opening a resource or history menu. If nothing is selected, the existing empty state is shown. Selecting the active **Work** entry toggles the Node → Workspace resource tree; selecting the active **Chat** entry toggles its history drawer. Admin and Settings retain their existing category-menu behavior.
 
-In a work conversation, the title is on the left. The session tree, session list, and auxiliary work surface icons appear in that order on the right when available. Tap the split-pane icon on the far right to reopen the auxiliary work surface at its last active tab. Choose Files, Search, Git, or Terminal within that surface.
+In a work conversation, the title is on the left. The menu (which opens the session list), session tree, and auxiliary workspace icons appear in that order on the right when available. Tap the split-pane icon on the far right to reopen the auxiliary workspace at its last active tab. Choose Files, Search, Git, or Terminal there.
 
 The **Sessions & notifications** icon opens one custom panel with separate **Recent Sessions** and **Notifications** tabs; there is no separate bell. Its upper-right number counts unread notifications, and its lower-right green dot indicates running workspace sessions. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise. Click or tap the icon, or use `Ctrl/Cmd+Shift+E`, to toggle it; click outside or press Escape to close. Hovering does not open or close it.
 

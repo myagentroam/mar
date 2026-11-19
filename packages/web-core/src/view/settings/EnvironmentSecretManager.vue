@@ -589,7 +589,7 @@ function message(error: unknown): string {
 }
 .secret-heading p {
   margin: 3px 0 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;
 }
@@ -598,7 +598,7 @@ function message(error: unknown): string {
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;

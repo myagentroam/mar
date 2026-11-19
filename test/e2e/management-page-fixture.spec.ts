@@ -135,7 +135,7 @@ test('Usage distribution radio labels preserve section typography in both states
               const probe = document.createElement('span');
               probe.style.color = span.closest('.el-radio-button.is-active')
                 ? 'var(--el-radio-button-checked-text-color, var(--el-color-white))'
-                : 'var(--mar-text-tertiary)';
+                : 'var(--mar-text-secondary)';
               probe.style.fontSize = 'var(--mar-font-size-meta)';
               span.append(probe);
               const expected = getComputedStyle(probe);

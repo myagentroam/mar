@@ -25,6 +25,7 @@ export interface AsideSnapshot {
 export interface AsideState extends AsideSnapshot {
   readonly tools: readonly AsideTool[];
   readonly htmlOpenVersion?: number | undefined;
+  readonly collapsed?: boolean;
 }
 
 export const ASIDE_TOOLS: readonly AsideTool[] = [
@@ -44,7 +45,14 @@ export function asideViewMode(target: AsideTarget | undefined): AsideViewMode {
     : 'compact';
 }
 
-export function createWorkbenchAsideService(sessionTabLimit = 1) {
+/** Owns each open Workspace's Aside tab metadata and in-memory desktop visibility preference. */
+export function createWorkbenchAsideService({
+  sessionTabLimit = 1,
+  mobileViewport
+}: {
+  readonly sessionTabLimit?: number;
+  readonly mobileViewport?: Readonly<Ref<boolean>>;
+} = {}) {
   const workspaces = shallowRef<ReadonlyMap<string, ReadonlyMap<string, AsideState>>>(new Map());
 
   function observeCapabilities(input: {
@@ -79,6 +87,10 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
 
   function current(target: AsideWorkspace): AsideState {
     return workspaces.value.get(target.nodeId)?.get(target.workspaceId) ?? empty;
+  }
+  function setCollapsed(target: AsideWorkspace, collapsed: boolean): void {
+    const state = current(target);
+    if ((state.collapsed ?? false) !== collapsed) put(target, { ...state, collapsed });
   }
   function put(target: AsideWorkspace, state: AsideState): void {
     if (state.sessions.length > sessionTabLimit) {
@@ -143,6 +155,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
         : state.terminalReturn;
     put(target, {
       ...state,
+      ...(mobileViewport?.value ? {} : { collapsed: false }),
       active: { kind: 'tool', id },
       terminalReturn,
       ...(id === 'terminal' ? {} : { recentTool: id })
@@ -151,8 +164,13 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
   }
   function openSession(target: AsideSession): void {
     const state = current(target);
+    if (state.active?.kind === 'session' && state.active.sessionId === target.sessionId) {
+      if (!mobileViewport?.value) setCollapsed(target, false);
+      return;
+    }
     put(target, {
       ...state,
+      ...(mobileViewport?.value ? {} : { collapsed: false }),
       sessions: state.sessions.includes(target.sessionId)
         ? state.sessions
         : [...state.sessions, target.sessionId],
@@ -165,6 +183,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     if (!state.tools.includes('files')) return false;
     put(target, {
       ...state,
+      ...(mobileViewport?.value ? {} : { collapsed: false }),
       htmlPath: path,
       htmlOpenVersion: (state.htmlOpenVersion ?? 0) + 1,
       active: { kind: 'browser' }
@@ -175,7 +194,11 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
   function activateHtml(target: AsideWorkspace): boolean {
     const state = current(target);
     if (!valid(state, { kind: 'browser' })) return false;
-    put(target, { ...state, active: { kind: 'browser' } });
+    put(target, {
+      ...state,
+      ...(mobileViewport?.value ? {} : { collapsed: false }),
+      active: { kind: 'browser' }
+    });
     return true;
   }
 
@@ -302,7 +325,6 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
 
   function createInteraction(options: {
     readonly workspace: Readonly<Ref<AsideWorkspace | undefined>>;
-    readonly mobile: Readonly<Ref<boolean>>;
     readonly mobileSurface: Readonly<Ref<string>>;
     readonly saveSession: () => void;
     readonly openMobile: (surface: 'terminal' | 'inspector') => void;
@@ -318,13 +340,13 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
       if (!owns(target)) return;
       saveActive(target);
       selectTool(target, target.id);
-      if (options.mobile.value)
+      if (mobileViewport?.value)
         options.openMobile(target.id === 'terminal' ? 'terminal' : 'inspector');
     }
     function openBrowser(target: AsideWorkspace): void {
       if (!owns(target)) return;
       saveActive(target);
-      if (activateHtml(target) && options.mobile.value) options.openMobile('inspector');
+      if (activateHtml(target) && mobileViewport?.value) options.openMobile('inspector');
     }
     function closeBrowser(target: AsideWorkspace): void {
       if (owns(target)) clearHtmlWorkspace(target);
@@ -333,16 +355,14 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
       const target = options.workspace.value;
       if (target === undefined) return;
       saveActive(target);
-      if (
-        options.mobile.value &&
-        options.mobileSurface.value !== 'inspector' &&
-        options.mobileSurface.value !== 'terminal'
-      ) {
-        if (selectTool(target, 'terminal')) options.openMobile('terminal');
+      const mobile = mobileViewport?.value === true;
+      const surface = options.mobileSurface.value;
+      if (mobile ? surface !== 'inspector' && surface !== 'terminal' : current(target).collapsed) {
+        if (selectTool(target, 'terminal') && mobile) options.openMobile('terminal');
         return;
       }
       if (!toggleTerminal(target)) return;
-      if (options.mobile.value) {
+      if (mobile) {
         const active = current(target).active;
         options.openMobile(
           active?.kind === 'tool' && active.id === 'terminal' ? 'terminal' : 'inspector'
@@ -355,6 +375,7 @@ export function createWorkbenchAsideService(sessionTabLimit = 1) {
     observeCapabilities,
     createInteraction,
     current,
+    setCollapsed,
     ensure,
     selectTool,
     openHtml,
@@ -400,6 +421,7 @@ export interface WorkbenchAsideView {
   reloadAsideSession: () => void;
   selectAsideBrowser: (target: AsideWorkspace) => void;
   selectAsideTool: (target: AsideWorkspace & { readonly id: AsideTool }) => void;
+  setAsideCollapsed: (target: AsideWorkspace, collapsed: boolean) => void;
   setAsideSurfaceVisible: (visible: boolean) => void;
   toggleAsideTerminal: () => void;
 }

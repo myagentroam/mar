@@ -136,7 +136,7 @@ onBeforeUnmount(() => {
 }
 .inline-find-count {
   min-width: 3.4rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   text-align: center;
   white-space: nowrap;

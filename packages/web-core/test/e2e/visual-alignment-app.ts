@@ -3,7 +3,10 @@ import {
   bilingualNotificationMessage,
   bilingualNotificationTitle
 } from '../support/unicode-layout-fixtures.js';
-import type { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
+import {
+  hostedConversationSubmissionContext,
+  type createHostedConversationWorkspaceService
+} from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
 import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
 import { tableTooltipOptions } from '../../src/util/tooltip.js';
@@ -79,6 +82,10 @@ const hintDialogOpen = ref(false);
 const following = ref(true);
 const performanceVisible = ref(true);
 const diagnostics = createWebPerformanceDiagnostics();
+const actionState = new URLSearchParams(location.search);
+const interrupting = actionState.has('interrupt');
+const cancelling = actionState.has('cancelling');
+const submitting = actionState.has('submitting');
 const hostedSnapshot = ref({
   conversation: {
     id: 'conversation',
@@ -87,17 +94,24 @@ const hostedSnapshot = ref({
     modelId: 'one',
     templateName: new URLSearchParams(location.search).get('template-name') ?? 'Template'
   },
-  run: null,
-  models: [
-    { id: 'one', name: 'Model One' },
-    { id: 'two', name: 'Model Two' }
-  ]
+  run:
+    interrupting || cancelling
+      ? { id: 'run', status: cancelling ? 'CANCELLING' : 'RUNNING', startedAt: Date.now() }
+      : null,
+  models: actionState.has('no-hosted-models')
+    ? []
+    : [
+        { id: 'one', name: 'Model One' },
+        { id: 'two', name: 'Model Two' }
+      ]
 });
 const hostedWorkspace = {
   templateChanging: ref(false),
   snapshot: hostedSnapshot,
-  messageSubmitting: ref(false),
-  messageSubmissionContext: ref(undefined),
+  messageSubmitting: ref(submitting),
+  messageSubmissionContext: ref(
+    submitting ? hostedConversationSubmissionContext('node', 'conversation') : undefined
+  ),
   turns: ref([]),
   watchReady: ref(true),
   watchFailureCode: ref(undefined),
@@ -142,7 +156,7 @@ const toolbar = {
       ]
     : [],
   hideAccessSelection: !selectStates,
-  configurationDisabled: false,
+  configurationDisabled: new URLSearchParams(location.search).has('disabled-model'),
   accessDisabled: false,
   fastEnabled: false,
   contextUsage: new URLSearchParams(location.search).has('empty-context')
@@ -153,8 +167,9 @@ const toolbar = {
     : '42% used; 42000 of 100000 tokens\nGC: 3 · 12345 tokens',
   mobileViewport: mobile,
   activeRun: undefined,
-  canInterrupt: new URLSearchParams(location.search).has('interrupt'),
-  interruptVisible: new URLSearchParams(location.search).has('interrupt'),
+  canInterrupt: interrupting,
+  interruptVisible: interrupting || cancelling,
+  submitting,
   inputHasContent: !new URLSearchParams(location.search).has('empty-input'),
   hasSelectedCommand: false,
   loading: false,

@@ -38,7 +38,7 @@ const durationMs = computed(() =>
 <style scoped>
 .process-duration {
   flex: none;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

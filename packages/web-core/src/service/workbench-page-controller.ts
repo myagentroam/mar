@@ -466,7 +466,7 @@ export function createWorkbenchPageController<
     onUnauthenticated: () => returnToLogin()
   });
 
-  const workbenchAsideService = createWorkbenchAsideService();
+  const workbenchAsideService = createWorkbenchAsideService({ mobileViewport });
   function openHtmlAside(path: string): void {
     const target = workspaceTarget.value;
     if (target === undefined || !workbenchAsideService.current(target).tools.includes('files')) {
@@ -1926,7 +1926,6 @@ export function createWorkbenchPageController<
     toggleTerminal: toggleAsideTerminal
   } = workbenchAsideService.createInteraction({
     workspace: workspaceTarget,
-    mobile: mobileViewport,
     mobileSurface: mobileWorkspaceSurface,
     saveSession: saveAsideContext,
     openMobile: openMobileWorkspaceSurface
@@ -2251,6 +2250,7 @@ export function createWorkbenchPageController<
       reloadAsideSession,
       selectAsideBrowser,
       selectAsideTool,
+      setAsideCollapsed: workbenchAsideService.setCollapsed,
       setAsideSurfaceVisible: (visible: boolean) => {
         asideSurfaceVisible.value = visible;
       },

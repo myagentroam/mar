@@ -113,7 +113,7 @@ const coreProps = computed(() => props);
 
 .hosting-enablement-hint {
   margin: 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;
 }

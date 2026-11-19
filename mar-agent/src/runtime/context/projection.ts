@@ -13,6 +13,7 @@ import {
   type ContextGcTarget
 } from '../../session/context-gc-checkpoint.js';
 import type { SessionRecord } from '../../session/record-contract.js';
+import { parseMcpDiscoveryReceipt } from '../../session/mcp-discovery.js';
 import { HISTORY_INPUT_LIMITS } from '../../session/history-input-limits.js';
 import { replaceReadContextItems } from '../../prompts/read-context.js';
 import {
@@ -237,7 +238,7 @@ export function restoreModelContext(
   if (Buffer.byteLength(JSON.stringify(payload)) > byteLimit) return undefined;
   if (payload.role === 'user' && typeof payload.content === 'string') {
     const blocks = payload.textBlocks;
-    const discovery = payload.mcpDiscovery;
+    const discovery = parseMcpDiscoveryReceipt(payload.mcpDiscovery);
     const textBlocks =
       Array.isArray(blocks) &&
       Array.from(blocks).every((block) => block && typeof block.text === 'string') &&
@@ -248,14 +249,7 @@ export function restoreModelContext(
       role: 'user',
       content: payload.content,
       contextKind: 'contextual',
-      ...(isRecord(discovery) &&
-      typeof discovery.id === 'string' &&
-      discovery.id.length <= 128 &&
-      Array.isArray(discovery.names) &&
-      discovery.names.length <= 20 &&
-      discovery.names.every((name) => typeof name === 'string' && name.length <= 512)
-        ? { mcpDiscovery: { id: discovery.id, names: discovery.names } }
-        : {}),
+      ...(discovery ? { mcpDiscovery: discovery } : {}),
       ...(textBlocks === undefined ? {} : { textBlocks })
     };
   }

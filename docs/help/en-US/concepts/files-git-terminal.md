@@ -1,13 +1,13 @@
 ---
 title: Files, Git, and Terminals
-lastUpdated: 2026-11-06
+lastUpdated: 2026-11-19
 ---
 
 # Files, Git, and Terminals
 
 File, Git, and terminal operations use the Node Workspace as their working context; the complete Workspace is not uploaded to Server.
 
-On desktop, the auxiliary work surface (Aside) sits beside the main conversation. If the window is too narrow for both, Aside temporarily hides instead of splitting the available height in half. Widen the window or collapse the left resource panel to restore it. The active tab, drafts, and width preferences are preserved, and open terminals keep running. On mobile, use **Open auxiliary work surface** to open the overlay, then go back to continue the main conversation.
+On desktop, the auxiliary workspace (Aside) sits beside the main conversation. Use the split-pane icon at the far right of the main conversation header to collapse or expand it. Each workspace tab remembers this choice until you reload the page. If the window is too narrow, Aside temporarily hides; widen the window or collapse the left resource panel to restore it. Collapsing Aside keeps your active tab, drafts, and running terminals. On mobile, tap the same icon to open the overlay, then go back to continue the main conversation.
 
 - An `@` **reference** asks the Agent to use a Workspace file or folder. It is not an upload.
 - An **attachment** supplies content from outside the Workspace to the current message.

@@ -33,7 +33,7 @@ for (const scheme of ['Light', 'Dark']) {
               '--mar-color-brand': '#bf6ac9',
               '--mar-text-primary': '#dae5cf',
               '--mar-text-secondary': '#b6c3af',
-              '--mar-text-faint': '#8293a4',
+              '--mar-text-disabled': '#8293a4',
               '--mar-fill-row-hover': '#334455'
             }))
               element.style.setProperty(token, value);
@@ -49,7 +49,7 @@ for (const scheme of ['Light', 'Dark']) {
             normal: color('--mar-text-secondary'),
             active: color('--mar-text-primary'),
             hover: color('--mar-fill-row-hover'),
-            disabled: color('--mar-text-faint'),
+            disabled: color('--mar-text-disabled'),
             focus: color('--mar-color-brand')
           };
           probe.remove();

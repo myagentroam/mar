@@ -137,7 +137,7 @@ const agentWaitText = computed(() => {
   margin-inline-end: 0.5rem;
 }
 .agent-detail-text {
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

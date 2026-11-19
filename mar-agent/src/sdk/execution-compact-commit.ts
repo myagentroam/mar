@@ -20,7 +20,7 @@ export async function commitExecutionCompaction(input: {
   ): Omit<SessionStoreCompactInput, 'retainedModelContext' | 'inlineMediaState'>;
   readonly checkpoint: ResourceInputProjection['checkpoint'];
   readonly withProjection: <T>(action: () => Promise<T>) => Promise<T>;
-  readonly retainDiscovery: (message: SessionModelMessage) => boolean;
+  readonly pendingDiscoveryNames: (message: SessionModelMessage) => readonly string[];
   readonly currentGeneration: () => string | undefined;
   readonly recordCommit: (recordId: string) => void;
   readonly replace: (retained: SessionModelMessage[]) => void;
@@ -35,7 +35,16 @@ export async function commitExecutionCompaction(input: {
     const retainedStart = compactRetainedStart(input.messages, input.prefix.length, input.model);
     if (retainedStart === 0) return undefined;
     const retained = [
-      ...input.messages.slice(0, retainedStart).filter(input.retainDiscovery),
+      ...input.messages.slice(0, retainedStart).flatMap((message) => {
+        const receipt = message.mcpDiscovery;
+        if (!receipt) return [];
+        const names = input.pendingDiscoveryNames(message);
+        if (!names.length) return [];
+        // Do not preserve delivered definitions only because a sibling is pending.
+        return names.length === receipt.names.length
+          ? [message]
+          : [{ ...message, mcpDiscovery: { id: receipt.id, names } }];
+      }),
       ...input.messages
         .slice(retainedStart)
         .filter((message) => message.contextKind !== 'private' || message.role === 'provider')
@@ -58,6 +67,9 @@ export async function commitExecutionCompaction(input: {
           }
         : {
             ...message,
+            ...(message.mcpDiscovery
+              ? { mcpDiscoveryPendingNames: input.pendingDiscoveryNames(message) }
+              : {}),
             ...(message.images?.length
               ? { images: message.images.map(({ dataBase64: _bytes, ...image }) => image) }
               : {})

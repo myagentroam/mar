@@ -446,7 +446,7 @@ onBeforeUnmount(() => {
   /* Keep loading and retry feedback from shifting the reading viewport. */
   min-height: calc(24px + 0.8rem);
   text-align: center;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .conversation-history-error {
@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
 .conversation-empty p {
   max-width: 28rem;
   margin: 0;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.6;
 }
@@ -562,7 +562,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-loading-initial {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   text-align: center;
 }

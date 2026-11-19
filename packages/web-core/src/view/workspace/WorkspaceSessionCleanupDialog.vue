@@ -239,7 +239,7 @@ async function submit(): Promise<void> {
 }
 
 .workspace-session-cleanup-result dt {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

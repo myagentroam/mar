@@ -207,7 +207,7 @@ function tabSessionFixture(sessionTabLimit = 1) {
   const runs = runOwner.runs;
   const turns = ref<import('../../src/model/workbench.js').ConversationTurn[]>([]);
   const conversationOwner = conversationProjectionFixture(turns, ref<string | null>(null));
-  const aside = createWorkbenchAsideService(sessionTabLimit);
+  const aside = createWorkbenchAsideService({ sessionTabLimit });
   aside.ensure(target.value, ['files', 'terminal']);
   let revision = 0;
   const options: SelectionFixtureOptions = {

@@ -9,6 +9,7 @@ import type {
   SessionModelRequest as ModelRequest
 } from '../session/model-request.js';
 import type { SessionStore } from '../session/store/contracts.js';
+import { MCP_DISCOVERY_DELIVERED } from '../session/mcp-discovery.js';
 import type { ClientToolDefinition } from '../tools/contracts.js';
 import { executeRoundTools, type RoundToolScope } from '../tools/execution.js';
 import { pairedMcpToolNames } from '../tools/mcp/history.js';
@@ -141,7 +142,7 @@ export function createSessionExecutionFactory(ports: {
     SessionRuntime,
     | 'acknowledgeSkillContext'
     | 'acknowledgeMcpDiscovery'
-    | 'isPendingMcpDiscovery'
+    | 'pendingMcpDiscoveryNames'
     | 'mcpDiscoveryRevision'
     | 'publishMcpDiscovery'
     | 'assertCanExecute'
@@ -1050,7 +1051,7 @@ export function createSessionExecutionFactory(ports: {
             retainedResources: async () =>
               retainedSessionResourcesSnapshot(await loadRetainedSessionResources()),
             withProjection: withRecordProjection,
-            retainDiscovery: (message) => sessionRuntime.isPendingMcpDiscovery(message),
+            pendingDiscoveryNames: (message) => sessionRuntime.pendingMcpDiscoveryNames(message),
             recordCommit: (recordId) =>
               inputs.recordCompactCommit({ changed: true, recordId, executionId }),
             invalidateContext: (error) => executionOwner.invalidateContext(error),
@@ -1235,9 +1236,16 @@ export function createSessionExecutionFactory(ports: {
             runTools: executeRoundTools,
             startModel: (request) => {
               const skillLoads = preparedSkillLoads.get(request.messages);
-              return modelLifecycle.start(request, () => {
+              return modelLifecycle.start(request, async () => {
                 if (skillLoads) sessionRuntime.acknowledgeSkillContext(skillLoads);
-                sessionRuntime.acknowledgeMcpDiscovery(request.messages);
+                await sessionRuntime.acknowledgeMcpDiscovery(request.messages, (receipts) =>
+                  store.append(sessionId, {
+                    type: MCP_DISCOVERY_DELIVERED,
+                    payload: { receipts },
+                    executionId,
+                    turnId
+                  })
+                );
               });
             },
             recoverySignal: () => controller.signal,

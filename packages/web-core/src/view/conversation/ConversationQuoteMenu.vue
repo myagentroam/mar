@@ -35,23 +35,21 @@ interface SelectedQuote {
   readonly receive: NonNullable<ReturnType<ComposerQuoteTarget['capture']>>;
 }
 let selected: SelectedQuote | undefined;
-let dragging = false;
+let selectionPointer: number | undefined;
 let dismissedRange: Range | undefined;
 
-function close(): void {
-  dismissedRange = selected?.range.cloneRange() ?? dismissedRange;
+function dismiss(): void {
+  dismissedRange = selected?.range ?? dismissedRange;
+  selected = undefined;
   mode.value = undefined;
 }
-function clear(): void {
-  close();
-  selected = undefined;
-}
 watch([() => props.contextKey, () => props.root], () => {
-  clear();
+  dismiss();
+  selectionPointer = undefined;
   dismissedRange = undefined;
 });
 watchEffect(() => {
-  if (!props.target?.capture()) clear();
+  if (!props.target?.capture()) dismiss();
 });
 watch(mode, async (value) => {
   if (value === 'menu') {
@@ -106,26 +104,52 @@ function readSelection(): SelectedQuote | undefined {
   };
 }
 function inspectSelection(): void {
-  if (dragging || activeActions.value?.contains(document.activeElement)) return;
+  // A focused context menu owns its explicit snapshot; the bubble follows the live selection.
+  if (mode.value === 'menu' && menuActions.value?.contains(document.activeElement)) return;
+  if (selectionPointer !== undefined) {
+    // Re-selecting the same text is allowed after an actual selection change during the drag.
+    if (dismissedRange) {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || !sameRange(selection.getRangeAt(0), dismissedRange))
+        dismissedRange = undefined;
+    }
+    return;
+  }
   const value = readSelection();
-  if (!value) return clear();
+  if (!value) {
+    dismiss();
+    dismissedRange = undefined;
+    return;
+  }
   if (
     sameRange(value.range, dismissedRange) ||
-    (mode.value === 'menu' && sameRange(value.range, selected?.range))
+    (sameRange(value.range, selected?.range) && value.quote.text === selected?.quote.text)
   )
     return;
+  dismissedRange = undefined;
   selected = value;
   bubbleAnchor.value = value.range.getClientRects()[0] ?? value.range.getBoundingClientRect();
   mode.value = 'bubble';
 }
 function quote(): void {
   const value = selected;
-  clear();
-  if (value?.body.isConnected && props.root?.contains(value.body)) value.receive?.(value.quote);
+  const current = mode.value === 'bubble' ? readSelection() : value;
+  dismiss();
+  // Native selectionchange is queued, so activation can precede its notification.
+  if (
+    value &&
+    current &&
+    value.body === current.body &&
+    current.body.isConnected &&
+    props.root?.contains(current.body) &&
+    sameRange(current.range, value.range) &&
+    current.quote.text === value.quote.text
+  )
+    value.receive(current.quote);
 }
 function copy(): void {
   if (selected) emit('copy', selected.quote.text);
-  close();
+  dismiss();
 }
 function contextMenu(event: MouseEvent): void {
   if (
@@ -134,12 +158,12 @@ function contextMenu(event: MouseEvent): void {
     !props.root?.contains(event.target) ||
     event.target.closest('a,img,button,input,textarea,select,summary')
   )
-    return clear();
+    return dismiss();
   const value = readSelection();
-  if (!value?.body.contains(event.target)) return clear();
+  if (!value?.body.contains(event.target)) return dismiss();
   event.preventDefault();
   event.stopPropagation();
-  dragging = false;
+  selectionPointer = undefined;
   dismissedRange = undefined;
   selected = value;
   const rects = [...value.range.getClientRects()];
@@ -157,44 +181,48 @@ function contextMenu(event: MouseEvent): void {
   mode.value = 'menu';
 }
 function pointerDown(event: PointerEvent): void {
-  if (activeActions.value?.contains(event.target as Node)) return;
-  if (event.button === 0) {
-    close();
-    dragging = event.target instanceof Node && props.root?.contains(event.target) === true;
-    if (dragging) dismissedRange = undefined;
+  if (event.button !== 0 || !(event.target instanceof Node)) return;
+  // A new primary gesture can recover from a release outside the document, even with a new ID.
+  if (selectionPointer !== undefined && selectionPointer !== event.pointerId && !event.isPrimary)
+    return;
+  selectionPointer = undefined;
+  if (activeActions.value?.contains(event.target)) return;
+  dismiss();
+  if (props.root?.contains(event.target)) selectionPointer = event.pointerId;
+}
+function finishSelection(event: PointerEvent): void {
+  if (event.pointerId === selectionPointer) {
+    selectionPointer = undefined;
+    inspectSelection();
   }
 }
-function pointerUp(event: PointerEvent): void {
-  if (event.button !== 0) return;
-  const selecting = dragging;
-  dragging = false;
-  if (selecting) inspectSelection();
-}
-function pointerCancel(): void {
-  const selecting = dragging;
-  dragging = false;
-  if (selecting) inspectSelection();
+function windowBlur(): void {
+  selectionPointer = undefined;
+  dismiss();
 }
 function keydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') clear();
+  if (event.key === 'Escape') dismiss();
 }
 onMounted(() => {
   document.addEventListener('selectionchange', inspectSelection);
-  document.addEventListener('pointerdown', pointerDown);
-  document.addEventListener('pointerup', pointerUp);
-  document.addEventListener('pointercancel', pointerCancel);
+  // Observe the whole gesture even if an inner control consumes a pointer event.
+  document.addEventListener('pointerdown', pointerDown, true);
+  document.addEventListener('pointerup', finishSelection, true);
+  document.addEventListener('pointercancel', finishSelection, true);
   document.addEventListener('contextmenu', contextMenu);
   document.addEventListener('keydown', keydown);
-  document.addEventListener('scroll', close, true);
+  document.addEventListener('scroll', dismiss, true);
+  window.addEventListener('blur', windowBlur);
 });
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', inspectSelection);
-  document.removeEventListener('pointerdown', pointerDown);
-  document.removeEventListener('pointerup', pointerUp);
-  document.removeEventListener('pointercancel', pointerCancel);
+  document.removeEventListener('pointerdown', pointerDown, true);
+  document.removeEventListener('pointerup', finishSelection, true);
+  document.removeEventListener('pointercancel', finishSelection, true);
   document.removeEventListener('contextmenu', contextMenu);
   document.removeEventListener('keydown', keydown);
-  document.removeEventListener('scroll', close, true);
+  document.removeEventListener('scroll', dismiss, true);
+  window.removeEventListener('blur', windowBlur);
 });
 </script>
 
@@ -241,7 +269,7 @@ onBeforeUnmount(() => {
     @command="(command: string) => (command === 'copy' ? copy() : quote())"
     @visible-change="
       (visible: boolean) => {
-        if (!visible) close();
+        if (!visible && mode === 'menu') dismiss();
       }
     "
   >
