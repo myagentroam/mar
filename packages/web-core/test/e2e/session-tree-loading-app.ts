@@ -142,8 +142,9 @@ const FixtureApp = defineComponent({
             { 'data-testid': 'close-restored-focus', style: { display: 'none' } },
             closeRestoredFocus.value
           ),
-          anchor.value && open.value
+          anchor.value
             ? h(WorkspaceSessionTreePopover, {
+                visible: open.value,
                 anchor: anchor.value,
                 sessionId: 'tree-root',
                 title: 'View session tree',

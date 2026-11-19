@@ -194,6 +194,9 @@ const searchVisible = computed(() => {
 onMounted(() => props.page.files.mountSurface());
 onBeforeUnmount(() => props.page.files.unmountSurface());
 const cleanupTarget = ref<{ readonly nodeId: string; readonly workspace: Workspace }>();
+function readSessionTree() {
+  return { tree: props.page.sessionList.sessionNavigationSnapshot?.tree, status: treeStatus.value };
+}
 const treePopup = ref<{
   nodeId: string;
   workspaceId: string;
@@ -201,16 +204,25 @@ const treePopup = ref<{
   anchor: HTMLElement;
   title: string;
   placement: 'bottom-start' | 'bottom-end';
+  closing?: ReturnType<typeof readSessionTree>;
 }>();
+const openTreeSessionId = computed(() =>
+  treePopup.value?.closing === undefined ? treePopup.value?.sessionId : undefined
+);
+const treePopupContent = computed(() => treePopup.value?.closing ?? readSessionTree());
 function closeSessionTree(restoreFocus = false): void {
   const previous = treePopup.value;
-  if (!previous) return;
-  treePopup.value = undefined;
+  if (!previous || previous.closing) return;
+  // Keep only the last rendered tree while the Popover fades out.
+  previous.closing = readSessionTree();
   props.page.sessionList.setSessionTreeAnchor(undefined);
   if (restoreFocus)
     void nextTick(() => {
-      if (previous.anchor.isConnected) previous.anchor.focus();
+      if (!openTreeSessionId.value && previous.anchor.isConnected) previous.anchor.focus();
     });
+}
+function finishSessionTreeLeave(): void {
+  if (treePopup.value?.closing) treePopup.value = undefined;
 }
 function showSessionTree(
   sessionId: string,
@@ -220,7 +232,7 @@ function showSessionTree(
 ): void {
   const target = props.page.selection.workspaceTarget;
   if (!target || !props.page.aside.asideSupported) return;
-  if (treePopup.value?.anchor === anchor) {
+  if (treePopup.value?.anchor === anchor && !treePopup.value.closing) {
     closeSessionTree(true);
     return;
   }
@@ -284,6 +296,7 @@ function openSessionFromTree(sessionId: string, destination: 'aside' | 'main'): 
   const current = props.page.selection.workspaceTarget;
   if (
     !popup ||
+    popup.closing ||
     !current ||
     popup.nodeId !== current.nodeId ||
     popup.workspaceId !== current.workspaceId
@@ -306,8 +319,10 @@ watch(
         !props.page.aside.asideSupported ||
         props.page.selection.workspaceTarget?.nodeId !== popup.nodeId ||
         props.page.selection.workspaceTarget.workspaceId !== popup.workspaceId)
-    )
+    ) {
       closeSessionTree();
+      finishSessionTreeLeave();
+    }
   }
 );
 onBeforeUnmount(() => {
@@ -638,7 +653,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             :controller="page.mainPaneController"
             :aside-ready="page.aside.asideState?.active !== undefined"
             :tree-supported="page.aside.asideSupported"
-            :tree-open-session-id="treePopup?.sessionId"
+            :tree-open-session-id="openTreeSessionId"
             :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
             :tree-status="treeStatus"
             @open-tree="(id, anchor, title) => showSessionTree(id, anchor, title, 'bottom-end')"
@@ -848,7 +863,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
                     :controller="page.aside.asidePaneController"
                     :aside-ready="page.aside.asideState?.active !== undefined"
                     :tree-supported="page.aside.asideSupported"
-                    :tree-open-session-id="treePopup?.sessionId"
+                    :tree-open-session-id="openTreeSessionId"
                     :tree-summaries="page.sessionList.sessionNavigationSnapshot?.summaries"
                     :tree-status="treeStatus"
                     @open-tree="
@@ -1002,12 +1017,13 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     <WorkspaceSessionTreePopover
       v-if="treePopup"
       :key="treePopup.sessionId"
+      :visible="!treePopup.closing"
       :anchor="treePopup.anchor"
       :placement="treePopup.placement"
       :session-id="treePopup.sessionId"
       :title="treePopup.title"
-      :tree="page.sessionList.sessionNavigationSnapshot?.tree"
-      :status="treeStatus"
+      :tree="treePopupContent.tree"
+      :status="treePopupContent.status"
       :main-session-id="
         page.selection.draftSessionOpen ? undefined : page.selection.selectedSessionId
       "
@@ -1018,6 +1034,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           : undefined
       "
       @close="closeSessionTree"
+      @after-leave="finishSessionTreeLeave"
       @open="openSessionFromTree"
       @retry="page.application.retryWorkspaceWatch"
     />

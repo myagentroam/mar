@@ -176,8 +176,9 @@ createTooltipApp(
                 })
             }
           ),
-          anchor.value && open.value
+          anchor.value
             ? h(TreePopover, {
+                visible: open.value,
                 anchor: anchor.value,
                 placement: 'bottom-end',
                 sessionId: session.id,
@@ -186,6 +187,9 @@ createTooltipApp(
                 status: status.value,
                 mainSessionId: 'grandchild',
                 asideSessionIds: [],
+                onAfterLeave: () => {
+                  if (!open.value) anchor.value = undefined;
+                },
                 onClose: (restoreFocus: boolean) => {
                   open.value = false;
                   if (restoreFocus) void nextTick(() => anchor.value?.focus());
