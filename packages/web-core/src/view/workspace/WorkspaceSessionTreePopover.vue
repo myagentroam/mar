@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { NavigationSnapshot } from '../../service/session-navigation-projection.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import { createMobileLayerHistoryService } from '../../service/mobile-layer-history-service.js';
@@ -36,12 +36,6 @@ const mobileHistory = createMobileLayerHistoryService({
   isOpen: () => props.visible,
   close: () => emit('close', true)
 });
-watch(
-  () => props.visible,
-  (visible) => {
-    if (!visible) treeComponent.value?.closeMenu();
-  }
-);
 function outside(event: PointerEvent): void {
   if (!props.visible) return;
   const path = event.composedPath();
@@ -104,6 +98,7 @@ onBeforeUnmount(() => {
         <WorkspaceSessionTree
           ref="treeComponent"
           :session-id="sessionId"
+          :interactive="visible"
           :tree="tree"
           :status="status"
           :main-session-id="mainSessionId"

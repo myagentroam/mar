@@ -313,6 +313,50 @@ test('session tree fades out without keeping keyboard or pointer interaction', a
   await expect(surface).toHaveCount(0);
 });
 
+test('closing the session tree makes an open row menu inert during the fade', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}session-tree.html?locale=en-US`);
+  await page.addStyleTag({
+    content: 'html.console-ui { --el-transition-duration: 0.6s; }'
+  });
+  const trigger = page.getByRole('button', { name: 'View session tree' });
+  await trigger.click();
+  const row = page.locator('.session-tree-row').first();
+  await row.hover();
+  await row.getByRole('button', { name: 'Session actions' }).click();
+  const menu = page.locator('.session-tree-menu');
+  await expect(menu.getByRole('menuitem', { name: 'Copy session ID' })).toBeVisible();
+
+  const closing = await menu.evaluate(async (element) => {
+    const title = document.querySelector<HTMLButtonElement>('.conversation-tree-button')!;
+    title.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const tree = document.querySelector('.session-tree-popup')!;
+    const menuInteraction = () => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        capturesPointer: element.contains(
+          document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
+        ),
+        actionable:
+          element.isConnected && !!element.querySelector('[role="menuitem"]:not([inert] *)')
+      };
+    };
+    const fading = { treeInert: tree.hasAttribute('inert'), ...menuInteraction() };
+    title.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return { fading, reopened: { treeInert: tree.hasAttribute('inert'), ...menuInteraction() } };
+  });
+  expect(closing).toEqual({
+    fading: { treeInert: true, capturesPointer: false, actionable: false },
+    reopened: { treeInert: false, capturesPointer: false, actionable: false }
+  });
+  await expect(row).toBeVisible();
+  await row.hover();
+  await row.getByRole('button', { name: 'Session actions' }).click();
+  await expect(menu.getByRole('menuitem', { name: 'Copy session ID' })).toBeVisible();
+});
+
 test('standard MessageBox respects reduced motion on desktop and mobile', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [1280, 390]) {
