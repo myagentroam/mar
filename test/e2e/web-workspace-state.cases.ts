@@ -481,6 +481,8 @@ test('Workspace HTML links from Aside sessions open the shared browser', async (
   await expect(main.getByText('正文 tree-1', { exact: true })).toBeVisible();
 });
 
+const listOnlySessionActions = /^(在侧栏打开|在主工作面打开|置顶|取消置顶|上移|下移|删除)$/u;
+
 test('live descendant tree uses Workspace Watch and routes nodes to Aside or Main', async ({
   page
 }) => {
@@ -561,8 +563,14 @@ test('live descendant tree uses Workspace Watch and routes nodes to Aside or Mai
   await expect(page.getByText('正文 tree-3', { exact: true })).toBeVisible();
   await expect(tree).toHaveCount(0);
   await page.locator('.workspace-aside .conversation-title-button').click();
-  await page.getByRole('menuitem', { name: '在主工作面打开' }).click();
-  await expect(page.locator('.workspace-grid > .conversation-panel')).toContainText('正文 tree-2');
+  const asideTitleMenu = page.locator('.conversation-title-menu:visible');
+  await expect(asideTitleMenu.getByRole('menuitem', { name: '复制会话 ID' })).toBeVisible();
+  await expect(asideTitleMenu.getByRole('menuitem', { name: listOnlySessionActions })).toHaveCount(
+    0
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.workspace-grid > .conversation-panel')).toContainText('正文 tree-3');
+  await expect(page.locator('.workspace-aside')).toContainText('正文 tree-2');
   expect(legacyTreeReads()).toBe(0);
 });
 
@@ -613,8 +621,7 @@ test('Mobile session title opens its actions without overlapping the session tre
   await title.click();
   const titleMenu = page.locator('.conversation-title-menu');
   const actions = titleMenu.getByRole('menuitem');
-  await expect(actions.getByText('复制会话 ID', { exact: true })).toBeVisible();
-  const titleActions = await actions.allTextContents();
+  await expect(actions).toHaveText(['分享对话', '重命名', '查看会话树', '复制会话 ID']);
   await expect(tree).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('conversation-title-menu-mobile.png'),
@@ -634,7 +641,16 @@ test('Mobile session title opens its actions without overlapping the session tre
   await listRow.hover();
   await listRow.locator('.session-more-button').click();
   const rowMenu = page.locator('.session-action-menu:visible');
-  await expect(rowMenu.getByRole('menuitem')).toHaveText(titleActions);
+  await expect(rowMenu.getByRole('menuitem')).toHaveText([
+    '在侧栏打开',
+    '在主工作面打开',
+    '置顶',
+    '分享对话',
+    '重命名',
+    '查看会话树',
+    '复制会话 ID',
+    '删除'
+  ]);
   await rowMenu.getByRole('menuitem', { name: '在主工作面打开' }).click();
   await expect(title).toBeVisible();
   await title.click();
@@ -643,8 +659,10 @@ test('Mobile session title opens its actions without overlapping the session tre
     '树会话 1'
   );
   await page.getByRole('dialog').getByRole('button', { name: '取消' }).click();
-  await title.click();
-  await titleMenu.getByRole('menuitem', { name: '在侧栏打开' }).click();
+  await header.getByRole('button', { name: '打开会话列表' }).click();
+  await listRow.hover();
+  await listRow.locator('.session-more-button').click();
+  await rowMenu.getByRole('menuitem', { name: '在侧栏打开' }).click();
   await expect(page.locator('.workspace-aside')).toContainText('正文 tree-1');
   await expect(page.locator('.workspace-aside .conversation-title-button')).toBeVisible();
 });

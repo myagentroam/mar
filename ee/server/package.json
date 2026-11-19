@@ -1,6 +1,6 @@
 {
   "name": "@myagentroam-enterprise/server-implementation",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "private": true,
   "type": "module",
   "files": [

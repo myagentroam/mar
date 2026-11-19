@@ -49,7 +49,6 @@ const sessionContextKey = computed(() =>
 );
 const emit = defineEmits<{
   openTree: [sessionId: string, anchor: HTMLElement, title: string];
-  openSession: [sessionId: string, destination: 'aside' | 'main'];
   openSurface: [surface: 'sessions' | 'inspector' | 'terminal'];
   sessionMenuOpen: [];
   previewAttachment: [attachment: ComposerAttachment];
@@ -102,12 +101,10 @@ onBeforeUnmount(() => {
         :files-ready="controller.filesReady.value"
         :terminal-ready="controller.terminalReady.value"
         :aside-ready="asideReady"
-        :session-navigation-available="treeSupported"
         :runner-icon="runnerBrandIcon"
         :session-title="sessionTitle"
         :content-search-ready="controller.filesReady.value"
         @open-surface="emit('openSurface', $event)"
-        @open-session="(id, destination) => emit('openSession', id, destination)"
         @session-menu-open="emit('sessionMenuOpen')"
         @open-tree="
           (id, anchor) =>
