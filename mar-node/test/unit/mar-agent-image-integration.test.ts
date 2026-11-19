@@ -167,13 +167,14 @@ it.each(
                 ).toContain(name);
               }
               if (round++ === 0) {
+                const skill = {
+                  name: provider === 'CODEX' ? 'codex-imagegen' : 'byted_ark-imagegen'
+                };
                 yield {
                   type: 'client_tool.call',
                   callId: 'image-skill',
-                  name: 'skill',
-                  arguments: {
-                    name: provider === 'CODEX' ? 'codex-imagegen' : 'byted_ark-imagegen'
-                  }
+                  name: codeMode ? 'code_exec' : 'skill_load',
+                  arguments: codeMode ? `await tools.skill_load(${JSON.stringify(skill)});` : skill
                 };
                 yield { type: 'completed', reason: 'tool_use' };
               } else if (round === 2) {

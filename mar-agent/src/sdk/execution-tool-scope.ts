@@ -48,6 +48,7 @@ export function createExecutionToolScope(input: {
   readonly todo: ToolRuntimeContext['todo'];
   readonly waitInterrupt: ToolRuntimeContext['waitInterrupt'];
   readonly skills: ToolRuntimeContext['skills'];
+  readonly publishSkillContext: NonNullable<ToolRuntimeContext['publishSkillContext']>;
   readonly coreExtensions: Pick<
     ExtensionSession,
     | 'epoch'
@@ -177,6 +178,7 @@ export function createExecutionToolScope(input: {
       waitInterrupt,
       emit,
       skills: skills,
+      publishSkillContext: input.publishSkillContext,
       invokeTool: async (call, context, caller) => {
         let active = true;
         const invoke = () =>

@@ -345,7 +345,7 @@ describe('public tool metadata', () => {
       contentType: 'text/html'
     });
     expect(
-      structuredToolEventData('skill', {
+      structuredToolEventData('skill_load', {
         name: 'skill-name',
         description: 'Description',
         source: 'Host-provided',

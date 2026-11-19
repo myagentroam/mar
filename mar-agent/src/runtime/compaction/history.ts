@@ -15,7 +15,11 @@ export function buildNativeCompactionMessages(
   const contract = compactionPrompt();
   return [
     ...messages
-      .filter((message) => message.contextKind !== 'private' || message.role === 'provider')
+      .filter(
+        (message) =>
+          (message.contextKind !== 'private' || message.role === 'provider') &&
+          message.contextualBlock?.kind !== 'loaded-skill'
+      )
       .map((message) => {
         if (!message.images?.length) return message;
         const textOnly = { ...message };

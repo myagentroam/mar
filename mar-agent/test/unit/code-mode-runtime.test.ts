@@ -332,7 +332,7 @@ describe('Code Mode SDK and protocol integration', () => {
       { protocol: 'ANTHROPIC_MESSAGES' as const }
     ].flatMap((configuration) => [false, true].map((emitText) => ({ ...configuration, emitText })))
   )(
-    'loads Skills directly and forwards pixels without Base64 text for $protocol emitText=$emitText',
+    'loads Skill context and forwards pixels without Base64 text for $protocol emitText=$emitText',
     async (overrides) => {
       const { home, workspace } = await fixture();
       const png = {
@@ -365,11 +365,12 @@ describe('Code Mode SDK and protocol integration', () => {
           async *start(request): AsyncIterable<ModelEvent> {
             requests.push(request);
             if (requests.length === 1) {
+              const source = 'await tools.skill_load({name:"inspection"});';
               yield {
                 type: 'client_tool.call',
-                name: 'skill',
+                name: 'code_exec',
                 callId: 'load-skill',
-                arguments: { name: 'inspection' }
+                arguments: overrides.protocol === 'ANTHROPIC_MESSAGES' ? { code: source } : source
               };
               yield { type: 'completed', reason: 'tool_use' };
             } else if (requests.length === 2) {
@@ -391,7 +392,7 @@ describe('Code Mode SDK and protocol integration', () => {
       try {
         const session = await agent.createSession({
           workspace,
-          title: 'Direct Skill and image output'
+          title: 'Skill loading and image output'
         });
         expect(
           (
@@ -401,18 +402,15 @@ describe('Code Mode SDK and protocol integration', () => {
           ).status
         ).toBe('completed');
         expect(
-          BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'skill')?.allowedCallers
-        ).toEqual(['direct']);
-        expect(requests[0]!.tools.find((tool) => tool.name === 'skill')).toBeDefined();
-        expect(requests[0]!.tools.find((tool) => tool.name === 'skill')).not.toHaveProperty(
-          'allowedCallers'
+          BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.name === 'skill_load')?.allowedCallers
+        ).toEqual(['direct', 'programmatic']);
+        expect(requests[0]!.tools.find((tool) => tool.name === 'skill_load')).toBeUndefined();
+        expect(requests[0]!.tools.find((tool) => tool.name === 'code_exec')!.description).toContain(
+          '"name":"skill_load"'
         );
         expect(
-          requests[0]!.tools.find((tool) => tool.name === 'code_exec')!.description
-        ).not.toContain('"name":"skill"');
-        expect(
           requests[1]!.messages.find(
-            (message) => message.callId === 'load-skill' && message.role === 'tool'
+            (message) => message.contextualBlock?.id === 'runtime:loaded-skill:inspection'
           )!.content
         ).toContain('Inspect the image pixels before answering.');
         const imageResult = requests[2]!.messages.find(

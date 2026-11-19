@@ -89,7 +89,7 @@ export function publicToolMetadata(
         : {}),
       ...(text('contentType', 256) === undefined ? {} : { contentType: text('contentType', 256)! })
     };
-  if (toolName === 'skill' && typeof value.name === 'string')
+  if ((toolName === 'skill_load' || toolName === 'skill') && typeof value.name === 'string')
     return {
       name: value.name.slice(0, 128),
       ...(text('description', 2000) === undefined

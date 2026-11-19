@@ -108,7 +108,7 @@ describe('system prompt', () => {
         'code_exec',
         'read',
         'exec',
-        'skill',
+        'skill_load',
         'apply_patch',
         'agent_start',
         'agent_wait',
@@ -116,10 +116,17 @@ describe('system prompt', () => {
         'agent_stop',
         'todo'
       ],
-      directTools: ['code_exec', 'skill', 'agent_start', 'agent_wait', 'agent_send', 'agent_stop']
+      directTools: [
+        'code_exec',
+        'skill_load',
+        'agent_start',
+        'agent_wait',
+        'agent_send',
+        'agent_stop'
+      ]
     });
     expect(prompt).toContain(
-      'Available client tools: code_exec, skill, agent_start, agent_wait, agent_send, agent_stop.'
+      'Available client tools: code_exec, skill_load, agent_start, agent_wait, agent_send, agent_stop.'
     );
     expect(prompt).toContain('Code Mode Only: read, exec, apply_patch, todo');
     expect(prompt).toContain('only as tools.NAME inside code_exec');
@@ -188,7 +195,7 @@ describe('system prompt', () => {
       guaranteedCommands: { rg: '15.1.0' },
       workspace: '/workspace',
       tools: [
-        'skill',
+        'skill_load',
         'read',
         'exec',
         'apply_patch',
@@ -262,7 +269,9 @@ describe('system prompt', () => {
     expect(normalized).toContain('inspect, edit, or load a named instruction file');
     expect(normalized).toContain('only an explicit instruction to load and follow');
     expect(normalized).toContain('narrower scopes take precedence');
-    expect(normalized).toContain('only output from the built-in skill tool');
+    expect(normalized).toContain(
+      'only skill guidance the runtime injects after loading through built-in skill_load'
+    );
     expect(normalized).toContain('only the latest replacement or removal applies');
     expect(normalized).toContain('a removal revokes only that block');
     expect(normalized).toContain('runtime block metadata comes from trusted sdk entry points');
@@ -341,7 +350,7 @@ describe('system prompt', () => {
     expect(normalized).toContain('focus final answers on the most important information');
     expect(normalized).toContain('avoid long-winded explanations unless necessary');
     expect(normalized).not.toMatch(/\b10 lines\b|fixed line|hard limit/u);
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.70');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.71');
   });
 
   it('leaves Skill usage to its catalog without prescribing a Core-owned loading sequence', () => {
@@ -349,15 +358,15 @@ describe('system prompt', () => {
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: ['skill', 'exec']
+      tools: ['skill_load', 'exec']
     });
-    expect(prompt).toContain('Available client tools: skill, exec.');
+    expect(prompt).toContain('Available client tools: skill_load, exec.');
     expect(prompt).not.toContain('Reuse instructions already in context');
     expect(prompt).not.toContain('call skill before generic tools');
-    expect(prompt).toContain('Only output from the built-in skill tool');
-    expect(skillToolDefinition.description).toBe(
-      "Load a Skill's instructions by its exact catalog name."
+    expect(prompt).toContain(
+      'Only Skill guidance the Runtime injects after loading through built-in skill_load'
     );
+    expect(skillToolDefinition.description).toContain('Load a Skill by its exact catalog name.');
     expect(
       buildSystemPrompt({
         mode: 'run',
@@ -579,11 +588,13 @@ describe('system prompt', () => {
       mode: 'run',
       platform: 'linux',
       workspace: '/workspace',
-      tools: ['skill', 'agent_start', 'agent_wait', 'agent_stop']
+      tools: ['skill_load', 'agent_start', 'agent_wait', 'agent_stop']
     });
     const normalized = prompt.toLowerCase();
 
-    expect(prompt).toContain('Available client tools: skill, agent_start, agent_wait, agent_stop.');
+    expect(prompt).toContain(
+      'Available client tools: skill_load, agent_start, agent_wait, agent_stop.'
+    );
     expect(normalized).not.toContain('named or clearly relevant skill');
     expect(normalized).not.toContain('call skill before generic tools');
     expect(prompt).not.toContain('# Subagents');

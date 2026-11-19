@@ -122,7 +122,9 @@ export class ExecutionToolCatalog {
     return [...this.input.capture().values()]
       .filter((binding) => binding.mcp === undefined)
       .map((binding) => binding.definition)
-      .filter((tool) => this.eligible(tool) && (tool.name !== 'skill' || this.input.hasSkills()));
+      .filter(
+        (tool) => this.eligible(tool) && (tool.name !== 'skill_load' || this.input.hasSkills())
+      );
   }
   refresh(): void {
     this.#tools = this.input.registry.project(this.base());

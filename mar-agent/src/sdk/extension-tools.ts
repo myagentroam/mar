@@ -53,7 +53,7 @@ export class ExecutionToolSources {
           available: (call: ExtensionOperationContext) => {
             const context = this.#context(call);
             if (!context) return false;
-            if (definition.name === 'skill') return context.skills.size > 0;
+            if (definition.name === 'skill_load') return context.skills.size > 0;
             if (definition.name === 'tool_search')
               return (
                 this.#currentFrame()?.searchMcpTools !== undefined || this.#scope !== undefined

@@ -12,8 +12,10 @@ import type { ModelCredentialProvider } from '../model/configuration.js';
 import type { SessionModelRequest as ModelRequest } from '../session/model-request.js';
 import type { SessionStore } from '../session/store/contracts.js';
 import {
+  assertLoadedSkillCapacity,
   latestContextualWorldStateGeneration,
   parsePersistedContextualWorldState,
+  recoverLoadedSkillEntries,
   type ContextualWorldState
 } from '../runtime/context/world-state.js';
 import { TodoStore } from '../tools/agent/todo.js';
@@ -24,12 +26,14 @@ import type { ResolvedModelConfiguration } from './model-runtime.js';
 import type { SessionExecution, SessionExecutionContext } from './session-execution.js';
 import { SessionModelAdapters } from './session-model-adapters.js';
 
+/** Owns warm Session state shared across sequential Executions and retained cells. */
 export class SessionRuntime {
   #executionContext: SessionExecutionContext | undefined;
   #todo: TodoStore | undefined;
   readonly scheduleTool = createSessionToolScheduler();
   readonly #modelAdapters: SessionModelAdapters;
   #contextualWorldState: ContextualWorldState | undefined;
+  readonly #pendingSkillContext = new Map<string, string>();
   #inputs: SessionInputCoordinator | undefined;
   #requestSnapshots: ExtensionRequestSnapshots | undefined;
   #recordProjection: Promise<unknown> | undefined;
@@ -99,8 +103,28 @@ export class SessionRuntime {
     this.#modelAdapters.setGeneration(generation);
     this.#todo = undefined;
     this.#contextualWorldState = undefined;
+    this.#pendingSkillContext.clear();
     this.#inputs = undefined;
     this.#requestSnapshots = undefined;
+  }
+
+  publishSkillContext(name: string, content: string): void {
+    assertLoadedSkillCapacity(
+      this.#contextualWorldState?.entries ?? [],
+      this.#pendingSkillContext,
+      name,
+      content
+    );
+    this.#pendingSkillContext.set(name, content);
+  }
+
+  pendingSkillContext(): ReadonlyMap<string, string> {
+    return new Map(this.#pendingSkillContext);
+  }
+
+  acknowledgeSkillContext(delivered: ReadonlyMap<string, string>): void {
+    for (const [name, content] of delivered)
+      if (this.#pendingSkillContext.get(name) === content) this.#pendingSkillContext.delete(name);
   }
 
   recordRequest(modelId: string, request: ModelRequest): ExtensionRequestSnapshot {
@@ -171,7 +195,7 @@ export class SessionRuntime {
               initialized: false,
               instructionSnapshot: undefined,
               resourceSnapshot: undefined,
-              entries: []
+              entries: recoverLoadedSkillEntries(persisted, state.contextRecords)
             };
     this.#contextualWorldState = world;
     return { todo, contextRecords: state.contextRecords, generation, world };

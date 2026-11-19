@@ -71,6 +71,8 @@ export interface ToolRuntimeContext {
   writeToolResultResource?: import('./result-extensions.js').ToolResultResourceWriter;
   codeMode?: import('./contracts.js').ToolExecutionContext['codeMode'];
   skills: ReadonlyMap<string, AgentSkill>;
+  /** Trusted built-in Skill publication, separate from tool results and guest output. */
+  publishSkillContext?(name: string, content: string): void;
   recentImages?: readonly ToolRuntimeImage[];
   searchMcpTools?: (
     input: unknown,

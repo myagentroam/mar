@@ -169,6 +169,12 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
     async initializeWorldState() {
       instructionInsertIndex =
         mode === 'compact' ? contextualInstructionInsertIndex(messages) : messages.length;
+      // A stale sidecar can recover only Skill entries; their old anchors belong to the pre-GC history.
+      if (!worldState.initialized && worldState.entries.length)
+        worldState = {
+          ...worldState,
+          entries: worldState.entries.map((entry) => ({ ...entry, index: messages.length }))
+        };
       // Only the latest Compact may rebuild missing sidecar resources, never a GC boundary.
       if (
         !worldState.initialized &&
@@ -271,6 +277,13 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
             committed.records.some((record) => compactSummaryFromCheckpoint(record) !== undefined)
           )
         }
+      );
+      // GC replaces durable history, not the current Skill guidance. Re-anchor
+      // the private entries in the new generation, outside any tool batch.
+      next.entries.push(
+        ...worldState.entries
+          .filter((entry) => entry.kind === 'loaded-skill')
+          .map((entry) => ({ ...entry, index: messages.length }))
       );
       await commitWorldState(next);
     }

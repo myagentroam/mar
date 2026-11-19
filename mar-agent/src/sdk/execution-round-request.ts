@@ -1,5 +1,6 @@
 import { splitContextualPrompt } from '../runtime/context/contextual-blocks.js';
 import {
+  updateLoadedSkillWorldState,
   updatePromptWorldState,
   type ContextualWorldState
 } from '../runtime/context/world-state.js';
@@ -8,7 +9,7 @@ import type { SessionModelMessage, SessionModelRequest } from '../session/model-
 import type { ClientToolDefinition } from '../tools/contracts.js';
 import { prepareSessionModelRequest } from './request-preparation.js';
 
-/** Capture, transform and commit the world state for one actual model request. */
+/** Capture and transform a candidate; only ordinary prompt updates commit during preparation. */
 export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
   readonly messages: SessionModelMessage[];
   readonly continuation: SessionModelMessage | undefined;
@@ -17,6 +18,7 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
   residentTools(): readonly ClientToolDefinition[];
   readonly autoPermission: boolean;
   readonly signal: AbortSignal;
+  readonly skillLoads?: ReadonlyMap<string, string>;
   capture(): {
     roundTools: readonly ClientToolDefinition[];
     roundBindings: Bindings;
@@ -35,7 +37,12 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
     input.continuation === undefined ? input.messages : [...input.messages, input.continuation];
   input.bind(toolScope);
   const composed = splitContextualPrompt(await composeSystemPrompt());
-  const world = updatePromptWorldState(input.world(), input.messages.length, composed.parts);
+  const skillAnchor = input.messages.length;
+  const promptWorld = updatePromptWorldState(input.world(), skillAnchor, composed.parts);
+  const loads = input.skillLoads;
+  const world = loads?.size
+    ? updateLoadedSkillWorldState(promptWorld, skillAnchor, loads)
+    : promptWorld;
   const candidateRequest = prepareSessionModelRequest(
     {
       ...input.requestBase,
@@ -57,6 +64,17 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
     input.preparing(undefined, input.messages.length);
   }
   input.signal.throwIfAborted();
-  if (world !== input.world()) await input.commitWorld(world);
-  return { candidateRequest, request, toolScope };
+  if (promptWorld !== input.world()) await input.commitWorld(promptWorld);
+  return {
+    candidateRequest,
+    request,
+    toolScope,
+    commitSkillContext: async () => {
+      if (!loads || world === promptWorld) return;
+      const current = input.world();
+      const next =
+        current === promptWorld ? world : updateLoadedSkillWorldState(current, skillAnchor, loads);
+      if (next !== current) await input.commitWorld(next);
+    }
+  };
 }

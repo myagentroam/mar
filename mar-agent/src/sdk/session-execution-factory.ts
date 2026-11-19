@@ -139,12 +139,15 @@ export function createSessionExecutionFactory(ports: {
   sessionId: string;
   sessionRuntime: Pick<
     SessionRuntime,
+    | 'acknowledgeSkillContext'
     | 'assertCanExecute'
     | 'bindExecutionContext'
     | 'deactivateExecution'
     | 'joinRecordProjection'
+    | 'pendingSkillContext'
     | 'registerExecution'
     | 'publishEvent'
+    | 'publishSkillContext'
     | 'restoreExecutionState'
     | 'scheduleTool'
     | 'sessionBackend'
@@ -760,6 +763,7 @@ export function createSessionExecutionFactory(ports: {
           todo,
           waitInterrupt,
           skills: instructionContext?.skills ?? new Map(),
+          publishSkillContext: (name, content) => sessionRuntime.publishSkillContext(name, content),
           coreExtensions,
           operations: extensionManager.operations,
           scheduleTool: sessionRuntime.scheduleTool,
@@ -1063,12 +1067,18 @@ export function createSessionExecutionFactory(ports: {
             await compactCoordinator.checkpoint(true);
             return;
           }
+          const preparedSkillLoads = new WeakMap<
+            ModelRequest['messages'],
+            ReadonlyMap<string, string>
+          >();
           const prepareRound = createExecutionRoundPreparer<
             ModelMessage,
             {
               candidateRequest: ModelRequest;
               request: ModelRequest;
               toolScope: RoundToolScope;
+              skillLoads: ReadonlyMap<string, string>;
+              commitSkillContext(): Promise<void>;
             },
             PreparedExecutionRound<RoundToolScope>
           >({
@@ -1089,10 +1099,12 @@ export function createSessionExecutionFactory(ports: {
                   executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
                 }
               }),
-            buildCandidate: (continuation) =>
-              prepareExecutionRoundRequest({
+            buildCandidate: async (continuation) => {
+              const skillLoads = sessionRuntime.pendingSkillContext();
+              const candidate = await prepareExecutionRoundRequest({
                 messages,
                 continuation,
+                skillLoads,
                 model: selectedModel,
                 requestBase: {
                   promptCacheKey: sessionId,
@@ -1113,7 +1125,9 @@ export function createSessionExecutionFactory(ports: {
                   preparingRequestBaseLength = baseLength;
                 },
                 transform: (candidate, bindings) => transformModelRequest(candidate, bindings)
-              }),
+              });
+              return { ...candidate, skillLoads };
+            },
             adoptLateInput: async () => {
               const lateCoreChange =
                 inputs.hasBoundaryCompactPending && (await appendMailboxMessages());
@@ -1126,7 +1140,13 @@ export function createSessionExecutionFactory(ports: {
               const lateAdopted = lateBlocking && (await compactCoordinator.checkpoint(true));
               return Boolean(lateCoreChange || lateAdopted);
             },
-            prepareResources: async ({ candidateRequest, request, toolScope }) => {
+            prepareResources: async ({
+              candidateRequest,
+              request,
+              toolScope,
+              skillLoads,
+              commitSkillContext
+            }) => {
               resourceInput.observe(candidateRequest.messages);
               const media =
                 selectedModel.gcEnabled === false
@@ -1140,16 +1160,15 @@ export function createSessionExecutionFactory(ports: {
                 );
                 if (committed) return { retry: true as const };
               }
-              return {
-                round: {
-                  request: await resourceInput.prepare(
-                    request,
-                    candidateRequest.images,
-                    candidateRequest.messages
-                  ),
-                  toolScope
-                }
-              };
+              const prepared = await resourceInput.prepare(
+                request,
+                candidateRequest.images,
+                candidateRequest.messages
+              );
+              controller.signal.throwIfAborted();
+              await commitSkillContext();
+              if (skillLoads.size) preparedSkillLoads.set(prepared.messages, skillLoads);
+              return { round: { request: prepared, toolScope } };
             }
           });
           const completed = await executionOwner.runMainLoop({
@@ -1173,7 +1192,15 @@ export function createSessionExecutionFactory(ports: {
               }),
             prepareRound,
             runTools: executeRoundTools,
-            startModel: (request) => modelLifecycle.start(request),
+            startModel: (request) => {
+              const skillLoads = preparedSkillLoads.get(request.messages);
+              return modelLifecycle.start(
+                request,
+                skillLoads === undefined
+                  ? undefined
+                  : () => sessionRuntime.acknowledgeSkillContext(skillLoads)
+              );
+            },
             recoverySignal: () => controller.signal,
             compactContext,
             afterModel: (closedPrefixLength, request) =>

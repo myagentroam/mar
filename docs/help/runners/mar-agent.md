@@ -121,7 +121,7 @@ ask 通过 Runner 审批卡在线等待，显示公开原因、命令/参数/代
 
 原生会话记录保存在 Node 运行账号的 `~/.mar/agent/sessions/`。Server 不保存会话正文。MAR Agent 支持 Plan、Compact、question、MCP、图片和 subagent。模型可通过 `todo` 工具的 `action: read | write` 读取或整体替换当前会话的任务清单；空列表可清空清单。Todo 更新会显示为任务清单，已有会话的清单与历史保持兼容。每个 subagent 都是独立持久化的子会话，保留自己的历史和父子关系，但默认会话列表只显示用户根会话；Agent Network 支持根会话、子会话和孙会话三层，不支持第四层。目标模式由 Node 的统一 Goal 流程管理，不在 Agent SDK 内重复实现。
 
-MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提供名称和用途摘要；用户请求明确命中某个 Skill 时，再加载该 Skill 的完整工作流和资源目录。无需在请求中写出 Skill 名称。 同名技能按 Workspace、用户、SDK 内置的顺序选择；项目可以定制指导，但不能改变工具参数或主机权限。
+MAR Agent 会扫描 HOME 与工作区中的标准 Skill 目录，先向模型提供名称和用途摘要。Agent 按需调用 `skill_load`，用户无需在请求中写出技能名称。技能指导会加入模型上下文，不作为工具输出。上下文 GC 保留每个已加载技能的最新版本；Compact 会清除已加载的指导，Agent 可按需重载。同名技能按 Workspace、用户、SDK 内置的顺序选择；项目指导不能改变工具参数或主机权限。
 
 ### 命令执行环境
 

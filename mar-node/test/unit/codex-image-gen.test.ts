@@ -545,7 +545,7 @@ describe('codex_image_gen', () => {
         if (
           !request.messages.some(
             (message) =>
-              message.role === 'tool' &&
+              message.contextualBlock?.id === 'runtime:loaded-skill:codex-imagegen' &&
               message.content.includes('<mar_skill name="codex-imagegen" source="Host-provided">')
           )
         ) {
@@ -555,7 +555,7 @@ describe('codex_image_gen', () => {
           yield {
             type: 'client_tool.call',
             callId: 'load-imagegen',
-            name: 'skill',
+            name: 'skill_load',
             arguments: { name: 'codex-imagegen' }
           };
           yield { type: 'completed', reason: 'tool_use' };
@@ -592,6 +592,7 @@ describe('codex_image_gen', () => {
           const content = result?.content ?? '';
           expect(content).not.toContain(PNG_BASE64);
           generatedPath = /Generated image saved to (.+)\.\n/u.exec(content)?.[1];
+          expect(generatedPath, content).toBeDefined();
           expect(generatedPath).toContain(
             `${join('.mar', 'agent', 'sessions')}${process.platform === 'win32' ? '\\' : '/'}`
           );

@@ -14,7 +14,7 @@ export interface ContextualWorldState {
   promptSnapshot?: readonly ContextualPart[];
   entries: Array<{
     index: number;
-    kind: 'instructions' | 'resources' | 'mcp' | 'skills' | 'prompt';
+    kind: 'instructions' | 'resources' | 'mcp' | 'skills' | 'loaded-skill' | 'prompt';
     content: string;
     block?: ModelContextualBlock;
     textBlocks?: readonly ModelTextBlock[];
@@ -67,6 +67,30 @@ export function latestContextualWorldStateGeneration(
     )
       generation = record.recordId;
   return generation;
+}
+
+/** A committed GC may be newer than its sidecar after an interruption. In
+ * that case recover only loaded Skills, and only from the same Compact epoch. */
+export function recoverLoadedSkillEntries(
+  previous: ContextualWorldState | undefined,
+  records: readonly import('../../session/record-contract.js').SessionRecord[]
+): ContextualWorldState['entries'] {
+  if (!previous) return [];
+  const latestGc = records.findLastIndex((record) => record.type === 'context.gc.completed');
+  const compact = records.findLastIndex(
+    (record) => compactSummaryFromCheckpoint(record) !== undefined
+  );
+  if (latestGc <= compact) return [];
+  const previousGeneration = previous.generation;
+  if (
+    previousGeneration === undefined
+      ? compact !== -1
+      : !records
+          .slice(Math.max(0, compact), latestGc)
+          .some((record) => record.recordId === previousGeneration)
+  )
+    return [];
+  return previous.entries.filter((entry) => entry.kind === 'loaded-skill');
 }
 
 const textBlocksSchema = z
@@ -140,6 +164,68 @@ export function updatePromptWorldState(
 
 const MAX_CONTEXTUAL_WORLD_STATE_ENTRIES = 1_024;
 const MAX_CONTEXTUAL_WORLD_STATE_CONTENT_BYTES = 8 * 1024 * 1024;
+const MAX_LOADED_SKILLS = 64;
+const MAX_LOADED_SKILL_CONTENT_BYTES = 1024 * 1024;
+const LOADED_SKILL_ID_PREFIX = 'runtime:loaded-skill:';
+
+/** Check both accepted loads and delivered guidance before admitting a new load. */
+export function assertLoadedSkillCapacity(
+  entries: readonly ContextualWorldState['entries'][number][],
+  pending: ReadonlyMap<string, string>,
+  name: string,
+  content: string
+): void {
+  const selected = new Map<string, string>();
+  for (const entry of entries)
+    if (entry.kind === 'loaded-skill')
+      selected.set(entry.block!.id.slice(LOADED_SKILL_ID_PREFIX.length), entry.content);
+  for (const [pendingName, body] of pending) selected.set(pendingName, body);
+  selected.set(name, content);
+  let bytes = 0;
+  for (const body of selected.values()) bytes += Buffer.byteLength(JSON.stringify(body));
+  if (selected.size > MAX_LOADED_SKILLS || bytes > MAX_LOADED_SKILL_CONTENT_BYTES)
+    throw new AgentError(
+      'MAR_AGENT_HOST_LIMIT_EXCEEDED',
+      'Loaded Skill context exceeds the Session limit. Compact before loading more Skills.'
+    );
+}
+
+export function updateLoadedSkillWorldState(
+  state: ContextualWorldState,
+  index: number,
+  loads: ReadonlyMap<string, string>
+): ContextualWorldState {
+  const entries = new Map(
+    state.entries
+      .filter((entry) => entry.kind === 'loaded-skill')
+      .map((entry) => [entry.block!.id, entry] as const)
+  );
+  const replacements: ContextualWorldState['entries'] = [];
+  for (const [name, content] of loads) {
+    const id = `${LOADED_SKILL_ID_PREFIX}${name}`;
+    if (entries.get(id)?.content === content) continue;
+    replacements.push({
+      index,
+      kind: 'loaded-skill',
+      content,
+      block: contextualBlock(
+        { id, source: 'runtime', authority: 'context', content },
+        'loaded-skill'
+      )
+    });
+  }
+  if (!replacements.length) return state;
+  const replaced = new Set(replacements.map((entry) => entry.block!.id));
+  return {
+    ...state,
+    entries: [
+      ...state.entries.filter(
+        (entry) => entry.kind !== 'loaded-skill' || !replaced.has(entry.block!.id)
+      ),
+      ...replacements
+    ]
+  };
+}
 
 export function parsePersistedContextualWorldState(
   payload: unknown
@@ -171,6 +257,7 @@ export function parsePersistedContextualWorldState(
         entry.kind !== 'resources' &&
         entry.kind !== 'mcp' &&
         entry.kind !== 'skills' &&
+        entry.kind !== 'loaded-skill' &&
         entry.kind !== 'prompt') ||
       typeof entry.content !== 'string' ||
       entry.content.length === 0
@@ -184,7 +271,14 @@ export function parsePersistedContextualWorldState(
     if (
       (block && !block.success) ||
       (textBlocks && !textBlocks.success) ||
-      (entry.kind === 'prompt' && !block?.success)
+      (entry.kind === 'prompt' && !block?.success) ||
+      (entry.kind === 'loaded-skill' &&
+        (!block?.success ||
+          block.data.kind !== 'loaded-skill' ||
+          !block.data.id.startsWith(LOADED_SKILL_ID_PREFIX) ||
+          block.data.source !== 'runtime' ||
+          block.data.authority !== 'context' ||
+          block.data.operation !== 'replace'))
     )
       return undefined;
     entries.push({
