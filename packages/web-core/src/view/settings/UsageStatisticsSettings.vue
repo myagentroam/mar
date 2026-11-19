@@ -34,20 +34,22 @@ const pagination = service.pagination;
 watchManagementPageFailure(pagination);
 watch(pagination.mobileViewport, () => void refresh(true));
 const form = ref<FormInstance>();
+const purposes = ['conversation', 'compact', 'prompt_completion', 'title', 'other'] as const;
+type UsagePurpose = (typeof purposes)[number];
 const draft = reactive({
   period: '24h',
   range: null as [Date, Date] | null,
   runner: '',
   model: '',
   mode: '',
-  purpose: 'conversation'
+  purpose: 'conversation' as UsagePurpose
 });
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const runners = ['mar-agent', 'codex', 'claude-code', 'opencode'] as const;
-const purposes = ['conversation', 'compact', 'prompt_completion', 'title', 'other'] as const;
-function selectPurpose(purpose: (typeof purposes)[number]): void {
-  void refresh(true, purpose);
-}
+const selectedPurpose = ref(draft.purpose);
+const purposeOptions = computed(() =>
+  purposes.map((value) => ({ value, label: t(`usageStatistics.purposes.${value}`) }))
+);
 const metric = ref<'totalTokens' | 'requests'>('totalTokens');
 const tokenColumns = ['inputTokens', 'cacheReadTokens', 'outputTokens', 'totalTokens'] as const;
 const usageStateTypes: Record<PersonalUsageRecords['records'][number]['state'], TagProps['type']> =
@@ -102,8 +104,13 @@ const rules = computed<FormRules>(() => ({
     }
   ]
 }));
-async function refresh(reset = false, purpose?: (typeof purposes)[number]): Promise<void> {
-  if (!(await form.value?.validate().catch(() => false))) return;
+async function refresh(reset = false, purpose?: UsagePurpose): Promise<void> {
+  const valid = await form.value?.validate().catch(() => false);
+  if (purpose !== undefined && purpose !== selectedPurpose.value) return;
+  if (!valid) {
+    if (purpose !== undefined) selectedPurpose.value = draft.purpose;
+    return;
+  }
   if (purpose !== undefined) draft.purpose = purpose;
   if (reset) recordsSorted = false;
   const loaded = await service.load(query(), { reset, rolling: draft.period !== 'custom' });
@@ -232,7 +239,10 @@ onUnmounted(() => {
   >
     <div class="usage-content">
       <header>
-        <h2>{{ t('usageStatistics.title') }}</h2>
+        <div>
+          <h2>{{ t('usageStatistics.title') }}</h2>
+          <p class="usage-summary">{{ t('usageStatistics.accountScope') }}</p>
+        </div>
         <div class="refresh-actions">
           <span class="metadata" role="status">
             {{
@@ -244,27 +254,27 @@ onUnmounted(() => {
             }}
           </span>
           <el-button
+            v-tooltip="t('usageStatistics.refresh')"
+            class="mar-icon-action"
+            text
             :icon="marIcon('refresh')"
             :loading="state.loading && !pageLoading"
             :disabled="pageLoading"
-            @click="refresh()"
             :loading-icon="marIcon('loading-action')"
-            >{{ t('usageStatistics.refresh') }}</el-button
-          >
+            :aria-label="t('usageStatistics.refresh')"
+            @click="refresh()"
+          />
         </div>
       </header>
-      <p class="metadata">{{ t('usageStatistics.accountScope') }}</p>
-      <nav class="usage-purposes" :aria-label="t('usageStatistics.purpose')">
-        <button
-          v-for="purpose in purposes"
-          :key="purpose"
-          type="button"
-          :aria-pressed="draft.purpose === purpose"
-          @click="selectPurpose(purpose)"
-        >
-          {{ t(`usageStatistics.purposes.${purpose}`) }}
-        </button>
-      </nav>
+      <div class="usage-purpose-scroll">
+        <el-segmented
+          v-model="selectedPurpose"
+          class="usage-purposes"
+          :options="purposeOptions"
+          :aria-label="t('usageStatistics.purpose')"
+          @change="refresh(true, selectedPurpose)"
+        />
+      </div>
       <p v-if="state.overview" class="metadata">{{ t('usageStatistics.overviewScope') }}</p>
       <div v-if="state.overview" class="overview">
         <section v-for="card in overviewCards" :key="card.label" class="overview-cell">
@@ -805,34 +815,19 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.usage-purpose-scroll {
+  margin: 0.5rem -3px 0;
+  padding: 3px;
+  overflow-x: auto;
+}
 .usage-purposes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-block: 0.5rem;
+  width: max-content;
 }
-.usage-purposes button {
-  padding: 0.25rem 0.5rem;
-  border: 1px solid transparent;
-  border-radius: var(--mar-radius-selection);
-  background: transparent;
-  color: var(--mar-text-secondary);
-  font: inherit;
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.5;
-  cursor: pointer;
-}
-.usage-purposes button:hover {
-  color: var(--mar-text-primary);
-  background: var(--mar-fill-muted);
-}
-.usage-purposes button:focus-visible {
-  outline: 2px solid var(--el-color-primary);
-  outline-offset: 2px;
-}
-.usage-purposes button[aria-pressed='true'] {
-  color: var(--mar-text-primary);
-  background: var(--mar-fill-selection);
+@media (prefers-reduced-motion: reduce) {
+  .usage-purposes :deep(.el-segmented__item-selected),
+  .usage-purposes :deep(.el-segmented__item-label) {
+    transition: none;
+  }
 }
 
 .usage {
@@ -851,9 +846,14 @@ header,
   gap: 1rem;
   flex-wrap: wrap;
 }
+header {
+  align-items: flex-start;
+  row-gap: 0.5rem;
+}
 h2 {
   margin: 0;
   font-size: var(--mar-font-size-title);
+  line-height: 1.4;
 }
 h3,
 h4 {
@@ -862,6 +862,12 @@ h4 {
 }
 p {
   margin: 0.5rem 0;
+}
+.usage-summary {
+  margin: 5px 0 0;
+  color: var(--mar-text-muted);
+  font-size: var(--mar-font-size-body);
+  line-height: 1.5;
 }
 .metadata,
 .mar-empty {

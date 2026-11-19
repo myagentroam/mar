@@ -740,22 +740,13 @@ describe('usage statistics settings contract', () => {
         path.includes('/overview') ? pendingOverview.promise : pendingRecords.promise
       );
       const changeFilter = () => {
-        if (field === 'purpose') {
-          const button = view
-            .findAll('button')
-            .find(
-              (node) =>
-                textContent(node) ===
-                commonMessages[localePreferenceService().locale.value].usageStatistics.purposes
-                  .compact
-            )!;
-          (button.props['onClick'] as () => void)();
-        } else {
-          const index = ['period', 'runner', 'model', 'mode'].indexOf(field);
-          const select = view.findAll('ElSelect')[index]!;
-          (select.props['onUpdate:modelValue'] as (value: string) => void)(value);
-          (select.props['onChange'] as () => void)();
-        }
+        const control =
+          field === 'purpose'
+            ? view.findAll('ElSegmented')[0]!
+            : view.findAll('ElSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
+        const next = field === 'purpose' && control.props['modelValue'] === value ? 'title' : value;
+        (control.props['onUpdate:modelValue'] as (value: string) => void)(next);
+        (control.props['onChange'] as () => void)();
       };
       changeFilter();
       await flushComponent();
@@ -1042,7 +1033,9 @@ describe('usage statistics settings contract', () => {
       expect(html).toContain(commonMessages[locale].usageStatistics.range);
       const refreshButton = html.match(/<button\b[\s\S]*?<\/button>/u)?.[0];
       expect(refreshButton).toContain('<svg');
-      expect(refreshButton).toContain(commonMessages[locale].usageStatistics.refresh);
+      expect(refreshButton).toContain(
+        `aria-label="${commonMessages[locale].usageStatistics.refresh}"`
+      );
       expect(request).not.toHaveBeenCalled();
     }
   );

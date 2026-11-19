@@ -90,6 +90,7 @@ export function renderComponent(
     'ElInput',
     'ElInputNumber',
     'ElSelect',
+    'ElSegmented',
     'ElOption',
     'ElOptionGroup',
     'ElFormItem',
