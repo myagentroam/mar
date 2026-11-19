@@ -496,6 +496,18 @@ for (const scenario of [
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
     const feedback = inspector.getByLabel('File operation feedback');
     await inspector.getByRole('button', { name: scenario.refresh, exact: true }).click();
+    await test.step('Keep the file action focus outline clear of row clipping', async () => {
+      await page.mouse.move(0, 0);
+      await inspector.locator('[data-file-path="."]').press('ArrowDown');
+      const folder = inspector.locator('[data-file-path="src"]');
+      await expect(folder).toBeFocused();
+      await page.keyboard.press('Tab');
+      const shell = folder.locator('..');
+      const more = shell.locator('.file-tree-more');
+      await expect(more).toBeFocused();
+      await expect(more).toHaveCSS('outline-style', 'solid');
+      await expect(shell).toHaveCSS('overflow', 'visible');
+    });
     const menu = async (path: string) => {
       await expect(page.getByRole('menuitem', { name: scenario.copy, exact: true })).toBeHidden();
       const row = inspector.locator(`[data-file-path="${path}"]`);
