@@ -344,7 +344,7 @@ const sessionProps = {
   activityLabel: () => 'Working',
   activityDateTime: () => undefined,
   activityTitle: () => undefined,
-  relativeActivity: () => '',
+  relativeActivity: () => (sessionMarkersFixture ? '>1m' : ''),
   nodeId: 'node',
   workspaceId: 'workspace',
   skillSupported: false,
@@ -644,7 +644,10 @@ if (composerFixture) {
         @activate="activeTab = $event.id"
       />
     </section>
-    <section aria-label="Workspace tree fixture">
+    <section
+      aria-label="Workspace tree fixture"
+      :class="{ 'session-markers-fixture': sessionMarkersFixture && !mobile }"
+    >
       <WorkspaceTree
         :visible="true"
         :nodes="listState === 'no-nodes' ? [] : [node]"

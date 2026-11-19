@@ -118,7 +118,7 @@ const { t } = useI18n();
   min-width: 0;
 }
 .caption {
-  color: var(--mar-text-secondary);
+  color: var(--mar-text-muted);
 }
 .preview-sidebar > .caption {
   display: block;

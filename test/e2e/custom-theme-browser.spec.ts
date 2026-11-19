@@ -1082,7 +1082,7 @@ for (const scheme of ['Light', 'Dark']) {
       const branchName = branch.locator('.workspace-branch-name');
       const gitIcon = branch.getByRole('img', { name: 'Git' });
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
-      const colors = scheme === 'Light' ? ['#52627a', '#cbd6e4'] : ['#a8b8cf', '#414e62'];
+      const colors = scheme === 'Light' ? ['#52627a', '#cbd6e4'] : ['#c3cad4', '#414e62'];
       async function expectColors(expected: string[]): Promise<void> {
         await expect(branch).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(async () => {
@@ -1563,6 +1563,7 @@ test('expanded and compact previews share the applied palette without changing g
       '--mar-conversation-surface': '#16324f',
       '--mar-text-primary': '#f8eedd',
       '--mar-text-secondary': '#99aabb',
+      '--mar-text-muted': '#aeb8c2',
       '--mar-text-disabled': '#778899'
     }
   });
@@ -1579,6 +1580,10 @@ test('expanded and compact previews share the applied palette without changing g
     for (const selector of ['.user-message', '.assistant-message p'])
       await expect(sample.locator(selector)).toHaveCSS('color', 'rgb(248, 238, 221)');
     await expect(sample.locator('.process')).toHaveCSS('color', 'rgb(153, 170, 187)');
+    await expect(sample.locator('.preview-sidebar .caption')).toHaveCSS(
+      'color',
+      'rgb(174, 184, 194)'
+    );
     const disabled = sample.getByRole('button', { name: 'Disabled', exact: true });
     await expect(disabled).toBeDisabled();
     await expect(disabled).toHaveCSS('color', 'rgb(119, 136, 153)');
@@ -1821,7 +1826,7 @@ for (const scheme of ['Light', 'Dark']) {
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
       const typography = page.getByRole('region', { name: 'Real conversation typography' });
       const conversationText = scheme === 'Dark' ? 'rgb(226, 232, 240)' : 'rgb(23, 32, 51)';
-      const conversationMuted = scheme === 'Dark' ? 'rgb(168, 184, 207)' : 'rgb(82, 98, 122)';
+      const conversationSecondary = scheme === 'Dark' ? 'rgb(195, 202, 212)' : 'rgb(82, 98, 122)';
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
@@ -1835,7 +1840,7 @@ for (const scheme of ['Light', 'Dark']) {
         );
         await expect(typography.locator('.conversation-metadata')).toHaveCSS(
           'color',
-          conversationMuted
+          conversationSecondary
         );
         await typography.screenshot({
           path: testInfo.outputPath('conversation-typography-' + width + '.png')
@@ -1850,13 +1855,13 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(select).toHaveCSS('background-color', panel);
       const selectLabel = controls.locator('.el-select__placeholder');
       const selectCaret = controls.locator('.el-select__caret');
-      await expect(selectLabel).toHaveCSS('color', conversationMuted);
-      await expect(selectCaret).toHaveCSS('color', conversationMuted);
+      await expect(selectLabel).toHaveCSS('color', conversationSecondary);
+      await expect(selectCaret).toHaveCSS('color', conversationSecondary);
       await select.click();
       await page.getByRole('option', { name: 'One', exact: true }).click();
       await expect(selectLabel).toHaveText('One');
       await expect(selectLabel).toHaveCSS('color', conversationText);
-      await expect(selectCaret).toHaveCSS('color', conversationMuted);
+      await expect(selectCaret).toHaveCSS('color', conversationSecondary);
       await expect(controls.locator('.el-table')).toHaveCSS('background-color', panel);
       await expect(controls.getByRole('button', { name: 'Sample default', exact: true })).toHaveCSS(
         'background-color',
@@ -1980,7 +1985,7 @@ for (const scheme of ['Light', 'Dark']) {
         'rgb(18, 52, 86)'
       );
       await expect(selectLabel).toHaveCSS('color', 'rgb(213, 196, 175)');
-      await expect(selectCaret).toHaveCSS('color', conversationMuted);
+      await expect(selectCaret).toHaveCSS('color', conversationSecondary);
       await expect(controls.locator('.el-table')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
       await expect(controls.locator('.el-table th')).toHaveCSS(
         'background-color',
@@ -1993,7 +1998,7 @@ for (const scheme of ['Light', 'Dark']) {
         );
       await expect(typography.locator('.conversation-metadata')).toHaveCSS(
         'color',
-        conversationMuted
+        conversationSecondary
       );
       await expect(controls.getByRole('button', { name: 'Sample primary', exact: true })).toHaveCSS(
         'color',

@@ -31,6 +31,7 @@ export const CUSTOM_THEME_TOKENS = [
   '--mar-border-strong',
   '--mar-text-primary',
   '--mar-text-secondary',
+  '--mar-text-muted',
   '--mar-text-disabled',
   '--mar-conversation-canvas',
   '--mar-conversation-surface',

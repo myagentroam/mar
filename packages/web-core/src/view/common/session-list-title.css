@@ -1,13 +1,17 @@
 .mar-session-list-title {
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
 }
 
 .mar-session-list-title > strong {
-  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 400;
 }
 
-button[aria-current='page'] .mar-session-list-title > strong {
+button[aria-current='page'] .mar-session-list-title {
   color: var(--mar-text-primary);
+}
+
+.mar-session-list-meta {
+  color: var(--mar-text-muted);
+  font-size: var(--mar-font-size-meta);
 }
