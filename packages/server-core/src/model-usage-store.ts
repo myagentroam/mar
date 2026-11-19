@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
   MODEL_USAGE_RETENTION_MS,
-  MODEL_USAGE_BATCH_BYTES,
   type ModelUsageAck,
   type ModelUsageBatch,
   type ModelUsageRecord
@@ -42,10 +41,8 @@ export class ModelUsageStore {
     }
   }
 
-  /** Consumes a batch structurally decoded by the caller; byte limits and ledger checks still apply. */
+  /** Processes a batch already validated at the protocol boundary. */
   async consume(nodeId: string, batch: ModelUsageBatch): Promise<ModelUsageAck> {
-    if (Buffer.byteLength(JSON.stringify(batch)) > MODEL_USAGE_BATCH_BYTES)
-      throw new Error('USAGE_BATCH_INVALID');
     const results: ModelUsageAck['results'] = [];
     for (const entry of batch.entries) results.push(await this.accept(nodeId, entry));
     return { apiVersion: 1, results };
