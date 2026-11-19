@@ -176,8 +176,17 @@ export function createConversationProjectionService(options: {
   }
 
   function recoverWindow(page: ConversationTurnPage): void {
+    // Apply accepted text to its current Segment before merging an older snapshot.
+    flushPendingTextDeltas();
+    const priorTurns = options.turns.value;
+    const previous = new Map(priorTurns.map((turn) => [turnKey(turn), turn]));
+    // Even an older snapshot can repair the cursor and fill missing history.
+    const incoming = page.turns.map((turn) => {
+      const prior = previous.get(turnKey(turn));
+      return prior !== undefined && hasNewerProjection(turn, page.snapshotSequence) ? prior : turn;
+    });
     options.turns.value = options.limitHistory(
-      mergeConversationProjectionUnits(options.turns.value, page.turns)
+      mergeConversationProjectionUnits(priorTurns, incoming)
     );
     options.nextCursor.value = page.nextCursor;
   }
@@ -577,6 +586,18 @@ export function createConversationProjectionService(options: {
     return page.snapshotSequence !== undefined && page.snapshotSequence < latestSequence;
   }
 
+  function hasNewerProjection(
+    turn: ConversationTurn,
+    snapshotSequence: number | undefined
+  ): boolean {
+    const liveSequence = liveSequences.get(turnKey(turn));
+    return (
+      liveSequence !== undefined &&
+      snapshotSequence !== undefined &&
+      liveSequence > snapshotSequence
+    );
+  }
+
   function mergeLatest(page: ConversationTurnPage): boolean {
     flushPendingTextDeltas();
     if (staleSnapshot(page)) return false;
@@ -590,13 +611,7 @@ export function createConversationProjectionService(options: {
         markLive(turn, page.snapshotSequence);
         return turn;
       }
-      const liveSequence = liveSequences.get(turnKey(turn));
-      if (
-        liveSequence !== undefined &&
-        page.snapshotSequence !== undefined &&
-        liveSequence > page.snapshotSequence
-      )
-        return previousTurn;
+      if (hasNewerProjection(turn, page.snapshotSequence)) return previousTurn;
       markLive(turn, page.snapshotSequence);
       const localSteers = previousTurn.items.filter(isOptimisticSteerItem);
       return localSteers.length === 0
