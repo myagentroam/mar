@@ -726,7 +726,7 @@ describe('Web Workbench notification state', () => {
       f.active.target = current.target as NotificationTarget;
       try {
         await f.state.start();
-        f.state.notify({ id: 'update', kind: 'web-update', title: 'Update', message: 'Update' });
+        f.state.notify({ id: 'update', kind: 'web-update', version: '0.9.5' });
         await f.state.recover();
         expect(f.reads()).toHaveLength(0);
         expect(f.state.unreadCount.value).toBe(3);
@@ -1099,8 +1099,7 @@ describe('Web Workbench notification state', () => {
       f.state.notify({
         id: 'local-update',
         kind: 'web-update',
-        title: 'Update',
-        message: 'Update'
+        version: '0.9.5'
       });
       await f.state.load();
       expect(f.reads()).toHaveLength(0);
@@ -1430,8 +1429,7 @@ describe('Web Workbench notification state', () => {
         id: 'local',
         kind: 'web-update',
         source: 'local',
-        title: 'Local',
-        message: '',
+        version: '0.9.5',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         expiresAt: Date.now() + 60000,
@@ -1817,7 +1815,7 @@ describe('Web Workbench notification state', () => {
     state.dispose();
   });
 
-  it('restores only valid file and application-update notifications from local storage', async () => {
+  it('restores valid uploads as read and discards legacy persisted application updates', async () => {
     const now = Date.now();
     const stored = [
       { ...notification('run-1'), createdAt: now - 1_000, expiresAt: now + 1_000 },
@@ -1843,8 +1841,7 @@ describe('Web Workbench notification state', () => {
       }
     ];
     expect(parseStoredWorkbenchNotifications(stored, now).map((item) => item.id)).toEqual([
-      'upload:1',
-      'web-update:0.9.5'
+      'upload:1'
     ]);
     vi.stubGlobal('localStorage', {
       getItem: () => JSON.stringify(stored),
@@ -1855,15 +1852,12 @@ describe('Web Workbench notification state', () => {
       request: vi.fn(async () => ({ notifications: [] })) as never
     });
     await state.start();
-    expect(state.notifications.value.map((item) => item.id)).toEqual([
-      'upload:1',
-      'web-update:0.9.5'
-    ]);
+    expect(state.notifications.value.map((item) => item.id)).toEqual(['upload:1']);
     expect(state.notifications.value[0]?.read).toBe(true);
-    expect(state.unreadCount.value).toBe(1);
-    expect(JSON.parse(String(vi.mocked(localStorage.setItem).mock.calls.at(-1)?.[1]))[0].read).toBe(
-      true
-    );
+    expect(state.unreadCount.value).toBe(0);
+    expect(JSON.parse(String(vi.mocked(localStorage.setItem).mock.calls.at(-1)?.[1]))).toEqual([
+      expect.objectContaining({ id: 'upload:1', read: true })
+    ]);
     state.dispose();
   });
 
@@ -1887,12 +1881,11 @@ describe('Web Workbench notification state', () => {
     state.notify({
       id: 'badge-notification',
       kind: 'web-update',
-      title: 'Badge',
-      message: 'Unread'
+      version: '0.9.5'
     });
     await vi.waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(1));
 
-    state.markRead('badge-notification');
+    state.clearWebUpdate();
     await vi.waitFor(() => expect(clearAppBadge).toHaveBeenCalledTimes(initialClears + 1));
 
     state.dispose();
@@ -1961,12 +1954,11 @@ describe('Web Workbench notification state', () => {
     state.notify({
       id: 'badge-notification',
       kind: 'web-update',
-      title: 'Badge',
-      message: 'Unread'
+      version: '0.9.5'
     });
     await vi.waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(1));
 
-    state.markRead('badge-notification');
+    state.clearWebUpdate();
     await vi.waitFor(() => expect(state.unreadCount.value).toBe(0));
     finishSetting();
     await vi.waitFor(() => expect(writes.at(-1)).toBe(0));
@@ -2631,14 +2623,13 @@ describe('Web Workbench notification state', () => {
     });
     state.notify({
       id: 'local',
-      title: 'Local',
-      message: '',
       kind: 'web-update',
+      version: '0.9.5',
       source: 'local',
       action: 'RELOAD_PAGE'
     });
     state.markAllRead();
-    expect(state.notifications.value.every((item) => item.read)).toBe(true);
+    expect(state.notifications.value[0]?.read).toBe(false);
     await vi.waitFor(() =>
       expect(request).toHaveBeenCalledWith('/api/notifications/read-all', expect.any(Object))
     );
@@ -2687,47 +2678,103 @@ describe('Web Workbench notification state', () => {
     expect(state.notifications.value).toEqual([]);
   });
 
-  it('suppresses duplicate Web-version notifications for 24 hours and notifies again after expiration', () => {
+  it('suppresses Web-version previews across reloads for 24 hours without expiring the pending card', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
-    const state = createWorkbenchNotificationService({ value: 'admin' } as never);
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value)
+    });
+    const createState = () => createWorkbenchNotificationService({ value: 'admin' } as never);
+    const state = createState();
+    const resumed = createState();
+    const later = createState();
     const input = {
       id: 'web-update:0.9.5',
       kind: 'web-update' as const,
       source: 'local' as const,
-      title: 'Application version updated',
-      message: 'Reload the application from this notification.',
+      version: '0.9.5',
       action: 'RELOAD_PAGE' as const
     };
 
-    state.notify(input);
-    state.markRead(input.id);
-    state.notify(input);
-    expect(state.notificationRevision.value).toBe(1);
-    expect(state.notifications.value).toHaveLength(1);
+    try {
+      await state.start();
+      state.notify(input);
+      expect(state.takeWebUpdatePreview(input.id)).toBe(true);
+      state.notify(input);
+      expect(state.takeWebUpdatePreview(input.id)).toBe(false);
 
-    vi.advanceTimersByTime(24 * 60 * 60_000 + 1);
-    state.notify(input);
-    expect(state.notificationRevision.value).toBe(2);
-    expect(state.notifications.value).toHaveLength(1);
-    expect(state.notifications.value[0]?.read).toBe(false);
+      await resumed.start();
+      expect(resumed.notifications.value).toEqual([]);
+      resumed.notify(input);
+      expect(resumed.takeWebUpdatePreview(input.id)).toBe(false);
+      expect(resumed.unreadCount.value).toBe(1);
+
+      vi.advanceTimersByTime(24 * 60 * 60_000 + 1);
+      expect(state.unreadCount.value).toBe(1);
+      expect(state.notifications.value[0]).toMatchObject({ id: input.id, read: false });
+      later.notify(input);
+      expect(later.takeWebUpdatePreview(input.id)).toBe(true);
+    } finally {
+      state.dispose();
+      resumed.dispose();
+      later.dispose();
+    }
   });
 
-  it('keeps only the latest Web-version notification and clears it when versions match', () => {
-    const state = createWorkbenchNotificationService({ value: 'admin' } as never);
+  it('pins the single update through other notifications, read and delete actions, and defers its preview until focus', async () => {
+    const window = Object.assign(new EventTarget(), { location: new URL('http://localhost/') });
+    let focused = false;
+    vi.stubGlobal('window', window);
+    vi.stubGlobal('document', { visibilityState: 'visible', hasFocus: () => focused });
+    const open = vi.fn().mockResolvedValue(undefined);
+    let rows: ReturnType<typeof notification>[] = [];
+    const state = createWorkbenchNotificationService({ value: 'admin' } as never, {
+      request: vi.fn(async () => ({ notifications: rows })) as never,
+      onNotificationClick: open
+    });
     const input = {
       kind: 'web-update' as const,
       source: 'local' as const,
-      title: 'Application version updated',
-      message: 'Reload the application from this notification.',
+      version: '0.9.5',
       action: 'RELOAD_PAGE' as const
     };
 
-    state.notify({ ...input, id: 'web-update:0.9.5' });
-    state.notify({ ...input, id: 'web-update:0.9.6' });
-    expect(state.notifications.value.map((item) => item.id)).toEqual(['web-update:0.9.6']);
+    const id = 'web-update:0.9.6';
+    try {
+      await state.start();
+      state.notify({ ...input, id: 'web-update:0.9.5' });
+      state.notify({ ...input, id });
+      expect(state.webUpdatePreviewId.value).toBeUndefined();
+      focused = true;
+      window.dispatchEvent(new Event('focus'));
+      expect(state.webUpdatePreviewId.value).toBe(id);
+      expect(state.takeWebUpdatePreview(id)).toBe(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(state.webUpdatePreviewId.value).toBeUndefined();
 
-    state.clearWebUpdate();
-    expect(state.notifications.value).toEqual([]);
+      const newer = Date.now() + 100;
+      state.notify({
+        id: 'upload',
+        kind: 'upload',
+        title: 'Upload',
+        message: 'Done',
+        createdAt: newer
+      });
+      expect(state.notifications.value[0]?.id).toBe(id);
+      rows = [{ ...notification('server'), createdAt: newer + 1, updatedAt: newer + 1 }];
+      await state.load();
+      expect(state.notifications.value.map((item) => item.id)).toEqual([id, 'server', 'upload']);
+      await state.openNotification(state.notifications.value[0]!);
+      expect(open).toHaveBeenCalledOnce();
+      state.markAllRead();
+      state.remove(id);
+      expect(state.notifications.value[0]).toMatchObject({ id, read: false });
+      state.clearWebUpdate();
+      expect(state.notifications.value.map((item) => item.id)).toEqual(['server', 'upload']);
+    } finally {
+      state.dispose();
+    }
   });
 });

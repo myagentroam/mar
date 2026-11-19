@@ -392,6 +392,61 @@ describe('PWA application update coordination', () => {
     f.service.dispose();
   });
 
+  it('does not offer an older active worker after an uncontrolled reload loads a new document', async () => {
+    const f = fixture('new-page', false, 'reload');
+    await f.service.start();
+    await f.service.checkForUpdate();
+    expect(f.service.state.value).toEqual({ offline: 'preparing', checked: true });
+    expect(f.reload).not.toHaveBeenCalled();
+    f.service.dispose();
+  });
+
+  it('checks long-lived online pages every five minutes only in the foreground and stops on disposal', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    let focused = true;
+    vi.stubGlobal(
+      'document',
+      Object.assign(new EventTarget(), {
+        visibilityState: 'visible',
+        hasFocus: () => focused
+      })
+    );
+    const network = { onLine: true };
+    vi.stubGlobal('navigator', network);
+    const version = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(Response.json({ version: '1.0.0', hash: 'first' }))
+      );
+    vi.stubGlobal('fetch', version);
+    const service = createPwaApplicationService(undefined, { version: '1.0.0', buildId: 'first' });
+    try {
+      await service.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(version).toHaveBeenCalledOnce();
+      version.mockImplementation(() =>
+        Promise.resolve(Response.json({ version: '1.0.0', hash: 'next' }))
+      );
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(version).toHaveBeenCalledTimes(2);
+      expect(service.state.value.update?.buildId).toBe('next');
+      focused = false;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      focused = true;
+      network.onLine = false;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(version).toHaveBeenCalledTimes(2);
+      expect(f.reload).not.toHaveBeenCalled();
+      network.onLine = true;
+      service.dispose();
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(version).toHaveBeenCalledTimes(2);
+    } finally {
+      service.dispose();
+    }
+  });
+
   it.each([
     { degraded: false, entry: false },
     { degraded: true, entry: true }
@@ -424,6 +479,7 @@ describe('PWA application update coordination', () => {
     ).toBe(true);
     expect(f.service.state.value.update).toBeUndefined();
     expect(f.service.state.value.reload).toBeUndefined();
+    expect(f.service.state.value.unavailableUpdate?.buildId).toBe('next');
     expect(f.reload).not.toHaveBeenCalled();
     f.service.dispose();
   });
@@ -439,6 +495,31 @@ describe('PWA application update coordination', () => {
       buildId: 'active'
     });
     f.service.dispose();
+  });
+
+  it('retains the prepared reload target when its active worker temporarily loses readiness', async () => {
+    const f = fixture('older-page');
+    const health = { degraded: false, entry: true };
+    const active = f.makeWorker('active', health) as unknown as ServiceWorker;
+    f.registration.active = active;
+    f.container.controller = active;
+    try {
+      await f.service.checkForUpdate();
+      const target = f.service.state.value.reload;
+      expect(target?.buildId).toBe('active');
+
+      health.entry = false;
+      await expect(f.service.checkForUpdate()).rejects.toThrow('Active worker not ready');
+      expect(f.service.state.value.reload).toBeUndefined();
+      expect(f.service.state.value.unavailableUpdate).toEqual(target);
+
+      health.entry = true;
+      await f.service.checkForUpdate();
+      expect(f.service.state.value.reload).toEqual(target);
+      expect(f.service.state.value.unavailableUpdate).toBeUndefined();
+    } finally {
+      f.service.dispose();
+    }
   });
 
   it('does not activate after the application service is disposed', async () => {

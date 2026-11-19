@@ -36,6 +36,22 @@ const visibleNotifications = computed(() => {
       !uploadIds.has(item.id) && (props.previewId === undefined || item.id === props.previewId)
   );
 });
+const notificationGroups = computed(() => [
+  {
+    kind: 'updates',
+    items: visibleNotifications.value.filter((item) => item.kind === 'web-update')
+  },
+  { kind: 'transfers', items: [] },
+  {
+    kind: 'notifications',
+    items: visibleNotifications.value.filter((item) => item.kind !== 'web-update')
+  }
+]);
+const hasMarkableUnread = computed(() =>
+  props.service.notifications.value.some(
+    (item) => item.kind !== 'web-update' && !item.read && item.expiresAt > Date.now()
+  )
+);
 </script>
 
 <template>
@@ -49,7 +65,7 @@ const visibleNotifications = computed(() => {
         translate('activityCenter.unreadCount', { count: service.unreadCount.value })
       }}</span>
       <el-button
-        v-if="service.unreadCount.value > 0"
+        v-if="hasMarkableUnread"
         class="workbench-notification-mark-all mar-text-action"
         link
         @click="service.markAllRead()"
@@ -58,98 +74,111 @@ const visibleNotifications = computed(() => {
       </el-button>
     </header>
     <div class="workbench-notification-section">
-      <section
-        v-if="transferTasks.length"
-        class="workbench-notification-upload-list"
-        :aria-label="translate('generated.workbenchNotificationCenter.fileTransfers')"
-      >
-        <div v-for="task in transferTasks" :key="task.id" class="workbench-notification-upload">
-          <MarIcon name="upload" />
-          <div>
-            <strong v-tooltip="task.name">{{ task.name }}</strong>
-            <small>
-              <span class="workbench-upload-size"
-                >{{ fileSizeLabel(task.receivedBytes) }} / {{ fileSizeLabel(task.size) }}</span
-              >
-              ·
-              {{ statusLabel(task) }}
-              <template v-if="task.error"> · {{ task.error }}</template>
-              <template v-if="task.cleanupUnconfirmed">
-                · {{ translate('errors.UPLOAD_CLEANUP_UNCONFIRMED') }}</template
-              >
-            </small>
-            <progress :value="task.receivedBytes" :max="Math.max(task.size, 1)" />
-          </div>
-          <div class="workbench-notification-upload-actions">
-            <el-button
-              v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
-              class="mar-text-action"
-              link
-              @click="emit('retryUpload', task)"
-            >
-              {{
-                task.file === undefined
-                  ? translate('generated.workbenchNotificationCenter.resume')
-                  : translate('generated.workbenchNotificationCenter.retry')
-              }}
-            </el-button>
-            <button
-              v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
-              type="button"
-              class="mar-icon-button mar-icon-action workbench-notification-delete"
-              :aria-label="
-                translate('generated.workbenchNotificationCenter.delete', {
-                  value0: task.name
-                })
-              "
-              @click="emit('removeUpload', task)"
-            >
-              <MarIcon name="delete" />
-            </button>
-            <el-button v-else class="mar-text-action" link @click="emit('cancelUpload', task)">
-              {{ translate('generated.workbenchNotificationCenter.cancel') }}
-            </el-button>
-          </div>
-        </div>
-      </section>
       <p
         v-if="visibleNotifications.length === 0 && transferTasks.length === 0"
         class="workbench-notification-empty"
       >
         {{ translate('generated.workbenchNotificationCenter.noNotifications') }}
       </p>
-      <ul v-else class="workbench-notification-list">
-        <li
-          v-for="notification in visibleNotifications"
-          :key="notification.id"
-          :class="{ unread: !notification.read }"
+      <template v-for="group in notificationGroups" :key="group.kind">
+        <section
+          v-if="group.kind === 'transfers' && transferTasks.length"
+          class="workbench-notification-upload-list"
+          :aria-label="translate('generated.workbenchNotificationCenter.fileTransfers')"
         >
-          <button type="button" @click="emit('openNotification', notification)">
-            <span class="workbench-notification-title">
-              <strong>{{ notification.title }}</strong>
-              <span v-if="!notification.read" class="notification-unread-label mar-unread-label">{{
-                translate('generated.workbenchNotificationCenter.unread')
-              }}</span>
-            </span>
-            <small>{{ notification.message }}</small>
-            <time :datetime="new Date(notification.updatedAt).toISOString()">{{
-              notificationTime(notification.updatedAt)
-            }}</time>
-          </button>
-          <button
-            class="mar-icon-button mar-icon-action workbench-notification-delete"
-            :aria-label="
-              translate('generated.workbenchNotificationCenter.deleteNotification', {
-                value0: notification.title
-              })
-            "
-            type="button"
-            @click="service.remove(notification.id)"
+          <div v-for="task in transferTasks" :key="task.id" class="workbench-notification-upload">
+            <MarIcon name="upload" />
+            <div>
+              <strong v-tooltip="task.name">{{ task.name }}</strong>
+              <small>
+                <span class="workbench-upload-size"
+                  >{{ fileSizeLabel(task.receivedBytes) }} / {{ fileSizeLabel(task.size) }}</span
+                >
+                ·
+                {{ statusLabel(task) }}
+                <template v-if="task.error"> · {{ task.error }}</template>
+                <template v-if="task.cleanupUnconfirmed">
+                  · {{ translate('errors.UPLOAD_CLEANUP_UNCONFIRMED') }}</template
+                >
+              </small>
+              <progress :value="task.receivedBytes" :max="Math.max(task.size, 1)" />
+            </div>
+            <div class="workbench-notification-upload-actions">
+              <el-button
+                v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
+                class="mar-text-action"
+                link
+                @click="emit('retryUpload', task)"
+              >
+                {{
+                  task.file === undefined
+                    ? translate('generated.workbenchNotificationCenter.resume')
+                    : translate('generated.workbenchNotificationCenter.retry')
+                }}
+              </el-button>
+              <button
+                v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
+                type="button"
+                class="mar-icon-button mar-icon-action workbench-notification-delete"
+                :aria-label="
+                  translate('generated.workbenchNotificationCenter.delete', {
+                    value0: task.name
+                  })
+                "
+                @click="emit('removeUpload', task)"
+              >
+                <MarIcon name="delete" />
+              </button>
+              <el-button v-else class="mar-text-action" link @click="emit('cancelUpload', task)">
+                {{ translate('generated.workbenchNotificationCenter.cancel') }}
+              </el-button>
+            </div>
+          </div>
+        </section>
+        <ul v-else-if="group.items.length" class="workbench-notification-list">
+          <li
+            v-for="notification in group.items"
+            :key="notification.id"
+            :class="{ unread: !notification.read }"
           >
-            <MarIcon name="delete" />
-          </button>
-        </li>
-      </ul>
+            <button type="button" @click="emit('openNotification', notification)">
+              <span class="workbench-notification-title">
+                <strong>{{
+                  notification.kind === 'web-update'
+                    ? translate('webUpdate.title')
+                    : notification.title
+                }}</strong>
+                <span
+                  v-if="!notification.read"
+                  class="notification-unread-label mar-unread-label"
+                  >{{ translate('generated.workbenchNotificationCenter.unread') }}</span
+                >
+              </span>
+              <small>{{
+                notification.kind === 'web-update'
+                  ? translate('webUpdate.message', { value0: notification.version })
+                  : notification.message
+              }}</small>
+              <time :datetime="new Date(notification.updatedAt).toISOString()">{{
+                notificationTime(notification.updatedAt)
+              }}</time>
+            </button>
+            <button
+              v-if="notification.kind !== 'web-update'"
+              class="mar-icon-button mar-icon-action workbench-notification-delete"
+              :aria-label="
+                translate('generated.workbenchNotificationCenter.deleteNotification', {
+                  value0: notification.title
+                })
+              "
+              type="button"
+              @click="service.remove(notification.id)"
+            >
+              <MarIcon name="delete" />
+            </button>
+          </li>
+        </ul>
+      </template>
     </div>
   </section>
 </template>
@@ -223,7 +252,7 @@ const visibleNotifications = computed(() => {
 }
 .workbench-notification-upload + .workbench-notification-upload,
 .workbench-notification-list > li + li,
-.workbench-notification-upload-list + .workbench-notification-list > li:first-child {
+.workbench-notification-section > * + * > :first-child {
   border-top: 1px solid var(--mar-border-subtle);
 }
 .workbench-notification-upload > .mar-icon {

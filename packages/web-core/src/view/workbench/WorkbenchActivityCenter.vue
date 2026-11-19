@@ -76,6 +76,12 @@ function dismissPreview(): void {
   // Retain the preview identity while the popover finishes its leave transition.
   previewVisible.value = false;
 }
+function showPreview(id: string): void {
+  dismissPreview();
+  previewId.value = id;
+  previewVisible.value = true;
+  dismissTimer = setTimeout(dismissPreview, 8_000);
+}
 watch(
   open,
   (visible) => {
@@ -92,12 +98,16 @@ watch(
   () => {
     if (open.value || props.previewSuppressed) return;
     const id = props.service.previewNotificationId.value;
-    if (id === undefined) return;
-    dismissPreview();
-    previewId.value = id;
-    previewVisible.value = true;
-    dismissTimer = setTimeout(dismissPreview, 8_000);
+    if (id !== undefined) showPreview(id);
   }
+);
+watch(
+  [() => props.service.webUpdatePreviewId.value, open, page, () => props.previewSuppressed],
+  ([id, panelOpen, currentPage, suppressed]) => {
+    if (id === undefined || suppressed || (panelOpen && currentPage !== 'notifications')) return;
+    if (props.service.takeWebUpdatePreview(id) && !panelOpen) showPreview(id);
+  },
+  { immediate: true, flush: 'post' }
 );
 watch(
   () => props.previewSuppressed,

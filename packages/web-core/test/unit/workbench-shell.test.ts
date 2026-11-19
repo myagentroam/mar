@@ -207,6 +207,8 @@ describe('Shared workbench shell', () => {
               unreadCount: ref(0),
               notificationRevision: ref(0),
               previewNotificationId: ref(undefined),
+              webUpdatePreviewId: ref(undefined),
+              takeWebUpdatePreview: () => false,
               notifications: ref([]),
               hasUnreadSession: () => false
             } as unknown as WorkbenchNotificationService,

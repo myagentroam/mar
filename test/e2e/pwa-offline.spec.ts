@@ -1,10 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { LOCALE_STORAGE_KEY } from '../../packages/web-core/src/i18n/locale-config.js';
 import {
   pwaFixturePrivateUserFile,
   startPwaOfflineFixture
 } from './support/pwa-offline-fixture.js';
+import { json, mockConsoleApi } from './support/web-console-api.js';
 
 test('final PWA artifact cold-starts Console offline without caching docs or nonessential data', async ({
   browser
@@ -234,6 +236,106 @@ test('a requested update reloads other open application windows', async ({ brows
       buildId: fixture.current.buildId,
       entry: true
     });
+  } finally {
+    await context.close();
+    await fixture.close();
+  }
+});
+
+test('a long-lived Console detects the upgrade, pins it unread, and clears it after a hard reload', async ({
+  browser,
+  browserName
+}) => {
+  test.skip(browserName !== 'chromium', 'The cache-bypassing reload uses Chromium CDP.');
+  test.setTimeout(120_000);
+  const fixture = await startPwaOfflineFixture({ suffix: 'hard-reload', includePrevious: true });
+  const context = await browser.newContext({ locale: 'zh-CN', serviceWorkers: 'allow' });
+  try {
+    const page = await context.newPage();
+    await mockConsoleApi(page, 'MANAGED', [], []);
+    await page.route('**/api/auth/me', (route) =>
+      json(route, { authenticated: true, userId: 1, username: 'admin', mustChangePassword: false })
+    );
+    let hasRunNotification = false;
+    let read = false;
+    await page.route('**/api/notifications', (route) => {
+      const createdAt = Date.now() + 10 * 60_000;
+      return json(route, {
+        notifications: hasRunNotification
+          ? [
+              {
+                id: 'run-completed',
+                kind: 'run',
+                title: 'A newer run notification',
+                message: 'The run completed.',
+                createdAt,
+                updatedAt: createdAt,
+                expiresAt: createdAt + 60 * 60_000,
+                read,
+                target: {
+                  targetType: 'WORKSPACE_SESSION',
+                  nodeId: 'node-1',
+                  workspaceId: 'workspace-1',
+                  sessionId: 'other-session'
+                }
+              }
+            ]
+          : []
+      });
+    });
+    await page.route('**/api/notifications/read-all', (route) => {
+      read = true;
+      return json(route, {});
+    });
+
+    await page.clock.install();
+    await page.goto(`${fixture.origin}/console`, { waitUntil: 'load' });
+    await page.bringToFront();
+    await waitForController(page);
+    const entry = page.getByRole('button', { name: '会话与通知', exact: true });
+    const appScript = page.locator('script[type="module"][src]').first();
+    const originalScript = await appScript.getAttribute('src');
+    await expect(entry).toHaveAttribute('aria-description', /0 条未读通知/);
+
+    fixture.setRelease('current');
+    await page.clock.fastForward(5 * 60_000);
+    await expect(page.locator('.activity-preview').getByText('有可用应用更新')).toBeVisible({
+      timeout: 30_000
+    });
+    await expect(appScript).toHaveAttribute('src', originalScript!);
+
+    hasRunNotification = true;
+    await entry.click();
+    const rows = page.locator('.workbench-notification-list > li');
+    await expect(rows).toHaveCount(2);
+    const update = rows.first();
+    await expect(update).toContainText('有可用应用更新');
+    await expect(update.getByText('未读', { exact: true })).toBeVisible();
+    await expect(update.getByRole('button')).toHaveCount(1);
+
+    const syncLocale = (locale: string) =>
+      page.evaluate(
+        ({ key, newValue }) => window.dispatchEvent(new StorageEvent('storage', { key, newValue })),
+        { key: LOCALE_STORAGE_KEY, newValue: locale }
+      );
+    await syncLocale('en-US');
+    await expect(update).toContainText('Application update available');
+    await expect(update).toContainText(/Version v\S+ is available/);
+    await expect(rows.last()).toContainText('A newer run notification');
+    await syncLocale('zh-CN');
+
+    await page.getByRole('button', { name: '全部标记已读' }).click();
+    await expect(entry).toHaveAttribute('aria-description', /1 条未读通知/);
+    await expect(update.getByText('未读', { exact: true })).toBeVisible();
+
+    const cdp = await context.newCDPSession(page);
+    await Promise.all([page.waitForEvent('load'), cdp.send('Page.reload', { ignoreCache: true })]);
+    await expect(appScript).not.toHaveAttribute('src', originalScript!);
+    await expect(entry).toHaveAttribute('aria-description', /0 条未读通知/);
+    await entry.click();
+    await page.getByRole('tab', { name: '通知', exact: true }).click();
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText('A newer run notification');
   } finally {
     await context.close();
     await fixture.close();

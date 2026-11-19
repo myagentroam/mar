@@ -3285,10 +3285,10 @@ describe('Workbench controller composition behavior', () => {
     expect(page.application.view).toBe('nodes');
     expect(captured.notificationService!.notifications.value[0]!.read).toBe(true);
   });
-  it('projects lifecycle updates once and clears the notification after alignment', async () => {
+  it('retains a pending update after an apply failure and clears it when the document is already on that build', async () => {
     let listener!: (state: PwaApplicationState) => void;
     const initial: PwaApplicationState = { offline: 'ready', checked: true };
-    const applyUpdate = vi.fn().mockResolvedValue('APPLIED');
+    const applyUpdate = vi.fn().mockResolvedValue('UNAVAILABLE');
     const pwa = {
       state: ref(initial),
       applyUpdate,
@@ -3318,12 +3318,29 @@ describe('Workbench controller composition behavior', () => {
     listener({
       offline: 'preparing',
       checked: true,
+      unavailableUpdate: {
+        mode: 'worker',
+        action: 'activate',
+        version: '9.8.7',
+        buildId: 'new-build'
+      }
+    });
+    expect(captured.notificationService!.notifications.value).toEqual([
+      expect.objectContaining({ kind: 'web-update', read: false })
+    ]);
+    listener({
+      offline: 'preparing',
+      checked: true,
       reload: { mode: 'worker', action: 'reload', version: '9.8.7', buildId: 'new-build' }
     });
     expect(captured.notificationService!.notifications.value).toEqual([
       expect.objectContaining({ kind: 'web-update', action: 'RELOAD_PAGE' })
     ]);
-    listener(initial);
+    listener({
+      offline: 'preparing',
+      checked: true,
+      reload: { mode: 'worker', action: 'activate', version: '9.8.7', buildId: 'new-build' }
+    });
     expect(captured.notificationService!.notifications.value).toEqual([]);
     listener({
       offline: 'preparing',
@@ -3331,6 +3348,25 @@ describe('Workbench controller composition behavior', () => {
       reload: { mode: 'worker', action: 'reload', version: '9.8.7', buildId: 'other-build' }
     });
     expect(captured.notificationService!.notifications.value).toEqual([]);
+  });
+
+  it('keeps the update already detected before the authenticated notification view starts', async () => {
+    const initial: PwaApplicationState = {
+      offline: 'online',
+      checked: true,
+      update: { mode: 'online', action: 'reload', version: '9.8.7', buildId: 'new-build' }
+    };
+    controller({
+      state: ref(initial),
+      subscribe(callback: (state: PwaApplicationState) => void) {
+        callback(initial);
+        return () => undefined;
+      }
+    } as unknown as PwaApplicationService);
+    await captured.authenticated!();
+    expect(captured.notificationService!.notifications.value).toEqual([
+      expect.objectContaining({ kind: 'web-update', read: false })
+    ]);
   });
   it('reports an unavailable waiting update as a failed check, not the latest version', async () => {
     const failure = new Error('Waiting worker not ready');
