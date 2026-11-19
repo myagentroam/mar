@@ -4,10 +4,7 @@ import {
   MarAgentCompactService
 } from '@myagentroam/server-core/mar-agent-runtime-model-service';
 import { ImageGenerationConfigurationService } from '@myagentroam/server-core/image-generation-configuration-service';
-import {
-  RuntimeCredentialService,
-  loadOrCreateRuntimeCredentialHmacKey
-} from '@myagentroam/server-core/runtime-credential-service';
+import { RuntimeCredentialService } from '@myagentroam/server-core/runtime-credential-service';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { CodexCredentialService } from '../service/codex-credential-service.js';
 import type { ResourceAccessService } from '../rbac/resource-access-service.js';
@@ -20,7 +17,7 @@ export function composeServerModels(input: {
   readonly resources: ResourceAccessService;
   readonly personalHostingAdmission: (userId: number) => Promise<boolean>;
   readonly nodeCapability: NodeControl['runtimeCredentialCapability'];
-  readonly dataDirectory: string;
+  readonly runtimeCredentialHmacKey: Buffer;
   readonly now: () => number;
 }) {
   const { database, credentials, resources, now } = input;
@@ -44,7 +41,7 @@ export function composeServerModels(input: {
     canUseModel: (userId, modelId) => resources.canUseModel(userId, modelId),
     canUseCredential: (userId, credentialId) => credentials.assertUserInScope(userId, credentialId),
     now,
-    hmacKey: loadOrCreateRuntimeCredentialHmacKey(input.dataDirectory)
+    hmacKey: input.runtimeCredentialHmacKey
   });
   const runtimeModels = new MarAgentRuntimeModelService({
     models,

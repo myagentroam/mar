@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,7 +12,7 @@ import * as runs from '../../ee/server/src/route/run-control-routes.js';
 import * as hosted from '../../ee/server/src/route/hosted-conversation-routes.js';
 import * as credentials from '../../ee/server/src/route/codex-credential-routes.js';
 
-// Keep the real app, services, route registrations and lifecycle. Only the SQL transport is fake.
+// Keep the real app, services, route registrations and filesystem. Fake the MySQL boundary.
 const mysql = vi.hoisted(() => {
   const connection = {
     execute: vi.fn(async () => [[], []]),
@@ -61,6 +61,7 @@ vi.mock('../../packages/server-core/src/runtime-credential-service.js', async (o
 
 let app: ServerApplication | undefined;
 let directory: string;
+const KEY_FILE = 'runtime-credential-hmac.key';
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   runtime.tickets.length = 0;
@@ -99,7 +100,7 @@ describe('Server Codex runtime app wiring', () => {
     control.onNodeConnected('test-node', false);
     expect(activate).toHaveBeenCalledWith('test-node');
     expect(runtime.tickets).toEqual([activate.mock.contexts[0]]);
-    expect(runtime.keyDirectories).toContain(directory);
+    expect(runtime.keyDirectories).toEqual([directory]);
     expect(sessionRoutes).toHaveBeenCalledOnce();
     expect(runRoutes).toHaveBeenCalledOnce();
     expect(hostedRoutes).toHaveBeenCalledOnce();
@@ -119,5 +120,28 @@ describe('Server Codex runtime app wiring', () => {
     await vi.advanceTimersByTimeAsync(CODEX_CREDENTIAL_MAINTENANCE_INTERVAL_MS);
     expect(maintain).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('loads signing material independently for each app, including on reuse of a data directory', async () => {
+    const otherDirectory = join(directory, 'other');
+
+    app = (await createServerApp({ dataDirectory: directory, productUuid: null })).app;
+    await app.close();
+    app = (await createServerApp({ dataDirectory: directory, productUuid: null })).app;
+    await app.close();
+    app = (await createServerApp({ dataDirectory: otherDirectory, productUuid: null })).app;
+    expect(runtime.keyDirectories).toEqual([directory, directory, otherDirectory]);
+
+    const firstPath = join(directory, KEY_FILE);
+    const otherKey = await readFile(join(otherDirectory, KEY_FILE));
+    expect(otherKey.equals(await readFile(firstPath))).toBe(false);
+
+    await writeFile(firstPath, Buffer.alloc(31));
+    await expect(
+      createServerApp({ dataDirectory: directory, productUuid: null }).then(({ app }) =>
+        app.close()
+      )
+    ).rejects.toThrow('MAR_AGENT_RUNTIME_CREDENTIAL_HMAC_KEY_INVALID');
+    expect(runtime.keyDirectories).toEqual([directory, directory, otherDirectory, directory]);
   });
 });

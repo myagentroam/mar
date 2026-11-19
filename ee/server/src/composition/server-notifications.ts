@@ -9,7 +9,6 @@ import {
 } from '@myagentroam/server-core/web-push-dispatcher';
 import { registerWebPushRoutes } from '@myagentroam/server-core/web-push-routes';
 import { createWebPushTransport } from '@myagentroam/server-core/web-push-transport';
-import { loadOrCreateRuntimeCredentialHmacKey } from '@myagentroam/server-core/runtime-credential-service';
 import type { MysqlServerDatabase } from '../mysql/server-database.js';
 import type { NodeControl } from '../node-control.js';
 import { WorkbenchNotificationService } from '../service/workbench-notification-service.js';
@@ -23,7 +22,7 @@ export function composeServerNotifications(input: {
   recentRuns: RecentRunService;
   authorize: NodeRequestAuthorization;
   authorizeHosted: (userId: number, nodeId: string, templateId: string) => Promise<boolean>;
-  dataDirectory: string;
+  readonly runtimeCredentialHmacKey: Buffer;
   publicOrigin: string | undefined;
   webPushSubject?: string | undefined;
   now: () => number;
@@ -33,7 +32,7 @@ export function composeServerNotifications(input: {
     input;
   const configuration = new WebPushConfiguration(
     database,
-    loadOrCreateRuntimeCredentialHmacKey(input.dataDirectory),
+    input.runtimeCredentialHmacKey,
     input.webPushSubject ?? publicOrigin,
     () => true
   );
