@@ -3,7 +3,6 @@ import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
   MODEL_USAGE_RETENTION_MS,
   MODEL_USAGE_BATCH_BYTES,
-  modelUsageBatchSchema,
   type ModelUsageAck,
   type ModelUsageBatch,
   type ModelUsageRecord
@@ -43,10 +42,10 @@ export class ModelUsageStore {
     }
   }
 
-  async consume(nodeId: string, value: unknown): Promise<ModelUsageAck> {
-    if (Buffer.byteLength(JSON.stringify(value)) > MODEL_USAGE_BATCH_BYTES)
+  /** Consumes a batch structurally decoded by the caller; byte limits and ledger checks still apply. */
+  async consume(nodeId: string, batch: ModelUsageBatch): Promise<ModelUsageAck> {
+    if (Buffer.byteLength(JSON.stringify(batch)) > MODEL_USAGE_BATCH_BYTES)
       throw new Error('USAGE_BATCH_INVALID');
-    const batch = modelUsageBatchSchema.parse(value);
     const results: ModelUsageAck['results'] = [];
     for (const entry of batch.entries) results.push(await this.accept(nodeId, entry));
     return { apiVersion: 1, results };

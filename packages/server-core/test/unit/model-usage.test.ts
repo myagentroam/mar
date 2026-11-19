@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   MODEL_USAGE_RETENTION_MS,
+  modelUsageBatchSchema,
   personalUsageQuerySchema,
   type ModelUsageGrant,
   type ModelUsageRecord,
@@ -162,7 +163,7 @@ describe('ModelUsageStore', () => {
     expect(fixture.mysql.rows[0]?.record).toMatchObject({ inputTokens: '17', outputTokens: '0' });
   });
 
-  it('accepts a record idempotently, rejects a changed same revision, and updates higher revisions', async () => {
+  it('accepts replay and updates only higher revisions of the same request identity', async () => {
     const fixture = storeFixture();
     const grant = fixture.grants.issue(NODE_ID, USER_ID, 'work');
     const first = usageRecord({ scopeId: grant.scopeId });
@@ -191,7 +192,39 @@ describe('ModelUsageStore', () => {
 
     const old = usageRecord({ scopeId: grant.scopeId, outputTokens: '9' });
     await expect(fixture.store.consume(NODE_ID, batch(grant, old))).resolves.toEqual(accepted(old));
+
+    const changedIdentity = { ...revised, revision: 3, requestId: 'different-request' };
+    await expect(fixture.store.consume(NODE_ID, batch(grant, changedIdentity))).resolves.toEqual({
+      apiVersion: 1,
+      results: [{ recordId: 'record-1', revision: 3, status: 'rejected', code: 'USAGE_CONFLICT' }]
+    });
     expect(fixture.mysql.rows[0]).toMatchObject({ revision: 2, outputTokens: '8' });
+  });
+
+  it('rejects expired and out-of-window records before touching the ledger', async () => {
+    const now = MODEL_USAGE_RETENTION_MS + NOW;
+    const { mysql, grants, store } = storeFixture(now);
+    const grant = grants.issue(NODE_ID, USER_ID, 'work');
+    const expired = usageRecord({
+      scopeId: grant.scopeId,
+      startedAt: NOW - 1000,
+      endedAt: NOW - 1
+    });
+    const future = usageRecord({
+      recordId: 'future',
+      scopeId: grant.scopeId,
+      startedAt: now,
+      endedAt: now + 3_600_001
+    });
+
+    await expect(store.consume(NODE_ID, batch(grant, expired, future))).resolves.toEqual({
+      apiVersion: 1,
+      results: [
+        { recordId: 'record-1', revision: 1, status: 'rejected', code: 'USAGE_EXPIRED' },
+        { recordId: 'future', revision: 1, status: 'rejected', code: 'USAGE_TIME_INVALID' }
+      ]
+    });
+    expect(mysql.pool.getConnection).not.toHaveBeenCalled();
   });
 
   it('rejects a deleted user before recording usage', async () => {
@@ -705,10 +738,10 @@ class FakeUsageMysql {
   }
 }
 
-function storeFixture() {
+function storeFixture(now = NOW) {
   const mysql = new FakeUsageMysql();
-  const grants = new ModelUsageGrants(Buffer.from('test-signing-key'), () => NOW);
-  const store = new ModelUsageStore(mysql.pool as never, grants, () => NOW);
+  const grants = new ModelUsageGrants(Buffer.from('test-signing-key'), () => now);
+  const store = new ModelUsageStore(mysql.pool as never, grants, () => now);
   return { mysql, grants, store };
 }
 
@@ -840,8 +873,11 @@ function usageRecord(overrides: Partial<ModelUsageRecord> = {}): ModelUsageRecor
   };
 }
 
-function batch(grant: ModelUsageGrant, record: ModelUsageRecord) {
-  return { apiVersion: 1 as const, entries: [{ grant, record }] };
+function batch(grant: ModelUsageGrant, ...records: ModelUsageRecord[]) {
+  return modelUsageBatchSchema.parse({
+    apiVersion: 1,
+    entries: records.map((record) => ({ grant, record }))
+  });
 }
 
 function accepted(record: ModelUsageRecord) {

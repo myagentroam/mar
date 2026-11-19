@@ -149,11 +149,8 @@ export async function composeServerApplication(
     (process.env['MAR_SECURE_COOKIES'] === undefined
       ? publicOrigin?.startsWith('https:') === true
       : process.env['MAR_SECURE_COOKIES'] !== 'false');
-  const userCredentials = new MarctlUserCredentials(
-    mysqlPool,
-    loadOrCreateRuntimeCredentialHmacKey(dataDirectory),
-    now
-  );
+  const runtimeCredentialHmacKey = loadOrCreateRuntimeCredentialHmacKey(dataDirectory);
+  const userCredentials = new MarctlUserCredentials(mysqlPool, runtimeCredentialHmacKey, now);
   const loginRate = new Map<string, LoginRateRecord>();
   const { app: httpApp, traffic } = createServerHttp({
     dataDirectory,
@@ -215,7 +212,7 @@ export async function composeServerApplication(
     const personalGit = new PersonalGitService(database);
     const modelUsage = new ModelUsageStore(
       mysqlPool,
-      new ModelUsageGrants(loadOrCreateRuntimeCredentialHmacKey(dataDirectory), now),
+      new ModelUsageGrants(runtimeCredentialHmacKey, now),
       now
     );
     let mailNotifications: MailNotificationService;
@@ -325,7 +322,7 @@ export async function composeServerApplication(
       resources,
       personalHostingAdmission,
       nodeCapability: (nodeId) => nodeControl.runtimeCredentialCapability(nodeId),
-      dataDirectory,
+      runtimeCredentialHmacKey,
       now
     });
     registerModelUsageRoutes({ app, database, usage: new ModelUsageQueryService(mysqlPool, now) });
@@ -377,7 +374,7 @@ export async function composeServerApplication(
       recentRuns,
       authorize: authorizeNodeRequest,
       authorizeHosted: authorizeHostedConversation,
-      dataDirectory,
+      runtimeCredentialHmacKey,
       publicOrigin,
       now,
       transport: options.webPushTransport,
@@ -506,7 +503,7 @@ export async function composeServerApplication(
     });
     const htmlPreviewOrigin = new HtmlPreviewOrigin(database);
     const sessionShares = new SessionShares({
-      store: new MysqlSessionShares(database, loadOrCreateRuntimeCredentialHmacKey(dataDirectory)),
+      store: new MysqlSessionShares(database, runtimeCredentialHmacKey),
       nodeControl,
       now,
       authorize: async (userId, target, operation) =>
@@ -675,10 +672,7 @@ export async function composeServerApplication(
       });
     }
     {
-      const smtp = new MailSmtpService(
-        database,
-        loadOrCreateRuntimeCredentialHmacKey(dataDirectory)
-      );
+      const smtp = new MailSmtpService(database, runtimeCredentialHmacKey);
       const mailTemplates = new MailTemplateService(database);
       mailNotifications = new MailNotificationService(
         database,

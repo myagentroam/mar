@@ -1,6 +1,8 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope } from '../../packages/protocol/src/index.js';
 import { ServerDatabase } from '../../ee/server/src/database.js';
@@ -11,6 +13,7 @@ import {
 } from '../../packages/server-core/src/runtime-credential-service.js';
 
 const NOW = 1_800_000_000_000;
+const KEY_FILE = 'runtime-credential-hmac.key';
 
 function storedModel(credentialId = 'credential-1') {
   return {
@@ -76,18 +79,100 @@ describe('Server MAR Agent runtime credential service', () => {
   it('persists one private runtime credential HMAC key in the Server data directory', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mar-runtime-credential-key-'));
     try {
-      const first = loadOrCreateRuntimeCredentialHmacKey(directory);
-      const second = loadOrCreateRuntimeCredentialHmacKey(directory);
-      const path = join(directory, 'runtime-credential-hmac.key');
+      const dataDirectory = join(directory, 'server');
+      const first = loadOrCreateRuntimeCredentialHmacKey(dataDirectory);
+      const path = join(dataDirectory, KEY_FILE);
+      const metadata = await lstat(path);
 
-      expect(first).toHaveLength(32);
-      expect(second).toEqual(first);
-      expect(await readFile(path)).toEqual(first);
-      if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o600);
+      expect(metadata.isFile()).toBe(true);
+      expect(metadata.size).toBe(32);
+      if (process.platform !== 'win32') {
+        expect(metadata.mode & 0o777).toBe(0o600);
+        expect((await lstat(dataDirectory)).mode & 0o777).toBe(0o700);
+      }
+      expect(first.equals(await readFile(path))).toBe(true);
+      expect(first.equals(loadOrCreateRuntimeCredentialHmacKey(dataDirectory))).toBe(true);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'rejects a symbolic link in place of the key',
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'mar-runtime-credential-link-'));
+      try {
+        const target = join(directory, 'other-file');
+        const path = join(directory, KEY_FILE);
+        await writeFile(target, Buffer.alloc(32), { mode: 0o600 });
+        await symlink(target, path);
+        expect(() => loadOrCreateRuntimeCredentialHmacKey(directory)).toThrow(
+          'MAR_AGENT_RUNTIME_CREDENTIAL_HMAC_KEY_INVALID'
+        );
+        expect((await lstat(path)).isSymbolicLink()).toBe(true);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('converges on the persisted key when two initializers publish concurrently', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mar-runtime-credential-race-'));
+    const workers: Worker[] = [];
+    try {
+      const arrivals = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+      const moduleUrl = pathToFileURL(
+        resolve('packages/server-core/src/runtime-credential-service.ts')
+      ).href;
+      // Synchronize at publication so both contenders have actually prepared a temporary file.
+      const code = `
+        const fs = require('node:fs');
+        const { syncBuiltinESMExports } = require('node:module');
+        const { parentPort, workerData } = require('node:worker_threads');
+        const arrivals = new Int32Array(workerData.arrivals);
+        const publish = fs.linkSync;
+        fs.linkSync = (source, destination) => {
+          if (Atomics.add(arrivals, 0, 1) === 0) {
+            if (Atomics.wait(arrivals, 0, 1, 3000) === 'timed-out') throw new Error('Publication barrier timed out');
+          } else {
+            Atomics.notify(arrivals, 0);
+          }
+          publish(source, destination);
+        };
+        syncBuiltinESMExports();
+        import(workerData.moduleUrl).then(({ loadOrCreateRuntimeCredentialHmacKey }) => {
+          const key = loadOrCreateRuntimeCredentialHmacKey(workerData.directory);
+          parentPort.postMessage(key.equals(fs.readFileSync(workerData.path)));
+        });
+      `;
+      const results = Array.from({ length: 2 }, () => {
+        const worker = new Worker(code, {
+          eval: true,
+          execArgv: ['--import', 'tsx', '--conditions=development'],
+          workerData: {
+            directory,
+            moduleUrl,
+            arrivals,
+            path: join(directory, KEY_FILE)
+          }
+        });
+        workers.push(worker);
+        return new Promise<boolean>((resolve, reject) => {
+          let matched = false;
+          worker.once('message', (message) => {
+            matched = message === true;
+          });
+          worker.once('error', reject);
+          worker.once('exit', (code) => resolve(code === 0 && matched));
+        });
+      });
+      expect(await Promise.all(results)).toEqual([true, true]);
+      expect(await readdir(directory)).toEqual([KEY_FILE]);
+    } finally {
+      await Promise.all(workers.map((worker) => worker.terminate()));
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 10_000);
 
   it('extends an active task across multiple ticket lifetimes while rechecking authorization', async () => {
     let now = NOW;

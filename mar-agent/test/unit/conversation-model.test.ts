@@ -180,7 +180,7 @@ describe('conversation model eligibility', () => {
                 arguments: {
                   title: 'Use the helper model',
                   description: 'Use the helper model',
-                  prompt: 'Run this bounded task.',
+                  content: 'Run this bounded task.',
                   role: 'general-purpose',
                   modelId: 'helper'
                 }
