@@ -238,7 +238,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       const selection = await categories.evaluate((element) => {
         const reference = document.createElement('span');
         reference.style.backgroundColor = 'var(--mar-fill-selection)';
-        reference.style.color = 'var(--mar-text-muted)';
+        reference.style.color = 'var(--mar-text-secondary)';
         element.append(reference);
         const style = getComputedStyle(reference);
         const result = { background: style.backgroundColor, color: style.color };

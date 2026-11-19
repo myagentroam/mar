@@ -75,7 +75,7 @@ const emit = defineEmits<{
   border-radius: 6px;
   padding: 0.35rem 0.55rem;
   background: color-mix(in srgb, var(--mar-conversation-surface) 65%, transparent);
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font: inherit;
   cursor: pointer;
 }

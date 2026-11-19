@@ -638,7 +638,7 @@ defineExpose({ reveal });
 
 .file-tree-empty {
   margin: 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   padding: 0.45rem 0.65rem;
   font-size: var(--mar-font-size-meta);
 }
@@ -738,7 +738,7 @@ defineExpose({ reveal });
 
 .tree-chevron,
 .tree-kind {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .tree-chevron {
@@ -763,6 +763,7 @@ defineExpose({ reveal });
   min-width: 0;
   overflow: hidden;
   padding-right: 2px;
+  color: var(--mar-text-primary);
   line-height: 1.5;
   text-overflow: ellipsis;
 }

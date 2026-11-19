@@ -54,7 +54,7 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

@@ -509,7 +509,7 @@ function selectFiles(event: Event): void {
 
 .composer-config,
 .composer-hint {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -786,12 +786,6 @@ function selectFiles(event: Event): void {
   transform: none;
 }
 
-:global(.composer-runner-select .el-select__caret),
-:global(.composer-access-select .el-select__caret),
-:global(.composer-model-effort-select .el-select__caret) {
-  color: var(--mar-text-faint);
-}
-
 :global(.composer-mini-popper .el-select-dropdown__item),
 :global(.composer-model-effort-popper .el-select-dropdown__item) {
   height: var(--mar-compact-control-size);
@@ -862,7 +856,7 @@ function selectFiles(event: Event): void {
   display: block;
   height: 2rem;
   padding: 0.25rem 0.75rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: var(--mar-compact-control-size);
 }

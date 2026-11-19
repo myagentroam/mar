@@ -646,7 +646,7 @@ function activate(tab: WorkspaceTab): void {
 }
 
 :global(.workspace-tab-menu-list .el-dropdown-menu__item > small) {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -727,7 +727,7 @@ function activate(tab: WorkspaceTab): void {
   border: 0;
   border-radius: inherit;
   background: transparent;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-primary);
   padding: 3px 34px 2px 8px;
   text-align: left;
   cursor: pointer;
@@ -742,10 +742,6 @@ function activate(tab: WorkspaceTab): void {
   background:
     linear-gradient(var(--mar-fill-row-hover), var(--mar-fill-row-hover)),
     var(--workspace-tab-base-bg);
-}
-
-.workspace-tab:not(.active) > button:first-child:hover:not(:disabled) {
-  color: var(--mar-text-primary);
 }
 
 .workspace-tab-content {
@@ -763,21 +759,13 @@ function activate(tab: WorkspaceTab): void {
   white-space: nowrap;
 }
 
-.workspace-tab.active > button:first-child {
-  color: var(--mar-text-primary);
-}
-
 .workspace-tab small {
   overflow: hidden;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.workspace-tab.active small {
-  color: var(--mar-text-secondary);
 }
 
 @media (min-width: 768px) {

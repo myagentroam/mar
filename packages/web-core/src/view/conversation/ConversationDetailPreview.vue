@@ -71,8 +71,8 @@ onBeforeUnmount(() => observer?.disconnect());
   overflow: hidden;
 }
 .detail-preview-toggle {
-  --el-button-hover-link-text-color: var(--mar-conversation-text);
-  --el-button-active-color: var(--mar-conversation-text);
+  --el-button-hover-link-text-color: var(--mar-text-primary);
+  --el-button-active-color: var(--mar-text-primary);
   margin: 0.375rem 0 0;
   padding: 0;
   border: 0;
@@ -80,7 +80,7 @@ onBeforeUnmount(() => observer?.disconnect());
   height: auto;
   font: inherit;
   font-weight: 400;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
 }
 .detail-preview-toggle-icon {
   margin-inline-end: 0.25rem;

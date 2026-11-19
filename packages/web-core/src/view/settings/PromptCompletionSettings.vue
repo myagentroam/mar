@@ -199,7 +199,7 @@ onBeforeUnmount(() => lifetime.abort());
   max-width: 36rem;
 }
 .compact-hint {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.6;
   margin: 0 0 1rem;

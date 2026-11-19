@@ -106,7 +106,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
 .recent-sessions-empty {
   margin: 0;
   padding: 1.2rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   text-align: center;
   font-size: var(--mar-font-size-meta);
 }
@@ -163,7 +163,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
 .recent-sessions-list small {
   grid-column: 1 / -1;
   grid-row: 2;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: inherit;
 }
 .recent-sessions-list .el-tag {
@@ -184,7 +184,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
   max-width: 100%;
   justify-self: start;
   align-self: center;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .recent-sessions-list .el-tag--success {
   --el-tag-text-color: var(--mar-color-success-text);

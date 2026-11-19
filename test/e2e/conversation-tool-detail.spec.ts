@@ -132,7 +132,7 @@ for (const [width, theme, locale] of [
       await expect(list.getByRole('checkbox')).toHaveCount(0);
       const muted = await list.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--mar-conversation-muted)';
+        probe.style.color = 'var(--mar-text-secondary)';
         element.append(probe);
         const color = getComputedStyle(probe).color;
         probe.remove();
@@ -422,7 +422,7 @@ for (const [width, theme] of [
     await expect(name).toHaveCSS('font-weight', '400');
     const colors = await files.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-text-tertiary)';
+      probe.style.color = 'var(--mar-text-secondary)';
       element.append(probe);
       const path = getComputedStyle(probe).color;
       probe.remove();
@@ -767,10 +767,10 @@ for (const variant of [
     await expect(more).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     const toggleColor = await more.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--mar-conversation-muted)';
+      probe.style.color = 'var(--mar-text-secondary)';
       element.append(probe);
       const rest = getComputedStyle(probe).color;
-      probe.style.color = 'var(--mar-conversation-text)';
+      probe.style.color = 'var(--mar-text-primary)';
       const hover = getComputedStyle(probe).color;
       probe.remove();
       return { rest, hover };
@@ -1609,7 +1609,7 @@ for (const width of [1280, 390]) {
         const detailSurface = await detail.evaluate(
           (element) => getComputedStyle(element).backgroundColor
         );
-        expect(resolvedColorToHex(detailSurface)).toBe(theme === 'dark' ? '#1f232a' : '#eaecf1');
+        expect(resolvedColorToHex(detailSurface)).toBe(theme === 'dark' ? '#20242b' : '#eaecf1');
         const expand = detail.getByRole('button', { name: 'Show more', exact: true });
         if (await expand.isVisible()) await expand.click();
         const textBounds = await detail.locator('.tool-source-text').boundingBox();

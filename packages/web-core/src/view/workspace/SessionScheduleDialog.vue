@@ -715,7 +715,7 @@ function occurrenceStatus(status: string): string {
 .schedule-timezone {
   margin: 0;
   padding-left: 116px;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 @media (max-width: 600px) {
   .schedule-form :deep(.el-form-item) {
@@ -739,7 +739,7 @@ function occurrenceStatus(status: string): string {
 }
 .schedule-history p {
   margin: 0.35rem 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .schedule-proposal {
   padding: 0.55rem 0;

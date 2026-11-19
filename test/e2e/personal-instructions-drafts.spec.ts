@@ -40,6 +40,20 @@ test('Personal instruction saves retain other scope drafts through success, fail
     const codex = panel.getByRole('tab', { name: 'Codex', exact: true });
     const save = panel.getByRole('button', { name: 'Save', exact: true });
     await expect(editor).toHaveValue(initial.common);
+    const { primary, secondary } = await panel.evaluate((element) => {
+      const probe = document.createElement('span');
+      element.append(probe);
+      probe.style.color = 'var(--mar-text-primary)';
+      const primary = getComputedStyle(probe).color;
+      probe.style.color = 'var(--mar-text-secondary)';
+      const secondary = getComputedStyle(probe).color;
+      probe.remove();
+      return { primary, secondary };
+    });
+    await expect(editor).toHaveCSS('color', primary);
+    await expect
+      .poll(() => editor.evaluate((element) => getComputedStyle(element, '::placeholder').color))
+      .toBe(secondary);
     await codex.click();
     await editor.fill('Codex inactive draft');
     await common.click();

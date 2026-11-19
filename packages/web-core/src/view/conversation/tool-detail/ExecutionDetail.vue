@@ -138,6 +138,6 @@ const visibleOutputs = computed(
   overflow-wrap: anywhere;
 }
 .tool-cwd-value {
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
 }
 </style>

@@ -808,7 +808,7 @@ onUnmounted(() => {
 
 <style scoped>
 :where(.usage) :deep(.section-heading span) {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 :where(.usage) :deep(.section-heading h2) {
@@ -865,13 +865,13 @@ p {
 }
 .usage-summary {
   margin: 5px 0 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }
 .metadata,
 .mar-empty {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.6;
 }
@@ -937,7 +937,7 @@ p {
 }
 .section-heading > span {
   font-size: var(--mar-font-size-meta);
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .trend {
   padding: 0.5rem 0 1rem;
@@ -997,7 +997,7 @@ p {
   justify-content: space-between;
   gap: 1rem;
   font-size: var(--mar-font-size-meta);
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 details {
   margin-top: 0.6rem;
@@ -1059,7 +1059,7 @@ li strong {
   font-size: var(--mar-font-size-meta);
 }
 dt {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 dd {
   margin: 0;

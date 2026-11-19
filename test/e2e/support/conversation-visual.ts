@@ -200,7 +200,7 @@ export async function verifyConversationThemes(
     const code = assistant.locator('.agent-markdown p > code').first();
     await expect(code).toBeVisible();
     {
-      await expect(code).toHaveCSS('color', await themeColor(page, '--mar-conversation-text'));
+      await expect(code).toHaveCSS('color', await themeColor(page, '--mar-text-primary'));
       await expect(code).toHaveCSS(
         'background-color',
         await themeColor(page, '--mar-conversation-code')

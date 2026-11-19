@@ -344,7 +344,7 @@
 }
 .mar-session-activity i {
   display: inline-block;
-  background: var(--mar-text-faint);
+  background: var(--mar-text-secondary);
 }
 .mar-icon {
   display: inline-block;
@@ -446,5 +446,5 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
   background: var(--el-color-success);
 }
 .mar-session-activity.node-offline i {
-  background: var(--mar-text-faint);
+  background: var(--mar-text-disabled);
 }

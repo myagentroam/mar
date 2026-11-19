@@ -138,7 +138,7 @@ watch(open, async () => {
   padding: 4px 0;
   border: 0;
   background: transparent;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font: inherit;
   font-size: var(--mar-font-size-body);
   line-height: 20px;
@@ -168,7 +168,7 @@ watch(open, async () => {
   transform: rotate(90deg);
 }
 .process-meta {
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .process-metrics {
@@ -184,14 +184,14 @@ watch(open, async () => {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-variant-numeric: tabular-nums;
   text-box: trim-both cap alphabetic;
   overflow-wrap: anywhere;
 }
 .process-summary {
   margin: 0;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
   overflow: hidden;
@@ -207,7 +207,7 @@ watch(open, async () => {
   font-weight: 500;
 }
 .process-activity.is-active {
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-weight: 600;
 }
 .process-activity-indicator {

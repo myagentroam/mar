@@ -1,6 +1,9 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { defineAsyncComponent, h, ref } from 'vue';
 import 'element-plus/theme-chalk/dark/css-vars.css';
+// Preload styles needed by the lazy controls so Vite does not reload the settings page mid-action.
+import 'element-plus/es/components/tabs/style/css';
+import 'element-plus/es/components/tab-pane/style/css';
 import '../../src/styles.css';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';

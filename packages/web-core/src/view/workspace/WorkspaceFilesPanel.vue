@@ -469,7 +469,7 @@ defineExpose({
 }
 
 .watch-status:not(button) {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 
 button.watch-status {
@@ -483,7 +483,7 @@ button.watch-status {
 }
 
 button.watch-status[aria-disabled='true'] {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-disabled);
   cursor: default;
 }
 
@@ -549,7 +549,7 @@ button.watch-status[aria-disabled='true'] {
 
 .upload-dialog-list span > small,
 .upload-dialog-list > small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

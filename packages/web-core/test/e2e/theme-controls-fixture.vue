@@ -330,6 +330,6 @@ function saveFeedbackDialog(): void {
 }
 
 .conversation-metadata {
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
 }
 </style>

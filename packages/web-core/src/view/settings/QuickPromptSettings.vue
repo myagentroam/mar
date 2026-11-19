@@ -239,7 +239,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
 .quick-prompts header p,
 .prompt-state {
   margin: 0.35rem 0 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }

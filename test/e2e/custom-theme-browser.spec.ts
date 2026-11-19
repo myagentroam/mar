@@ -32,8 +32,9 @@ const componentAliases: Record<string, string> = {
   '--el-fill-color-blank': '--mar-bg-panel',
   '--el-text-color-primary': '--mar-text-primary',
   '--el-text-color-regular': '--mar-text-secondary',
-  '--el-text-color-secondary': '--mar-text-tertiary',
-  '--el-text-color-placeholder': '--mar-text-faint',
+  '--el-text-color-secondary': '--mar-text-secondary',
+  '--el-text-color-placeholder': '--mar-text-secondary',
+  '--el-text-color-disabled': '--mar-text-disabled',
   '--el-border-color': '--mar-border-default',
   '--el-border-color-light': '--mar-border-subtle',
   '--el-border-color-lighter': '--mar-control-border-color-lighter',
@@ -41,7 +42,7 @@ const componentAliases: Record<string, string> = {
   '--el-border-color-dark': '--mar-control-border-color-dark',
   '--el-border-color-darker': '--mar-control-border-color-darker',
   '--el-disabled-bg-color': '--mar-fill-soft',
-  '--el-disabled-text-color': '--mar-text-faint',
+  '--el-disabled-text-color': '--mar-text-disabled',
   '--el-disabled-border-color': '--mar-border-subtle',
   '--el-mask-color': '--mar-overlay-scrim',
   '--el-mask-color-extra-light': '--mar-overlay-scrim',
@@ -499,7 +500,7 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
   await editor.fill('{');
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
-  await expect(page.locator('.el-form-item__error')).toContainText('Invalid JSON');
+  await expect(page.getByRole('alert').filter({ hasText: 'Invalid JSON' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('mar.customThemes'))).toBeNull();
   const source = JSON.stringify(
     {
@@ -519,8 +520,11 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
     2
   );
   await editor.fill(source);
+  await editor.blur();
   await expect(page.locator('.validation')).toContainText('saving is allowed');
-  await expect(page.locator('.el-form-item__error')).toHaveCount(0);
+  await expect(
+    page.locator('.el-form-item').filter({ has: editor }).locator('.el-form-item__error')
+  ).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('theme-desktop.png'), fullPage: true });
   await expect(page.locator('.mar-theme-preview .preview-toolbar')).toHaveCSS(
     'background-color',
@@ -806,7 +810,7 @@ for (const scheme of ['Light', 'Dark']) {
           for (const [token, value] of Object.entries({
             '--mar-color-brand': '#bf6ac9',
             '--mar-text-primary': '#dae5cf',
-            '--mar-text-faint': '#8293a4',
+            '--mar-text-disabled': '#8293a4',
             '--mar-border-medium': '#718293',
             '--mar-fill-row-hover': '#334455',
             '--mar-fill-selection': '#445566'
@@ -822,7 +826,7 @@ for (const scheme of ['Light', 'Dark']) {
         };
         const result = {
           text: color('--mar-text-primary'),
-          disabled: color('--mar-text-faint'),
+          disabled: color('--mar-text-disabled'),
           selected: color('--mar-fill-selection'),
           hover: color('--mar-fill-row-hover'),
           hoverBorder: color('--mar-input-border-hover'),
@@ -1557,7 +1561,9 @@ test('expanded and compact previews share the applied palette without changing g
       '--mar-fill-row-hover': '#283442',
       '--mar-color-diff-add-text': '#123456',
       '--mar-conversation-surface': '#16324f',
-      '--mar-conversation-text': '#f8eedd'
+      '--mar-text-primary': '#f8eedd',
+      '--mar-text-secondary': '#99aabb',
+      '--mar-text-disabled': '#778899'
     }
   });
   await editor.fill(source);
@@ -1569,7 +1575,15 @@ test('expanded and compact previews share the applied palette without changing g
   }
   await expect(preview.locator('.user-message')).toHaveText('This is a sample message.');
   await expect(preview.locator('.assistant-message strong')).toHaveText('Sample heading');
-  await expect(preview.locator('.user-message')).toHaveCSS('color', 'rgb(248, 238, 221)');
+  const expectPreviewText = async (sample: Locator) => {
+    for (const selector of ['.user-message', '.assistant-message p'])
+      await expect(sample.locator(selector)).toHaveCSS('color', 'rgb(248, 238, 221)');
+    await expect(sample.locator('.process')).toHaveCSS('color', 'rgb(153, 170, 187)');
+    const disabled = sample.getByRole('button', { name: 'Disabled', exact: true });
+    await expect(disabled).toBeDisabled();
+    await expect(disabled).toHaveCSS('color', 'rgb(119, 136, 153)');
+  };
+  await expectPreviewText(preview);
   await expect(preview.locator('.assistant-message')).toHaveCSS(
     'background-color',
     'rgb(22, 50, 79)'
@@ -1580,10 +1594,9 @@ test('expanded and compact previews share the applied palette without changing g
   await expect(preview.locator('.preview-button.primary')).toHaveCSS('border-radius', '6px');
   await expect(preview.locator('.preview-toolbar')).toHaveCSS(
     'background-color',
-    'rgb(22, 29, 40)'
+    'rgb(28, 34, 43)'
   );
   await expect(preview.locator('.diff-add')).toHaveCSS('color', 'rgb(18, 52, 86)');
-  await expect(preview.getByRole('button', { name: 'Disabled', exact: true })).toBeDisabled();
   const compactFont = await preview.evaluate((element) =>
     parseFloat(getComputedStyle(element).fontSize)
   );
@@ -1593,6 +1606,7 @@ test('expanded and compact previews share the applied palette without changing g
   const dialog = page.getByRole('dialog');
   const expanded = dialog.locator('.mar-theme-preview');
   await expect(expanded).toBeVisible();
+  await expectPreviewText(expanded);
   await expect(expanded.locator('.file.selected')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
   await expect(expanded.locator('.tab.active')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
   const dialogPanel = dialog.locator('.el-dialog');
@@ -1806,8 +1820,8 @@ for (const scheme of ['Light', 'Dark']) {
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       else await expect(row.getByRole('button', { name: 'Active', exact: true })).toBeDisabled();
       const typography = page.getByRole('region', { name: 'Real conversation typography' });
-      const conversationText = scheme === 'Dark' ? 'rgb(208, 215, 226)' : 'rgb(23, 32, 51)';
-      const conversationMuted = scheme === 'Dark' ? 'rgb(159, 176, 199)' : 'rgb(82, 98, 122)';
+      const conversationText = scheme === 'Dark' ? 'rgb(226, 232, 240)' : 'rgb(23, 32, 51)';
+      const conversationMuted = scheme === 'Dark' ? 'rgb(168, 184, 207)' : 'rgb(82, 98, 122)';
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         for (const selector of ['p', 'strong', 'h3', 'th', 'td', 'code'])
@@ -1830,9 +1844,19 @@ for (const scheme of ['Light', 'Dark']) {
       await page.setViewportSize({ width: 1440, height: 900 });
       // Resizing and screenshots can leave the pointer over a control; inspect its neutral state.
       await page.mouse.move(-10, -10);
-      const panel = scheme === 'Dark' ? 'rgb(22, 29, 40)' : 'rgb(255, 255, 255)';
+      const panel = scheme === 'Dark' ? 'rgb(28, 34, 43)' : 'rgb(255, 255, 255)';
       await expect(controls.locator('.el-input__wrapper')).toHaveCSS('background-color', panel);
-      await expect(controls.locator('.el-select__wrapper')).toHaveCSS('background-color', panel);
+      const select = controls.locator('.el-select__wrapper');
+      await expect(select).toHaveCSS('background-color', panel);
+      const selectLabel = controls.locator('.el-select__placeholder');
+      const selectCaret = controls.locator('.el-select__caret');
+      await expect(selectLabel).toHaveCSS('color', conversationMuted);
+      await expect(selectCaret).toHaveCSS('color', conversationMuted);
+      await select.click();
+      await page.getByRole('option', { name: 'One', exact: true }).click();
+      await expect(selectLabel).toHaveText('One');
+      await expect(selectLabel).toHaveCSS('color', conversationText);
+      await expect(selectCaret).toHaveCSS('color', conversationMuted);
       await expect(controls.locator('.el-table')).toHaveCSS('background-color', panel);
       await expect(controls.getByRole('button', { name: 'Sample default', exact: true })).toHaveCSS(
         'background-color',
@@ -1935,7 +1959,7 @@ for (const scheme of ['Light', 'Dark']) {
         '--mar-table-row-hover-bg': '#345678',
         '--mar-color-on-accent': '#fedcba',
         '--mar-color-brand-hover': '#234567',
-        '--mar-conversation-text': '#d5c4af',
+        '--mar-text-primary': '#d5c4af',
         '--mar-control-link-text': '#abcdef',
         '--mar-control-link-hover': '#bcdefa',
         '--mar-color-brand-disabled': '#cdefab'
@@ -1955,6 +1979,8 @@ for (const scheme of ['Light', 'Dark']) {
         'background-color',
         'rgb(18, 52, 86)'
       );
+      await expect(selectLabel).toHaveCSS('color', 'rgb(213, 196, 175)');
+      await expect(selectCaret).toHaveCSS('color', conversationMuted);
       await expect(controls.locator('.el-table')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
       await expect(controls.locator('.el-table th')).toHaveCSS(
         'background-color',

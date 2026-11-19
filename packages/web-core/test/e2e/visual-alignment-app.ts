@@ -156,7 +156,7 @@ const toolbar = {
       ]
     : [],
   hideAccessSelection: !selectStates,
-  configurationDisabled: false,
+  configurationDisabled: new URLSearchParams(location.search).has('disabled-model'),
   accessDisabled: false,
   fastEnabled: false,
   contextUsage: new URLSearchParams(location.search).has('empty-context')

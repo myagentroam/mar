@@ -1661,7 +1661,7 @@ function stepDuration(item: ConversationItem): string | undefined {
 
 .conversation-run-duration,
 .conversation-step-duration {
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -1737,7 +1737,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   border: 1px solid var(--mar-conversation-border);
   border-radius: var(--mar-radius-surface);
   background: var(--mar-conversation-surface);
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   padding: 12px 14px;
   box-shadow: none;
   font-size: var(--mar-font-size-body);
@@ -1848,7 +1848,7 @@ function stepDuration(item: ConversationItem): string | undefined {
 .conversation-reasoning-status > span,
 .conversation-item-heading > span,
 .task-list-heading > span {
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
 }
 
 .conversation-item.reasoning-group > details > summary {
@@ -1940,7 +1940,7 @@ function stepDuration(item: ConversationItem): string | undefined {
   display: block;
   width: 1.125rem;
   height: 1.125rem;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
 }
 
 .conversation-item summary.conversation-record-heading > .mar-disclosure-icon,
@@ -2036,7 +2036,7 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-record-group > details > summary > .mar-disclosure-icon {
   margin-inline: 0;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
 }
 
 .conversation-record-group > details > summary > span {
@@ -2047,7 +2047,7 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-record-meta {
   display: flex;
   gap: 0 0.5rem;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
 }
@@ -2074,7 +2074,7 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-read-range {
   flex: none;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
 }
@@ -2183,7 +2183,7 @@ details.conversation-record-group[open] > details:last-child {
   border-radius: 4px;
   background: transparent;
   padding: 0;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -2206,7 +2206,7 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-file-change-path {
   grid-column: 2;
   grid-row: 2;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .conversation-file-change-name,
@@ -2245,7 +2245,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item strong {
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 
@@ -2264,7 +2264,7 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-message-time {
   align-self: center;
   margin-right: auto;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -2295,10 +2295,6 @@ details.conversation-record-group[open] > details:last-child {
   word-break: break-word;
 }
 
-.conversation-item.user_message strong {
-  color: var(--mar-conversation-muted);
-}
-
 .conversation-user-image-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -2324,7 +2320,7 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-item summary {
   margin: 0;
   cursor: pointer;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   line-height: 20px;
   list-style: none;
   border-radius: var(--mar-radius-control);
@@ -2424,7 +2420,7 @@ details.conversation-record-group[open] > details:last-child {
 
 .permission-call-details > summary,
 .approval-expiry {
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -2445,7 +2441,7 @@ details.conversation-record-group[open] > details:last-child {
   border-radius: 6px;
   background: var(--mar-conversation-code);
   padding: 0.45rem 0.55rem;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;

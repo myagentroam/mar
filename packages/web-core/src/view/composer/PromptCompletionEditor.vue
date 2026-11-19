@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .completion-insertion {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .completion-actions {
   display: grid;
@@ -587,14 +587,14 @@ onBeforeUnmount(() => {
   width: 0.3125rem;
   height: 0.3125rem;
   border-radius: 50%;
-  background: var(--mar-text-faint);
+  background: var(--mar-text-secondary);
 }
 .completion-actions[data-state='ready'] .completion-indicator {
   background: var(--mar-color-brand-text);
   animation: prediction-ready 240ms ease-out;
 }
 .completion-hint {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: inherit;
 }
 @keyframes prediction-ready {

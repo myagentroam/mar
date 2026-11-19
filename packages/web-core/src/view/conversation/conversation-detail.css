@@ -4,8 +4,8 @@
   padding: 0.625rem var(--mar-conversation-detail-end, 0.75rem) 0.625rem 0.75rem;
   border: 0;
   border-radius: var(--mar-radius-surface);
-  background: color-mix(in srgb, var(--mar-conversation-canvas), var(--mar-conversation-text) 6%);
-  color: var(--mar-conversation-text);
+  background: color-mix(in srgb, var(--mar-conversation-canvas), var(--mar-text-primary) 6%);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-detail);
   font-weight: 400;
   line-height: 1.65;
@@ -20,7 +20,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--mar-conversation-text);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-detail);
   font-weight: 400;
   line-height: 1.65;
@@ -68,7 +68,7 @@
   justify-self: center;
   border-radius: 50%;
   background: currentColor;
-  color: var(--mar-conversation-muted);
+  color: var(--mar-text-secondary);
   pointer-events: none;
 }
 

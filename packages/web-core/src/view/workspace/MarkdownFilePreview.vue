@@ -122,7 +122,7 @@ function onClick(event: MouseEvent): void {
   border-left: 3px solid color-mix(in srgb, var(--mar-color-brand) 45%, var(--mar-border-medium));
   border-radius: 0 5px 5px 0;
   background: color-mix(in srgb, var(--mar-color-brand) 4%, var(--mar-fill-subtle));
-  color: color-mix(in srgb, var(--mar-text-primary) 90%, var(--mar-text-secondary));
+  color: var(--mar-text-primary);
   padding: 0.6rem 0.8rem;
 }
 

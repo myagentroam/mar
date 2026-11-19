@@ -991,7 +991,7 @@ p {
   border-radius: 8px;
   background: var(--mar-bg-subtle);
   padding: 20px;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   text-align: center;
 }

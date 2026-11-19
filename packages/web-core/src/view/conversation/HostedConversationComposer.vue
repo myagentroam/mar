@@ -991,7 +991,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-attachments small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -1075,7 +1075,7 @@ onBeforeUnmount(() => {
 .hosted-model-trigger > .mar-icon,
 .hosted-template-name > .mar-icon {
   flex: none;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .hosted-template-trigger > .mar-icon[data-mar-icon='document'],
@@ -1127,7 +1127,7 @@ onBeforeUnmount(() => {
 
 .hosted-replace-hint {
   min-width: 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.35;
 }

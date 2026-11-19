@@ -270,7 +270,12 @@ const markerSessions: Session[] = [
   { id: 'Paused, still pinned', pinOrder: 2, schedule: { enabled: false, nextRunAt: null } },
   { id: 'Paused, not pinned', pinOrder: null, schedule: { enabled: false, nextRunAt: null } },
   { id: 'Normal', pinOrder: null }
-].map((session) => ({ ...session, runner: 'mar-agent', workspaceId: 'workspace' }));
+].map((session) => ({
+  ...session,
+  lastActivityAt: Date.now() - 60_000,
+  runner: 'mar-agent',
+  workspaceId: 'workspace'
+}));
 const sessions = ref(
   (reorderFixture
     ? ['pinned-one', 'pinned-two', 'pinned-three', 'active', 'idle']

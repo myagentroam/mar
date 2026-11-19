@@ -327,7 +327,7 @@ h2 {
 
 .personal-instructions > header p {
   margin: 0.35rem 0 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }
@@ -396,7 +396,7 @@ h2 {
   border-radius: var(--el-border-radius-base);
   outline: none;
   background: var(--el-fill-color-blank);
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-primary);
   padding: 0.5rem 0.7rem;
   font-family: inherit;
   font-size: var(--mar-font-size-input);
@@ -404,7 +404,8 @@ h2 {
   resize: vertical;
 }
 .personal-instructions textarea::placeholder {
-  color: var(--el-text-color-placeholder);
+  color: var(--mar-text-secondary);
+  opacity: 1;
 }
 .personal-instructions textarea:focus {
   border-color: var(--el-color-primary);
@@ -415,7 +416,7 @@ h2 {
 }
 .instruction-state {
   flex: 1 1 auto;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 .instruction-actions {

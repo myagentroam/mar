@@ -498,7 +498,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 .workspace-directory-list > .workspace-directory-empty {
   display: block;
   border-bottom: 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   padding: 0.65rem;
   font-size: var(--mar-font-size-meta);
 }
@@ -553,7 +553,7 @@ button.workspace-directory-entry:disabled {
 
 .workspace-directory-list small {
   margin-left: auto;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

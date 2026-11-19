@@ -1194,7 +1194,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 .workspace-selection-hint {
-  color: var(--mar-text-tertiary) !important;
+  color: var(--mar-text-secondary) !important;
   font-size: var(--mar-font-size-meta) !important;
 }
 
@@ -1235,7 +1235,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 }
 
 .workspace-offline-icon {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: 1.75rem;
 }
 
@@ -1379,7 +1379,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
 <style scoped>
 .workspace-tool-loading {
   margin: 0.2rem 0.55rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

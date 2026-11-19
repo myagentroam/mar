@@ -68,7 +68,7 @@ h1 {
   font-size: var(--mar-font-size-page-title);
 }
 p {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   line-height: 1.6;
 }
 .actions {

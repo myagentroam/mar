@@ -400,7 +400,7 @@ defineExpose({ open: openGrants });
   margin-bottom: 12px;
 }
 .model-access-context code {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .grant-create {
   display: grid;

@@ -202,7 +202,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
 
 <style scoped>
 .ownership-hint {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   margin: 0 0 1rem;
 }

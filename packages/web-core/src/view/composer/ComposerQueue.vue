@@ -821,7 +821,7 @@ onMounted(() => {
 
 .work-item-kind {
   min-width: 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.2;
   white-space: nowrap;
@@ -858,7 +858,7 @@ onMounted(() => {
 }
 
 .composer-queue small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 
 .composer-queue p {
@@ -877,7 +877,7 @@ onMounted(() => {
 .queue-drag {
   flex: 0 0 12px;
   cursor: grab;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   font-size: 14px;
   line-height: 1;
   user-select: none;

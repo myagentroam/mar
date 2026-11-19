@@ -1064,14 +1064,14 @@ function scopeLabel(scope: string): string {
   border: 1px solid var(--mar-border-medium);
   border-radius: 999px;
   background: var(--mar-bg-panel);
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   padding: 5px 12px;
   font: inherit;
   font-size: var(--mar-font-size-body);
   cursor: pointer;
 }
 .skill-category-strip button:hover {
-  border-color: var(--mar-text-faint);
+  border-color: var(--mar-border-strong);
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
@@ -1105,7 +1105,7 @@ function scopeLabel(scope: string): string {
   border-radius: 8px;
   background: var(--mar-bg-subtle);
   padding: 20px;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   text-align: center;
 }

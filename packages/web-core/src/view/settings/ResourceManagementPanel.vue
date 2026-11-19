@@ -1154,7 +1154,7 @@ onUnmounted(() => {
 .resource-management-panel code {
   display: block;
   font-size: var(--mar-font-size-meta);
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 code.registration-token {
   display: block;

@@ -641,7 +641,7 @@ defineExpose({ release, toggle: toggleTerminal });
   min-width: 100px;
   border-radius: var(--mar-radius-selection);
   background: transparent;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
 }

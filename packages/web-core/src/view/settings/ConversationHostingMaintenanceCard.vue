@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
 .capacity-copy p,
 .cleanup-range {
   margin: 4px 0 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
@@ -624,7 +624,7 @@ onBeforeUnmount(() => {
 .capacity-scale {
   display: grid;
   grid-template-columns: 85fr 10fr 5fr;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-nano);
   font-variant-numeric: tabular-nums;
 }
@@ -651,7 +651,7 @@ onBeforeUnmount(() => {
   background: var(--mar-bg-panel);
 }
 .storage-facts dt {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .storage-facts dd {
@@ -691,7 +691,7 @@ onBeforeUnmount(() => {
 }
 .cleanup-result small {
   grid-column: 1 / -1;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
 }
 .cleanup-complete {
   background: color-mix(in srgb, var(--el-color-success) 9%, var(--mar-bg-panel));

@@ -107,7 +107,7 @@ html.console-ui
 }
 
 html.console-ui :where(input, textarea)::placeholder {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   opacity: 1;
 }
 h1,
@@ -278,7 +278,7 @@ pre {
   gap: 0.75rem;
 }
 .mar-sidebar-heading span {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
@@ -290,7 +290,7 @@ pre {
 }
 .mar-sidebar-heading p {
   margin: 0.18rem 0 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

@@ -190,7 +190,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   padding-bottom: 0.45rem;
 }
 .web-performance-panel header span {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 .web-performance-panel header span.is-healthy {
   color: var(--mar-color-success-text);
@@ -219,7 +219,7 @@ onBeforeUnmount(props.diagnostics.dispose);
   padding: 0.4rem 0;
 }
 .web-performance-panel dt {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
 }
 .web-performance-panel dd {
   overflow-wrap: anywhere;
@@ -231,7 +231,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 }
 .web-performance-panel p {
   margin: 0.5rem 0 0;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   line-height: 1.45;
 }
 </style>

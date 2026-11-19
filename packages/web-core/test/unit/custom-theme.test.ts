@@ -135,7 +135,10 @@ describe('Custom theme validation', () => {
     ['--mar-color-accent', '--mar-color-accent-bg'],
     ['--mar-color-on-accent', '--mar-color-brand-hover'],
     ['--mar-text-primary', '--mar-fill-row-hover'],
-    ['--mar-text-secondary', '--mar-fill-row-hover']
+    ['--mar-text-secondary', '--mar-fill-row-hover'],
+    ['--mar-text-primary', '--mar-bg-page'],
+    ['--mar-text-secondary', '--mar-bg-page'],
+    ['--mar-text-primary', '--mar-conversation-code']
   ])(
     'warns about explicit low-contrast %s on %s without rewriting colors',
     (foreground, background) => {
@@ -189,7 +192,9 @@ describe('Custom theme validation', () => {
         '--mar-terminal-background': '#fff',
         '--mar-font-size-body': '100px',
         '--mar-bg-page': 'url(https://example.test/track)',
-        '--mar-text-muted': 'var(--missing)',
+        '--mar-text-secondary': 'var(--missing)',
+        '--mar-text-tertiary': '#555',
+        '--mar-conversation-text': '#444',
         '--mar-fill-hover': '#12345',
         '--unknown': '#fff'
       })
@@ -205,6 +210,8 @@ describe('Custom theme validation', () => {
       '--el-color-primary',
       '--mar-terminal-background',
       '--mar-font-size-body',
+      '--mar-text-tertiary',
+      '--mar-conversation-text',
       '--unknown'
     ]);
     expect(result.warnings.filter((item) => item.code === 'color')).toHaveLength(3);

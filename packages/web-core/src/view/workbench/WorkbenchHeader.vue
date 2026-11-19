@@ -121,7 +121,7 @@ const emit = defineEmits<{
   min-width: 0;
   align-items: baseline;
   gap: 0.35rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;
 }
@@ -134,7 +134,7 @@ const emit = defineEmits<{
 .breadcrumb-separator {
   flex: none;
   align-self: center;
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
 }
 
 .breadcrumb strong {

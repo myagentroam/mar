@@ -492,7 +492,7 @@ function onKeydown(event: KeyboardEvent): void {
   max-height: min(40dvh, 20rem);
   overflow: auto;
   gap: 0.4rem;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 
@@ -530,7 +530,7 @@ function onKeydown(event: KeyboardEvent): void {
   border-radius: var(--mar-radius-selection);
   padding: 0.24rem 0.5rem;
   background: transparent;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font: inherit;
   font-size: var(--mar-font-size-body);
   font-weight: 400;
@@ -561,7 +561,7 @@ function onKeydown(event: KeyboardEvent): void {
   font: inherit;
 }
 .quick-open-input::placeholder {
-  color: var(--mar-text-faint);
+  color: var(--mar-text-secondary);
   opacity: 1;
 }
 .quick-open-input:focus {

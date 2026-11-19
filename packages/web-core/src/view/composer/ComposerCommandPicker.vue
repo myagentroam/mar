@@ -155,7 +155,7 @@ function statusText(): string {
 .picker-group {
   margin: 0;
   padding: 0.35rem 0.65rem 0.15rem;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
 }
@@ -194,7 +194,7 @@ function statusText(): string {
 
 .command-picker .candidate-description,
 .command-picker p {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 

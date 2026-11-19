@@ -875,7 +875,7 @@ async function confirmLogout(): Promise<void> {
   letter-spacing: -0.02em;
 }
 .system-brand code {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 
@@ -947,7 +947,7 @@ async function confirmLogout(): Promise<void> {
 }
 
 .token {
-  border: 1px dashed var(--mar-text-faint);
+  border: 1px dashed var(--mar-border-strong);
   border-radius: 4px;
   background: var(--mar-fill-subtle);
   padding: 0.55rem;
@@ -1002,7 +1002,7 @@ async function confirmLogout(): Promise<void> {
 
 .settings-panel > p {
   margin: 5px 0 0;
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }
@@ -1130,7 +1130,7 @@ async function confirmLogout(): Promise<void> {
 }
 
 .admin-sessions > p {
-  color: var(--mar-text-muted);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 
@@ -1170,7 +1170,7 @@ async function confirmLogout(): Promise<void> {
 
 .admin-sessions li > small {
   grid-column: 2;
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.45;
 }

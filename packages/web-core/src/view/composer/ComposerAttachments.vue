@@ -140,7 +140,7 @@ const emit = defineEmits<{
 }
 
 .attachment-list small {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
