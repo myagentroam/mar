@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-19
+lastUpdated: 2026-11-20
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -82,6 +82,8 @@ Logout or Session revocation invalidates the corresponding mobile binding. Late 
 ## Usage statistics
 
 Open **Settings → Usage statistics** to view Agent usage for the current account. The default Conversation category includes main agents and subagents. **Conversation**, **Compact**, and **Composer Prediction** are separate categories; title generation and other requests are also available. Compact and prediction are excluded from Conversation. Switching categories updates the rolling last 24 hours and last 7 days (168 hours), charts, and records together. Top summaries for the current category do not change with the filters below. Filter charts and records by time, Runner, model, and Work/Conversation mode. Times use the browser time zone shown on the page.
+
+Hover over a bar for its time period and exact input, cache, output, and total token counts. With a keyboard, Tab to **Inspect time periods** below the chart and use the arrow keys to read the same values for each period.
 
 Custom date ranges can span up to 90 days and may include future dates, such as the rest of the current month, or lie entirely in the future. Statistics include only data recorded by the current refresh; future periods have no data.
 

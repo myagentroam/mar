@@ -26,6 +26,7 @@ export const personalSettingsZhCN = {
     mode: '模式',
     purpose: '用途',
     trend: '用量趋势',
+    inspectPeriods: '查看各时段',
     selected:
       '筛选用量：输入 {input} · 缓存 {cache} · 输出 {output} · 总 Token {tokens} · {requests} 次调用',
     timeZone: '时区：{zone}',
