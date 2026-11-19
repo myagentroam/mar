@@ -504,10 +504,26 @@ describe('Shared workbench shell', () => {
       app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain('Host extension');
+      expect(html).toContain('data-mar-icon="chevron-right"');
       expect(html).toContain('aria-expanded="true"');
       expect(html).not.toContain('navigation.management');
     }
   );
+
+  it('leaves the shared header out of the mobile Work surface', async () => {
+    const html = await renderComponent(WorkbenchHeader, {
+      mobileViewport: true,
+      view: 'nodes',
+      sidebarCollapsed: false,
+      settingsSection: 'account',
+      managementSection: 'overview',
+      settingsItems: [],
+      managementItems: [],
+      conversationTitle: undefined
+    });
+    expect(html).not.toContain('workbench-header');
+    expect(html).not.toContain('workspace-tabs-slot');
+  });
 
   it.each([false, true])(
     'renders supplied resource names and selection without ownership policy: mobile=%s',

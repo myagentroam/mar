@@ -580,16 +580,22 @@ test('Mobile session title opens its actions without overlapping the session tre
   const icons = await tools
     .locator('[data-mar-icon]')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-mar-icon')));
-  expect(icons).toEqual(['menu', 'split']);
-  const [titleBounds, treeBounds, toolsBounds] = await Promise.all([
+  expect(icons).toEqual(['session-list', 'split']);
+  const [titleBounds, treeBounds, listBounds, asideBounds, headerBounds] = await Promise.all([
     title.boundingBox(),
     tree.boundingBox(),
-    tools.boundingBox()
+    tools.getByRole('button', { name: '打开会话列表' }).boundingBox(),
+    tools.getByRole('button', { name: '打开辅助工作面' }).boundingBox(),
+    header.boundingBox()
   ]);
   const titleGap = treeBounds!.x - (titleBounds!.x + titleBounds!.width);
-  expect(titleGap).toBeGreaterThanOrEqual(0);
-  expect(titleGap).toBeLessThan(12);
-  expect(treeBounds!.x + treeBounds!.width).toBeLessThanOrEqual(toolsBounds!.x);
+  const treeGap = listBounds!.x - (treeBounds!.x + treeBounds!.width);
+  const toolsGap = asideBounds!.x - (listBounds!.x + listBounds!.width);
+  const rightInset = headerBounds!.x + headerBounds!.width - (asideBounds!.x + asideBounds!.width);
+  expect(treeGap).toBeGreaterThan(0);
+  expect(treeGap).toBeCloseTo(toolsGap, 1);
+  expect(titleGap).toBeGreaterThan(treeGap);
+  expect(rightInset).toBeCloseTo(titleBounds!.x - headerBounds!.x, 1);
   const scroll = page.locator(
     '.conversation-header + .conversation-scroll-region .conversation-scroll'
   );

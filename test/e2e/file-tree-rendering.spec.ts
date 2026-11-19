@@ -41,7 +41,7 @@ test('File tree renders bundled MAR file and folder icons by default in both col
       await expect
         .poll(() => symbol.evaluate((node: SVGUseElement) => node.getBBox().width))
         .toBeGreaterThan(0);
-      expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme'))).toBeNull();
+      expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
       await tree.screenshot({ path: testInfo.outputPath(`mar-file-tree-${theme}.png`) });
     }
   } finally {

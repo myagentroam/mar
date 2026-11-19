@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveIconTheme } from '../../src/icon-themes/index.js';
+import { iconThemes, isIconThemeId, resolveIconTheme } from '../../src/icon-themes/index.js';
 import illustrations from '../../src/icon-themes/mar/illustrations.svg?raw';
 import mapping from '../../src/icon-themes/mar/mapping.json';
 import {
@@ -19,8 +19,24 @@ describe('File Icon Theme Preferences', () => {
     expect(parseStoredIconThemePreference('unknown')).toBe('mar');
     expect(parseStoredIconThemePreference('constructor')).toBe('mar');
     expect(parseStoredIconThemePreference('mar')).toBe('mar');
-    expect(parseStoredIconThemePreference('material')).toBe('material');
-    expect(parseStoredIconThemePreference('seti')).toBe('seti');
+    expect(parseStoredIconThemePreference('material')).toBe('mar');
+    expect(parseStoredIconThemePreference('seti')).toBe('mar');
+  });
+
+  it('Ignores the previous storage key without migrating or deleting its value', () => {
+    const storage = new Map([['mar.icon-theme', 'material']]);
+    const setItem = vi.fn();
+    const removeItem = vi.fn();
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem,
+      removeItem
+    });
+
+    expect(createIconThemePreferenceService().theme.value).toBe('mar');
+    expect(localStorage.getItem).toHaveBeenCalledExactlyOnceWith('mar.icon-theme.v2');
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
   });
 
   it.each([null, '', 'unknown', 'mar', 'seti', 'material'])(
@@ -35,25 +51,8 @@ describe('File Icon Theme Preferences', () => {
 
       const service = createIconThemePreferenceService();
 
-      expect(service.theme.value).toBe(stored === 'seti' || stored === 'material' ? stored : 'mar');
+      expect(service.theme.value).toBe('mar');
       expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe(stored ?? undefined);
-    }
-  );
-
-  it.each(['mar', 'seti', 'material'] as const)(
-    'Persist the %s theme selected by the current browser',
-    (next) => {
-      const storage = new Map<string, string>();
-      vi.stubGlobal('localStorage', {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => storage.set(key, value)
-      });
-      const service = createIconThemePreferenceService();
-
-      service.setTheme(next);
-
-      expect(service.theme.value).toBe(next);
-      expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe(next);
     }
   );
 
@@ -171,72 +170,32 @@ describe('File Icon Theme Preferences', () => {
     }
   });
 
-  it('Resolve Material file and folder icons through the registry', () => {
-    const material = resolveIconTheme('material');
-
-    expect(material.resolveFolder(true)).toMatchObject({ kind: 'svg', color: '#1976d2' });
-    expect(material.resolveFile('component.vue', true)).toMatchObject({
-      kind: 'svg',
-      color: '#42a5f5'
-    });
-    expect(material.resolveFile('unknown.file', false)).toMatchObject({
-      kind: 'svg',
-      color: '#b0bec5'
-    });
-    expect(material.resolveFile('AGENTS.md', true)).toMatchObject({
-      kind: 'svg',
-      markup: expect.stringContaining('#ff5252')
-    });
-    expect(material.resolveFile('CLAUDE.md', true)).not.toEqual(
-      material.resolveFile('README.md', true)
-    );
-    expect(material.resolveFile('.gitignore', true)).not.toEqual(
-      material.resolveFile('unknown.file', true)
-    );
-    expect(material.resolveFile('README.md', true)).not.toEqual(
-      material.resolveFile('notes.md', true)
-    );
-    expect(material.resolveFile('README.md', true)).toMatchObject({
-      markup: expect.stringContaining('fill="none"')
-    });
-    expect(material.resolveFile('README.md', true)).not.toMatchObject({
-      markup: expect.stringContaining('fill="currentColor"')
-    });
-    expect(material.resolveFolder(true, '.vscode')).not.toEqual(
-      material.resolveFolder(true, 'other')
-    );
-    expect(material.resolveFolder(true, 'src')).not.toEqual(material.resolveFolder(true, 'other'));
-    expect(material.resolveFolder(true, 'docs')).not.toEqual(material.resolveFolder(true, 'other'));
-    expect(material.resolveFolder(true, 'build')).not.toEqual(
-      material.resolveFolder(true, 'other')
-    );
+  it('Registers only MAR File Icons', () => {
+    expect(iconThemes).toEqual([resolveIconTheme('mar')]);
+    expect(isIconThemeId('mar')).toBe(true);
+    expect(isIconThemeId('seti')).toBe(false);
+    expect(isIconThemeId('material')).toBe(false);
   });
 
-  it.each(['mar', 'seti', 'material'] as const)(
-    'keeps the effective %s theme on storage failure and confirms a later successful write',
-    (previous) => {
-      const next = previous === 'mar' ? 'seti' : 'mar';
-      const storage = new Map<string, string>([[ICON_THEME_STORAGE_KEY, previous]]);
-      const failure = new Error('Storage unavailable');
-      let failWrite = true;
-      vi.stubGlobal('localStorage', {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          expect(service.theme.value).toBe(previous);
-          if (failWrite) throw failure;
-          storage.set(key, value);
-        }
-      });
-      const service = createIconThemePreferenceService();
+  it('keeps the default on storage failure and confirms a later successful write', () => {
+    const storage = new Map<string, string>();
+    const failure = new Error('Storage unavailable');
+    const setItem = vi.fn((key: string, value: string) => storage.set(key, value));
+    setItem.mockImplementationOnce(() => {
+      throw failure;
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem
+    });
+    const service = createIconThemePreferenceService();
 
-      expect(() => service.setTheme(next)).toThrow(failure);
-      expect(service.theme.value).toBe(previous);
-      expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe(previous);
+    expect(() => service.setTheme('mar')).toThrow(failure);
+    expect(service.theme.value).toBe('mar');
+    expect(storage.has(ICON_THEME_STORAGE_KEY)).toBe(false);
 
-      failWrite = false;
-      service.setTheme(next);
-      expect(service.theme.value).toBe(next);
-      expect(createIconThemePreferenceService().theme.value).toBe(next);
-    }
-  );
+    service.setTheme('mar');
+    expect(storage.get(ICON_THEME_STORAGE_KEY)).toBe('mar');
+    expect(createIconThemePreferenceService().theme.value).toBe('mar');
+  });
 });

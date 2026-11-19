@@ -173,8 +173,7 @@ export const personalSettingsZhCN = {
       },
       icons: {
         title: '图标资源',
-        components:
-          'Visual Studio Code Seti File Icon Theme · Material Design Icons · Material Icon Theme'
+        components: 'Tabler Icons'
       },
       computerUse: {
         title: 'Computer Use（可选，依平台提供）',

@@ -176,8 +176,7 @@ export const personalSettingsEnUS = {
       },
       icons: {
         title: 'Icons',
-        components:
-          'Visual Studio Code Seti File Icon Theme · Material Design Icons · Material Icon Theme'
+        components: 'Tabler Icons'
       },
       computerUse: {
         title: 'Computer Use (optional, platform-dependent)',

@@ -1,25 +1,11 @@
-export type IconThemeId = 'mar' | 'seti' | 'material';
+export type IconThemeId = 'mar';
 
-export interface GlyphFileIcon {
-  readonly kind: 'glyph';
-  readonly character: string;
-  readonly color?: string;
-}
-
-export interface SvgFileIcon {
-  readonly kind: 'svg';
-  readonly markup: string;
-  readonly color: string;
-}
-
-export interface SpriteFileIcon {
+export interface FileIcon {
   readonly kind: 'sprite';
   readonly href: string;
   readonly color: string;
   readonly cutColor: string;
 }
-
-export type FileIcon = GlyphFileIcon | SvgFileIcon | SpriteFileIcon;
 
 export interface FileIconTheme {
   readonly id: IconThemeId;

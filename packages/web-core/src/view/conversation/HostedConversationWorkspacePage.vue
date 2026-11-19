@@ -44,6 +44,7 @@ import type { ConversationItem, ConversationTurn } from '../../model/workbench.j
 import { conversationItemText } from '../../util/conversation-presentation.js';
 import { absoluteSessionTime } from '../../util/time-presentation.js';
 import { vSessionReorderMotion } from '../common/session-reorder-motion.js';
+import '../common/session-list-title.css';
 import { errorMessage, filePreviewErrorSummary } from '../../util/error-presentation.js';
 import { isMarkdownFile } from '../../util/file-preview.js';
 import { hostedConversationTitle } from '../../util/hosted-conversation-presentation.js';
@@ -1076,7 +1077,7 @@ onBeforeUnmount(() => {
             "
             @click="openConversationFromList(conversation)"
           >
-            <span class="history-title-row">
+            <span class="history-title-row mar-session-list-title">
               <MarIcon
                 v-if="conversation.pinnedAt !== null"
                 name="pin"
@@ -1624,10 +1625,6 @@ onBeforeUnmount(() => {
   background: var(--mar-fill-selection);
 }
 
-.history-list article.selected .history-open {
-  color: var(--mar-text-primary);
-}
-
 .history-open {
   display: grid;
   width: 100%;
@@ -1652,15 +1649,12 @@ onBeforeUnmount(() => {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-detail);
-  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .history-open time {
-  color: var(--mar-text-tertiary);
+  color: var(--mar-text-faint);
   font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1675,7 +1669,6 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 14px;
   flex: none;
-  color: var(--mar-text-secondary);
 }
 
 .history-run-indicator {
@@ -1748,7 +1741,7 @@ onBeforeUnmount(() => {
 }
 
 .hosted-timeline-scroll :deep(.conversation-scroll) {
-  padding: 0 clamp(6px, 2vw, 22px);
+  padding-block: 0;
 }
 
 .hosted-timeline-scroll :deep(.conversation-timeline) {
@@ -1958,7 +1951,7 @@ onBeforeUnmount(() => {
   }
 
   .hosted-timeline-scroll :deep(.conversation-scroll) {
-    padding-top: 50px;
+    padding-block-start: 50px;
   }
 
   .history-search-row {

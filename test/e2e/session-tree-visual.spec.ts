@@ -467,6 +467,14 @@ for (const width of [390, 1280]) {
         title.boundingBox(),
         trigger.boundingBox()
       ]);
+      const buttonSize =
+        width < 768
+          ? 36
+          : await page.evaluate(
+              () => 2 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+            );
+      expect(triggerBox!.width).toBeCloseTo(buttonSize, 1);
+      expect(triggerBox!.height).toBeCloseTo(buttonSize, 1);
       expect(triggerBox!.x).toBeGreaterThanOrEqual(titleBox!.x + titleBox!.width);
       if (width >= 768) {
         const rightEdge = await header.evaluate(
@@ -480,6 +488,8 @@ for (const width of [390, 1280]) {
         Math.abs(triggerBox!.y + triggerBox!.height / 2 - (titleBox!.y + titleBox!.height / 2))
       ).toBeLessThan(1);
       await expect(treeIcon).toBeVisible();
+      await expect(treeIcon).toHaveCSS('width', '18px');
+      await expect(treeIcon).toHaveCSS('height', '18px');
       await expect(trigger.locator('svg')).toHaveCount(1);
       await expect(treeIcon).toHaveAttribute('aria-hidden', 'true');
       await expect(treeIcon).toHaveCSS('animation-name', 'none');

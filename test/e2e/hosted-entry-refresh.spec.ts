@@ -261,6 +261,18 @@ for (const [width, theme, cached] of [
     await expect(retry).toHaveCount(0);
     await expect(page.locator('.composer-input')).not.toHaveAttribute('readonly', '');
     await expect(page.locator('.el-message')).toHaveCount(0);
+    const scroll = page.locator('.hosted-conversation-main .conversation-scroll');
+    const inset = await scroll.evaluate((element) => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const style = getComputedStyle(element);
+      return {
+        start: parseFloat(style.paddingInlineStart),
+        end: parseFloat(style.paddingInlineEnd),
+        workspace: Math.min(2.5 * rem, Math.max(rem, window.innerWidth * 0.04))
+      };
+    });
+    expect(inset.start).toBeCloseTo(inset.workspace);
+    expect(inset.end).toBeCloseTo(inset.workspace);
   });
 }
 

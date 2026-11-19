@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import MarIcon from '../common/MarIcon.vue';
 import type { SettingsSection } from '../../model/settings.js';
 import type { WorkbenchView } from '../../util/workbench-route.js';
 type ManagementSection = string;
 
-defineProps<{
+const props = defineProps<{
   readonly mobileViewport: boolean;
   readonly view: WorkbenchView;
   readonly sidebarCollapsed: boolean;
@@ -14,6 +15,15 @@ defineProps<{
   readonly managementItems: readonly { readonly id: ManagementSection; readonly label: string }[];
   readonly conversationTitle: string | undefined;
 }>();
+
+const currentLabel = computed(() => {
+  if (props.view === 'conversations') return props.conversationTitle;
+  if (props.view === 'settings')
+    return props.settingsItems.find((item) => item.id === props.settingsSection)?.label;
+  if (props.view === 'management')
+    return props.managementItems.find((item) => item.id === props.managementSection)?.label;
+  return undefined;
+});
 
 const emit = defineEmits<{
   toggleSidebar: [];
@@ -37,15 +47,7 @@ const emit = defineEmits<{
     >
       <MarIcon name="sidebar" />
     </button>
-    <div
-      v-if="view === 'conversations' && conversationTitle"
-      class="breadcrumb"
-      :aria-label="$t('navigation.currentLocation')"
-    >
-      <span>{{ $t('navigation.conversations') }}</span>
-      <strong v-tooltip="conversationTitle">{{ conversationTitle }}</strong>
-    </div>
-    <div v-else-if="view === 'nodes'" class="workspace-tabs-slot">
+    <div v-if="view === 'nodes'" class="workspace-tabs-slot">
       <slot name="workspace-tabs"></slot>
     </div>
     <div v-else class="breadcrumb" :aria-label="$t('navigation.currentLocation')">
@@ -56,12 +58,12 @@ const emit = defineEmits<{
             ? $t('navigation.conversations')
             : $t('navigation.management')
       }}</span>
-      <strong v-if="view === 'settings'">{{
-        settingsItems.find((item) => item.id === settingsSection)?.label
-      }}</strong>
-      <strong v-else-if="view === 'management'">{{
-        managementItems.find((item) => item.id === managementSection)?.label
-      }}</strong>
+      <template v-if="currentLabel">
+        <MarIcon class="breadcrumb-separator" name="chevron-right" size="0.65rem" />
+        <strong v-tooltip="view === 'conversations' ? currentLabel : undefined">{{
+          currentLabel
+        }}</strong>
+      </template>
     </div>
   </header>
 </template>
@@ -116,38 +118,40 @@ const emit = defineEmits<{
 .breadcrumb {
   display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: baseline;
+  gap: 0.35rem;
   color: var(--mar-text-muted);
   font-size: var(--mar-font-size-meta);
+  line-height: 1.45;
 }
 
-.breadcrumb span + span::before,
-.breadcrumb strong::before {
-  margin-right: 0.5rem;
-  color: var(--mar-border-strong);
-  content: '/';
+.breadcrumb > span {
+  flex: none;
+  white-space: nowrap;
+}
+
+.breadcrumb-separator {
+  flex: none;
+  align-self: center;
+  color: var(--mar-text-faint);
 }
 
 .breadcrumb strong {
+  min-width: 0;
   overflow: hidden;
   color: var(--mar-text-primary);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-</style>
 
-<style scoped>
 @media (max-width: 767px) {
   .workbench-header {
-    flex: 0 0 48px;
-    padding: 0 4px;
-  }
-}
-
-@media (max-width: 460px) {
-  .workbench-header {
-    padding: 0 0.65rem;
+    height: auto;
+    min-block-size: 42px;
+    flex: none;
+    padding-block: 6px;
+    padding-inline: 14px;
   }
 }
 </style>

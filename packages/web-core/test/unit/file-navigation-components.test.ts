@@ -15,6 +15,7 @@ import {
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import InteractiveWorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue?unit-render';
 import { consoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
+import { ICON_THEME_STORAGE_KEY } from '../../src/service/icon-theme-preference-service.js';
 import { renderComponent } from './support/component-renderer.js';
 
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
@@ -103,16 +104,13 @@ function colorFromIconMarkup(html: string): string | undefined {
   return /style="color:([^;"]+)/u.exec(html)?.[1];
 }
 
-async function renderFileTypeIcon(
-  iconTheme: 'mar' | 'seti' | 'material',
-  surfaceTheme: 'daylight' | 'vscode-dark-2026'
-): Promise<string> {
+async function renderFileTypeIcon(surfaceTheme: 'daylight' | 'vscode-dark-2026'): Promise<string> {
   vi.resetModules();
   const { default: FileTypeIcon } = await import('../../src/view/workspace/FileTypeIcon.vue');
   const { iconThemePreferenceService } =
     await import('../../src/service/icon-theme-preference-service.js');
   const { themePreferenceService } = await import('../../src/service/theme-preference-service.js');
-  iconThemePreferenceService().setTheme(iconTheme);
+  iconThemePreferenceService().setTheme('mar');
   themePreferenceService().setTheme(surfaceTheme);
   return render(FileTypeIcon, { name: 'unrecognized.fixture' });
 }
@@ -125,8 +123,6 @@ const FILE_NAVIGATION_SOURCES = [
 
 const requiredFileNavigationMessageKeys = [
   'settings.iconThemeMar',
-  'settings.iconThemeSeti',
-  'settings.iconThemeMaterial',
   'generated.quickOpenDialog.quickOpen',
   'generated.quickOpenDialog.resultTypes',
   'generated.quickOpenDialog.all',
@@ -273,7 +269,7 @@ describe('public file navigation components', () => {
   describe('icon theme preference and file type rendering', () => {
     it('reads browser preferences only when the shared icon theme service is first requested', async () => {
       const browser = stubBrowserEnvironment();
-      browser.storage.set('mar.icon-theme', 'seti');
+      browser.storage.set(ICON_THEME_STORAGE_KEY, 'seti');
       vi.resetModules();
 
       const { iconThemePreferenceService } =
@@ -283,30 +279,27 @@ describe('public file navigation components', () => {
 
       const shared = iconThemePreferenceService();
       expect(browser.getItem).toHaveBeenCalledTimes(1);
-      expect(shared.theme.value).toBe('seti');
+      expect(shared.theme.value).toBe('mar');
       expect(iconThemePreferenceService()).toBe(shared);
 
       expect(browser.getItem).toHaveBeenCalledTimes(1);
     });
 
-    it.each(['mar', 'seti', 'material'] as const)(
-      'renders %s icons consistently for both console surface themes',
-      async (iconTheme) => {
-        const daylightBrowser = stubBrowserEnvironment();
-        const daylight = await renderFileTypeIcon(iconTheme, 'daylight');
-        expect(daylight).toContain(`${iconTheme}-file-icon`);
-        expect(colorFromIconMarkup(daylight)).toBeDefined();
+    it('renders MAR icons consistently for both console surface themes', async () => {
+      const daylightBrowser = stubBrowserEnvironment();
+      const daylight = await renderFileTypeIcon('daylight');
+      expect(daylight).toContain('mar-file-icon');
+      expect(colorFromIconMarkup(daylight)).toBeDefined();
 
-        vi.unstubAllGlobals();
-        const darkBrowser = stubBrowserEnvironment();
-        const dark = await renderFileTypeIcon(iconTheme, 'vscode-dark-2026');
-        expect(dark).toContain(`${iconTheme}-file-icon`);
-        expect(colorFromIconMarkup(dark)).toBeDefined();
-        expect(colorFromIconMarkup(dark)).not.toBe(colorFromIconMarkup(daylight));
-        expect(darkBrowser.storage.get('mar.icon-theme')).toBe(iconTheme);
-        expect(daylightBrowser.storage.get('mar.icon-theme')).toBe(iconTheme);
-      }
-    );
+      vi.unstubAllGlobals();
+      const darkBrowser = stubBrowserEnvironment();
+      const dark = await renderFileTypeIcon('vscode-dark-2026');
+      expect(dark).toContain('mar-file-icon');
+      expect(colorFromIconMarkup(dark)).toBeDefined();
+      expect(colorFromIconMarkup(dark)).not.toBe(colorFromIconMarkup(daylight));
+      expect(darkBrowser.storage.get(ICON_THEME_STORAGE_KEY)).toBe('mar');
+      expect(daylightBrowser.storage.get(ICON_THEME_STORAGE_KEY)).toBe('mar');
+    });
   });
 
   describe.each(['zh-CN', 'en-US'] as const)('file navigation messages and SSR (%s)', (locale) => {

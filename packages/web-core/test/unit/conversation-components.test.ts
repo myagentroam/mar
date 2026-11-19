@@ -1440,7 +1440,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('data-runner="mar-agent"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.newSession'));
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openSessionList'));
-    expect(html).toContain('data-mar-icon="menu"');
+    expect(html).toContain('data-mar-icon="session-list"');
     expect(html).toContain('data-mar-icon="split"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openAside'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.openFiles'));
@@ -1472,7 +1472,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(html).toContain('conversation-title-button');
     expect(html).toContain('data-mar-icon="chevron-down"');
     expect(html).toContain(i18n.global.t('generated.conversationHeader.openSessionList'));
-    expect(html).toContain('data-mar-icon="menu"');
+    expect(html).toContain('data-mar-icon="session-list"');
     expect(html).not.toContain('data-mar-icon="split"');
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.files'));
     expect(html).not.toContain(i18n.global.t('generated.conversationHeader.terminal'));

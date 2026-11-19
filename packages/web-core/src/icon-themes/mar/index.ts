@@ -1,4 +1,4 @@
-import type { FileIconTheme, SpriteFileIcon } from '../types.js';
+import type { FileIcon, FileIconTheme } from '../types.js';
 import illustrationsUrl from './illustrations.svg?no-inline';
 import mapping from './mapping.json';
 import { resolveMarIconId } from './resolve-icon-id.mjs';
@@ -10,7 +10,7 @@ interface MarIconPalette {
 
 const { artwork, colors }: MarIconPalette = mapping;
 
-function icon(id: string, light: boolean): SpriteFileIcon {
+function icon(id: string, light: boolean): FileIcon {
   // Asset integrity is covered by the registry test; inputs only select bundled identifiers.
   const { accent, symbol = id } = artwork[id]!;
   const palette = colors[accent]!;

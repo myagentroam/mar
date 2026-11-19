@@ -200,6 +200,21 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     );
     const tree = page.locator('.workspace-tree');
     await expect(tree).toBeVisible();
+    await tree
+      .locator('.tree-node-row')
+      .filter({ has: page.getByRole('button', { name: 'node', exact: true }) })
+      .getByRole('button', { name: 'Expand workspaces' })
+      .click();
+    await page.mouse.move(700, 20);
+    const selectedWorkspace = tree.getByRole('button', { name: '/plain', exact: true });
+    const otherWorkspace = tree.getByRole('button', { name: '/folder-0', exact: true });
+    await expect(selectedWorkspace).toBeVisible();
+    await expect(otherWorkspace).toBeVisible();
+    const selectedWorkspaceColor = await selectedWorkspace.evaluate(
+      (row) => getComputedStyle(row).color
+    );
+    const otherWorkspaceColor = await otherWorkspace.evaluate((row) => getComputedStyle(row).color);
+    expect(selectedWorkspaceColor).not.toBe(otherWorkspaceColor);
     const geometry = await sidebarGeometry(tree);
     expect(geometry.top).toBeGreaterThan(0);
     expect(geometry.bottom).toBeCloseTo(geometry.top, 1);
@@ -322,8 +337,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     const header = (await history.locator('.history-header').boundingBox())!;
     expect(header.y).toBeCloseTo(geometry.top, 1);
     const expectHistoryTitles = async () => {
-      const { primary, secondary, selection } = await history.evaluate((element) => {
+      const { primary, secondary, selection, fontSize } = await history.evaluate((element) => {
         const probe = document.createElement('span');
+        probe.style.fontSize = 'var(--mar-font-size-body)';
         element.append(probe);
         const resolve = (token: string) => {
           probe.style.color = `var(${token})`;
@@ -332,25 +348,29 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const colors = {
           primary: resolve('--mar-text-primary'),
           secondary: resolve('--mar-text-secondary'),
-          selection: resolve('--mar-fill-selection')
+          selection: resolve('--mar-fill-selection'),
+          fontSize: getComputedStyle(probe).fontSize
         };
         probe.remove();
         return colors;
       });
+      expect(primary).toBe(selectedWorkspaceColor);
+      expect(secondary).toBe(otherWorkspaceColor);
       const current = history.locator('.history-open[aria-current="page"]');
       await expect(current).toContainText('Current chat');
       await expect(current.locator('time')).toHaveCSS('color', secondary);
       for (const title of ['Current chat', 'Another chat']) {
+        const selected = title === 'Current chat';
         const row = history.locator('article').filter({ hasText: title });
         const text = row.getByText(title, { exact: true });
         const pin = row.getByRole('img', { name: 'Pinned', exact: true });
-        await expect(text).toHaveCSS('color', primary);
-        await expect(text).toHaveCSS('font-size', '12px');
+        await expect(text).toHaveCSS('color', selected ? primary : secondary);
+        await expect(text).toHaveCSS('font-size', fontSize);
         await expect(text).toHaveCSS('font-weight', '400');
         await expect(pin).toBeVisible();
         await expect(pin).toHaveAttribute('data-mar-icon', 'pin');
-        await expect(pin).toHaveCSS('color', secondary);
-        if (title === 'Current chat') await expect(row).toHaveCSS('background-color', selection);
+        await expect(pin).toHaveCSS('color', selected ? primary : secondary);
+        if (selected) await expect(row).toHaveCSS('background-color', selection);
         else await expect(row).not.toHaveCSS('background-color', selection);
       }
     };

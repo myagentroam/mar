@@ -2088,6 +2088,11 @@ test('Resource filters align left on desktop and keep actions accessible after m
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('button', { name: '节点管理' }).click();
 
+  const header = page.locator('.workbench-header');
+  const breadcrumb = header.locator('.breadcrumb');
+  await expect(breadcrumb).toHaveCSS('align-items', 'baseline');
+  await expect(breadcrumb.locator('[data-mar-icon="chevron-right"]')).toHaveCount(1);
+
   const filters = page.locator('.mar-resource-filters');
   await expect(filters).toBeVisible();
   const nodeDesktopLayout = await filters
@@ -2145,6 +2150,10 @@ test('Resource filters align left on desktop and keep actions accessible after m
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('节点管理');
   await expect(filters.locator(':scope > .mar-filter-field')).toHaveCount(3);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(header).toHaveCSS('min-block-size', '42px');
+  await expect(header).toHaveCSS('padding-inline-start', '14px');
+  await expect(header).toHaveCSS('padding-inline-end', '14px');
+  await expect(breadcrumb).toHaveCSS('align-items', 'baseline');
   const layout = await filters.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return {

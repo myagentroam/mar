@@ -1,9 +1,7 @@
 export const fileNavigationEnUS = {
   workspaceDisplayFilter: { empty: 'No matching files or folders.' },
   settings: {
-    iconThemeMar: 'MAR File Icons',
-    iconThemeSeti: 'Seti',
-    iconThemeMaterial: 'Material'
+    iconThemeMar: 'MAR File Icons'
   },
   generated: {
     workspaceFileTree: {
