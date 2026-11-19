@@ -688,8 +688,7 @@ defineExpose({ reveal });
   user-select: none;
 }
 
-.file-tree-row-shell:hover,
-.file-tree-row-shell:has(:focus-visible) {
+.file-tree-row-shell:hover {
   background-color: var(--mar-fill-muted);
 }
 

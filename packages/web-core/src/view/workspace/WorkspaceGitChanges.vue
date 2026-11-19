@@ -753,8 +753,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   border-radius: var(--mar-radius-selection);
 }
 
-.change-list .change-entry:hover,
-.change-list .change-entry:has(:focus-visible) {
+.change-list .change-entry:hover {
   background: var(--mar-fill-row-hover);
 }
 

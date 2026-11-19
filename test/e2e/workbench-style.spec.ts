@@ -9,9 +9,7 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
-test('A pointer-focused workspace tree row does not stay highlighted after hover ends', async ({
-  page
-}) => {
+test('Workspace tree rows reserve their background for hover and selection', async ({ page }) => {
   await page.goto(`${fixture.url}workbench-style.html?list-state=unselected&locale=en-US`);
   const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
   const node = tree.getByRole('button', { name: 'Node', exact: true });
@@ -26,11 +24,15 @@ test('A pointer-focused workspace tree row does not stay highlighted after hover
   await expect(node).toBeFocused();
   await expect(row).toHaveCSS('background-color', idleColor);
 
+  await page.keyboard.press('Shift');
+  await expect(node).toBeFocused();
+  await expect(row).toHaveCSS('background-color', idleColor);
+
   await page.keyboard.press('Shift+Tab');
   const expand = row.locator('.node-expand-button');
   await expect(expand).toBeFocused();
   await expect(expand).toHaveCSS('outline-style', 'solid');
-  await expect(row).toHaveCSS('background-color', hoverColor);
+  await expect(row).toHaveCSS('background-color', idleColor);
 });
 
 for (const { theme, width } of [
@@ -1277,7 +1279,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(
         await link.evaluate((element) => parseFloat(getComputedStyle(element).outlineWidth))
       ).toBeGreaterThan(0);
-      await expect(idle).toHaveCSS('background-color', hoverColor);
+      await expect(idle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await link.click();
       await expect(idle).toHaveClass(/selected/u);
       await expect(idle).toHaveCSS('background-color', selectionColor);

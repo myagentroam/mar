@@ -891,7 +891,6 @@ function submitSessionSearch(): void {
   display: flex;
   min-width: 0;
   align-items: stretch;
-  overflow: hidden;
   border-radius: var(--mar-radius-selection);
   background: transparent;
   -webkit-touch-callout: none;
@@ -948,14 +947,12 @@ function submitSessionSearch(): void {
   gap: 2px;
 }
 
-.session-row:hover,
-.session-row:has(:focus-visible) {
+.session-row:hover {
   background: var(--mar-fill-row-hover);
 }
 
 .session-row.selected,
-.session-row.selected:hover,
-.session-row.selected:has(:focus-visible) {
+.session-row.selected:hover {
   background: var(--mar-fill-selection);
 }
 

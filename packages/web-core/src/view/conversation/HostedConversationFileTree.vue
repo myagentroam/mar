@@ -172,8 +172,7 @@ function disableLeavingBranch(branch: Element): void {
   padding-inline-start: calc(22px + var(--file-depth) * 16px);
 }
 
-.file-row:hover,
-.file-row:has(:focus-visible) {
+.file-row:hover {
   background: var(--mar-fill-hover);
 }
 
