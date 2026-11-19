@@ -1954,13 +1954,19 @@ function stepDuration(item: ConversationItem): string | undefined {
   font-weight: 500;
 }
 
-.conversation-group-meta {
+.conversation-group-meta,
+.conversation-record-meta {
   display: flex;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-group-meta {
   gap: 0.25rem 0.5rem;
   min-width: 0;
   justify-self: end;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .conversation-record-heading > .reasoning-subtitle {
@@ -2045,11 +2051,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-record-meta {
-  display: flex;
   gap: 0 0.5rem;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  font-variant-numeric: tabular-nums;
 }
 
 .conversation-command-meta > span {

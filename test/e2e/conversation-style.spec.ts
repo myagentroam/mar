@@ -1437,12 +1437,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const count = groupHeading.locator('.conversation-group-meta');
         await expect(count).toHaveText('3 calls');
         await expect(count).toHaveCSS(
-          'font-size',
-          await groupHeading
-            .locator('strong')
-            .evaluate((element) => getComputedStyle(element).fontSize)
-        );
-        await expect(count).toHaveCSS(
           'color',
           await groupHeading
             .locator('.conversation-record-icon')
@@ -1459,6 +1453,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         );
         await expect(heading.locator('.conversation-command-status')).toHaveText('Failed');
         await expect(heading.locator('.conversation-step-duration')).toHaveText('Duration 3s');
+        const statusSize = await heading
+          .locator('.conversation-command-status')
+          .evaluate((element) => getComputedStyle(element).fontSize);
+        await expect(count).toHaveCSS('font-size', statusSize);
+        await expect(heading.locator('.conversation-step-duration')).toHaveCSS(
+          'font-size',
+          statusSize
+        );
         const statusLayout = await heading.evaluate((element) => {
           const bounds = element.getBoundingClientRect();
           const preview = element
@@ -1528,10 +1530,23 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.goto(`${fixture.url}conversation-style.html?theme=${theme}&group-spacing=1`);
       await page.locator('[data-process-id="spacing-process"] .process-heading').click();
       const groups = page.locator('.conversation-record-group');
-      await expect(groups).toHaveCount(3);
+      await expect(groups).toHaveCount(4);
+      await expect(page.locator('.subagent-group .conversation-group-meta')).toHaveText(
+        '3 operations'
+      );
       for (const group of await groups.all()) {
-        await group.locator(':scope > summary').click();
+        const heading = group.locator(':scope > summary');
+        await heading.click();
         await expect(group.locator(':scope > details')).toHaveCount(3);
+        const completed = group
+          .locator(':scope > details > summary > .conversation-record-meta')
+          .filter({ hasText: /^Completed$/ })
+          .first();
+        await expect(completed).toBeVisible();
+        await expect(heading.locator('.conversation-group-meta')).toHaveCSS(
+          'font-size',
+          await completed.evaluate((element) => getComputedStyle(element).fontSize)
+        );
         const spacing = await group.evaluate((element) => {
           const rows = Array.from(element.children).map((child) => child.getBoundingClientRect());
           return rows.slice(1).map((row, index) => row.top - rows[index]!.bottom);
@@ -1623,16 +1638,28 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       );
       const files = page.locator('.conversation-file-change-details > summary');
       await expect(files.locator('.conversation-group-meta')).toContainText('2');
-      const plan = page.locator('.conversation-record-meta').filter({ hasText: '2' });
+      const plan = page.locator(
+        '.conversation-item.plan > details > summary > .conversation-record-meta'
+      );
       await expect(plan).toBeVisible();
-      for (const meta of [files.locator('.conversation-group-meta'), plan]) {
+      await expect(plan).toContainText('2');
+      const group = page.locator('.conversation-record-group').first();
+      await group.locator(':scope > summary').click();
+      const nested = group.locator(':scope > details > summary').first();
+      const completed = nested.locator('.conversation-record-meta');
+      await expect(completed).toHaveText('Completed');
+      const statusSize = await completed.evaluate((element) => getComputedStyle(element).fontSize);
+      for (const meta of [
+        files.locator('.conversation-group-meta'),
+        page.locator('.task-list-heading > .conversation-group-meta'),
+        group.locator(':scope > summary > .conversation-group-meta'),
+        plan
+      ]) {
+        await expect(meta).toHaveCSS('font-size', statusSize);
         const bounds = await meta.boundingBox();
         const heading = await meta.locator('..').boundingBox();
         expect(bounds!.x + bounds!.width).toBeGreaterThan(heading!.x + heading!.width - 24);
       }
-      const group = page.locator('.conversation-record-group').first();
-      await group.locator(':scope > summary').click();
-      const nested = group.locator(':scope > details > summary').first();
       // Preserve breathing room and a bounded nesting increment, not a particular padding declaration.
       const spacing = await nested.evaluate((element) => {
         const style = getComputedStyle(element);

@@ -184,7 +184,7 @@ const turns = ref<ConversationTurn[]>([
           }
         ]
       : spacingFixture
-        ? ['command', 'read', 'tool'].flatMap((kind) =>
+        ? ['command', 'read', 'tool', 'subagent'].flatMap((kind) =>
             Array.from({ length: 3 }, (_, index): ConversationItem => ({
               id: `${kind}-${index}`,
               kind: kind === 'command' ? 'command_execution' : 'tool_call',
@@ -205,7 +205,9 @@ const turns = ref<ConversationTurn[]>([
                       outputSummary: 'Review output',
                       ...(kind === 'read'
                         ? { toolPresentation: { kind: 'READ', paths: [`src/file-${index}.ts`] } }
-                        : {})
+                        : kind === 'subagent'
+                          ? { subagentOperation: 'MESSAGE', subagentId: 'reviewer' }
+                          : {})
                     }
             }))
           )
