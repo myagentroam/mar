@@ -94,21 +94,9 @@ watch(
     :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
-      <div class="image-preview-heading">
-        <span v-tooltip="conversationTitle" :id="titleId" :class="titleClass">{{
-          conversationTitle
-        }}</span>
-        <el-button
-          v-if="resized && !original"
-          v-tooltip="translate('generated.imagePreview.viewOriginal')"
-          class="mar-icon-action"
-          size="small"
-          text
-          :icon="marIcon('image')"
-          :aria-label="translate('generated.imagePreview.viewOriginal')"
-          @click="original = true"
-        />
-      </div>
+      <span v-tooltip="conversationTitle" :id="titleId" :class="titleClass">{{
+        conversationTitle
+      }}</span>
     </template>
     <DecodedPreviewImage
       v-if="conversation !== undefined"
@@ -118,24 +106,17 @@ watch(
       :original="original"
       @ready="resized = $event"
       @error="emit('conversationError', $event)"
-    />
+    >
+      <template v-if="resized && !original" #actions>
+        <el-button :icon="marIcon('image')" @click="original = true">
+          {{ translate('generated.imagePreview.viewOriginal') }}
+        </el-button>
+      </template>
+    </DecodedPreviewImage>
   </el-dialog>
 </template>
 
 <style scoped>
-.image-preview-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-}
-.image-preview-heading .el-dialog__title {
-  min-width: 0;
-  flex: 1;
-}
-.image-preview-heading .el-button {
-  flex-shrink: 0;
-}
 :global(.attachment-preview-dialog.el-dialog) {
   --preview-left: max(16px, env(safe-area-inset-left, 0px));
   --preview-right: max(16px, env(safe-area-inset-right, 0px));
