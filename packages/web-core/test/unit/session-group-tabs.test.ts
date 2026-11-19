@@ -1,4 +1,4 @@
-import { createSSRApp, h } from 'vue';
+import { createSSRApp, defineComponent, h, nextTick, ref } from 'vue';
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { renderToString } from 'vue/server-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -25,69 +25,45 @@ describe('Session group tabs', () => {
     app.provide(ID_INJECTION_KEY, { prefix: 80, current: 0 });
     app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
     const html = await renderToString(app);
-    expect(html).toContain('role="tablist"');
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toContain('type="radio"');
     expect(html).toContain('aria-label="Main Sessions"');
     expect(html).toContain('aria-label="Child Sessions"');
     expect(html).not.toContain('Unread');
     expect(html).not.toContain('session-state-badge');
   });
 
-  it('emits controlled selection for clicks and supports arrow, Home, and End focus navigation', async () => {
-    const modelValue = { value: 'MAIN' as SessionGroup };
+  it('emits one controlled update per changed option and follows external selection', async () => {
+    const modelValue = ref<SessionGroup>('MAIN');
     const updates: SessionGroup[] = [];
-    const mounted = mountSessionGroupTestComponent(InteractiveSessionGroupTabs, {
-      get modelValue() {
-        return modelValue.value;
-      },
-      state: {
-        MAIN: { running: 0, unread: false },
-        CHILD: { running: 0, unread: false }
-      },
-      'onUpdate:modelValue': (group: SessionGroup) => {
-        updates.push(group);
-        modelValue.value = group;
-      }
+    const harness = defineComponent({
+      setup: () => () =>
+        h(InteractiveSessionGroupTabs, {
+          modelValue: modelValue.value,
+          'onUpdate:modelValue': (group: SessionGroup) => {
+            updates.push(group);
+            modelValue.value = group;
+          }
+        })
     });
+    const mounted = mountSessionGroupTestComponent(harness, {});
     mountedApps.push(mounted.app);
 
-    const tabs = () => mounted.container.findAll((node) => node.props.get('role') === 'tab');
-    const [main, child] = tabs();
-    expect(main?.props.get('aria-selected')).toBe(true);
-    expect(child?.props.get('aria-selected')).toBe(false);
+    const [main, child] = mounted.container.findAll((node) => node.props.get('type') === 'radio');
+    expect(main?.props.get('checked')).toBe(true);
+    expect(child?.props.get('checked')).toBe(false);
 
-    child?.invoke('onClick');
+    child?.invoke('onChange');
+    await nextTick();
+    expect(main?.props.get('checked')).toBe(false);
+    expect(child?.props.get('checked')).toBe(true);
+    child?.invoke('onChange');
     expect(updates).toEqual(['CHILD']);
 
-    child?.invoke('onKeydown', {
-      key: 'ArrowRight',
-      currentTarget: child,
-      preventDefault: vi.fn()
-    });
-    expect(updates).toEqual(['CHILD', 'MAIN']);
-    expect(main?.focused).toBe(true);
-
-    main?.invoke('onKeydown', {
-      key: 'End',
-      currentTarget: main,
-      preventDefault: vi.fn()
-    });
-    expect(updates.at(-1)).toBe('CHILD');
-    expect(child?.focused).toBe(true);
-
-    child?.invoke('onKeydown', {
-      key: 'Home',
-      currentTarget: child,
-      preventDefault: vi.fn()
-    });
-    expect(updates.at(-1)).toBe('MAIN');
-    expect(main?.focused).toBe(true);
-
-    main?.invoke('onKeydown', {
-      key: 'ArrowLeft',
-      currentTarget: main,
-      preventDefault: vi.fn()
-    });
-    expect(updates.at(-1)).toBe('CHILD');
-    expect(child?.focused).toBe(true);
+    modelValue.value = 'MAIN';
+    await nextTick();
+    expect(main?.props.get('checked')).toBe(true);
+    expect(child?.props.get('checked')).toBe(false);
+    expect(updates).toEqual(['CHILD']);
   });
 });

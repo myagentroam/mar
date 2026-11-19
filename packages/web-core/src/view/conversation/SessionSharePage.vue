@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/message-feedback-service.js';
 
+import logoIcon from '../../assets/logo-icon.png';
+import { errorCode } from '../../util/api-error.js';
 import { marIcon } from '../../util/mar-icons.js';
-import MarIcon from '../common/MarIcon.vue';
-import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import type { FormInstance, FormItemProp, FormRules, InputInstance } from 'element-plus';
 import { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import {
   createStandaloneFileWindowService,
@@ -14,7 +15,9 @@ import {
 import { translate } from '../../service/locale-preference-service.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import SessionShareConversation from './SessionShareConversation.vue';
+import AuthEntryPanel from '../common/AuthEntryPanel.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
+import MarIcon from '../common/MarIcon.vue';
 const StandaloneFilePreviewPage = defineAsyncComponent(
   () => import('../workspace/StandaloneFilePreviewPage.vue')
 );
@@ -23,38 +26,86 @@ const props = defineProps<{ shareId: string }>();
 const conversation = ref<InstanceType<typeof SessionShareConversation>>();
 const access = createSessionShareAccessService(props.shareId);
 const { session, invalidCode } = access;
+const shareUnavailable = computed(
+  () => !!invalidCode.value && invalidCode.value !== 'SESSION_SHARE_CREDENTIAL_INVALID'
+);
 const context = `share:${props.shareId}`;
 const windows = createStandaloneFileWindowService(undefined, context);
 const initialIntent = new URLSearchParams(location.search);
 const standalone = initialIntent.get('standaloneFile') === '1';
 const previewIntent = ref<URLSearchParams | undefined>(standalone ? initialIntent : undefined);
 const previewVersion = ref(0);
-const loading = ref(true);
+const loading = ref(false);
 const restoring = ref(true);
 const form = ref<FormInstance>();
+const passwordInput = ref<InputInstance>();
+const unavailableStatus = ref<HTMLElement>();
 const fields = ref({ password: '' });
+const passwordVisible = ref(false);
+const passwordError = ref('');
+const requestError = ref('');
 const rules: FormRules = {
   password: [
     {
       pattern: /^[0-9]{6}$/u,
       required: true,
-      message: translate('sessionShare.passwordFormat'),
-      trigger: 'blur'
+      message: () => translate('sessionShare.passwordFormat')
     }
   ]
 };
-async function login(restore = false): Promise<void> {
-  if (!restore && !(await form.value?.validate().catch(() => false))) return;
+
+function onPasswordInput(): void {
+  if (!fields.value.password) passwordVisible.value = false;
+  passwordError.value = '';
+  form.value?.clearValidate('password');
+}
+
+function presentValidation(_field: FormItemProp, valid: boolean, message: string): void {
+  passwordError.value = valid ? '' : message;
+}
+
+function presentRequestError(error: unknown): void {
+  requestError.value = errorMessage(
+    error,
+    shareUnavailable.value ? translate('sessionShare.invalid') : undefined
+  );
+}
+
+async function login(): Promise<void> {
+  if (loading.value) return;
   loading.value = true;
+  requestError.value = '';
   try {
-    await access.authenticate(restore ? undefined : fields.value.password);
+    if (!(await form.value?.validate().catch(() => false))) return;
+    passwordVisible.value = false;
+    await access.authenticate(fields.value.password);
     fields.value.password = '';
   } catch (error) {
-    showMessage(errorMessage(error), 'error', error);
+    if (errorCode(error) === 'SESSION_SHARE_CREDENTIAL_INVALID') {
+      passwordError.value = errorMessage(error);
+    } else {
+      presentRequestError(error);
+    }
   } finally {
     loading.value = false;
+    if (shareUnavailable.value || passwordError.value) {
+      await nextTick();
+      if (shareUnavailable.value) unavailableStatus.value?.focus();
+      else passwordInput.value?.focus();
+    }
   }
 }
+
+async function restoreAccess(): Promise<void> {
+  try {
+    await access.authenticate();
+  } catch (error) {
+    presentRequestError(error);
+  } finally {
+    restoring.value = false;
+  }
+}
+
 function openFile(path: string, line?: number, column?: number, external?: boolean): void {
   const intent = new URLSearchParams({ standaloneFile: '1', path, rawContent: '1' });
   if (line !== undefined) intent.set('line', String(line));
@@ -78,9 +129,7 @@ function acceptFile(event: Event): void {
 }
 onMounted(() => {
   window.addEventListener(STANDALONE_FILE_OPEN_EVENT, acceptFile);
-  void login(true).finally(() => {
-    restoring.value = false;
-  });
+  void restoreAccess();
 });
 onBeforeUnmount(() => {
   window.removeEventListener(STANDALONE_FILE_OPEN_EVENT, acceptFile);
@@ -106,94 +155,141 @@ onBeforeUnmount(() => {
     </section>
   </template>
   <main v-else class="share-entry">
-    <section class="share-entry-panel">
-      <span class="share-entry-mark" aria-hidden="true">MAR</span>
-      <h1>{{ translate('sessionShare.sharedConversation') }}</h1>
-      <p v-if="invalidCode && invalidCode !== 'SESSION_SHARE_CREDENTIAL_INVALID'" role="status">
-        {{ translate('sessionShare.invalid') }}
-      </p>
-      <div
-        v-else-if="restoring"
-        class="mar-page-loading-state"
+    <div
+      v-if="restoring"
+      class="mar-page-loading-state"
+      role="status"
+      aria-busy="true"
+      :aria-label="translate('sessionShare.loading')"
+    >
+      <BusyIndicator />
+    </div>
+    <AuthEntryPanel
+      v-else
+      title-id="share-entry-title"
+      :title="translate('sessionShare.sharedConversation')"
+      :summary="shareUnavailable ? undefined : translate('sessionShare.enterPassword')"
+      :logo-url="logoIcon"
+    >
+      <p
+        v-if="shareUnavailable"
+        ref="unavailableStatus"
+        class="share-entry-status"
         role="status"
-        :aria-label="translate('sessionShare.loading')"
+        tabindex="-1"
       >
-        <BusyIndicator />
-      </div>
+        {{ requestError || translate('sessionShare.invalid') }}
+      </p>
       <el-form
         v-else
         ref="form"
+        class="auth-form"
+        method="post"
         :model="fields"
         :rules="rules"
         label-position="top"
-        @submit.prevent="login()"
+        hide-required-asterisk
+        novalidate
+        @validate="presentValidation"
+        @submit.prevent="login"
       >
-        <p>{{ translate('sessionShare.enterPassword') }}</p>
-        <el-form-item prop="password" :label="translate('sessionShare.password')">
+        <el-form-item
+          class="share-password-field"
+          prop="password"
+          for="share-password"
+          :show-message="false"
+          :label="translate('sessionShare.password')"
+        >
           <el-input
+            id="share-password"
+            ref="passwordInput"
             v-model="fields.password"
-            type="password"
+            name="share-password"
+            :type="passwordVisible ? 'text' : 'password'"
             inputmode="numeric"
+            enterkeyhint="go"
             maxlength="6"
-            autocomplete="off"
-            autofocus
-            show-password
+            autocomplete="current-password"
+            required
+            :readonly="loading"
+            :validate-event="false"
+            :aria-invalid="Boolean(passwordError)"
+            :aria-describedby="passwordError ? 'share-password-error' : undefined"
+            @input="onPasswordInput"
           >
-            <template #password-icon="{ visible }">
-              <MarIcon :name="visible ? 'view' : 'view-off'" />
+            <template #suffix>
+              <button
+                v-if="fields.password"
+                class="mar-icon-button mar-icon-action mar-icon-action--inline"
+                type="button"
+                :aria-label="translate('sessionShare.showPassword')"
+                :aria-pressed="passwordVisible"
+                :disabled="loading"
+                @click="passwordVisible = !passwordVisible"
+              >
+                <MarIcon :name="passwordVisible ? 'view-off' : 'view'" />
+              </button>
             </template>
           </el-input>
+          <div id="share-password-error" role="alert">
+            <p v-if="passwordError" class="share-entry-error">{{ passwordError }}</p>
+          </div>
         </el-form-item>
-        <el-button
-          type="primary"
-          native-type="submit"
-          :loading="loading"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('sessionShare.enter') }}</el-button
-        >
+        <div>
+          <el-button
+            type="primary"
+            native-type="submit"
+            :loading="loading"
+            :loading-icon="marIcon('loading-action')"
+            >{{ translate('sessionShare.enter') }}</el-button
+          >
+          <div role="alert">
+            <p v-if="requestError" class="share-entry-error">{{ requestError }}</p>
+          </div>
+        </div>
       </el-form>
-    </section>
+    </AuthEntryPanel>
   </main>
 </template>
 
 <style scoped>
 .share-entry {
-  min-height: 100dvh;
   display: grid;
-  place-items: center;
-  padding: 1.5rem;
-  background: var(--el-bg-color-page);
+  height: 100vh;
+  height: 100dvh;
+  place-items: safe center;
+  overflow: auto;
+  padding: 1rem;
+  background: var(--mar-bg-page);
 }
-.share-entry-panel {
-  width: min(24rem, 100%);
-  padding: 2rem;
-  border: 1px solid var(--el-border-color-lighter);
-  border-top: 3px solid var(--el-color-primary);
-  border-radius: 8px;
-  background: var(--el-bg-color);
+.share-password-field {
+  margin: 0;
 }
-.share-entry-mark {
-  font-family: var(--mar-font-mono);
-  font-size: var(--mar-font-size-meta);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  color: var(--el-color-primary);
+.share-password-field :deep(.el-form-item__label) {
+  margin-bottom: 0.35rem;
+  line-height: 1.4;
 }
-h1 {
-  font-size: var(--mar-font-size-page-title);
-  margin: 1rem 0;
+.share-password-field :deep(.el-form-item__content) {
+  display: block;
 }
-p {
-  color: var(--el-text-color-secondary);
+.share-entry .share-password-field :deep(.el-input__wrapper:has(input[aria-invalid='true'])) {
+  border-color: var(--el-color-danger);
+}
+.share-entry-status {
+  margin: 0;
+  color: var(--mar-text-secondary);
   line-height: 1.6;
-  margin: 0 0 1.25rem;
 }
-.share-entry-panel :deep(.el-button) {
-  width: 100%;
+.share-entry-status,
+.share-entry-error {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
-.share-entry-panel :deep(:focus-visible) {
-  outline: 2px solid var(--el-color-primary);
-  outline-offset: 2px;
+.share-entry-error {
+  margin: 0.35rem 0 0;
+  color: var(--mar-color-danger-text);
+  font-size: var(--mar-font-size-meta);
+  line-height: 1.45;
 }
 .share-preview {
   position: fixed;
@@ -206,10 +302,5 @@ p {
   position: static;
   background: transparent;
   overflow: visible;
-}
-@media (max-width: 767px) {
-  .share-entry-panel {
-    padding: 1.5rem;
-  }
 }
 </style>

@@ -468,14 +468,13 @@ describe('usage statistics service', () => {
     const report = vi.fn();
     const service = new UsageStatisticsService(request as Requester, report);
     await service.load(query());
-    const lastRefreshed = service.state.lastRefreshedAt;
+    const previousOverview = service.state.overview;
     service.startAutoRefresh(visibility);
     request.mockRejectedValueOnce(new Error('offline'));
     await vi.advanceTimersByTimeAsync(60_000);
     expect(request.mock.calls[2]?.[0]).toBe(request.mock.calls[0]?.[0]);
-    expect(service.state.overview).toBeDefined();
+    expect(service.state.overview).toBe(previousOverview);
     expect(service.state.records[0]?.recordId).toBe('first');
-    expect(service.state.lastRefreshedAt).toBe(lastRefreshed);
     expect(service.state.refreshFailed).toBe(true);
     expect(report).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60_000);
@@ -740,12 +739,18 @@ describe('usage statistics settings contract', () => {
         path.includes('/overview') ? pendingOverview.promise : pendingRecords.promise
       );
       const changeFilter = () => {
+        if (field === 'purpose') {
+          const radios = view.findAll('input').filter((node) => node.props['type'] === 'radio');
+          const option = radios.find((node) => node.props['value'] === value)!;
+          const target = option.props['checked']
+            ? radios.find((node) => node.props['value'] === 'title')!
+            : option;
+          (target.props['onChange'] as () => void)();
+          return;
+        }
         const control =
-          field === 'purpose'
-            ? view.findAll('ElSegmented')[0]!
-            : view.findAll('ElSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
-        const next = field === 'purpose' && control.props['modelValue'] === value ? 'title' : value;
-        (control.props['onUpdate:modelValue'] as (value: string) => void)(next);
+          view.findAll('ElSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
+        (control.props['onUpdate:modelValue'] as (value: string) => void)(value);
         (control.props['onChange'] as () => void)();
       };
       changeFilter();

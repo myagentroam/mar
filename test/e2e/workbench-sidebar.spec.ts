@@ -214,7 +214,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       (row) => getComputedStyle(row).color
     );
     const otherWorkspaceColor = await otherWorkspace.evaluate((row) => getComputedStyle(row).color);
-    expect(selectedWorkspaceColor).toBe(otherWorkspaceColor);
+    expect(selectedWorkspaceColor).not.toBe(otherWorkspaceColor);
     const selectedRow = selectedWorkspace.locator('..');
     await expect(selectedRow).toHaveClass(/\bselected\b/);
     const background = await selectedRow.evaluate((row) => getComputedStyle(row).backgroundColor);
@@ -359,7 +359,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         return colors;
       });
       expect(primary).toBe(selectedWorkspaceColor);
-      expect(primary).toBe(otherWorkspaceColor);
+      expect(secondary).toBe(otherWorkspaceColor);
       const current = history.locator('.history-open[aria-current="page"]');
       await expect(current).toContainText('Current chat');
       await expect(current.locator('time')).toHaveCSS('color', secondary);
@@ -368,7 +368,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const row = history.locator('article').filter({ hasText: title });
         const text = row.getByText(title, { exact: true });
         const pin = row.getByRole('img', { name: 'Pinned', exact: true });
-        await expect(text).toHaveCSS('color', primary);
+        await expect(text).toHaveCSS('color', selected ? primary : secondary);
         await expect(text).toHaveCSS('font-size', fontSize);
         await expect(text).toHaveCSS('font-weight', '400');
         await expect(pin).toBeVisible();
@@ -520,20 +520,38 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const pinned = tabs.nth(1);
       const inactive = tabs.nth(2);
       const active = tabs.first();
+      const { primary, secondary } = await active.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        probe.style.color = 'var(--mar-text-primary)';
+        const primary = getComputedStyle(probe).color;
+        probe.style.color = 'var(--mar-text-secondary)';
+        const secondary = getComputedStyle(probe).color;
+        probe.remove();
+        return { primary, secondary };
+      });
+      const title = (tab: Locator) => tab.locator('.workspace-tab-content > span');
       await expect(pinned).toHaveClass(/sticky-pinned/);
       await page.mouse.move(1200, 800);
       for (const tab of [pinned, inactive]) {
+        await expect(title(tab)).toHaveCSS('color', secondary);
         await expect(tab).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(tab).toHaveCSS('background-image', 'none');
       }
+      await expect(title(active)).toHaveCSS('color', primary);
+      await expect(active.locator('small')).toHaveCSS('color', secondary);
       await expect(active).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await inactive.hover();
       await expect(inactive).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(title(inactive)).toHaveCSS('color', secondary);
       await inactive.locator('[role="tab"]').focus();
       await expect(inactive.locator('[role="tab"]')).toBeFocused();
+      await expect(title(inactive)).toHaveCSS('color', secondary);
       await inactive.locator('[role="tab"]').press('Enter');
       await expect(inactive.locator('[role="tab"]')).toHaveAttribute('aria-selected', 'true');
+      await expect(title(inactive)).toHaveCSS('color', primary);
       await page.mouse.move(1200, 800);
+      await expect(title(active)).toHaveCSS('color', secondary);
       await expect(active).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const strip = page.locator('.workspace-tabs');
       await strip.evaluate((element) => {
@@ -556,6 +574,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.locator('.workspace-tab-strip').screenshot({
         path: testInfo.outputPath(`workspace-tabs-${placement}-${theme}.png`)
       });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(title(inactive)).toHaveCSS('color', primary);
+      await expect(title(pinned)).toHaveCSS('color', secondary);
+      await expect(title(active)).toHaveCSS('color', secondary);
     });
   }
 }

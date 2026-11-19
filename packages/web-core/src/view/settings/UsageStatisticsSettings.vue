@@ -3,6 +3,7 @@ import { watchManagementPageFailure } from '../../service/management-page-feedba
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import MarSegmented from '../common/MarSegmented.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
 import type { TagProps } from 'element-plus';
@@ -246,18 +247,14 @@ onUnmounted(() => {
         </div>
         <div class="refresh-actions">
           <span class="metadata" role="status">
-            {{
-              state.refreshFailed
-                ? t('usageStatistics.refreshDelayed')
-                : state.lastRefreshedAt
-                  ? t('usageStatistics.refreshed', { time: time(state.lastRefreshedAt) })
-                  : ''
-            }}
+            {{ state.refreshFailed ? t('usageStatistics.refreshDelayed') : '' }}
           </span>
           <el-button
             v-tooltip="t('usageStatistics.refresh')"
             class="mar-icon-action"
             text
+            circle
+            size="small"
             :icon="marIcon('refresh')"
             :loading="state.loading && !pageLoading"
             :disabled="pageLoading"
@@ -267,13 +264,21 @@ onUnmounted(() => {
           />
         </div>
       </header>
-      <div class="usage-purpose-scroll">
-        <el-segmented
+      <el-select
+        v-if="pagination.mobileViewport.value"
+        v-model="selectedPurpose"
+        class="usage-purpose-select"
+        :options="purposeOptions"
+        :aria-label="t('usageStatistics.purpose')"
+        :suffix-icon="marIcon('chevron-down')"
+        @change="refresh(true, selectedPurpose)"
+      />
+      <div v-else class="usage-purpose-scroll">
+        <MarSegmented
           v-model="selectedPurpose"
-          class="usage-purposes"
           :options="purposeOptions"
-          :aria-label="t('usageStatistics.purpose')"
-          @change="refresh(true, selectedPurpose)"
+          :label="t('usageStatistics.purpose')"
+          @change="refresh(true, $event)"
         />
       </div>
       <p v-if="state.overview" class="metadata">{{ t('usageStatistics.overviewScope') }}</p>
@@ -773,19 +778,14 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.usage-purpose-select {
+  width: min(100%, 24rem);
+  margin-top: 0.5rem;
+}
 .usage-purpose-scroll {
   margin: 0.5rem -3px 0;
   padding: 3px;
   overflow-x: auto;
-}
-.usage-purposes {
-  width: max-content;
-}
-@media (prefers-reduced-motion: reduce) {
-  .usage-purposes :deep(.el-segmented__item-selected),
-  .usage-purposes :deep(.el-segmented__item-label) {
-    transition: none;
-  }
 }
 
 .usage {

@@ -4,7 +4,6 @@ export const personalSettingsEnUS = {
     updateRecords: 'Update records',
     recordsSnapshot: 'Records have not auto-refreshed to preserve your current view.',
     refreshDelayed: 'Refresh unavailable; retrying shortly',
-    refreshed: 'Last refreshed: {time}',
     overviewScope: 'Current category · Unaffected by filters below',
     title: 'Usage statistics',
     accountScope: 'Agent usage for the current account',

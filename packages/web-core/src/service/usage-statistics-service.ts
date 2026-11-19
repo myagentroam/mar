@@ -30,7 +30,6 @@ export class UsageStatisticsService {
     refreshing: false,
     failed: false,
     refreshFailed: false,
-    lastRefreshedAt: null as number | null,
     recordsStale: false,
     page: computed(() => this.pagination.page.value),
     total: computed(() => String(this.pagination.total.value)),
@@ -66,7 +65,6 @@ export class UsageStatisticsService {
     if (options.reset !== false) {
       this.interacting = false;
       this.state.overview = undefined;
-      this.state.lastRefreshedAt = null;
       this.state.recordsStale = false;
       this.recordsQuery = undefined;
     }
@@ -123,7 +121,6 @@ export class UsageStatisticsService {
       }
       if (this.state.availableModels.length === 0 || this.isUnfiltered(query))
         this.state.availableModels = overview.models;
-      this.state.lastRefreshedAt = Date.now();
       this.state.failed = false;
       this.state.refreshFailed = false;
       this.failures = 0;

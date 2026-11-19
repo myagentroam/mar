@@ -3,6 +3,7 @@ export const sessionShareZhCN = {
   messagePlaceholder: '向此会话发送消息…',
   working: '工作中',
   passwordFormat: '请输入有效的分享密码。',
+  showPassword: '显示密码',
   nameRequired: '请输入不超过 80 个字符的名称。',
   previewWindowBlocked: '请允许弹出窗口以打开此预览。',
   link: '链接',

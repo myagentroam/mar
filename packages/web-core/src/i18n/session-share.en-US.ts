@@ -3,6 +3,7 @@ export const sessionShareEnUS = {
   messagePlaceholder: 'Message this conversation…',
   working: 'Working',
   passwordFormat: 'Enter a valid share password.',
+  showPassword: 'Show password',
   nameRequired: 'Enter a name of up to 80 characters.',
   previewWindowBlocked: 'Allow pop-up windows to open this preview.',
   link: 'Link',

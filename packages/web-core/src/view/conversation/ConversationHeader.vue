@@ -104,7 +104,7 @@ const asideLabel = computed(() =>
       <slot v-if="session && !sessionIsDraft(session)" name="tree" :session-id="session.id" />
       <button
         v-if="asideReady || filesReady || terminalReady"
-        class="mar-icon-button mar-icon-action conversation-header-tool"
+        class="mar-icon-button mar-icon-action mar-icon-action--panel-toggle conversation-header-tool"
         :class="{ 'conversation-header-tool-mobile-only': !asideControls }"
         type="button"
         v-tooltip="asideLabel"

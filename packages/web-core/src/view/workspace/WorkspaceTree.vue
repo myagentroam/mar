@@ -1048,7 +1048,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border: 0;
   border-radius: var(--mar-radius-selection);
   background: transparent;
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   padding: var(--workspace-tree-row-padding) 6px var(--workspace-tree-row-padding)
     calc(var(--workspace-tree-leading) + var(--workspace-tree-indent));
   text-align: left;
@@ -1163,7 +1163,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   padding: var(--workspace-tree-row-padding) 7px var(--workspace-tree-row-padding) 0;
   min-height: var(--workspace-tree-row-height);
   font-weight: 400;
@@ -1275,7 +1275,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--mar-text-primary);
+  color: var(--mar-text-secondary);
   font-weight: 400;
   padding: var(--workspace-tree-row-padding) 6px var(--workspace-tree-row-padding)
     var(--workspace-tree-label-leading);
@@ -1284,6 +1284,10 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: grab;
+}
+
+.workspace-branches > li.selected > .workspace-branch-button {
+  color: var(--mar-text-primary);
 }
 
 .workspace-branches .workspace-branch-button:active {
@@ -1376,10 +1380,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 .tree-node-row:hover {
   --mar-icon-status-surface: var(--mar-fill-row-hover);
   background: var(--mar-fill-row-hover);
-}
-
-.tree-node-row:hover .tree-node {
-  color: var(--mar-text-primary);
 }
 
 .node-expand-button {

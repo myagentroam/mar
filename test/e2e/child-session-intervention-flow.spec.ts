@@ -193,8 +193,8 @@ test('opens a child from the session list and carries user intervention back to 
     await group.locator(':scope > details > summary').click();
     await expect(group.getByRole('button', { name: '打开会话' })).toHaveCount(0);
     await page
-      .getByRole('tablist', { name: '会话分组', exact: true })
-      .getByRole('tab', { name: /^子会话(?:,|$)/ })
+      .getByRole('radiogroup', { name: '会话分组', exact: true })
+      .getByRole('radio', { name: '子会话', exact: true })
       .click();
     await page
       .locator('.session-list .session-link')
