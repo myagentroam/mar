@@ -134,7 +134,7 @@ export function createWorkbenchWatchCoordinator(options: WorkbenchWatchCoordinat
   };
 }
 
-/** Reconcile Watch gaps and reconnects through domain commands, never writable page state. */
+/** Reconcile ordinary Workbench Watch gaps through domain commands, never writable page state. */
 export function createWorkbenchWatchRecovery(input: {
   readonly view: Readonly<import('vue').Ref<string>>;
   readonly workspaceTarget: Readonly<
@@ -144,13 +144,10 @@ export function createWorkbenchWatchRecovery(input: {
     import('vue').Ref<import('../model/workbench.js').Workspace | undefined>
   >;
   readonly selectedSessionId: Readonly<import('vue').Ref<string | undefined>>;
-  readonly hostedNodeId: Readonly<import('vue').Ref<string | undefined>>;
   readonly coordinator: () =>
     | Pick<
-        ReturnType<
-          typeof import('./hosted-conversation-watch-coordinator.js').createHostedConversationWatchCoordinator
-        >,
-        'restartHostedConversation' | 'restartWorkspace' | 'handleVisibility'
+        ReturnType<typeof createWorkbenchWatchCoordinator>,
+        'restartWorkspace' | 'handleVisibility'
       >
     | undefined;
   readonly invalidateManifest: (nodeId: string) => void;
@@ -175,7 +172,6 @@ export function createWorkbenchWatchRecovery(input: {
       return input.workspaceTarget.value?.workspaceId;
     }
   };
-  const hostedConversationWorkspace = { selectedNodeId: input.hostedNodeId };
   const watchCoordinator = {
     get current() {
       return input.coordinator();
@@ -188,14 +184,6 @@ export function createWorkbenchWatchRecovery(input: {
   const refreshSelectedSessionSnapshot = input.refreshSession;
   function handleNodeConnected(nodeId: string, restartWatch = true): void {
     invalidateNodeManifest(nodeId);
-    if (
-      view.value === 'conversations' &&
-      hostedConversationWorkspace.selectedNodeId.value === nodeId
-    ) {
-      if (restartWatch)
-        void watchCoordinator.current?.restartHostedConversation().catch(() => undefined);
-      return;
-    }
     if (view.value !== 'nodes' || workspaceNodeId.value !== nodeId) return;
     if (
       activeWorkspaceId.value !== undefined &&
@@ -212,13 +200,6 @@ export function createWorkbenchWatchRecovery(input: {
 
   function handleWorkbenchResync(nodeId: string): void {
     invalidateNodeManifest(nodeId);
-    if (
-      view.value === 'conversations' &&
-      hostedConversationWorkspace.selectedNodeId.value === nodeId
-    ) {
-      void watchCoordinator.current?.restartHostedConversation().catch(() => undefined);
-      return;
-    }
     if (view.value !== 'nodes') return;
     discardNodeViewCaches(nodeId);
     if (workspaceNodeId.value === nodeId) void refreshNodeManifest(nodeId);

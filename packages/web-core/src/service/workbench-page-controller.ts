@@ -85,7 +85,10 @@ import { createWorkspaceWatchService } from './workspace-watch-service.js';
 import { createWorkspaceWatchProjection } from './workspace-watch-projection.js';
 import { createWorkbenchWorkspaceContext } from './workspace-context-service.js';
 import { createWorkbenchViewWatchService as createWorkbenchNavigationWatchService } from './workbench-view-watch-service.js';
-import { createHostedConversationWatchCoordinator as createWorkbenchWatchCoordinator } from './hosted-conversation-watch-coordinator.js';
+import {
+  createHostedConversationWatchCoordinator,
+  createHostedConversationWatchRecovery
+} from './hosted-conversation-watch-coordinator.js';
 import { createWorkspaceFileToolsController } from './workspace-file-tools-controller.js';
 import { createWorkspaceFileWorkbenchController } from './workspace-file-workbench-controller.js';
 import { createWorkspaceFileAccessService } from './workspace-file-access-service.js';
@@ -280,13 +283,21 @@ export function createWorkbenchPageController<
     () => !mobileViewport.value || mobileWorkspaceSurface.value === 'conversation'
   );
   const workbenchConnectionId = ref<string>();
-  const watchCoordinator: { current?: ReturnType<typeof createWorkbenchWatchCoordinator> } = {};
+  const watchCoordinator: {
+    current?: ReturnType<typeof createHostedConversationWatchCoordinator>;
+  } = {};
   const hostedConversationWorkspace = createHostedConversationWorkspaceService({
     request,
     workbenchConnectionId: () => workbenchConnectionId.value,
     heartbeatMs: SESSION_WATCH_HEARTBEAT_MS,
     requestTimeoutMs: SESSION_WATCH_REQUEST_TIMEOUT_MS,
     confirmationTimeoutMs: SESSION_WATCH_CONFIRMATION_TIMEOUT_MS
+  });
+  const hostedWatchRecovery = createHostedConversationWatchRecovery({
+    isActive: () => view.value === 'conversations',
+    selectedConversationId: () => hostedConversationWorkspace.selectedConversationId.value,
+    selectedNodeId: () => hostedConversationWorkspace.selectedNodeId.value,
+    coordinator: () => watchCoordinator.current
   });
 
   const webPerformanceDiagnostics = createWebPerformanceDiagnostics({
@@ -328,13 +339,7 @@ export function createWorkbenchPageController<
       );
     },
     onReconnect: () => {
-      if (
-        view.value === 'conversations' &&
-        hostedConversationWorkspace.selectedConversationId.value !== undefined
-      ) {
-        void watchCoordinator.current?.restartHostedConversation().catch(() => undefined);
-        return;
-      }
+      hostedWatchRecovery.restoreConnection('restart');
       if (view.value !== 'nodes') return;
       if (activeWorkspaceId.value !== undefined)
         void watchCoordinator.current?.restartWorkspace(activeWorkspaceId.value);
@@ -365,20 +370,13 @@ export function createWorkbenchPageController<
     onReady: (connectionId, resumed) => {
       workbenchConnectionId.value = connectionId;
       directTransport.connectionReady(connectionId, resumed);
-      if (
-        !resumed &&
-        view.value === 'conversations' &&
-        hostedConversationWorkspace.selectedConversationId.value !== undefined
-      ) {
-        void watchCoordinator.current?.beginHostedConversation().catch(() => undefined);
-        return;
-      }
+      if (resumed) return;
+      hostedWatchRecovery.restoreConnection('begin');
       if (view.value !== 'nodes') return;
-      if (!resumed && activeWorkspaceId.value !== undefined)
+      if (activeWorkspaceId.value !== undefined)
         void watchCoordinator.current?.startWorkspace(activeWorkspaceId.value);
-      if (!resumed && selectedSessionId.value !== undefined)
-        refreshSelectedSessionSnapshot(0, true);
-      if (!resumed) asidePaneController.restoreVisibleWatch();
+      if (selectedSessionId.value !== undefined) refreshSelectedSessionSnapshot(0, true);
+      asidePaneController.restoreVisibleWatch();
     },
     onWatchEvent: (event) => {
       watchCoordinator.current?.handleEvent(event);
@@ -1849,7 +1847,7 @@ export function createWorkbenchPageController<
   const sessionHistoryMutation = mainPaneController.history;
 
   const sessionWatchController = mainPaneController.watch;
-  watchCoordinator.current = createWorkbenchWatchCoordinator({
+  watchCoordinator.current = createHostedConversationWatchCoordinator({
     workspace: workspaceWatchService,
     session: sessionWatchController,
     secondary: asidePaneController.watch,
@@ -1979,7 +1977,6 @@ export function createWorkbenchPageController<
     workspaceTarget,
     selectedWorkspace,
     selectedSessionId,
-    hostedNodeId: hostedConversationWorkspace.selectedNodeId,
     coordinator: () => watchCoordinator.current,
     invalidateManifest: invalidateNodeManifest,
     refreshManifest: refreshNodeManifest,
@@ -1992,9 +1989,11 @@ export function createWorkbenchPageController<
   });
   function handleNodeConnected(nodeId: string, restartWatch = true): void {
     watchRecovery.connected(nodeId, restartWatch);
+    if (restartWatch) hostedWatchRecovery.resyncNode(nodeId);
   }
   function handleWorkbenchResync(nodeId: string): void {
     watchRecovery.resync(nodeId);
+    hostedWatchRecovery.resyncNode(nodeId);
   }
 
   const workPromptCompletion = mainPaneController.completion;
