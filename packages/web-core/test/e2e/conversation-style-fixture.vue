@@ -159,10 +159,16 @@ const turns = ref<ConversationTurn[]>([
     items: previewFixture
       ? [
           {
+            id: 'progress-reply',
+            kind: 'assistant_message',
+            status: 'COMPLETED',
+            payload: { text: 'I identified the files to review.' }
+          },
+          {
             id: 'thinking',
             kind: 'reasoning',
             status: 'COMPLETED',
-            ...(performanceFixture ? { startedAt: Date.now() - 258_000 } : {}),
+            startedAt: Date.now() - 258_000,
             processGroup: { id: 'preview-process', isStart: true },
             payload: {
               representation: 'visible_thinking',
@@ -182,7 +188,7 @@ const turns = ref<ConversationTurn[]>([
             Array.from({ length: 3 }, (_, index): ConversationItem => ({
               id: `${kind}-${index}`,
               kind: kind === 'command' ? 'command_execution' : 'tool_call',
-              status: 'COMPLETED',
+              status: kind === 'command' && index === 0 ? 'FAILED' : 'COMPLETED',
               processGroup: { id: 'spacing-process', isStart: kind === 'command' && index === 0 },
               payload:
                 kind === 'command'
@@ -191,6 +197,7 @@ const turns = ref<ConversationTurn[]>([
                         index === 0
                           ? `const command = "${'long-command-with-original-content-'.repeat(10)}";\nobserve.result(await tools.exec({ command }));\n// Full command tail`
                           : `echo review-${index}`,
+                      ...(index === 0 ? { durationMs: 3_000 } : {}),
                       ...(index === 1 ? {} : { outputPreview: 'Review output' })
                     }
                   : {

@@ -1723,6 +1723,11 @@ function stepDuration(item: ConversationItem): string | undefined {
   gap: 0;
 }
 
+.conversation-turn:not(.is-group):has(.assistant_message) + .conversation-turn.is-group,
+.conversation-turn.is-group + .conversation-turn:not(.is-group):has(.assistant_message) {
+  margin-block-start: 0.625rem;
+}
+
 .conversation-item {
   position: relative;
   width: min(100%, 820px);
@@ -2041,7 +2046,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-record-meta {
   display: flex;
-  flex-wrap: wrap;
   gap: 0 0.5rem;
   color: var(--mar-conversation-muted);
   font-size: var(--mar-font-size-meta);
@@ -2347,18 +2351,16 @@ details.conversation-record-group[open] > details:last-child {
   margin-inline: 0;
 }
 
-.conversation-item details > summary > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* Let the preview yield space to the trailing status, duration and count. */
 .conversation-item
   details
   > summary
   > span:not(.conversation-record-meta):not(.conversation-group-meta) {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conversation-item summary > .conversation-record-meta,
