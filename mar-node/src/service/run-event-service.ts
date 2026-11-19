@@ -47,6 +47,7 @@ export interface RunEventServiceOptions {
     readonly eventType: string;
     readonly payload: unknown;
     readonly terminalStatus?: RunnerExecutionStatus;
+    readonly runTerminal?: true;
   }) => void;
 }
 
@@ -225,6 +226,7 @@ export class RunEventService {
     if (status === 'FAILED') this.options.metrics.runnerFailed();
     let recorded: ReturnType<NodeRuntimeState['appendRunEvent']> = undefined;
     let finalStatus: RunnerExecutionStatus | undefined;
+    let observedTerminalStatus: RunnerExecutionStatus | undefined;
     let manuallyInterrupted = false;
     if (terminalExecution) {
       const parsedStop = isPlainRecord(payload)
@@ -241,6 +243,10 @@ export class RunEventService {
       recorded = result.recorded;
       if (recorded === undefined) return;
       finalStatus = result.finalStatus;
+      // An accepted current Execution can settle while its Run retains the queue and lease.
+      observedTerminalStatus = finalStatus;
+      if (observedTerminalStatus === undefined && currentExecutionId === executionId)
+        observedTerminalStatus = status === 'CANCELLED' ? 'INTERRUPTED' : status;
       manuallyInterrupted = result.manuallyInterrupted;
       if (result.queueChangedSessionId !== undefined)
         this.options.publishQueueChange(result.queueChangedSessionId);
@@ -268,7 +274,8 @@ export class RunEventService {
         executionId,
         eventType,
         payload,
-        ...(terminalExecution && finalStatus !== undefined ? { terminalStatus: finalStatus } : {})
+        ...(observedTerminalStatus === undefined ? {} : { terminalStatus: observedTerminalStatus }),
+        ...(finalStatus === undefined ? {} : { runTerminal: true })
       });
     const notificationPayload = this.notificationPayload(
       runId,
