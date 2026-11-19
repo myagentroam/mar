@@ -274,11 +274,6 @@ export class SessionRuntime {
   }
 
   joinExecutions(): Promise<PromiseSettledResult<ExecutionResult>[]> {
-    return Promise.allSettled(
-      [...this.#executions.values()].flatMap((execution) => {
-        const result = execution.join();
-        return result === undefined ? [] : [result];
-      })
-    );
+    return Promise.allSettled([...this.#executions.values()].map((execution) => execution.join()));
   }
 }
