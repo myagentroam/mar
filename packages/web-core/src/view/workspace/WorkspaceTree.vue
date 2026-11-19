@@ -1024,7 +1024,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .workspace-branches > li.workspace-group:hover,
-.workspace-branches > li.workspace-group:focus-within {
+.workspace-branches > li.workspace-group:has(:focus-visible) {
   background: transparent;
 }
 
@@ -1243,19 +1243,19 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .workspace-branches > li:not(.workspace-group, :hover, :focus-within) {
+  .workspace-branches > li:not(.workspace-group, :hover, :has(:focus-visible)) {
     transition: background-color var(--mar-motion-duration-collapse)
       var(--mar-motion-easing-collapse);
   }
 }
 
 .workspace-branches > li:hover,
-.workspace-branches > li:focus-within {
+.workspace-branches > li:has(:focus-visible) {
   background: var(--mar-fill-row-hover);
 }
 
 .workspace-branches > li:hover > .workspace-branch-button,
-.workspace-branches > li:focus-within > .workspace-branch-button {
+.workspace-branches > li:has(:focus-visible) > .workspace-branch-button {
   color: var(--mar-text-primary);
 }
 
@@ -1264,7 +1264,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .workspace-branches > li.selected:hover,
-.workspace-branches > li.selected:focus-within {
+.workspace-branches > li.selected:has(:focus-visible) {
   background: var(--mar-fill-selection);
 }
 
@@ -1368,7 +1368,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-node-row.drop-target,
 .tree-node-row.drop-target:hover,
-.tree-node-row.drop-target:focus-within {
+.tree-node-row.drop-target:has(:focus-visible) {
   --mar-icon-status-surface: var(--mar-color-brand-selected);
   background: var(--mar-color-brand-selected);
 }
@@ -1384,13 +1384,13 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-node-row:hover,
-.tree-node-row:focus-within {
+.tree-node-row:has(:focus-visible) {
   --mar-icon-status-surface: var(--mar-fill-row-hover);
   background: var(--mar-fill-row-hover);
 }
 
 .tree-node-row:hover .tree-node,
-.tree-node-row:focus-within .tree-node {
+.tree-node-row:has(:focus-visible) .tree-node {
   color: var(--mar-text-primary);
 }
 
@@ -1428,7 +1428,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .tree-node-row.selected:hover,
-.tree-node-row.selected:focus-within {
+.tree-node-row.selected:has(:focus-visible) {
   background: var(--mar-fill-selection);
 }
 

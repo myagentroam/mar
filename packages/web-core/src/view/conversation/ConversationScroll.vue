@@ -128,8 +128,9 @@ function onScrollKeydown(event: KeyboardEvent): void {
   if (scrollsUp) onUpwardIntent();
 }
 
-function onScrollbarPointerdown(event: PointerEvent): void {
+function onScrollPointerdown(event: PointerEvent): void {
   scrollbarPointerY = undefined;
+  if (event.button === 0) showFocusOutline.value = false;
   const current = element.value;
   if (
     event.button !== 0 ||
@@ -323,7 +324,7 @@ onBeforeUnmount(() => {
       @touchstart.passive="onTouchStart"
       @touchmove.passive="onTouchMove"
       @keydown="onScrollKeydown"
-      @pointerdown="onScrollbarPointerdown"
+      @pointerdown="onScrollPointerdown"
       @pointermove="onScrollbarPointermove"
       @pointerup="scrollbarPointerY = undefined"
       @pointercancel="scrollbarPointerY = undefined"

@@ -750,6 +750,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await page.keyboard.press('Shift+Tab');
     await expect(scroll).toBeFocused();
     await expect(scroll).toHaveCSS('outline-style', 'solid');
+
+    await page.getByText('Latest cached message', { exact: true }).click();
+    await expect(scroll).toBeFocused();
+    await expect(scroll).toHaveCSS('outline-style', 'none');
   });
 }
 

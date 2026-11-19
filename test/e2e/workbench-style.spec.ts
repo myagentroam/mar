@@ -9,6 +9,30 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('A pointer-focused workspace tree row does not stay highlighted after hover ends', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}workbench-style.html?list-state=unselected&locale=en-US`);
+  const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+  const node = tree.getByRole('button', { name: 'Node', exact: true });
+  const row = tree.locator('.tree-node-row');
+  const idleColor = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await node.hover();
+  const hoverColor = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(hoverColor).not.toBe(idleColor);
+
+  await node.click();
+  await page.mouse.move(0, 0);
+  await expect(node).toBeFocused();
+  await expect(row).toHaveCSS('background-color', idleColor);
+
+  await page.keyboard.press('Shift+Tab');
+  const expand = row.locator('.node-expand-button');
+  await expect(expand).toBeFocused();
+  await expect(expand).toHaveCSS('outline-style', 'solid');
+  await expect(row).toHaveCSS('background-color', hoverColor);
+});
+
 for (const { theme, width } of [
   { theme: 'daylight', width: 1280 },
   { theme: 'vscode-dark-2026', width: 1280 },

@@ -390,7 +390,7 @@ function openContext(event: MouseEvent): void {
 }
 .session-tree-row:hover > .session-tree-item,
 .session-tree-item:hover,
-.session-tree-item:focus-within,
+.session-tree-item:has(:focus-visible),
 .session-tree-item:has([aria-expanded='true']) {
   background: var(--mar-fill-row-hover);
 }

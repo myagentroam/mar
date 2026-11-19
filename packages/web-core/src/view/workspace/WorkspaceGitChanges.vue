@@ -754,7 +754,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 }
 
 .change-list .change-entry:hover,
-.change-list .change-entry:focus-within {
+.change-list .change-entry:has(:focus-visible) {
   background: var(--mar-fill-row-hover);
 }
 

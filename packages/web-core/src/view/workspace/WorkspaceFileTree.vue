@@ -689,7 +689,7 @@ defineExpose({ reveal });
 }
 
 .file-tree-row-shell:hover,
-.file-tree-row-shell:focus-within {
+.file-tree-row-shell:has(:focus-visible) {
   background-color: var(--mar-fill-muted);
 }
 

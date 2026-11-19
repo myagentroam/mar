@@ -177,7 +177,6 @@ watch(
     symbols.value = [];
     activeKey.value = undefined;
     void loadWorkspaces();
-    void nextTick(() => input.value?.focus());
   }
 );
 watch(query, scheduleSearch);
@@ -334,7 +333,7 @@ function onKeydown(event: KeyboardEvent): void {
     width="min(680px, calc(100vw - 32px))"
     :show-close="false"
     @close="emit('close')"
-    @opened="input?.focus()"
+    @focus.once="input?.focus({ preventScroll: true })"
     :close-icon="marIcon('close')"
   >
     <div

@@ -173,7 +173,7 @@ function disableLeavingBranch(branch: Element): void {
 }
 
 .file-row:hover,
-.file-row:focus-within {
+.file-row:has(:focus-visible) {
   background: var(--mar-fill-hover);
 }
 

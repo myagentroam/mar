@@ -949,13 +949,13 @@ function submitSessionSearch(): void {
 }
 
 .session-row:hover,
-.session-row:focus-within {
+.session-row:has(:focus-visible) {
   background: var(--mar-fill-row-hover);
 }
 
 .session-row.selected,
 .session-row.selected:hover,
-.session-row.selected:focus-within {
+.session-row.selected:has(:focus-visible) {
   background: var(--mar-fill-selection);
 }
 

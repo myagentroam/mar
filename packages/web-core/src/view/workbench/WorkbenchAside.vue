@@ -139,8 +139,7 @@ const closeBinding: ConsoleShortcutBinding = {
         void nextTick(() => {
           const root = element.value;
           if (!root?.getClientRects().length) return;
-          if (document.activeElement !== document.body && !root.contains(document.activeElement))
-            return;
+          if (document.activeElement !== document.body) return;
           root
             .querySelector<HTMLElement>(
               '.workbench-aside-header [role="tab"][aria-selected="true"]'
