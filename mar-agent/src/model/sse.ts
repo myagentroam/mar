@@ -1,5 +1,6 @@
 import { AgentError } from '../error.js';
-import { isRetryableModelHttpStatus } from './http.js';
+import type { ModelErrorDecision, UpstreamModelError } from './errors/chain.js';
+import { classifyHttpError, RecoverableModelError } from './errors/common.js';
 
 /**
  * Decodes bounded SSE responses and shares safe JSON/header diagnostics with adapters.
@@ -23,7 +24,8 @@ export async function* parseSse(
   signal: AbortSignal,
   maxBytes = 16 * 1024 * 1024,
   idleTimeoutMs = DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS,
-  sensitiveValues: readonly string[] = []
+  sensitiveValues: readonly string[] = [],
+  classifyError: (facts: UpstreamModelError) => ModelErrorDecision | undefined = classifyHttpError
 ): AsyncIterable<unknown> {
   if (!response.ok) {
     const redact = responseRedactor(sensitiveValues);
@@ -31,6 +33,13 @@ export async function* parseSse(
     const header = (name: string, limit: number) =>
       redactResponseHeader(response.headers.get(name), sensitiveValues, limit);
     const upstream = upstreamError(body);
+    const decision = classifyError({
+      source: 'http',
+      status: response.status,
+      code: upstream?.code,
+      message: upstream?.message
+    });
+    const ErrorType = decision?.action === 'retry' ? RecoverableModelError : AgentError;
     const code =
       upstream?.code ??
       (response.status === 401 || response.status === 403
@@ -40,7 +49,7 @@ export async function* parseSse(
           : response.status === 408 || response.status === 504
             ? 'MAR_AGENT_MODEL_TIMEOUT'
             : 'MAR_AGENT_MODEL_PROTOCOL_ERROR');
-    throw new AgentError(
+    throw new ErrorType(
       code,
       upstream?.message ?? `Model endpoint returned HTTP ${response.status}.`,
       {
@@ -51,8 +60,7 @@ export async function* parseSse(
           contentType: header('content-type', 256),
           requestId: header('x-request-id', 256) ?? header('request-id', 256),
           retryAfter: header('retry-after', 128)
-        },
-        retryable: isRetryableModelHttpStatus(response.status)
+        }
       }
     );
   }
@@ -294,23 +302,6 @@ function upstreamError(body: string): { code?: string; message: string } | undef
   const code = bounded(text(error.code) ?? text(error.type), 80);
   const message = bounded(text(error.message), 1_000);
   return message === undefined ? undefined : { ...(code === undefined ? {} : { code }), message };
-}
-
-const RETRYABLE_UPSTREAM_OVERLOAD_CODES = new Set([
-  'rate_limit_error',
-  'overloaded_error',
-  'api_overloaded',
-  'server_is_overloaded',
-  'system_cpu_overloaded',
-  'resource_exhausted',
-  'temporarily_unavailable',
-  'service_unavailable'
-]);
-
-// Closed set of transient upstream capacity/overload error codes; never grows into a
-// vendor-specific or free-text error classification table.
-export function isRetryableUpstreamOverloadCode(code: string | undefined): boolean {
-  return code !== undefined && RETRYABLE_UPSTREAM_OVERLOAD_CODES.has(code.toLowerCase());
 }
 
 function bounded(value: string | undefined, maximum: number): string | undefined {

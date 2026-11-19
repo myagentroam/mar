@@ -15,6 +15,7 @@ import {
   type AgentModelConfiguration
 } from '../../src/index.js';
 import { AnthropicMessagesAdapter } from '../../src/model/anthropic-messages.js';
+import { RecoverableModelError } from '../../src/model/errors/common.js';
 import { observeModelStreamEvent } from '../../src/model/sse.js';
 import { modelRetryMaxAttempts } from '../../src/model/http.js';
 import { createAgentWithAdapter as createMarAgent } from '../../src/sdk/agent.js';
@@ -326,12 +327,11 @@ class CompletedCommentaryEarlyEofAdapter implements ModelAdapter {
         phase: 'commentary',
         text: 'Preparing the document structure.'
       };
-      throw new AgentError(
+      throw new RecoverableModelError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'OpenAI Responses stream ended without a terminal event.',
         {
-          details: { reason: 'OPENAI_RESPONSES_EARLY_EOF', retryAfter: '0' },
-          retryable: true
+          details: { reason: 'OPENAI_RESPONSES_EARLY_EOF', retryAfter: '0' }
         }
       );
     }
@@ -378,12 +378,11 @@ class ToolCallEarlyEofAdapter implements ModelAdapter {
         '*** End Patch'
       ].join('\n')
     };
-    throw new AgentError(
+    throw new RecoverableModelError(
       'MAR_AGENT_MODEL_PROTOCOL_ERROR',
       'OpenAI Responses stream ended without a terminal event.',
       {
-        details: { reason: 'OPENAI_RESPONSES_EARLY_EOF' },
-        retryable: true
+        details: { reason: 'OPENAI_RESPONSES_EARLY_EOF' }
       }
     );
   }
@@ -3024,12 +3023,12 @@ describe('agent runtime', () => {
     await agent.dispose();
   });
 
-  it('limits completed-output early EOF recovery to eight total attempts', async () => {
+  it('limits completed-output early EOF recovery to five total attempts', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-commentary-eof-limit-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
-    const adapter = new CompletedCommentaryEarlyEofAdapter(8);
+    const adapter = new CompletedCommentaryEarlyEofAdapter(5);
     const agent = await createMarAgent(
       {
         mode: 'normal',
@@ -3044,7 +3043,7 @@ describe('agent runtime', () => {
       status: 'failed',
       errorCode: 'MAR_AGENT_MODEL_PROTOCOL_ERROR'
     });
-    expect(adapter.requests).toHaveLength(8);
+    expect(adapter.requests).toHaveLength(5);
     await agent.dispose();
   });
 
@@ -4501,7 +4500,7 @@ describe('agent runtime', () => {
     await agent.dispose();
   });
 
-  it('fails empty model completions after eight attempts instead of reporting false success', async () => {
+  it('fails empty model completions after five attempts instead of reporting false success', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-empty-completion-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -4520,7 +4519,7 @@ describe('agent runtime', () => {
       status: 'failed',
       errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE'
     });
-    expect(adapter.requests).toHaveLength(8);
+    expect(adapter.requests).toHaveLength(5);
     await agent.dispose();
   });
 

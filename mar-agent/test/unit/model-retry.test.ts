@@ -49,7 +49,7 @@ it.each([
       cause: Object.assign(new Error('Connection failed.'), { code })
     });
     const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(cause);
-    for (const attempts of [1, 8]) {
+    for (const attempts of [1, 5]) {
       fetch.mockClear();
       vi.mocked(delay).mockClear();
       const error = await fetchModelResponse(
@@ -97,7 +97,7 @@ it('preserves caller cancellation over a retryable socket rejection', async () =
   expect(delay).not.toHaveBeenCalled();
 });
 
-it('retries actual internal connection timeouts eight times with the shared policy', async () => {
+it('retries actual internal connection timeouts within five attempts with the shared policy', async () => {
   vi.spyOn(Math, 'random').mockReturnValue(0);
   const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(
     async (_url, init) =>
@@ -112,22 +112,20 @@ it('retries actual internal connection timeouts eight times with the shared poli
     code: 'MAR_AGENT_MODEL_TIMEOUT',
     details: { reason: 'MODEL_CONNECTION_TIMEOUT' }
   });
-  expect(fetch).toHaveBeenCalledTimes(8);
-  expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-    5000, 10000, 15000, 20000, 25000, 30000, 35000
-  ]);
+  expect(fetch).toHaveBeenCalledTimes(5);
+  expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([5000, 10000, 15000, 20000]);
 });
 
 it.each([0, 0.999999])('bounds the shared jitter with random=%s', (random) => {
   vi.spyOn(Math, 'random').mockReturnValue(random);
-  expect([0, 1, 2, 3, 4, 5, 6].map((attempt) => modelRetryDelay(null, attempt))).toEqual(
-    [1, 2, 3, 4, 5, 6, 7].map((attempt) => attempt * 5000 + Math.floor(random * 3001))
+  expect([0, 1, 2, 3].map((attempt) => modelRetryDelay(null, attempt))).toEqual(
+    [1, 2, 3, 4].map((attempt) => attempt * 5000 + Math.floor(random * 3001))
   );
   expect(modelRetryDelay('0', 3)).toBe(0);
   expect(modelRetryDelay('90', 3)).toBe(30000);
 });
 
-it.each([0, -1, 1.5, 9, NaN])('rejects an invalid request attempt limit %s', (maxAttempts) => {
+it.each([0, -1, 1.5, 6, NaN])('rejects an invalid request attempt limit %s', (maxAttempts) => {
   expect(() => modelRetryMaxAttempts({ attempts: 0, maxAttempts })).toThrow(
     'MAR_AGENT_MODEL_CONFIG_INVALID'
   );
@@ -156,7 +154,23 @@ function stream(protocol: string, overload = false, text = 'Recovered') {
   });
 }
 
-function partialFailure(protocol: string, code = 'server_is_overloaded') {
+const KIMI_CONCURRENT_REQUEST_LIMIT =
+  "You've reached your concurrent request limit. Please wait for your ongoing requests to finish and try again.";
+
+function anthropicErrorResponse(type: string, message: string, status = 200): Response {
+  const error = { type, message };
+  return new Response(
+    status === 200
+      ? `data: ${JSON.stringify({ type: 'error', error })}\n\n`
+      : JSON.stringify({ type: 'error', error }),
+    { status, headers: { 'retry-after': '2' } }
+  );
+}
+
+function partialFailure(
+  protocol: string,
+  code = protocol === 'OPENAI_RESPONSES' ? 'server_is_overloaded' : 'overloaded_error'
+) {
   const events =
     protocol === 'OPENAI_RESPONSES'
       ? [
@@ -166,7 +180,13 @@ function partialFailure(protocol: string, code = 'server_is_overloaded') {
       : [
           { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
           { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Partial' } },
-          { type: 'error', error: { type: 'overloaded_error' } }
+          {
+            type: 'error',
+            error: {
+              type: code,
+              ...(code === 'permission_error' ? { message: KIMI_CONCURRENT_REQUEST_LIMIT } : {})
+            }
+          }
         ];
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
 }
@@ -234,7 +254,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' })
       });
       const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-        if (fetch.mock.calls.length === 8 && !exhausted) return stream(protocol);
+        if (fetch.mock.calls.length === 5 && !exhausted) return stream(protocol);
         if (kind === 'socket') throw cause;
         return await new Promise<Response>((_resolve, reject) => {
           init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), {
@@ -247,7 +267,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         (events) => ({ events, error: undefined }),
         (error: unknown) => ({ events: [] as ModelEvent[], error })
       );
-      await vi.advanceTimersByTimeAsync(8 * 30_000);
+      await vi.advanceTimersByTimeAsync(5 * 30_000);
       const result = await outcome;
       const code =
         kind === 'socket' ? 'MAR_AGENT_MODEL_CONNECTION_FAILED' : 'MAR_AGENT_MODEL_TIMEOUT';
@@ -270,26 +290,24 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           expect.objectContaining({ type: 'text.completed', text: 'Recovered' })
         );
       }
-      expect(fetch).toHaveBeenCalledTimes(8);
-      expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-        5000, 10000, 15000, 20000, 25000, 30000, 35000
-      ]);
+      expect(fetch).toHaveBeenCalledTimes(5);
+      expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([5000, 10000, 15000, 20000]);
       expect(
         diagnostics.filter(({ state }) => state === 'STARTED').map(({ attempt }) => attempt)
-      ).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      ).toEqual([1, 2, 3, 4, 5]);
       const failures = diagnostics.filter(({ state }) => state === 'FAILED');
-      expect(failures).toHaveLength(exhausted ? 8 : 7);
+      expect(failures).toHaveLength(exhausted ? 5 : 4);
       for (const [index, failure] of failures.entries()) {
         expect(failure).toMatchObject({
           protocol,
           transport: 'HTTP',
           attempt: index + 1,
-          maxAttempts: 8,
+          maxAttempts: 5,
           semanticEventObserved: false,
           errorCode: code,
           retryable: true,
-          willRetry: index < 7,
-          ...(index < 7 ? { retryDelayMs: (index + 1) * 5000 } : {})
+          willRetry: index < 4,
+          ...(index < 4 ? { retryDelayMs: (index + 1) * 5000 } : {})
         });
       }
       expect(diagnostics.filter(({ state }) => state === 'SUCCEEDED')).toHaveLength(
@@ -298,10 +316,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     });
 
     it.each(['eof', 'reset', 'idle'] as const)(
-      'retries pre-output stream %s within eight attempts',
+      'retries pre-output stream %s within five attempts',
       async (kind) => {
         const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-          if (fetch.mock.calls.length === 8) return stream(protocol);
+          if (fetch.mock.calls.length === 5) return stream(protocol);
           if (kind === 'eof') return new Response('');
           return new Response(
             new ReadableStream({
@@ -319,8 +337,8 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           );
         });
         await run();
-        expect(fetch).toHaveBeenCalledTimes(8);
-        expect(delay).toHaveBeenCalledTimes(7);
+        expect(fetch).toHaveBeenCalledTimes(5);
+        expect(delay).toHaveBeenCalledTimes(4);
       }
     );
 
@@ -340,7 +358,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
             throw Object.assign(new Error('connect timeout'), { code: 'ETIMEDOUT' });
           }
           mainAttempts++;
-          return mainAttempts < 8 ? new Response('busy', { status: 503 }) : stream(protocol);
+          return mainAttempts < 5 ? new Response('busy', { status: 503 }) : stream(protocol);
         });
         const home = await mkdtemp(join(tmpdir(), 'mar-title-retry-'));
         const agent = await createAgent({
@@ -360,12 +378,12 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           ).rejects.toBeDefined();
           expect((await session.run({ prompt: 'Continue.' }).result()).status).toBe('completed');
           expect(titleAttempts).toBe(1);
-          expect(mainAttempts).toBe(8);
+          expect(mainAttempts).toBe(5);
           expect(await agent.listSessions()).toMatchObject({
             sessions: [{ title: 'New session' }]
           });
           expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-            5000, 10000, 15000, 20000, 25000, 30000, 35000
+            5000, 10000, 15000, 20000
           ]);
         } finally {
           await agent.dispose();
@@ -389,8 +407,8 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
           if (!testing) return stream(protocol);
           const attempt = fetch.mock.calls.length;
-          if (attempt === 8 && !exhausted) return stream(protocol);
-          if (attempt !== 1 && attempt !== 8) return new Response('busy', { status: 503 });
+          if (attempt === 5 && !exhausted) return stream(protocol);
+          if (attempt !== 1 && attempt !== 5) return new Response('busy', { status: 503 });
           const signal = init!.signal!;
           signals.push(signal);
           let cleanup = () => {};
@@ -449,15 +467,15 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
             retryable: true,
             details: { reason: 'MODEL_PROGRESS_TIMEOUT' }
           });
-          await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(8));
+          await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(5));
           if (exhausted) await vi.advanceTimersByTimeAsync(180_000);
           expect(await result).toMatchObject({
             status: exhausted ? 'failed' : 'completed',
             ...(exhausted ? { errorCode: 'MAR_AGENT_MODEL_TIMEOUT' } : {})
           });
-          expect(fetch).toHaveBeenCalledTimes(8);
+          expect(fetch).toHaveBeenCalledTimes(5);
           expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-            5000, 10000, 15000, 20000, 25000, 30000, 35000
+            5000, 10000, 15000, 20000
           ]);
           expect(vi.getTimerCount()).toBe(0);
         } finally {
@@ -472,17 +490,17 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       [false, true].flatMap((exhausted) =>
         (protocol === 'OPENAI_RESPONSES'
           ? ['server_is_overloaded', 'server_error']
-          : ['server_is_overloaded']
+          : ['overloaded_error', 'permission_error']
         ).map((code) => ({ exhausted, code }))
       )
     )(
-      'shares one eight-attempt budget before and after visible $code output, exhausted=$exhausted',
+      'shares one five-attempt budget before and after visible $code output, exhausted=$exhausted',
       async ({ exhausted, code }) => {
         vi.spyOn(Math, 'random').mockReturnValue(0);
         const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
           const attempt = fetch.mock.calls.length;
-          if (attempt === 8 && !exhausted) return stream(protocol);
-          return attempt % 2 === 0 || attempt === 8
+          if (attempt === 5 && !exhausted) return stream(protocol);
+          return attempt % 2 === 0 || attempt === 5
             ? partialFailure(protocol, code)
             : new Response('busy', { status: 503 });
         });
@@ -497,13 +515,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           const session = await agent.createSession({ workspace: home, title: 'Retry test' });
           const result = await session.run({ prompt: 'Continue.' }).result();
           expect(result.status).toBe(exhausted ? 'failed' : 'completed');
-          if (exhausted)
-            expect(result.errorCode).toBe(
-              protocol === 'OPENAI_RESPONSES' ? code : 'overloaded_error'
-            );
-          expect(fetch).toHaveBeenCalledTimes(8);
+          if (exhausted) expect(result.errorCode).toBe(code);
+          expect(fetch).toHaveBeenCalledTimes(5);
           expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-            5000, 10000, 15000, 20000, 25000, 30000, 35000
+            5000, 10000, 15000, 20000
           ]);
         } finally {
           await agent.dispose();
@@ -513,13 +528,13 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     );
 
     it.each([false, true])(
-      'shares eight attempts across HTTP failures and empty completed responses, exhausted=%s',
+      'shares five attempts across HTTP failures and empty completed responses, exhausted=%s',
       async (exhausted) => {
         vi.spyOn(Math, 'random').mockReturnValue(0);
         const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
           const attempt = fetch.mock.calls.length;
-          if (attempt === 8 && !exhausted) return stream(protocol);
-          return attempt % 2 === 0
+          if (attempt === 5 && !exhausted) return stream(protocol);
+          return attempt % 2 === 1
             ? stream(protocol, false, '')
             : new Response('busy', { status: 503 });
         });
@@ -540,9 +555,9 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
               ? { status: 'failed', errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE' }
               : { status: 'completed', finalAnswer: 'Recovered' }
           );
-          expect(fetch).toHaveBeenCalledTimes(8);
+          expect(fetch).toHaveBeenCalledTimes(5);
           expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-            5000, 10000, 15000, 20000, 25000, 30000, 35000
+            5000, 10000, 15000, 20000
           ]);
         } finally {
           await agent.dispose();
@@ -552,7 +567,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     );
 
     it.each([false, true])(
-      'shares eight attempts across transport/status/stream failures, exhausted=%s',
+      'shares five attempts across transport/status/stream failures, exhausted=%s',
       async (exhausted) => {
         vi.spyOn(Math, 'random').mockReturnValue(0.5);
         const fetch = vi
@@ -561,18 +576,13 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           .mockResolvedValueOnce(new Response('busy', { status: 503 }))
           .mockResolvedValueOnce(stream(protocol, true))
           .mockResolvedValueOnce(new Response('conflict', { status: 409 }))
-          .mockResolvedValueOnce(new Response('busy', { status: 503 }))
-          .mockResolvedValueOnce(new Response('busy', { status: 503 }))
-          .mockResolvedValueOnce(new Response('busy', { status: 503 }))
           .mockImplementation(async () =>
             exhausted ? new Response('still busy', { status: 503 }) : stream(protocol)
           );
         if (exhausted) await expect(run()).rejects.toMatchObject({ details: { status: 503 } });
         else await run();
-        expect(fetch).toHaveBeenCalledTimes(8);
-        expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([
-          6500, 11500, 16500, 21500, 26500, 31500, 36500
-        ]);
+        expect(fetch).toHaveBeenCalledTimes(5);
+        expect(vi.mocked(delay).mock.calls.map(([ms]) => ms)).toEqual([6500, 11500, 16500, 21500]);
       }
     );
 
@@ -606,28 +616,29 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       expect(diagnostics[1]?.errorCode).not.toBe('MAR_AGENT_MODEL_TIMEOUT');
     });
 
-    it.each(protocol === 'OPENAI_RESPONSES' ? ['http', 'server_error'] : ['http'])(
-      'does not start another request when cancelled during %s backoff',
-      async (failure) => {
-        const controller = new AbortController();
-        const reason = new Error('cancelled in backoff');
-        const fetch = vi
-          .spyOn(globalThis, 'fetch')
-          .mockResolvedValue(
-            failure === 'http'
-              ? new Response('busy', { status: 503 })
+    it.each(
+      protocol === 'OPENAI_RESPONSES' ? ['http', 'server_error'] : ['http', 'permission_error']
+    )('does not start another request when cancelled during %s backoff', async (failure) => {
+      const controller = new AbortController();
+      const reason = new Error('cancelled in backoff');
+      const fetch = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          failure === 'http'
+            ? new Response('busy', { status: 503 })
+            : failure === 'permission_error'
+              ? anthropicErrorResponse(failure, KIMI_CONCURRENT_REQUEST_LIMIT)
               : new Response(
                   'data: {"type":"error","code":"server_error","message":"Upstream processing failed."}\n\n'
                 )
-          );
-        vi.mocked(delay).mockImplementationOnce(async (_ms, _value, options) => {
-          controller.abort(reason);
-          throw options!.signal!.reason;
-        });
-        await expect(run(controller.signal)).rejects.toBe(reason);
-        expect(fetch).toHaveBeenCalledTimes(1);
-      }
-    );
+        );
+      vi.mocked(delay).mockImplementationOnce(async (_ms, _value, options) => {
+        controller.abort(reason);
+        throw options!.signal!.reason;
+      });
+      await expect(run(controller.signal)).rejects.toBe(reason);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
 
     if (protocol === 'OPENAI_RESPONSES') {
       it('cancels an in-flight request after a server_error retry without another attempt', async () => {
@@ -680,6 +691,65 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
     });
 
     if (protocol === 'ANTHROPIC_MESSAGES') {
+      it.each([200, 403, 429])('retries the Kimi concurrent limit from HTTP %s', async (status) => {
+        const diagnostics: ModelAttemptDiagnostic[] = [];
+        const fetch = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(
+            anthropicErrorResponse('permission_error', KIMI_CONCURRENT_REQUEST_LIMIT, status)
+          )
+          .mockResolvedValueOnce(stream(protocol));
+        await run(new AbortController().signal, diagnostics);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(delay).toHaveBeenCalledTimes(1);
+        expect(diagnostics[1]).toMatchObject({
+          state: 'FAILED',
+          errorCode: 'permission_error',
+          retryable: true,
+          willRetry: true,
+          retryDelayMs: 2000
+        });
+      });
+
+      it('preserves the original HTTP error when the Kimi concurrent limit persists', async () => {
+        const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+          const response = anthropicErrorResponse(
+            'permission_error',
+            KIMI_CONCURRENT_REQUEST_LIMIT,
+            403
+          );
+          response.headers.set('x-request-id', 'kimi-test-request');
+          return response;
+        });
+        await expect(run()).rejects.toMatchObject({
+          code: 'permission_error',
+          publicMessage: KIMI_CONCURRENT_REQUEST_LIMIT,
+          details: { status: 403, requestId: 'kimi-test-request', retryAfter: '2' }
+        });
+        expect(fetch).toHaveBeenCalledTimes(5);
+        expect(delay).toHaveBeenCalledTimes(4);
+      });
+
+      it.each([
+        [200, 'permission_error', 'Your account does not have access to this model.'],
+        [403, 'permission_error', 'Your account does not have access to this model.'],
+        [401, 'permission_error', KIMI_CONCURRENT_REQUEST_LIMIT],
+        [200, 'permission_error', "You've reached your weekly (7-day) usage limit."],
+        [200, 'permission_error', `Access denied. ${KIMI_CONCURRENT_REQUEST_LIMIT}`],
+        [200, 'invalid_request_error', KIMI_CONCURRENT_REQUEST_LIMIT]
+      ] as const)('does not retry HTTP %s %s: %s', async (status, code, message) => {
+        const fetch = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValue(anthropicErrorResponse(code, message, status));
+        await expect(run()).rejects.toMatchObject({
+          code,
+          publicMessage: message,
+          retryable: false
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(delay).not.toHaveBeenCalled();
+      });
+
       it('does not retry a structured Anthropic server_error', async () => {
         const fetch = vi
           .spyOn(globalThis, 'fetch')

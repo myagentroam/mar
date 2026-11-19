@@ -15,8 +15,13 @@ import {
   type AgentModelConfiguration
 } from './configuration.js';
 import type { ModelAdapter, ModelEvent, ModelRequest, ModelStopReason } from './contracts.js';
+import { classifyMessagesError } from './errors/anthropic-messages.js';
 import {
-  isRetryableUpstreamOverloadCode,
+  isRecoverableModelError,
+  modelRetryAfter,
+  RecoverableModelError
+} from './errors/common.js';
+import {
   number,
   parseSse,
   redactResponseHeader,
@@ -29,7 +34,6 @@ import {
 import {
   fetchModelResponse,
   modelRetryMaxAttempts,
-  isRetryableModelRequestError,
   isRetryableModelTransportError,
   modelRetryDelay,
   waitForModelRetry
@@ -59,7 +63,7 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         continuation: false,
         credentialReason: 'REQUEST'
       } as const;
-      // Buffer non-semantic events until a semantic event makes this attempt non-retryable.
+      // Buffer the prelude until recovery must be handed to the Runtime instead of replayed here.
       const prelude: ModelEvent[] = [];
       let sawSemanticEvent = false;
       let firstSemanticEventType: ModelEvent['type'] | undefined;
@@ -97,11 +101,14 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         });
         return;
       } catch (error) {
-        const retryable =
-          isRetryableModelRequestError(error) || isAnthropicRecoverableStreamError(error);
+        const retryable = isRecoverableModelError(error);
         const willRetry =
-          !signal.aborted && !sawSemanticEvent && retryable && attempt + 1 < maxAttempts;
-        const delayMs = willRetry ? modelRetryDelay(retryAfter(error), attempt) : undefined;
+          !signal.aborted &&
+          (!sawSemanticEvent || request.retryState !== undefined) &&
+          retryable &&
+          attempt + 1 < maxAttempts;
+        const retryAfter = retryable ? modelRetryAfter(error) : null;
+        const delayMs = willRetry ? modelRetryDelay(retryAfter, attempt) : undefined;
         await reportModelAttempt(request, {
           ...attemptDiagnostic,
           state: 'FAILED',
@@ -115,8 +122,12 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
             ? {}
             : { retryDelayMs: delayMs, retryReason: 'STREAM' as const })
         });
-        if (!willRetry) throw error;
-        await waitForModelRetry(retryAfter(error), attempt, signal, delayMs);
+        if (delayMs === undefined) throw error;
+        if (sawSemanticEvent) {
+          retryState.retryDelayMs = delayMs;
+          throw error;
+        }
+        await waitForModelRetry(retryAfter, attempt, signal, delayMs);
       }
     }
   }
@@ -570,8 +581,10 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         const redact = responseRedactor(modelCredentialSensitiveValues(credential));
         const code = boundedError(redact(text(upstream.code) ?? text(upstream.type) ?? ''), 80);
         const message = boundedError(redact(text(upstream.message) ?? ''), 1_000);
-        const retryable = isRetryableUpstreamOverloadCode(code);
-        throw new AgentError(
+        const retryable =
+          classifyMessagesError({ source: 'sse', code, message })?.action === 'retry';
+        const ErrorType = retryable ? RecoverableModelError : AgentError;
+        throw new ErrorType(
           code ?? 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
           message ?? 'Anthropic Messages request failed.',
           retryable
@@ -581,8 +594,7 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
                     response.headers.get('retry-after'),
                     modelCredentialSensitiveValues(credential)
                   )
-                },
-                retryable: true
+                }
               }
             : {}
         );
@@ -593,11 +605,10 @@ export class AnthropicMessagesAdapter implements ModelAdapter {
         );
     }
     if (terminal === undefined)
-      throw new AgentError(
+      throw new RecoverableModelError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'Anthropic Messages stream ended without a terminal event.',
         {
-          retryable: true,
           details: {
             reason: 'ANTHROPIC_MESSAGES_EARLY_EOF',
             retryAfter: redactResponseHeader(
@@ -616,7 +627,7 @@ async function* parseAnthropicSse(
   sensitiveValues: readonly string[]
 ): AsyncIterable<unknown> {
   try {
-    yield* parseSse(response, signal, undefined, undefined, sensitiveValues);
+    yield* parseSse(response, signal, undefined, undefined, sensitiveValues, classifyMessagesError);
   } catch (cause) {
     if (
       response.ok &&
@@ -624,11 +635,10 @@ async function* parseAnthropicSse(
       (isRetryableModelTransportError(cause) ||
         (cause instanceof AgentError && cause.details?.reason === 'MODEL_STREAM_IDLE_TIMEOUT'))
     )
-      throw new AgentError(
+      throw new RecoverableModelError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'Anthropic Messages stream was interrupted.',
         {
-          retryable: true,
           details: {
             reason: 'ANTHROPIC_MESSAGES_EARLY_EOF',
             retryAfter: redactResponseHeader(response.headers.get('retry-after'), sensitiveValues)
@@ -682,20 +692,6 @@ function anthropicHostedResultFailed(result: unknown): boolean {
 function isSemanticEvent(event: ModelEvent): boolean {
   if (event.type.startsWith('output.')) return false;
   return event.type !== 'response.started' && event.type !== 'usage';
-}
-
-export function isAnthropicRecoverableStreamError(error: unknown): error is AgentError {
-  return (
-    error instanceof AgentError &&
-    error.retryable &&
-    (isRetryableUpstreamOverloadCode(error.code) ||
-      error.details?.reason === 'ANTHROPIC_MESSAGES_EARLY_EOF')
-  );
-}
-
-function retryAfter(error: AgentError): string | null {
-  const value = error.details?.retryAfter;
-  return typeof value === 'string' ? value : null;
 }
 
 interface AnthropicInputUsage {

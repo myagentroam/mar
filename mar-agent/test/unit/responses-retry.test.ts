@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { waitForNewChild } from './support/subagent-wait.js';
 import { LocalAgentHost } from '../../src/host.js';
 import {
   AgentError,
@@ -202,7 +201,20 @@ describe('Responses retry boundaries', () => {
   it.each(
     [
       { name: 'transient verification', message: accessVerificationFailure.message, attempts: 2 },
-      { name: 'exhausted verification', message: accessVerificationFailure.message, attempts: 8 },
+      { name: 'exhausted verification', message: accessVerificationFailure.message, attempts: 5 },
+      {
+        name: 'code-prefixed verification with upstream 429',
+        message: `${accessVerificationFailure.code}: ${accessVerificationFailure.message}`,
+        status: 429,
+        attempts: 2
+      },
+      {
+        name: 'code-prefixed verification without transient status',
+        message: `${accessVerificationFailure.code}: ${accessVerificationFailure.message}`,
+        status: 403,
+        attempts: 1,
+        reportedRetryable: true
+      },
       { name: 'other access failure', message: 'Access denied. Please try again.', attempts: 1 },
       { name: 'parameter failure', message: 'Invalid model parameter.', attempts: 1 },
       {
@@ -218,7 +230,8 @@ describe('Responses retry boundaries', () => {
     const failure = {
       ...accessVerificationFailure,
       code: scenario.code ?? accessVerificationFailure.code,
-      message: scenario.message
+      message: scenario.message,
+      status: scenario.status
     };
     const succeeds = scenario.attempts === 2;
     const responses = succeeds
@@ -270,7 +283,7 @@ describe('Responses retry boundaries', () => {
         await expect(result).rejects.toMatchObject({
           code: failure.code,
           message: `${failure.code}: ${failure.message}`,
-          retryable: scenario.attempts === 8
+          retryable: scenario.reportedRetryable ?? scenario.attempts === 5
         });
       expect(fetch?.mock.calls ?? server.requests).toHaveLength(scenario.attempts);
       const requestIds = fetch
@@ -297,7 +310,18 @@ describe('Responses retry boundaries', () => {
     const { home, directory } = await workspace();
     const host = new LocalAgentHost({ homeDirectory: home, workspace: directory });
     const model = configuration('http://localhost:1');
-    let requests = 0;
+    model.responsesTransport = { transport: 'HTTP', httpVersion: '1.1' };
+    const events = [
+      { type: 'response.created', response: { id: 'failed' } },
+      { type: 'response.output_text.delta', item_id: 'partial', delta: 'Partial' },
+      { type: 'error', code, message: 'Upstream test failure.' }
+    ];
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(
+        async () =>
+          new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''))
+      );
     let cancel = () => {};
     if (kind === 'cancel')
       vi.mocked(waitForModelRetry).mockImplementationOnce(async (_value, _attempt, signal) => {
@@ -305,22 +329,7 @@ describe('Responses retry boundaries', () => {
         expect(signal.aborted).toBe(true);
         throw signal.reason;
       });
-    const adapter: ModelAdapter = {
-      configuration: model,
-      async *start() {
-        requests++;
-        yield { type: 'text.delta', itemId: 'partial', phase: 'commentary', delta: 'Partial' };
-        throw new AgentError(code, 'Local test failure.', { retryable: kind === 'cancel' });
-      }
-    };
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host,
-        models: [model]
-      },
-      () => adapter
-    );
+    const agent = await createMarAgent({ mode: 'normal', host, models: [model] });
     try {
       const session = await agent.createSession({
         workspace: directory,
@@ -331,7 +340,7 @@ describe('Responses retry boundaries', () => {
         void handle.cancel();
       };
       expect((await handle.result()).status).toBe(kind === 'cancel' ? 'cancelled' : 'failed');
-      expect(requests).toBe(1);
+      expect(fetch).toHaveBeenCalledTimes(1);
     } finally {
       await agent.dispose();
     }
@@ -378,16 +387,22 @@ describe('Responses retry boundaries', () => {
               arguments: {
                 title: 'Inspect',
                 description: 'Inspect',
-                prompt: 'Inspect only.',
+                content: 'Inspect only.',
                 role: 'explore'
               }
             };
             yield { type: 'completed', reason: 'tool_use' };
             return;
           } else {
-            const wait = waitForNewChild(request);
-            if (wait) {
-              yield wait;
+            const receipt = request.messages.findLast((message) => message.role === 'tool');
+            if (receipt?.name === 'agent_start' && !receipt.isError) {
+              const { agentId } = JSON.parse(receipt.content) as { agentId: string };
+              yield {
+                type: 'client_tool.call',
+                callId: 'task-retry-wait',
+                name: 'agent_wait',
+                arguments: { agentIds: [agentId], waitFor: 'completion' }
+              };
               yield { type: 'completed', reason: 'tool_use' };
               return;
             }
@@ -411,17 +426,19 @@ describe('Responses retry boundaries', () => {
           title: 'Subagent retry'
         });
         expect((await session.run({ prompt: 'Inspect.' }).result()).status).toBe('completed');
-        expect(childRequests).toBe(persistent ? 8 : 2);
+        expect(childRequests).toBe(persistent ? 5 : 2);
         const waitResult = host.events.find(
           (event) => event.type === 'tool.completed' && event.toolName === 'agent_wait'
         );
         if (waitResult?.type !== 'tool.completed')
           throw new Error('Missing external subagent wait result.');
-        expect(JSON.parse(waitResult.summary)).toMatchObject(
-          persistent
-            ? { status: 'failed', errorCode: 'server_is_overloaded' }
-            : { status: 'completed', summary: 'Recovered child' }
-        );
+        expect(JSON.parse(waitResult.summary)).toMatchObject({
+          agents: [
+            persistent
+              ? { status: 'FAILED', errorCode: 'server_is_overloaded' }
+              : { status: 'SUCCEEDED', summary: 'Recovered child' }
+          ]
+        });
       } finally {
         await agent.dispose();
       }
@@ -713,7 +730,7 @@ describe('Responses retry boundaries', () => {
         failure
       ];
       const server = await startResponsesWebSocketServer([], {
-        responsesByRequest: Array(8).fill(failed)
+        responsesByRequest: Array(5).fill(failed)
       });
       servers.push(server.server);
       const { home, directory } = await workspace();
@@ -735,8 +752,8 @@ describe('Responses retry boundaries', () => {
           status: 'failed',
           errorCode: failure.code
         });
-        expect(server.requests).toHaveLength(8);
-        expect(server.connections()).toBe(8);
+        expect(server.requests).toHaveLength(5);
+        expect(server.connections()).toBe(5);
         for (const request of server.requests) {
           expect(request).not.toHaveProperty('previous_response_id');
           expect(request).toMatchObject({ tool_choice: 'none' });
@@ -984,7 +1001,7 @@ describe('Responses retry boundaries', () => {
         expect(terminal.slice(1, 5)).toEqual(
           Array(4).fill(
             expect.objectContaining({
-              maxAttempts: 8,
+              maxAttempts: 5,
               causeCode: 'EPIPE',
               willRetry: true
             })
@@ -996,7 +1013,7 @@ describe('Responses retry boundaries', () => {
         expect(vi.mocked(waitForModelRetry).mock.calls.map((call) => call[3])).toEqual([
           6500, 11500, 16500, 21500
         ]);
-        expect(terminal[5]).toMatchObject({ attempt: 5, maxAttempts: 8, state: 'SUCCEEDED' });
+        expect(terminal[5]).toMatchObject({ attempt: 5, maxAttempts: 5, state: 'SUCCEEDED' });
         for (const body of bodies.slice(2)) {
           expect(body).not.toHaveProperty('previous_response_id');
           expect(body.input).toEqual(bodies[2]?.input);
@@ -1013,8 +1030,8 @@ describe('Responses retry boundaries', () => {
   );
 
   it.each([
-    { random: 0, maxAttempts: 8 },
-    { random: 0.999999, maxAttempts: 8 },
+    { random: 0, maxAttempts: 5 },
+    { random: 0.999999, maxAttempts: 5 },
     { random: 0, maxAttempts: 1 }
   ])(
     'stops EPIPE retries at $maxAttempts attempts with jitter boundary $random',

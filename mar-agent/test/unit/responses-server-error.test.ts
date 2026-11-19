@@ -77,83 +77,78 @@ describe.each(['HTTP', 'WEBSOCKET'] as const)(
         { ...envelope, exhausted: false },
         { ...envelope, exhausted: true }
       ])
-    )(
-      'recovers $name within eight attempts, exhausted=$exhausted',
-      async ({ event, exhausted }) => {
-        const responses = [
-          ...Array(exhausted ? 8 : 1).fill([
-            { type: 'response.created', response: { id: 'discarded' } },
-            event
-          ]),
-          [
-            { type: 'response.output_text.done', item_id: 'final', text: 'Recovered' },
-            { type: 'response.completed', response: { id: 'success', output: [] } }
-          ]
-        ];
-        const server = await startResponsesWebSocketServer([], { responsesByRequest: responses });
-        servers.push(server.server);
-        let httpRequests = 0;
-        if (transport === 'HTTP')
-          vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-            const events = responses[httpRequests++]!;
-            return new Response(
-              events.map((value) => `data: ${JSON.stringify(value)}\n\n`).join('')
-            );
+    )('recovers $name within five attempts, exhausted=$exhausted', async ({ event, exhausted }) => {
+      const responses = [
+        ...Array(exhausted ? 5 : 1).fill([
+          { type: 'response.created', response: { id: 'discarded' } },
+          event
+        ]),
+        [
+          { type: 'response.output_text.done', item_id: 'final', text: 'Recovered' },
+          { type: 'response.completed', response: { id: 'success', output: [] } }
+        ]
+      ];
+      const server = await startResponsesWebSocketServer([], { responsesByRequest: responses });
+      servers.push(server.server);
+      let httpRequests = 0;
+      if (transport === 'HTTP')
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+          const events = responses[httpRequests++]!;
+          return new Response(events.map((value) => `data: ${JSON.stringify(value)}\n\n`).join(''));
+        });
+      const adapter = new OpenAiResponsesAdapter(configuration(server.baseUrl, transport));
+      const diagnostics: ModelAttemptDiagnostic[] = [];
+      const retryState = { attempts: 0 };
+      try {
+        const outcome = collect(
+          adapter.start(
+            {
+              system: 'Reply.',
+              messages: [{ role: 'user', content: 'Continue.' }],
+              tools: [],
+              retryState,
+              onAttemptDiagnostic: (diagnostic) => {
+                diagnostics.push(diagnostic);
+              }
+            },
+            new AbortController().signal
+          )
+        );
+        if (exhausted)
+          await expect(outcome).rejects.toMatchObject({
+            code: 'server_error',
+            publicMessage: message,
+            retryable: true
           });
-        const adapter = new OpenAiResponsesAdapter(configuration(server.baseUrl, transport));
-        const diagnostics: ModelAttemptDiagnostic[] = [];
-        const retryState = { attempts: 0 };
-        try {
-          const outcome = collect(
-            adapter.start(
-              {
-                system: 'Reply.',
-                messages: [{ role: 'user', content: 'Continue.' }],
-                tools: [],
-                retryState,
-                onAttemptDiagnostic: (diagnostic) => {
-                  diagnostics.push(diagnostic);
-                }
-              },
-              new AbortController().signal
-            )
+        else {
+          const events = await outcome;
+          expect(events).toContainEqual(
+            expect.objectContaining({ type: 'text.completed', text: 'Recovered' })
           );
-          if (exhausted)
-            await expect(outcome).rejects.toMatchObject({
-              code: 'server_error',
-              publicMessage: message,
-              retryable: true
-            });
-          else {
-            const events = await outcome;
-            expect(events).toContainEqual(
-              expect.objectContaining({ type: 'text.completed', text: 'Recovered' })
-            );
-            expect(JSON.stringify(events)).not.toContain('discarded');
-          }
-          const attempts = exhausted ? 8 : 2;
-          expect(transport === 'HTTP' ? httpRequests : server.requests.length).toBe(attempts);
-          expect(retryState.attempts).toBe(attempts);
-          expect(vi.mocked(waitForModelRetry).mock.calls.map(([, attempt]) => attempt)).toEqual(
-            Array.from({ length: exhausted ? 7 : 1 }, (_, index) => index)
-          );
-          const failures = diagnostics.filter(({ state }) => state === 'FAILED');
-          expect(failures).toHaveLength(exhausted ? 8 : 1);
-          for (const [index, failure] of failures.entries())
-            expect(failure).toMatchObject({
-              attempt: index + 1,
-              maxAttempts: 8,
-              errorCode: 'server_error',
-              semanticEventObserved: false,
-              retryable: true,
-              willRetry: index < 7
-            });
-          if (transport === 'WEBSOCKET') expect(server.connections()).toBe(attempts);
-        } finally {
-          await adapter.close();
+          expect(JSON.stringify(events)).not.toContain('discarded');
         }
+        const attempts = exhausted ? 5 : 2;
+        expect(transport === 'HTTP' ? httpRequests : server.requests.length).toBe(attempts);
+        expect(retryState.attempts).toBe(attempts);
+        expect(vi.mocked(waitForModelRetry).mock.calls.map(([, attempt]) => attempt)).toEqual(
+          Array.from({ length: exhausted ? 4 : 1 }, (_, index) => index)
+        );
+        const failures = diagnostics.filter(({ state }) => state === 'FAILED');
+        expect(failures).toHaveLength(exhausted ? 5 : 1);
+        for (const [index, failure] of failures.entries())
+          expect(failure).toMatchObject({
+            attempt: index + 1,
+            maxAttempts: 5,
+            errorCode: 'server_error',
+            semanticEventObserved: false,
+            retryable: true,
+            willRetry: index < 4
+          });
+        if (transport === 'WEBSOCKET') expect(server.connections()).toBe(attempts);
+      } finally {
+        await adapter.close();
       }
-    );
+    });
 
     it('leaves post-semantic recovery to Runtime instead of replaying in Adapter', async () => {
       const events = [

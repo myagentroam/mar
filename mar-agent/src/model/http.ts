@@ -10,8 +10,9 @@ import {
   type HttpRequestInit
 } from '../network/http.js';
 import type { ModelRetryState } from './contracts.js';
+import { isRetryableModelHttpStatus } from './errors/common.js';
 
-export const MAX_MODEL_ATTEMPTS = 8;
+export const MAX_MODEL_ATTEMPTS = 5;
 
 export function modelRetryMaxAttempts(state: ModelRetryState): number {
   const maximum = state.maxAttempts ?? MAX_MODEL_ATTEMPTS;
@@ -23,7 +24,6 @@ export function modelRetryMaxAttempts(state: ModelRetryState): number {
   return maximum;
 }
 
-const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 const DEFAULT_MODEL_CONNECTION_TIMEOUT_MS = 30_000;
 export type { HttpAttempt, HttpRequestInit } from '../network/http.js';
 
@@ -116,7 +116,7 @@ export async function fetchModelResponse(
       await waitForModelRetry(null, attempt, signal);
       continue;
     }
-    if (!RETRYABLE_STATUS.has(response.status) || attempt + 1 >= attempts) return response;
+    if (!isRetryableModelHttpStatus(response.status) || attempt + 1 >= attempts) return response;
     const retryAfter = response.headers.get('retry-after');
     await response.body?.cancel().catch(() => undefined);
     await waitForModelRetry(retryAfter, attempt, signal);
@@ -135,22 +135,6 @@ export async function waitForModelRetry(
   delayMs = modelRetryDelay(retryAfter, attempt)
 ): Promise<void> {
   await delay(delayMs, undefined, { signal });
-}
-
-export function isRetryableModelHttpStatus(status: number): boolean {
-  return RETRYABLE_STATUS.has(status);
-}
-
-export function isRetryableModelRequestError(error: unknown): error is AgentError {
-  return (
-    error instanceof AgentError &&
-    error.retryable &&
-    (error.details?.reason === 'MODEL_PROGRESS_TIMEOUT' ||
-      error.details?.reason === 'MODEL_CONNECTION_TIMEOUT' ||
-      error.details?.reason === 'MODEL_TRANSPORT_FAILURE' ||
-      (typeof error.details?.status === 'number' &&
-        isRetryableModelHttpStatus(error.details.status)))
-  );
 }
 
 function retryAfterDelay(value: string | null): number | undefined {

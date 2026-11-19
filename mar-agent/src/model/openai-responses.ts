@@ -28,7 +28,12 @@ import type {
   ModelTurnSession
 } from './contracts.js';
 import {
-  isRetryableUpstreamOverloadCode,
+  isRecoverableModelError,
+  modelRetryAfter,
+  RecoverableModelError
+} from './errors/common.js';
+import { classifyResponsesError, classifyResponsesFallback } from './errors/openai-responses.js';
+import {
   number,
   parseSse,
   parseResponseJson,
@@ -42,10 +47,8 @@ import {
 import {
   connectSocks5Target,
   fetchModelResponse,
-  isRetryableModelHttpStatus,
   isRetryableModelTransportError,
   modelRetryMaxAttempts,
-  isRetryableModelRequestError,
   modelRetryDelay,
   waitForModelRetry
 } from './http.js';
@@ -67,9 +70,7 @@ import {
 
 const WEBSOCKET_IDLE_TIMEOUT_MS = 180_000;
 const WEBSOCKET_SEND_FRAME_BYTES = 1024 * 1024;
-export const OPENAI_RESPONSES_EARLY_EOF_REASON = 'OPENAI_RESPONSES_EARLY_EOF';
-export const OPENAI_RESPONSES_WEBSOCKET_CONNECTION_LIMIT_REASON =
-  'OPENAI_RESPONSES_WEBSOCKET_CONNECTION_LIMIT';
+const OPENAI_RESPONSES_EARLY_EOF_REASON = 'OPENAI_RESPONSES_EARLY_EOF';
 const X_CODEX_TURN_STATE = 'x-codex-turn-state';
 
 interface PreparedResponsesRequest {
@@ -273,53 +274,49 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
           !signal.aborted &&
           attemptNumber < maxAttempts &&
           !sawSemanticEvent &&
-          useContinuation &&
-          !invalidContinuationFallbackUsed &&
-          isInvalidPreviousResponseError(error)
+          error instanceof AgentError
         ) {
-          invalidContinuationFallbackUsed = true;
-          useContinuation = false;
-          requestBody = prepared.fullBody;
-          turn.restartProviderTurn();
-          credentialReason = 'RECONNECT';
-          await reportFailure(true, {
-            retryDelayMs: 0,
-            retryReason: 'INVALID_CONTINUATION'
+          const credentialProvider = this.configuration.credentialProvider;
+          const fallback = classifyResponsesFallback(error, {
+            resetContinuation: useContinuation && !invalidContinuationFallbackUsed,
+            refreshCredential: credentialProvider !== undefined && !unauthorizedRetryUsed
           });
-          continue;
-        }
-        if (
-          !signal.aborted &&
-          attemptNumber < maxAttempts &&
-          !sawSemanticEvent &&
-          !unauthorizedRetryUsed &&
-          this.configuration.credentialProvider !== undefined &&
-          isModelAuthenticationFailure(error)
-        ) {
-          const revision = credentialRevision(error);
-          if (revision !== undefined)
-            await this.configuration.credentialProvider.invalidate(revision);
-          unauthorizedRetryUsed = true;
-          credentialReason = 'UNAUTHORIZED';
-          await reportFailure(true, {
-            retryDelayMs: 0,
-            retryReason: 'UNAUTHORIZED'
-          });
-          continue;
+          if (fallback?.action === 'resetContinuation') {
+            invalidContinuationFallbackUsed = true;
+            useContinuation = false;
+            requestBody = prepared.fullBody;
+            turn.restartProviderTurn();
+            credentialReason = 'RECONNECT';
+            await reportFailure(true, {
+              retryDelayMs: 0,
+              retryReason: 'INVALID_CONTINUATION'
+            });
+            continue;
+          }
+          if (fallback?.action === 'refreshCredential') {
+            const revision = credentialRevision(error);
+            if (revision !== undefined) await credentialProvider?.invalidate(revision);
+            unauthorizedRetryUsed = true;
+            credentialReason = 'UNAUTHORIZED';
+            await reportFailure(true, {
+              retryDelayMs: 0,
+              retryReason: 'UNAUTHORIZED'
+            });
+            continue;
+          }
         }
         const willRetry = !(
           signal.aborted ||
           (sawSemanticEvent && request.retryState === undefined) ||
-          !(
-            isRetryableModelRequestError(error) || isOpenAiResponsesRecoverableStreamError(error)
-          ) ||
+          !isRecoverableModelError(error) ||
           attemptNumber >= maxAttempts
         );
         if (!willRetry) {
           await reportFailure(false);
           throw error;
         }
-        const delayMs = modelRetryDelay(retryAfter(error), attempt);
+        const retryAfter = modelRetryAfter(error);
+        const delayMs = modelRetryDelay(retryAfter, attempt);
         await reportFailure(true, {
           retryDelayMs: delayMs,
           retryReason: 'STREAM'
@@ -336,7 +333,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
         requestBody = prepared.fullBody;
         if (error instanceof AgentError && error.details?.transport === 'WEBSOCKET')
           turn.invalidateWebSocket();
-        await waitForModelRetry(retryAfter(error), attempt, signal, delayMs);
+        await waitForModelRetry(retryAfter, attempt, signal, delayMs);
       }
     }
   }
@@ -412,12 +409,10 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
     } catch (error) {
       if (this.configuration.responsesTransport?.transport === 'WEBSOCKET')
         turn.invalidateWebSocket();
-      throw withCredentialRevision(
-        withResponsesAttemptDetails(
-          error,
-          continuation,
-          this.configuration.responsesTransport?.transport
-        ),
+      throw withResponsesAttemptDetails(
+        error,
+        continuation,
+        this.configuration.responsesTransport?.transport,
         latestCredentialRevision
       );
     }
@@ -764,19 +759,24 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
             record(event.response).status,
             nested.status
           );
-          const connectionLimit =
-            this.configuration.responsesTransport?.transport === 'WEBSOCKET' &&
-            isWebSocketConnectionLimitCode(code);
-          const retryable = connectionLimit || isRetryableResponsesUpstreamError(code, message);
-          throw new AgentError(
+          const websocket = this.configuration.responsesTransport?.transport === 'WEBSOCKET';
+          const decision = classifyResponsesError({
+            source: websocket ? 'websocket' : 'sse',
+            status,
+            code,
+            message
+          });
+          const recoverable = decision?.action === 'retry';
+          const retryable = recoverable || decision?.reportedRetryable === true;
+          const ErrorType = recoverable ? RecoverableModelError : AgentError;
+          throw new ErrorType(
             code ?? 'MAR_AGENT_MODEL_PROTOCOL_ERROR',
             message ?? 'OpenAI Responses request failed.',
             {
+              retryable,
               details: {
                 ...(status === undefined ? {} : { status }),
-                ...(connectionLimit
-                  ? { reason: OPENAI_RESPONSES_WEBSOCKET_CONNECTION_LIMIT_REASON }
-                  : {}),
+                ...(decision?.reason === undefined ? {} : { reason: decision.reason }),
                 ...(retryable
                   ? {
                       retryAfter: redactResponseHeader(
@@ -786,11 +786,8 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
                     }
                   : {}),
                 continuation,
-                ...(this.configuration.responsesTransport?.transport === 'WEBSOCKET'
-                  ? { transport: 'WEBSOCKET' }
-                  : {})
-              },
-              ...(retryable ? { retryable: true } : {})
+                ...(websocket ? { transport: 'WEBSOCKET' } : {})
+              }
             }
           );
         } else if (!isNonSemanticOpenAiResponsesEvent(type))
@@ -802,17 +799,15 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
     } catch (error) {
       if (this.configuration.responsesTransport?.transport === 'WEBSOCKET')
         turn.invalidateWebSocket();
-      throw withCredentialRevision(
-        withResponsesAttemptDetails(
-          error,
-          continuation,
-          this.configuration.responsesTransport?.transport
-        ),
+      throw withResponsesAttemptDetails(
+        error,
+        continuation,
+        this.configuration.responsesTransport?.transport,
         latestCredentialRevision
       );
     }
     if (!completed)
-      throw new AgentError(
+      throw new RecoverableModelError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'OpenAI Responses stream ended without a terminal event.',
         {
@@ -826,8 +821,7 @@ export class OpenAiResponsesAdapter implements ModelAdapter {
             ...(this.configuration.responsesTransport?.transport === 'WEBSOCKET'
               ? { transport: 'WEBSOCKET' }
               : {})
-          },
-          retryable: true
+          }
         }
       );
   }
@@ -1351,10 +1345,17 @@ async function* parseOpenAiResponsesSse(
   sensitiveValues: readonly string[]
 ): AsyncIterable<unknown> {
   try {
-    yield* parseSse(response, signal, undefined, undefined, sensitiveValues);
+    yield* parseSse(
+      response,
+      signal,
+      undefined,
+      undefined,
+      sensitiveValues,
+      classifyResponsesError
+    );
   } catch (cause) {
     if (response.ok && !signal.aborted && isRetryableOpenAiStreamReadError(cause))
-      throw new AgentError(
+      throw new RecoverableModelError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'OpenAI Responses stream was interrupted.',
         {
@@ -1363,7 +1364,6 @@ async function* parseOpenAiResponsesSse(
             retryAfter: redactResponseHeader(response.headers.get('retry-after'), sensitiveValues),
             continuation
           },
-          retryable: true,
           cause
         }
       );
@@ -1423,7 +1423,7 @@ async function* webSocketResponseEvents(input: {
     // a separate model-error classification. The shared attempt budget still bounds
     // retries; this policy does not shrink the request or guarantee recovery.
     if (!terminal && !input.signal.aborted)
-      throw new AgentError(
+      throw new RecoverableModelError(
         'MAR_AGENT_MODEL_PROTOCOL_ERROR',
         'OpenAI Responses WebSocket closed before a terminal event.',
         {
@@ -1431,8 +1431,7 @@ async function* webSocketResponseEvents(input: {
             reason: OPENAI_RESPONSES_EARLY_EOF_REASON,
             transport: 'WEBSOCKET',
             continuation: input.continuation
-          },
-          retryable: true
+          }
         }
       );
   } finally {
@@ -1536,11 +1535,12 @@ async function waitForWebSocketOpen(
         const status = response.statusCode ?? 0;
         response.resume();
         terminateWebSocket(socket);
-        const retryable = status !== 401 && isRetryableModelHttpStatus(status);
+        const retryable = classifyResponsesError({ source: 'http', status })?.action === 'retry';
+        const ErrorType = retryable ? RecoverableModelError : AgentError;
         const retryAfter = response.headers['retry-after'];
         const retryAfterValue = Array.isArray(retryAfter) ? retryAfter[0] : retryAfter;
         reject(
-          new AgentError(
+          new ErrorType(
             status === 401 ? 'MAR_AGENT_MODEL_AUTH_FAILED' : 'MAR_AGENT_MODEL_CONNECTION_FAILED',
             status === 401
               ? 'OpenAI Responses WebSocket authentication failed.'
@@ -1552,8 +1552,7 @@ async function waitForWebSocketOpen(
                 ...(retryAfterValue === undefined
                   ? {}
                   : { retryAfter: redactResponseHeader(retryAfterValue, sensitiveValues) })
-              },
-              ...(retryable ? { retryable: true } : {})
+              }
             }
           )
         );
@@ -1712,12 +1711,11 @@ function webSocketMessages(
 }
 function webSocketIdleError(socket: WebSocket): AgentError {
   terminateWebSocket(socket);
-  return new AgentError(
+  return new RecoverableModelError(
     'MAR_AGENT_MODEL_TIMEOUT',
     'OpenAI Responses WebSocket was idle for too long.',
     {
-      details: { reason: OPENAI_RESPONSES_EARLY_EOF_REASON, transport: 'WEBSOCKET' },
-      retryable: true
+      details: { reason: OPENAI_RESPONSES_EARLY_EOF_REASON, transport: 'WEBSOCKET' }
     }
   );
 }
@@ -1806,7 +1804,7 @@ function webSocketReceiveError(cause: Error): AgentError {
         : 'Model WebSocket protocol is invalid.',
       { cause }
     );
-  return new AgentError(
+  return new RecoverableModelError(
     'MAR_AGENT_MODEL_PROTOCOL_ERROR',
     'OpenAI Responses WebSocket was interrupted.',
     {
@@ -1814,7 +1812,6 @@ function webSocketReceiveError(cause: Error): AgentError {
         reason: OPENAI_RESPONSES_EARLY_EOF_REASON,
         transport: 'WEBSOCKET'
       },
-      retryable: true,
       cause
     }
   );
@@ -1846,35 +1843,6 @@ const NON_SEMANTIC_OPENAI_RESPONSES_EVENTS = new Set([
   'responsesapi.websocket_timing'
 ]);
 
-function isRetryableResponsesUpstreamError(
-  code: string | undefined,
-  message: string | undefined
-): boolean {
-  // Responses server_error reports upstream response-stream processing failure, not a
-  // local protocol parse failure or generic overload. Reuse bounded recovery without
-  // guaranteeing success or inferring a particular upstream service/proxy or root cause.
-  if (code === 'server_error') return true;
-  if (isRetryableUpstreamOverloadCode(code)) return true;
-  if (code !== 'invalid_request_error') return false;
-  // Exact compatibility exception, not a general access/authentication retry rule.
-  const summary = message?.startsWith(`${code}: `) ? message.slice(code.length + 2) : message;
-  return summary === 'Unable to verify Daybreak Blue access. Please try again.';
-}
-
-export function isOpenAiResponsesRecoverableStreamError(error: unknown): error is AgentError {
-  return (
-    error instanceof AgentError &&
-    error.retryable &&
-    (error.details?.reason === OPENAI_RESPONSES_EARLY_EOF_REASON ||
-      error.details?.reason === OPENAI_RESPONSES_WEBSOCKET_CONNECTION_LIMIT_REASON ||
-      isRetryableResponsesUpstreamError(error.code, error.message))
-  );
-}
-
-function isWebSocketConnectionLimitCode(code: string | undefined): boolean {
-  return code?.trim().toLowerCase() === 'websocket_connection_limit_reached';
-}
-
 function isRetryableOpenAiStreamReadError(error: unknown): boolean {
   return (
     isRetryableModelTransportError(error) ||
@@ -1882,11 +1850,6 @@ function isRetryableOpenAiStreamReadError(error: unknown): boolean {
       error.code === 'MAR_AGENT_MODEL_TIMEOUT' &&
       error.details?.reason === 'MODEL_STREAM_IDLE_TIMEOUT')
   );
-}
-
-function retryAfter(error: AgentError): string | null {
-  const value = error.details?.retryAfter;
-  return typeof value === 'string' ? value : null;
 }
 
 function openAiResponsesAttemptError(error: unknown) {
@@ -1991,47 +1954,24 @@ function responsesHeaders(
   return appendModelCredentialHeaders(headers, credential, RESERVED_CREDENTIAL_HEADERS);
 }
 
-function withCredentialRevision(error: unknown, revision: number | undefined): unknown {
-  if (!(error instanceof AgentError) || revision === undefined) return error;
-  const prefix = `${error.code}: `;
-  return new AgentError(
-    error.code,
-    error.message.startsWith(prefix) ? error.message.slice(prefix.length) : error.message,
-    {
-      details: { ...error.details, credentialRevision: revision },
-      retryable: error.retryable,
-      cause: error
-    }
-  );
-}
-
 function withResponsesAttemptDetails(
   error: unknown,
   continuation: boolean,
-  transport: 'HTTP' | 'WEBSOCKET' | undefined
+  transport: 'HTTP' | 'WEBSOCKET' | undefined,
+  revision: number | undefined
 ): unknown {
   if (!(error instanceof AgentError)) return error;
-  const prefix = `${error.code}: `;
-  return new AgentError(
-    error.code,
-    error.message.startsWith(prefix) ? error.message.slice(prefix.length) : error.message,
-    {
-      details: {
-        ...error.details,
-        continuation,
-        ...(transport === 'WEBSOCKET' ? { transport: 'WEBSOCKET' } : {})
-      },
-      retryable: error.retryable,
-      cause: error
-    }
-  );
-}
-
-function isModelAuthenticationFailure(error: unknown): error is AgentError {
-  if (!(error instanceof AgentError)) return false;
-  if (typeof error.details?.status === 'number') return error.details.status === 401;
-  const code = error.code.toLowerCase();
-  return code === 'unauthorized';
+  const ErrorType = error instanceof RecoverableModelError ? RecoverableModelError : AgentError;
+  return new ErrorType(error.code, error.publicMessage, {
+    details: {
+      ...error.details,
+      continuation,
+      ...(transport === 'WEBSOCKET' ? { transport: 'WEBSOCKET' } : {}),
+      ...(revision === undefined ? {} : { credentialRevision: revision })
+    },
+    retryable: error.retryable,
+    cause: error
+  });
 }
 
 function credentialRevision(error: AgentError): number | undefined {
@@ -2069,65 +2009,5 @@ function optionalRolloutBudgetUnits(value: unknown): number | undefined {
   throw new AgentError(
     'MAR_AGENT_MODEL_PROTOCOL_ERROR',
     'Provider rollout budget units are invalid.'
-  );
-}
-
-function isInvalidPreviousResponseError(error: unknown): error is AgentError {
-  if (!(error instanceof AgentError)) return false;
-  const status = error.details?.status;
-  if (typeof status === 'number' && ![400, 404, 410].includes(status)) return false;
-  return isInvalidPreviousResponseFields(error.code, error.message);
-}
-
-function isInvalidPreviousResponseFields(
-  code: string | undefined,
-  message: string | undefined
-): boolean {
-  const normalizedCode = code?.trim().toLowerCase();
-  // OpenAI Responses and compatible providers use these missing-reference codes.
-  if (
-    normalizedCode === 'previous_response_not_found' ||
-    normalizedCode === 'invalid_previous_response_id'
-  )
-    return true;
-  const normalizedMessage = message?.toLowerCase().replaceAll('`', '') ?? '';
-  // xAI/Grok WSS uses api_error with a gRPC prefix; HTTP may return a plain
-  // error string, normalized by the SSE boundary to MAR_AGENT_MODEL_PROTOCOL_ERROR.
-  // Do not treat account/model lookup failures as a missing response reference.
-  if (
-    (normalizedCode === 'api_error' ||
-      normalizedCode === 'mar_agent_model_protocol_error' ||
-      normalizedCode === undefined) &&
-    /^(?:(?:mar_agent_model_protocol_error|api_error): )?(?:grpc error: )?response with id=\S+ not found[.!]?$/u.test(
-      normalizedMessage
-    )
-  )
-    return true;
-  // Compatibility gateways use these unsupported-parameter discriminators.
-  if (
-    (normalizedCode === 'unsupported_parameter' ||
-      normalizedCode === 'unsupported_previous_response_id') &&
-    normalizedMessage.includes('previous_response_id')
-  )
-    return true;
-  // OpenAI-style request errors and generic compatibility envelopes may only
-  // name the rejected parameter. Explicit auth, permission, overload or other
-  // error codes take precedence even when their message mentions continuation.
-  if (
-    normalizedCode !== undefined &&
-    normalizedCode !== 'invalid_request_error' &&
-    normalizedCode !== 'api_error' &&
-    normalizedCode !== 'mar_agent_model_protocol_error'
-  )
-    return false;
-  return (
-    normalizedMessage.includes('previous_response_id') &&
-    (normalizedMessage.includes('invalid') ||
-      normalizedMessage.includes('not found') ||
-      normalizedMessage.includes('does not exist') ||
-      normalizedMessage.includes('expired') ||
-      normalizedMessage.includes('not supported') ||
-      normalizedMessage.includes('unsupported') ||
-      normalizedMessage.includes('unavailable'))
   );
 }
