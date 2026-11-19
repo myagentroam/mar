@@ -573,6 +573,7 @@ function activate(tab: WorkspaceTab): void {
   min-height: 0;
   align-items: center;
   padding: 3px 6px 3px 2px;
+  overscroll-behavior: contain;
 }
 
 .workspace-tab-strip-header .workspace-tab {

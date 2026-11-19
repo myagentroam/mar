@@ -470,6 +470,12 @@ onBeforeUnmount(() => {
   background: var(--mar-conversation-canvas);
 }
 
+@media (min-width: 768px) {
+  .conversation-scroll {
+    overscroll-behavior: contain;
+  }
+}
+
 :where(.conversation-header + .conversation-scroll-region:not(.is-empty)) .conversation-scroll {
   padding-block-start: 0.5rem;
 }

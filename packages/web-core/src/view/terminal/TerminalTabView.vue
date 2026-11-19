@@ -319,6 +319,8 @@ onBeforeUnmount(() => {
   block-size: 100%;
   min-height: 0;
   flex: 1 1 auto;
+  /* xterm handles scrollback itself; this body owns the native scroll boundary. */
+  overscroll-behavior: contain;
 }
 
 .admin-terminal-status {
