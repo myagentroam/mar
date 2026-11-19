@@ -33,6 +33,16 @@ const created = (username: string, password: string): CreatedUser => ({
   user: { username },
   temporaryPassword: password
 });
+const users = ['alice', 'bob'].map((username, index) => ({
+  id: index + 1,
+  username,
+  email: null,
+  nickname: null,
+  role: 'MEMBER',
+  organizationId: 1,
+  fixedAdmin: false,
+  enabled: true
+}));
 
 beforeEach(() => {
   i18n.global.locale.value = 'en-US';
@@ -66,7 +76,8 @@ function inForm(node: TestElement): boolean {
 }
 async function mount(
   write: () => Promise<CreatedUser> = async () => created('returned-user', 'fixture-password'),
-  validate: () => Promise<boolean> = async () => true
+  validate: () => Promise<boolean> = async () => true,
+  patch?: () => Promise<void>
 ) {
   const request = vi.fn(async (path: string, init?: RequestInit) => {
     if (path === '/api/organizations')
@@ -77,8 +88,16 @@ async function mount(
         ]
       };
     if (path === '/api/enterprise/users' && init?.method === 'POST') return write();
+    if (patch && /^\/api\/enterprise\/users\/\d+$/u.test(path) && init?.method === 'PATCH')
+      return patch();
     if (path.startsWith('/api/enterprise/users?'))
-      return { users: [], page: 1, pageSize: 20, total: 0, hasMore: false };
+      return {
+        users: patch ? users : [],
+        page: 1,
+        pageSize: 20,
+        total: patch ? users.length : 0,
+        hasMore: false
+      };
     throw new Error(`Unexpected fixture request: ${path}`);
   });
   const context: ManagementPageContext = {
@@ -122,9 +141,27 @@ async function mount(
     trigger(inputs()[index]!, 'onUpdate:modelValue', value);
   const values = () => inputs().map((item) => item.props['modelValue']);
   const writes = () => request.mock.calls.filter(([, init]) => init?.method === 'POST');
+  const patches = () => request.mock.calls.filter(([, init]) => init?.method === 'PATCH');
   const reads = () =>
     request.mock.calls.filter(([path]) => path.startsWith('/api/enterprise/users?'));
-  return { view, request, action, open, submit, input, values, writes, reads };
+  const edit = (index: number) => trigger(actions('Edit')[index]!, 'onClick');
+  const save = () => trigger(action('Save'), 'onClick');
+  const cancel = () => trigger(action('Cancel'), 'onClick');
+  return {
+    view,
+    request,
+    action,
+    open,
+    submit,
+    input,
+    values,
+    writes,
+    reads,
+    edit,
+    save,
+    cancel,
+    patches
+  };
 }
 
 describe('Registered enterprise users creation lifecycle', () => {
@@ -327,5 +364,93 @@ describe('Registered enterprise users creation lifecycle', () => {
     await first;
     expect(fixture.request).toHaveBeenCalledTimes(calls);
     expect(showMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('Registered enterprise users edit lifecycle', () => {
+  it('does not send a PATCH after validation finishes in a different edit opening', async () => {
+    const pending = deferred<boolean>();
+    const validate = vi.fn(() => pending.promise);
+    const fixture = await mount(undefined, validate, async () => {});
+    await fixture.edit(0);
+    await fixture.input(2, 'Alice draft');
+    const first = fixture.save();
+    expect(validate).toHaveBeenCalledOnce();
+    await fixture.cancel();
+    await fixture.edit(1);
+    await fixture.input(2, 'Bob draft');
+    pending.resolve(true);
+    await first;
+    expect(fixture.patches()).toEqual([]);
+    expect(fixture.values()).toEqual(['bob', '', 'Bob draft']);
+  });
+
+  it.each([1, 0])(
+    'settles the old PATCH without closing edit opening for row %i',
+    async (index) => {
+      const pending = deferred<void>();
+      const patch = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(undefined);
+      const fixture = await mount(undefined, undefined, patch);
+      await fixture.edit(0);
+      await fixture.input(2, 'Alice submitted');
+      const first = fixture.save();
+      await flushComponent();
+      expect(fixture.patches()).toEqual([
+        [
+          '/api/enterprise/users/1',
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              email: null,
+              nickname: 'Alice submitted',
+              role: 'MEMBER',
+              organizationId: 1
+            })
+          }
+        ]
+      ]);
+      await trigger(fixture.view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+      await fixture.edit(index);
+      await fixture.input(1, 'draft@example.test');
+      await fixture.input(2, 'Next draft');
+      pending.resolve(undefined);
+      await first;
+      expect(fixture.reads()).toHaveLength(2);
+      expect(fixture.values()).toEqual([
+        users[index]!.username,
+        'draft@example.test',
+        'Next draft'
+      ]);
+      expect(showMessage).not.toHaveBeenCalled();
+
+      await fixture.save();
+      expect(fixture.patches()[1]?.[0]).toBe(`/api/enterprise/users/${users[index]!.id}`);
+      expect(fixture.view.findAll('ElForm')).toHaveLength(0);
+      expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'success');
+      expect(fixture.reads()).toHaveLength(3);
+    }
+  );
+
+  it('suppresses an old PATCH failure but reports an active failure without losing the draft', async () => {
+    const pending = deferred<void>();
+    const failure = new Error('Current update failed');
+    const patch = vi.fn().mockReturnValueOnce(pending.promise).mockRejectedValueOnce(failure);
+    const fixture = await mount(undefined, undefined, patch);
+    await fixture.edit(0);
+    const first = fixture.save();
+    await flushComponent();
+    expect(patch).toHaveBeenCalledOnce();
+    await fixture.cancel();
+    await fixture.edit(1);
+    await fixture.input(2, 'Bob draft');
+    pending.reject(new Error('Old update failed'));
+    await first;
+    expect(showMessage).not.toHaveBeenCalled();
+    expect(fixture.values()).toEqual(['bob', '', 'Bob draft']);
+
+    await fixture.save();
+    expect(showMessage).toHaveBeenCalledExactlyOnceWith(expect.any(String), 'error', failure);
+    expect(fixture.values()).toEqual(['bob', '', 'Bob draft']);
+    expect(fixture.reads()).toHaveLength(1);
   });
 });
