@@ -555,7 +555,7 @@ function runBlankMenuCommand(command: string): void {
   text-decoration: none;
 }
 
-.activity-rail :deep(button.nav-menu-button:hover:not(:disabled)) {
+.activity-rail :deep(button.nav-menu-button:hover:not(:disabled, [aria-current='page'])) {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
