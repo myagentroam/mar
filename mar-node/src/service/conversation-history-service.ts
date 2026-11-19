@@ -563,8 +563,13 @@ export class ConversationHistoryService {
       const history = selected.page;
       if (history === undefined)
         return this.page(null, [], { snapshotSequence, source: 'runtime', readAt });
-      const hydratedTurns = history.turns;
-      const turns = hydratedTurns.filter((turn) => latestTurnActivityAt(turn) < beforeAt);
+      // A Runner can record the same Turn before Node timestamps its first Item.
+      // A clock boundary alone would admit that copy as older history.
+      const turns = history.turns.filter(
+        (turn) =>
+          latestTurnActivityAt(turn) < beforeAt &&
+          !runtimeTurns.some((candidate) => sameConversationTurn(turn, candidate))
+      );
       return this.page(
         history.nextCursor === null
           ? null
