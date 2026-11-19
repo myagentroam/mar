@@ -123,13 +123,20 @@ async function expectMetricsAndInfoOnSameLine(metrics: Locator, info: Locator) {
     Math.abs(
       metricsBounds!.y + metricsBounds!.height / 2 - (infoBounds!.y + infoBounds!.height / 2)
     )
-  ).toBeLessThanOrEqual(2);
+  ).toBeLessThanOrEqual(1);
   expect(infoBounds!.x).toBeGreaterThanOrEqual(metricsBounds!.x + metricsBounds!.width);
-  expect(infoBounds!.height).toBeLessThanOrEqual(metricsBounds!.height);
+  const { fontSize, lineHeight } = await metrics.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { fontSize: parseFloat(style.fontSize), lineHeight: parseFloat(style.lineHeight) };
+  });
+  expect(infoBounds!.height).toBeLessThanOrEqual(lineHeight);
+  if (await metrics.evaluate(() => CSS.supports('text-box', 'trim-both cap alphabetic'))) {
+    expect(metricsBounds!.height).toBeLessThan(lineHeight);
+  }
   const iconBounds = await info.locator('[data-mar-icon="info"]').boundingBox();
   expect(iconBounds).not.toBeNull();
-  expect(iconBounds!.width).toBeCloseTo(12, 1);
-  expect(iconBounds!.height).toBeCloseTo(12, 1);
+  expect(iconBounds!.width).toBeCloseTo(fontSize - 1, 1);
+  expect(iconBounds!.height).toBeCloseTo(fontSize - 1, 1);
   expect(
     Math.abs(iconBounds!.y + iconBounds!.height / 2 - (infoBounds!.y + infoBounds!.height / 2))
   ).toBeLessThanOrEqual(1);
