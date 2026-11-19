@@ -825,7 +825,7 @@ for (const scheme of ['Light', 'Dark']) {
           disabled: color('--mar-text-faint'),
           selected: color('--mar-fill-selection'),
           hover: color('--mar-fill-row-hover'),
-          hoverBorder: color('--mar-border-medium'),
+          hoverBorder: color('--mar-input-border-hover'),
           disabledBorder: color('--mar-border-subtle'),
           focus: color('--mar-color-brand')
         };
@@ -1331,6 +1331,151 @@ test('theme choices apply immediately without replacing an unsaved draft', async
     animations: 'disabled'
   });
 });
+
+for (const [scheme, width] of [
+  ['Dark', 1280],
+  ['Light', 390]
+] as const) {
+  test(`Standard fields share their boundary and preserve states in ${scheme} at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    if (scheme === 'Light')
+      await page
+        .locator('.theme-option')
+        .filter({ has: page.getByRole('button', { name: 'Inspect Light', exact: true }) })
+        .getByRole('button', { name: 'Apply theme', exact: true })
+        .click();
+    const fields = page.getByRole('region', { name: 'Standard field boundaries' });
+    const tokenShadow = (token: string) =>
+      fields.evaluate((element, name) => {
+        const probe = document.createElement('span');
+        probe.style.boxShadow = `0 0 0 1px var(${name}) inset`;
+        element.append(probe);
+        const shadow = getComputedStyle(probe).boxShadow;
+        probe.remove();
+        return shadow;
+      }, token);
+    const wrapper = (field: Locator) =>
+      field.locator(
+        'xpath=ancestor::*[contains(@class,"el-input__wrapper") or contains(@class,"el-select__wrapper")][1]'
+      );
+    const text = fields.getByRole('textbox', { name: 'Text field', exact: true });
+    const select = fields.getByRole('combobox', { name: 'Select field', exact: true });
+    const range = fields.getByPlaceholder('Start date', { exact: true });
+    const enabled = [
+      text,
+      fields.getByRole('spinbutton', { name: 'Number field', exact: true }),
+      select,
+      fields.getByPlaceholder('Cascader field', { exact: true }),
+      fields.getByPlaceholder('Single date field', { exact: true }),
+      range,
+      fields.getByRole('combobox', { name: 'Time select field', exact: true }),
+      fields.getByPlaceholder('Single time field', { exact: true }),
+      fields.getByPlaceholder('Start time', { exact: true })
+    ];
+    const textarea = fields.getByRole('textbox', { name: 'Textarea field' });
+    const check = async () => {
+      const normal = await tokenShadow('--mar-input-border');
+      for (const control of [...enabled.map(wrapper), textarea])
+        await expect(control).toHaveCSS('box-shadow', normal);
+      const disabledText = fields.getByRole('textbox', {
+        name: 'Disabled text field',
+        exact: true
+      });
+      const disabledBackground = await wrapper(disabledText).evaluate(
+        (element) => getComputedStyle(element).backgroundColor
+      );
+      const errorShadow = await tokenShadow('--mar-control-color-danger');
+      for (const invalid of [
+        fields.getByRole('combobox', { name: 'Invalid field' }),
+        fields.getByPlaceholder('Invalid start date')
+      ]) {
+        const surface = wrapper(invalid);
+        await expect(surface).toHaveCSS('box-shadow', errorShadow);
+        await surface.hover();
+        await expect(surface).toHaveCSS('box-shadow', errorShadow);
+        await invalid.focus();
+        await expect(surface).toHaveCSS('box-shadow', errorShadow);
+        await invalid.blur();
+      }
+      for (const disabled of [
+        fields.getByRole('combobox', { name: 'Disabled field' }),
+        fields.getByPlaceholder('Disabled start date')
+      ]) {
+        await expect(disabled).toBeDisabled();
+        await wrapper(disabled).hover();
+        await expect(wrapper(disabled)).toHaveCSS(
+          'box-shadow',
+          await tokenShadow('--mar-border-subtle')
+        );
+        await expect(wrapper(disabled)).toHaveCSS('background-color', disabledBackground);
+      }
+      const hover = await tokenShadow('--mar-input-border-hover');
+      const focus = await tokenShadow('--mar-color-brand');
+      for (const control of [text, select, range]) {
+        await wrapper(control).hover();
+        await expect(wrapper(control)).toHaveCSS('box-shadow', hover);
+        await control.focus();
+        await expect(wrapper(control)).toHaveCSS('box-shadow', focus);
+        await control.blur();
+      }
+      await page.mouse.move(0, 0);
+    };
+    await check();
+    await page.mouse.move(0, 0);
+    await fields.screenshot({
+      path: testInfo.outputPath(`standard-fields-${scheme.toLowerCase()}.png`)
+    });
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-border-default', '#5c7097');
+      element.style.setProperty('--mar-border-subtle', '#4e5e73');
+      element.style.setProperty('--mar-border-medium', '#718293');
+      element.style.setProperty('--mar-text-secondary', '#93a5b6');
+      element.style.setProperty('--mar-color-brand', '#bf6ac9');
+      element.style.setProperty('--mar-overlay-border', '#7689a1');
+      element.style.setProperty('--mar-control-bg-color-overlay', '#37485e80');
+    });
+    await check();
+    for (const [trigger, selector] of [
+      ['Cascader field', '.el-cascader__dropdown'],
+      ['Single date field', '.el-picker__popper'],
+      ['Single time field', '.el-picker__popper'],
+      ['Start time', '.el-picker__popper']
+    ] as const) {
+      const input = fields.getByPlaceholder(trigger, { exact: true });
+      await input.click();
+      const popup = page.locator(`${selector}.el-popper:visible`);
+      await expect(popup).toHaveCSS('border-top-color', 'rgb(118, 137, 161)');
+      expect(
+        resolvedColorToHex(
+          await popup.evaluate((element) => getComputedStyle(element).backgroundColor)
+        )
+      ).toBe('#37485e');
+      await expect(popup).toHaveCSS('box-shadow', /0px 4px 12px/u);
+      if (trigger === 'Single time field') {
+        const panel = popup.locator('.el-time-panel');
+        await expect(panel).toHaveCSS('border-top-width', '0px');
+        await expect(panel).toHaveCSS('box-shadow', 'none');
+      }
+      if (trigger === 'Single time field' || trigger === 'Start time') {
+        const panels = popup.locator('.el-time-panel__content');
+        await expect(panels).toHaveCount(trigger === 'Start time' ? 2 : 1);
+        for (const panel of await panels.all()) {
+          if (trigger === 'Start time')
+            await expect(panel).toHaveCSS('border-top-color', 'rgb(78, 94, 115)');
+          await expect
+            .poll(() =>
+              panel.evaluate((element) => getComputedStyle(element, '::before').borderTopColor)
+            )
+            .toBe('rgb(78, 94, 115)');
+        }
+      }
+      await page.keyboard.press('Escape');
+      await expect(popup).toBeHidden();
+    }
+  });
+}
 
 test('theme preview input uses its own palette independently of the active theme', async ({
   page
