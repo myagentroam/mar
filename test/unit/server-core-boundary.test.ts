@@ -88,6 +88,7 @@ describe('Server Core workspace boundary', () => {
             specifier === 'zod' ||
             specifier === 'nodemailer' ||
             specifier === 'web-push' ||
+            (file === 'skill-bundle.ts' && specifier === 'js-yaml') ||
             specifier === '@fastify/websocket' ||
             specifier === '@myagentroam/protocol' ||
             specifier === '@myagentroam/protocol/package.json' ||
