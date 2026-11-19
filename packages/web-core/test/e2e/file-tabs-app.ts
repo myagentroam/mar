@@ -97,22 +97,27 @@ const git = createWorkspaceGitService({
   onBranch: () => {}
 });
 const changesOpen = ref(false);
-const fileWorkbench = createWorkspaceFileWorkbenchController({
-  externalTarget: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
-  fileWriteEnabled: () => query.has('submodule-source'),
-  onPopupBlocked: () => {},
-  target: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
-  prewarmEnabled: () => false,
-  resolveRepositoryPath: git.resolveRepositoryPathForOpen,
-  reveal: async () => {},
-  onOpenFailure: () => {},
-  onRevealFailure: () => {},
-  comparison: async () => undefined,
-  page: () => filePage,
-  access: createFileAccessFixture({ http, transfers: () => ({}) }),
-  preview: { onWritten: () => {} },
-  navigation: { http, onFailure: () => {}, onFileTarget: () => {} }
-});
+const fileWorkbench: ReturnType<typeof createWorkspaceFileWorkbenchController> =
+  createWorkspaceFileWorkbenchController({
+    externalTarget: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
+    fileWriteEnabled: () => query.has('submodule-source'),
+    onPopupBlocked: () => {},
+    target: () => ({ nodeId: 'node', workspaceId: 'workspace' }),
+    prewarmEnabled: () => false,
+    resolveRepositoryPath: git.resolveRepositoryPathForOpen,
+    reveal: async () => {},
+    onOpenFailure: () => {},
+    onRevealFailure: () => {},
+    comparison: async () => undefined,
+    page: () => filePage,
+    access: createFileAccessFixture({ http, transfers: () => ({}) }),
+    preview: { onWritten: () => {} },
+    navigation: {
+      http,
+      onFailure: () => {},
+      onFileTarget: (target, pageId) => fileWorkbench.openNavigationTarget(target, pageId)
+    }
+  });
 function fileView(standaloneFileMode = false) {
   return h(WorkspaceFileWorkbench, {
     controller: fileWorkbench,
@@ -131,7 +136,7 @@ function fileView(standaloneFileMode = false) {
     workspaceId: 'workspace',
     enabled: true,
     mobileViewport: window.innerWidth < 768,
-    codeNavigationEnabled: query.has('submodule-navigation'),
+    codeNavigationEnabled: query.has('submodule-navigation') || query.has('navigation-ownership'),
     fileWriteEnabled: true,
     onNotice: (message: string) => {
       document.documentElement.dataset['fileNotice'] = message;
@@ -151,6 +156,20 @@ const toolbarDownload = ref<string>();
 let finishToolbarSave: (() => void) | undefined;
 createTooltipApp({
   render: () => {
+    if (query.has('navigation-ownership'))
+      return h('div', [
+        h(
+          'button',
+          {
+            onClick: async () => {
+              await fileWorkbench.openFile('background.ts');
+              await fileWorkbench.openFile('source.ts');
+            }
+          },
+          'Open navigation fixture tabs'
+        ),
+        fileView(true)
+      ]);
     if (query.has('standalone-submodule'))
       return h('div', [
         h(

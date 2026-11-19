@@ -197,8 +197,10 @@ function openNavigationTarget(target: NavigationTarget, preview = activePreview.
   fileWorkbench.openNavigationTarget(target, preview.id);
 }
 
-function clearCodeNavigation(preview = activePreview.value): void {
-  fileWorkbench.clearNavigationResult(preview?.id);
+function dismissCodeNavigation(preview: PreviewFrame, event: PointerEvent): void {
+  // A tab close is handled by the file owner after confirmation, not as a navigation dismissal.
+  if (event.target instanceof Element && event.target.closest('.workspace-file-tab-close')) return;
+  fileWorkbench.clearNavigationResult(preview.id);
 }
 
 function textLineCount(content: string): number {
@@ -497,7 +499,7 @@ async function moveDiffFile(tab: WorkspaceFileTab, direction: -1 | 1): Promise<v
           "
           @navigate-symbol="navigateSymbol"
           @navigate-file="navigateFile"
-          @dismiss-navigation="clearCodeNavigation(preview)"
+          @dismiss-navigation="dismissCodeNavigation(preview, $event)"
           @open-navigation-target="openNavigationTarget($event, preview)"
           @reload="reloadPreviewFile(preview)"
           @dirty-draft-applied="fileWorkbench.consumeDraft($event)"

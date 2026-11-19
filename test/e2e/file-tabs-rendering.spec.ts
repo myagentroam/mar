@@ -968,6 +968,72 @@ for (const kind of ['symbol', 'file'] as const) {
   }
 }
 
+test('closing a background file tab preserves the pending foreground code navigation', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/file-tabs.html');
+  const reply = Promise.withResolvers<void>();
+  try {
+    await page.route('**/api/workspaces/workspace/files/read?*', (route) => {
+      const path = new URL(route.request().url()).searchParams.get('path');
+      const content = path === 'source.ts' ? 'import "./target";' : 'export {};';
+      return route.fulfill({
+        json: {
+          file: {
+            encoding: 'utf-8',
+            content,
+            size: content.length,
+            revision: 'r1',
+            nextOffset: null
+          }
+        }
+      });
+    });
+    const endpoint = '**/api/workspaces/workspace/symbols/definition';
+    await page.route(endpoint, async (route) => {
+      await reply.promise;
+      await route.fulfill({
+        json: {
+          definition: {
+            state: 'READY',
+            targets: [],
+            paths: [{ path: 'target.ts', line: 1 }],
+            truncated: false
+          }
+        }
+      });
+    });
+    await page.goto(`${fixture.url}file-tabs.html?navigation-ownership`);
+    await page.getByRole('button', { name: 'Open navigation fixture tabs' }).click();
+    const tab = (name: string) => page.getByRole('tab', { name, exact: true });
+    await expect(tab('source.ts')).toHaveAttribute('aria-selected', 'true');
+
+    const sourceLine = page.locator('.workspace-file-page-frame:visible .cm-line').filter({
+      hasText: 'import "./target";'
+    });
+    await page.keyboard.down('Control');
+    await sourceLine.hover({ position: { x: 95, y: 8 } });
+    const symbol = sourceLine.locator('.cm-code-navigation-target');
+    await expect(symbol).toHaveText('./target');
+    const request = page.waitForRequest(endpoint);
+    await symbol.click();
+    await page.keyboard.up('Control');
+    expect((await request).postDataJSON()).toMatchObject({ path: 'source.ts' });
+
+    await tab('background.ts').locator('..').locator('.workspace-file-tab-close').click();
+    await expect(tab('background.ts')).toHaveCount(0);
+    await expect(tab('source.ts')).toHaveAttribute('aria-selected', 'true');
+    reply.resolve();
+    await expect(tab('target.ts')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.workspace-file-page-frame:visible .cm-line')).toHaveText(
+      'export {};'
+    );
+  } finally {
+    reply.resolve();
+    await fixture.close();
+  }
+});
+
 test('opening a file preview does not reclaim focus the user moved during the transition', async ({
   page
 }) => {

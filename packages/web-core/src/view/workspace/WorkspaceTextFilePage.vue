@@ -119,7 +119,7 @@ const emit = defineEmits<{
   'open-markdown-file': [path: string, external: boolean];
   'navigate-symbol': [symbol: string];
   'navigate-file': [request: FileNavigationRequest];
-  'dismiss-navigation': [];
+  'dismiss-navigation': [event: PointerEvent];
   'open-navigation-target': [target: NavigationTarget];
   reload: [];
   'dirty-draft-applied': [tabIdentity: string];
@@ -349,7 +349,7 @@ function dismissFloatingPanels(event: PointerEvent): void {
   if (!(target instanceof Element)) return;
   if (!target.closest('[data-file-symbol-toggle]') && !symbolDropdown.value?.contains(target))
     closeSymbols();
-  if (!navigationDropdown.value?.contains(target)) emit('dismiss-navigation');
+  if (!navigationDropdown.value?.contains(target)) emit('dismiss-navigation', event);
 }
 
 function focus(): void {
