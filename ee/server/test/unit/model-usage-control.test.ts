@@ -100,40 +100,84 @@ describe('Node model usage acknowledgements', () => {
     });
   });
 
-  it('rejects a structurally valid batch over the UTF-8 byte limit before processing entries', async () => {
+  it.each([
+    { boundary: 'at', extraBytes: 0 },
+    { boundary: 'one byte over', extraBytes: 1 }
+  ])('checks the incoming batch $boundary the UTF-8 byte limit', async ({ extraBytes }) => {
     await withUsageControl(async ({ mysql, grants, receive }) => {
       await receive('capabilities', capabilities);
       const grant = grants.issue(NODE_ID, USER_ID, 'work');
-      const text = '界'.repeat(256);
+      const fields = [
+        'modelConfigurationId',
+        'modelName',
+        'provider',
+        'requestedModel',
+        'actualModel',
+        'responseId'
+      ] as const;
       const batch = {
         apiVersion: 1,
         entries: Array.from({ length: MODEL_USAGE_BATCH_LIMIT }, (_, index) => {
           const { record } = entry(grant, `entry-${index}`);
+          const { coverage: _coverage, ...withoutCoverage } = record;
           return {
             grant,
             record: {
-              ...record,
-              modelConfigurationId: text,
-              modelName: text,
-              provider: text,
-              requestedModel: text,
-              actualModel: text,
-              responseId: text
+              ...withoutCoverage,
+              modelConfigurationId: 'x',
+              modelName: 'x',
+              provider: 'x',
+              requestedModel: 'x',
+              actualModel: 'x',
+              responseId: 'x'
             }
           };
         })
       };
+      const targetBytes = MODEL_USAGE_BATCH_BYTES + extraBytes;
+      let remainingBytes = targetBytes - Buffer.byteLength(JSON.stringify(batch));
+      for (const { record } of batch.entries) {
+        for (const field of fields) {
+          const bytes = Math.min(remainingBytes, 255 * 3);
+          record[field] += '界'.repeat(Math.floor(bytes / 3)) + 'x'.repeat(bytes % 3);
+          remainingBytes -= bytes;
+        }
+      }
       const payload = JSON.stringify(batch);
       expect(payload.length).toBeLessThan(MODEL_USAGE_BATCH_BYTES);
-      expect(Buffer.byteLength(payload)).toBeGreaterThan(MODEL_USAGE_BATCH_BYTES);
+      expect(Buffer.byteLength(payload)).toBe(targetBytes);
       const verify = vi.spyOn(grants, 'verify');
 
-      expect(await receive('usage.batch', batch)).toMatchObject([
-        { type: 'error', payload: { code: 'USAGE_STORAGE_UNAVAILABLE' } }
-      ]);
-      expect(verify).not.toHaveBeenCalled();
-      expect(mysql.pool.getConnection).not.toHaveBeenCalled();
-      expect(mysql.rows.size).toBe(0);
+      const replies = await receive('usage.batch', batch);
+      if (extraBytes === 0) {
+        expect(replies).toMatchObject([
+          {
+            type: 'usage.ack',
+            payload: {
+              apiVersion: 1,
+              results: batch.entries.map(({ record }) => ({
+                recordId: record.recordId,
+                revision: record.revision,
+                status: 'accepted'
+              }))
+            }
+          }
+        ]);
+        expect(mysql.rows.size).toBe(batch.entries.length);
+      } else {
+        expect(replies).toMatchObject([
+          {
+            type: 'error',
+            payload: {
+              code: 'USAGE_RECORD_INVALID',
+              details: `Received ${targetBytes} UTF-8 bytes; the limit is ${MODEL_USAGE_BATCH_BYTES}.`
+            }
+          }
+        ]);
+        expect(verify).not.toHaveBeenCalled();
+        expect(mysql.pool.getConnection).not.toHaveBeenCalled();
+        expect(mysql.rows.size).toBe(0);
+      }
     });
   });
 

@@ -1,5 +1,4 @@
 import type { ModelUsageStore } from '@myagentroam/server-core/model-usage-store';
-import { modelUsageBatchSchema } from '@myagentroam/protocol';
 import {
   resolveNodeRuntimeCredential,
   runtimeCredentialConnectionError
@@ -13,14 +12,17 @@ import type { RemoteDesktopRelayPairing } from '@myagentroam/server-core/remote-
 import type { RemoteDesktopRelaySockets } from '@myagentroam/server-core/remote-desktop-relay-sockets';
 import type { WebSocket } from 'ws';
 import {
+  MODEL_USAGE_BATCH_BYTES,
   directNodeEventSchema,
   marctlExecutionCredentialRequestSchema,
+  modelUsageBatchSchema,
   terminalDirectNodeEventSchema,
   remoteDesktopDirectNodeEventSchema,
   remoteDesktopRelayNodeEventSchema,
   type MarctlExecutionCredentialRequest,
   type NodeCapabilities,
-  type NodeEnvelope
+  type NodeEnvelope,
+  type PublicError
 } from '@myagentroam/protocol';
 import type { NodeIdentityStore, StoredNode } from '@myagentroam/server-core/node-identity';
 import type { AuditObserver } from '@myagentroam/server-core/audit';
@@ -604,6 +606,20 @@ export class NodeControl extends NodeIdentityControl {
       const batch = modelUsageBatchSchema.safeParse(envelope.payload);
       if (!batch.success) {
         this.sendError(socket, 'USAGE_RECORD_INVALID', envelope.id);
+        return true;
+      }
+      const bytes = Buffer.byteLength(JSON.stringify(envelope.payload));
+      if (bytes > MODEL_USAGE_BATCH_BYTES) {
+        this.send(
+          socket,
+          'error',
+          {
+            code: 'USAGE_RECORD_INVALID',
+            message: 'Usage batch exceeds the byte limit.',
+            details: `Received ${bytes} UTF-8 bytes; the limit is ${MODEL_USAGE_BATCH_BYTES}.`
+          } satisfies PublicError,
+          envelope.id
+        );
         return true;
       }
       await this.messageProjector.enqueueSessionProjection(nodeId, async () => {
