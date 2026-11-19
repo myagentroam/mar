@@ -39,7 +39,7 @@ export async function createAgentWithAdapter(
   options: CreateAgentOptions,
   adapterFactory?: (configuration: AgentModelConfiguration) => ModelAdapter
 ): Promise<Agent> {
-  const resolvedModels = resolveAgentModels(options.models);
+  const resolvedModels = resolveAgentModels(options.models, options.defaultModelId);
   let { models, defaultModelId } = resolvedModels;
   let modelGeneration = 0;
   const { credentialProviders } = resolvedModels;

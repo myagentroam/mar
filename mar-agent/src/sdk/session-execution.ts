@@ -144,7 +144,8 @@ export class SessionExecution {
   readonly compact = new CompactCoordinator();
   readonly compactRequests: CompactRequests;
   readonly context: SessionExecutionContext;
-  private resultPromise: Promise<ExecutionResult> | undefined;
+  // Synchronous admission observers can join before start runs the workflow.
+  private readonly completion = Promise.withResolvers<ExecutionResult>();
   private readonly modelResources: ReturnType<typeof createExecutionModelResources>;
   private eventTail = Promise.resolve();
   private terminalAdmitted = false;
@@ -543,15 +544,17 @@ export class SessionExecution {
         await input.finalize(failed);
       }
     });
-    this.resultPromise = result;
     void result.then(
       (outcome) => input.settle(outcome.status),
       () => input.settle('failed')
     );
+    // Forward the result after registering settlement, even if no caller awaits it.
+    void this.completion.promise.catch(() => undefined);
+    this.completion.resolve(result);
   }
 
-  join(): Promise<ExecutionResult> | undefined {
-    return this.resultPromise;
+  join(): Promise<ExecutionResult> {
+    return this.completion.promise;
   }
 
   handle(): InternalExecutionHandle {
@@ -565,7 +568,7 @@ export class SessionExecution {
       [Symbol.asyncIterator]: () => this.events[Symbol.asyncIterator](),
       result: () => {
         this.events.discardIfUnobserved();
-        return this.resultPromise!;
+        return this.join();
       },
       cancel: () => this.cancel(new AgentError('MAR_AGENT_CANCELLED', 'Execution was cancelled.'))
     };

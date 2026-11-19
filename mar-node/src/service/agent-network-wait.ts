@@ -59,16 +59,19 @@ export async function waitForAgentTargets(input: {
     const state = target.read();
     const executionId = target.executionId;
     const observation =
+      executionId === undefined ? undefined : observations.capture(target.agentId, executionId);
+    const terminalSnapshot =
       executionId === undefined
         ? undefined
-        : (observations.capture(target.agentId, executionId) ??
-          terminalSnapshots.get(JSON.stringify([target.agentId, target.runId, executionId])));
+        : terminalSnapshots.get(JSON.stringify([target.agentId, target.runId, executionId]));
     const terminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED'].includes(state.status);
     const message = observation?.updates.some((update) => update.kind === 'message') === true;
     return {
       state,
       executionId,
       observation,
+      terminalSnapshot,
+      firstRevision: (observation ?? terminalSnapshot)?.firstRevision ?? Infinity,
       omission: observations.captureOmissions(target.agentId),
       terminal,
       ready: terminal || (input.waitFor === 'message' && message)
@@ -112,10 +115,7 @@ export async function waitForAgentTargets(input: {
     .filter((value) => !value.ready)
     .map((value) => value.target.agentId);
   const ordered = input.single
-    ? [...values].sort(
-        (a, b) =>
-          (a.observation?.firstRevision ?? Infinity) - (b.observation?.firstRevision ?? Infinity)
-      )
+    ? [...values].sort((a, b) => a.firstRevision - b.firstRevision)
     : values;
   const selected = input.single
     ? [
@@ -125,7 +125,7 @@ export async function waitForAgentTargets(input: {
       ]
     : values;
   const agents = selected.map(
-    ({ target, executionId, state, observation, omission, terminal, ready }) => {
+    ({ target, executionId, state, observation, terminalSnapshot, omission, terminal, ready }) => {
       const waitOutcome = snapshot
         ? 'snapshot'
         : terminal
@@ -138,7 +138,9 @@ export async function waitForAgentTargets(input: {
                 ? 'interrupted'
                 : 'snapshot';
       const include = !snapshot && (ready || outcome === 'timeout' || outcome === 'interrupted');
-      const projection = include && terminal ? observation?.result : undefined;
+      // Registered waiters retain their bound conclusion; only the shared unread capture owns updates.
+      const projection =
+        include && terminal ? (terminalSnapshot?.result ?? observation?.result) : undefined;
       const updates = include ? observation?.updates : undefined;
       if (include) {
         observation?.acknowledge();

@@ -7,7 +7,8 @@ import {
   SecretValue,
   type Agent,
   type AgentEvent,
-  type AgentModelConfiguration
+  type AgentModelConfiguration,
+  type CreateAgentOptions
 } from '../../src/index.js';
 import { type AgentExtension } from '../../src/extensions.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
@@ -40,6 +41,62 @@ describe('conversation model eligibility', () => {
     expect(() => resolveAgentModels([auxiliary, conversation], 'helper')).toThrow(
       expect.objectContaining({ code: 'MAR_AGENT_MODEL_CONFIG_INVALID' })
     );
+  });
+
+  it('runs on the configured initial default and honors a one-run model override', async () => {
+    const { requests, adapterFactory } = recordModelRequests();
+    const { session } = await fixture([model('first'), model('second')], adapterFactory, {
+      defaultModelId: 'second'
+    });
+
+    expect(await session.run({ prompt: 'Use the configured default.' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(
+      await session.run({ prompt: 'Use the override.', modelId: 'first' }).result()
+    ).toMatchObject({
+      status: 'completed'
+    });
+    expect(await session.run({ prompt: 'Use the default again.' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(requests).toEqual(['second', 'first', 'second']);
+  });
+
+  it('uses the first eligible model when no default is set and honors a reconfigured default', async () => {
+    const models = [model('helper', false), model('first'), model('second')];
+    const { requests, adapterFactory } = recordModelRequests();
+    const { agent, session } = await fixture(models, adapterFactory);
+
+    expect(await session.run({ prompt: 'Use the implicit default.' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    await agent.reconfigureModels({ models, defaultModelId: 'second' });
+    expect(await session.run({ prompt: 'Use the reconfigured default.' }).result()).toMatchObject({
+      status: 'completed'
+    });
+    expect(requests).toEqual(['first', 'second']);
+  });
+
+  it('rejects an unknown initial default without starting a model request', async () => {
+    const { requests, adapterFactory } = recordModelRequests();
+    await expect(
+      fixture([model('first'), model('second')], adapterFactory, { defaultModelId: 'missing' })
+    ).rejects.toMatchObject({ code: 'MAR_AGENT_MODEL_CONFIG_INVALID' });
+    expect(requests).toEqual([]);
+  });
+
+  it('rejects an unknown reconfigured default without starting a model request', async () => {
+    const models = [model('first'), model('second')];
+    const { requests, adapterFactory } = recordModelRequests();
+    const { agent } = await fixture(models, adapterFactory);
+
+    await expect(
+      agent.reconfigureModels({ models, defaultModelId: 'missing' })
+    ).rejects.toMatchObject({
+      code: 'MAR_AGENT_MODEL_CONFIG_INVALID'
+    });
+    expect(requests).toEqual([]);
   });
 
   it('preserves the admitted execution and rejects the former model after reconfiguration', async () => {
@@ -138,7 +195,7 @@ describe('conversation model eligibility', () => {
         adapters.set(configuration.id, adapter);
         return adapter;
       },
-      [createSubagentExtension({ agent: () => agent })]
+      { extensions: [createSubagentExtension({ agent: () => agent })] }
     );
     agent = f.agent;
 
@@ -185,10 +242,9 @@ describe('conversation model eligibility', () => {
         client = context.services.consume(SUBAGENT_NATIVE_SERVICE)!.open();
       }
     };
-    const f = await fixture([model('chat'), model('helper', false)], undefined, [
-      createSubagentExtension({ agent: () => agent }),
-      consumer
-    ]);
+    const f = await fixture([model('chat'), model('helper', false)], undefined, {
+      extensions: [createSubagentExtension({ agent: () => agent }), consumer]
+    });
     agent = f.agent;
     expect(
       await f.session.run({ prompt: 'Initialize the native Agent API.' }).result()
@@ -231,10 +287,23 @@ class FakeAdapter implements ModelAdapter {
   }
 }
 
+function recordModelRequests() {
+  const requests: string[] = [];
+  const adapterFactory = (configuration: AgentModelConfiguration) =>
+    new FakeAdapter(configuration, () => {
+      requests.push(configuration.id);
+      return [
+        { type: 'text.completed', itemId: 'answer', text: 'done' },
+        { type: 'completed', reason: 'completed' }
+      ];
+    });
+  return { requests, adapterFactory };
+}
+
 async function fixture(
   models: readonly AgentModelConfiguration[],
   adapterFactory?: (configuration: AgentModelConfiguration) => ModelAdapter,
-  extensions?: readonly AgentExtension[]
+  options?: Pick<CreateAgentOptions, 'defaultModelId' | 'extensions'>
 ) {
   const root = await mkdtemp(join(tmpdir(), 'mar-agent-conversation-model-'));
   roots.push(root);
@@ -246,7 +315,7 @@ async function fixture(
       mode: 'normal',
       host: new LocalAgentHost({ homeDirectory: home, workspace }),
       models,
-      ...(extensions === undefined ? {} : { extensions })
+      ...options
     },
     adapterFactory ?? ((configuration) => new FakeAdapter(configuration))
   );
