@@ -1331,7 +1331,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
   min-height: 100vh;
   flex-direction: column;
   margin-left: var(--workbench-leading-offset);
-  overflow: hidden;
+  overflow: clip;
   background: var(--mar-bg-panel);
 }
 
@@ -1409,7 +1409,6 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     flex: 1 1 auto;
     flex-direction: column;
     margin-left: 0;
-    overflow: hidden;
   }
 
   .workbench.settings :deep(.settings-content) {

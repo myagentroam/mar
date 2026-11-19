@@ -306,10 +306,11 @@ function closeStandaloneFileWindow(): void {
 }
 
 .console-shell:not(.console-shell--gate) {
+  display: flow-root;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .console-shell--gate {

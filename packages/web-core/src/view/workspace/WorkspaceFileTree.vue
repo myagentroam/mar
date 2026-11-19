@@ -128,7 +128,7 @@ function onKeydown(event: KeyboardEvent, row: WorkspaceFileTreeVisibleRow): void
 function focus(path: string): void {
   focusedPath.value = path;
   revealRow(path);
-  void nextTick(() => rowElement(path)?.focus());
+  void nextTick(() => rowElement(path)?.focus({ preventScroll: true }));
 }
 
 function rowElement(path: string): HTMLButtonElement | undefined {
@@ -142,14 +142,13 @@ async function reveal(path: string, needed: () => boolean = () => true): Promise
   if (!needed()) return;
   revealRow(path);
   await nextTick();
-  if (needed()) rowElement(path)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function revealRow(path: string): void {
   const index = rows.value.findIndex((row) => !row.loadMore && row.node.path === path);
   const element = container.value;
   if (index < 0 || element === undefined) return;
-  const top = index * rowHeight.value;
+  const top = Number.parseFloat(getComputedStyle(element).paddingTop) + index * rowHeight.value;
   const bottom = top + rowHeight.value;
   if (top < element.scrollTop) element.scrollTop = top;
   else if (bottom > element.scrollTop + element.clientHeight)
@@ -614,6 +613,7 @@ defineExpose({ reveal });
   flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 4px 0.375rem 8px;
   outline: none;
 }
