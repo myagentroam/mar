@@ -981,8 +981,9 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(page.getByRole('heading', { name: '文件与更改' })).toHaveCSS('font-size', '13px');
   await expect(page.getByRole('heading', { name: '选择一个会话' })).toHaveCount(0);
 
-  await expect(page.locator('.workspace-kind-tag')).toHaveText('Git');
-  await expect(page.locator('.session-heading-meta .workspace-branch-tag')).toHaveText('master');
+  const branchTag = page.locator('.session-heading-meta .workspace-branch-tag');
+  await expect(branchTag.getByRole('img', { name: 'Git' })).toBeVisible();
+  await expect(branchTag).toHaveText('master');
   await expect(page.locator('.session-count-tag')).toHaveCount(0);
   await expect(page.locator('.workspace-grid')).toHaveCSS('border-radius', '0px');
   await expect(page.locator('.workbench-header .workspace-tabs')).toHaveCSS('min-height', '0px');

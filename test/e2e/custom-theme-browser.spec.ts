@@ -1066,7 +1066,7 @@ for (const scheme of ['Light', 'Dark']) {
   });
 
   test(
-    'workspace Git and branch labels use distinct ' + scheme + ' theme colors',
+    'workspace uses one neutral Git branch tag in the ' + scheme + ' theme',
     async ({ page }, testInfo) => {
       const row = page.locator('.theme-option').filter({
         has: page.getByRole('button', { name: 'Inspect ' + scheme, exact: true })
@@ -1074,39 +1074,27 @@ for (const scheme of ['Light', 'Dark']) {
       if (scheme === 'Light')
         await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
       const workspace = page.getByRole('region', { name: 'Real workspace labels' });
-      const git = workspace.locator('.workspace-kind-tag');
       const branch = workspace.locator('.workspace-branch-tag');
+      const branchName = branch.locator('.workspace-branch-name');
+      const gitIcon = branch.getByRole('img', { name: 'Git' });
       const input = workspace.getByRole('textbox', { name: 'Workspace branch' });
       const colors =
-        scheme === 'Light'
-          ? {
-              git: ['#a15c07', '#fff4df', '#a15c078c'],
-              branch: ['#075fc7', '#eaf2ff', '#8ab8ff']
-            }
-          : {
-              git: ['#d29922', '#f1c56e24', '#d299228c'],
-              branch: ['#3093ff', '#3093ff24', '#1f73cf7a']
-            };
-      async function expectColors(expected: Record<'git' | 'branch', string[]>): Promise<void> {
-        for (const [tag, palette] of [
-          [git, expected.git],
-          [branch, expected.branch]
-        ] as const) {
-          // Theme transitions can expose transient OKLab colors before the final palette settles.
-          await expect(async () => {
-            const actual = await tag.evaluate((element) => {
-              const style = getComputedStyle(element);
-              return [style.color, style.backgroundColor, style.borderTopColor];
-            });
-            expect(actual.map(resolvedColorToHex)).toEqual(palette);
-            const contentColor = await tag
-              .locator('.el-tag__content')
-              .evaluate((element) => getComputedStyle(element).color);
-            expect(resolvedColorToHex(contentColor)).toBe(palette[0]);
-          }).toPass({ timeout: 5_000 });
-        }
+        scheme === 'Light' ? ['#52627a', '#e8f0f9', '#cbd6e4'] : ['#a8b8cf', '#182739', '#414e62'];
+      async function expectColors(expected: string[]): Promise<void> {
+        await expect(async () => {
+          const actual = await branch.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return [style.color, style.backgroundColor, style.borderTopColor];
+          });
+          expect(actual.map(resolvedColorToHex)).toEqual(expected);
+          const nameColor = await branchName.evaluate((el) => getComputedStyle(el).color);
+          expect(resolvedColorToHex(nameColor)).toBe(expected[0]);
+        }).toPass({ timeout: 5_000 });
       }
-      await expect(git).toHaveText('Git');
+      await expect(branch).toHaveCount(1);
+      await expect(branch).toHaveCSS('border-top-width', '1px');
+      await expect(branch).toHaveCSS('border-top-style', 'solid');
+      await expect(gitIcon).toHaveAttribute('data-mar-icon', 'branch');
       for (const name of [
         'main',
         'master',
@@ -1114,7 +1102,7 @@ for (const scheme of ['Light', 'Dark']) {
         'feature/ui',
         'release/1.0',
         'hotfix/hover',
-        'other'
+        'HEAD'
       ]) {
         await input.fill(name);
         await expect(branch).toHaveText(name);
@@ -1131,21 +1119,25 @@ for (const scheme of ['Light', 'Dark']) {
       const longBranch = 'feature/a-long-branch-name-that-must-remain-bounded';
       await input.fill(longBranch);
       await expect(branch).toHaveText(longBranch);
-      await expect(branch).toHaveCSS('text-overflow', 'ellipsis');
+      await expect(branchName).toHaveCSS('text-overflow', 'ellipsis');
       await expect
         .poll(async () => (await branch.boundingBox())?.width)
         .toBeLessThanOrEqual(160 + 1 / 64);
+      expect(await branchName.evaluate((el) => el.scrollWidth)).toBeGreaterThan(
+        await branchName.evaluate((el) => el.clientWidth)
+      );
+      await branch.hover();
+      await expect(page.getByRole('tooltip')).toHaveText(longBranch);
       await expectColors(colors);
 
       const gitWorkspace = workspace.getByRole('checkbox', { name: 'Git workspace', exact: true });
       const workspaceToggle = workspace.getByText('Git workspace', { exact: true });
       await workspaceToggle.click();
       await expect(gitWorkspace).not.toBeChecked();
-      await expect(git).toHaveCount(0);
       await expect(branch).toHaveCount(0);
       await workspaceToggle.click();
       await expect(gitWorkspace).toBeChecked();
-      await expect(git).toHaveText('Git');
+      await expect(gitIcon).toBeVisible();
       await expect(branch).toHaveText(longBranch);
       await expectColors(colors);
 
@@ -1155,13 +1147,9 @@ for (const scheme of ['Light', 'Dark']) {
       theme.name = scheme + ' Git labels';
       Object.assign(theme.colors, {
         '--mar-text-secondary': '#bacac0',
-        '--mar-bg-subtle': '#1b2521',
-        '--mar-border-default': '#3f5148',
-        '--mar-color-warning-text': '#e3b669',
-        '--mar-color-warning-bg': '#30271a',
-        '--mar-color-brand-text': '#91b7ed',
-        '--mar-color-brand-subtle': '#1d2d43',
-        '--mar-color-brand-border': '#4a6d9c'
+        '--mar-fill-muted': '#26342e',
+        '--mar-border-default': '#617469',
+        '--mar-border-medium': '#758a7e'
       });
       await page.locator('input[type=file]').setInputFiles({
         name: 'git-labels.json',
@@ -1176,10 +1164,7 @@ for (const scheme of ['Light', 'Dark']) {
         .click();
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
-        await expectColors({
-          git: ['#e3b669', '#30271a', '#e3b6698c'],
-          branch: ['#91b7ed', '#1d2d43', '#4a6d9c']
-        });
+        await expectColors(['#bacac0', '#26342e', scheme === 'Light' ? '#617469' : '#758a7e']);
         await workspace.locator('.session-heading').screenshot({
           path: testInfo.outputPath('workspace-labels-custom-' + width + '.png')
         });
