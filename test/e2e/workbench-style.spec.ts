@@ -9,6 +9,32 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+test('Workspace tree rows reserve their background for hover and selection', async ({ page }) => {
+  await page.goto(`${fixture.url}workbench-style.html?list-state=unselected&locale=en-US`);
+  const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+  const node = tree.getByRole('button', { name: 'Node', exact: true });
+  const row = tree.locator('.tree-node-row');
+  const idleColor = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await node.hover();
+  const hoverColor = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(hoverColor).not.toBe(idleColor);
+
+  await node.click();
+  await page.mouse.move(0, 0);
+  await expect(node).toBeFocused();
+  await expect(row).toHaveCSS('background-color', idleColor);
+
+  await page.keyboard.press('Shift');
+  await expect(node).toBeFocused();
+  await expect(row).toHaveCSS('background-color', idleColor);
+
+  await page.keyboard.press('Shift+Tab');
+  const expand = row.locator('.node-expand-button');
+  await expect(expand).toBeFocused();
+  await expect(expand).toHaveCSS('outline-style', 'solid');
+  await expect(row).toHaveCSS('background-color', idleColor);
+});
+
 for (const { theme, width } of [
   { theme: 'daylight', width: 1280 },
   { theme: 'vscode-dark-2026', width: 1280 },
@@ -470,6 +496,18 @@ for (const scenario of [
     const inspector = page.getByRole('region', { name: 'Inspector fixture' });
     const feedback = inspector.getByLabel('File operation feedback');
     await inspector.getByRole('button', { name: scenario.refresh, exact: true }).click();
+    await test.step('Keep the file action focus outline clear of row clipping', async () => {
+      await page.mouse.move(0, 0);
+      await inspector.locator('[data-file-path="."]').press('ArrowDown');
+      const folder = inspector.locator('[data-file-path="src"]');
+      await expect(folder).toBeFocused();
+      await page.keyboard.press('Tab');
+      const shell = folder.locator('..');
+      const more = shell.locator('.file-tree-more');
+      await expect(more).toBeFocused();
+      await expect(more).toHaveCSS('outline-style', 'solid');
+      await expect(shell).toHaveCSS('overflow', 'visible');
+    });
     const menu = async (path: string) => {
       await expect(page.getByRole('menuitem', { name: scenario.copy, exact: true })).toBeHidden();
       const row = inspector.locator(`[data-file-path="${path}"]`);
@@ -1253,7 +1291,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       expect(
         await link.evaluate((element) => parseFloat(getComputedStyle(element).outlineWidth))
       ).toBeGreaterThan(0);
-      await expect(idle).toHaveCSS('background-color', hoverColor);
+      await expect(idle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await link.click();
       await expect(idle).toHaveClass(/selected/u);
       await expect(idle).toHaveCSS('background-color', selectionColor);

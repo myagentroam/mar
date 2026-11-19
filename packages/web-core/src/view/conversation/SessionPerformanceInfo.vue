@@ -23,7 +23,7 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
 
 <style scoped>
 .session-performance-info {
-  --mar-action-icon-size: calc(var(--mar-font-size-body) - 2px);
+  --mar-action-icon-size: calc(var(--mar-font-size-body) - 1px);
   display: inline-flex;
   flex: none;
   width: 20px;
@@ -39,11 +39,5 @@ const details = computed(() => sessionPerformanceDetails(props.performance));
 .session-performance-info .mar-icon {
   width: var(--mar-action-icon-size);
   height: var(--mar-action-icon-size);
-}
-
-@media (max-width: 767px) {
-  .session-performance-info {
-    --mar-action-icon-size: calc(var(--mar-font-size-body) - 1px);
-  }
 }
 </style>

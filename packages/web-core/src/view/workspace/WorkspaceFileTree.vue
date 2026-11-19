@@ -682,14 +682,12 @@ defineExpose({ reveal });
   border-block: 1px solid transparent;
   border-radius: var(--mar-radius-selection);
   background-clip: padding-box;
-  overflow: hidden;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.file-tree-row-shell:hover,
-.file-tree-row-shell:focus-within {
+.file-tree-row-shell:hover {
   background-color: var(--mar-fill-muted);
 }
 

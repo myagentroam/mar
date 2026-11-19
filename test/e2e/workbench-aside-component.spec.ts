@@ -83,29 +83,57 @@ test('Aside close shortcuts stay in the focused layer and preserve the session d
   }
 });
 
-test('Browser close shortcuts work in its toolbar and same-origin frame without closing Workspace', async ({
+test('Closing an Aside tab by shortcut preserves focus on a surviving control', async ({
   page
 }) => {
   const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
   try {
+    await page.goto(`${fixture.url}workbench-aside.html?active-child&shortcuts`);
+    const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
+    const child = tabs.getByRole('tab', { name: 'Child', exact: true });
+    const search = tabs.getByRole('tab', { name: 'Search', exact: true });
+    await child.press('Home');
+    await page.keyboard.press('ArrowRight');
+    await expect(child).toHaveAttribute('aria-selected', 'true');
+    await expect(search).toBeFocused();
+    await page.keyboard.press('Alt+w');
+    await expect(child).toHaveCount(0);
+    await expect(search).toBeFocused();
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('Browser close shortcuts work in its toolbar and same-origin frame without closing Workspace', async ({
+  page
+}) => {
+  const fixture = await startCustomThemeFixture('test/e2e/support/workbench-aside.html');
+  const replacement = Promise.withResolvers<void>();
+  try {
+    let version = 0;
     await page.route('**/api/html-preview/grants', (route) =>
       route.fulfill({
         contentType: 'application/json',
-        body: JSON.stringify({ url: new URL('/shortcut-preview', fixture.url).href })
+        body: JSON.stringify({ url: new URL(`/shortcut-preview/${++version}`, fixture.url).href })
       })
     );
-    await page.route('**/shortcut-preview', (route) =>
-      route.fulfill({ contentType: 'text/html', body: '<input aria-label="Preview input">' })
-    );
+    await page.route('**/shortcut-preview/*', async (route) => {
+      if (route.request().url().endsWith('/2')) await replacement.promise;
+      await route.fulfill({ contentType: 'text/html', body: '<input aria-label="Preview input">' });
+    });
     await page.goto(`${fixture.url}workbench-aside.html?shortcuts`);
     const tabs = page.getByRole('tablist', { name: 'Workbench Aside' });
     const browser = tabs.getByRole('tab', { name: 'Browser', exact: true });
     await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
-    const input = page.frameLocator('iframe').getByRole('textbox', { name: 'Preview input' });
+    const activeFrame = 'iframe.html-preview-frame:not([inert])';
+    const input = page.frameLocator(activeFrame).getByRole('textbox', { name: 'Preview input' });
     await input.fill('Preview draft');
-    // Refreshing metadata for the same target must keep the current frame binding.
+    // Reopening a target keeps the current page until the replacement is ready.
     await page.getByRole('button', { name: 'Preview HTML', exact: true }).click();
+    await expect(page.locator('iframe[src$="/2"]')).toHaveAttribute('inert', '');
     await expect(input).toHaveValue('Preview draft');
+    replacement.resolve();
+    await expect(page.locator(activeFrame)).toHaveAttribute('src', /\/shortcut-preview\/2$/);
     await input.press('Alt+w');
     await expect(browser).toHaveCount(0);
     await expect(page.locator('iframe')).toHaveCount(0);
@@ -120,9 +148,10 @@ test('Browser close shortcuts work in its toolbar and same-origin frame without 
     await expect(input).toBeVisible();
     // Reload replaces the frame document and must rebind the shortcut.
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
+    await expect(page.locator(activeFrame)).toHaveAttribute('src', /\/shortcut-preview\/4$/);
     await expect(input).toBeVisible();
     expect(
-      await page.locator('iframe').evaluate((frame: HTMLIFrameElement) => {
+      await page.locator(activeFrame).evaluate((frame: HTMLIFrameElement) => {
         const input = frame.contentDocument!.querySelector('input')!;
         return input.dispatchEvent(
           new KeyboardEvent('keydown', {
@@ -146,6 +175,7 @@ test('Browser close shortcuts work in its toolbar and same-origin frame without 
     await expect(browser).toHaveCount(0);
     await expect(page.locator('#workspace-closes')).toHaveText('0');
   } finally {
+    replacement.resolve();
     await fixture.close();
   }
 });

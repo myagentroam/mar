@@ -186,6 +186,7 @@ watch(open, async () => {
   max-width: 100%;
   color: var(--mar-conversation-muted);
   font-variant-numeric: tabular-nums;
+  text-box: trim-both cap alphabetic;
   overflow-wrap: anywhere;
 }
 .process-summary {

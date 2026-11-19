@@ -314,6 +314,35 @@ for (const kind of ['details', 'mcp-details']) {
   });
 }
 
+test('Quick Open accepts typing during its enter animation without taking focus back later', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await visit(page, 'quick');
+  await page.addStyleTag({
+    content: '.el-overlay.dialog-fade-enter-active { animation-duration: 2s !important; }'
+  });
+  await page.getByRole('button', { name: 'Open content' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Quick Open' });
+  const entering = page.locator('.el-overlay.dialog-fade-enter-active');
+  const input = dialog.getByRole('textbox');
+  const filter = dialog.getByRole('button', { name: 'Workspace', exact: true });
+  await expect(entering).toBeVisible();
+  await expect(input).toBeFocused({ timeout: 1000 });
+  await page.keyboard.type('readme');
+  await expect(input).toHaveValue('readme');
+  await expect(entering).toBeVisible();
+  await filter.focus();
+  await expect(filter).toBeFocused();
+  await expect(entering).toHaveCount(0);
+  await expect(filter).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.getByRole('button', { name: 'Open content' }).click();
+  await expect(input).toBeFocused();
+});
+
 test('Quick Open keeps keyboard results visible when failed-source details expand', async ({
   page
 }) => {
