@@ -1,4 +1,11 @@
 /* Shared MAR visual primitives without page-specific behavior. */
+.mar-compact-overlay {
+  border: 1px solid var(--mar-overlay-border);
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-overlay-surface);
+  box-shadow: var(--mar-compact-overlay-shadow);
+}
+
 .mar-tooltip-control {
   display: inline-flex;
   min-width: 0;

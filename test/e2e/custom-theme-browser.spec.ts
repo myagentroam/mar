@@ -1530,7 +1530,7 @@ for (const scheme of ['Light', 'Dark']) {
     for (const [index, token] of [...new Set(Object.values(aliases))].entries())
       source.colors[token] = '#' + (0x203040 + index * 0x030507).toString(16).padStart(6, '0');
     source.colors['--mar-color-brand'] = '#654321';
-    source.colors['--mar-control-bg-color-overlay'] = '#345678';
+    source.colors['--mar-control-bg-color-overlay'] = '#34567880';
     source.colors['--mar-bg-panel'] = '#123456';
     source.colors['--mar-bg-page'] = scheme === 'Light' ? '#ffffff' : '#000000';
     await editor.fill(JSON.stringify(source));
@@ -1574,7 +1574,13 @@ for (const scheme of ['Light', 'Dark']) {
       .first()
       .getByRole('button', { name: /^More actions for / })
       .click();
-    await expect(page.getByRole('menu')).toHaveCSS('background-color', 'rgb(52, 86, 120)');
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+    expect(
+      resolvedColorToHex(
+        await menu.evaluate((element) => getComputedStyle(element).backgroundColor)
+      )
+    ).toBe('#345678');
   });
 }
 

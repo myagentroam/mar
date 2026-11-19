@@ -198,6 +198,7 @@ onBeforeUnmount(() => {
     width="auto"
     :show-arrow="false"
     :persistent="false"
+    popper-class="mar-compact-popover"
     :popper-style="{ padding: '0', minWidth: 'unset', overflow: 'hidden' }"
   >
     <div

@@ -78,6 +78,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 <template>
   <el-popover
     placement="right-end"
+    popper-class="mar-content-popover"
     :trigger="['hover', 'focus']"
     :width="320"
     :show-after="180"

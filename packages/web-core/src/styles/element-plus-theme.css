@@ -237,6 +237,38 @@ html.console-ui .el-popover {
   --el-popover-border-radius: var(--mar-radius-surface);
 }
 
+html.console-ui
+  .el-popper:is(
+    .mar-content-popover,
+    .mar-compact-popover,
+    .el-dropdown__popper,
+    .el-select__popper
+  ) {
+  --el-bg-color-overlay: var(--mar-overlay-surface);
+}
+
+html.console-ui .el-popover.mar-content-popover {
+  --el-popover-border-color: var(--mar-overlay-border);
+  --el-border-color-light: var(--mar-overlay-border);
+  --el-box-shadow-light: 0 2px 6px var(--mar-shadow-soft), 0 10px 24px var(--mar-shadow-medium);
+}
+
+html.console-ui .el-popper:is(.el-dropdown__popper, .el-select__popper, .mar-compact-popover) {
+  --el-border-color-light: var(--mar-overlay-border);
+  --el-box-shadow-light: var(--mar-compact-overlay-shadow);
+}
+
+html.console-ui .el-popover.mar-compact-popover {
+  --el-popover-border-color: var(--mar-overlay-border);
+  --el-popover-border-radius: var(--mar-radius-control);
+}
+
+html.console-ui .el-dropdown__popper .el-dropdown-menu__item--divided,
+html.console-ui .el-select__popper .el-select-dropdown__header,
+html.console-ui .el-select__popper .el-select-dropdown__footer {
+  border-color: var(--mar-border-subtle);
+}
+
 html.console-ui .el-button--primary:not(.is-plain, .is-text, .is-link) {
   --el-button-text-color: var(--mar-color-on-accent);
   --el-button-hover-text-color: var(--mar-color-on-accent);

@@ -1,5 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+
+// @test-covers packages/web-core/src/styles/element-plus-theme.css
+// @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
 
 test.use({ hasTouch: true });
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
@@ -7,6 +11,20 @@ test.beforeAll(async () => {
   fixture = await startCustomThemeFixture('test/e2e/support/workbench-mobile-drawer.html');
 });
 test.afterAll(async () => fixture.close());
+
+async function expectActivityElevation(popover: Locator, theme: string) {
+  const dark = theme === 'vscode-dark-2026';
+  await expect(popover).toBeVisible();
+  const background = await popover.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(resolvedColorToHex(background)).toBe(dark ? '#1a2230' : '#ffffff');
+  await expect(popover).toHaveCSS('border-top-width', '1px');
+  await expect(popover).toHaveCSS(
+    'border-top-color',
+    dark ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
+  );
+  await expect(popover).toHaveCSS('border-top-left-radius', '12px');
+  await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
+}
 
 async function expectActivityPanels(panel: Locator, activeTab: Locator) {
   const tabs = panel.locator('.activity-tabs [role="tab"]');
@@ -320,6 +338,12 @@ for (const width of [1280, 390]) {
       await recent.evaluate((element) => (element as HTMLElement).blur());
       await page.mouse.move(width - 1, 849);
       await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+      if (width >= 768) {
+        await expectActivityElevation(page.locator('.workbench-activity-popover:visible'), theme);
+      } else {
+        await expect(page.locator('.workbench-activity-popover:visible')).toHaveCount(0);
+        await expect(panel).toHaveCSS('box-shadow', 'none');
+      }
       await page.screenshot({
         path: testInfo.outputPath(`activity-panel-${width}-${theme}.png`),
         animations: 'disabled'
@@ -531,6 +555,8 @@ for (const width of [1280, 390]) {
       await expect(input).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       const popover = page.locator('.workbench-activity-popover:visible');
+      await expectActivityElevation(popover, theme);
+      await expect(preview.locator('li.unread')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const radius = await popover.evaluate(
         (element) => getComputedStyle(element).borderTopLeftRadius
       );
@@ -542,9 +568,21 @@ for (const width of [1280, 390]) {
       if (width >= 768) {
         await expect(arrow).toBeVisible();
         expect((await arrow.boundingBox())!.x).toBeLessThan((await popover.boundingBox())!.x);
-        expect(
-          await arrow.evaluate((element) => getComputedStyle(element, '::before').backgroundColor)
-        ).toBe(await popover.evaluate((element) => getComputedStyle(element).backgroundColor));
+        const arrowBackground = await arrow.evaluate(
+          (element) => getComputedStyle(element, '::before').backgroundColor
+        );
+        const background = await popover.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        );
+        expect(resolvedColorToHex(arrowBackground)).toBe(resolvedColorToHex(background));
+        const arrowEdges = await arrow.evaluate((element) => {
+          const arrowStyle = getComputedStyle(element, '::before');
+          return [arrowStyle.borderBottomColor, arrowStyle.borderLeftColor];
+        });
+        const outline = await popover.evaluate(
+          (element) => getComputedStyle(element).borderTopColor
+        );
+        expect(arrowEdges).toEqual([outline, outline]);
       } else await expect(arrow).toHaveCount(0);
       await expect(popover).toHaveCSS('opacity', '1');
       await page.screenshot({

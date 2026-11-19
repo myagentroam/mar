@@ -68,6 +68,10 @@ test('desktop selection adds only a tag and quote-only history preserves its pub
   await selectReply(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
   const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  const popover = page.locator('.el-popover').filter({ has: bubble });
+  await expect(popover).toHaveCSS('border-top-width', '1px');
+  await expect(popover).toHaveCSS('border-top-left-radius', '6px');
+  await expect(popover).toHaveCSS('box-shadow', / 0px 4px 12px 0px$/);
   await expect(bubble.locator('svg')).toHaveCount(1);
   const iconBounds = (await bubble.locator('svg').boundingBox())!;
   const labelBounds = (await bubble.getByText('Quote', { exact: true }).boundingBox())!;
@@ -902,6 +906,9 @@ test('draft quote previews on hover, keyboard focus and click without removing t
   const region = page.getByRole('region', { name: 'Quote', exact: true });
   await preview.hover();
   await expect(region).toContainText('Select this reply excerpt.');
+  const popover = page.locator('.el-popover').filter({ has: region });
+  await expect(popover).toHaveCSS('border-top-width', '1px');
+  await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
   await page.locator('textarea.composer-input').click();
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
   await preview.focus();

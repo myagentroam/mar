@@ -33,6 +33,7 @@ const summary = computed(() => composerReferenceLabel(props.reference));
       :trigger="['hover', 'focus']"
       :show-after="0"
       placement="top-start"
+      popper-class="mar-content-popover"
       :width="420"
       :show-arrow="false"
       :persistent="false"

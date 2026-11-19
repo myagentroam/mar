@@ -1191,7 +1191,11 @@ test('Performance hover displays the details panel without a second hint', async
   await page.clock.install();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await page.clock.runFor(1000);
-  await expect(page.locator('.web-performance-panel')).toBeVisible();
+  const panel = page.locator('.web-performance-panel');
+  await expect(panel).toBeVisible();
+  const popover = page.locator('.el-popover').filter({ has: panel });
+  await expect(popover).toHaveCSS('border-top-width', '1px');
+  await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
   await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
 });
 

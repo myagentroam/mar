@@ -1,5 +1,8 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+
+// @test-covers packages/web-core/src/view/workspace/WorkspaceSessionTreePopover.vue
 
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 
@@ -49,6 +52,12 @@ async function expectUnmaskedLoading(
   await expect(dialog.locator('.session-tree-header')).toBeVisible();
   await expect(popover).toBeVisible();
   await expect(popover).toHaveCSS('opacity', '1');
+  await expect(popover).toHaveCSS('border-top-width', '1px');
+  await expect(popover).toHaveCSS(
+    'border-top-color',
+    theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
+  );
+  await expect(popover).toHaveCSS('box-shadow', /0px 10px 24px/u);
   const loadingSurface = await popover.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
@@ -90,6 +99,32 @@ test('keeps the loading ring local on a daylight mobile popover', async ({ page 
     'daylight',
     390,
     'session-tree-loading-daylight-mobile.png'
+  );
+});
+
+test('the teleported tree follows a custom floating surface and outline', async ({ page }) => {
+  const { tree } = await openTree(page, 'dark', 1280);
+  await page.locator('html').evaluate((element: HTMLElement) => {
+    element.style.setProperty('--mar-control-bg-color-overlay', '#25364940');
+    element.style.setProperty('--mar-overlay-border', '#6b8199');
+  });
+  const popover = page.locator('.session-tree-popover');
+  const background = (selector: typeof popover) =>
+    selector.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(resolvedColorToHex(await background(popover))).toBe('#253649');
+  await expect(popover).toHaveCSS('border-top-color', 'rgb(107, 129, 153)');
+  await setFixtureState(page, 'ready');
+  const row = tree.locator('.session-tree-row').filter({ hasText: 'Sleeping newer' });
+  await row.hover();
+  await row.locator('.session-tree-actions').click();
+  const menu = page.locator('.el-dropdown__popper.session-tree-menu:visible');
+  await expect(menu).toBeVisible();
+  expect(resolvedColorToHex(await background(menu))).toBe('#253649');
+  await expect(menu).toHaveCSS('border-top-color', 'rgb(107, 129, 153)');
+  await expect(menu).toHaveCSS('box-shadow', /0px 4px 12px/u);
+  await expect(menu.locator('.el-dropdown-menu__item--divided')).toHaveCSS(
+    'border-top-color',
+    'rgb(47, 57, 73)'
   );
 });
 
