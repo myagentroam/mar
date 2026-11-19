@@ -29,6 +29,9 @@ import type { MarctlServerUrlForNode, MarctlUserCredentials } from './marctl-use
 import { requireMarAgentAutoSupport } from './mar-agent-auto-support.js';
 import { SessionInputService } from './session-input-service.js';
 import { prepareRunnerProfileContext } from './runner-profile-context.js';
+
+const SESSION_REWIND_TIMEOUT_MS = 60_000;
+
 export function registerSessionRunRoutes(input: {
   readonly app: FastifyInstance;
   readonly databaseError: (reply: FastifyReply, error: unknown) => FastifyReply;
@@ -675,17 +678,26 @@ export function registerSessionRunRoutes(input: {
       !isNonEmptyString(body.turnId) ||
       body.turnId.length > 128 ||
       (body.position !== 'BEFORE' && body.position !== 'AFTER') ||
+      (body.position === 'AFTER' && body.boundary === null) ||
       (body.boundary !== null && (!isNonEmptyString(body.boundary) || body.boundary.length > 256))
     )
       return sendError(reply, 400, 'SESSION_REWIND_INVALID');
     try {
       return reply.code(201).send(
-        await requestUserNode(nodeControl, admin, body.nodeId, 'session.rewind', {
-          sessionId: request.params.sessionId,
-          turnId: body.turnId,
-          position: body.position,
-          boundary: body.boundary
-        })
+        await requestUserNode(
+          nodeControl,
+          admin,
+          body.nodeId,
+          'session.rewind',
+          {
+            sessionId: request.params.sessionId,
+            turnId: body.turnId,
+            position: body.position,
+            boundary: body.boundary
+          },
+          undefined,
+          SESSION_REWIND_TIMEOUT_MS
+        )
       );
     } catch (error) {
       return databaseError(reply, error);

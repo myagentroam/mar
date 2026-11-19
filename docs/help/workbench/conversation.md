@@ -1,6 +1,6 @@
 ---
 title: 阅读对话、工具调用与通知
-lastUpdated: 2026-11-17
+lastUpdated: 2026-11-19
 ---
 
 # 阅读对话、工具调用与通知
@@ -48,6 +48,8 @@ Runner 请求或模型调用最终失败时，错误卡会显示可用的 HTTP �
 MAR Agent、Codex、Claude Code 和 OpenCode 的终态用户消息与 Agent 回复在存在可用历史边界时，会在复制按钮旁显示 Rewind。点击后确认创建新会话分支：从用户消息操作会回到该轮之前并把原消息回填到 Composer，从 Agent 回复操作会保留该轮完整结果且 Composer 为空。
 
 Rewind 不修改原会话，也不回滚 Workspace 文件。Working、消息提交或会话变更期间，页面隐藏 Rewind 和 Rollback；模型、推理强度、权限和手动整理上下文也不可修改，需要空闲的命令不会出现在命令列表中。复制、排队、停止和允许运行中执行的状态命令不受影响。确认弹窗后若会话开始运行或选择发生变化，不会提交操作。页面不按 Session capability 或 App Server 探测结果限制 Rewind；如果 Runner、版本或其他客户端持有的会话锁仍拒绝分支，当前会话和草稿保持不变，并显示 Node 返回的实际错误。
+
+Server 最多等待 60 秒。若提示超时，Node 仍可能在创建分支；重试前请先查看会话列表，以免创建重复分支。若 OpenCode 提示分支边界已失效，请刷新会话历史后重新选择消息。
 
 声明原生历史截断能力的会话，会在终态用户消息的 Rewind 后显示 Rollback。MAR Agent 支持；Codex 仅支持原生 `paginated` 会话，不支持旧式 legacy 历史；Claude Code 和当前接入的 OpenCode 历史 API 没有兼容的仅历史截断操作。Rollback 不创建分支，而是在确认后永久删除所选用户消息及其后的当前会话历史；它不会回滚 Workspace 文件。普通工作区会话的 Rollback 保留当前 Composer 草稿，不回填被删除的消息；尚未执行的队列也保留原有内容、顺序和暂停状态，不会因回滚自动恢复执行。会话必须空闲，但不要求清空队列；请求失败时显示实际错误，不乐观改写当前展示的历史或草稿。
 

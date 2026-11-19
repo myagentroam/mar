@@ -533,6 +533,29 @@ describe('Codex App Server client', () => {
     }
   });
 
+  it('allows 60 seconds for a native fork without extending regular Codex requests', async () => {
+    const client = new CodexAppServerClient();
+    Object.assign(client, { transport: { writable: true, write: vi.fn() } });
+    vi.useFakeTimers();
+    try {
+      const fork = client.forkThread('thread-1', '/workspace', 'turn-1');
+      const settled = vi.fn();
+      void fork.then(settled, settled);
+      const regular = expect(client.readThread('thread-1')).rejects.toThrow(
+        'CODEX_APP_SERVER_TIMEOUT'
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      await regular;
+      await vi.advanceTimersByTimeAsync(44_999);
+      expect(settled).not.toHaveBeenCalled();
+      const timedOut = expect(fork).rejects.toThrow('CODEX_APP_SERVER_TIMEOUT');
+      await vi.advanceTimersByTimeAsync(1);
+      await timedOut;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('completes initialization, thread/Turn requests, notifications, and expectedTurnId steering', async () => {
     const client = new CodexAppServerClient({
       command: process.execPath,

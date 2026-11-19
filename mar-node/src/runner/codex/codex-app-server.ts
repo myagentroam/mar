@@ -8,6 +8,7 @@ import {
 import type { RunnerSessionControl } from '../contracts.js';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const FORK_REQUEST_TIMEOUT_MS = 60_000;
 
 export interface CodexProbe {
   readonly available: boolean;
@@ -264,7 +265,9 @@ export class CodexAppServerClient {
     if (transport === undefined || !transport.writable)
       throw new Error('CODEX_APP_SERVER_UNAVAILABLE');
     const id = this.nextId++;
-    const timeoutMs = this.options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+    const timeoutMs =
+      this.options.timeoutMs ??
+      (method === 'thread/fork' ? FORK_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     const result = new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);

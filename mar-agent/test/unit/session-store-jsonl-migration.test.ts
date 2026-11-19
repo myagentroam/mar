@@ -14,67 +14,82 @@ afterEach(async () => {
 });
 
 describe('JSONL v2 generation preparation', () => {
-  it('forks a v1 source without migrating it and creates a v2 target', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-v1-fork-'));
-    temporary.push(home);
-    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    const turnId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-    const base = join(home, '.mar/agent/sessions');
-    const root = join(base, id);
-    await mkdir(root, { recursive: true });
-    const common = { schemaVersion: 1, timestamp: '2026-10-27T00:00:00.000Z', sessionId: id };
-    const records = [
-      {
-        ...common,
-        recordId: '11111111-1111-4111-8111-111111111111',
-        sequence: 1,
-        type: 'session.created',
-        payload: {}
-      },
-      {
-        ...common,
-        recordId: '22222222-2222-4222-8222-222222222222',
-        sequence: 2,
-        turnId,
-        type: 'turn.user',
-        payload: { prompt: 'hello' }
+  it.each([
+    { kind: 'nonempty', empty: false, tailSchema: 1, types: ['session.created', 'turn.user'] },
+    { kind: 'empty', empty: true, tailSchema: 99, types: ['session.created'] }
+  ])(
+    'creates a v2 fork ($kind) without migrating its v1 source',
+    async ({ empty, tailSchema, types }) => {
+      const home = await mkdtemp(join(tmpdir(), 'mar-v1-fork-'));
+      temporary.push(home);
+      const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const turnId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const base = join(home, '.mar/agent/sessions');
+      const root = join(base, id);
+      await mkdir(root, { recursive: true });
+      const common = { schemaVersion: 1, timestamp: '2026-10-27T00:00:00.000Z', sessionId: id };
+      const records = [
+        {
+          ...common,
+          recordId: '11111111-1111-4111-8111-111111111111',
+          sequence: 1,
+          type: 'session.created',
+          payload: {}
+        },
+        {
+          ...common,
+          schemaVersion: tailSchema,
+          recordId: '22222222-2222-4222-8222-222222222222',
+          sequence: 2,
+          turnId,
+          type: 'turn.user',
+          payload: { prompt: 'hello' }
+        }
+      ];
+      const original = records.map((record) => JSON.stringify(record)).join('\n') + '\n';
+      await writeFile(join(root, 'events-000001.jsonl'), original);
+      await writeFile(
+        join(base, 'index.json'),
+        JSON.stringify({
+          version: 1,
+          revision: 1,
+          sessions: [
+            {
+              id,
+              title: 'old',
+              workspace: '/workspace',
+              createdAt: common.timestamp,
+              lastActivityAt: common.timestamp,
+              nextSequence: 3
+            }
+          ]
+        })
+      );
+      const store = await JsonlSessionStore.open(home);
+      if (empty) {
+        await expect(
+          store.forkSession(id, { boundaryTurnId: turnId, title: 'unsupported' })
+        ).rejects.toMatchObject({
+          code: 'MAR_AGENT_SESSION_VERSION_UNSUPPORTED'
+        });
+        expect(JSON.parse(await readFile(join(base, 'index.json'), 'utf8')).version).toBe(1);
       }
-    ];
-    const original = records.map((record) => JSON.stringify(record)).join('\n') + '\n';
-    await writeFile(join(root, 'events-000001.jsonl'), original);
-    await writeFile(
-      join(base, 'index.json'),
-      JSON.stringify({
-        version: 1,
-        revision: 1,
-        sessions: [
-          {
-            id,
-            title: 'old',
-            workspace: '/workspace',
-            createdAt: common.timestamp,
-            lastActivityAt: common.timestamp,
-            nextSequence: 3
-          }
-        ]
-      })
-    );
-    const store = await JsonlSessionStore.open(home);
-    const child = await store.forkSession(id, { boundaryTurnId: turnId, title: 'fork' });
-    const index = JSON.parse(await readFile(join(base, 'index.json'), 'utf8'));
-    expect(
-      index.sessions.find((session: { id: string }) => session.id === id).storage.encoding
-    ).toBe(1);
-    expect(
-      index.sessions.find((session: { id: string }) => session.id === child.id).storage.encoding
-    ).toBe(2);
-    expect(await readFile(join(root, 'events-000001.jsonl'), 'utf8')).toBe(original);
-    expect((await store.read(child.id)).map((record) => record.type)).toEqual([
-      'session.created',
-      'turn.user'
-    ]);
-    await store.close();
-  });
+      const child = await store.forkSession(id, {
+        boundaryTurnId: empty ? null : turnId,
+        title: 'fork'
+      });
+      const index = JSON.parse(await readFile(join(base, 'index.json'), 'utf8'));
+      expect(
+        index.sessions.find((session: { id: string }) => session.id === id).storage.encoding
+      ).toBe(1);
+      expect(
+        index.sessions.find((session: { id: string }) => session.id === child.id).storage.encoding
+      ).toBe(2);
+      expect(await readFile(join(root, 'events-000001.jsonl'), 'utf8')).toBe(original);
+      expect((await store.read(child.id)).map((record) => record.type)).toEqual(types);
+      await store.close();
+    }
+  );
   it('deletes a v1 session without migrating its discarded history', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-v1-delete-'));
     temporary.push(home);

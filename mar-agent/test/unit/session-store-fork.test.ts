@@ -5,12 +5,34 @@ import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { createSessionCatalog } from '../../src/session/catalog.js';
+import * as segmentRecords from '../../src/session/store/jsonl/records.js';
 import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 
 const homes: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(homes.splice(0).map((home) => rm(home, { recursive: true, force: true })));
+});
+
+it('creates an empty fork without reading the source history', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'mar-agent-empty-fork-'));
+  homes.push(home);
+  const store = await JsonlSessionStore.open(home);
+  try {
+    const source = await store.createSession({ title: 'Source', workspace: home });
+    await store.append(source.id, {
+      type: 'turn.user',
+      payload: { prompt: 'Source' },
+      turnId: 'turn'
+    });
+    const read = vi.spyOn(segmentRecords, 'readRecords');
+    const fork = await store.forkSession(source.id, { title: 'Empty', boundaryTurnId: null });
+    expect(read).not.toHaveBeenCalled();
+    expect((await store.read(fork.id)).map((record) => record.type)).toEqual(['session.created']);
+    expect(await store.read(source.id)).toHaveLength(2);
+  } finally {
+    await store.close();
+  }
 });
 
 it('preserves the applied input receipt identity when a Session is forked', async () => {

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JsonlSessionStore } from '../../../mar-agent/dist/session/store/index.js';
 import { NodeConnector } from '../../src/connector.js';
 import { ConversationHistoryService } from '../../src/service/conversation-history-service.js';
 import type { NodeConversationTurn } from '../../src/runtime-model.js';
@@ -9,6 +10,7 @@ import { rewindTitle } from '../../src/session/session-catalog-service.js';
 import type { NativeSessionProjectionService } from '../../src/session/native-session-projection-service.js';
 import type { ExternalSessionResumeService } from '../../src/service/external-session-resume-service.js';
 import type { RunnerRegistry } from '../../src/runner/runner-registry.js';
+import { MarAgentRunner } from '../../src/runner/mar-agent-runner.js';
 import type { NodeRuntimeState } from '../../src/runtime-state.js';
 import { NodeDatabase, type NodeAgentSession } from '../../src/database.js';
 import { withClaudePlanTag } from '../../src/runner-command-engine.js';
@@ -98,8 +100,79 @@ describe('Node Workbench history projection and pagination', () => {
     );
   });
 
-  it.each(['mar-agent', 'codex', 'claude-code', 'opencode'] as const)(
-    'creates a non-destructive %s Rewind branch using a reread boundary and rejects forged boundaries',
+  it('forks a long MAR Agent conversation at its native boundary without reading history pages', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mar-checked-rewind-'));
+    const database = new NodeDatabase(':memory:', 'checked-rewind');
+    const workspace = database.saveWorkspace({ path: root, kind: 'DIRECTORY', gitSummary: null });
+    const connector = new NodeConnector({ reconnect: false, database });
+    rewindFixtures.push({ root, connector });
+    const { runtime, marAgentClient, conversationHistoryService } = connector as unknown as {
+      runtime: NodeRuntimeState;
+      marAgentClient: MarAgentRunner;
+      conversationHistoryService: ConversationHistoryService;
+    };
+    const runner = new MarAgentRunner(root);
+    const fork = vi
+      .spyOn(marAgentClient, 'forkNative')
+      .mockImplementation(runner.forkNative.bind(runner));
+    const history = vi
+      .spyOn(conversationHistoryService, 'read')
+      .mockRejectedValue(new Error('UNEXPECTED_HISTORY_READ'));
+    const store = await JsonlSessionStore.open(root);
+    try {
+      const native = await store.createSession({ workspace: root, title: 'Original' });
+      for (let i = 0; i < 105; i++) {
+        await store.append(native.id, {
+          type: 'turn.user',
+          payload: { prompt: `Message ${i}`, clientMessageId: `message-${i}` },
+          executionId: `execution-${i}`,
+          turnId: `native-${i}`
+        });
+      }
+      const source = runtime.createAgentSession({
+        workspaceId: workspace.id,
+        runner: 'mar-agent',
+        cwd: root,
+        externalSessionId: native.id,
+        nativeControl: 'MAR_MANAGED',
+        title: 'Original'
+      });
+      const rewind = (boundary: string | null) =>
+        operation(connector, 'session.rewind', {
+          sessionId: source.id,
+          boundary
+        }) as Promise<{ session: NodeAgentSession }>;
+      await expect(rewind('unknown')).rejects.toThrow('MAR_AGENT_REWIND_TARGET_INVALID');
+      expect(runtime.listAgentSessions()).toHaveLength(1);
+      const before = await rewind('native-0');
+      const after = await rewind('native-1');
+      const empty = await rewind(null);
+      expect(
+        (await store.read(before.session.externalSessionId!)).map((record) => record.turnId)
+      ).toEqual([undefined, 'native-0']);
+      expect(
+        (await store.read(after.session.externalSessionId!)).map((record) => record.turnId)
+      ).toEqual([undefined, 'native-0', 'native-1']);
+      expect(
+        (await store.read(empty.session.externalSessionId!)).map((record) => record.type)
+      ).toEqual(['session.created']);
+      expect(await store.read(native.id)).toHaveLength(106);
+      const release = await store.acquireSessionLease(native.id);
+      try {
+        await expect(rewind('native-1')).rejects.toThrow('MAR_AGENT_SESSION_LOCKED');
+      } finally {
+        await release();
+      }
+      expect(history).not.toHaveBeenCalled();
+    } finally {
+      fork.mockRestore();
+      history.mockRestore();
+      await store.close();
+    }
+  });
+
+  it.each(['codex', 'claude-code', 'opencode'] as const)(
+    'forwards the %s Rewind boundary to the native fork without rereading history',
     async (runner) => {
       const root = await mkdtemp(join(tmpdir(), 'mar-session-rewind-'));
       const database = new NodeDatabase(':memory:', 'node-session-rewind');
@@ -143,13 +216,6 @@ describe('Node Workbench history projection and pagination', () => {
             title: string
           ): Promise<string | null>;
         };
-        marAgentClient: {
-          forkNative(
-            session: unknown,
-            boundary: string | null,
-            title: string
-          ): Promise<string | null>;
-        };
         sessionCatalogService: {
           options: {
             present: (session: NodeAgentSession) => NodeAgentSession;
@@ -175,35 +241,12 @@ describe('Node Workbench history projection and pagination', () => {
           ...session,
           runtime: { level: 'MANAGED', capabilities: [], reasonCode: null }
         }) as NodeAgentSession;
-      vi.spyOn(internals.conversationHistoryService, 'read').mockResolvedValue({
-        turns: [
-          {
-            id: 'turn-1',
-            sessionId: source.id,
-            runId: null,
-            userItemId: null,
-            status: 'SUCCEEDED',
-            model: null,
-            effort: null,
-            access: null,
-            rewind: { before: null, after: 'message-1' },
-            items: [],
-            startedAt: 1,
-            completedAt: 1
-          }
-        ],
-        nextCursor: null,
-        snapshotSequence: 1,
-        source: 'native',
-        readAt: 1,
-        latestVisibleAt: 1
-      });
+      const history = vi.spyOn(internals.conversationHistoryService, 'read');
       const fork = vi
         .spyOn(
           internals[
             (
               {
-                'mar-agent': 'marAgentClient',
                 codex: 'codexClient',
                 'claude-code': 'claudeClient',
                 opencode: 'openCodeClient'
@@ -217,8 +260,8 @@ describe('Node Workbench history projection and pagination', () => {
         .mockResolvedValueOnce(null);
       await expect(
         operation(connector, 'session.rewind', {
-          sessionId: source.id,
-          turnId: '',
+          sessionId: '',
+          turnId: 'turn-1',
           position: 'AFTER',
           boundary: 'message-1'
         })
@@ -228,9 +271,9 @@ describe('Node Workbench history projection and pagination', () => {
           sessionId: source.id,
           turnId: 'turn-1',
           position: 'AFTER',
-          boundary: 'forged'
+          boundary: ''
         })
-      ).rejects.toThrow('SESSION_REWIND_TARGET_INVALID');
+      ).rejects.toThrow('SESSION_REWIND_INVALID');
       const result = (await operation(connector, 'session.rewind', {
         sessionId: source.id,
         turnId: 'turn-1',
@@ -285,6 +328,7 @@ describe('Node Workbench history projection and pagination', () => {
         })
       ).rejects.toThrow('CLAUDE_FORK_BUSY');
       expect(fork).toHaveBeenCalledTimes(4);
+      expect(history).not.toHaveBeenCalled();
     }
   );
 

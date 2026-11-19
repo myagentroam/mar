@@ -152,9 +152,29 @@ export class OpenCodeServerClient {
     );
   }
 
-  async forkSession(directory: string, sessionID: string, messageID: string): Promise<unknown> {
+  async forkSession(directory: string, sessionID: string, boundary: string): Promise<unknown> {
+    const exclusive = boundary.startsWith('before:');
+    const messageID = exclusive
+      ? boundary.slice('before:'.length)
+      : boundary.startsWith('tip:')
+        ? boundary.slice('tip:'.length)
+        : '';
+    if (!messageID) throw new Error('SESSION_REWIND_TARGET_INVALID');
     const client = await this.requireClient();
-    return unwrap(await client.session.fork({ directory, sessionID, messageID }));
+    // OpenCode otherwise treats a missing exclusive boundary as a request to fork everything.
+    if (exclusive) {
+      const result = await client.session.message(
+        { directory, sessionID, messageID },
+        { throwOnError: false }
+      );
+      if (result.response.status === 404) throw new Error('SESSION_REWIND_TARGET_INVALID');
+      if (!result.response.ok) throw new Error('OPENCODE_REQUEST_FAILED');
+      return unwrap(await client.session.fork({ directory, sessionID, messageID }));
+    }
+    const { messages } = await this.messagePage(directory, sessionID, { limit: 1 });
+    const latest = messages[0] as { readonly info?: { readonly id?: string } } | undefined;
+    if (latest?.info?.id !== messageID) throw new Error('SESSION_REWIND_TARGET_INVALID');
+    return unwrap(await client.session.fork({ directory, sessionID }));
   }
 
   async messages(

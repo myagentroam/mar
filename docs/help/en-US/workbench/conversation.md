@@ -1,6 +1,6 @@
 ---
 title: Conversations, Tools, and Notifications
-lastUpdated: 2026-11-17
+lastUpdated: 2026-11-19
 ---
 
 # Conversations, Tools, and Notifications
@@ -50,6 +50,8 @@ Other Runners, older history, and Nodes without resource-reading support retain 
 For MAR Agent, Codex, Claude Code, and OpenCode, completed user and Agent messages show Rewind beside Copy when the history contains a usable boundary. After confirmation, Rewind creates a new session branch. Rewinding a user message branches before that turn and restores the original text to Composer; rewinding an Agent reply retains the complete turn and leaves Composer empty.
 
 Rewind does not modify the original session or roll back Workspace files. While Working, submitting a message, or changing a session, the UI hides Rewind and Rollback, locks model, reasoning effort, access and manual context compaction controls, and hides commands that require an idle session. Copy, queueing, stopping and state commands that support execution while working remain available. If the session starts working or the selection changes during confirmation, the operation is not submitted. Rewind is not restricted by Session capability or App Server probing. If the Agent, its version, or a session lock held by another client still rejects the branch, the current session and draft remain unchanged and the actual error returned by Node is shown.
+
+The Server waits up to 60 seconds. If Rewind times out, the Node may still be creating the branch. Check the session list before retrying to avoid creating a duplicate. If OpenCode rejects a stale branch boundary, refresh the session history and select the message again.
 
 Completed user messages also show Rollback after Rewind when the session declares native history-truncation support. MAR Agent supports it; Codex supports it only for native `paginated` sessions, not legacy history. Claude Code and the currently integrated OpenCode history API do not provide a compatible history-only truncation operation. After confirmation, Rollback does not create a branch: it permanently removes the selected user message and all later history from the current session. It never rolls back Workspace files. In regular Workspace sessions, Rollback preserves the current Composer draft instead of restoring the removed message. Unexecuted queue items also retain their content, order, and paused state; rollback does not resume them automatically. The session must be idle, but its queue need not be empty. A failed request shows the actual error without optimistically changing the displayed history or draft.
 

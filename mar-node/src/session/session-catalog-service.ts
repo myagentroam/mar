@@ -587,8 +587,6 @@ export class SessionCatalogService {
   private async rewind(input: Record<string, unknown>): Promise<unknown> {
     if (
       !validRewindId(input.sessionId, 128) ||
-      !validRewindId(input.turnId, 128) ||
-      (input.position !== 'BEFORE' && input.position !== 'AFTER') ||
       (input.boundary !== null && !validRewindId(input.boundary, 256))
     )
       throw new Error('SESSION_REWIND_INVALID');
@@ -598,10 +596,6 @@ export class SessionCatalogService {
     if (source === undefined) throw new Error('SESSION_NOT_FOUND');
     if (source.externalSessionId === null) throw new Error('SESSION_REWIND_UNAVAILABLE');
 
-    const turn = await this.findTurn(source, input.turnId);
-    const expected = input.position === 'BEFORE' ? turn?.rewind?.before : turn?.rewind?.after;
-    if (turn === undefined || expected !== input.boundary)
-      throw new Error('SESSION_REWIND_TARGET_INVALID');
     const title = rewindTitle(
       source.customTitle ?? source.runnerTitle ?? 'Untitled session',
       this.options.runtime
@@ -612,11 +606,7 @@ export class SessionCatalogService {
     const cwd = this.options.resolveExecutionDirectory
       ? await this.options.resolveExecutionDirectory(source)
       : source.cwd;
-    const nativeId = await runner.forkNative(
-      { ...source, cwd },
-      input.boundary as string | null,
-      title
-    );
+    const nativeId = await runner.forkNative({ ...source, cwd }, input.boundary, title);
     const session = this.options.runtime.createAgentSession({
       workspaceId: source.workspaceId,
       runner: source.runner,
