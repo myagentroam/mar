@@ -31,6 +31,7 @@ provide(
 );
 
 const open = ref(true);
+const closing = ref(false);
 const value = ref(props.options.inputValue ?? '');
 const error = ref('');
 const id = useId();
@@ -57,6 +58,8 @@ function settle(action: MarMessageBoxAction) {
 }
 
 function submit() {
+  // A dialog can still receive form submissions while its exit animation runs.
+  if (closing.value) return;
   if (props.variant === 'prompt') {
     const { inputPattern, inputValidator, inputErrorMessage } = props.options;
     if (inputPattern) inputPattern.lastIndex = 0;
@@ -92,6 +95,7 @@ const MessageBody = () => props.message;
     :class="options.customClass"
     width="min(420px, calc(100vw - 32px))"
     @focus="show"
+    @close="closing = true"
     @update:model-value="settle('close')"
   >
     <div :id="`${id}-message`" class="mar-message-box__message" :data-tone="options.type">
