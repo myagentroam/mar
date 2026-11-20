@@ -9,9 +9,9 @@ export const smartCompactToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Request background context compaction only when the current real user message includes this runtime note: ' +
+    'Request background context compaction only when the Runtime marks the current real user message with this note: ' +
     SMART_COMPACTION_MARKER +
-    ' The note indicates capacity eligibility, not a recommendation; historical notes do not qualify the current input. Judge the phase transition from the conversation; call only if key state can be retained in a summary. Do not call merely because context is long, for a one-off question, or while continuing unresolved work that still needs prior evidence. A new user message or completed reply alone is not a phase transition. If uncertain, skip. Prefer calling alongside the first necessary tools. Acceptance does not wait for generation or installation.',
+    ' The note indicates eligibility, not a recommendation; historical notes do not qualify the current input. Call only if the transition is clear and a summary can preserve the key state needed to continue. Acceptance does not wait for generation or installation.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false }
 };
 

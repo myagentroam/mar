@@ -15,7 +15,7 @@ export const viewImageToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'View a PNG, JPEG, or WebP image by path or Session resourceId. Relative paths use the workspace; absolute paths are allowed. Use this tool instead of converting images through exec.',
+    'View a PNG, JPEG, or WebP image by workspace-relative or absolute path, or by Session resourceId. Specify exactly one source. Returns the image and its dimensions; optional cropping and resizing affect only the returned image.',
   inputSchema: {
     type: 'object',
     properties: {

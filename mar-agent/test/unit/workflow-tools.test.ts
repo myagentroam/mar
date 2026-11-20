@@ -25,19 +25,32 @@ describe('workflow tools', () => {
     }
   });
 
-  it('presents question as the preferred Plan path for unresolved user-owned decisions', () => {
-    expect(questionToolDefinition.description).toContain('Prefer asking over guessing');
-    expect(questionToolDefinition.description).toContain('one to three tightly related');
-    expect(questionToolDefinition.description).toContain('another question round');
-    expect(questionToolDefinition.description).toContain('configuration, branches, abstractions');
-    expect(questionToolDefinition.description).toContain(
+  it('documents the user-decision boundary and option presentation contract', () => {
+    const { description, inputSchema } = questionToolDefinition;
+    expect(description).toContain('user-owned decisions that materially change the result');
+    expect(description).toContain(
       'cannot be inferred from the request, conversation, or relevant safe discovery'
     );
-    expect(questionToolDefinition.description).toContain('recommended option first');
-    expect(JSON.stringify(questionToolDefinition.inputSchema)).toContain(
-      'Put the recommended option first'
-    );
-    expect(questionToolDefinition.description).not.toContain('only when');
+    expect(description).toContain('not a permission or approval tool');
+    expect(inputSchema).toMatchObject({
+      properties: {
+        questions: {
+          minItems: 1,
+          maxItems: 3,
+          items: {
+            properties: {
+              options: {
+                minItems: 2,
+                maxItems: 3,
+                description: expect.stringMatching(
+                  /recommended option first and identify it in its label or description/u
+                )
+              }
+            }
+          }
+        }
+      }
+    });
   });
 
   it('documents model-visible execution and recovery behavior', () => {
@@ -67,9 +80,6 @@ describe('workflow tools', () => {
       expect(patchDescription).toContain(syntax);
     expect(patchDescription).toContain('Hunk conflicts identify the path and hunk');
     expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_PARTIAL');
-    expect(todoToolDefinition.description).toContain(
-      'Do not retain completed items from an earlier objective'
-    );
   });
 
   it('replaces Todo without a revision precondition and enforces one in-progress item', () => {

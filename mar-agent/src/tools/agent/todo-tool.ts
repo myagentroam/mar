@@ -10,7 +10,7 @@ export const todoToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Read or replace this session’s Todo list. action=read returns revision and all items; omit items. action=write requires the complete items array (empty clears it), replaces the entire list, and returns revision/count; no prior read or revision precondition is required. Preserve stable IDs and statuses when continuing the same objective; replace old items for a materially different objective. Do not retain completed items from an earlier objective. Use only for coordination-heavy work, not straightforward bounded tasks. Keep at most one in_progress item and update only after meaningful stage changes. When an independent substantive tool call is ready, include it in the same response instead of spending a response only on Todo bookkeeping.',
+    'Read or replace the session’s Todo list for coordination-heavy work. action=read returns revision and all items; omit items. action=write replaces the entire list with the supplied items array (empty clears it) and returns revision and count. No prior read or revision precondition is required. The list may contain at most one in_progress item.',
   inputSchema: {
     type: 'object',
     properties: {

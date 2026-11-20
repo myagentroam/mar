@@ -9,7 +9,7 @@ export const skillToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Load a Skill by its exact catalog name. On success, returns { success: true } and adds the instructions to the next model context. Read them before acting on them.',
+    'Load a Skill by its exact catalog name. Returns { success: true }; instructions are injected into the next eligible model request, not returned by the tool.',
   inputSchema: {
     type: 'object',
     properties: {
