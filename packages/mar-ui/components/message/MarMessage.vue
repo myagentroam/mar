@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { MarIcon } from '../../icons/index.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { MarButton } from '../button/index.js';
 
-/** Presents one transient result and owns its remaining display time. */
+/** Presents one transient result, owning its display timer and exit before notifying its host. */
 const props = defineProps<{
   message: string;
   type: 'success' | 'info' | 'warning' | 'error';
@@ -12,6 +12,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 const locale = useMarUiLocale();
+const visible = ref(true);
 let timer: ReturnType<typeof setTimeout> | undefined;
 let remaining = props.duration;
 let started = 0;
@@ -33,9 +34,14 @@ function track(kind: 'hover' | 'focus', active: boolean) {
 }
 
 function resume() {
-  if (hovered || focused || timer !== undefined) return;
+  if (!visible.value || hovered || focused || timer !== undefined) return;
   started = performance.now();
-  timer = setTimeout(() => emit('close'), Math.max(remaining, 0));
+  timer = setTimeout(close, Math.max(remaining, 0));
+}
+
+function close() {
+  pause();
+  visible.value = false;
 }
 
 onMounted(resume);
@@ -43,26 +49,30 @@ onBeforeUnmount(pause);
 </script>
 
 <template>
-  <section
-    class="mar-ui-message mar-message"
-    :class="'mar-message--' + type"
-    :data-variant="type"
-    :role="type === 'error' || type === 'warning' ? 'alert' : 'status'"
-    @pointerenter="track('hover', true)"
-    @pointerleave="track('hover', false)"
-    @focusin="track('focus', true)"
-    @focusout="track('focus', false)"
-  >
-    <MarIcon :name="type" class="mar-ui-message__icon" />
-    <div class="mar-ui-message__text mar-message-text">{{ message }}</div>
-    <MarButton
-      class="mar-ui-message__close mar-message-close mar-icon-action"
-      text
-      icon="close"
-      :aria-label="locale.close"
-      @click="emit('close')"
-    />
-  </section>
+  <Transition appear name="mar-message-slide" @after-leave="emit('close')">
+    <section
+      v-show="visible"
+      class="mar-ui-message mar-message"
+      :class="'mar-message--' + type"
+      :data-variant="type"
+      :role="type === 'error' || type === 'warning' ? 'alert' : 'status'"
+      :inert="!visible"
+      @pointerenter="track('hover', true)"
+      @pointerleave="track('hover', false)"
+      @focusin="track('focus', true)"
+      @focusout="track('focus', false)"
+    >
+      <MarIcon :name="type" class="mar-ui-message__icon" />
+      <div class="mar-ui-message__text mar-message-text">{{ message }}</div>
+      <MarButton
+        class="mar-ui-message__close mar-message-close mar-icon-action"
+        text
+        icon="close"
+        :aria-label="locale.close"
+        @click="close"
+      />
+    </section>
+  </Transition>
 </template>
 
 <style scoped>
@@ -84,6 +94,19 @@ onBeforeUnmount(pause);
   font-size: var(--mar-ui-font-size-body);
   line-height: 1.5;
   pointer-events: auto;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mar-message-slide-enter-active,
+  .mar-message-slide-leave-active {
+    transition:
+      opacity var(--mar-ui-motion-duration-fast, 200ms) ease,
+      transform var(--mar-ui-motion-duration-fast, 200ms) ease;
+  }
+  .mar-message-slide-enter-from,
+  .mar-message-slide-leave-to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
 }
 .mar-ui-message[data-variant='success'] {
   --mar-ui-message-icon-color: var(--mar-ui-message-success-color);
