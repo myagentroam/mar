@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -10,7 +11,6 @@ import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
 
 import { computed, reactive, ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
@@ -101,7 +101,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="modelValue"
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -114,7 +114,6 @@ async function submit(): Promise<void> {
     :title="translate('generated.workspaceSessionCleanupDialog.title')"
     width="min(480px, calc(100vw - 32px))"
     @update:model-value="emit('update:modelValue', $event)"
-    :close-icon="marIcon('close')"
   >
     <div class="workspace-session-cleanup-content" :aria-busy="loading">
       <template v-if="result === undefined">
@@ -187,7 +186,7 @@ async function submit(): Promise<void> {
       </template>
       <MarButton v-else @click="close">{{ translate('common.close') }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

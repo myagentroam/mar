@@ -2,7 +2,7 @@ import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dialogs = vi.hoisted(() => ({ prompt: vi.fn(), confirm: vi.fn() }));
-vi.mock('element-plus', () => ({ ElMessageBox: dialogs }));
+vi.mock('../../src/service/message-box-service.js', () => ({ MarMessageBox: dialogs }));
 import { createWorkbenchEntityService } from '../../src/service/workbench-entity-service.js';
 import { createWorkbenchEntityController } from '../../src/service/workbench-entity-controller.js';
 import { createWorkspaceViewCacheService } from '../../src/service/workspace-view-cache-service.js';

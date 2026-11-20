@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SecretPage from '../../src/view/settings/SecretManagementPage.vue?unit-render';
 import Details from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
 import SecretManager from '../../src/view/settings/EnvironmentSecretManager.vue?unit-render';
@@ -38,7 +38,7 @@ describe('Public environment secret management', () => {
         history: { replaceState: vi.fn() },
         matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
       });
-      const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+      const error = feedback.error;
       const request = vi.fn().mockRejectedValue(cause);
       const view = renderComponent(SecretManager, {
         request,
@@ -182,8 +182,8 @@ describe('Public environment secret management', () => {
     };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+    const error = feedback.error;
+
     let failSave = true;
     const request = vi.fn(async (_path: string, init?: RequestInit) => {
       if (init?.method === 'POST' && failSave) throw new Error('Fixture save failure');
@@ -287,3 +287,18 @@ describe('Public environment secret management', () => {
     }
   );
 });
+
+beforeEach(() => {
+  for (const spy of Object.values(feedback)) spy.mockClear();
+});
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

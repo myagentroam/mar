@@ -17,7 +17,7 @@ test('Audit initial failure reports an error and recovers through refresh on mob
   const section = page.locator('.audit-management');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, false));
-  await expect(page.locator('.el-message--error')).toContainText('List request failed');
+  await expect(page.locator('.mar-message--error')).toContainText('List request failed');
   await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
   await section.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
@@ -33,19 +33,19 @@ test('Audit desktop page changes show one table loading indicator', async ({ pag
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
   await section.locator('.mar-ui-pagination__page').filter({ hasText: /^2$/ }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
-  await expect(section.locator('.mar-ui-table .el-loading-mask')).toBeVisible();
-  await expect(section.locator(':scope > .el-loading-mask')).toBeHidden();
+  await expect(section.locator('.mar-ui-table .mar-ui-loading')).toBeVisible();
+  await expect(section.locator(':scope > .mar-ui-loading')).toBeHidden();
   await expect(section.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveAttribute(
     'aria-busy',
     'true'
   );
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
-  await expect(section.locator('.mar-ui-table .el-loading-mask')).toBeHidden();
+  await expect(section.locator('.mar-ui-table .mar-ui-loading')).toBeHidden();
   await expect(section.locator('[aria-current="page"]')).toHaveText('2');
   await section.locator('.mar-ui-pagination__previous').click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
   await page.evaluate(() => window.managementPageFixture.settle(2, false));
-  await expect(page.locator('.el-message--error')).toContainText('List request failed');
+  await expect(page.locator('.mar-message--error')).toContainText('List request failed');
   await expect(section.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
   await expect(section.locator('[aria-current="page"]')).toHaveText('2');
   await section.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -176,7 +176,7 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
     'aria-busy',
     'true'
   );
-  await expect(section.locator('.el-loading-mask')).toBeHidden();
+  await expect(section.locator('.mar-ui-loading')).toBeHidden();
   await page.evaluate(() => window.managementPageFixture.settle(2, true));
   await expect(rows).toHaveCount(20);
   const input = section.locator('.mar-resource-filters input').first();

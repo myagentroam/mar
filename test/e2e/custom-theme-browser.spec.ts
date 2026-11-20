@@ -62,7 +62,7 @@ async function expectMessageThemeTokens(message: Locator, iconToken: string): Pr
     const root = getComputedStyle(document.documentElement);
     const surface = getComputedStyle(element);
     const content = element.querySelector('.mar-message-text');
-    const icon = element.querySelector('.el-message__icon');
+    const icon = element.querySelector('.mar-ui-message__icon');
     if (!content || !icon) throw new Error('Message content or icon is missing');
     const colorForToken = (token: string): string => {
       const probe = document.createElement('span');
@@ -100,7 +100,7 @@ async function expectMessageThemeTokens(message: Locator, iconToken: string): Pr
 async function expectMessageFirstLineAlignment(message: Locator): Promise<void> {
   const offsets = await message.evaluate((element) => {
     const content = element.querySelector('.mar-message-text');
-    const statusIcon = element.querySelector('.el-message__icon .mar-icon');
+    const statusIcon = element.querySelector('.mar-ui-message__icon');
     const closeIcon = element.querySelector('.mar-message-close .mar-icon');
     if (!content || !statusIcon || !closeIcon)
       throw new Error('Message feedback layout is missing');
@@ -683,8 +683,8 @@ test('Message, Dialog, MessageBox and Drawer close controls share the icon actio
   });
   for (const [trigger, selector] of [
     ['show-info-feedback', '.mar-message-close'],
-    ['open-feedback-dialog', '.el-dialog__headerbtn'],
-    ['open-close-confirmation', '.el-message-box__headerbtn'],
+    ['open-feedback-dialog', '.mar-ui-dialog__close'],
+    ['open-close-confirmation', '.mar-ui-dialog__close'],
     ['open-close-drawer', '.el-drawer__close-btn']
   ] as const) {
     await page.getByTestId(trigger).click();
@@ -697,8 +697,17 @@ test('Message, Dialog, MessageBox and Drawer close controls share the icon actio
     await expect(close).toHaveCSS('border-radius', '6px');
     await expect(close.locator('svg')).toHaveCSS('color', 'rgb(221, 238, 255)');
     await page.mouse.move(0, 0);
-    await page.keyboard.press('Tab');
-    await close.focus();
+    if (trigger === 'show-info-feedback') {
+      await page.keyboard.press('Tab');
+      await close.focus();
+    } else if (trigger === 'open-close-confirmation') {
+      // Confirmation opens on its primary action; move backwards past Cancel.
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Shift+Tab');
+    } else {
+      await page.keyboard.press('Tab');
+    }
+    await expect(close).toBeFocused();
     await expect(close).toHaveCSS('outline-style', 'solid');
     await expect(close).toHaveCSS('outline-width', '2px');
     await expect(close).toHaveCSS('outline-color', 'rgb(93, 151, 216)');
@@ -716,7 +725,7 @@ test('Message, Dialog, MessageBox and Drawer close controls share the icon actio
 test('lazy loading directive displays and removes its styled mask', async ({ page }) => {
   const sample = page.getByRole('region', { name: 'Loading directive sample' });
   const panel = sample.locator('.page-loading-panel');
-  const mask = panel.locator('.el-loading-mask');
+  const mask = panel.locator('.mar-ui-loading');
   await expect(panel).toHaveAttribute('aria-busy', 'true');
   await expect(mask).toBeVisible();
   await expect(mask).toHaveCSS('position', 'absolute');
@@ -2102,7 +2111,7 @@ test('expanded and compact previews share the applied palette without changing g
   await expectPreviewText(expanded);
   await expect(expanded.locator('.file.selected')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
   await expect(expanded.locator('.tab.active')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
-  const dialogPanel = dialog.locator('.el-dialog');
+  const dialogPanel = dialog.locator('.mar-ui-dialog');
   await expect(dialogPanel).toHaveCSS('border-radius', '12px');
   await dialogPanel.evaluate((element) => element.classList.add('is-fullscreen'));
   await expect(dialogPanel).toHaveCSS('border-radius', '0px');
@@ -2163,7 +2172,7 @@ for (const locale of ['en-US', 'zh-CN']) {
       .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    const dialogBounds = await dialog.locator('.el-dialog').boundingBox();
+    const dialogBounds = await dialog.locator('.mar-ui-dialog').boundingBox();
     expect(dialogBounds!.x).toBeGreaterThanOrEqual(16);
     expect(dialogBounds!.x + dialogBounds!.width).toBeLessThanOrEqual(374);
   });
@@ -2218,7 +2227,9 @@ for (const scheme of ['Light', 'Dark']) {
     );
     await page.getByRole('button', { name: 'Theme color reference', exact: true }).click();
     await expect(
-      page.getByRole('dialog', { name: 'Theme color reference', exact: true }).locator('.el-dialog')
+      page
+        .getByRole('dialog', { name: 'Theme color reference', exact: true })
+        .locator('.mar-ui-dialog')
     ).toHaveCSS('background-color', 'rgb(18, 52, 86)');
     await page.keyboard.press('Escape');
     await page
@@ -2292,14 +2303,14 @@ for (const locale of ['en-US', 'zh-CN']) {
           exact: true
         })
         .click();
-      await expect(page.locator('.el-message--error')).toContainText(
+      await expect(page.locator('.mar-message--error')).toContainText(
         locale === 'en-US'
           ? 'Could not copy the variable name. Select and copy it manually.'
           : '无法复制变量名，请选中变量名手动复制。'
       );
       await page.setViewportSize({ width: 390, height: 844 });
       await dialog.getByRole('textbox', { name: searchLabel }).fill('');
-      const bounds = await dialog.locator('.el-dialog').boundingBox();
+      const bounds = await dialog.locator('.mar-ui-dialog').boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(15);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
       expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
@@ -2600,7 +2611,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
     await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
     await page.getByTestId('show-info-feedback').click();
     const message = page
-      .locator('.el-message--info')
+      .locator('.mar-message--info')
       .filter({ hasText: 'Theme-aware info feedback' });
     await expect(message).toContainText('Theme-aware info feedback');
     await expectMessageThemeTokens(message, '--mar-text-secondary');
@@ -2640,7 +2651,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
   ] as const) {
     await page.getByTestId(testId).click();
     const message = page
-      .locator('.el-message--' + type)
+      .locator('.mar-message--' + type)
       .filter({ hasText: 'Theme-aware ' + type + ' feedback' });
     await expect(message).toBeVisible();
     await expectMessageThemeTokens(message, token);
@@ -2650,7 +2661,9 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
   }
 
   await page.getByTestId('show-repeated-feedback').click();
-  const repeated = page.locator('.el-message--info').filter({ hasText: 'Repeated feedback event' });
+  const repeated = page
+    .locator('.mar-message--info')
+    .filter({ hasText: 'Repeated feedback event' });
   await expect(repeated).toHaveCount(2);
   await expect
     .poll(async () => {
@@ -2671,7 +2684,7 @@ test('short and diagnostic feedback automatically disappear while hover pauses d
   await page.clock.install();
   await page.mouse.move(0, 0);
   await page.getByTestId('show-info-feedback').click();
-  const info = page.locator('.el-message--info');
+  const info = page.locator('.mar-message--info');
   await expect(info).toBeVisible();
   await page.clock.runFor(2_000);
   await expect(info).toBeVisible();
@@ -2681,7 +2694,7 @@ test('short and diagnostic feedback automatically disappear while hover pauses d
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.getByTestId('show-long-feedback').click();
-    const error = page.locator('.el-message--error');
+    const error = page.locator('.mar-message--error');
     await expect(error).toBeVisible();
     await page.clock.runFor(5_000);
     await expect(error).toBeVisible();
@@ -2700,7 +2713,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId('show-plain-text-feedback').click();
   const plainTextMessage = page
-    .locator('.el-message--warning')
+    .locator('.mar-message--warning')
     .filter({ hasText: 'Plain text <img data-feedback-payload=unsafe src=x>' });
   await expect(plainTextMessage.locator('.mar-message-text')).toHaveText(
     'Plain text <img data-feedback-payload=unsafe src=x>'
@@ -2715,7 +2728,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
   await expect(dialog).toHaveAttribute('aria-modal', 'true');
   await page.getByTestId('show-dialog-feedback').click();
   const message = dialog
-    .locator('.el-message--error')
+    .locator('.mar-message--error')
     .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' });
   const content = message.locator('.mar-message-text');
   const close = message.locator('.mar-message-close');
@@ -2730,7 +2743,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
 
   const layout = await message.evaluate((element) => {
     const content = element.querySelector('.mar-message-text')!;
-    const close = element.querySelector('.el-message__closeBtn')!;
+    const close = element.querySelector('.mar-ui-message__close')!;
     const rect = (target: Element) => {
       const { x, y, width, height } = target.getBoundingClientRect();
       return { x, y, width, height, right: x + width, bottom: y + height };
@@ -2772,11 +2785,12 @@ test('mobile long feedback scrolls without trapping its accessible close control
 test('dialog-attached feedback leaves no offset after the dialog closes', async ({ page }) => {
   await page.getByTestId('show-info-feedback').click();
   const baselineMessage = page
-    .locator('.el-message--info')
+    .locator('.mar-message--info')
     .filter({ hasText: 'Theme-aware info feedback' });
   await expect(baselineMessage).toBeVisible();
-  const baselineTop = await baselineMessage.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).top)
+  await expect(baselineMessage).toHaveCSS('opacity', '1');
+  const baselineTop = await baselineMessage.evaluate(
+    (element) => element.getBoundingClientRect().top
   );
   expect(Number.isFinite(baselineTop)).toBe(true);
   await baselineMessage.locator('.mar-message-close').click();
@@ -2787,26 +2801,25 @@ test('dialog-attached feedback leaves no offset after the dialog closes', async 
   await expect(dialog).toBeVisible();
   await page.getByTestId('show-dialog-feedback').click();
   const dialogMessage = dialog
-    .locator('.el-message--error')
+    .locator('.mar-message--error')
     .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' });
   await expect(dialogMessage).toBeVisible();
 
-  await dialog.locator('.el-dialog__headerbtn').click();
+  await dialog.locator('.mar-ui-dialog__close').click();
   await expect(dialog).toHaveCount(0);
   await expect(
     page
-      .locator('.el-message--error')
+      .locator('.mar-message--error')
       .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' })
   ).toHaveCount(0);
 
   await page.getByTestId('show-info-feedback').click();
   const nextMessage = page
-    .locator('.el-message--info')
+    .locator('.mar-message--info')
     .filter({ hasText: 'Theme-aware info feedback' });
   await expect(nextMessage).toBeVisible();
-  const nextTop = await nextMessage.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).top)
-  );
+  await expect(nextMessage).toHaveCSS('opacity', '1');
+  const nextTop = await nextMessage.evaluate((element) => element.getBoundingClientRect().top);
   expect(nextTop).toBeCloseTo(baselineTop, 1);
 
   await nextMessage.locator('.mar-message-close').click();
@@ -2821,7 +2834,9 @@ test('successful dialog saves keep their feedback after the dialog is destroyed'
   await expect(
     page.getByRole('dialog', { name: 'Message feedback dialog', exact: true })
   ).toHaveCount(0);
-  const message = page.locator('.el-message--success').filter({ hasText: 'Dialog settings saved' });
+  const message = page
+    .locator('.mar-message--success')
+    .filter({ hasText: 'Dialog settings saved' });
   await expect(message).toBeVisible();
   await expect(message).toHaveJSProperty('isConnected', true);
   await message.locator('.mar-message-close').click();

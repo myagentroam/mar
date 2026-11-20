@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -11,7 +13,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref, onBeforeUnmount } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue';
 import type { NodeSummary } from '@/model/workbench';
 import {
@@ -135,10 +137,10 @@ async function removeGrant(grant: ConversationTemplateGrant): Promise<void> {
   const context = grantRequestContext;
   if (row === undefined || context.resourceId !== row.id) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('conversationTemplates.revokeConfirmation'),
       translate('conversationTemplates.revoke'),
-      { closeIcon: marIcon('close'), ...confirmationOptions('conversationTemplates.revoke') }
+      { ...confirmationOptions('conversationTemplates.revoke') }
     );
     if (
       disposed ||
@@ -254,7 +256,7 @@ onBeforeUnmount(() => {
       >
     </template>
   </CorePage>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="grantDialogOpen && selectedTemplate"
@@ -262,9 +264,8 @@ onBeforeUnmount(() => {
     :title="translate('conversationTemplates.accessDialogTitle', { name: selectedTemplate.name })"
     width="min(720px, calc(100vw - 32px))"
     @closed="closeGrantDialog"
-    :close-icon="marIcon('close')"
   >
-    <div v-loading="grantLoading" class="grant-dialog">
+    <div v-mar-loading:region="grantLoading" class="grant-dialog">
       <MarAlert
         type="info"
         :closable="false"
@@ -302,7 +303,7 @@ onBeforeUnmount(() => {
         </MarTableColumn>
       </MarTable>
     </div>
-  </el-dialog>
+  </MarDialog>
 </template>
 <style scoped>
 .grant-dialog,

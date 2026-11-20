@@ -384,7 +384,7 @@ test('Mobile file upload confirmation remains fully visible with accessible acti
   });
 
   const dialog = page.locator(
-    '.upload-confirm-dialog.el-dialog, .upload-confirm-dialog .el-dialog'
+    '.upload-confirm-dialog.mar-ui-dialog, .upload-confirm-dialog .mar-ui-dialog'
   );
   await expect(dialog).toBeVisible();
   const layout = await dialog.evaluate((element) => {

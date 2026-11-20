@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarEmpty } from '@myagentroam/mar-ui/empty';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
@@ -13,7 +14,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -51,6 +52,7 @@ const activeConfigTab = ref<'available' | 'installed'>('available');
 const availablePagination = service.catalogPage;
 watchManagementPageFailure(availablePagination);
 const catalogReady = ref(false);
+const catalogLoadingVariant = computed(() => (catalogReady.value ? 'region' : 'page'));
 const detailsOpen = ref(false);
 const skillDetails = ref<SkillDetails>();
 const capabilityTab = ref<'skill' | 'mcp'>('skill');
@@ -221,7 +223,7 @@ async function checkEnvironment(): Promise<void> {
           : target.compatibilityMode === 'MANAGED_COPY'
             ? translate('generated.skillCenterPage.managedCopy')
             : translate('generated.skillCenterPage.unavailable');
-    await ElMessageBox.alert(
+    await MarMessageBox.alert(
       translate('generated.skillCenterPage.environmentModeSkillsFoundRequireAttention', {
         value0: compatibility,
         value1: target.skills.length,
@@ -231,7 +233,6 @@ async function checkEnvironment(): Promise<void> {
         ? translate('generated.skillCenterPage.environmentCheckFoundIssues')
         : translate('generated.skillCenterPage.environmentCheckPassed'),
       {
-        closeIcon: marIcon('close'),
         confirmButtonText: translate('generated.skillCenterPage.oK'),
         icon: marIcon(issues > 0 ? 'warning' : 'success'),
         type: issues > 0 ? 'warning' : 'success'
@@ -286,13 +287,12 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
   let progressTimer: number | undefined;
   try {
     if (overwrite && installed?.localStatus !== 'INVALID_LINK')
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate('generated.skillCenterPage.reinstallingWillOverwriteExistingFilesForManual', {
           value0: favorite.normalizedName
         }),
         translate('generated.skillCenterPage.overwriteSkill'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('generated.skillCenterPage.continue'),
@@ -320,11 +320,10 @@ async function install(favorite: (typeof service.favorites.value)[number]): Prom
       errorCode(error) === 'WORKSPACE_SKILL_TRACKED_CONFIRM_REQUIRED'
     ) {
       try {
-        await ElMessageBox.confirm(
+        await MarMessageBox.confirm(
           translate('generated.skillCenterPage.theTargetContainsGitTrackedFilesOverwritten'),
           translate('generated.skillCenterPage.overwriteTrackedFiles'),
           {
-            closeIcon: marIcon('close'),
             icon: marIcon('warning'),
             type: 'warning',
             confirmButtonText: translate('generated.skillCenterPage.overwriteFiles'),
@@ -398,11 +397,10 @@ function statusLabel(skill: InstalledSkillCard): string {
 async function removeInstalled(name: string): Promise<void> {
   if (targetNodeId.value === '' || targetMutationPending.value) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.skillCenterPage.deleteFromTheCurrentTargetTheSystem', { value0: name }),
       translate('generated.skillCenterPage.deleteSkill'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillCenterPage.deleteDirectory'),
@@ -435,11 +433,10 @@ async function repairGitExclude(): Promise<void> {
   )
     return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.skillCenterPage.repairingTheEnvironmentUpdatesTheWorkspaceS'),
       translate('generated.skillCenterPage.repairSkillEnvironment'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillCenterPage.repair'),
@@ -631,12 +628,11 @@ function scopeLabel(scope: string): string {
             </div>
           </div>
           <div
-            v-loading="
+            v-mar-loading:[catalogLoadingVariant]="
               catalogReady
                 ? availablePagination.loading.value && !availablePagination.loadingMore.value
                 : service.loading.value
             "
-            :element-loading-custom-class="catalogReady ? undefined : 'mar-page-loading'"
             class="skill-table-section"
           >
             <template v-if="filteredFavorites.length > 0">
@@ -755,7 +751,7 @@ function scopeLabel(scope: string): string {
           :label="translate('generated.skillCenterPage.installedSkills')"
           name="installed"
         >
-          <div v-loading="service.targetLoading.value" class="skill-table-section">
+          <div v-mar-loading:region="service.targetLoading.value" class="skill-table-section">
             <template v-if="(service.target.value?.skills.length ?? 0) > 0">
               <MarTable
                 class="clickable-rows installed-skill-table"

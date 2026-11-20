@@ -244,7 +244,7 @@ test('Session projection stays Watch-only across target switches, refreshes and 
   await settle();
   expect(watches).toHaveLength(3);
   await expect(page.locator('.conversation-reload')).toHaveCount(0);
-  await expect(page.locator('.el-message--error')).toHaveCount(0);
+  await expect(page.locator('.mar-message--error')).toHaveCount(0);
   await page.evaluate(() =>
     (window as unknown as { releaseWorkbenchReady: () => void }).releaseWorkbenchReady()
   );
@@ -253,5 +253,5 @@ test('Session projection stays Watch-only across target switches, refreshes and 
   await snapshot(watches[3]!, 'REFRESHED_WATCH_INITIAL');
   await expect(page.getByText('REFRESHED_WATCH_INITIAL', { exact: true })).toBeVisible();
   await expect(page.locator('.conversation-reload')).toHaveCount(0);
-  await expect(page.locator('.el-message--error')).toHaveCount(0);
+  await expect(page.locator('.mar-message--error')).toHaveCount(0);
 });

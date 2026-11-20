@@ -190,8 +190,8 @@ for (const language of ['zh-CN', 'en-US'] as const) {
         }
         await expect(composer).toHaveValue('');
         await expect(page.locator('.goal-card')).toContainText(goalState.goal.objective);
-        await expect(page.locator('.el-message--success')).toHaveCount(0);
-        await expect(page.locator('.el-message--error')).toHaveCount(0);
+        await expect(page.locator('.mar-message--success')).toHaveCount(0);
+        await expect(page.locator('.mar-message--error')).toHaveCount(0);
         await expect(page.getByText(/goal\.permissionChanged/)).toHaveCount(0);
       });
     }

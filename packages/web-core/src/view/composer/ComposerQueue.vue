@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import MessageReferenceTags from './MessageReferenceTags.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -400,7 +400,7 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <el-dialog
+      <MarDialog
         @vue:mounted="mountMobileDialogReturn"
         @vue:before-unmount="unmountMobileDialogReturn"
         v-if="goalDetailsOpen"
@@ -409,7 +409,6 @@ onMounted(() => {
         :title="translate('goal.detailsTitle')"
         width="min(560px, calc(100vw - 32px))"
         append-to-body
-        :close-icon="marIcon('close')"
       >
         <dl class="goal-details">
           <div>
@@ -425,7 +424,7 @@ onMounted(() => {
             <dd>{{ goal.goal.revision }}</dd>
           </div>
         </dl>
-      </el-dialog>
+      </MarDialog>
     </div>
     <span v-if="paused" class="composer-queue-paused" role="status">{{
       translate('generated.composerQueue.paused')
@@ -703,7 +702,7 @@ onMounted(() => {
   flex-wrap: nowrap;
 }
 
-:global(.goal-details-dialog .el-dialog__body) {
+:global(.goal-details-dialog .mar-ui-dialog__body) {
   padding-top: 0.35rem;
 }
 

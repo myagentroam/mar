@@ -803,8 +803,8 @@ test('Escape closes only the visible layer after Quick Open has been closed', as
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.locator('.el-overlay-dialog')).toHaveCount(0);
-  await expect(page.locator('.el-overlay-dialog')).not.toBeVisible();
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).not.toBeVisible();
   const activity = page.getByRole('button', {
     name: 'Sessions & notifications',
     exact: true
@@ -822,7 +822,7 @@ test('Escape closes only the visible layer after Quick Open has been closed', as
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.locator('.el-overlay-dialog')).not.toBeVisible();
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).not.toBeVisible();
   await expect(menu).toBeVisible();
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.keyboard.press('Escape');

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { onMounted, ref } from 'vue';
@@ -73,12 +74,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section
-    v-loading="loading && !loaded"
-    element-loading-custom-class="mar-page-loading"
-    class="hosted-entry-page"
-    :aria-busy="loading"
-  >
+  <section v-mar-loading:page="loading && !loaded" class="hosted-entry-page" :aria-busy="loading">
     <div class="conversation-create-panel">
       <div class="conversation-create-heading">
         <h2>{{ translate('conversationEmpty.hosted.title') }}</h2>

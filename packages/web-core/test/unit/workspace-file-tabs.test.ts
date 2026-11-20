@@ -307,16 +307,17 @@ describe('File preview window interaction', () => {
     let overlay = false;
     const ownOverlayElement = {
       nodeType: 1,
-      matches: (selector: string) => selector.includes('.el-overlay-dialog'),
+      matches: (selector: string) => selector.includes('.mar-ui-dialog-overlay[open]'),
       getClientRects: () => (hasOwnOverlay ? [{}] : [])
     } as unknown as Element;
     const childOverlayElement = {
       nodeType: 1,
-      matches: (selector: string) => selector.includes('.el-overlay-dialog'),
+      matches: (selector: string) => selector.includes('.mar-ui-dialog-overlay[open]'),
       getClientRects: () => (overlay ? [{}] : [])
     } as unknown as Element;
     const root = {
-      closest: (selector: string) => (selector === '.el-overlay-dialog' ? ownOverlayElement : null)
+      closest: (selector: string) =>
+        selector === '.mar-ui-dialog-overlay[open]' ? ownOverlayElement : null
     } as unknown as HTMLElement;
     const closeWindow = vi.fn(async () => true);
     const closeTab = vi.fn(async () => true);

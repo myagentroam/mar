@@ -8,7 +8,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type {
   ConversationHostingCleanupPreview,
   ConversationHostingCleanupResult,
@@ -219,7 +219,7 @@ async function executeCleanup(): Promise<void> {
     sequence
   };
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('conversationHostingMaintenance.executeConfirm', {
         count: current.candidateConversationCount,
         bytes: formatBytes(current.reclaimableBytes),
@@ -227,7 +227,6 @@ async function executeCleanup(): Promise<void> {
       }),
       translate('conversationHostingMaintenance.executeConfirmTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('conversationHostingMaintenance.execute'),

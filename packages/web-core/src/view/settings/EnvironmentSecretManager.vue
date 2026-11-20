@@ -3,6 +3,7 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -16,7 +17,7 @@ import {
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
   createEnvironmentSecretService,
@@ -263,14 +264,13 @@ function requestEditorClose(done: () => void): void {
 
 async function remove(secret: Secret): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.environmentSecretManager.deleteEnvironmentSecretNewConversationRunsAnd',
         { value0: secret.name }
       ),
       translate('generated.environmentSecretManager.deleteSecret'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         confirmButtonText: translate('generated.environmentSecretManager.deleteSecret2'),
         cancelButtonText: translate('generated.environmentSecretManager.cancel'),
@@ -457,7 +457,7 @@ function message(error: unknown): string {
       @retry="pagination.retry"
       @load-more="pagination.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="secretDetailsOpen && secretDetails"
@@ -466,7 +466,6 @@ function message(error: unknown): string {
       width="min(720px, calc(100vw - 32px))"
       append-to-body
       @closed="secretDetails = undefined"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions :column="1" border>
         <MarDescriptionsItem :label="translate('generated.environmentSecretManager.name')">
@@ -485,8 +484,8 @@ function message(error: unknown): string {
       <template #footer>
         <MarButton @click="secretDetailsOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
@@ -503,7 +502,6 @@ function message(error: unknown): string {
       width="min(440px, calc(100vw - 32px))"
       append-to-body
       @closed="clearForm"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="formRef"
@@ -557,7 +555,7 @@ function message(error: unknown): string {
           translate('generated.environmentSecretManager.save')
         }}</MarButton></template
       >
-    </el-dialog>
+    </MarDialog>
   </LoadingPanel>
 </template>
 

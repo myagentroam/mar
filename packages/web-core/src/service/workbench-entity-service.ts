@@ -1,7 +1,7 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { ElMessageBox } from './message-box-service.js';
+import { MarMessageBox } from './message-box-service.js';
 import { ref, readonly, type Ref } from 'vue';
 import type { NodeSummary, Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
@@ -25,11 +25,10 @@ export function createWorkbenchEntityService(options: {
     let value: string;
     try {
       value = (
-        await ElMessageBox.prompt(
+        await MarMessageBox.prompt(
           translate('generated.workbenchEntityService.leaveBlankToDisplayTheRegisteredAddress'),
           translate('generated.workbenchEntityService.renameNode'),
           {
-            closeIcon: marIcon('close'),
             inputValue: node.displayName ?? '',
             inputPlaceholder:
               node.registeredAddress || translate('generated.workbenchEntityService.nodeName'),
@@ -80,11 +79,10 @@ export function createWorkbenchEntityService(options: {
     let value: string;
     try {
       value = (
-        await ElMessageBox.prompt(
+        await MarMessageBox.prompt(
           translate('generated.workbenchEntityService.enterANonEmptySessionName'),
           translate('generated.workbenchEntityService.renameSession'),
           {
-            closeIcon: marIcon('close'),
             inputValue: currentTitle,
             inputPlaceholder:
               session.runnerTitle ?? translate('generated.workbenchEntityService.sessionName'),
@@ -136,11 +134,10 @@ export function createWorkbenchEntityService(options: {
     movingSessions.add(session.id);
     try {
       try {
-        await ElMessageBox.confirm(
+        await MarMessageBox.confirm(
           translate('sessionGroups.description'),
           translate('sessionGroups.move'),
           {
-            closeIcon: marIcon('close'),
             confirmButtonText: translate('sessionGroups.confirm'),
             cancelButtonText: translate('sessionGroups.cancel')
           }
@@ -234,19 +231,18 @@ export function createWorkbenchEntityService(options: {
     const nodeId = options.workspaceTarget.value?.nodeId;
     if (nodeId === undefined || options.canDeleteSession?.(session) === false) return false;
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate('generated.workbenchEntityService.thisPermanentlyDeletesTheNativeSessionAnd', {
           value0: runnerLabel(session.runner),
           value1: options.sessionTitle(session)
         }),
         translate('generated.workbenchEntityService.deleteSession'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('generated.workbenchEntityService.deleteSession2'),
           cancelButtonText: translate('generated.workbenchEntityService.cancel3'),
-          confirmButtonClass: 'el-button--danger'
+          confirmButtonType: 'danger'
         }
       );
     } catch {
@@ -287,18 +283,17 @@ export function createWorkbenchEntityService(options: {
 
   async function deleteNode(node: NodeSummary): Promise<boolean> {
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate('generated.workbenchEntityService.deletingDisconnectsItAndRemovesItsServer', {
           value0: options.nodeLabel(node)
         }),
         translate('generated.workbenchEntityService.deleteNode'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('generated.workbenchEntityService.deleteNode2'),
           cancelButtonText: translate('generated.workbenchEntityService.cancel4'),
-          confirmButtonClass: 'el-button--danger'
+          confirmButtonType: 'danger'
         }
       );
     } catch {

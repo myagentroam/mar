@@ -106,7 +106,7 @@ for (const outcome of ['success', 'failure'] as const) {
         outcome === 'failure'
       );
       await expect(page.getByRole('dialog')).toHaveCount(1);
-      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error')).toHaveCount(0);
       await settle(page, '/api/runner-usage/status?nodeId=a', {
         statuses: [{ runner: 'codex', available: true }]
       });

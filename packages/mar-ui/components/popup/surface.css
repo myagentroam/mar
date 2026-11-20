@@ -53,6 +53,12 @@
   rotate: 225deg;
 }
 
+.mar-ui-popup[data-side='right']::before {
+  top: calc(var(--mar-ui-popup-arrow-y) - 5px);
+  left: -5px;
+  rotate: -45deg;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .mar-ui-popup:is(:popover-open, [data-open]) {
     opacity: 1;

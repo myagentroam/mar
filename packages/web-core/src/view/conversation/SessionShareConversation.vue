@@ -4,7 +4,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ClickOutside as vClickOutside } from 'element-plus';
+import { vClickOutside } from '@myagentroam/mar-ui/click-outside';
 import { createSessionShareConversationService } from '../../service/session-share-conversation-service.js';
 import type { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import { createConversationImageService } from '../../service/conversation-image-service.js';

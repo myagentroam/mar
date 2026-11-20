@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -124,11 +125,7 @@ void load();
 </script>
 
 <template>
-  <section
-    class="mar-management-page license-management"
-    v-loading="loading && !ready"
-    element-loading-custom-class="mar-page-loading"
-  >
+  <section class="mar-management-page license-management" v-mar-loading:page="loading && !ready">
     <h3 v-if="embedded">{{ translate('generated.licenseManagementPage.license') }}</h3>
     <div
       v-if="status"

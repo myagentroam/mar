@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -16,7 +18,7 @@ import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 import { createUserManagementService } from '@/service/user-management-service';
@@ -117,13 +119,12 @@ async function reset(user: ManagedUser): Promise<void> {
 }
 async function confirmReset(user: ManagedUser): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.userManagementPage.resetThePasswordForTheUserMust', {
         value0: user.username
       }),
       translate('generated.userManagementPage.resetPassword'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         confirmButtonText: translate('generated.userManagementPage.resetPassword2'),
         cancelButtonText: translate('generated.userManagementPage.cancel'),
@@ -151,13 +152,12 @@ async function remove(user: ManagedUser): Promise<void> {
 }
 async function confirmRemove(user: ManagedUser): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.userManagementPage.deleteUserNodesRegisteredByThisUser', {
         value0: user.username
       }),
       translate('generated.userManagementPage.deleteUser'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         confirmButtonText: translate('generated.userManagementPage.deleteUser2'),
         cancelButtonText: translate('generated.userManagementPage.cancel2'),
@@ -196,8 +196,7 @@ onUnmounted(() => usersPage.dispose());
 </script>
 <template>
   <section
-    v-loading="usersPage.loading.value && !pageReady && !usersPage.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="usersPage.loading.value && !pageReady && !usersPage.failure.value"
     class="mar-management-page"
   >
     <div class="mar-table-actions">
@@ -206,7 +205,7 @@ onUnmounted(() => usersPage.dispose());
       }}</MarButton>
     </div>
     <MarTable
-      v-loading="
+      v-mar-loading:region="
         usersPage.loading.value &&
         pageReady &&
         !usersPage.loadingMore.value &&
@@ -275,13 +274,12 @@ onUnmounted(() => usersPage.dispose());
       @retry="usersPage.retry"
       @load-more="usersPage.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-model="createOpen"
       :title="translate('generated.userManagementPage.createUser2')"
       width="420"
-      :close-icon="marIcon('close')"
       ><MarForm label-position="top"
         ><MarFormItem :label="translate('generated.userManagementPage.username2')" required
           ><MarInput v-model="form.username" /></MarFormItem
@@ -296,9 +294,9 @@ onUnmounted(() => usersPage.dispose());
         ><MarButton type="primary" :disabled="!canCreate()" @click="create">{{
           translate('generated.userManagementPage.createUser3')
         }}</MarButton></template
-      ></el-dialog
+      ></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       :model-value="credentialResult !== undefined"
@@ -306,7 +304,6 @@ onUnmounted(() => usersPage.dispose());
       width="420"
       class="credential-result-dialog"
       @close="credentialResult = undefined"
-      :close-icon="marIcon('close')"
       ><MarAlert
         :title="
           translate('generated.userManagementPage.copyAndSecurelyDeliverTheseCredentials', {
@@ -335,9 +332,9 @@ onUnmounted(() => usersPage.dispose());
       }}</MarButton>
       <p class="credential-hint">
         {{ translate('generated.userManagementPage.theUserMustChangeThePasswordAfter') }}
-      </p></el-dialog
+      </p></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userDetail !== undefined"
@@ -345,7 +342,6 @@ onUnmounted(() => usersPage.dispose());
       :title="translate('generated.userManagementPage.userDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="userDetail = undefined"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions class="mar-detail-descriptions" :column="1" border>
         <MarDescriptionsItem :label="translate('common.userId')">{{
@@ -369,7 +365,7 @@ onUnmounted(() => usersPage.dispose());
           formatTime(userDetail.createdAt)
         }}</MarDescriptionsItem>
       </MarDescriptions>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

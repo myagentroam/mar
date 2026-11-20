@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -17,7 +19,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { onMounted, reactive, ref, computed } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
 import type { CodexCredentialSummary, ImageGenerationModel } from '@myagentroam/protocol';
 import { createCodexCredentialManagementService } from '../../service/codex-credential-management-service';
@@ -205,10 +207,10 @@ async function save() {
 }
 async function remove(model: ImageGenerationModel) {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('marAgentModels.imageGenerationRemoveConfirm', { name: model.name }),
       translate('marAgentModels.remove'),
-      { closeIcon: marIcon('close') }
+      {}
     );
   } catch {
     return;
@@ -222,11 +224,7 @@ onMounted(load);
 </script>
 
 <template>
-  <section
-    v-loading="busy && !ready"
-    element-loading-custom-class="mar-page-loading"
-    class="image-generation-management"
-  >
+  <section v-mar-loading:page="busy && !ready" class="image-generation-management">
     <p class="selection-rule">{{ translate('marAgentModels.imageGenerationPriorityHint') }}</p>
     <div class="mar-table-actions">
       <MarButton
@@ -347,7 +345,7 @@ onMounted(load);
         </template>
       </MarTableColumn>
     </MarTable>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialog"
@@ -355,7 +353,6 @@ onMounted(load);
       :title="translate('marAgentModels.imageGenerationEdit')"
       width="min(720px, calc(100vw - 32px))"
       @closed="draft.apiKey = ''"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="form"
@@ -432,15 +429,14 @@ onMounted(load);
           translate('marAgentModels.save')
         }}</MarButton></template
       >
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailOpen && selectedDetail"
       v-model="detailOpen"
       :title="translate('marAgentModels.details')"
       width="min(720px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions class="mar-detail-descriptions" :column="1" border>
         <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationConfigurationId')">
@@ -480,7 +476,7 @@ onMounted(load);
       <template #footer>
         <MarButton @click="detailOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 <style scoped>

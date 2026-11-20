@@ -66,7 +66,7 @@ export async function startCustomThemeFixture(
         ? {}
         : { proxy: { '/api': { target: options.apiProxy, ws: true, changeOrigin: false } } }),
       fs: { allow: [productRoot] },
-      watch: { ignored: [resolve(productRoot, 'test/runs/**')] }
+      watch: null
     },
     logLevel: 'error'
   });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -6,7 +7,7 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
 import {
@@ -139,10 +140,10 @@ async function bindOAuth(provider: OAuthBinding): Promise<void> {
 }
 async function unbindOAuth(provider: OAuthBinding): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.settingsContent.unbindFromTheCurrentAccount', { value0: provider.name }),
       translate('generated.settingsContent.unbindOAuth'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     await props.request(`/api/oauth-bindings/${encodeURIComponent(provider.providerKey)}`, {
       method: 'DELETE'
@@ -193,7 +194,7 @@ function createNodeToken(): void {
           />
         </div>
         <MarTable
-          v-loading="oauthLoading && !oauthRefreshing"
+          v-mar-loading:region="oauthLoading && !oauthRefreshing"
           :aria-busy="oauthLoading"
           :data="oauthBindings"
           row-key="providerKey"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarPopover } from '@myagentroam/mar-ui/popover';
 import {
   MarDropdown,
   MarDropdownItem,
@@ -31,7 +32,10 @@ const activeActions = computed(() =>
 );
 const menu = ref<MarDropdownInstance>();
 const bubbleAnchor = ref(new DOMRect());
-const bubbleReference = { getBoundingClientRect: () => bubbleAnchor.value };
+const bubbleReference = computed(() => {
+  const rect = bubbleAnchor.value;
+  return { getBoundingClientRect: () => rect };
+});
 const anchor = ref(new DOMRect());
 const virtualReference = computed(() => ({ getBoundingClientRect: () => anchor.value }));
 interface SelectedQuote {
@@ -233,14 +237,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-popover
+  <MarPopover
+    :outside-dismiss="false"
     :visible="mode === 'bubble'"
     :virtual-ref="bubbleReference"
-    virtual-triggering
     placement="top-start"
     width="auto"
     :show-arrow="false"
-    :persistent="false"
     popper-class="mar-compact-popover"
     :popper-style="{
       padding: '0',
@@ -261,7 +264,7 @@ onBeforeUnmount(() => {
         {{ translate('composer.quote') }}
       </MarButton>
     </div>
-  </el-popover>
+  </MarPopover>
   <MarDropdown
     v-if="mode === 'menu'"
     ref="menu"

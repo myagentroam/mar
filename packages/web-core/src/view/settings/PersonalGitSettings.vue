@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -14,7 +15,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   formatGitRemoteUrl,
   gitCredentialInputSchema,
@@ -223,10 +224,10 @@ async function saveCredential(): Promise<void> {
 }
 async function removeCredential(value: GitCredentialSummary): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       t('personalGit.removeConfirm', { name: value.name }),
       t('personalGit.remove'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -309,7 +310,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         </MarTable>
       </template>
     </div>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailOpen && detail"
@@ -318,7 +319,6 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       width="min(720px, calc(100vw - 32px))"
       append-to-body
       @closed="closeCredentialDetail"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions :column="1" border>
         <MarDescriptionsItem :label="t('personalGit.credentialId')">{{
@@ -358,8 +358,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
           }}</MarButton>
         </div>
       </template>
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
@@ -371,7 +371,6 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       :close-on-press-escape="!saving"
       :show-close="!saving"
       @closed="closeCredential"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="credentialForm"
@@ -472,7 +471,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
           t('personalGit.save')
         }}</MarButton></template
       >
-    </el-dialog>
+    </MarDialog>
   </LoadingPanel>
 </template>
 

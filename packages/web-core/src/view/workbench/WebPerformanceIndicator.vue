@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarPopover } from '@myagentroam/mar-ui/popover';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -77,7 +78,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 </script>
 
 <template>
-  <el-popover
+  <MarPopover
     placement="right-end"
     popper-class="mar-content-popover"
     :trigger="['hover', 'focus']"
@@ -175,7 +176,7 @@ onBeforeUnmount(props.diagnostics.dispose);
       </dl>
       <p>{{ t('performanceDiagnostics.scopeHint') }}</p>
     </section>
-  </el-popover>
+  </MarPopover>
 </template>
 
 <style scoped>

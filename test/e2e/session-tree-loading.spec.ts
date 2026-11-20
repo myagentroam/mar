@@ -45,10 +45,8 @@ async function expectUnmaskedLoading(
   await expect(loading).toHaveAttribute('role', 'status');
   await expect(loading).toHaveAttribute('aria-label', /Loading/);
   await expect(loading.locator('.mar-busy-indicator.mar-read-loading-indicator')).toBeVisible();
-  await expect(tree.locator('.el-loading-mask')).toHaveCount(0);
-  await expect(page.locator('.el-loading-mask, .el-overlay, [data-loading-overlay]')).toHaveCount(
-    0
-  );
+  await expect(tree.locator('.mar-ui-loading')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-loading, .el-overlay, [data-loading-overlay]')).toHaveCount(0);
   await expect(dialog.locator('.session-tree-header')).toBeVisible();
   await expect(popover).toBeVisible();
   await expect(popover).toHaveCSS('opacity', '1');

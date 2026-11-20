@@ -738,7 +738,7 @@ test('Skill source management discovers external entries and adds them to the pe
   await checkRequested;
   await expect(existingCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
   await expect(checkUpdateButton).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.mar-ui-table .el-loading-mask')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-table .mar-ui-loading')).toHaveCount(0);
   releaseExistingCheckUpdate();
   releaseCheckUpdate();
   await expect(addedSkill.getByRole('button', { name: '更新到 bbbbbbbb' })).toBeVisible();
@@ -1055,7 +1055,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await secondCheckRequested;
   await expect(firstCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
   await expect(secondCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.mar-ui-table .el-loading-mask')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-table .mar-ui-loading')).toHaveCount(0);
   releaseFirstCheckUpdate();
   releaseSecondCheckUpdate();
   await expect(catalogRow.getByRole('button', { name: '更新到 1.1.0' })).toBeVisible();

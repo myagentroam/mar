@@ -12,7 +12,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import logoIcon from '../../assets/logo-icon.png';
 import { errorCode } from '../../util/api-error.js';
-import { marIcon } from '../../util/mar-icons.js';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import {

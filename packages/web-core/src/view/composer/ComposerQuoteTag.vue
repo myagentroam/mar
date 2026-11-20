@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { MarPopover } from '@myagentroam/mar-ui/popover';
 // Owns only preview visibility; removal and the saved reference remain with the draft owner.
 import { computed, ref } from 'vue';
-import { ClickOutside as vClickOutside, type PopoverInstance } from 'element-plus';
+import { vClickOutside } from '@myagentroam/mar-ui/click-outside';
 import type { ComposerReference } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
 import { composerReferenceLabel } from '../../util/composer-reference.js';
@@ -15,7 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{ remove: [] }>();
 // Gate delayed native hover/focus events after an explicit dismissal.
 const open = ref(false);
-const popover = ref<PopoverInstance>();
+const popover = ref<InstanceType<typeof MarPopover>>();
 const content = ref<HTMLElement>();
 function close(): void {
   open.value = false;
@@ -26,7 +27,8 @@ const summary = computed(() => composerReferenceLabel(props.reference));
 
 <template>
   <span v-click-outside:[content]="close" class="composer-quote-tag composer-file-reference-state">
-    <el-popover
+    <MarPopover
+      :outside-dismiss="false"
       ref="popover"
       v-model:visible="open"
       :disabled="!open"
@@ -36,7 +38,6 @@ const summary = computed(() => composerReferenceLabel(props.reference));
       popper-class="mar-content-popover"
       :width="420"
       :show-arrow="false"
-      :persistent="false"
       :popper-style="{ maxWidth: 'calc(100vw - 2rem)' }"
     >
       <template #reference>
@@ -62,7 +63,7 @@ const summary = computed(() => composerReferenceLabel(props.reference));
       >
         <QuoteExcerpt :reference="reference" />
       </div>
-    </el-popover>
+    </MarPopover>
     <button
       class="quote-tag-remove mar-icon-action mar-icon-action--inline"
       type="button"
@@ -86,6 +87,9 @@ const summary = computed(() => composerReferenceLabel(props.reference));
   background: var(--mar-color-brand-subtle);
   color: var(--mar-color-brand-text);
   font-size: var(--mar-font-size-meta);
+}
+.composer-quote-tag > :deep(.mar-ui-popover__reference) {
+  min-inline-size: 0;
 }
 .quote-tag-preview,
 .quote-tag-remove {

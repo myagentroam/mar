@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -9,7 +10,7 @@ import WorkspaceFileTree from './WorkspaceFileTree.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { fileSizeLabel, workspaceAbsolutePath } from '../../util/file-presentation.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   mountMobileDialogReturn,
@@ -66,8 +67,7 @@ function childPath(directory: string, name: string): string {
 
 async function promptName(title: string, initialValue = ''): Promise<string | undefined> {
   try {
-    const result = await ElMessageBox.prompt('', title, {
-      closeIcon: marIcon('close'),
+    const result = await MarMessageBox.prompt('', title, {
       inputValue: initialValue,
       inputPlaceholder: translate('generated.workspaceInspector.enterAName'),
       confirmButtonText: translate('generated.workspaceInspector.confirm'),
@@ -165,7 +165,7 @@ async function onFileTreeAction(
       await filesController.mutate(scope, 'MOVE', node.path, childPath(parent, name));
       return;
     }
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       node.kind === 'DIRECTORY'
         ? translate('generated.workspaceInspector.deleteFolderAndAllOfItsContents', {
             value0: node.name
@@ -173,7 +173,6 @@ async function onFileTreeAction(
         : translate('generated.workspaceInspector.deleteFile', { value0: node.name }),
       translate('generated.workspaceInspector.confirmDeletion'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.workspaceInspector.delete'),
@@ -408,7 +407,7 @@ defineExpose({
         )
       "
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="uploadDialogOpen"
@@ -417,7 +416,6 @@ defineExpose({
       :title="translate('generated.workspaceInspector.confirmFileUpload')"
       append-to-body
       width="560px"
-      :close-icon="marIcon('close')"
     >
       <p class="upload-dialog-target">
         {{ translate('generated.workspaceInspector.targetDirectory') }}:
@@ -459,7 +457,7 @@ defineExpose({
           translate('generated.workspaceInspector.startUpload')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

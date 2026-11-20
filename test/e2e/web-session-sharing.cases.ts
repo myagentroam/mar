@@ -434,7 +434,7 @@ for (const labels of [
     await expect.soft(item.locator('svg')).toBeVisible();
     await item.click();
     const dialog = page.getByRole('dialog', { name: labels.title, exact: true });
-    const panel = dialog.locator('.el-dialog');
+    const panel = dialog.locator('.mar-ui-dialog');
     await expect(dialog).toBeVisible();
     async function checkBounds(width: number) {
       await expect
@@ -449,7 +449,7 @@ for (const labels of [
       expect(
         await panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
       ).toBe(true);
-      const close = dialog.locator('.el-dialog__headerbtn');
+      const close = dialog.locator('.mar-ui-dialog__close');
       await close.scrollIntoViewIfNeeded();
       await expect(close).toBeInViewport();
       const unobscured = await close.evaluate((element) => {
@@ -515,7 +515,7 @@ for (const labels of [
         animations: 'disabled'
       });
     }
-    await dialog.locator('.el-dialog__headerbtn').click();
+    await dialog.locator('.mar-ui-dialog__close').click();
     await expect(dialog).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 740 });
     await page.getByRole('button', { name: labels.sessions }).click();
@@ -535,7 +535,7 @@ for (const labels of [
         )
       )
       .toBe(shareText);
-    await dialog.locator('.el-dialog__headerbtn').click();
+    await dialog.locator('.mar-ui-dialog__close').click();
   });
 }
 

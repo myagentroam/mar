@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -17,7 +19,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -295,7 +297,7 @@ async function mutateSource(operation: () => Promise<void>): Promise<void> {
 
 async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       source.enabled
         ? translate('generated.skillSourceManagementPage.confirmDisableSkillSource', {
             value0: source.name
@@ -305,7 +307,6 @@ async function confirmSourceStatusChange(source: SkillSourceCard): Promise<void>
           }),
       translate('generated.skillSourceManagementPage.updateSkillSourceStatus'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: source.enabled
@@ -385,11 +386,10 @@ function formatUpdatedAt(timestamp: number): string {
 
 async function removeSource(source: SkillSourceCard): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.skillSourceManagementPage.deleteSkillSource', { value0: source.name }),
       translate('generated.skillSourceManagementPage.deleteSkillSource2'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillSourceManagementPage.delete'),
@@ -416,13 +416,12 @@ async function removeSource(source: SkillSourceCard): Promise<void> {
 
 async function removeSkill(id: string, name: string): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.skillSourceManagementPage.removeFromTheSkillCatalogInstalledCopies', {
         value0: name
       }),
       translate('generated.skillSourceManagementPage.removeSkill'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.skillSourceManagementPage.remove'),
@@ -457,11 +456,7 @@ function scopeLabel(scope: string): string {
 </script>
 
 <template>
-  <section
-    v-loading="initialLoading"
-    element-loading-custom-class="mar-page-loading"
-    class="mar-management-page"
-  >
+  <section v-mar-loading:page="initialLoading" class="mar-management-page">
     <div class="mar-table-actions">
       <MarButton
         type="primary"
@@ -580,7 +575,10 @@ function scopeLabel(scope: string): string {
             </MarInput>
           </div>
         </div>
-        <div v-loading="sourceSkillsLoading && !initialLoading" class="skill-table-section">
+        <div
+          v-mar-loading:region="sourceSkillsLoading && !initialLoading"
+          class="skill-table-section"
+        >
           <MarTable
             v-if="service.candidates.value.length > 0"
             class="clickable-rows source-skill-table"
@@ -678,7 +676,7 @@ function scopeLabel(scope: string): string {
           </div>
         </div>
         <div
-          v-loading="
+          v-mar-loading:region="
             pagination.loading.value &&
             !initialLoading &&
             !pagination.loadingMore.value &&
@@ -826,14 +824,13 @@ function scopeLabel(scope: string): string {
       </MarTabPane>
     </MarTabs>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="sourceDialog"
       v-model="sourceDialog"
       :title="translate('generated.skillSourceManagementPage.addSkillSource2')"
       width="min(520px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="sourceForm"
@@ -879,16 +876,15 @@ function scopeLabel(scope: string): string {
           translate('generated.skillSourceManagementPage.add')
         }}</MarButton></template
       >
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="catalogDialog"
       v-model="catalogDialog"
       :title="translate('generated.skillSourceManagementPage.addToCatalog2')"
       width="min(460px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="catalogForm"
@@ -935,9 +931,9 @@ function scopeLabel(scope: string): string {
           translate('generated.skillSourceManagementPage.add2')
         }}</MarButton></template
       >
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editDialog"
@@ -945,7 +941,6 @@ function scopeLabel(scope: string): string {
       :title="translate('generated.skillSourceManagementPage.editSkillInformation')"
       width="min(460px, calc(100vw - 32px))"
       destroy-on-close
-      :close-icon="marIcon('close')"
     >
       <MarForm ref="editForm" :model="editDraft" :rules="rules" label-position="top">
         <MarFormItem :label="translate('generated.skillSourceManagementPage.featured3')">
@@ -977,7 +972,7 @@ function scopeLabel(scope: string): string {
           translate('generated.skillSourceManagementPage.save')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
     <SkillDetailsDialog v-model="detailsOpen" :details="skillDetails" />
   </section>
 </template>

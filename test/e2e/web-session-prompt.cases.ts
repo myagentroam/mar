@@ -179,7 +179,7 @@ for (const [locale, theme] of [
           theme === 'daylight' ? /^(?!.*dark).*$/ : /dark/
         );
         await renameItem.click();
-        const renameDialog = page.locator('.el-message-box');
+        const renameDialog = page.locator('.mar-message-box');
         await expect(renameDialog).toBeVisible();
         await expect(renameDialog.locator('input')).toHaveValue('Prompt session');
         await renameDialog

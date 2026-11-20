@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarLink } from '@myagentroam/mar-ui/link';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -14,7 +15,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type { SessionShareTarget } from '@myagentroam/protocol';
 import { createSessionShareManagementService } from '../../service/session-share-management-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -62,10 +63,10 @@ async function create(): Promise<void> {
 }
 async function remove(id: string): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('sessionShare.deleteWarning'),
       translate('sessionShare.delete'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -92,11 +93,10 @@ async function copyRecord(id: string): Promise<void> {
   try {
     let password = await service.copyPassword(id);
     if (password === null) {
-      const result = await ElMessageBox.prompt(
+      const result = await MarMessageBox.prompt(
         translate('sessionShare.restorePassword'),
         translate('sessionShare.password'),
         {
-          closeIcon: marIcon('close'),
           inputType: 'password',
           inputPattern: /^[0-9]{6}$/u,
           inputErrorMessage: translate('sessionShare.passwordFormat')
@@ -113,7 +113,7 @@ async function copyRecord(id: string): Promise<void> {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
@@ -121,7 +121,6 @@ async function copyRecord(id: string): Promise<void> {
     width="min(1000px, calc(100vw - 32px))"
     append-to-body
     @close="emit('close')"
-    :close-icon="marIcon('close')"
   >
     <MarForm
       ref="form"
@@ -214,7 +213,7 @@ async function copyRecord(id: string): Promise<void> {
         </template></MarTableColumn
       >
     </MarTable>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

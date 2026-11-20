@@ -1,13 +1,12 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { DialogInstance } from 'element-plus';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
 import {
   createQuickOpenQueryService,
@@ -43,7 +42,7 @@ const emit = defineEmits<{
   close: [selected?: boolean];
   openFile: [path: string, line: number | undefined, column: number | undefined, external: boolean];
 }>();
-const dialog = ref<DialogInstance>();
+const dialog = ref<InstanceType<typeof MarDialog>>();
 const input = ref<HTMLInputElement>();
 const results = ref<HTMLUListElement>();
 const tab = ref<QuickOpenTab>('ALL');
@@ -339,7 +338,7 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="open"
     ref="dialog"
     @vue:mounted="mountMobileDialogReturn"
@@ -353,7 +352,6 @@ function onKeydown(event: KeyboardEvent): void {
     @close="onDismissStart"
     @closed="emit('close')"
     @focus.once="input?.focus({ preventScroll: true })"
-    :close-icon="marIcon('close')"
   >
     <div
       class="quick-open-tabs"
@@ -490,11 +488,11 @@ function onKeydown(event: KeyboardEvent): void {
         </MarButton>
       </div>
     </div>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
-:global(.quick-open-dialog > .el-dialog__body) {
+:global(.quick-open-dialog > .mar-ui-dialog__body) {
   display: flex;
   flex-direction: column;
 }

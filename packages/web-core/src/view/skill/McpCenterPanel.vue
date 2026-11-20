@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarEmpty } from '@myagentroam/mar-ui/empty';
 import { MarSegmented } from '@myagentroam/mar-ui/segmented';
@@ -12,7 +13,7 @@ import { watchManagementPageFailure } from '../../service/management-page-feedba
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { createMcpCenterService, type McpCatalogCard } from '../../service/mcp-center-service.js';
 
@@ -234,11 +235,10 @@ async function install(entryId: string, enabled = true): Promise<void> {
 
 async function remove(serverName: string): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.mcpCenterPanel.removeFromTheCurrentTarget', { value0: serverName }),
       translate('generated.mcpCenterPanel.removeMCPServer'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.mcpCenterPanel.remove'),
@@ -295,11 +295,7 @@ function mcpErrorMessage(error: unknown): string {
 </script>
 
 <template>
-  <section
-    v-loading="pageLoading"
-    element-loading-custom-class="mar-page-loading"
-    class="mcp-panel"
-  >
+  <section v-mar-loading:page="pageLoading" class="mcp-panel">
     <section
       class="mcp-target-panel"
       :aria-label="translate('generated.mcpCenterPanel.mCPConfigurationTarget')"
@@ -387,7 +383,7 @@ function mcpErrorMessage(error: unknown): string {
       </div>
     </div>
     <div
-      v-loading="
+      v-mar-loading:region="
         pagination.loading.value &&
         !pagination.loadingMore.value &&
         (inspectionReady || !targetReady)

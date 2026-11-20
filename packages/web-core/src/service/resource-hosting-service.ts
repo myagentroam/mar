@@ -1,7 +1,7 @@
 import { showMessage } from './message-feedback-service.js';
 import { marIcon } from '../util/mar-icons.js';
 import { getCurrentScope, onScopeDispose, ref } from 'vue';
-import { ElMessageBox } from './message-box-service.js';
+import { MarMessageBox } from './message-box-service.js';
 import type { ResourceRow } from '../model/resource-management.js';
 import type { NodeDetailsHostingState } from '../model/node-details.js';
 import { translate } from './locale-preference-service.js';
@@ -121,11 +121,10 @@ export function createResourceHostingService<Row extends ResourceRow>(
       return;
     hostingChangingNodeId.value = row.nodeId;
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate('conversationHostingEnablement.enableConfirm'),
         translate('conversationHostingEnablement.enableConfirmTitle'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('conversationHostingEnablement.enable'),
@@ -190,11 +189,10 @@ export function createResourceHostingService<Row extends ResourceRow>(
       return;
     hostingChangingNodeId.value = row.nodeId;
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate('conversationHostingEnablement.disableConfirm'),
         translate('conversationHostingEnablement.disableConfirmTitle'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           type: 'warning',
           confirmButtonText: translate('conversationHostingEnablement.disable'),

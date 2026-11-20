@@ -49,7 +49,7 @@ test('Library loading has a single animated ring without mounting BusyIndicator'
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.url}library-loading.html`);
   await expect(page.locator('.mar-busy-indicator')).toHaveCount(0);
-  const spinner = page.locator('#library-loading .el-loading-spinner');
+  const spinner = page.locator('#library-loading .mar-ui-loading__indicator');
   await expect(spinner).toBeVisible();
   await expect(spinner.locator('.circular')).toBeHidden();
   const ring = async () =>
@@ -98,14 +98,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(submit).toHaveText('Clean up sessions');
       await expect(submit).toHaveAttribute('aria-busy', 'true');
       await expect(submit.locator('[data-mar-icon="loading-action"]')).toBeVisible();
-      await expect(dialog.locator('.el-loading-mask')).toHaveCount(0);
+      await expect(dialog.locator('.mar-ui-loading')).toHaveCount(0);
       await expect(dialog.locator('.workspace-session-cleanup-content')).toHaveAttribute(
         'aria-busy',
         'true'
       );
       await expect(days).toBeDisabled();
       await expect(cancel).toBeDisabled();
-      await expect(dialog.locator('.el-dialog__headerbtn')).toHaveCount(0);
+      await expect(dialog.locator('.mar-ui-dialog__close')).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(dialog).toBeVisible();
       await page.mouse.click(2, 2);
@@ -118,12 +118,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await controls
         .getByRole('button', { name: 'Fail cleanup', exact: true })
         .dispatchEvent('click');
-      await expect(page.locator('.el-message--error')).toContainText('Fixture cleanup failed');
+      await expect(page.locator('.mar-message--error')).toContainText('Fixture cleanup failed');
       await expect(submit).not.toHaveAttribute('aria-busy', 'true');
       await expect(days).toBeEnabled();
       await expect(days).toHaveValue('45');
       await expect(cancel).toBeEnabled();
-      await expect(dialog.locator('.el-dialog__headerbtn')).toBeVisible();
+      await expect(dialog.locator('.mar-ui-dialog__close')).toBeVisible();
       await submit.click();
       await expect(controls).toHaveAttribute('data-request-count', '2');
       await controls

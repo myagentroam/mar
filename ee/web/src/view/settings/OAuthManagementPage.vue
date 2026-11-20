@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -15,7 +17,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   newOAuthProviderDraft,
   oauthProviderInput,
@@ -310,7 +312,7 @@ async function test(provider: OAuthProvider): Promise<void> {
 }
 async function confirmProviderStatusChange(provider: OAuthProvider): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       provider.enabled
         ? translate('generated.oAuthManagementPage.confirmDisableOAuthProvider', {
             value0: provider.name
@@ -320,7 +322,6 @@ async function confirmProviderStatusChange(provider: OAuthProvider): Promise<voi
           }),
       translate('generated.oAuthManagementPage.updateOAuthProviderStatus'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: provider.enabled
@@ -354,11 +355,10 @@ async function toggle(provider: OAuthProvider): Promise<void> {
 }
 async function remove(provider: OAuthProvider): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.oAuthManagementPage.deleteOAuthProvider', { value0: provider.name }),
       translate('generated.oAuthManagementPage.deleteOAuthProvider2'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.oAuthManagementPage.delete'),
@@ -386,11 +386,7 @@ onMounted(() => {
 });
 </script>
 <template>
-  <section
-    v-loading="loading && !ready"
-    element-loading-custom-class="mar-page-loading"
-    class="mar-management-page oauth-management"
-  >
+  <section v-mar-loading:page="loading && !ready" class="mar-management-page oauth-management">
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.oAuthManagementPage.provider') }}</span
@@ -410,7 +406,7 @@ onMounted(() => {
       }}</MarButton>
     </div>
     <MarTable
-      v-loading="loading && ready && !refreshLoading"
+      v-mar-loading:region="loading && ready && !refreshLoading"
       :data="filteredProviders"
       class="clickable-rows oauth-provider-table"
       row-key="providerKey"
@@ -474,7 +470,7 @@ onMounted(() => {
         ></MarTableColumn
       ></MarTable
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="providerDetailsOpen && providerDetails"
@@ -482,7 +478,6 @@ onMounted(() => {
       :title="providerDetails.name"
       width="min(720px, calc(100vw - 32px))"
       @closed="providerDetails = undefined"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions :column="1" border>
         <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.providerKey')">
@@ -538,8 +533,8 @@ onMounted(() => {
       <template #footer>
         <MarButton @click="providerDetailsOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="open"
@@ -550,7 +545,6 @@ onMounted(() => {
           : translate('generated.oAuthManagementPage.addOAuthProvider')
       "
       width="min(680px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
       ><MarForm ref="formRef" :model="form" :rules="rules" label-position="top" class="oauth-form"
         ><MarFormItem
           :label="translate('generated.oAuthManagementPage.providerKey2')"
@@ -682,7 +676,7 @@ onMounted(() => {
         ><MarButton type="primary" :loading="saving" @click="save">{{
           translate('generated.oAuthManagementPage.saveAndDisable')
         }}</MarButton></template
-      ></el-dialog
+      ></MarDialog
     >
   </section>
 </template>

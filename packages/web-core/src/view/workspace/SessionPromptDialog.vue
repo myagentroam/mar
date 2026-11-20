@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -8,7 +10,6 @@ import {
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { createSessionPromptService } from '../../service/session-prompt-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -70,7 +71,7 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
@@ -84,12 +85,11 @@ async function save(): Promise<void> {
       }
     "
     @closed="emit('close')"
-    :close-icon="marIcon('close')"
   >
     <p class="session-prompt-description">{{ translate('generated.sessionPrompt.description') }}</p>
     <MarForm
       ref="formRef"
-      v-loading="loading"
+      v-mar-loading:region="loading"
       :model="form"
       :rules="rules"
       label-position="top"
@@ -113,7 +113,7 @@ async function save(): Promise<void> {
         translate('generated.sessionPrompt.save')
       }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

@@ -9,10 +9,8 @@ import {
 } from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
-import ElementPlus, { ElDialog } from 'element-plus';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import SharedTooltipFixture from './shared-tooltip-fixture.vue';
-import 'element-plus/dist/index.css';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import ComposerToolbar from '../../src/view/composer/ComposerToolbar.vue';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
@@ -380,7 +378,7 @@ const app = createApp({
       h('button', { onClick: () => (hintDialogOpen.value = true) }, 'Open hint dialog'),
       hintDialogOpen.value
         ? h(
-            ElDialog,
+            MarDialog,
             {
               modelValue: true,
               title: 'Hint dialog',
@@ -518,7 +516,6 @@ const resourceDetailsFixture = {
               : app
 )
   .use(i18n)
-  .use(ElementPlus)
   .mount('#app');
 
 // Match App.vue: mount the Tooltip host before connecting the document shortcut dispatcher.

@@ -824,11 +824,11 @@ test('sent image attachments in Aside use the shared preview dialog and their ow
     .poll(() => dialog.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
     .toBe(320);
   expect(reads).toBe(1);
-  await dialog.locator('.el-dialog__headerbtn').click();
+  await dialog.locator('.mar-ui-dialog__close').click();
   await expect(dialog).not.toBeVisible();
   await page.locator('.workspace-grid > .conversation-panel .conversation-file-attachment').click();
   await expect(dialog).toBeVisible();
-  await dialog.locator('.el-dialog__headerbtn').click();
+  await dialog.locator('.mar-ui-dialog__close').click();
   await expect(dialog).not.toBeVisible();
   expired = true;
   await asideImage.click();
@@ -4651,7 +4651,7 @@ test('Workspace registration uses an independent action target and cancellation 
   await expect(dialog).toBeVisible();
   await expect(welcome).toBeVisible();
   await expect.poll(() => directoryTarget).toBe('node-2');
-  await dialog.locator('.el-dialog__headerbtn').click();
+  await dialog.locator('.mar-ui-dialog__close').click();
   await expect(dialog).toHaveCount(0);
   await expect(welcome).toBeVisible();
   directoryTarget = null;
@@ -4705,7 +4705,7 @@ test('Workspace registration uses an independent action target and cancellation 
     JSON.parse(localStorage.getItem('mar.account.v1.1.mar.workbench.selection.v1') ?? '{}')
   );
   expect(selection.workspace).toEqual({ nodeId: 'node-1', workspaceId: 'workspace-1' });
-  await dialog.locator('.el-dialog__headerbtn').click();
+  await dialog.locator('.mar-ui-dialog__close').click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /^project\b/ })).toHaveAttribute(
     'aria-selected',

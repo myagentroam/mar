@@ -3,7 +3,7 @@ import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
-import { ElMessageBox } from './message-box-service.js';
+import { MarMessageBox } from './message-box-service.js';
 import type {
   AgentRun,
   ComposerSkillToken,
@@ -238,11 +238,10 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
     if (command?.interaction === 'DESTRUCTIVE_ACTION') {
       const confirmedSessionId = options.selectedSessionId.value;
       try {
-        await ElMessageBox.confirm(
+        await MarMessageBox.confirm(
           translate('generated.workbenchSessionMessageService.clearSessionConfirmation'),
           translate('generated.workbenchSessionMessageService.clearSession'),
           {
-            closeIcon: marIcon('close'),
             icon: marIcon('warning'),
             type: 'warning',
             confirmButtonText: translate(
@@ -251,7 +250,7 @@ export function createWorkbenchSessionMessageService(options: WorkbenchSessionMe
             cancelButtonText: translate(
               'generated.workbenchSessionMessageService.cancelClearSession'
             ),
-            confirmButtonClass: 'el-button--danger'
+            confirmButtonType: 'danger'
           }
         );
       } catch {

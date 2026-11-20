@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
@@ -30,7 +31,7 @@ import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 const value = ref('');
 const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
@@ -91,9 +92,9 @@ const dialogOpen = ref(false);
 const drawerOpen = ref(false);
 
 async function openConfirmation(): Promise<void> {
-  await ElMessageBox.confirm('Confirm this fixture action.', 'Action confirmation', {
-    closeIcon: marIcon('close')
-  }).catch(() => undefined);
+  await MarMessageBox.confirm('Confirm this fixture action.', 'Action confirmation').catch(
+    () => undefined
+  );
 }
 
 const longFeedback = Array.from(
@@ -426,7 +427,7 @@ function saveFeedbackDialog(): void {
     >
       Drawer content
     </el-drawer>
-    <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Message feedback dialog">
+    <MarDialog v-if="dialogOpen" v-model="dialogOpen" title="Message feedback dialog">
       <p>Dialog content</p>
       <button
         type="button"
@@ -438,7 +439,7 @@ function saveFeedbackDialog(): void {
       <button type="button" data-testid="save-feedback-dialog" @click="saveFeedbackDialog">
         Save and close
       </button>
-    </el-dialog>
+    </MarDialog>
   </section>
   <section aria-label="Loading directive sample">
     <button type="button" @click="sampleLoading = !sampleLoading">Toggle sample loading</button>

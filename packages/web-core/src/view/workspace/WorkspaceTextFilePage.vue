@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -17,7 +18,7 @@ import { fileKeys, workspaceKeys } from '../../service/console-shortcut-keys.js'
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import BusyIndicator from '../common/BusyIndicator.vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { confirmDiscardFileDraft } from '../../service/file-draft-confirm-service.js';
 import {
   computed,
@@ -687,10 +688,10 @@ async function pasteSelection(): Promise<void> {
 async function reloadContent(): Promise<void> {
   if (dirty.value) {
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate('filePreviewContext.reloadUnsaved'),
         translate('fileEditor.unsavedTitle'),
-        { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+        { icon: marIcon('warning'), type: 'warning' }
       );
     } catch {
       return;
@@ -1214,14 +1215,13 @@ defineExpose({
       @paste="pasteSelection"
       @reload="reloadContent"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="settingsOpen"
       v-model="settingsOpen"
       :title="translate('markdownPreview.settings')"
       width="min(28rem, calc(100vw - 2rem))"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="form"
@@ -1256,7 +1256,7 @@ defineExpose({
           translate('common.save')
         }}</MarButton></template
       >
-    </el-dialog>
+    </MarDialog>
   </WorkspaceFilePageFrame>
 </template>
 

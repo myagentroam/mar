@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
@@ -78,7 +79,7 @@ async function save(): Promise<void> {
 }
 </script>
 <template>
-  <section class="workspace-git-settings" v-loading="loading">
+  <section class="workspace-git-settings" v-mar-loading:region="loading">
     <h3>{{ t('personalGit.workspaceTitle') }}</h3>
     <p v-if="!connected">{{ t('personalGit.offline') }}</p>
     <template v-else>

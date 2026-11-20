@@ -438,7 +438,7 @@ for (const width of [1280, 390]) {
       else await deletedLink.click();
       await expect.poll(() => reads.length + popups.length).toBeGreaterThan(0);
       expect(popups.map((popup) => popup.url())).toEqual([]);
-      const error = page.locator('.el-message--error');
+      const error = page.locator('.mar-message--error');
       await expect(error).toContainText('FILE_NOT_FOUND');
       await expect(error).toContainText('deleted-file-preview');
       await expect.poll(() => reads).toContain('src/deleted.ts');
@@ -506,10 +506,10 @@ for (const width of [1280, 390]) {
     const settings = page.getByRole('dialog', { name: 'Markdown 预览设置', exact: true });
     await settingsButton.click();
     await expect(settings).toBeVisible();
-    await expect(settings.locator('.el-dialog__header')).toBeVisible();
-    await expect(settings.locator('.el-dialog__headerbtn')).toBeVisible();
-    await expect(settings.locator('.el-dialog__body')).toHaveCSS('display', 'block');
-    await settings.locator('.el-dialog__headerbtn').click();
+    await expect(settings.locator('.mar-ui-dialog__header')).toBeVisible();
+    await expect(settings.locator('.mar-ui-dialog__close')).toBeVisible();
+    await expect(settings.locator('.mar-ui-dialog__body')).toHaveCSS('display', 'block');
+    await settings.locator('.mar-ui-dialog__close').click();
     await expect(settings).toHaveCount(0);
     await expect(preview).toBeVisible();
     await expect(settingsButton).toBeFocused();
@@ -557,17 +557,17 @@ test('Mobile Back confirms all files, preserves cancelled windows, and can close
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText('// dirty');
   await page.evaluate(() => history.back());
-  const confirm = page.locator('.el-message-box');
+  const confirm = page.locator('.mar-message-box');
   await expect(confirm).toContainText('未保存的修改');
   await confirm.getByRole('button', { name: '取消', exact: true }).click();
-  await expect(page.locator('.el-overlay-message-box')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
   await expect(page.getByRole('tablist', { name: '文件预览标签' }).getByRole('tab')).toHaveCount(2);
   await expect(editor).toContainText('// dirty');
   await page.evaluate(() => history.back());
   await expect(confirm).toContainText('未保存的修改');
   await confirm.locator('.el-button--primary').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
-  await expect(page.locator('.el-overlay-message-box')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);
   await expect(page.locator('.workspace-tab')).toHaveCount(1);
 
@@ -677,9 +677,9 @@ test('Standalone rendered HTML supports content shortcuts and mobile Back to clo
     route.fulfill({
       contentType: 'text/html',
       body: `<input aria-label="Preview input">
-          <div class="el-overlay-dialog"><input aria-label="Nested input"></div>
+          <div class="mar-ui-dialog-overlay[open]"><input aria-label="Nested input"></div>
           <script>document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') event.target.closest('.el-overlay-dialog')?.remove();
+            if (event.key === 'Escape') event.target.closest('.mar-ui-dialog-overlay[open]')?.remove();
           });</script>`
     })
   );

@@ -5,7 +5,7 @@ import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
 import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
@@ -182,7 +182,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       ? translate('generated.workspaceInspector.deleteUntrackedFile')
       : translate('generated.workspaceInspector.revertChanges');
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.workspaceInspector.thisActionCannotBeUndone', {
         value0: action,
         value1: workspacePath

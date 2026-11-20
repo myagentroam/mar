@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarLink } from '@myagentroam/mar-ui/link';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -11,7 +12,7 @@ import {
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
 import {
@@ -198,10 +199,10 @@ function closePasswordDialog(): void {
 }
 async function confirmLogoutSession(session: UserSessionSummary): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.settingsContent.confirmSignOutSession'),
       translate('generated.settingsContent.signOut'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -210,10 +211,10 @@ async function confirmLogoutSession(session: UserSessionSummary): Promise<void> 
 }
 async function confirmLogout(): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.settingsContent.confirmSignOut'),
       translate('generated.settingsContent.signOut2'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -296,14 +297,13 @@ async function confirmLogout(): Promise<void> {
           translate('generated.settingsContent.signOut2')
         }}</MarButton>
       </div>
-      <el-dialog
+      <MarDialog
         @vue:mounted="mountMobileDialogReturn"
         @vue:before-unmount="unmountMobileDialogReturn"
         v-if="passwordDialogOpen"
         v-model="passwordDialogOpen"
         :title="translate('generated.settingsContent.changePassword2')"
         width="min(420px, calc(100vw - 32px))"
-        :close-icon="marIcon('close')"
       >
         <MarForm label-position="top" @submit.prevent="submitPasswordChange">
           <MarFormItem :label="translate('generated.settingsContent.currentPassword')" required
@@ -348,7 +348,7 @@ async function confirmLogout(): Promise<void> {
             >{{ translate('generated.settingsContent.confirmChange') }}</MarButton
           ></template
         >
-      </el-dialog>
+      </MarDialog>
     </section>
     <section v-else-if="section === 'registration'" class="full settings-panel">
       <h2>{{ translate('generated.settingsContent.nodeRegistration') }}</h2>

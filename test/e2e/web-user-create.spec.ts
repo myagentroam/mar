@@ -180,7 +180,7 @@ for (const [locale, width] of [
         locale === 'en-US' ? 'Enter a valid email address' : '请输入有效邮箱'
       ]);
       expect(ui.writes).toHaveLength(0);
-      expect((await ui.dialog.locator('.el-dialog').boundingBox())!.width).toBeLessThanOrEqual(
+      expect((await ui.dialog.locator('.mar-ui-dialog').boundingBox())!.width).toBeLessThanOrEqual(
         width - 32
       );
       if (close === 'cancel')
@@ -188,7 +188,7 @@ for (const [locale, width] of [
           .getByRole('button', { name: locale === 'en-US' ? 'Cancel' : '取消', exact: true })
           .click();
       else if (close === 'escape') await page.keyboard.press('Escape');
-      else if (close === 'icon') await ui.dialog.locator('.el-dialog__headerbtn').click();
+      else if (close === 'icon') await ui.dialog.locator('.mar-ui-dialog__close').click();
       else await page.mouse.click(4, 4);
       await expect(ui.dialog).toHaveCount(0);
       await expect(ui.create).toBeFocused();
@@ -284,7 +284,7 @@ test('Registered users form preserves failures for correction and delivers succe
   const username = ui.dialog.getByRole('textbox', { name: 'Username' });
   await username.fill('duplicate');
   await ui.dialog.getByRole('button', { name: 'Create user', exact: true }).click();
-  await expect(page.locator('.el-message--error')).toContainText('Username already exists');
+  await expect(page.locator('.mar-message--error')).toContainText('Username already exists');
   await expect(username).toHaveValue('duplicate');
   ui.respond(async () => ({
     status: 201,
@@ -322,7 +322,7 @@ for (const outcome of ['success', 'failure'] as const) {
     await ui.dialog.getByRole('textbox', { name: 'Username' }).fill('old-user');
     await ui.dialog.getByRole('button', { name: 'Create user', exact: true }).click();
     await expect.poll(() => ui.writes.length).toBe(1);
-    await ui.dialog.locator('.el-dialog__headerbtn').click();
+    await ui.dialog.locator('.mar-ui-dialog__close').click();
     await expect(ui.dialog).toHaveCount(0);
     await ui.create.click();
     const username = ui.dialog.getByRole('textbox', { name: 'Username' });
@@ -341,7 +341,7 @@ for (const outcome of ['success', 'failure'] as const) {
     }
     await expect(username).toHaveValue('next-user');
     await expect(ui.dialog.getByRole('button', { name: 'Create user', exact: true })).toBeEnabled();
-    await expect(page.locator('.el-message--error')).toHaveCount(0);
+    await expect(page.locator('.mar-message--error')).toHaveCount(0);
     expect(ui.writes).toHaveLength(1);
   });
 }
@@ -380,7 +380,7 @@ test('Registered users refreshes the saved row without closing the next edit dra
     );
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await patch).postDataJSON()).toMatchObject({ nickname: 'Alice saved' });
-    await dialog.locator('.el-dialog__headerbtn').click();
+    await dialog.locator('.mar-ui-dialog__close').click();
     await expect(dialog).toHaveCount(0);
     await row('bob').getByRole('button', { name: 'Edit', exact: true }).click();
     await name.fill('Bob draft');
@@ -541,11 +541,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       const ui = await preparePersonalCredentials(page, locale, behavior);
       await ui.copy.click();
 
-      const errorMessage = page.locator('.el-message--error');
+      const errorMessage = page.locator('.mar-message--error');
       await expect(errorMessage).toHaveCount(1);
-      await expect(errorMessage.locator('.el-message__content')).toHaveText(
-        manualCopyMessage[locale]
-      );
+      await expect(errorMessage.locator('.mar-message-text')).toHaveText(manualCopyMessage[locale]);
       await expect(ui.credentials).toBeVisible();
       await expect(ui.credentials.locator('.credential-result dd')).toHaveText([
         'fixture-user',
@@ -599,7 +597,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(ui.credentials).toBeVisible();
     expect(ui.writes).toHaveLength(1);
 
-    await ui.credentials.locator('.el-dialog__headerbtn').click();
+    await ui.credentials.locator('.mar-ui-dialog__close').click();
     await expect(ui.credentials).toHaveCount(0);
     await page
       .locator('.mar-table-actions')

@@ -8,7 +8,7 @@ import {
   translate
 } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import type { Session } from '../../src/model/workbench.js';
 import type {
   NavigationSession,
@@ -211,7 +211,7 @@ createTooltipApp(
                 {
                   'data-testid': 'show-confirmation',
                   onClick: () => {
-                    void ElMessageBox.confirm('Fixture confirmation', 'Confirmation').catch(
+                    void MarMessageBox.confirm('Fixture confirmation', 'Confirmation').catch(
                       () => undefined
                     );
                   }

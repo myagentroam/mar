@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { showMessage } from '../../service/message-feedback-service.js';
@@ -6,7 +7,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
 import claudeCodeLogo from '../../assets/runner-claude-code.png';
@@ -194,10 +195,10 @@ async function clear(): Promise<void> {
   const content = formState.value.content;
   saving.value = true;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('personalInstructions.clearConfirmation'),
       translate('personalInstructions.clear'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     const response = await props.request<{ instructions: Instructions }>(
       `/api/personal-instructions/${scope}`,
@@ -221,8 +222,7 @@ async function clear(): Promise<void> {
 
 <template>
   <section
-    v-loading="loading"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading"
     class="personal-instructions settings-panel"
     :aria-busy="loading"
   >

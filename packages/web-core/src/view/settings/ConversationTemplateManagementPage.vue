@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
@@ -20,7 +22,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
@@ -547,10 +549,10 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
       showMessage(translate('conversationTemplates.errorModelInvalid'), 'error');
       return;
     }
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('conversationTemplates.publishConfirmation', { name: row.name }),
       translate('conversationTemplates.publish'),
-      { closeIcon: marIcon('close'), ...confirmationOptions('conversationTemplates.publish') }
+      { ...confirmationOptions('conversationTemplates.publish') }
     );
     if (disposed) return;
     publishingIds.value = new Set(publishingIds.value).add(row.id);
@@ -648,10 +650,10 @@ async function confirmedMutation(
   type: 'warning' | 'danger' = 'warning'
 ): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(confirmationKey, { name: row.name }),
       translate(actionKey),
-      { closeIcon: marIcon('close'), ...confirmationOptions(actionKey, type) }
+      { ...confirmationOptions(actionKey, type) }
     );
     if (disposed) return;
     await action();
@@ -740,8 +742,7 @@ onMounted(() => {
 
 <template>
   <section
-    v-loading="pagination.loading.value && !pageReady && !pagination.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="pagination.loading.value && !pageReady && !pagination.failure.value"
     class="mar-management-page conversation-template-management"
     :aria-busy="pagination.loading.value && !pageReady"
   >
@@ -770,7 +771,7 @@ onMounted(() => {
       ><template #icon><MarIcon name="warning" /></template
     ></MarAlert>
     <MarTable
-      v-loading="
+      v-mar-loading:region="
         pagination.loading.value &&
         pageReady &&
         !pagination.loadingMore.value &&
@@ -874,7 +875,7 @@ onMounted(() => {
       @load-more="pagination.loadMore"
     />
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editDialogOpen"
@@ -887,7 +888,6 @@ onMounted(() => {
       width="min(880px, calc(100vw - 32px))"
       destroy-on-close
       @closed="closeEditDialog"
-      :close-icon="marIcon('close')"
     >
       <MarForm ref="formRef" :model="draft" :rules="rules" label-position="top">
         <div class="form-grid">
@@ -1061,9 +1061,9 @@ onMounted(() => {
           >{{ translate('conversationTemplates.save') }}</MarButton
         >
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailDialogOpen && detail"
@@ -1071,7 +1071,6 @@ onMounted(() => {
       :title="detail.template.name"
       width="min(720px, calc(100vw - 32px))"
       @closed="closeDetailDialog"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions :column="2" border>
         <MarDescriptionsItem :label="translate('conversationTemplates.templateId')">
@@ -1109,7 +1108,7 @@ onMounted(() => {
       <template #footer>
         <MarButton @click="detailDialogOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

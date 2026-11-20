@@ -4,7 +4,6 @@ import 'element-plus/dist/index.css';
 import '../../../../packages/web-core/src/styles.css';
 import { createEnterpriseManagementComposition } from '../../src/composition/enterprise-management.js';
 import UserManagementPage from '../../src/view/settings/UserManagementPage.vue';
-import { elementPlusDialogFocusPlugin } from '../../../../packages/web-core/src/service/element-plus-dialog-focus.js';
 import type { ManagementPageContext } from '../../../../packages/web-core/src/service/management-composition.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
 
@@ -47,5 +46,4 @@ function createFixtureApp() {
 const app = createFixtureApp();
 app.use(ElementPlus);
 app.use(i18n);
-app.use(elementPlusDialogFocusPlugin);
 app.mount('#app');

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTabs from '../../src/view/workspace/WorkspaceFileTabs.vue';
 import { createMobileMenuHistoryService } from '../../src/service/mobile-menu-history-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import type { WorkspaceFileTab } from '../../src/util/workspace-file-tab.js';
 
 const aside = ref(false);
@@ -34,7 +34,7 @@ const handle = {
   async canClose() {
     if (!dirty.value) return true;
     try {
-      await ElMessageBox.confirm('Discard the edited file?', 'Unsaved file', {
+      await MarMessageBox.confirm('Discard the edited file?', 'Unsaved file', {
         confirmButtonText: 'Discard',
         cancelButtonText: 'Keep editing'
       });

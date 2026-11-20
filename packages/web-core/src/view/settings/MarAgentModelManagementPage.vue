@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -24,7 +26,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
   modelSocks5UrlSchema,
@@ -898,11 +900,10 @@ function modelSaveBody(): Record<string, unknown> {
 
 async function remove(model: ModelSummary) {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('marAgentModels.confirmRemove', { name: model.name }),
       translate('marAgentModels.remove'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.remove'),
@@ -1197,11 +1198,10 @@ async function testCredential(credential: CodexCredentialSummary): Promise<void>
 
 async function removeCredential(credential: CodexCredentialSummary): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('marAgentModels.codexConfirmRemove', { name: credential.name }),
       translate('marAgentModels.remove'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.remove'),
@@ -1518,8 +1518,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    v-loading="initialLoading"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="initialLoading"
     class="mar-management-page mar-agent-model-management"
   >
     <MarTabs v-model="activeTab" class="management-tabs">
@@ -1867,7 +1866,7 @@ onBeforeUnmount(() => {
       </MarTabPane>
     </MarTabs>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialog"
@@ -1880,7 +1879,6 @@ onBeforeUnmount(() => {
             : translate('marAgentModels.add')
       "
       width="min(720px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="formRef"
@@ -2120,16 +2118,15 @@ onBeforeUnmount(() => {
           translate('marAgentModels.save')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="modelTestDialog && modelTestModel"
       v-model="modelTestDialog"
       :title="translate('marAgentModels.modelTestTitle')"
       width="min(520px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <p class="dialog-summary">{{ translate('marAgentModels.modelTestSummary') }}</p>
       <MarForm label-position="top">
@@ -2220,10 +2217,10 @@ onBeforeUnmount(() => {
           >{{ translate('marAgentModels.test') }}</MarButton
         >
       </template>
-    </el-dialog>
+    </MarDialog>
 
     <slot name="model-extensions" :refresh="refreshModels" />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentialDialog"
@@ -2237,7 +2234,6 @@ onBeforeUnmount(() => {
       "
       width="min(620px, calc(100vw - 32px))"
       @closed="resetCredentialDialog"
-      :close-icon="marIcon('close')"
     >
       <MarForm
         ref="credentialFormRef"
@@ -2336,9 +2332,9 @@ onBeforeUnmount(() => {
           )
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="loginAttemptDialog && loginAttempt"
@@ -2356,7 +2352,6 @@ onBeforeUnmount(() => {
       :show-close="loginAttempt.status !== 'PENDING'"
       :close-on-click-modal="false"
       :close-on-press-escape="loginAttempt.status !== 'PENDING'"
-      :close-icon="marIcon('close')"
     >
       <template v-if="loginAttempt.status === 'PENDING'">
         <p class="dialog-summary">
@@ -2428,16 +2423,15 @@ onBeforeUnmount(() => {
           translate('marAgentModels.close')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="modelDetailOpen && selectedModelDetail"
       v-model="modelDetailOpen"
       :title="translate('marAgentModels.details')"
       width="min(720px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions class="mar-detail-descriptions" :column="1" border>
         <MarDescriptionsItem :label="translate('marAgentModels.modelConfigurationId')">
@@ -2510,18 +2504,17 @@ onBeforeUnmount(() => {
       <template #footer>
         <MarButton @click="modelDetailOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentialDetailOpen"
       v-model="credentialDetailOpen"
       :title="translate('marAgentModels.codexCredentialDetails')"
       width="min(720px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
-      <div v-loading="credentialDetailLoading">
+      <div v-mar-loading:region="credentialDetailLoading">
         <MarDescriptions v-if="selectedCredentialDetails" :column="1" border>
           <MarDescriptionsItem :label="translate('marAgentModels.codexCredentialId')">
             <code>{{ selectedCredentialDetails.credential.id }}</code>
@@ -2703,16 +2696,15 @@ onBeforeUnmount(() => {
           translate('marAgentModels.close')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="catalogDialog"
       v-model="catalogDialog"
       :title="translate('marAgentModels.codexCatalogTitle')"
       width="min(1180px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <p v-if="catalogCredential" class="dialog-summary">
         {{ translate('marAgentModels.codexCatalogSummary', { name: catalogCredential.name }) }}
@@ -2725,7 +2717,7 @@ onBeforeUnmount(() => {
       >
         <slot name="catalog-ownership" />
       </MarForm>
-      <div v-loading="catalogLoading" class="catalog-table-wrap">
+      <div v-mar-loading:region="catalogLoading" class="catalog-table-wrap">
         <MarTable :data="catalogRows" row-key="upstreamModelId">
           <MarTableColumn :label="translate('marAgentModels.select')" width="80">
             <template #default="{ row }"><MarCheckbox v-model="row.selected" /></template>
@@ -2795,16 +2787,15 @@ onBeforeUnmount(() => {
           >{{ translate('marAgentModels.codexImport') }}</MarButton
         >
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="importResultDialog"
       v-model="importResultDialog"
       :title="translate('marAgentModels.codexImportResultTitle')"
       width="min(640px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
       <MarTable :data="importResult?.items ?? []">
         <MarTableColumn
@@ -2826,7 +2817,7 @@ onBeforeUnmount(() => {
           translate('marAgentModels.close')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

@@ -502,7 +502,7 @@ for (const [notice, message, width] of [
     await expect(
       page.getByText('No definitions or references found.', { exact: true })
     ).toHaveCount(0);
-    await expect(page.locator('.el-message--error')).toHaveCount(0);
+    await expect(page.locator('.mar-message--error')).toHaveCount(0);
     const bounds = (await dropdown.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);

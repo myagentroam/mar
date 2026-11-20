@@ -256,7 +256,7 @@ test('Node detail actions stay above Close and capability refresh stays within i
     expect(action.y).toBeLessThan(section.y + 32);
     await refresh.click();
     await expect(page.getByTestId('capability-refresh-count')).toHaveText('1');
-    const footer = dialog.locator('.el-dialog__footer');
+    const footer = dialog.locator('.mar-ui-dialog__footer');
     const close = footer.getByRole('button', { name: 'Close', exact: true });
     const upgrade = footer.locator('.node-detail-actions button');
     await upgrade.click();
@@ -556,7 +556,9 @@ test('Shared tooltip preserves inline cancellation and native select Escape insi
   await expect(dialog).toBeVisible();
 
   const select = dialog.getByRole('combobox', { name: 'Escape select', exact: true });
+  await dialog.getByRole('button', { name: 'Close this dialog' }).focus();
   await select.focus();
+  await expect(hint).toHaveText('Select details');
   await select.press('Enter');
   await expect(page.getByRole('listbox')).toBeVisible();
   await expect(hint).toHaveText('Select details');
@@ -682,7 +684,7 @@ test('Markdown copy hints share the tooltip host across content replacement and 
   await expect(copy).not.toHaveAttribute('title');
   await copy.hover();
   await expect(hint).toHaveText('Copy code');
-  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  await expect(hint).toHaveAttribute('data-arrow');
   await copy.focus();
   await copy.press('Escape');
   await expect(hint).toHaveCount(0);
@@ -758,7 +760,7 @@ test('Unified hints preserve keyboard actions, details and disabled semantics', 
 
 test('Escape dismisses a focused hint before its containing dialog', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html`);
-  await page.getByRole('button', { name: 'Open hint dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'Open hint dialog', exact: true }).press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Hint dialog', exact: true });
   const action = dialog.getByRole('button', { name: 'Dialog action', exact: true });
   await action.focus();
@@ -1181,10 +1183,52 @@ test('Performance hover displays the details panel without a second hint', async
   await page.clock.runFor(1000);
   const panel = page.locator('.web-performance-panel');
   await expect(panel).toBeVisible();
-  const popover = page.locator('.el-popover').filter({ has: panel });
+  const popover = page.locator('.mar-ui-popover').filter({ has: panel });
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
   await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+});
+
+test('Performance details stay open on keyboard focus after the pointer leaves', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  await page.clock.install();
+  const trigger = page.locator('.web-performance-indicator');
+  const panel = page.locator('.web-performance-panel');
+  await trigger.hover();
+  await trigger.focus();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+  const viewport = page.viewportSize()!;
+  await page.mouse.move(viewport.width - 2, viewport.height - 2);
+  await expect.poll(() => trigger.evaluate((element) => element.matches(':hover'))).toBe(false);
+  await expect(trigger).toBeFocused();
+  await page.clock.runFor(400);
+  await expect(
+    page.locator('.mar-ui-popover:not([data-closing])').filter({ has: panel })
+  ).toBeVisible();
+  await trigger.evaluate((element: HTMLElement) => element.blur());
+  await page.clock.runFor(400);
+  await expect(panel).toBeHidden();
+});
+
+test('Escape from the performance details returns focus without reopening the panel', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  await page.clock.install();
+  const trigger = page.locator('.web-performance-indicator');
+  const panel = page.locator('.web-performance-panel');
+  await trigger.focus();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+  await trigger.press('Tab');
+  await expect(panel.getByRole('button')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(400);
+  await expect(panel).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {

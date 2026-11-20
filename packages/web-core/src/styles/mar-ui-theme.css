@@ -32,10 +32,24 @@
   --mar-ui-font-size-body: var(--mar-font-size-body);
   --mar-ui-font-size-input: var(--mar-font-size-input);
   --mar-ui-font-size-meta: var(--mar-font-size-meta);
+  --mar-ui-radius-surface: var(--mar-radius-surface);
   --mar-ui-radius-control: var(--mar-radius-control);
   --mar-ui-input-border: var(--mar-input-border);
   --mar-ui-input-border-hover: var(--mar-input-border-hover);
+  --mar-ui-loading-mask: var(--mar-overlay-scrim);
+  --mar-ui-loading-page-color: var(--mar-color-brand-text);
+  --mar-ui-dialog-scrim: var(--mar-overlay-scrim);
+  --mar-ui-dialog-surface: var(--mar-bg-panel);
+  --mar-ui-message-surface: var(--mar-control-bg-color-overlay);
+  --mar-ui-dialog-shadow: 0 0.75rem 2rem var(--mar-shadow-medium);
+  --mar-ui-message-border: var(--mar-border-default);
+  --mar-ui-message-success-color: var(--mar-control-color-success);
+  --mar-ui-message-warning-color: var(--mar-control-color-warning);
+  --mar-ui-message-error-color: var(--mar-control-color-danger);
+  --mar-ui-dialog-title-size: var(--mar-font-size-title);
   --mar-ui-overlay-border: var(--mar-overlay-border);
+  --mar-ui-content-popover-shadow:
+    0 2px 6px var(--mar-shadow-soft), 0 10px 24px var(--mar-shadow-medium);
   --mar-ui-overlay-surface: var(--mar-overlay-surface);
   --mar-ui-overlay-shadow: var(--mar-compact-overlay-shadow);
   --mar-ui-table-bg: var(--mar-bg-panel);

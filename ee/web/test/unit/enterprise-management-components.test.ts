@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
 import { createSSRApp, defineComponent, h, ref, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { createResourceHostingService } from '../../src/service/resource-hosting-service.js';
@@ -47,8 +47,6 @@ beforeEach(() => {
     history: { replaceState: vi.fn() },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   });
-  vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }) as never);
-  vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }) as never);
 });
 
 afterEach(() => {
@@ -186,12 +184,12 @@ describe('Enterprise management components', () => {
           .findAll('MarTable')
           .find((node) => (node.props['data'] as unknown[])?.length === 1)!;
         await trigger(modelTable, 'onRowClick', (modelTable.props['data'] as unknown[])[0]);
-        expect(textContent(view.findAll('ElDialog')[0]!)).toContain(
+        expect(textContent(view.findAll('MarDialog')[0]!)).toContain(
           i18n.global.t('marAgentModels.codexCredentialScopeOrganization', {
             value0: role === 'MEMBER' ? '2' : 'Fixture organization'
           })
         );
-        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+        await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
         const tabs = view.findAll('MarTabPane').map((node) => node.props['name']);
         expect(tabs).toEqual(
           expect.arrayContaining(['modelOrder', 'models', 'codexCredentials', 'imageGeneration'])
@@ -356,7 +354,7 @@ describe('Enterprise management components', () => {
       supportsExistingConversations: true
     } as const;
     const request = vi.fn(async () => ({ capability: enabled }));
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirmed' as never);
+    const confirm = vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirmed' as never);
     const context = { role: 'ADMIN' as const, writable: true, edition: 'ENTERPRISE' as const };
     const service = createResourceHostingService(request as never, () => context);
     const organizationNode = {
@@ -767,7 +765,7 @@ describe('Enterprise management components', () => {
       if (path.endsWith('/enabled') && init?.method === 'POST') return {};
       throw new Error(`Unexpected request: ${path}`);
     });
-    const confirm = vi.spyOn(ElMessageBox, 'confirm');
+    const confirm = vi.spyOn(MarMessageBox, 'confirm');
     confirm.mockRejectedValueOnce('cancel').mockResolvedValue('confirmed' as never);
     const view = renderComponent(OAuthManagementPage, {
       request: request as never,
@@ -805,3 +803,14 @@ describe('Enterprise management components', () => {
     }
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../../../packages/web-core/src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

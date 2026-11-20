@@ -15,7 +15,7 @@ import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from '../composer/ComposerSendButton.vue';
 import '../composer/composer-toolbar.css';
 import type { ConversationTemplateSummary, HostedConversationUpload } from '@myagentroam/protocol';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { registerComposerShortcuts } from '../../service/composer-shortcut-service.js';
 import { createComposerAttachmentInputService } from '../../service/composer-attachment-input-service.js';
@@ -456,11 +456,10 @@ async function selectTemplate(templateId: string): Promise<void> {
     return;
   const watchId = props.workspace.selectedWatchId();
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.templateSwitchConfirmation', { name: target.name }),
       translate('hostedConversations.templateSwitchTitle'),
       {
-        closeIcon: marIcon('close'),
         confirmButtonText: translate('hostedConversations.switchTemplate'),
         cancelButtonText: translate('common.cancel')
       }
@@ -514,11 +513,10 @@ async function handleTemplateMenuVisibility(visible: boolean): Promise<void> {
 
 async function confirmDroppedAttachments(files: readonly File[]): Promise<boolean> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.confirmDroppedAttachments', { count: files.length }),
       translate('hostedConversations.confirmDroppedAttachmentsTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.confirmUpload'),

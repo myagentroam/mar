@@ -219,7 +219,7 @@ for (const crossNode of [false, true]) {
       failFetch = false;
       await page.getByRole('button', { name: 'Refresh Git history', exact: true }).click();
       await expect(fetchNotice).toHaveCount(0);
-      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error')).toHaveCount(0);
       await page.clock.fastForward(30_000);
       await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
       await expect(page.locator('.changes-refresh-button')).not.toBeDisabled();

@@ -1631,7 +1631,7 @@ test('Usage chart dimensions do not leak into calendar icons', async ({ page }) 
     expected: 8 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
   }));
   expect(chartSize.height).toBeCloseTo(chartSize.expected, 0);
-  await expect(page.locator('.mar-page-loading')).toBeHidden();
+  await expect(page.locator('.mar-ui-loading[data-variant=page]')).toBeHidden();
   await page.getByRole('combobox', { name: 'Time range', exact: true }).click();
   await page.getByRole('option', { name: 'Custom range', exact: true }).click();
   await page.getByPlaceholder('Start time', { exact: true }).click();
@@ -1964,7 +1964,7 @@ for (const theme of ['dark', 'light'])
         .click();
       const dialog = page.getByRole('dialog', { name: 'Email templates', exact: true });
       await expect(dialog).toBeVisible();
-      const close = dialog.locator('.el-dialog__headerbtn');
+      const close = dialog.locator('.mar-ui-dialog__close');
       await expect(close.locator('[data-mar-icon="close"]')).toBeVisible();
       await close.click();
       await expect(dialog).toHaveCount(0);

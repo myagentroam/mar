@@ -50,13 +50,10 @@ vi.mock('../../src/view/conversation/DecodedPreviewImage.vue', () => ({
   }
 }));
 
-// Element Plus components are auto-imported directly, so global registration cannot replace them.
-vi.mock('element-plus/es', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('element-plus/es')>();
+vi.mock('@myagentroam/mar-ui/dialog', async () => {
   const { defineComponent, h } = await import('vue');
   return {
-    ...actual,
-    ElDialog: defineComponent({
+    MarDialog: defineComponent({
       props: { modelValue: Boolean, title: String },
       setup:
         (props, { slots }) =>

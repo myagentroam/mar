@@ -118,11 +118,10 @@ export function sortRows(
   const compare = column.sortMethod;
   return rows
     .map((row, index) => ({ row, index, value: compare ? undefined : field(row, column.prop) }))
-    .sort(
-      (a, b) =>
-        direction *
-        ((compare ? compare(a.row, b.row) : compareFields(a.value, b.value)) || a.index - b.index)
-    )
+    .sort((a, b) => {
+      const result = compare ? compare(a.row, b.row) : compareFields(a.value, b.value);
+      return result ? direction * result : a.index - b.index;
+    })
     .map(({ row }) => row);
 }
 

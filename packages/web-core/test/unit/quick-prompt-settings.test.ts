@@ -1,11 +1,8 @@
 import { createRenderer, h, nextTick, ssrContextKey, type Component, type VNode } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage } from 'element-plus';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
 import type { QuickPrompt } from '../../src/model/workbench.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
-
-vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn(), success: vi.fn() } }));
 
 const apps: { unmount(): void }[] = [];
 afterEach(() => {
@@ -116,7 +113,7 @@ describe('Quick prompt editor save ownership', () => {
       body: JSON.stringify({ phrase: 'first', prompt: 'Edited body' })
     });
     expect(view.refresh).toHaveBeenCalledTimes(3);
-    expect(ElMessage.success).toHaveBeenCalledTimes(2);
+    expect(feedback.success).toHaveBeenCalledTimes(2);
     expect(view.editor.dialogOpen).toBe(false);
     expect(view.editor.saving).toBe(false);
   });
@@ -132,7 +129,7 @@ describe('Quick prompt editor save ownership', () => {
     expect(view.editor.draft.prompt).toBe('Retained draft');
     expect(view.editor.saving).toBe(false);
     expect(view.refresh).toHaveBeenCalledOnce();
-    expect(ElMessage.error).toHaveBeenCalledOnce();
+    expect(feedback.error).toHaveBeenCalledOnce();
     await view.editor.save();
     expect(view.editor.dialogOpen).toBe(false);
   });
@@ -176,12 +173,12 @@ describe('Quick prompt editor save ownership', () => {
       await old.saving;
       expectSecond(view, true);
       expect(view.refresh).toHaveBeenCalledOnce();
-      expect(ElMessage.success).not.toHaveBeenCalled();
-      expect(ElMessage.error).not.toHaveBeenCalled();
+      expect(feedback.success).not.toHaveBeenCalled();
+      expect(feedback.error).not.toHaveBeenCalled();
       newRequest.resolve();
       await current.saving;
       expect(view.editor.dialogOpen).toBe(false);
-      expect(ElMessage.success).toHaveBeenCalledOnce();
+      expect(feedback.success).toHaveBeenCalledOnce();
     }
   );
 
@@ -201,8 +198,8 @@ describe('Quick prompt editor save ownership', () => {
       else refresh.reject(new Error('Old refresh failed'));
       await old.saving;
       expectSecond(view, false);
-      expect(ElMessage.success).not.toHaveBeenCalled();
-      expect(ElMessage.error).not.toHaveBeenCalled();
+      expect(feedback.success).not.toHaveBeenCalled();
+      expect(feedback.error).not.toHaveBeenCalled();
       await view.editor.save();
       expect(view.request).toHaveBeenLastCalledWith('/api/quick-prompts/second', expect.anything());
     }
@@ -223,3 +220,14 @@ describe('Quick prompt editor save ownership', () => {
     expectSecond(view, false);
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

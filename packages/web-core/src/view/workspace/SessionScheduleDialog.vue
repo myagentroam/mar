@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarRadioButton, MarRadioGroup } from '@myagentroam/mar-ui/radio';
 import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
 import { MarTimeSelect } from '@myagentroam/mar-ui/time-select';
@@ -450,7 +452,7 @@ function occurrenceStatus(status: string): string {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="open"
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -462,11 +464,10 @@ function occurrenceStatus(status: string): string {
     :title="translate('generated.scheduledSession.title')"
     width="min(560px, calc(100vw - 32px))"
     append-to-body
-    :close-icon="marIcon('close')"
   >
     <MarForm
       ref="formRef"
-      v-loading="loading"
+      v-mar-loading:region="loading"
       :aria-busy="loading"
       :model="form"
       :rules="rules"
@@ -685,7 +686,7 @@ function occurrenceStatus(status: string): string {
         >{{ translate('generated.scheduledSession.save') }}</MarButton
       >
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

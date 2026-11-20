@@ -161,7 +161,7 @@ export function renderComponent(
     'ElRadioButton',
     'ElRadio',
     'ElDivider',
-    'ElDialog',
+    'MarDialog',
     'ElForm',
     'ElPopover'
   ]) {
@@ -178,7 +178,7 @@ export function renderComponent(
               clearValidate() {}
             });
           return () => {
-            if (name === 'ElDialog' && !controlProps.modelValue) return null;
+            if (name === 'MarDialog' && !controlProps.modelValue) return null;
             const children = Object.entries(controlSlots).map(([slotName, slot]) =>
               name === 'ElInput' && slotName === 'password-icon'
                 ? slot?.({ visible: false })

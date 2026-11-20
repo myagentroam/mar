@@ -466,7 +466,7 @@ for (const lateOutcome of ['snapshot', 'failure'] as const) {
       await expect(loadingHistory).toHaveCount(0);
       await expect(page.locator('.hosted-workspace .hosted-timeline-scroll')).toBeVisible();
       await expect(rowB).toHaveAttribute('aria-current', 'page');
-      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error')).toHaveCount(0);
       expect(starts).toEqual({ a: 1, b: 1 });
     } finally {
       releaseA();
@@ -1141,7 +1141,7 @@ test('Hosted file deletion preserves files published by Watch before the HTTP re
   await expect(targetButton).toBeVisible();
   await page.getByRole('button', { name: '删除文件“result.txt”' }).click();
   await page
-    .locator('.el-message-box')
+    .locator('.mar-message-box')
     .getByRole('button', { name: '删除文件', exact: true })
     .click();
   try {
@@ -2143,7 +2143,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
     )
     .toBeLessThanOrEqual(28);
   await page.getByRole('button', { name: '删除文件“result.txt”' }).click();
-  const deleteDialog = page.locator('.el-message-box');
+  const deleteDialog = page.locator('.mar-message-box');
   await expect(deleteDialog).toContainText('删除“result.txt”后无法恢复。是否继续？');
   await deleteDialog.getByRole('button', { name: '删除文件', exact: true }).click();
   await expect(deleteDialog).toBeHidden();
@@ -2455,7 +2455,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await selectedConversationRow.hover();
   await selectedConversationRow.getByRole('button', { name: '“审查发布变更”的更多操作' }).click();
   await page.locator('.session-action-menu').getByText('删除', { exact: true }).click();
-  const deleteConversationDialog = page.locator('.el-message-box');
+  const deleteConversationDialog = page.locator('.mar-message-box');
   await expect(deleteConversationDialog).toContainText('删除“审查发布变更”后无法恢复。是否继续？');
   await deleteConversationDialog.getByRole('button', { name: '删除', exact: true }).click();
   await expect(selectedConversationRow).toHaveCount(0);
@@ -2683,7 +2683,7 @@ test('Interrupted hosted chats synchronize automatic titles and use Rollback ins
   await composer.fill('未发送草稿');
 
   await rollbackButton.click();
-  const cancelled = page.locator('.el-message-box');
+  const cancelled = page.locator('.mar-message-box');
   await expect(cancelled).toContainText('回滚会永久移除此消息及其后的对话历史');
   await cancelled.getByRole('button', { name: '取消', exact: true }).click();
   await expect(userMessage).toBeVisible();
@@ -2691,7 +2691,7 @@ test('Interrupted hosted chats synchronize automatic titles and use Rollback ins
   expect(rollbackBody).toBeUndefined();
 
   await rollbackButton.click();
-  const confirmed = page.locator('.el-message-box');
+  const confirmed = page.locator('.mar-message-box');
   await confirmed.getByRole('button', { name: '回滚', exact: true }).click();
 
   await expect(page.getByText('请重新执行托管检查', { exact: true })).toHaveCount(0);

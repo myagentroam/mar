@@ -250,7 +250,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     expect(writes).toHaveLength(0);
     await form.getByRole('textbox', { name: text.name }).fill('  test-node  ');
     await form.getByRole('button', { name: text.create, exact: true }).click();
-    await expect(page.locator('.el-message--error')).toContainText('REGISTRATION_UNAVAILABLE');
+    await expect(page.locator('.mar-message--error')).toContainText('REGISTRATION_UNAVAILABLE');
     await expect(form).toBeVisible();
     await expect(receipt).toHaveCount(0);
     await expect(form.getByRole('textbox', { name: text.name })).toHaveValue('  test-node  ');
@@ -1865,7 +1865,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(page.getByText(text.key, { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: text.refresh, exact: true }).click();
     await expect.poll(() => settingsRequests).toBe(2);
-    await expect(page.locator('.el-loading-mask')).toHaveCount(0);
+    await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
     expect(retiredRequests).toEqual([]);
   });
 }

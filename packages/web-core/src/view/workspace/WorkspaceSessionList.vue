@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
@@ -632,7 +634,7 @@ function submitSessionSearch(): void {
         )
       }}
     </p>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="skillDialogOpen"
@@ -640,9 +642,8 @@ function submitSessionSearch(): void {
       :title="translate('generated.workspaceSessionList.currentSkills')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
-      :close-icon="marIcon('close')"
     >
-      <div v-loading="skillService.loading.value" class="effective-skill-list">
+      <div v-mar-loading:region="skillService.loading.value" class="effective-skill-list">
         <p v-if="!skillService.loading.value && skillService.skills.value.length === 0">
           {{ translate('generated.workspaceSessionList.thisWorkspaceHasNoAvailableSkills') }}
         </p>
@@ -675,8 +676,8 @@ function submitSessionSearch(): void {
           </span>
         </div>
       </div>
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="mcpDialogOpen"
@@ -684,9 +685,8 @@ function submitSessionSearch(): void {
       :title="translate('generated.workspaceSessionList.loadedMCP2')"
       width="min(560px, calc(100vw - 32px))"
       append-to-body
-      :close-icon="marIcon('close')"
     >
-      <div v-loading="mcpService.loading.value" class="effective-skill-list">
+      <div v-mar-loading:region="mcpService.loading.value" class="effective-skill-list">
         <p
           v-if="
             !mcpService.loading.value && loadedMcps.length === 0 && executionBuiltIns.length === 0
@@ -751,7 +751,7 @@ function submitSessionSearch(): void {
           </div>
         </template>
       </div>
-    </el-dialog>
+    </MarDialog>
   </aside>
 </template>
 

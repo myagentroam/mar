@@ -587,7 +587,7 @@ test('Admin Console renames Codex and Claude sessions and confirms native-sessio
   await expect(actions).toHaveCSS('cursor', 'pointer');
   await actions.click();
   await page.getByRole('menuitem', { name: '重命名' }).click();
-  const renameDialog = page.locator('.el-message-box');
+  const renameDialog = page.locator('.mar-message-box');
   await renameDialog.locator('input').fill('我的会话');
   await renameDialog.getByRole('button', { name: '保存' }).click();
   await expect(page.locator('.session-list .session-link strong')).toHaveText('我的会话');
@@ -604,7 +604,7 @@ test('Admin Console renames Codex and Claude sessions and confirms native-sessio
   await sessionRow.hover();
   await sessionRow.getByRole('button', { name: '更多会话操作：我的会话' }).click();
   await page.getByRole('menuitem', { name: '删除' }).click();
-  const deleteDialog = page.locator('.el-message-box');
+  const deleteDialog = page.locator('.mar-message-box');
   await expect(deleteDialog).toContainText('无法恢复');
   await deleteDialog.getByRole('button', { name: '删除会话' }).click();
   await expect(page.locator('.session-list')).toHaveCount(0);
@@ -680,7 +680,7 @@ test('Workspace session cleanup defaults to thirty days and refreshes the sessio
 
   const pendingCleanup = await cleanupRequest;
   await expect(dialog.getByRole('button', { name: '清理中…' })).toBeVisible();
-  await expect(dialog.locator('.el-loading-mask')).toBeVisible();
+  await expect(dialog.locator('.mar-ui-loading')).toBeVisible();
   expect(writes).toEqual(
     expect.arrayContaining([
       expect.objectContaining({

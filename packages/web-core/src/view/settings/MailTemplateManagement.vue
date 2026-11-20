@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -115,7 +117,7 @@ async function sendTest(): Promise<void> {
   <MarButton :icon="marIcon('mail')" @click="openViewer">
     {{ translate('generated.systemConfigurationPage.mailTemplateView') }}
   </MarButton>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="viewerOpen"
@@ -123,9 +125,8 @@ async function sendTest(): Promise<void> {
     append-to-body
     :title="translate('generated.systemConfigurationPage.mailTemplates')"
     width="min(780px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
   >
-    <div v-loading="service.loading.value" class="template-viewer">
+    <div v-mar-loading:region="service.loading.value" class="template-viewer">
       <p class="template-description">
         {{ translate('generated.systemConfigurationPage.mailTemplateBuiltIn') }}
       </p>
@@ -159,7 +160,7 @@ async function sendTest(): Promise<void> {
             <span class="template-choice__subject">{{ template.subject }}</span>
           </button>
         </div>
-        <div v-if="selected" v-loading="previewing" class="template-preview">
+        <div v-if="selected" v-mar-loading:region="previewing" class="template-preview">
           <div class="template-preview__header">
             <span>{{ translate('generated.systemConfigurationPage.mailPreviewSample') }}</span>
             <span class="template-preview__locale">{{ selected.locale }}</span>
@@ -199,8 +200,8 @@ async function sendTest(): Promise<void> {
       </MarButton>
       <MarButton @click="viewerOpen = false">{{ translate('common.close') }}</MarButton>
     </template>
-  </el-dialog>
-  <el-dialog
+  </MarDialog>
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="testOpen"
@@ -208,7 +209,6 @@ async function sendTest(): Promise<void> {
     append-to-body
     :title="translate('generated.systemConfigurationPage.mailTest')"
     width="min(480px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
   >
     <MarForm ref="testForm" :model="testModel" :rules="testRules" label-position="top">
       <MarFormItem :label="translate('generated.systemConfigurationPage.mailAddress')" prop="email">
@@ -239,7 +239,7 @@ async function sendTest(): Promise<void> {
         {{ translate('generated.systemConfigurationPage.mailTestSend') }}
       </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

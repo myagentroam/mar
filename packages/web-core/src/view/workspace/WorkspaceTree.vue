@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
@@ -948,7 +949,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
     </p>
   </template>
   <p v-else class="tree-empty">{{ translate('generated.workspaceTree.noNodes') }}</p>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="workspaceGroupMoveDialogVisible"
@@ -956,7 +957,6 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
     :title="translate('generated.workspaceTree.moveWorkspaceToGroup')"
     width="min(440px, calc(100vw - 32px))"
     @closed="closeWorkspaceGroupMoveDialog"
-    :close-icon="marIcon('close')"
   >
     <div class="workspace-group-move-control">
       <MarSelect
@@ -993,7 +993,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         >{{ translate('generated.workspaceTree.save') }}</MarButton
       >
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

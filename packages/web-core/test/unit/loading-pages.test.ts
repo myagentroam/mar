@@ -51,9 +51,7 @@ describe('shared loading presentation', () => {
         expect(html).toContain('value="Draft value"');
         expect(html).toContain('aria-label="Retained content"');
         expect(html).toContain(`aria-busy="${loading}"`);
-        expect(html.includes('element-loading-custom-class="mar-page-loading"')).toBe(
-          variant === 'page'
-        );
+        expect(html).toContain(`data-loading-variant="${variant}"`);
       }
     }
   );

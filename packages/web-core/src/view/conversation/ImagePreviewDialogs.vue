@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
@@ -57,7 +58,7 @@ watch(
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="attachmentOpen"
@@ -68,7 +69,6 @@ watch(
     class="attachment-preview-dialog"
     destroy-on-close
     @update:model-value="emit('update:attachmentOpen', $event)"
-    :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
       <span v-tooltip="attachmentTitle" :id="titleId" :class="titleClass">{{
@@ -80,8 +80,8 @@ watch(
       :source="attachment.previewUrl"
       :name="attachment.file.name"
     />
-  </el-dialog>
-  <el-dialog
+  </MarDialog>
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="conversationOpen"
@@ -92,7 +92,6 @@ watch(
     class="attachment-preview-dialog"
     destroy-on-close
     @update:model-value="emit('update:conversationOpen', $event)"
-    :close-icon="marIcon('close')"
   >
     <template #header="{ titleId, titleClass }">
       <span v-tooltip="conversationTitle" :id="titleId" :class="titleClass">{{
@@ -114,11 +113,11 @@ watch(
         </MarButton>
       </template>
     </DecodedPreviewImage>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
-:global(.attachment-preview-dialog.el-dialog) {
+:global(.attachment-preview-dialog.mar-ui-dialog) {
   --preview-left: max(16px, env(safe-area-inset-left, 0px));
   --preview-right: max(16px, env(safe-area-inset-right, 0px));
   --preview-top: max(16px, env(safe-area-inset-top, 0px));
@@ -133,17 +132,17 @@ watch(
   top: calc((var(--preview-top) - var(--preview-bottom)) / 2);
   background: var(--mar-control-bg-color-overlay);
 }
-:global(.attachment-preview-dialog .el-dialog__header) {
+:global(.attachment-preview-dialog .mar-ui-dialog__header) {
   min-width: 0;
   flex: 0 0 auto;
 }
-:global(.attachment-preview-dialog .el-dialog__headerbtn) {
+:global(.attachment-preview-dialog .mar-ui-dialog__close) {
   width: 32px;
   height: 32px;
   top: calc(0.5rem + env(safe-area-inset-top, 0px));
   right: calc(0.5rem + env(safe-area-inset-right, 0px));
 }
-:global(.attachment-preview-dialog .el-dialog__title) {
+:global(.attachment-preview-dialog .mar-ui-dialog__title) {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -151,7 +150,7 @@ watch(
   font-size: var(--mar-font-size-title);
   font-weight: 600;
 }
-:global(.attachment-preview-dialog .el-dialog__body) {
+:global(.attachment-preview-dialog .mar-ui-dialog__body) {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -163,7 +162,7 @@ watch(
 }
 
 @media (max-width: 767px) {
-  :global(.attachment-preview-dialog.el-dialog) {
+  :global(.attachment-preview-dialog.mar-ui-dialog) {
     width: 100%;
     height: 100dvh;
     margin: 0;

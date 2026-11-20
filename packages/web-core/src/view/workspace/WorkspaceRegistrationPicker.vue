@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
@@ -171,7 +172,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="open"
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -179,7 +180,6 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
     :title="translate('generated.workspaceRegistrationPicker.registerWorkspace')"
     width="min(980px, calc(100vw - 32px))"
     :show-close="!loading"
-    :close-icon="marIcon('close')"
     :before-close="closeRegistration"
   >
     <div class="workspace-picker">
@@ -375,14 +375,13 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
       </MarForm>
     </div>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="directoryDialogOpen"
       v-model="directoryDialogOpen"
       :title="translate('generated.workspaceRegistrationPicker.newDirectory2')"
       width="min(460px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
       append-to-body
     >
       <MarForm
@@ -412,7 +411,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           translate('generated.workspaceRegistrationPicker.confirm')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
     <template #footer>
       <MarButton native-type="button" :disabled="loading" @click="closeRegistration">{{
         translate('generated.workspaceRegistrationPicker.cancel')
@@ -431,7 +430,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         }}
       </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

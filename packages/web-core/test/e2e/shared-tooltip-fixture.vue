@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { getCurrentInstance, onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
@@ -53,13 +55,13 @@ const releaseRunShortcuts = registerComposerShortcuts({
 onBeforeUnmount(releaseRunShortcuts);
 getCurrentInstance()!.appContext.app.mixin({
   created() {
-    if (this.$options.name === 'ElTooltip') {
+    if (this.$options.name === 'MarTooltip') {
       live.value++;
       created.value++;
     }
   },
   unmounted() {
-    if (this.$options.name === 'ElTooltip') live.value--;
+    if (this.$options.name === 'MarTooltip') live.value--;
   }
 });
 </script>
@@ -104,7 +106,7 @@ getCurrentInstance()!.appContext.app.mixin({
         </template>
       </MarDropdown>
     </aside>
-    <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Escape ownership">
+    <MarDialog v-if="dialogOpen" v-model="dialogOpen" title="Escape ownership">
       <input
         v-if="editing"
         v-tooltip="'Cancel editing with Escape'"
@@ -113,10 +115,10 @@ getCurrentInstance()!.appContext.app.mixin({
       />
       <output v-else data-testid="edit-cancelled">Edit cancelled</output>
       <div v-tooltip="'Select details'">
-        <el-select v-model="selection" aria-label="Escape select" filterable>
-          <el-option label="One" value="one" />
-          <el-option label="Two" value="two" />
-        </el-select>
+        <MarSelect v-model="selection" aria-label="Escape select" filterable>
+          <MarOption label="One" value="one" />
+          <MarOption label="Two" value="two" />
+        </MarSelect>
       </div>
       <MarDropdown trigger="click" @command="menuActions++">
         <button>Escape menu</button>
@@ -128,7 +130,7 @@ getCurrentInstance()!.appContext.app.mixin({
           </div>
         </template>
       </MarDropdown>
-    </el-dialog>
+    </MarDialog>
     <div
       v-if="mounted"
       v-show="shown"

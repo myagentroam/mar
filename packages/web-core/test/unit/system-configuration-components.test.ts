@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import Page from '../../src/view/settings/SystemConfigurationPage.vue?unit-render';
 import { createSystemConfigurationService } from '../../src/service/system-configuration-service.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -149,8 +149,8 @@ describe('Public system configuration page', () => {
     };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+
+    const error = feedback.error;
     let failSave = true;
     const snapshot = {
       smtpConfiguration: '{}',
@@ -211,3 +211,14 @@ describe('Public system configuration page', () => {
     }
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

@@ -70,7 +70,7 @@ test('desktop selection adds only a tag and quote-only history preserves its pub
   await selectReply(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
   const bubble = page.getByRole('group', { name: 'Quote', exact: true });
-  const popover = page.locator('.el-popover').filter({ has: bubble });
+  const popover = page.locator('.mar-ui-popover').filter({ has: bubble });
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('border-top-left-radius', '6px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 4px 12px 0px$/);
@@ -538,7 +538,7 @@ test('a long draft quote stays compact while preserving its full snapshot', asyn
   await tag.locator('.quote-tag-preview').click();
   const region = page.getByRole('region', { name: 'Quote', exact: true });
   await expect(region).toBeVisible();
-  await expect(page.locator('.el-popover').filter({ has: region })).toHaveCSS('opacity', '1');
+  await expect(page.locator('.mar-ui-popover').filter({ has: region })).toHaveCSS('opacity', '1');
   await region.hover();
   await expect(region).toContainText(text);
   expect(await result(page, 'references')).toMatchObject([{ text }]);
@@ -809,12 +809,12 @@ test('mobile quotation remains available after a cancelled touch gesture', async
 test('the quote bubble fades out without leaving a clickable action', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.addStyleTag({
-    content: 'html.console-ui { --el-transition-fade-linear: opacity 0.6s linear; }'
+    content: 'html.console-ui { --mar-ui-popover-leave-duration: 600ms; }'
   });
   await selectReply(page);
   const actions = page.locator('.quote-actions');
   const leaving = await actions.evaluate(async (element) => {
-    const popper = element.closest('.el-popper')!;
+    const popper = element.closest('.mar-ui-popover')!;
     await Promise.allSettled(popper.getAnimations().map((animation) => animation.finished));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -1061,7 +1061,7 @@ test('draft quote previews on hover, keyboard focus and click without removing t
   const region = page.getByRole('region', { name: 'Quote', exact: true });
   await preview.hover();
   await expect(region).toContainText('Select this reply excerpt.');
-  const popover = page.locator('.el-popover').filter({ has: region });
+  const popover = page.locator('.mar-ui-popover').filter({ has: region });
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
   await page.locator('textarea.composer-input').click();

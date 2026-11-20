@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DialogInstance } from 'element-plus';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { onBeforeUnmount, ref } from 'vue';
 
 const props = defineProps<{
@@ -7,12 +7,12 @@ const props = defineProps<{
   readonly label: string;
 }>();
 const emit = defineEmits<{ focus: []; close: [] }>();
-const dialog = ref<DialogInstance>();
+const dialog = ref<InstanceType<typeof MarDialog>>();
 const closing = ref(false);
 let finishClose: ((closed: boolean) => void) | undefined;
 
 function focusContent(): void {
-  if (dialog.value?.dialogContentRef?.$el === document.activeElement) emit('focus');
+  if (dialog.value?.panel === document.activeElement) emit('focus');
 }
 
 function requestClose(done: () => void): void {
@@ -46,7 +46,7 @@ defineExpose({ close, cancelClose });
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="props.overlay"
     ref="dialog"
     :model-value="props.overlay && !closing"
@@ -65,12 +65,12 @@ defineExpose({ close, cancelClose });
   >
     <template #header />
     <slot />
-  </el-dialog>
+  </MarDialog>
   <slot v-else />
 </template>
 
 <style scoped>
-:global(.file-preview-surface.el-dialog) {
+:global(.file-preview-surface.mar-ui-dialog) {
   --preview-left: max(16px, env(safe-area-inset-left, 0px));
   --preview-right: max(16px, env(safe-area-inset-right, 0px));
   --preview-top: max(16px, env(safe-area-inset-top, 0px));
@@ -91,11 +91,11 @@ defineExpose({ close, cancelClose });
   color: var(--mar-text-primary);
 }
 
-:global(.file-preview-surface.el-dialog > .el-dialog__header) {
+:global(.file-preview-surface.mar-ui-dialog > .mar-ui-dialog__header) {
   display: none;
 }
 
-:global(.file-preview-surface.el-dialog > .el-dialog__body) {
+:global(.file-preview-surface.mar-ui-dialog > .mar-ui-dialog__body) {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -105,7 +105,7 @@ defineExpose({ close, cancelClose });
 }
 
 @media (max-width: 767px) {
-  :global(.file-preview-surface.el-dialog) {
+  :global(.file-preview-surface.mar-ui-dialog) {
     width: 100%;
     height: 100dvh;
     margin: 0;

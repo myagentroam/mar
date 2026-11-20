@@ -13,7 +13,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import MarSegmented from '../common/MarSegmented.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
+import { MarTooltip } from '@myagentroam/mar-ui/tooltip';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
@@ -570,17 +570,19 @@ onUnmounted(() => {
               />
             </g>
           </svg>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            virtual-triggering
-            :virtual-ref="bucketReference"
-            :visible="activeBucketDetails.length > 0"
-            :enterable="false"
+          <MarTooltip
+            v-if="activeBucketDetails.length"
+            :anchor="bucketReference"
+            placement="bottom"
           >
-            <template #content>
-              <div v-for="(detail, index) in activeBucketDetails" :key="index">{{ detail }}</div>
-            </template>
-          </el-tooltip>
+            <div
+              v-for="(detail, index) in activeBucketDetails"
+              :key="index"
+              class="usage-tooltip-detail"
+            >
+              {{ detail }}
+            </div>
+          </MarTooltip>
           <div :id="`${trendId}-range`" class="axis-labels">
             <span>{{ time(state.overview.buckets[0]?.from) }}</span
             ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
@@ -967,7 +969,7 @@ p {
 }
 .usage-count:focus-visible,
 .trend-inspector input:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .bucket-hit-area {
@@ -986,13 +988,13 @@ p {
   stroke: var(--mar-border-default);
 }
 .input-bar {
-  fill: var(--el-color-primary-light-5);
+  fill: var(--mar-control-color-primary-light-5);
 }
 .output-bar {
-  fill: var(--el-color-primary);
+  fill: var(--mar-color-brand);
 }
 .cache-bar {
-  fill: var(--el-color-success);
+  fill: var(--mar-control-color-success);
 }
 .legend {
   display: flex;
@@ -1009,13 +1011,13 @@ p {
   margin-left: 0.6rem;
 }
 .input-key {
-  background: var(--el-color-primary-light-5);
+  background: var(--mar-control-color-primary-light-5);
 }
 .output-key {
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
 }
 .cache-key {
-  background: var(--el-color-success);
+  background: var(--mar-control-color-success);
 }
 .axis-labels {
   display: flex;
@@ -1035,7 +1037,7 @@ p {
 }
 .trend-inspector input {
   margin: 0;
-  accent-color: var(--el-color-primary);
+  accent-color: var(--mar-color-brand);
 }
 .distributions {
   display: grid;
@@ -1075,7 +1077,7 @@ li strong {
 .bar-track span {
   display: block;
   height: 100%;
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
 }
 .records {
   width: 100%;

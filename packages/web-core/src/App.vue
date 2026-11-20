@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { themePreferenceService } from './service/theme-preference-service.js';
+import { MarMessageBox } from './service/message-box-service.js';
 import { clearMessages } from './service/message-feedback-service.js';
 import {
   computed,
@@ -87,6 +88,7 @@ onMounted(() => {
     document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
 onBeforeUnmount(() => {
+  MarMessageBox.close();
   clearMessages();
   document.removeEventListener('contextmenu', preventBrowserContextMenu);
   document.removeEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });

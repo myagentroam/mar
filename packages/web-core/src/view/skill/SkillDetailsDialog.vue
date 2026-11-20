@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -6,7 +7,6 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import { currentLocale, translate } from '../../service/locale-preference-service.js';
 export interface SkillDetails {
   readonly name: string;
@@ -27,7 +27,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="modelValue"
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -36,7 +36,6 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
     width="min(720px, calc(100vw - 32px))"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
-    :close-icon="marIcon('close')"
   >
     <div v-if="details" class="skill-details">
       <strong class="skill-name">{{ details.name }}</strong>
@@ -102,7 +101,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
         translate('generated.skillDetailsDialog.close')
       }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

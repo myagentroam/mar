@@ -320,7 +320,7 @@ for (const english of [false, true]) {
     for (const [index, name] of ['Edited Model 21', 'Model 20'].entries()) {
       const row = page.locator('.mar-ui-table__row').filter({ hasText: name });
       await row.getByRole('button', { name: strings.remove, exact: true }).click();
-      const confirmation = page.locator('.el-message-box');
+      const confirmation = page.locator('.mar-message-box');
       await confirmation.getByRole('button', { name: strings.remove, exact: true }).click();
       await expect(row).toHaveCount(0);
       await expect(modelRows).toHaveCount(index === 0 ? 20 : 19);

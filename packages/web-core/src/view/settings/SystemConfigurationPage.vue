@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -16,7 +18,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { translate } from '../../service/locale-preference-service';
 import {
   createSystemConfigurationService,
@@ -208,11 +210,10 @@ async function save(key: string): Promise<void> {
     } else {
       if (snapshot.value.smtpConfiguration !== '{}') {
         try {
-          await ElMessageBox.confirm(
+          await MarMessageBox.confirm(
             translate('generated.systemConfigurationPage.smtpDisableConfirmation'),
             translate('generated.systemConfigurationPage.smtpDisableTitle'),
             {
-              closeIcon: marIcon('close'),
               icon: marIcon('warning'),
               type: 'warning',
               confirmButtonText: translate('generated.systemConfigurationPage.smtpDisableTitle'),
@@ -259,11 +260,7 @@ onMounted(() => {
 });
 </script>
 <template>
-  <section
-    v-loading="loading && !initialized"
-    element-loading-custom-class="mar-page-loading"
-    class="mar-management-page"
-  >
+  <section v-mar-loading:page="loading && !initialized" class="mar-management-page">
     <div class="mar-table-actions">
       <MarButton :icon="marIcon('refresh')" :loading="loading && initialized" @click="load">{{
         translate('generated.systemConfigurationPage.refresh')
@@ -361,7 +358,7 @@ onMounted(() => {
         </template>
       </MarTableColumn>
     </MarTable>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="smtpDialogOpen"
@@ -372,7 +369,6 @@ onMounted(() => {
       :close-on-press-escape="savingKey === null"
       :show-close="savingKey === null"
       append-to-body
-      :close-icon="marIcon('close')"
     >
       <div class="smtp-toggle">
         <span>{{ translate('generated.systemConfigurationPage.smtpEnable') }}</span>
@@ -491,7 +487,7 @@ onMounted(() => {
           </MarButton>
         </div>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

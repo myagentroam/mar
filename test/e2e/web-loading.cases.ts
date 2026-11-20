@@ -385,18 +385,18 @@ test('Unified loading: a successful empty settings page stays ready during refre
     .getByRole('navigation', { name: '设置菜单' })
     .getByRole('button', { name: '用量统计', exact: true })
     .click();
-  const mask = page.locator('.mar-page-loading:visible').last();
+  const mask = page.locator('.mar-ui-loading[data-variant=page]:visible').last();
   await expect.poll(() => reads).toBe(1);
   await expect(mask).toBeVisible();
-  const ring = mask.locator('.el-loading-spinner');
+  const ring = mask.locator('.mar-ui-loading__indicator');
   expect(
     await ring.evaluate(
       (element) =>
-        parseFloat(getComputedStyle(element, '::before').width) /
+        parseFloat(getComputedStyle(element).width) /
         parseFloat(getComputedStyle(document.documentElement).fontSize)
     )
   ).toBeCloseTo(1.25);
-  await expect(ring.locator('.circular')).toBeHidden();
+  await expect(ring).toHaveCSS('border-top-style', 'solid');
   await page.screenshot({ path: testInfo.outputPath('settings-page-loading.png') });
   first.release();
   await expect(mask).toHaveCount(0);
@@ -405,7 +405,7 @@ test('Unified loading: a successful empty settings page stays ready during refre
     .getByRole('button', { name: '刷新', exact: true });
   await refresh.click();
   await expect.poll(() => reads).toBe(2);
-  await expect(page.locator('.mar-page-loading:visible')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-loading[data-variant=page]:visible')).toHaveCount(0);
   await expect(refresh).toHaveAttribute('aria-busy', 'true');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(refresh.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
@@ -556,18 +556,18 @@ test('Unified loading: installed Skill inspection uses one local mask and retain
   await page.getByRole('tab', { name: '当前目标中的技能' }).click();
   const installed = page.locator('.skill-table-section:has(.installed-skill-table)');
   await expect(installed).toContainText('target-skill');
-  await expect(installed.locator('.el-loading-mask')).toHaveCount(0);
+  await expect(installed.locator('.mar-ui-loading')).toHaveCount(0);
   const check = page.getByRole('button', { name: '检查环境', exact: true });
   await check.click();
   await expect.poll(() => inspections).toBe(2);
-  await expect(installed.locator('.el-loading-mask')).toBeVisible();
+  await expect(installed.locator('.mar-ui-loading')).toBeVisible();
   await expect(installed).toContainText('target-skill');
   await expect(check).toBeDisabled();
   await expect(check).not.toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.mar-page-loading:visible')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-loading[data-variant=page]:visible')).toHaveCount(0);
   response.release();
   await expect(check).toBeEnabled();
-  await expect(installed.locator('.el-loading-mask')).toHaveCount(0);
+  await expect(installed.locator('.mar-ui-loading')).toHaveCount(0);
 });
 
 test('Unified loading: shared access keeps the password form visible during submission', async ({

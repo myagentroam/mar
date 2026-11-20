@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -6,7 +7,6 @@ import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import { ref } from 'vue';
 import { channelDisplayNameSchema } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
@@ -32,14 +32,13 @@ async function submit(): Promise<void> {
 }
 </script>
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
     :title="translate(editing ? 'sessionShare.editName' : 'sessionShare.setName')"
     width="min(420px, calc(100vw - 32px))"
     @close="emit('cancel')"
-    :close-icon="marIcon('close')"
   >
     <MarForm
       ref="form"
@@ -58,5 +57,5 @@ async function submit(): Promise<void> {
         translate(editing ? 'sessionShare.saveName' : 'sessionShare.confirmName')
       }}</MarButton></template
     >
-  </el-dialog>
+  </MarDialog>
 </template>

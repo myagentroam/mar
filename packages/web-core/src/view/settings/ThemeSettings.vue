@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
@@ -16,7 +17,7 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   type BuiltinTheme,
   type CustomTheme,
@@ -91,8 +92,7 @@ const rules = computed<FormRules>(() => ({
 async function confirmDiscard(): Promise<boolean> {
   if (!unsaved.value) return true;
   try {
-    await ElMessageBox.confirm(t('customThemes.discard'), t('customThemes.title'), {
-      closeIcon: marIcon('close'),
+    await MarMessageBox.confirm(t('customThemes.discard'), t('customThemes.title'), {
       icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.discardAction'),
@@ -128,8 +128,7 @@ async function selectTheme(item: ThemeRow): Promise<void> {
 async function reset(): Promise<void> {
   if (!dirty.value) return;
   try {
-    await ElMessageBox.confirm(t('customThemes.resetConfirm'), t('customThemes.title'), {
-      closeIcon: marIcon('close'),
+    await MarMessageBox.confirm(t('customThemes.resetConfirm'), t('customThemes.title'), {
       icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.reset'),
@@ -166,8 +165,7 @@ async function save(): Promise<void> {
 }
 async function remove(item: Pick<CustomTheme, 'id'>): Promise<void> {
   try {
-    await ElMessageBox.confirm(t('customThemes.deleteConfirm'), t('customThemes.title'), {
-      closeIcon: marIcon('close'),
+    await MarMessageBox.confirm(t('customThemes.deleteConfirm'), t('customThemes.title'), {
       icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.remove'),
@@ -405,7 +403,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
         <ThemePreview :name="analysis.name ?? t('customThemes.untitled')" :colors="previewColors" />
       </aside>
     </div>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="expandedPreview"
@@ -413,14 +411,13 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
       :title="t('customThemes.preview')"
       width="min(54rem, calc(100vw - 32px))"
       append-to-body
-      :close-icon="marIcon('close')"
     >
       <ThemePreview
         :name="analysis.name ?? t('customThemes.untitled')"
         :colors="previewColors"
         expanded
       />
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

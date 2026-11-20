@@ -8,7 +8,8 @@ import {
   type Ref,
   type SetupContext
 } from 'vue';
-import { ElMessage, ElMessageBox, type MessageBoxData } from 'element-plus';
+import { type MessageBoxData } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
 import HostedConversationComposer from '../../src/view/conversation/HostedConversationComposer.vue';
@@ -27,9 +28,8 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
     documentElement: { lang: '' }
   });
-  vi.spyOn(ElMessage, 'success').mockReturnValue({ close: vi.fn() });
-  vi.spyOn(ElMessage, 'error').mockReturnValue({ close: vi.fn() });
-  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData);
+
+  vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData);
 });
 
 afterEach(() => {
@@ -132,9 +132,9 @@ describe('file save draft preservation', () => {
         expectedRevision: 'r2'
       })
     ]);
-    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel');
+    vi.mocked(MarMessageBox.confirm).mockRejectedValueOnce('cancel');
     expect(await page.canClose()).toBe(false);
-    expect(ElMessageBox.confirm).toHaveBeenCalledOnce();
+    expect(MarMessageBox.confirm).toHaveBeenCalledOnce();
   });
 
   it('clears the dirty state when the submitted content is unchanged', async () => {
@@ -147,7 +147,7 @@ describe('file save draft preservation', () => {
     expect(page.dirty.value).toBe(false);
     expect(page.captureDirtyDrafts()).toEqual([]);
     expect(await page.canClose()).toBe(true);
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled();
+    expect(MarMessageBox.confirm).not.toHaveBeenCalled();
   });
 
   it('preserves an undo to the old baseline when the save callback publishes file props', async () => {
@@ -180,7 +180,7 @@ describe('file save draft preservation', () => {
     expect(page.editorContent.value).toBe('new unsaved edit');
     expect(page.revision.value).toBe('r1');
     expect(page.dirty.value).toBe(true);
-    expect(ElMessage.error).toHaveBeenCalledOnce();
+    expect(feedback.error).toHaveBeenCalledOnce();
   });
 
   it('updates the saved file cache without marking another file as saved', async () => {
@@ -404,10 +404,10 @@ describe('hosted message draft preservation', () => {
     async (reason) => {
       const { composer, workspace } = hostedFixture();
       const confirmation = deferred<MessageBoxData>();
-      vi.mocked(ElMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
+      vi.mocked(MarMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
       await composer.handleTemplateMenuVisibility(true);
       const pending = composer.selectTemplate('template-2');
-      expect(ElMessageBox.confirm).toHaveBeenCalledOnce();
+      expect(MarMessageBox.confirm).toHaveBeenCalledOnce();
       if (reason === 'watch-replaced') workspace.selectedWatchId.mockReturnValue('watch-2');
       if (reason === 'binding-replaced') {
         workspace.snapshot.value = {
@@ -517,3 +517,14 @@ describe('hosted message draft preservation', () => {
     await retry;
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

@@ -174,7 +174,7 @@ describe('Registered enterprise users creation lifecycle', () => {
       await fixture.input(1, 'discarded@example.test');
       await fixture.input(2, 'Discarded nickname');
       if (path === 'footer') await trigger(fixture.action('Cancel'), 'onClick');
-      else await trigger(fixture.view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+      else await trigger(fixture.view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
       expect(fixture.view.findAll('MarForm')).toHaveLength(0);
       await fixture.open();
       expect(fixture.values()).toEqual(['', '', '']);
@@ -409,7 +409,7 @@ describe('Registered enterprise users edit lifecycle', () => {
           }
         ]
       ]);
-      await trigger(fixture.view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+      await trigger(fixture.view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
       await fixture.edit(index);
       await fixture.input(1, 'draft@example.test');
       await fixture.input(2, 'Next draft');

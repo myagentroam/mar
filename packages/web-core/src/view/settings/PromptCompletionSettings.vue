@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
@@ -126,11 +127,7 @@ onBeforeUnmount(() => lifetime.abort());
 </script>
 
 <template>
-  <section
-    v-loading="busy && !ready"
-    element-loading-custom-class="mar-page-loading"
-    class="compact-settings"
-  >
+  <section v-mar-loading:page="busy && !ready" class="compact-settings">
     <p class="compact-hint">{{ translate('promptCompletion.hint') }}</p>
     <MarForm
       ref="form"

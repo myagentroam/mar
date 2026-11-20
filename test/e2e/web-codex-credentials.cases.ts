@@ -1535,7 +1535,7 @@ for (const english of [false, true]) {
     await dialog.getByRole('button', { name: english ? 'Save' : '保存', exact: true }).click();
     await expect(dialog).not.toBeVisible();
     expect(writes.at(-1)?.[0]?.config).not.toHaveProperty('apiKey');
-    await expect(page.locator('.image-generation-management .el-loading-mask')).not.toBeVisible();
+    await expect(page.locator('.image-generation-management .mar-ui-loading')).not.toBeVisible();
     await page.mouse.move(0, 0);
     await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 10_000 });
     await page.screenshot({

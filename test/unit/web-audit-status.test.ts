@@ -42,7 +42,7 @@ describe('audit result presentation', () => {
         await flushComponent();
         expect(view.findAll('MarTag').at(-1)?.props['type']).toBe(type);
       }
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('TEST_FAILED');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('TEST_FAILED');
     } finally {
       view.unmount();
     }

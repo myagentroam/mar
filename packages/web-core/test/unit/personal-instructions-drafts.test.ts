@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MessageBoxData } from 'element-plus';
 import { showMessage } from '../../src/service/message-feedback-service.js';
 import PersonalInstructionsSettings from '../../src/view/settings/PersonalInstructionsSettings.vue?unit-render';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
 
 vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
@@ -180,7 +180,7 @@ describe('Personal instruction draft ownership', () => {
 
   it('clears only the confirmed scope and retains other drafts while its response is pending', async () => {
     const confirmation = gate<MessageBoxData>();
-    vi.spyOn(ElMessageBox, 'confirm').mockReturnValue(confirmation.promise);
+    vi.spyOn(MarMessageBox, 'confirm').mockReturnValue(confirmation.promise);
     const { view, edit, select, response, request, value, clear } = await setup();
     try {
       await edit('Common clear draft');
@@ -205,7 +205,7 @@ describe('Personal instruction draft ownership', () => {
   });
 
   it('retains drafts on clear failure and does not write after canceling confirmation', async () => {
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(confirmed);
+    const confirm = vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(confirmed);
     const { view, edit, select, response, request, value, error, clear } = await setup();
     try {
       await edit('Common clear retry');

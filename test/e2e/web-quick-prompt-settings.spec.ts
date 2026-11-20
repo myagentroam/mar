@@ -154,7 +154,7 @@ test('Quick prompt settings create, edit, and retain failed drafts for retry', a
   await dialog.getByRole('textbox', { name: /Prompt$/ }).fill('Retained edit');
   fail = true;
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.locator('.el-message--error')).toContainText('Unable to save quick prompt');
+  await expect(page.locator('.mar-message--error')).toContainText('Unable to save quick prompt');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Retained edit');
   await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
@@ -202,7 +202,7 @@ test('Quick prompt settings invalidate saving before the close animation finishe
     await started.promise;
     await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click();
     // Closing must destroy the editor now, not defer invalidation to afterLeave.
-    await expect(page.locator('.el-dialog')).toHaveCount(0, { timeout: 1500 });
+    await expect(page.locator('.mar-ui-dialog')).toHaveCount(0, { timeout: 1500 });
     dialog = await edit(page, 'second');
     const response = page.waitForResponse((value) =>
       value.url().endsWith('/api/quick-prompts/first')
@@ -299,7 +299,7 @@ for (const outcome of ['success', 'failure'] as const) {
         current.release();
         await saved;
         await expect(dialog).toHaveCount(0);
-        await expect(page.locator('.el-message--success')).toContainText('Quick prompt saved.');
+        await expect(page.locator('.mar-message--success')).toContainText('Quick prompt saved.');
       } finally {
         old.release();
         current.release();
@@ -333,7 +333,7 @@ for (const outcome of ['success', 'failure'] as const) {
         holdRefresh = true;
         await dialog.getByRole('button', { name: 'Save', exact: true }).click();
         await refreshStarted.promise;
-        await dialog.locator('.el-dialog__headerbtn').click();
+        await dialog.locator('.mar-ui-dialog__close').click();
         await expect(dialog).toHaveCount(0);
         refresh.release();
         await expect(page.locator('.quick-prompts')).toHaveAttribute('aria-busy', 'false');

@@ -4,6 +4,8 @@ export default {
   select: 'Select',
   invalidField: 'Invalid value',
   close: 'Close',
+  closeDialog: 'Close this dialog',
+  messageBox: { confirm: 'OK', cancel: 'Cancel' },
   decrease: 'Decrease',
   increase: 'Increase',
   datePicker: {

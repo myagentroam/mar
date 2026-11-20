@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, reactive } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
 import Page from '../../src/view/settings/MarAgentModelManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -175,7 +175,7 @@ describe('Model management component behavior', () => {
             String(request.mock.calls.find(([, init]) => init?.method === 'PUT')![1]!.body)
           )
         ).toMatchObject({ socks5Url: proxy });
-        expect(view.findAll('ElDialog')).toHaveLength(0);
+        expect(view.findAll('MarDialog')).toHaveLength(0);
         await trigger(button(view, labels.duplicate), 'onClick');
         expect(control(view, labels.codexProxy, 'MarInput').props['modelValue']).toBe(proxy);
         await trigger(control(view, labels.codexProxy, 'MarInput'), 'onUpdate:modelValue', '');
@@ -238,11 +238,11 @@ describe('Model management component behavior', () => {
             details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' }
           });
           await opening;
-          expect(view.findAll('ElDialog')).toHaveLength(1);
+          expect(view.findAll('MarDialog')).toHaveLength(1);
         }
         props.canManageModels = false;
         await flushComponent();
-        expect(view.findAll('ElDialog')).toHaveLength(0);
+        expect(view.findAll('MarDialog')).toHaveLength(0);
         props.canManageModels = true;
         await flushComponent();
         if (pending) {
@@ -250,7 +250,7 @@ describe('Model management component behavior', () => {
             details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' }
           });
           await opening;
-          expect(view.findAll('ElDialog')).toHaveLength(0);
+          expect(view.findAll('MarDialog')).toHaveLength(0);
         }
         await trigger(button(view, messages.add), 'onClick');
         expect(control(view, messages.codexProxy, 'MarInput').props['modelValue']).toBe('');
@@ -334,13 +334,15 @@ describe('Model management component behavior', () => {
       const first = trigger(button(view, messages.save), 'onClick');
       const second = trigger(button(view, messages.save), 'onClick');
       expect(validate).toHaveBeenCalledOnce();
-      const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
+      const dialog = view.findAll('MarDialog').find((node) => node.props['modelValue'] === true)!;
       await trigger(dialog, 'onUpdate:modelValue', false);
       await trigger(button(view, messages.add), 'onClick');
       gate.resolve(true);
       await Promise.all([first, second]);
       expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
-      expect(view.findAll('ElDialog').some((node) => node.props['modelValue'] === true)).toBe(true);
+      expect(view.findAll('MarDialog').some((node) => node.props['modelValue'] === true)).toBe(
+        true
+      );
     } finally {
       view.unmount();
     }
@@ -362,7 +364,7 @@ describe('Model management component behavior', () => {
       const first = trigger(button(view, messages.codexStartLogin), 'onClick');
       const second = trigger(button(view, messages.codexStartLogin), 'onClick');
       expect(validate).toHaveBeenCalledOnce();
-      const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
+      const dialog = view.findAll('MarDialog').find((node) => node.props['modelValue'] === true)!;
       await trigger(dialog, 'onUpdate:modelValue', false);
       await trigger(button(view, messages.codexAddCredential), 'onClick');
       gate.resolve(true);
@@ -398,7 +400,7 @@ describe('Model management component behavior', () => {
         const pending = trigger(button(view, messages.save), 'onClick');
         await flushComponent();
         expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
-        const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
+        const dialog = view.findAll('MarDialog').find((node) => node.props['modelValue'] === true)!;
         await trigger(dialog, 'onUpdate:modelValue', false);
         await trigger(button(view, messages.add), 'onClick');
         await trigger(control(view, messages.name, 'MarInput'), 'onUpdate:modelValue', 'New draft');
@@ -588,7 +590,7 @@ describe('Model management component behavior', () => {
         'serviceTier'
       ])
         expect(saved).not.toHaveProperty(field);
-      expect(view.findAll('ElDialog')).toHaveLength(0);
+      expect(view.findAll('MarDialog')).toHaveLength(0);
     } finally {
       view.unmount();
     }
@@ -630,7 +632,7 @@ describe('Model management component behavior', () => {
           )!;
         expect(textContent(field)).toContain(labels.useResourceUrl);
         const dialog = view
-          .findAll('ElDialog')
+          .findAll('MarDialog')
           .find((node) => node.props['title'] === labels.edit)!;
         expect(textContent(dialog)).not.toContain(removedHint);
         await trigger(setting, 'onUpdate:modelValue', false);
@@ -675,7 +677,7 @@ describe('Model management component behavior', () => {
       ])
         expect(textContent(table)).toContain(label);
       await trigger(table, 'onRowClick', credentials[1]);
-      const dialog = view.findAll('ElDialog')[0]!;
+      const dialog = view.findAll('MarDialog')[0]!;
       expect(textContent(dialog)).toContain('Host ownership label');
       expect(textContent(dialog)).toContain(managementDateTime(credentials[1]!.earliestRefreshAt));
       const link = view.findAll('MarButton').find((node) => node.props['href'])!;
@@ -717,7 +719,7 @@ describe('Model management component behavior', () => {
       await trigger(table, 'onRowClick', credentials[2]);
       expect(request.mock.calls.some(([path]) => path.endsWith('/usage'))).toBe(false);
       await trigger(button(view, messages.codexQueryUsage), 'onClick');
-      const dialog = view.findAll('ElDialog')[0]!;
+      const dialog = view.findAll('MarDialog')[0]!;
       for (const value of [messages.grokUsageTitle, '37.5%', '62.5%', '$12.34'])
         expect(textContent(dialog)).toContain(value);
       expect(textContent(dialog)).not.toContain(messages.codexUsageLifetimeTokens);
@@ -771,7 +773,7 @@ describe('Model management component behavior', () => {
         'XAI_OAUTH'
       );
       expect(control(view, messages.chatgptLocalNode, 'MarSelect')).toBeUndefined();
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain(messages.grokProxyHint);
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain(messages.grokProxyHint);
       await trigger(
         control(view, messages.credentialType, 'MarSelect'),
         'onUpdate:modelValue',
@@ -894,7 +896,7 @@ describe('Model management component behavior', () => {
         await flushComponent();
         await trigger(button(view, messages.test), 'onClick');
         if (modelSocks5Proxy === true) {
-          expect(view.findAll('ElDialog')).toHaveLength(1);
+          expect(view.findAll('MarDialog')).toHaveLength(1);
           expect(
             control(view, messages.modelTestNode, 'MarSelect')
               .children.filter((node) => node.type === 'MarOption')
@@ -902,7 +904,7 @@ describe('Model management component behavior', () => {
           ).toEqual(['ready']);
           expect(showMessage).not.toHaveBeenCalled();
         } else {
-          expect(view.findAll('ElDialog')).toHaveLength(0);
+          expect(view.findAll('MarDialog')).toHaveLength(0);
           expect(showMessage).toHaveBeenCalledWith(messages.modelTestNoNode, 'error');
         }
         expect(request.mock.calls.some(([path]) => path.endsWith('/test'))).toBe(false);
@@ -963,13 +965,13 @@ describe('Model management component behavior', () => {
         body: JSON.stringify({ nodeId: 'ready' })
       });
       for (const value of [result.code, result.requestId, result.response.requestId, '429', '7'])
-        expect(textContent(view.findAll('ElDialog')[0]!)).toContain(value);
+        expect(textContent(view.findAll('MarDialog')[0]!)).toContain(value);
       expect(
         view.findAll('MarInput').find((node) => Object.hasOwn(node.props, 'readonly'))?.props[
           'modelValue'
         ]
       ).toBe(result.response.body);
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain(result.message);
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain(result.message);
       expect(showMessage).not.toHaveBeenCalled();
     } finally {
       view.unmount();
@@ -1083,8 +1085,8 @@ describe('Model management component behavior', () => {
         '/api/admin/mar-agent/codex-credentials/credential-0/models/load',
         { method: 'POST' }
       );
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Host catalogue ownership');
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('upstream-fixture');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('Host catalogue ownership');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('upstream-fixture');
       expect(view.findAll('MarInputNumber')[0]?.props['modelValue']).toBe(256_000);
       await trigger(view.findAll('MarCheckbox')[0]!, 'onUpdate:modelValue', true);
       await trigger(button(view, messages.codexImport), 'onClick');
@@ -1172,10 +1174,10 @@ describe('Model management component behavior', () => {
           await trigger(table, 'onRowClick', credentials[0]);
           const loading = trigger(button(view, messages.codexLoadCatalog), 'onClick');
           await flushComponent();
-          await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+          await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
           await trigger(table, 'onRowClick', credentials[1]);
           await trigger(button(view, messages.codexLoadCatalog), 'onClick');
-          expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Current catalogue');
+          expect(textContent(view.findAll('MarDialog')[0]!)).toContain('Current catalogue');
           late.resolve(catalog('Obsolete catalogue'));
           await loading;
         }
@@ -1185,7 +1187,7 @@ describe('Model management component behavior', () => {
             credentials[1]!.name
           );
         else {
-          expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Current catalogue');
+          expect(textContent(view.findAll('MarDialog')[0]!)).toContain('Current catalogue');
           expect(textContent(view.root)).not.toContain('Obsolete catalogue');
         }
       } finally {
@@ -1216,7 +1218,7 @@ describe('Model management component behavior', () => {
       return base(path, init);
     });
     const confirmation = vi
-      .spyOn(ElMessageBox, 'confirm')
+      .spyOn(MarMessageBox, 'confirm')
       .mockRejectedValueOnce('cancel')
       .mockResolvedValue('confirm' as never);
     const view = renderComponent(Page, {
@@ -1355,14 +1357,14 @@ describe('Model management component behavior', () => {
         details: { credential: credentials[0], socks5Url: 'socks5://old.invalid:1080' }
       });
       await old;
-      expect(textContent(view.findAll('ElDialog')[0]!)).not.toContain('old.invalid');
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Fixture XAI_OAUTH');
+      expect(textContent(view.findAll('MarDialog')[0]!)).not.toContain('old.invalid');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('Fixture XAI_OAUTH');
       const query = trigger(button(view, messages.codexQueryUsage), 'onClick');
       await flushComponent();
-      await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+      await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
       pendingUsage.resolve({ usage });
       await query;
-      expect(view.findAll('ElDialog')).toHaveLength(0);
+      expect(view.findAll('MarDialog')).toHaveLength(0);
       expect(textContent(view.root)).not.toContain('62.5%');
     } finally {
       view.unmount();

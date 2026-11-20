@@ -756,7 +756,7 @@ test('New sessions open Composer directly and submit settings with the first mes
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.locator('.el-dialog')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '新建会话' })).toBeVisible();
   await expect(page.locator('.composer-shell')).toHaveCount(1);
   await expect(page.getByText('Runner 默认', { exact: true })).toHaveCount(0);

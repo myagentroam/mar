@@ -1023,7 +1023,7 @@ describe('shared Workbench state composition', () => {
     'does not execute compact after %s invalidates the actual Pane during confirmation',
     async (change) => {
       const { effectScope } = await import('vue');
-      const { ElMessageBox } = await import('../../src/service/message-box-service.js');
+      const { MarMessageBox } = await import('../../src/service/message-box-service.js');
       const target = ref<DraftTarget>({
         kind: 'session',
         nodeId: 'n',
@@ -1052,7 +1052,7 @@ describe('shared Workbench state composition', () => {
       )!;
       const execute = vi.fn(async () => undefined);
       let confirm!: () => void;
-      const spy = vi.spyOn(ElMessageBox, 'confirm').mockImplementationOnce(
+      const spy = vi.spyOn(MarMessageBox, 'confirm').mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             confirm = () => resolve('confirm' as never);

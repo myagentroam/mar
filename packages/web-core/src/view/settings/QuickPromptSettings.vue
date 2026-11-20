@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -9,7 +10,7 @@ import {
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -109,10 +110,10 @@ async function save(): Promise<void> {
 }
 async function remove(prompt: QuickPrompt): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('quickPrompts.removeConfirmation', { value0: `#${prompt.phrase}` }),
       translate('quickPrompts.remove'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     await props.request(`/api/quick-prompts/${encodeURIComponent(prompt.id)}`, {
       method: 'DELETE'
@@ -172,7 +173,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
         </article>
       </div>
     </div>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
@@ -182,7 +183,6 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       width="min(560px, calc(100vw - 32px))"
       append-to-body
       :before-close="close"
-      :close-icon="marIcon('close')"
     >
       <MarForm ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <MarFormItem :label="translate('quickPrompts.phrase')" prop="phrase">
@@ -210,7 +210,7 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           translate('common.save')
         }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </LoadingPanel>
 </template>
 

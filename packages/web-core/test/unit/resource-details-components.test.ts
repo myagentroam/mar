@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import RuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
 import UnitDetails from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
@@ -244,7 +244,7 @@ describe('Public resource details', () => {
   });
   it('keeps Workspace Git settings concise without stale message keys', async () => {
     i18n.global.locale.value = 'en-US';
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+
     const request = vi.fn(
       async <T>() => ({ preserveGitConfig: false, includeParentRepository: true }) as T
     );
@@ -350,7 +350,7 @@ describe('Public resource details', () => {
       });
       try {
         const text = textContent(view.root);
-        expect(view.findAll('ElDialog')).toHaveLength(3);
+        expect(view.findAll('MarDialog')).toHaveLength(3);
         expect(text).toContain('Public Node');
         expect(text).toContain('Public Workspace');
         expect(text).toContain('25%');
@@ -382,3 +382,14 @@ describe('Public resource details', () => {
     expect(html).not.toContain('bad-version');
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

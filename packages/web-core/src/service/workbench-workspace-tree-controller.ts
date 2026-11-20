@@ -7,7 +7,7 @@ import type {
   Workspace,
   WorkspaceTab
 } from '../model/workbench.js';
-import { ElMessageBox } from './message-box-service.js';
+import { MarMessageBox } from './message-box-service.js';
 import { ref, readonly, type Ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
 import type { createWorkspaceTabService } from './workspace-tab-service.js';
@@ -340,11 +340,10 @@ export function createWorkbenchWorkspaceTreeController(
     let displayName: string;
     try {
       displayName = (
-        await ElMessageBox.prompt(
+        await MarMessageBox.prompt(
           translate('generated.workspaceTree.enterWorkspaceName'),
           translate('generated.workspaceTree.renameWorkspace'),
           {
-            closeIcon: marIcon('close'),
             inputValue: options.tabLabel(workspace),
             inputValidator: (value) => {
               const length = value.trim().length;
@@ -382,14 +381,13 @@ export function createWorkbenchWorkspaceTreeController(
   async function removeWorkspace(nodeId: string, workspace: Workspace): Promise<void> {
     if (workspace.manageable !== true) return;
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         translate(
           'generated.workbenchWorkspaceTreeController.unregisterThisDoesNotDeleteTheLocal',
           { value0: options.tabLabel(workspace) }
         ),
         translate('generated.workbenchWorkspaceTreeController.unregisterWorkspace'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           confirmButtonText: translate('generated.workbenchWorkspaceTreeController.unregister'),
           cancelButtonText: translate('generated.workbenchWorkspaceTreeController.cancel'),

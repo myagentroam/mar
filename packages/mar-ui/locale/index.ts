@@ -7,6 +7,8 @@ export interface MarUiLocale {
   readonly select: string;
   readonly invalidField: string;
   readonly close: string;
+  readonly closeDialog: string;
+  readonly messageBox: { readonly confirm: string; readonly cancel: string };
   readonly decrease: string;
   readonly increase: string;
   readonly datePicker: {

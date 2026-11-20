@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
 import ModelGrantExtension from '../../src/view/settings/ModelGrantExtension.vue?unit-render';
 import { i18n } from '../../../../packages/web-core/src/service/locale-preference-service.js';
-import { ElMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
+import { MarMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
 import { showMessage } from '../../../../packages/web-core/src/service/message-feedback-service.js';
 import {
   flushComponent,
@@ -25,7 +25,7 @@ const organizations = [
 ];
 const originalLocale = i18n.global.locale.value;
 // Confirm resolves to the action string at runtime, despite Element Plus's intersection type.
-const confirmed = 'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
+const confirmed = 'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>;
 
 describe('Model grant dialog', () => {
   const exposed = ref<{ open: (row: typeof modelA) => Promise<void> }>();
@@ -40,7 +40,7 @@ describe('Model grant dialog', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
     });
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(confirmed);
+    vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(confirmed);
     readGrants.mockReset().mockImplementation(async (id) => ({
       grants: id === modelA.id ? [grantA] : [grantB]
     }));
@@ -78,7 +78,7 @@ describe('Model grant dialog', () => {
   });
 
   function dialog() {
-    const dialogs = view.findAll('ElDialog');
+    const dialogs = view.findAll('MarDialog');
     expect(dialogs).toHaveLength(1);
     return dialogs[0]!;
   }
@@ -216,7 +216,7 @@ describe('Model grant dialog', () => {
     await trigger(button('Close'), 'onClick');
     write.resolve({});
     await revoking;
-    expect(view.findAll('ElDialog')).toHaveLength(0);
+    expect(view.findAll('MarDialog')).toHaveLength(0);
     expect(refresh).toHaveBeenCalledOnce();
     expect(showMessage).toHaveBeenCalledWith('“Assistant A”: Model access revoked.', 'success');
   });
@@ -260,7 +260,7 @@ describe('Model grant dialog', () => {
 
   it('does not revoke when confirmation completes after the dialog is reopened', async () => {
     const confirmation = Promise.withResolvers<typeof confirmed>();
-    vi.mocked(ElMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
+    vi.mocked(MarMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
     await open(modelA);
     const revoking = trigger(button('Revoke'), 'onClick');
     await trigger(button('Close'), 'onClick');
@@ -268,7 +268,7 @@ describe('Model grant dialog', () => {
     confirmation.resolve(confirmed);
     await revoking;
 
-    expect(ElMessageBox.confirm).toHaveBeenCalledOnce();
+    expect(MarMessageBox.confirm).toHaveBeenCalledOnce();
     expect(writeGrant).not.toHaveBeenCalled();
     expect(textContent(dialog())).toContain('Assistant B');
     expect(textContent(dialog())).toContain('Research');
@@ -285,7 +285,7 @@ describe('Model grant dialog', () => {
     await trigger(previousRevoke, 'onClick');
     await trigger(previousGrant, 'onClick');
 
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled();
+    expect(MarMessageBox.confirm).not.toHaveBeenCalled();
     expect(validate).not.toHaveBeenCalled();
     expect(writeGrant).not.toHaveBeenCalled();
     expect(textContent(dialog())).toContain('Engineering');

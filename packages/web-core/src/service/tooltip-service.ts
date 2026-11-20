@@ -1,11 +1,10 @@
 import { shallowRef, type InjectionKey } from 'vue';
-import type { ElTooltipProps } from 'element-plus';
-import { tableTooltipOptions } from '../util/tooltip.js';
+import type { TooltipPlacement } from '@myagentroam/mar-ui/tooltip';
 
 export interface TooltipOptions {
   readonly content: string;
   readonly disabled?: boolean;
-  readonly placement?: ElTooltipProps['placement'];
+  readonly placement?: TooltipPlacement;
   readonly popperClass?: string;
   readonly touch?: boolean;
 }
@@ -18,6 +17,7 @@ interface ActiveTooltip extends TooltipOptions {
 
 export const TOOLTIP_SERVICE_KEY: InjectionKey<TooltipService> = Symbol('tooltip');
 
+export const tooltipDelays = { show: 350, hide: 100 };
 const targetSwitchDelay = 100;
 
 // Owns delegated input, pending/visible target handoff and dismissal for one application.
@@ -33,7 +33,7 @@ export class TooltipService {
   private pointerWithin = false;
   private keyboardFocus = false;
   private input: 'keyboard' | 'pointer' | 'touch' = 'keyboard';
-  private readonly dismissedEscapes = new WeakMap<KeyboardEvent, 'control' | 'menu'>();
+  private readonly dismissedEscapes = new WeakMap<KeyboardEvent, 'control' | 'modal' | 'menu'>();
 
   constructor(private readonly document: Document) {}
 
@@ -186,7 +186,7 @@ export class TooltipService {
         this.describe(target);
         this.observeTargets();
       },
-      this.active.value ? targetSwitchDelay : tableTooltipOptions.showAfter
+      this.active.value ? targetSwitchDelay : tooltipDelays.show
     );
   }
 
@@ -229,7 +229,7 @@ export class TooltipService {
       } else this.close();
     } else if (this.active.value?.target === target) {
       clearTimeout(this.hideTimer);
-      this.hideTimer = setTimeout(this.close, tableTooltipOptions.hideAfter);
+      this.hideTimer = setTimeout(this.close, tooltipDelays.hide);
     }
   }
 
@@ -295,10 +295,12 @@ export class TooltipService {
     }
     if (!target || !active.target.contains(target)) {
       // A hovered hint must not forward Escape into an unrelated focused run/composer.
+      if (target?.closest('dialog:modal')) event.preventDefault();
       event.stopImmediatePropagation();
       return;
     }
-    this.dismissedEscapes.set(event, 'control');
+    // Capture ownership while the target is still mounted; the inline Escape handler can remove it.
+    this.dismissedEscapes.set(event, target.closest('dialog:modal') ? 'modal' : 'control');
   };
 
   private onKeyDownBubble = (event: KeyboardEvent): void => {
@@ -306,6 +308,9 @@ export class TooltipService {
     // parent surfaces. Other hints must also isolate outer document-level dialogs.
     const owner = this.dismissedEscapes.get(event);
     if (owner === 'menu') event.stopPropagation();
-    else if (owner === 'control') event.stopImmediatePropagation();
+    else if (owner === 'modal' || owner === 'control') {
+      if (owner === 'modal') event.preventDefault();
+      event.stopImmediatePropagation();
+    }
   };
 }

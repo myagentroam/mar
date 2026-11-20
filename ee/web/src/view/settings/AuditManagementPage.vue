@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
@@ -367,8 +369,7 @@ onBeforeUnmount(closeDetail);
 
 <template>
   <section
-    v-loading="loading && !pageReady && !pagination.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !pageReady && !pagination.failure.value"
     class="mar-management-page audit-management"
   >
     <div class="mar-filter-row">
@@ -403,7 +404,7 @@ onBeforeUnmount(closeDetail);
       }}</MarButton>
     </div>
     <MarTable
-      v-loading="
+      v-mar-loading:region="
         loading &&
         pageReady &&
         !pagination.loadingMore.value &&
@@ -456,7 +457,7 @@ onBeforeUnmount(closeDetail);
       @page="pagination.setPage"
       @load-more="pagination.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="selected !== undefined"
@@ -465,11 +466,10 @@ onBeforeUnmount(closeDetail);
       width="min(720px, calc(100vw - 32px))"
       @close="closeDetail"
       @update:model-value="closeDetail"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions
         v-if="selected"
-        v-loading="detailLoading"
+        v-mar-loading:region="detailLoading"
         class="mar-detail-descriptions"
         :column="1"
         border
@@ -529,7 +529,7 @@ onBeforeUnmount(closeDetail);
       <template #footer>
         <MarButton @click="closeDetail">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 
@@ -553,7 +553,7 @@ pre {
   white-space: pre-wrap;
   font-size: var(--mar-font-size-meta);
 }
-:global(.audit-management .el-dialog .mar-ui-descriptions) {
+:global(.audit-management .mar-ui-dialog .mar-ui-descriptions) {
   --mar-ui-descriptions-label-width: 150px;
 }
 

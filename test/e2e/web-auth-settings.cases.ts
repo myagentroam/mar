@@ -571,7 +571,7 @@ test('Personal password dialog clears drafts and validation on every manual clos
     await expect(dialog.getByRole('alert')).toContainText('8');
     if (method === 'cancel')
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
-    else if (method === 'header') await dialog.locator('.el-dialog__headerbtn').click();
+    else if (method === 'header') await dialog.locator('.mar-ui-dialog__close').click();
     else if (method === 'escape') await page.keyboard.press('Escape');
     else await dialog.click({ position: { x: 5, y: 5 } });
     await expect(dialog).toHaveCount(0);
@@ -750,11 +750,11 @@ test('Quick prompts save on Enter without reloading the page', async ({ page }) 
   await page.getByRole('button', { name: '快捷提示词', exact: true }).click();
   const panel = page.locator('.quick-prompts');
   await expect(panel).toHaveAttribute('aria-busy', 'true');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeVisible();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeVisible();
   await expect(panel.locator('.prompt-empty')).toHaveCount(0);
   finishRead();
   await expect(panel).toHaveAttribute('aria-busy', 'false');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeHidden();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeHidden();
   await page.getByRole('button', { name: '新增提示词' }).click();
 
   const phrase = page.getByRole('textbox', { name: '短语' });
@@ -803,11 +803,11 @@ test('Personalized prompts put the common option first and select it by default'
 
   const panel = page.locator('.personal-instructions');
   await expect(panel).toHaveAttribute('aria-busy', 'true');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeVisible();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeVisible();
   await expect(panel.getByRole('textbox', { name: '个性化提示词' })).toBeDisabled();
   finishRead();
   await expect(panel).toHaveAttribute('aria-busy', 'false');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeHidden();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeHidden();
 
   const scopes = page.locator('.instruction-scopes [role="tab"]');
   await expect(scopes).toHaveText(['公共', 'MAR Agent', 'Codex', 'Claude Code', 'OpenCode']);

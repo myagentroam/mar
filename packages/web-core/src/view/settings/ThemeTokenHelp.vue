@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,7 +8,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarInput } from '@myagentroam/mar-ui/input';
 
-import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -54,7 +54,7 @@ async function copy(token: string): Promise<void> {
     :aria-label="t('customThemes.tokenHelp')"
     @click="show"
   />
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="open"
@@ -63,7 +63,6 @@ async function copy(token: string): Promise<void> {
     width="min(720px, calc(100vw - 32px))"
     append-to-body
     class="theme-token-help"
-    :close-icon="marIcon('close')"
   >
     <p class="hint">{{ t('customThemes.tokenHint') }}</p>
     <MarInput
@@ -100,7 +99,7 @@ async function copy(token: string): Promise<void> {
       </section>
       <p v-if="!groups.length" class="hint">{{ t('customThemes.tokenEmpty') }}</p>
     </div>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

@@ -21,6 +21,14 @@ const componentFixtures: Plugin = {
   name: 'component-fixture-templates',
   enforce: 'pre',
   async resolveId(source, importer) {
+    if (importer && componentFixtureQuery.test(importer)) {
+      const stubs = {
+        '@myagentroam/mar-ui/dialog': 'mar-dialog-stub.ts',
+        '@myagentroam/mar-ui/loading': 'mar-loading-stub.ts'
+      } as const;
+      const stub = stubs[source as keyof typeof stubs];
+      if (stub) return fileURLToPath(new URL('./test/unit/support/' + stub, import.meta.url));
+    }
     if (
       importer &&
       componentFixtureQuery.test(importer) &&

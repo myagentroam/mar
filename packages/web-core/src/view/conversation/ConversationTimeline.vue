@@ -6,7 +6,6 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import './conversation-detail.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
-import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { toolPresentation, toolPresentationStatus } from '../../util/tool-presentation.js';

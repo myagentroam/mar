@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
@@ -14,7 +16,7 @@ import { marIcon } from '@myagentroam/web-core/icons';
 import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '@myagentroam/web-core/mobile-workbench';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   organizationPath,
   type OrganizationSummary
@@ -182,14 +184,13 @@ function requestOrganizationClose(done: () => void): void {
 }
 async function removeOrganization(organization: Organization): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.organizationUserManagementPage.deleteItsOrganizationResourcesWillBeTransferred',
         { value0: path(organization.id) }
       ),
       translate('generated.organizationUserManagementPage.deleteOrganization'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate(
@@ -213,8 +214,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
 
 <template>
   <section
-    v-loading="loading && !ready"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !ready"
     class="mar-management-page organization-management"
   >
     <div class="mar-filter-row">
@@ -238,7 +238,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       >
     </div>
     <MarTable
-      v-loading="loading && ready && !refreshLoading"
+      v-mar-loading:region="loading && ready && !refreshLoading"
       :aria-busy="loading"
       class="organization-tree-table clickable-rows"
       :data="organizationTree"
@@ -290,7 +290,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
         </template>
       </MarTableColumn>
     </MarTable>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationOpen"
@@ -305,7 +305,6 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
           : translate('generated.organizationUserManagementPage.editOrganization')
       "
       width="min(440px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
       ><MarForm
         ref="organizationFormRef"
         :model="organizationForm"
@@ -344,9 +343,9 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
               : translate('generated.organizationUserManagementPage.save')
           }}</MarButton
         ></template
-      ></el-dialog
+      ></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationDetail !== undefined"
@@ -354,7 +353,6 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       :title="translate('generated.organizationUserManagementPage.organizationDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="organizationDetail = undefined"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions class="mar-detail-descriptions" :column="1" border>
         <MarDescriptionsItem
@@ -380,7 +378,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
           formatTime(organizationDetail.updatedAt)
         }}</MarDescriptionsItem>
       </MarDescriptions>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

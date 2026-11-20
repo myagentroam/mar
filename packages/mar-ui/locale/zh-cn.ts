@@ -4,6 +4,8 @@ export default {
   select: '请选择',
   invalidField: '输入值无效',
   close: '关闭',
+  closeDialog: '关闭此对话框',
+  messageBox: { confirm: '确定', cancel: '取消' },
   decrease: '减少',
   increase: '增加',
   datePicker: {

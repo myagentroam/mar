@@ -456,9 +456,9 @@ for (const width of [1440, 390]) {
     await expect(original).toHaveCSS('border-top-width', '1px');
     await expect(original).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(original).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expect(dialog.locator('.el-dialog__header').getByRole('button')).toHaveCount(1);
+    await expect(dialog.locator('.mar-ui-dialog__header').getByRole('button')).toHaveCount(1);
     await expectOriginalActionPosition(original);
-    const close = dialog.locator('.el-dialog__headerbtn');
+    const close = dialog.locator('.mar-ui-dialog__close');
     await expect(close).toHaveCSS('width', '32px');
     await expect(close).toHaveCSS('height', '32px');
     await close.hover();

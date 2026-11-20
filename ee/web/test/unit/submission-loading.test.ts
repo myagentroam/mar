@@ -8,7 +8,7 @@ import {
   translate
 } from '../../../../packages/web-core/src/service/locale-preference-service.js';
 import { showMessage } from '../../../../packages/web-core/src/service/message-feedback-service.js';
-import { ElMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
+import { MarMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
 import {
   flushComponent,
   renderComponent,
@@ -39,7 +39,7 @@ beforeEach(() => {
     history: { replaceState() {} },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   });
-  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
+  vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirm' as never);
 });
 afterEach(() => {
   i18n.global.locale.value = originalLocale;
@@ -114,7 +114,7 @@ describe('submission and authoritative reread loading', () => {
         ]
       ).toBe(false);
       const close = vi.fn();
-      (view.findAll('ElDialog')[0]!.props['before-close'] as (done: () => void) => void)(close);
+      (view.findAll('MarDialog')[0]!.props['before-close'] as (done: () => void) => void)(close);
       expect(close).not.toHaveBeenCalled();
       await clickPending(view, 'Save');
       expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
@@ -367,7 +367,7 @@ describe('submission and authoritative reread loading', () => {
       expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(1);
       expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
       expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
-      await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+      await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
       expect(close).not.toHaveBeenCalled();
       await clickPending(view, label);
       expect(request).toHaveBeenCalledTimes(2);

@@ -225,11 +225,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const panel = page.getByTestId('usage-statistics');
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
     await expect(panel).toHaveAttribute('aria-busy', 'true');
-    const loadingMask = panel.locator(':scope > .el-loading-mask');
+    const loadingMask = panel.locator(':scope > .mar-ui-loading');
     const expectLoadingInViewport = async () => {
       const area = await page.locator('.settings-content').boundingBox();
       const mask = await loadingMask.boundingBox();
-      const spinner = await loadingMask.locator('.el-loading-spinner').boundingBox();
+      const spinner = await loadingMask.locator('.mar-ui-loading__indicator').boundingBox();
       expect(area).not.toBeNull();
       expect(mask).not.toBeNull();
       expect(spinner).not.toBeNull();
@@ -458,7 +458,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         `${labels.outputTokens}: ${displayCount(values.outputTokens)}`,
         `${labels.totalTokens}: ${displayCount(values.totalTokens)}`
       ];
-      const details = tooltip.locator(':scope > div');
+      const details = tooltip.locator('.usage-tooltip-detail');
       await expect(details).toHaveText(lines);
       hoverDetails.push((await details.allTextContents()).map((text) => text.trim()));
     }
@@ -487,7 +487,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(inspector).toHaveCSS('outline-style', 'solid');
     const expectPeriod = async (index: number) => {
       await expect(inspector).toBeFocused();
-      await expect(tooltip.locator(':scope > div')).toHaveText(hoverDetails[index]!);
+      await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[index]!);
       await expect(inspector).toHaveAttribute('aria-valuetext', hoverDetails[index]!.join(' · '));
     };
     await expectPeriod(0);

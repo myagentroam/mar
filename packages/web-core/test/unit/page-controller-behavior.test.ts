@@ -25,7 +25,7 @@ import type {
   PwaApplicationState
 } from '../../src/service/pwa-application-service.js';
 import { STANDALONE_FILE_OPEN_EVENT } from '../../src/service/standalone-file-window-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import * as feedback from '../../src/service/message-feedback-service.js';
 import { translate } from '../../src/service/locale-preference-service.js';
 import type { NodeSummary } from '../../src/model/node.js';
@@ -1301,9 +1301,9 @@ describe('Workbench controller composition behavior', () => {
         }
         return new Response(JSON.stringify({ csrfToken: 'fixture', nodes: [], profiles: [] }));
       });
-      vi.spyOn(ElMessageBox, 'confirm').mockImplementation(async () => {
+      vi.spyOn(MarMessageBox, 'confirm').mockImplementation(async () => {
         if (outcome === 'cancel') throw new Error('cancel');
-        return 'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
+        return 'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>;
       });
       const submitting =
         submission === 'message'
@@ -2074,8 +2074,8 @@ describe('Workbench controller composition behavior', () => {
     });
     await nextTick();
     page.aside.openHtmlAside('a.html');
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
     await captured.entities!.deleteNode(node);
     captured.setTarget!(a);

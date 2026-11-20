@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarProgress } from '@myagentroam/mar-ui/progress';
 import { MarTag } from '@myagentroam/mar-ui/tag';
@@ -123,7 +124,7 @@ function usagePercentageLabel(value: number): string {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="nodeOpen"
@@ -132,7 +133,6 @@ function usagePercentageLabel(value: number): string {
     :title="translate('generated.nodeDetailsDialogs.nodeDetails')"
     width="min(720px, calc(100vw - 32px))"
     @update:model-value="emit('update:nodeOpen', $event)"
-    :close-icon="marIcon('close')"
   >
     <MarDescriptions v-if="node !== undefined" class="mar-detail-descriptions" :column="1" border>
       <MarDescriptionsItem :label="translate('common.nodeId')"
@@ -284,8 +284,8 @@ function usagePercentageLabel(value: number): string {
         translate('generated.nodeDetailsDialogs.close')
       }}</MarButton>
     </template>
-  </el-dialog>
-  <el-dialog
+  </MarDialog>
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="workspaceOpen"
@@ -294,7 +294,6 @@ function usagePercentageLabel(value: number): string {
     :title="translate('generated.resourceSharingPage.workspaceDetails')"
     width="min(720px, calc(100vw - 32px))"
     @update:model-value="emit('update:workspaceOpen', $event)"
-    :close-icon="marIcon('close')"
   >
     <MarDescriptions
       v-if="workspace !== undefined"
@@ -376,8 +375,8 @@ function usagePercentageLabel(value: number): string {
         translate('generated.nodeDetailsDialogs.close')
       }}</MarButton>
     </template>
-  </el-dialog>
-  <el-dialog
+  </MarDialog>
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="usageOpen"
@@ -392,7 +391,6 @@ function usagePercentageLabel(value: number): string {
     "
     width="min(460px, calc(100vw - 32px))"
     @update:model-value="emit('update:usageOpen', $event)"
-    :close-icon="marIcon('close')"
   >
     <MarDescriptions v-if="usage !== undefined" class="mar-detail-descriptions" :column="1" border>
       <MarDescriptionsItem
@@ -422,7 +420,7 @@ function usagePercentageLabel(value: number): string {
         translate('generated.nodeDetailsDialogs.close2')
       }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
@@ -515,12 +513,12 @@ function usagePercentageLabel(value: number): string {
   margin-left: 0;
 }
 
-:global(.node-details-dialog .el-dialog__title) {
+:global(.node-details-dialog .mar-ui-dialog__title) {
   font-size: var(--mar-font-size-title);
   font-weight: 600;
 }
 
-:global(.node-details-dialog .el-dialog__body) {
+:global(.node-details-dialog .mar-ui-dialog__body) {
   padding-top: 10px;
   font-size: var(--mar-font-size-body);
 }
@@ -534,7 +532,7 @@ function usagePercentageLabel(value: number): string {
 }
 
 @media (max-width: 480px) {
-  :global(.node-details-dialog .el-dialog__body) {
+  :global(.node-details-dialog .mar-ui-dialog__body) {
     overflow-x: hidden;
   }
 

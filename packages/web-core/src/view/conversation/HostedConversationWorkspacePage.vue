@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
@@ -21,7 +22,7 @@ import type {
   HostedConversationSnapshot,
   HostedConversationSummary
 } from '@myagentroam/protocol';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   computed,
   inject,
@@ -489,11 +490,10 @@ async function editConversationTitle(conversation: HostedConversationSummary): P
   let title: string;
   try {
     title = (
-      await ElMessageBox.prompt(
+      await MarMessageBox.prompt(
         translate('hostedConversations.titlePrompt'),
         translate('hostedConversations.editTitle'),
         {
-          closeIcon: marIcon('close'),
           inputValue: hostedConversationTitle(conversation),
           inputPlaceholder: translate('hostedConversations.titlePlaceholder'),
           inputValidator: (candidate) => {
@@ -543,13 +543,12 @@ async function setConversationPinned(
 async function deleteConversation(conversation: HostedConversationSummary): Promise<void> {
   if (mutatingConversationKey.value !== undefined) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.deleteConfirmation', {
         title: hostedConversationTitle(conversation)
       }),
       translate('hostedConversations.deleteTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.delete'),
@@ -667,11 +666,10 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
   const boundary = turn.rewind.before;
   const conversationKeyAtConfirmation = selectedConversationKey.value;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.rollbackConfirmation'),
       translate('hostedConversations.rollbackTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.rollback'),
@@ -788,11 +786,10 @@ function dragContainsFiles(event: DragEvent): boolean {
 async function deleteProjectedFile(file: ConversationFileProjection): Promise<void> {
   if (!filesWritable.value || deletingFileId.value !== undefined) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.fileDeleteConfirmation', { name: file.displayName }),
       translate('hostedConversations.fileDeleteTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.fileDelete'),
@@ -1041,7 +1038,9 @@ onBeforeUnmount(() => {
       </div>
       <div
         ref="historyList"
-        v-loading="workspace.loadingConversations.value && !workspace.conversationsLoaded.value"
+        v-mar-loading:region="
+          workspace.loadingConversations.value && !workspace.conversationsLoaded.value
+        "
         v-session-reorder-motion="historyReorderSnapshot"
         class="history-list"
       >
@@ -1365,7 +1364,7 @@ onBeforeUnmount(() => {
             }}
           </span>
         </button>
-        <div v-loading="uploadingDroppedFiles" class="files-list">
+        <div v-mar-loading:region="uploadingDroppedFiles" class="files-list">
           <section v-for="group in filesByCategory" :key="group.category">
             <h3>{{ categoryLabel(group.category) }}</h3>
             <p v-if="group.nodes.length === 0">{{ translate('hostedConversations.noFiles') }}</p>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -17,7 +19,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/locale-preference-service';
@@ -244,7 +246,7 @@ async function setEnabled(source: Source, enabled: boolean): Promise<void> {
 }
 async function confirmSourceStatusChange(source: Source): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       source.enabled
         ? translate('generated.mcpSourceManagementPage.confirmDisableMCPSource', {
             value0: displaySourceName(source)
@@ -254,7 +256,6 @@ async function confirmSourceStatusChange(source: Source): Promise<void> {
           }),
       translate('generated.mcpSourceManagementPage.updateMCPSourceStatus'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: source.enabled
@@ -270,11 +271,10 @@ async function confirmSourceStatusChange(source: Source): Promise<void> {
 }
 async function removeSource(source: Source): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.mcpSourceManagementPage.deleteMCPSource', { value0: source.name }),
       translate('generated.mcpSourceManagementPage.deleteMCPSource2'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.mcpSourceManagementPage.delete'),
@@ -411,13 +411,12 @@ async function upgrade(entry: CatalogEntry): Promise<void> {
 }
 async function removeCatalog(entry: CatalogEntry): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.mcpSourceManagementPage.removeFromMCPCenter', {
         value0: entry.displayName
       }),
       translate('generated.mcpSourceManagementPage.removeCatalogEntry'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.mcpSourceManagementPage.remove'),
@@ -462,11 +461,7 @@ function scopeLabel(scope: string): string {
 </script>
 
 <template>
-  <main
-    v-loading="loading && !sourcesReady"
-    element-loading-custom-class="mar-page-loading"
-    class="mar-management-page mcp-source-page"
-  >
+  <main v-mar-loading:page="loading && !sourcesReady" class="mar-management-page mcp-source-page">
     <div class="mar-table-actions">
       <MarButton
         type="primary"
@@ -668,7 +663,7 @@ function scopeLabel(scope: string): string {
           </MarSelect>
         </div>
         <div
-          v-loading="
+          v-mar-loading:region="
             sourcesReady &&
             pagination.loading.value &&
             !pagination.loadingMore.value &&
@@ -801,7 +796,7 @@ function scopeLabel(scope: string): string {
       </MarTabPane>
     </MarTabs>
   </main>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="sourceDialog"
@@ -809,7 +804,6 @@ function scopeLabel(scope: string): string {
     :title="translate('generated.mcpSourceManagementPage.addMCPSource2')"
     width="min(520px, calc(100vw - 32px))"
     destroy-on-close
-    :close-icon="marIcon('close')"
     ><MarForm
       ref="sourceForm"
       :model="{ ...sourceContext, ...sourceDraft }"
@@ -839,9 +833,9 @@ function scopeLabel(scope: string): string {
       ><MarButton type="primary" @click="createSource">{{
         translate('generated.mcpSourceManagementPage.confirm')
       }}</MarButton></template
-    ></el-dialog
+    ></MarDialog
   >
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="catalogDialog"
@@ -849,7 +843,6 @@ function scopeLabel(scope: string): string {
     :title="translate('generated.mcpSourceManagementPage.addToMCPCenter')"
     width="min(520px, calc(100vw - 32px))"
     destroy-on-close
-    :close-icon="marIcon('close')"
     ><MarForm
       ref="catalogForm"
       :model="{ ...catalogContext, ...catalogDraft }"
@@ -893,9 +886,9 @@ function scopeLabel(scope: string): string {
       ><MarButton type="primary" @click="addCatalog">{{
         translate('generated.mcpSourceManagementPage.confirm2')
       }}</MarButton></template
-    ></el-dialog
+    ></MarDialog
   >
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="editDialog"
@@ -903,7 +896,6 @@ function scopeLabel(scope: string): string {
     :title="translate('generated.mcpSourceManagementPage.editMCPInformation')"
     width="min(460px, calc(100vw - 32px))"
     destroy-on-close
-    :close-icon="marIcon('close')"
   >
     <MarForm ref="editForm" :model="editDraft" :rules="catalogRules" label-position="top">
       <MarFormItem :label="translate('generated.mcpSourceManagementPage.featured3')"
@@ -933,7 +925,7 @@ function scopeLabel(scope: string): string {
         translate('generated.mcpSourceManagementPage.save')
       }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
   <McpDetailsDialog v-model="detailsOpen" :details="details" />
 </template>
 

@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { createResourceHostingService } from '../../src/service/resource-hosting-service.js';
-vi.mock('element-plus', () => ({
-  ElMessageBox: { confirm: vi.fn(async () => 'confirm') },
-  ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }
+vi.mock('../../src/service/message-box-service.js', () => ({
+  MarMessageBox: { confirm: vi.fn(async () => 'confirm') }
 }));
 import {
   conversationHostingEnablementAvailability,
@@ -28,10 +27,10 @@ const input = {
 describe('public hosting management', () => {
   it('does not submit after management becomes read-only while confirmation is open', async () => {
     let confirm!: () => void;
-    vi.mocked(ElMessageBox.confirm).mockImplementationOnce(
+    vi.mocked(MarMessageBox.confirm).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          confirm = () => resolve('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
+          confirm = () => resolve('confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>);
         })
     );
     let writable = true;

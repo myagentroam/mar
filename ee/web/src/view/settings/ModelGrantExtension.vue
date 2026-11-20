@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
@@ -14,7 +16,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';
 import {
   organizationCascaderOptions,
@@ -220,11 +222,10 @@ async function removeGrant(dialog: GrantOpening, grant: Grant): Promise<void> {
   dialog.revokingGrantIds.add(grantId);
   let submitted = false;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('marAgentModels.confirmRevoke'),
       translate('marAgentModels.revoke'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.revoke'),
@@ -270,7 +271,7 @@ onBeforeUnmount(() => opening.value?.close());
 defineExpose({ open: openGrants });
 </script>
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="opening"
@@ -279,7 +280,6 @@ defineExpose({ open: openGrants });
     :before-close="opening.close"
     :title="translate('marAgentModels.accessDialogTitle')"
     width="min(640px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
   >
     <div class="model-access-context">
       <strong>{{ opening.model.name }}</strong>
@@ -292,7 +292,7 @@ defineExpose({ open: openGrants });
       show-icon
       ><template #icon><MarIcon name="info" /></template
     ></MarAlert>
-    <div v-loading="opening.loading">
+    <div v-mar-loading:region="opening.loading">
       <MarForm
         ref="grantFormRef"
         :model="opening.draft"
@@ -393,7 +393,7 @@ defineExpose({ open: openGrants });
         {{ translate('common.grant') }}
       </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 <style scoped>
 .model-access-context {

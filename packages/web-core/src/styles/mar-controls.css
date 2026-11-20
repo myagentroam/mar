@@ -87,7 +87,7 @@
 }
 .mar-icon-status-badge {
   position: absolute;
-  background: var(--el-color-success);
+  background: var(--mar-control-color-success);
   box-shadow: 0 0 0 1.5px var(--mar-icon-status-surface);
   pointer-events: none;
 }
@@ -365,7 +365,7 @@
 
 .mar-disclosure-icon {
   margin-inline-end: 0.5em;
-  transition: transform var(--el-transition-duration-fast);
+  transition: transform var(--mar-motion-duration-fast);
 }
 
 details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-disclosure-icon {
@@ -378,8 +378,7 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
   }
 }
 
-.mar-busy-indicator,
-.mar-page-loading .el-loading-spinner::before {
+.mar-busy-indicator {
   display: inline-block;
   box-sizing: border-box;
   width: 0.75rem;
@@ -396,7 +395,6 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
   color: var(--mar-color-brand-text);
 }
 
-.mar-page-loading .el-loading-spinner::before,
 .mar-page-loading-state > .mar-busy-indicator {
   width: 1.25rem;
   height: 1.25rem;
@@ -427,8 +425,7 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .mar-busy-indicator,
-  .mar-page-loading .el-loading-spinner::before {
+  .mar-busy-indicator {
     animation: mar-busy-indicator-spin 1.2s linear infinite;
   }
 }
@@ -440,7 +437,7 @@ details[open]:not([data-disclosure-closing]) > .mar-disclosure-summary > .mar-di
 }
 
 .mar-session-activity.running i {
-  background: var(--el-color-success);
+  background: var(--mar-control-color-success);
 }
 .mar-session-activity.node-offline i {
   background: var(--mar-text-disabled);

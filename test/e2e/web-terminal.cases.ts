@@ -87,7 +87,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         await expect(page.locator('.terminal-tab-close')).toBeVisible();
         await page.locator('.terminal-tab-close').click();
       }
-      const warning = page.locator('.el-message--warning');
+      const warning = page.locator('.mar-message--warning');
       await expect(warning).toHaveCount(1);
       await expect(warning).toContainText(
         locale === 'zh-CN'
@@ -99,7 +99,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
             : 'The terminal closure result is unknown. The terminal may have been closed.'
       );
       await expect(warning).toContainText('NETWORK_UNAVAILABLE');
-      await expect(page.locator('.el-message--error, .el-message--success')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error, .mar-message--success')).toHaveCount(0);
       await expect(page.locator('.workspace-offline-placeholder')).toBeVisible();
       expect(writes.filter((write) => write === method)).toHaveLength(1);
       // Dismissing feedback must not replay the uncertain write.

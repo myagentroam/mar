@@ -1141,7 +1141,7 @@ test('File preview overlay stays bounded, modal, and stable across viewport chan
   try {
     await page.setViewportSize({ width: 1920, height: 1200 });
     await page.goto(`${fixture.url}file-tabs.html`);
-    const surface = page.locator('.file-preview-surface.el-dialog');
+    const surface = page.locator('.file-preview-surface.mar-ui-dialog');
     const dialog = page.getByRole('dialog');
     const tabs = page.getByRole('tab');
     await expect(surface).toBeVisible();
@@ -1293,7 +1293,7 @@ for (const [width, action] of [
       await page.setViewportSize({ width, height: 844 });
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await page.goto(`${fixture.url}file-tabs.html`);
-      const surface = page.locator('.file-preview-surface.el-dialog');
+      const surface = page.locator('.file-preview-surface.mar-ui-dialog');
       const overlay = page.locator('.el-overlay').filter({ has: surface });
       await expect(surface).toBeVisible();
       if (action === 'last-tab') {
@@ -1387,13 +1387,13 @@ for (const [width, action] of [
         await page.evaluate(() => {
           document.documentElement.dataset.fileTabsCloseAllowed = 'false';
         });
-        await page.locator('.el-overlay-dialog').click({ position: { x: 4, y: 4 } });
+        await page.locator('.mar-ui-dialog-overlay[open]').click({ position: { x: 4, y: 4 } });
         await expect(page.getByRole('tab')).toHaveCount(12);
         await expect(surface).toBeVisible();
         await page.evaluate(() => {
           document.documentElement.dataset.fileTabsCloseAllowed = 'true';
         });
-        await page.locator('.el-overlay-dialog').click({ position: { x: 4, y: 4 } });
+        await page.locator('.mar-ui-dialog-overlay[open]').click({ position: { x: 4, y: 4 } });
       } else if (action === 'Escape') await page.keyboard.press('Escape');
       else if (action === 'back') await page.evaluate(() => window.history.back());
       else if (action === 'last-tab') await page.locator('.workspace-file-tab-close').click();
@@ -1423,7 +1423,7 @@ test('Window presentation remains full-screen without a Dialog', async ({ page }
     await page.goto(`${fixture.url}file-tabs.html?presentation=window`);
     const windowSurface = page.locator('.workspace-file-tabs');
     await expect(windowSurface).toHaveAttribute('role', 'region');
-    await expect(page.locator('.el-overlay-dialog')).toHaveCount(0);
+    await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('html')).toHaveClass(/file-preview-open/);
     await expect(page.locator('body')).toHaveClass(/file-preview-open/);

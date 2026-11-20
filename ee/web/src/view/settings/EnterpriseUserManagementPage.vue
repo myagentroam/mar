@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
@@ -19,7 +21,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   organizationCascaderOptions,
   organizationPath,
@@ -351,14 +353,13 @@ async function saveUser(): Promise<void> {
 }
 async function resetPassword(user: EnterpriseUser): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.organizationUserManagementPage.resetThePasswordForExistingSessionsWill',
         { value0: user.username }
       ),
       translate('generated.organizationUserManagementPage.resetPassword'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.organizationUserManagementPage.resetPassword2'),
@@ -404,7 +405,7 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
     const { summary } = await props.request<{ summary: UserDeletionSummary }>(
       `/api/management/users/${user.id}/deletion-summary`
     );
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.organizationUserManagementPage.deletingRemovesPersonalNodesPersonalWorkspacesSessions',
         {
@@ -418,7 +419,6 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
       ),
       translate('generated.organizationUserManagementPage.deleteUser'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.organizationUserManagementPage.deleteUser2'),
@@ -444,8 +444,7 @@ onUnmounted(() => {
 
 <template>
   <section
-    v-loading="loading && !pageReady && !usersPage.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !pageReady && !usersPage.failure.value"
     class="mar-management-page"
   >
     <div class="mar-filter-row">
@@ -513,7 +512,7 @@ onUnmounted(() => {
       >
     </div>
     <MarTable
-      v-loading="
+      v-mar-loading:region="
         usersPage.loading.value &&
         pageReady &&
         !usersPage.loadingMore.value &&
@@ -611,7 +610,7 @@ onUnmounted(() => {
       @retry="usersPage.retry"
       @load-more="usersPage.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userOpen"
@@ -624,7 +623,6 @@ onUnmounted(() => {
           : translate('generated.organizationUserManagementPage.editUser')
       "
       width="min(480px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
       ><MarForm ref="userFormRef" :model="userForm" :rules="userRules" label-position="top"
         ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.username')"
@@ -699,9 +697,9 @@ onUnmounted(() => {
               : translate('generated.organizationUserManagementPage.save2')
           }}</MarButton
         ></template
-      ></el-dialog
+      ></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentials !== undefined"
@@ -710,7 +708,6 @@ onUnmounted(() => {
       :title="translate(credentials.titleKey)"
       width="min(440px, calc(100vw - 32px))"
       @close="dismissCredentials"
-      :close-icon="marIcon('close')"
       ><MarAlert
         :title="
           translate(
@@ -745,8 +742,8 @@ onUnmounted(() => {
           translate('generated.organizationUserManagementPage.done')
         }}</MarButton></template
       >
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userDetail !== undefined"
@@ -754,7 +751,6 @@ onUnmounted(() => {
       :title="translate('generated.organizationUserManagementPage.userDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="userDetail = undefined"
-      :close-icon="marIcon('close')"
     >
       <MarDescriptions class="mar-detail-descriptions" :column="1" border>
         <MarDescriptionsItem :label="translate('common.userId')">{{
@@ -786,7 +782,7 @@ onUnmounted(() => {
           }}</MarTag></MarDescriptionsItem
         >
       </MarDescriptions>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

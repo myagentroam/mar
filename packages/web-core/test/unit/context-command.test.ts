@@ -1,15 +1,17 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { computed, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import type { RunnerCommand, Session } from '../../src/model/workbench.js';
 import { createWorkbenchContextCommandService } from '../../src/service/workbench-context-command-service.js';
 
-vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
+vi.mock('../../src/service/message-box-service.js', () => ({
+  MarMessageBox: { confirm: vi.fn() }
+}));
 beforeEach(() => {
-  vi.mocked(ElMessageBox.confirm)
+  vi.mocked(MarMessageBox.confirm)
     .mockReset()
-    .mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
+    .mockResolvedValue('confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>);
 });
 
 function fixture() {
@@ -39,11 +41,11 @@ function fixture() {
 describe('shared context command', () => {
   it('confirms before acquiring the submission gate and executing', async () => {
     const f = fixture();
-    vi.mocked(ElMessageBox.confirm).mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.mocked(MarMessageBox.confirm).mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
     await f.service.compactCurrentContext();
-    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+    expect(MarMessageBox.confirm).toHaveBeenCalledWith(
       expect.stringContaining('42% used; 42000 of 100000 tokens'),
       expect.any(String),
       expect.any(Object)
@@ -62,13 +64,13 @@ describe('shared context command', () => {
     const f = fixture();
     f.canCompact.value = false;
     await f.service.compactCurrentContext();
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled();
+    expect(MarMessageBox.confirm).not.toHaveBeenCalled();
     expect(f.execute).not.toHaveBeenCalled();
   });
 
   it('does not submit after cancellation', async () => {
     const f = fixture();
-    vi.mocked(ElMessageBox.confirm).mockRejectedValue('cancel');
+    vi.mocked(MarMessageBox.confirm).mockRejectedValue('cancel');
     await f.service.compactCurrentContext();
     expect(f.beginSubmission).not.toHaveBeenCalled();
     expect(f.execute).not.toHaveBeenCalled();
@@ -106,11 +108,11 @@ describe('shared context command', () => {
     'rechecks %s after confirmation',
     async (change) => {
       const f = fixture();
-      vi.mocked(ElMessageBox.confirm).mockImplementation(async () => {
+      vi.mocked(MarMessageBox.confirm).mockImplementation(async () => {
         if (change === 'working') f.canCompact.value = false;
         else if (change === 'node') f.nodeId.value = 'node-2';
         else f.selectedSession.value = { id: 'session-2' } as Session;
-        return 'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
+        return 'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>;
       });
       await f.service.compactCurrentContext();
       expect(f.beginSubmission).not.toHaveBeenCalled();

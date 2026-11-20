@@ -2,7 +2,7 @@ import { createFileAccessFixture } from '../support/file-access-fixture.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
 import { createWorkspaceFileWorkbenchController } from '../../src/service/workspace-file-workbench-controller.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { localePreferenceService, translate } from '../../src/service/locale-preference-service.js';
 import type { ScopedHttpService } from '../../src/service/scoped-http-service.js';
 import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vue?unit-render';
@@ -103,8 +103,8 @@ it.each([
 ] as const)(
   'finishes a confirmed deletion through the Files owner after panel unmount (%s)',
   async (scenario) => {
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
     let resolve!: (value: undefined) => void;
     let reject!: (error: Error) => void;

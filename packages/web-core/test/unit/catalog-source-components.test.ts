@@ -1,13 +1,9 @@
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, {
-  ElMessage,
-  ElMessageBox,
-  ID_INJECTION_KEY,
-  ZINDEX_INJECTION_KEY
-} from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SkillPage from '../../src/view/skill/SkillSourceManagementPage.vue?unit-render';
 import McpPage from '../../src/view/skill/McpSourceManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -80,11 +76,11 @@ describe('Public source discovery and catalog management', () => {
       vi.stubGlobal('Document', class {});
       vi.stubGlobal('ShadowRoot', class {});
       i18n.global.locale.value = 'en-US';
-      vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+
       const confirm = vi
-        .spyOn(ElMessageBox, 'confirm')
+        .spyOn(MarMessageBox, 'confirm')
         .mockRejectedValueOnce('cancel')
-        .mockResolvedValue('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
+        .mockResolvedValue('confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>);
       const source = {
         id: 'source/id',
         name: 'Complete source',
@@ -136,7 +132,7 @@ describe('Public source discovery and catalog management', () => {
         await flushComponent();
         await trigger(button(_name === 'Skill' ? 'Add skill source' : 'Add MCP source'), 'onClick');
         expect(textContent(view.root)).toContain('Host source ownership');
-        const sourceDialog = view.findAll('ElDialog')[0]!;
+        const sourceDialog = view.findAll('MarDialog')[0]!;
         await trigger(sourceDialog, 'onUpdate:modelValue', false);
         if (_name === 'MCP') await trigger(button('Search'), 'onClick');
         expect(textContent(view.root)).toContain('Visible candidate description');
@@ -145,7 +141,7 @@ describe('Public source discovery and catalog management', () => {
           .find((node) => /Add to (?:catalog|MCP)/iu.test(textContent(node)))!;
         await trigger(add, 'onClick');
         expect(textContent(view.root)).toContain('Host catalog ownership');
-        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+        await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
         await trigger(button('Disable'), 'onClick');
         expect(confirm).toHaveBeenCalledOnce();
         expect(request.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(0);
@@ -163,3 +159,14 @@ describe('Public source discovery and catalog management', () => {
     }
   );
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

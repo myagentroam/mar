@@ -146,7 +146,7 @@ describe('Public resource management', () => {
         const form = view.findAll('MarForm')[0]!;
         const input = view.findAll('MarInput').find((node) => node.props['maxlength'] === '128')!;
         await trigger(input, 'onUpdate:modelValue', '  Fixture Node  ');
-        expect(view.findAll('ElDialog')).toHaveLength(1);
+        expect(view.findAll('MarDialog')).toHaveLength(1);
         expect(view.findAll('MarLink')).toHaveLength(0);
         const submit = buttons('Create registration key');
         const saving = trigger(submit, 'onClick');
@@ -169,8 +169,8 @@ describe('Public resource management', () => {
           expect(view.findAll('MarLink')[0]?.props['href']).toContain(
             '/deployment/node-installation'
           );
-        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
-        expect(view.findAll('ElDialog')).toHaveLength(0);
+        await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
+        expect(view.findAll('MarDialog')).toHaveLength(0);
         expect(textContent(view.root)).not.toContain('fixture-registration-key');
       } finally {
         complete({ token: 'fixture-registration-key' });

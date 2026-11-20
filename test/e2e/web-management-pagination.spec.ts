@@ -100,7 +100,7 @@ test('Desktop management requests backend pages and push-all ignores the current
     return json(route, { accepted: true });
   });
   await page.getByRole('button', { name: '推送全部', exact: true }).click();
-  const confirmation = page.locator('.el-message-box');
+  const confirmation = page.locator('.mar-message-box');
   await expect(confirmation).toContainText('45');
   await confirmation.getByRole('button', { name: '推送全部', exact: true }).click();
   await expect.poll(() => upgraded.length).toBe(45);

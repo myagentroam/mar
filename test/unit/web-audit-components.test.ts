@@ -92,7 +92,7 @@ function detailFixture() {
       const table = view.findAll('MarTable')[0]!;
       return (table.props['onRowClick'] as (event: unknown) => Promise<void>)(events[index]);
     },
-    text: () => textContent(view.findAll('ElDialog')[0]!)
+    text: () => textContent(view.findAll('MarDialog')[0]!)
   };
 }
 
@@ -157,7 +157,7 @@ describe('Audit management behavior', () => {
         await flushComponent();
         const a = fixture.open(0);
         await flushComponent();
-        const dialog = fixture.view.findAll('ElDialog')[0]!;
+        const dialog = fixture.view.findAll('MarDialog')[0]!;
         if (close === 'footer') {
           const button = fixture.view
             .findAll('MarButton')
@@ -166,7 +166,7 @@ describe('Audit management behavior', () => {
         } else {
           await trigger(dialog, close === 'close' ? 'onClose' : 'onUpdate:modelValue', false);
         }
-        expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+        expect(fixture.view.findAll('MarDialog')).toHaveLength(0);
         const reopened = fixture.open(0);
         fixture.pending[0]!.resolve(detail(0, 'Closed payload'));
         await a;
@@ -190,12 +190,12 @@ describe('Audit management behavior', () => {
         await flushComponent();
         const pending = fixture.open(0);
         await flushComponent();
-        await trigger(fixture.view.findAll('ElDialog')[0]!, 'onClose');
+        await trigger(fixture.view.findAll('MarDialog')[0]!, 'onClose');
         if (outcome === 'success') fixture.pending[0]!.resolve(detail(0, 'Closed payload'));
         else fixture.pending[0]!.reject(new Error('Closed failure'));
         await pending;
         await flushComponent();
-        expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+        expect(fixture.view.findAll('MarDialog')).toHaveLength(0);
         expect(showMessage).not.toHaveBeenCalled();
       } finally {
         fixture.view.unmount();
@@ -215,7 +215,7 @@ describe('Audit management behavior', () => {
       await pending;
       await flushComponent();
       expect(showMessage).not.toHaveBeenCalled();
-      expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+      expect(fixture.view.findAll('MarDialog')).toHaveLength(0);
     }
   );
 
@@ -258,7 +258,7 @@ describe('Audit management behavior', () => {
             `/api/audit-events/${encodeURIComponent(events[index]!.id)}`,
             { cache: 'no-store' }
           );
-          const dialog = view.findAll('ElDialog')[0]!;
+          const dialog = view.findAll('MarDialog')[0]!;
           const label = i18n.global.t(`generated.auditManagementPage.${key}`);
           expect(label).not.toContain('generated.');
           expect(textContent(dialog)).toContain(label);
@@ -271,7 +271,7 @@ describe('Audit management behavior', () => {
             .findAll('MarButton')
             .find((button) => textContent(button) === i18n.global.t('common.close'))!;
           await trigger(close, 'onClick');
-          expect(view.findAll('ElDialog')).toHaveLength(0);
+          expect(view.findAll('MarDialog')).toHaveLength(0);
         }
       } finally {
         view.unmount();

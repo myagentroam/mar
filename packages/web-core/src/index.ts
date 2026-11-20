@@ -3,7 +3,6 @@ export * from './service/admin-session-state-service.js';
 export * from './service/workbench-http-service.js';
 export * from './service/scoped-http-service.js';
 export * from './util/api-error.js';
-export { tooltipOptions } from './util/tooltip.js';
 export * from './i18n/locale-config.js';
 export * from './i18n/authentication.js';
 export * from './i18n/system-information.js';

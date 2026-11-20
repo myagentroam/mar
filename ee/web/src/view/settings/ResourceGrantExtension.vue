@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormRules, type FormInstance } from '@myagentroam/mar-ui/form';
@@ -12,7 +13,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
@@ -118,11 +119,10 @@ async function createGrant(): Promise<void> {
 }
 async function removeGrant(grant: Grant): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.resourceSharingPage.afterRevocationTheTargetImmediatelyLosesDirect'),
       translate('generated.resourceSharingPage.revokeGrant'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.revoke'),
@@ -140,14 +140,13 @@ async function removeGrant(grant: Grant): Promise<void> {
 defineExpose({ open: openShare });
 </script>
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="shareOpen"
     v-model="shareOpen"
     :title="translate('generated.resourceSharingPage.resourceGrants')"
     width="min(620px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
     ><div v-if="selected" class="resource-context">
       <strong>{{ selected.label }}</strong
       ><code
@@ -241,7 +240,7 @@ defineExpose({ open: openShare });
         {{ translate('common.grant') }}
       </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 <style scoped>
 .resource-context {

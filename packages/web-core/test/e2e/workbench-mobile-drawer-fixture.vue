@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import { nextTick, onBeforeUnmount, ref } from 'vue';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../src/service/mobile-dialog-return-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
@@ -197,7 +198,7 @@ const imageAttachment: ComposerAttachment = {
 };
 async function closeDetails(done: () => void): Promise<void> {
   try {
-    await ElMessageBox.confirm('Discard draft?', 'Confirm discard');
+    await MarMessageBox.confirm('Discard draft?', 'Confirm discard');
     done();
   } catch {
     /* Cancellation retains the draft. */
@@ -205,7 +206,7 @@ async function closeDetails(done: () => void): Promise<void> {
 }
 async function messageBox(variant: 'alert' | 'prompt'): Promise<void> {
   try {
-    await ElMessageBox[variant]('Message', 'Notice');
+    await MarMessageBox[variant]('Message', 'Notice');
     opened.value = 'confirmed';
   } catch {
     opened.value = 'cancelled';
@@ -337,7 +338,7 @@ onBeforeUnmount(() => {
       <button type="button" @click="messageBox('prompt')">Open prompt</button>
       <output aria-label="Opened target">{{ opened }}</output>
     </section>
-    <el-dialog
+    <MarDialog
       v-if="detailsOpen"
       v-model="detailsOpen"
       title="Guarded details"
@@ -346,7 +347,7 @@ onBeforeUnmount(() => {
       @vue:before-unmount="unmountMobileDialogReturn"
     >
       <input v-model="draft" aria-label="Draft" />
-    </el-dialog>
+    </MarDialog>
     <ImagePreviewDialogs
       :attachment-open="attachmentPreview && imageOpen"
       :attachment="attachmentPreview ? imageAttachment : undefined"

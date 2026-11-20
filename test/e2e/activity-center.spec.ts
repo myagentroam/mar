@@ -564,26 +564,21 @@ for (const width of [1280, 390]) {
       for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right'])
         await expect(preview).toHaveCSS(`border-${corner}-radius`, radius);
       await expect(preview).toHaveCSS('overflow', 'hidden');
-      const arrow = popover.locator('.el-popper__arrow');
       if (width >= 768) {
-        await expect(arrow).toBeVisible();
-        expect((await arrow.boundingBox())!.x).toBeLessThan((await popover.boundingBox())!.x);
-        const arrowBackground = await arrow.evaluate(
-          (element) => getComputedStyle(element, '::before').backgroundColor
-        );
-        const background = await popover.evaluate(
-          (element) => getComputedStyle(element).backgroundColor
-        );
-        expect(resolvedColorToHex(arrowBackground)).toBe(resolvedColorToHex(background));
-        const arrowEdges = await arrow.evaluate((element) => {
-          const arrowStyle = getComputedStyle(element, '::before');
-          return [arrowStyle.borderBottomColor, arrowStyle.borderLeftColor];
+        await expect(popover).toHaveAttribute('data-side', 'right');
+        await expect(popover).toHaveAttribute('data-arrow');
+        const { arrow, surface } = await popover.evaluate((element) => {
+          const style = getComputedStyle(element, '::before');
+          const panel = getComputedStyle(element);
+          return {
+            arrow: [style.backgroundColor, style.borderTopColor, style.borderLeftColor, style.left],
+            surface: [panel.backgroundColor, panel.borderTopColor]
+          };
         });
-        const outline = await popover.evaluate(
-          (element) => getComputedStyle(element).borderTopColor
-        );
-        expect(arrowEdges).toEqual([outline, outline]);
-      } else await expect(arrow).toHaveCount(0);
+        expect(resolvedColorToHex(arrow[0]!)).toBe(resolvedColorToHex(surface[0]!));
+        expect(arrow.slice(1, 3)).toEqual([surface[1], surface[1]]);
+        expect(parseFloat(arrow[3]!)).toBeLessThan(0);
+      } else await expect(popover).toHaveClass(/mar-ui-popover--no-arrow/);
       await expect(popover).toHaveCSS('opacity', '1');
       await page.screenshot({
         path: testInfo.outputPath(`notification-preview-${width}-${theme}.png`),
