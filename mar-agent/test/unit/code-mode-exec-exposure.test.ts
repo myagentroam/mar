@@ -119,6 +119,9 @@ describe('Code Mode exec exposure', () => {
           expect(codeExec).toBeDefined();
           if (permissionMode === 'auto') expect(codeExec!.inputMode).toBe('json');
           const description = codeExec!.description;
+          expect(description).not.toContain('question');
+          expect(description).toContain('Direct-only tools cannot be called here.');
+          expect(description).toContain('for the next model request');
           const marker = 'Programmatic tools: ';
           const directory = JSON.parse(
             description.slice(description.lastIndexOf(marker) + marker.length)
