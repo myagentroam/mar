@@ -103,6 +103,23 @@ function onEscape(event: KeyboardEvent) {
   hide();
 }
 
+function onHoveredEscape(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+  // The focused surface still owns its keyboard action. Dismiss only the hovered preview.
+  if (hasInterest('hover')) hide();
+}
+
+watch(
+  [displayed, surface, () => props.trigger],
+  ([open, element, triggers], _, onCleanup) => {
+    if (!open || !element || !Array.isArray(triggers) || !triggers.includes('hover')) return;
+    const doc = element.ownerDocument;
+    doc.addEventListener('keydown', onHoveredEscape);
+    onCleanup(() => doc.removeEventListener('keydown', onHoveredEscape));
+  },
+  { flush: 'post' }
+);
+
 const popup = usePopup(() => {
   if (!syncing && displayed.value && props.outsideDismiss) hide();
 });

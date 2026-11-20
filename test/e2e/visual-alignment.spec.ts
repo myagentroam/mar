@@ -1231,6 +1231,38 @@ test('Escape from the performance details returns focus without reopening the pa
   await expect(trigger).toBeFocused();
 });
 
+test('Escape dismisses hovered performance details without moving unrelated focus', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  await page.clock.install();
+  const trigger = page.locator('.web-performance-indicator');
+  const panel = page.locator('.web-performance-panel');
+  const unrelated = page.getByRole('button', { name: 'Open hint dialog', exact: true });
+  await unrelated.evaluate((button) => {
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && event.target === button && !event.defaultPrevented)
+        button.setAttribute('data-observed-escape', 'true');
+    });
+  });
+  await unrelated.focus();
+  await trigger.hover();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(400);
+  await expect(panel).toBeHidden();
+  await expect(unrelated).toBeFocused();
+  await expect(unrelated).toHaveAttribute('data-observed-escape', 'true');
+  await expect.poll(() => trigger.evaluate((element) => element.matches(':hover'))).toBe(true);
+
+  await unrelated.hover();
+  await trigger.hover();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   for (const width of [390, 767, 768, 1280]) {
     test(`Session performance clears the final row and keeps compact bottom spacing: ${theme}, ${width}px`, async ({
