@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarDivider } from '@myagentroam/mar-ui/divider';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
+import { MarLink } from '@myagentroam/mar-ui/link';
+import { MarResult } from '@myagentroam/mar-ui/result';
+import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -16,7 +25,6 @@ import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import type { TagProps } from 'element-plus';
 import {
   XAI_SUBSCRIPTION_BASE_URL,
   modelSocks5UrlSchema,
@@ -1514,8 +1522,8 @@ onBeforeUnmount(() => {
     element-loading-custom-class="mar-page-loading"
     class="mar-management-page mar-agent-model-management"
   >
-    <el-tabs v-model="activeTab" class="management-tabs">
-      <el-tab-pane
+    <MarTabs v-model="activeTab" class="management-tabs">
+      <MarTabPane
         v-if="canManageModels"
         :label="translate('marAgentModels.modelsTab')"
         name="models"
@@ -1585,9 +1593,9 @@ onBeforeUnmount(() => {
           />
           <MarTableColumn :label="translate('marAgentModels.availability')" width="110">
             <template #default="{ row }">
-              <el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
+              <MarTag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
                 translate(row.enabled ? 'marAgentModels.enabled' : 'marAgentModels.disabled')
-              }}</el-tag>
+              }}</MarTag>
             </template>
           </MarTableColumn>
           <MarTableColumn
@@ -1625,11 +1633,11 @@ onBeforeUnmount(() => {
           <slot name="model-access-column" />
           <MarTableColumn :label="translate('marAgentModels.status')" width="130">
             <template #default="{ row }">
-              <el-tag
+              <MarTag
                 :type="statusType(row.lastTestStatus)"
                 effect="plain"
                 v-tooltip="statusDetail(row)"
-                >{{ statusLabel(row.lastTestStatus) }}</el-tag
+                >{{ statusLabel(row.lastTestStatus) }}</MarTag
               >
             </template>
           </MarTableColumn>
@@ -1667,8 +1675,8 @@ onBeforeUnmount(() => {
             </template>
           </MarTableColumn>
         </MarTable>
-      </el-tab-pane>
-      <el-tab-pane :label="translate('marAgentModels.codexCredentialsTab')" name="codexCredentials">
+      </MarTabPane>
+      <MarTabPane :label="translate('marAgentModels.codexCredentialsTab')" name="codexCredentials">
         <div class="mar-table-actions">
           <MarButton
             :icon="marIcon('refresh')"
@@ -1706,9 +1714,9 @@ onBeforeUnmount(() => {
           </MarTableColumn>
           <MarTableColumn :label="translate('marAgentModels.status')" width="140">
             <template #default="{ row }">
-              <el-tag :type="credentialStatusType(row.status, row.authorization)" effect="plain">{{
+              <MarTag :type="credentialStatusType(row.status, row.authorization)" effect="plain">{{
                 credentialStatusLabel(row.status, row.authorization)
-              }}</el-tag>
+              }}</MarTag>
             </template>
           </MarTableColumn>
           <MarTableColumn :label="translate('marAgentModels.codexAccount')" min-width="150">
@@ -1761,8 +1769,8 @@ onBeforeUnmount(() => {
             </template>
           </MarTableColumn>
         </MarTable>
-      </el-tab-pane>
-      <el-tab-pane
+      </MarTabPane>
+      <MarTabPane
         v-if="canManageModels"
         :label="translate('marAgentModels.imageGenerationTab')"
         name="imageGeneration"
@@ -1772,8 +1780,8 @@ onBeforeUnmount(() => {
           :request="request"
           :writable="writable"
         />
-      </el-tab-pane>
-      <el-tab-pane
+      </MarTabPane>
+      <MarTabPane
         v-if="canManageCompact !== false"
         :label="translate('promptCompletion.advanced')"
         name="compact"
@@ -1785,7 +1793,7 @@ onBeforeUnmount(() => {
             :writable="writable"
             :preferred-organization-id="compactPreferredOrganizationId"
           />
-          <el-divider />
+          <MarDivider />
           <h3>{{ translate('promptCompletion.title') }}</h3>
           <PromptCompletionSettings
             :request="request"
@@ -1793,8 +1801,8 @@ onBeforeUnmount(() => {
             :preferred-organization-id="compactPreferredOrganizationId"
           />
         </template>
-      </el-tab-pane>
-      <el-tab-pane :label="translate('marAgentModels.personalOrderTab')" name="modelOrder">
+      </MarTabPane>
+      <MarTabPane :label="translate('marAgentModels.personalOrderTab')" name="modelOrder">
         <p class="selection-rule">{{ translate('marAgentModels.personalOrderHint') }}</p>
         <div class="mar-table-actions">
           <MarButton
@@ -1856,8 +1864,8 @@ onBeforeUnmount(() => {
             min-width="150"
           />
         </MarTable>
-      </el-tab-pane>
-    </el-tabs>
+      </MarTabPane>
+    </MarTabs>
 
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
@@ -1975,22 +1983,22 @@ onBeforeUnmount(() => {
         </MarFormItem>
         <div class="model-grid">
           <MarFormItem :label="translate('marAgentModels.context')">
-            <el-input-number
+            <MarInputNumber
               v-model="draft.contextWindowTokens"
               :aria-label="translate('marAgentModels.context')"
               :min="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
+            ></MarInputNumber>
           </MarFormItem>
           <MarFormItem :label="translate('marAgentModels.output')" prop="maxOutputTokens">
-            <el-input-number
+            <MarInputNumber
               v-model="draft.maxOutputTokens"
               :aria-label="translate('marAgentModels.output')"
               :min="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
+            ></MarInputNumber>
           </MarFormItem>
         </div>
         <MarFormItem
@@ -2033,60 +2041,60 @@ onBeforeUnmount(() => {
           <MarSwitch v-model="draft.enabled" />
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.capabilities')">
-          <el-checkbox
+          <MarCheckbox
             :model-value="draft.inputCapabilities.includes('IMAGE')"
             @change="
               (value: boolean | string | number) =>
                 (draft.inputCapabilities = Boolean(value) ? ['TEXT', 'IMAGE'] : ['TEXT'])
             "
-            >{{ translate('marAgentModels.image') }}</el-checkbox
+            >{{ translate('marAgentModels.image') }}</MarCheckbox
           >
-          <el-checkbox v-model="draft.conversationModel">{{
+          <MarCheckbox v-model="draft.conversationModel">{{
             translate('marAgentModels.conversationModel')
-          }}</el-checkbox>
-          <el-checkbox v-model="draft.subagentModel">{{
+          }}</MarCheckbox>
+          <MarCheckbox v-model="draft.subagentModel">{{
             translate('marAgentModels.subagentModel')
-          }}</el-checkbox>
-          <el-checkbox v-model="draft.unifiedCompact">{{
+          }}</MarCheckbox>
+          <MarCheckbox v-model="draft.unifiedCompact">{{
             translate('marAgentModels.unifiedCompact')
-          }}</el-checkbox>
-          <el-checkbox v-model="draft.titleGeneration">{{
+          }}</MarCheckbox>
+          <MarCheckbox v-model="draft.titleGeneration">{{
             translate('marAgentModels.titleGeneration')
-          }}</el-checkbox>
-          <el-checkbox v-model="draft.codeMode">{{
+          }}</MarCheckbox>
+          <MarCheckbox v-model="draft.codeMode">{{
             translate('marAgentModels.codeMode')
-          }}</el-checkbox>
-          <el-checkbox v-model="draft.gcEnabled">{{
+          }}</MarCheckbox>
+          <MarCheckbox v-model="draft.gcEnabled">{{
             translate('marAgentModels.gcEnabled')
-          }}</el-checkbox>
-          <el-checkbox v-model="draft.useResourceUrl">{{
+          }}</MarCheckbox>
+          <MarCheckbox v-model="draft.useResourceUrl">{{
             translate('marAgentModels.useResourceUrl')
-          }}</el-checkbox>
-          <el-checkbox
+          }}</MarCheckbox>
+          <MarCheckbox
             v-model="draft.hostedWebSearch"
             :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
-            >{{ translate('marAgentModels.webSearch') }}</el-checkbox
+            >{{ translate('marAgentModels.webSearch') }}</MarCheckbox
           >
-          <el-checkbox
+          <MarCheckbox
             v-model="draft.responsesPreviousResponseId"
             :disabled="draft.protocol === 'ANTHROPIC_MESSAGES'"
-            >{{ translate('marAgentModels.responsesContinuation') }}</el-checkbox
+            >{{ translate('marAgentModels.responsesContinuation') }}</MarCheckbox
           >
         </MarFormItem>
         <MarFormItem :label="translate('marAgentModels.reasoningEfforts')">
-          <el-checkbox-group
+          <MarCheckboxGroup
             v-model="draft.reasoningEfforts"
             :aria-label="translate('marAgentModels.reasoningEfforts')"
           >
-            <el-checkbox
+            <MarCheckbox
               v-for="effort in reasoningEffortOptions"
               :key="effort"
               :label="effort"
               :value="effort"
             >
               {{ effort }}
-            </el-checkbox>
-          </el-checkbox-group>
+            </MarCheckbox>
+          </MarCheckboxGroup>
         </MarFormItem>
         <MarFormItem
           :label="translate('marAgentModels.defaultReasoningEffort')"
@@ -2148,7 +2156,7 @@ onBeforeUnmount(() => {
       <section v-if="modelTestResult" class="model-test-result" aria-live="polite">
         <h3>{{ translate('marAgentModels.modelTestResultTitle') }}</h3>
         <div class="model-test-result-heading">
-          <el-tag :type="modelTestResult.success ? 'success' : 'danger'">
+          <MarTag :type="modelTestResult.success ? 'success' : 'danger'">
             {{
               translate(
                 modelTestResult.success
@@ -2156,34 +2164,34 @@ onBeforeUnmount(() => {
                   : 'marAgentModels.modelTestFailure'
               )
             }}
-          </el-tag>
+          </MarTag>
         </div>
-        <el-descriptions :column="1" border>
-          <el-descriptions-item :label="translate('marAgentModels.modelTestCode')">
+        <MarDescriptions :column="1" border>
+          <MarDescriptionsItem :label="translate('marAgentModels.modelTestCode')">
             {{ modelTestValue(modelTestResult.code) }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.modelTestHttpStatus')">
+          </MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.modelTestHttpStatus')">
             {{ modelTestValue(modelTestResult.httpStatus) }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.modelTestMessage')">
+          </MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.modelTestMessage')">
             {{ modelTestValue(modelTestResult.message) }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.modelTestServerRequestId')">
+          </MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.modelTestServerRequestId')">
             {{ modelTestValue(modelTestResult.requestId) }}
-          </el-descriptions-item>
-        </el-descriptions>
+          </MarDescriptionsItem>
+        </MarDescriptions>
         <template v-if="!modelTestResult.success && modelTestResult.response">
-          <el-descriptions class="model-test-response-details" :column="1" border>
-            <el-descriptions-item :label="translate('marAgentModels.modelTestUpstreamRequestId')">
+          <MarDescriptions class="model-test-response-details" :column="1" border>
+            <MarDescriptionsItem :label="translate('marAgentModels.modelTestUpstreamRequestId')">
               {{ modelTestValue(modelTestResult.response.requestId) }}
-            </el-descriptions-item>
-            <el-descriptions-item :label="translate('marAgentModels.modelTestContentType')">
+            </MarDescriptionsItem>
+            <MarDescriptionsItem :label="translate('marAgentModels.modelTestContentType')">
               {{ modelTestValue(modelTestResult.response.contentType) }}
-            </el-descriptions-item>
-            <el-descriptions-item :label="translate('marAgentModels.modelTestRetryAfter')">
+            </MarDescriptionsItem>
+            <MarDescriptionsItem :label="translate('marAgentModels.modelTestRetryAfter')">
               {{ modelTestValue(modelTestResult.response.retryAfter) }}
-            </el-descriptions-item>
-          </el-descriptions>
+            </MarDescriptionsItem>
+          </MarDescriptions>
           <div class="model-test-response-body-label">
             {{ translate('marAgentModels.modelTestResponseBody') }}
           </div>
@@ -2365,14 +2373,14 @@ onBeforeUnmount(() => {
         <div v-if="loginAttempt.userCode" class="device-login-code">
           {{ loginAttempt.userCode }}
         </div>
-        <el-link
+        <MarLink
           :href="loginAttempt.verificationUri"
           :underline="false"
           target="_blank"
           type="primary"
         >
           {{ loginAttempt.verificationUri }}
-        </el-link>
+        </MarLink>
         <p class="form-hint">
           {{
             translate(
@@ -2386,7 +2394,7 @@ onBeforeUnmount(() => {
           }}
         </p>
       </template>
-      <el-result
+      <MarResult
         v-else-if="loginAttempt.status === 'SUCCEEDED'"
         icon="success"
         :title="translate('marAgentModels.codexLoginSucceeded')"
@@ -2395,15 +2403,15 @@ onBeforeUnmount(() => {
             name="success"
             size="64"
             style="color: var(--mar-color-success-text)" /></template
-      ></el-result>
-      <el-result
+      ></MarResult>
+      <MarResult
         v-else
         icon="error"
         :title="translate('marAgentModels.codexLoginFailed')"
         :sub-title="loginAttempt.code ?? loginAttempt.message"
         ><template #icon
           ><MarIcon name="error" size="64" style="color: var(--mar-color-danger-text)" /></template
-      ></el-result>
+      ></MarResult>
       <template #footer>
         <template v-if="loginAttempt.status === 'PENDING'">
           <MarButton
@@ -2431,74 +2439,74 @@ onBeforeUnmount(() => {
       width="min(720px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('marAgentModels.modelConfigurationId')">
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('marAgentModels.modelConfigurationId')">
           <code>{{ selectedModelDetail.id }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.name')">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.name')">{{
           selectedModelDetail.name
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.protocol')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.protocol')">{{
           protocolLabel(selectedModelDetail)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.model')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.model')">{{
           selectedModelDetail.modelId
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.url')">
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.url')">
           <code class="model-detail-url">{{ selectedModelDetail.baseUrl }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.availability')">
-          <el-tag :type="selectedModelDetail.enabled ? 'success' : 'info'" effect="plain">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.availability')">
+          <MarTag :type="selectedModelDetail.enabled ? 'success' : 'info'" effect="plain">{{
             translate(
               selectedModelDetail.enabled ? 'marAgentModels.enabled' : 'marAgentModels.disabled'
             )
-          }}</el-tag>
-        </el-descriptions-item>
+          }}</MarTag>
+        </MarDescriptionsItem>
         <slot name="model-access-details" :model="selectedModelDetail" />
-        <el-descriptions-item :label="translate('marAgentModels.status')">
-          <el-tag :type="statusType(selectedModelDetail.lastTestStatus)" effect="plain">{{
+        <MarDescriptionsItem :label="translate('marAgentModels.status')">
+          <MarTag :type="statusType(selectedModelDetail.lastTestStatus)" effect="plain">{{
             statusLabel(selectedModelDetail.lastTestStatus)
-          }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.context')">{{
+          }}</MarTag>
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.context')">{{
           selectedModelDetail.contextWindowTokens
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.output')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.output')">{{
           selectedModelDetail.maxOutputTokens
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.defaultReasoningEffort')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.defaultReasoningEffort')">{{
           selectedModelDetail.defaultReasoningEffort
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.conversationModel')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.conversationModel')">{{
           translate(
             selectedModelDetail.conversationModel !== false
               ? 'marAgentModels.yes'
               : 'marAgentModels.no'
           )
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.subagentModel')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.subagentModel')">{{
           translate(selectedModelDetail.subagentModel ? 'marAgentModels.yes' : 'marAgentModels.no')
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.unifiedCompact')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.unifiedCompact')">{{
           translate(selectedModelDetail.unifiedCompact ? 'marAgentModels.yes' : 'marAgentModels.no')
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.titleGeneration')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.titleGeneration')">{{
           translate(
             selectedModelDetail.titleGeneration ? 'marAgentModels.yes' : 'marAgentModels.no'
           )
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.codeMode')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.codeMode')">{{
           translate(selectedModelDetail.codeMode ? 'marAgentModels.yes' : 'marAgentModels.no')
-        }}</el-descriptions-item>
-        <el-descriptions-item
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="
             selectedModelDetail.credentialType === 'CREDENTIAL_REF' &&
             modelProtocolChoice(selectedModelDetail) !== 'GROK'
           "
           :label="translate('marAgentModels.serviceTier')"
-          >{{ serviceTierLabel(selectedModelDetail) }}</el-descriptions-item
+          >{{ serviceTierLabel(selectedModelDetail) }}</MarDescriptionsItem
         >
-      </el-descriptions>
+      </MarDescriptions>
       <template #footer>
         <MarButton @click="modelDetailOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
@@ -2514,43 +2522,43 @@ onBeforeUnmount(() => {
       :close-icon="marIcon('close')"
     >
       <div v-loading="credentialDetailLoading">
-        <el-descriptions v-if="selectedCredentialDetails" :column="1" border>
-          <el-descriptions-item :label="translate('marAgentModels.codexCredentialId')">
+        <MarDescriptions v-if="selectedCredentialDetails" :column="1" border>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexCredentialId')">
             <code>{{ selectedCredentialDetails.credential.id }}</code>
-          </el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.credentialName')">{{
+          </MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.credentialName')">{{
             selectedCredentialDetails.credential.name
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.codexCredentialScope')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexCredentialScope')">{{
             credentialScopeLabel(selectedCredentialDetails.credential.ownership)
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.status')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.status')">{{
             credentialStatusLabel(
               selectedCredentialDetails.credential.status,
               selectedCredentialDetails.credential.authorization
             )
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.codexAccount')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexAccount')">{{
             selectedCredentialDetails.credential.accountId
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.codexTokenExpiry')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexTokenExpiry')">{{
             formatTimestamp(selectedCredentialDetails.credential.accessTokenExpiresAt)
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.chatgptEarliestRefresh')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.chatgptEarliestRefresh')">{{
             formatTimestamp(selectedCredentialDetails.credential.earliestRefreshAt)
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.codexLastRefresh')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexLastRefresh')">{{
             formatTimestamp(selectedCredentialDetails.credential.lastRefreshAt)
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.codexLastChecked')">{{
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexLastChecked')">{{
             formatTimestamp(selectedCredentialDetails.credential.lastCheckedAt)
-          }}</el-descriptions-item>
-          <el-descriptions-item :label="translate('marAgentModels.codexProxy')">
+          }}</MarDescriptionsItem>
+          <MarDescriptionsItem :label="translate('marAgentModels.codexProxy')">
             <code class="credential-proxy-url">{{
               selectedCredentialDetails.socks5Url ?? '—'
             }}</code>
-          </el-descriptions-item>
-        </el-descriptions>
+          </MarDescriptionsItem>
+        </MarDescriptions>
         <section
           v-if="
             selectedCredentialUsage && selectedCredentialDetails?.credential.type === 'XAI_OAUTH'
@@ -2630,8 +2638,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <h4>{{ translate('marAgentModels.codexUsageLimitsTitle') }}</h4>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item
+          <MarDescriptions :column="1" border>
+            <MarDescriptionsItem
               v-for="(window, index) in selectedCredentialUsage.windows"
               :key="`${window.id}-${index}`"
               :label="runnerUsageWindowLabel(window)"
@@ -2648,11 +2656,11 @@ onBeforeUnmount(() => {
                   })
                 }}</span>
               </div>
-            </el-descriptions-item>
-            <el-descriptions-item :label="translate('marAgentModels.codexUsageQueriedAt')">
+            </MarDescriptionsItem>
+            <MarDescriptionsItem :label="translate('marAgentModels.codexUsageQueriedAt')">
               {{ formatTimestamp(selectedCredentialUsage.fetchedAt) }}
-            </el-descriptions-item>
-          </el-descriptions>
+            </MarDescriptionsItem>
+          </MarDescriptions>
         </section>
       </div>
       <template #footer>
@@ -2720,7 +2728,7 @@ onBeforeUnmount(() => {
       <div v-loading="catalogLoading" class="catalog-table-wrap">
         <MarTable :data="catalogRows" row-key="upstreamModelId">
           <MarTableColumn :label="translate('marAgentModels.select')" width="80">
-            <template #default="{ row }"><el-checkbox v-model="row.selected" /></template>
+            <template #default="{ row }"><MarCheckbox v-model="row.selected" /></template>
           </MarTableColumn>
           <MarTableColumn :label="translate('marAgentModels.model')" min-width="220">
             <template #default="{ row }">
@@ -2744,7 +2752,7 @@ onBeforeUnmount(() => {
                 }}</span>
                 <span>{{ row.unsupportedReasoningEfforts.join(', ') || '—' }}</span>
               </div>
-              <el-alert
+              <MarAlert
                 v-if="row.warnings.length"
                 :title="translate('marAgentModels.codexCatalogWarning')"
                 type="warning"
@@ -2759,14 +2767,14 @@ onBeforeUnmount(() => {
           </MarTableColumn>
           <MarTableColumn :label="translate('marAgentModels.context')" min-width="150">
             <template #default="{ row }">
-              <el-input-number
+              <MarInputNumber
                 v-if="row.requiredInputs.includes('contextWindowTokens')"
                 v-model="row.contextWindowTokens"
                 :min="1"
                 :disabled="!row.selected"
                 ><template #decrease-icon><MarIcon name="subtract" /></template
                 ><template #increase-icon><MarIcon name="plus" /></template
-              ></el-input-number>
+              ></MarInputNumber>
               <span v-else>{{ row.contextWindowTokens }}</span>
             </template>
           </MarTableColumn>

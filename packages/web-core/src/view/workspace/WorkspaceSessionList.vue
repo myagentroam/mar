@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -657,20 +658,20 @@ function submitSessionSearch(): void {
             </p>
           </div>
           <span class="effective-skill-tags">
-            <el-tag
+            <MarTag
               v-if="skill.localStatus !== 'VALID' && skill.localStatus !== 'UNKNOWN_VERSION'"
               effect="plain"
               type="warning"
             >
               {{ skillWarningLabel(skill.localStatus) }}
-            </el-tag>
-            <el-tag effect="plain" :type="skill.source === 'WORKSPACE' ? 'primary' : 'info'">
+            </MarTag>
+            <MarTag effect="plain" :type="skill.source === 'WORKSPACE' ? 'primary' : 'info'">
               {{
                 skill.source === 'WORKSPACE'
                   ? translate('common.workspace')
                   : translate('common.nodeHome')
               }}
-            </el-tag>
+            </MarTag>
           </span>
         </div>
       </div>
@@ -702,16 +703,16 @@ function submitSessionSearch(): void {
             <p class="effective-mcp-meta">{{ mcp.serverName }} · {{ mcp.version }}</p>
           </div>
           <span class="effective-skill-tags">
-            <el-tag effect="plain" type="success">{{
+            <MarTag effect="plain" type="success">{{
               translate('generated.workspaceSessionList.loaded')
-            }}</el-tag>
-            <el-tag effect="plain" :type="mcp.origin === 'WORKSPACE' ? 'primary' : 'info'">
+            }}</MarTag>
+            <MarTag effect="plain" :type="mcp.origin === 'WORKSPACE' ? 'primary' : 'info'">
               {{
                 mcp.origin === 'WORKSPACE'
                   ? translate('common.workspace')
                   : translate('common.node')
               }}
-            </el-tag>
+            </MarTag>
           </span>
         </div>
         <template v-if="executionBuiltIns.length > 0">
@@ -740,12 +741,12 @@ function submitSessionSearch(): void {
               <p class="effective-mcp-meta">{{ serverName }}</p>
             </div>
             <span class="effective-skill-tags">
-              <el-tag effect="plain" type="info">{{
+              <MarTag effect="plain" type="info">{{
                 translate('generated.workspaceSessionList.executionInjected')
-              }}</el-tag>
-              <el-tag effect="plain" type="info">{{
+              }}</MarTag>
+              <MarTag effect="plain" type="info">{{
                 translate('generated.workspaceSessionList.builtInMcp')
-              }}</el-tag>
+              }}</MarTag>
             </span>
           </div>
         </template>

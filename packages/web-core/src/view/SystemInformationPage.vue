@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ElTag } from 'element-plus';
-import 'element-plus/es/components/tag/style/css';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { translate } from '../service/locale-preference-service.js';
 import type { Component } from 'vue';
 
@@ -38,26 +37,26 @@ const emit = defineEmits<{ extensionChanged: [] }>();
         <div>
           <dt>{{ translate('common.webConsole') }}</dt>
           <dd>
-            <el-tag effect="light" type="success">{{
+            <MarTag effect="light" type="success">{{
               translate('generated.settingsContent.running')
-            }}</el-tag>
+            }}</MarTag>
           </dd>
         </div>
         <div>
           <dt>{{ translate('generated.settingsContent.serverConnection') }}</dt>
           <dd>
-            <el-tag :type="authenticated ? 'success' : 'info'" effect="light">{{
+            <MarTag :type="authenticated ? 'success' : 'info'" effect="light">{{
               authenticated
                 ? translate('generated.settingsContent.connected')
                 : translate('generated.settingsContent.disconnected')
-            }}</el-tag>
+            }}</MarTag>
           </dd>
         </div>
         <div>
           <dt>{{ translate('generated.settingsContent.nodeConnections') }}</dt>
           <dd>
-            <el-tag :type="onlineNodeCount > 0 ? 'success' : 'info'" effect="light"
-              >{{ onlineNodeCount }}/{{ nodeCount }}</el-tag
+            <MarTag :type="onlineNodeCount > 0 ? 'success' : 'info'" effect="light"
+              >{{ onlineNodeCount }}/{{ nodeCount }}</MarTag
             >
           </dd>
         </div>

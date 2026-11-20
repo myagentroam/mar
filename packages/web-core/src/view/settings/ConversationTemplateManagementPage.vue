@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
+import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -21,7 +25,6 @@ import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
 } from '@myagentroam/protocol';
-import type { TagProps } from 'element-plus';
 import type { NodeSummary, Workspace } from '../../model/workbench.js';
 import {
   conversationTemplateBytesToMiB,
@@ -758,14 +761,14 @@ onMounted(() => {
         >{{ translate('conversationTemplates.add') }}</MarButton
       >
     </div>
-    <el-alert
+    <MarAlert
       v-if="eligibleNodes.length === 0"
       type="warning"
       :closable="false"
       show-icon
       :title="translate('conversationTemplates.noEligibleNode')"
       ><template #icon><MarIcon name="warning" /></template
-    ></el-alert>
+    ></MarAlert>
     <MarTable
       v-loading="
         pagination.loading.value &&
@@ -796,9 +799,9 @@ onMounted(() => {
       </MarTableColumn>
       <MarTableColumn :label="translate('conversationTemplates.status')" width="130">
         <template #default="{ row }">
-          <el-tag :type="templateStatusType(row)" effect="plain">{{
+          <MarTag :type="templateStatusType(row)" effect="plain">{{
             templateStatusLabel(row)
-          }}</el-tag>
+          }}</MarTag>
         </template>
       </MarTableColumn>
       <MarTableColumn
@@ -1015,27 +1018,27 @@ onMounted(() => {
             :label="translate('conversationTemplates.maxStorageBytes')"
             prop="maxStorageMiB"
           >
-            <el-input-number
+            <MarInputNumber
               v-model="draft.maxStorageMiB"
               :aria-label="translate('conversationTemplates.maxStorageBytes')"
               :min="1"
               :step="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
+            ></MarInputNumber>
           </MarFormItem>
           <MarFormItem
             :label="translate('conversationTemplates.maxUploadBytes')"
             prop="maxUploadMiB"
           >
-            <el-input-number
+            <MarInputNumber
               v-model="draft.maxUploadMiB"
               :aria-label="translate('conversationTemplates.maxUploadBytes')"
               :min="1"
               :step="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
+            ></MarInputNumber>
           </MarFormItem>
         </div>
       </MarForm>
@@ -1070,20 +1073,20 @@ onMounted(() => {
       @closed="closeDetailDialog"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions :column="2" border>
-        <el-descriptions-item :label="translate('conversationTemplates.templateId')">
+      <MarDescriptions :column="2" border>
+        <MarDescriptionsItem :label="translate('conversationTemplates.templateId')">
           <code>{{ detail.template.id }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('conversationTemplates.sourceNode')">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('conversationTemplates.sourceNode')">{{
           nodeLabel(detail.draft.nodeId)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('conversationTemplates.sourceWorkspace')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('conversationTemplates.sourceWorkspace')">{{
           workspaceLabel(detail.draft.workspaceId)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('conversationTemplates.currentVersion')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('conversationTemplates.currentVersion')">{{
           detail.template.publishedVersion ?? translate('conversationTemplates.none')
-        }}</el-descriptions-item>
-      </el-descriptions>
+        }}</MarDescriptionsItem>
+      </MarDescriptions>
       <h3>{{ translate('conversationTemplates.versions') }}</h3>
       <MarTable :data="detail.versions" max-height="240">
         <MarTableColumn
@@ -1131,7 +1134,7 @@ onMounted(() => {
 }
 
 .form-grid :deep(.mar-ui-select),
-.quota-grid :deep(.el-input-number) {
+.quota-grid :deep(.mar-ui-input-number) {
   width: 100%;
 }
 

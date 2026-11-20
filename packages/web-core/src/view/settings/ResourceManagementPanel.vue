@@ -1,4 +1,7 @@
 <script setup lang="ts" generic="Ownership = unknown">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarLink } from '@myagentroam/mar-ui/link';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
@@ -899,10 +902,10 @@ onUnmounted(() => {
         :label="translate('generated.resourceSharingPage.status2')"
         width="110"
         ><template #default="{ row }"
-          ><el-tag
+          ><MarTag
             effect="light"
             :type="row.disabled ? 'danger' : row.connected ? 'success' : 'info'"
-            >{{ statusLabel(row) }}</el-tag
+            >{{ statusLabel(row) }}</MarTag
           ></template
         ></MarTableColumn
       >
@@ -910,9 +913,9 @@ onUnmounted(() => {
         :label="translate('generated.resourceSharingPage.ownershipType')"
         min-width="120"
         ><template #default="{ row }"
-          ><el-tag :type="ownershipTypeTag(row)" effect="light">{{
+          ><MarTag :type="ownershipTypeTag(row)" effect="light">{{
             ownershipTypeLabel(row)
-          }}</el-tag></template
+          }}</MarTag></template
         ></MarTableColumn
       >
       <MarTableColumn :label="translate('generated.resourceSharingPage.owner')" min-width="160"
@@ -1111,13 +1114,13 @@ onUnmounted(() => {
       @update:model-value="registrationToken = ''"
       :close-icon="marIcon('close')"
     >
-      <el-alert
+      <MarAlert
         :title="translate('generated.resourceSharingPage.registrationTokenCreated')"
         type="success"
         show-icon
         :closable="false"
         ><template #icon><MarIcon name="success" /></template
-      ></el-alert>
+      ></MarAlert>
       <p class="registration-instructions">
         {{ translate('generated.resourceSharingPage.registrationTokenInstructions') }}
       </p>
@@ -1125,7 +1128,7 @@ onUnmounted(() => {
         {{ translate('generated.resourceSharingPage.registrationTokenLabel') }}
       </div>
       <code class="registration-token">{{ registrationToken }}</code>
-      <el-link
+      <MarLink
         v-if="documentationAvailable"
         class="registration-help-link"
         type="primary"
@@ -1136,7 +1139,7 @@ onUnmounted(() => {
         rel="noopener noreferrer"
         >{{
           translate('generated.resourceSharingPage.viewNodeDeploymentAndAutostartGuide')
-        }}</el-link
+        }}</MarLink
       >
       <template #footer
         ><MarButton @click="registrationToken = ''">{{
@@ -1179,8 +1182,8 @@ code.registration-token {
   margin-top: 2px;
   font-size: var(--mar-font-size-body);
 }
-:global(.resource-management-panel .el-dialog .el-descriptions__label) {
-  width: 140px;
+:global(.resource-management-panel .el-dialog .mar-ui-descriptions) {
+  --mar-ui-descriptions-label-width: 140px;
 }
 :global(.bulk-upgrade-result.el-message-box) {
   width: min(520px, calc(100vw - 32px));

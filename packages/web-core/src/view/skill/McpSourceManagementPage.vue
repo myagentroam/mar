@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -502,11 +504,11 @@ function scopeLabel(scope: string): string {
       />
       <MarTableColumn :label="translate('generated.mcpSourceManagementPage.status')" width="110"
         ><template #default="{ row }"
-          ><el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
+          ><MarTag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
             row.enabled
               ? translate('generated.mcpSourceManagementPage.enabled')
               : translate('generated.mcpSourceManagementPage.disabled')
-          }}</el-tag></template
+          }}</MarTag></template
         ></MarTableColumn
       >
       <MarTableColumn :label="translate('generated.mcpSourceManagementPage.actions')" :width="180">
@@ -535,8 +537,8 @@ function scopeLabel(scope: string): string {
       </MarTableColumn>
     </MarTable>
 
-    <el-tabs v-model="activeMcpTab" class="mcp-management-tabs">
-      <el-tab-pane
+    <MarTabs v-model="activeMcpTab" class="mcp-management-tabs">
+      <MarTabPane
         :label="translate('generated.mcpSourceManagementPage.sourceMCPServers')"
         name="source"
       >
@@ -644,8 +646,8 @@ function scopeLabel(scope: string): string {
             }}
           </div>
         </div>
-      </el-tab-pane>
-      <el-tab-pane
+      </MarTabPane>
+      <MarTabPane
         :label="translate('generated.mcpSourceManagementPage.catalogMCPServers')"
         name="catalog"
       >
@@ -722,12 +724,12 @@ function scopeLabel(scope: string): string {
             <MarTableColumn :label="translate('generated.mcpDetailsDialog.tags')" min-width="150">
               <template #default="{ row }">
                 <div v-if="row.featured || row.tags.length > 0" class="mcp-tags">
-                  <el-tag v-if="row.featured" type="warning" effect="plain"
-                    >★ {{ translate('generated.mcpSourceManagementPage.featured') }}</el-tag
+                  <MarTag v-if="row.featured" type="warning" effect="plain"
+                    >★ {{ translate('generated.mcpSourceManagementPage.featured') }}</MarTag
                   >
-                  <el-tag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+                  <MarTag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
                     tag
-                  }}</el-tag>
+                  }}</MarTag>
                 </div>
               </template>
             </MarTableColumn>
@@ -796,8 +798,8 @@ function scopeLabel(scope: string): string {
             @load-more="pagination.loadMore"
           />
         </div>
-      </el-tab-pane>
-    </el-tabs>
+      </MarTabPane>
+    </MarTabs>
   </main>
   <el-dialog
     @vue:mounted="mountMobileDialogReturn"
@@ -948,10 +950,10 @@ p {
   min-height: 260px;
   min-width: 0;
 }
-.mcp-management-tabs :deep(.el-tabs__content) {
+.mcp-management-tabs :deep(.mar-ui-tabs__content) {
   min-width: 0;
 }
-.mcp-management-tabs :deep(.el-tab-pane) {
+.mcp-management-tabs :deep(.mar-ui-tab-pane) {
   display: grid;
   gap: 14px;
   min-width: 0;

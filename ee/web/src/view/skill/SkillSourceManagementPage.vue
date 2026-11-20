@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { marIcon } from '@myagentroam/web-core/icons';
@@ -68,7 +69,7 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
         v-if="sourceDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.skillSourceManagementPage.organization3')"
         prop="organizationId"
-        ><el-cascader
+        ><MarCascader
           v-model="sourceDraft.organizationId"
           style="width: 100%"
           filterable
@@ -99,7 +100,7 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
         v-if="catalogDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.skillSourceManagementPage.organization4')"
         prop="organizationId"
-        ><el-cascader
+        ><MarCascader
           v-model="catalogDraft.organizationId"
           style="width: 100%"
           filterable

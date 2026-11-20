@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import {
@@ -328,7 +330,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
               : t('customThemes.newTheme')
         }}
       </h3>
-      <el-tag v-if="unsaved" type="warning">{{ t('customThemes.unsaved') }}</el-tag>
+      <MarTag v-if="unsaved" type="warning">{{ t('customThemes.unsaved') }}</MarTag>
     </div>
     <div class="editor-layout">
       <MarForm ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
@@ -363,30 +365,30 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
       </MarForm>
       <aside :aria-label="t('customThemes.inspector')">
         <div class="validation" aria-live="polite">
-          <el-alert
+          <MarAlert
             v-if="!analysis.validJson"
             type="error"
             :closable="false"
             show-icon
             :title="t('customThemes.invalidJson')"
             ><template #icon><MarIcon name="error" /></template
-          ></el-alert>
-          <el-alert
+          ></MarAlert>
+          <MarAlert
             v-else-if="analysis.warnings.length"
             type="warning"
             :closable="false"
             show-icon
             :title="t('customThemes.warningSummary', { count: analysis.warnings.length })"
             ><template #icon><MarIcon name="warning" /></template
-          ></el-alert>
-          <el-alert
+          ></MarAlert>
+          <MarAlert
             v-else
             type="success"
             :closable="false"
             show-icon
             :title="t('customThemes.valid')"
             ><template #icon><MarIcon name="success" /></template
-          ></el-alert>
+          ></MarAlert>
           <ul v-if="analysis.warnings.length" class="warnings">
             <li v-for="(warning, index) in analysis.warnings" :key="index">
               {{ t(`customThemes.warnings.${warning.code}`, { field: warning.field }) }}

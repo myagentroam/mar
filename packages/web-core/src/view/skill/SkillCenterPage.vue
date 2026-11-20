@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarEmpty } from '@myagentroam/mar-ui/empty';
+import { MarSegmented } from '@myagentroam/mar-ui/segmented';
+import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -501,10 +506,10 @@ function scopeLabel(scope: string): string {
       </div>
     </header>
 
-    <el-tabs v-model="capabilityTab" class="capability-tabs">
-      <el-tab-pane :label="translate('common.skill')" name="skill" />
-      <el-tab-pane :label="translate('common.mcp')" name="mcp" />
-    </el-tabs>
+    <MarTabs v-model="capabilityTab" class="capability-tabs">
+      <MarTabPane :label="translate('common.skill')" name="skill" />
+      <MarTabPane :label="translate('common.mcp')" name="mcp" />
+    </MarTabs>
 
     <McpCenterPanel
       :scope-label="scopeLabel"
@@ -522,7 +527,7 @@ function scopeLabel(scope: string): string {
           <strong>{{ translate('generated.skillCenterPage.configurationTarget') }}</strong
           ><span>{{ translate('generated.skillCenterPage.selectWhereTheSkillWillBeUsed') }}</span>
         </div>
-        <el-segmented
+        <MarSegmented
           v-model="targetKind"
           :options="[
             { label: translate('generated.skillCenterPage.node'), value: 'NODE' },
@@ -583,21 +588,21 @@ function scopeLabel(scope: string): string {
           >{{ translate('generated.skillCenterPage.repairEnvironment') }}</MarButton
         >
       </section>
-      <el-alert
+      <MarAlert
         v-if="targetNodes.length === 0"
         type="warning"
         :closable="false"
         :title="translate('generated.skillCenterPage.noManageableNodesAreAvailableForSkill')"
       />
-      <el-alert
+      <MarAlert
         v-else-if="targetNodeId && !targetReady"
         type="warning"
         :closable="false"
         :title="translate('generated.skillCenterPage.theCurrentNodeDoesNotSupportThis')"
       />
 
-      <el-tabs v-model="activeConfigTab" class="skill-config-tabs">
-        <el-tab-pane
+      <MarTabs v-model="activeConfigTab" class="skill-config-tabs">
+        <MarTabPane
           :label="translate('generated.skillCenterPage.availableSkills')"
           name="available"
         >
@@ -674,12 +679,12 @@ function scopeLabel(scope: string): string {
                 >
                   <template #default="{ row }">
                     <div v-if="row.featured || row.tags.length > 0" class="skill-tags">
-                      <el-tag v-if="row.featured" type="warning" effect="plain"
-                        >★ {{ translate('generated.skillCenterPage.featured2') }}</el-tag
+                      <MarTag v-if="row.featured" type="warning" effect="plain"
+                        >★ {{ translate('generated.skillCenterPage.featured2') }}</MarTag
                       >
-                      <el-tag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+                      <MarTag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
                         tag
-                      }}</el-tag>
+                      }}</MarTag>
                     </div>
                   </template>
                 </MarTableColumn>
@@ -744,9 +749,9 @@ function scopeLabel(scope: string): string {
               }}
             </div>
           </div>
-        </el-tab-pane>
+        </MarTabPane>
 
-        <el-tab-pane
+        <MarTabPane
           :label="translate('generated.skillCenterPage.installedSkills')"
           name="installed"
         >
@@ -769,12 +774,12 @@ function scopeLabel(scope: string): string {
                   min-width="160"
                 >
                   <template #default="{ row }">
-                    <el-tag
+                    <MarTag
                       :type="row.localStatus === 'VALID' ? 'success' : 'warning'"
                       effect="plain"
                     >
                       {{ statusLabel(row) }}
-                    </el-tag>
+                    </MarTag>
                   </template>
                 </MarTableColumn>
                 <MarTableColumn
@@ -850,13 +855,13 @@ function scopeLabel(scope: string): string {
                 </MarTableColumn>
               </MarTable>
             </template>
-            <el-empty
+            <MarEmpty
               v-else-if="service.target.value"
               :description="translate('generated.skillCenterPage.thisTargetHasNoInstalledSkills')"
             />
           </div>
-        </el-tab-pane>
-      </el-tabs>
+        </MarTabPane>
+      </MarTabs>
     </section>
     <SkillDetailsDialog v-model="detailsOpen" :details="skillDetails" />
   </section>
@@ -898,7 +903,7 @@ function scopeLabel(scope: string): string {
 .skill-config-tabs {
   min-height: 260px;
 }
-.skill-config-tabs :deep(.el-tab-pane) {
+.skill-config-tabs :deep(.mar-ui-tab-pane) {
   display: grid;
   gap: 14px;
 }

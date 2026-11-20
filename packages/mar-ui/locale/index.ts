@@ -6,6 +6,26 @@ export interface MarUiLocale {
   readonly noData: string;
   readonly select: string;
   readonly invalidField: string;
+  readonly close: string;
+  readonly decrease: string;
+  readonly increase: string;
+  readonly datePicker: {
+    readonly locale: string;
+    readonly calendar: string;
+    readonly start: string;
+    readonly end: string;
+    readonly time: string;
+    readonly hours: string;
+    readonly minutes: string;
+    readonly startTime: string;
+    readonly endTime: string;
+    readonly confirm: string;
+    readonly cancel: string;
+    readonly previousMonth: string;
+    readonly nextMonth: string;
+    readonly previousYear: string;
+    readonly nextYear: string;
+  };
   readonly table: {
     readonly expand: string;
     readonly collapse: string;

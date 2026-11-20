@@ -53,7 +53,7 @@ test('Personal secret validation and CRUD reuse authoritative lists without subm
   await create.getByRole('button', { name: '保存', exact: true }).click();
   await expect(create.getByText('请输入密钥值', { exact: true })).toBeVisible();
   expect(writes).toHaveLength(0);
-  await expect(create.locator('.el-cascader')).toHaveCount(0);
+  await expect(create.locator('.mar-ui-cascader')).toHaveCount(0);
   await create.getByPlaceholder('请输入环境变量名').fill('PERSONAL_KEY');
   await create.getByPlaceholder('请输入密钥值').fill('personal-test-fixture');
   await create.getByRole('button', { name: '保存', exact: true }).click();
@@ -223,11 +223,11 @@ test('Secret and OAuth management show read-only row details and organization se
   const secretDialog = page.getByRole('dialog', { name: '新增环境密钥' });
   await secretDialog.getByRole('combobox').first().click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
-  await expect(secretDialog.locator('.el-cascader')).toBeVisible();
+  await expect(secretDialog.locator('.mar-ui-cascader')).toBeVisible();
   await expect(secretDialog.getByRole('group', { name: '所属组织' })).toBeVisible();
   await secretDialog.getByPlaceholder('请输入环境变量名').fill('SHARED_KEY');
   await secretDialog.getByPlaceholder('请输入密钥值').fill('organization-test-fixture');
-  await secretDialog.locator('.el-cascader input').fill('平台');
+  await secretDialog.locator('.mar-ui-cascader input').fill('平台');
   await page.getByRole('listitem').filter({ hasText: '企业根 / 研发 / 平台' }).click();
   await secretDialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect
@@ -248,7 +248,7 @@ test('Secret and OAuth management show read-only row details and organization se
   await expect(page.locator('.oauth-provider-table')).toHaveClass(/clickable-rows/);
   await expect(providerRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(providerRow.locator('.mar-row-actions .el-icon').first()).toBeVisible();
-  await expect(providerRow.locator('.el-tag')).toHaveText('启用');
+  await expect(providerRow.locator('.mar-ui-tag')).toHaveText('启用');
   await expect(providerRow).toContainText('新用户将加入根组织并成为普通成员');
   await providerRow.click();
   const providerDetails = page.getByRole('dialog', { name: '飞书' });
@@ -269,7 +269,7 @@ test('Secret and OAuth management show read-only row details and organization se
   await providerRow.getByRole('button', { name: '停用', exact: true }).click();
   await disableConfirmation.getByRole('button', { name: '停用', exact: true }).click();
   await expect.poll(() => providerStatusRequests).toBe(1);
-  await expect(providerRow.locator('.el-tag')).toHaveText('停用');
+  await expect(providerRow.locator('.mar-ui-tag')).toHaveText('停用');
 
   await providerRow.getByRole('button', { name: '启用', exact: true }).click();
   const enableConfirmation = page
@@ -278,7 +278,7 @@ test('Secret and OAuth management show read-only row details and organization se
   await expect(enableConfirmation).toBeVisible();
   await enableConfirmation.getByRole('button', { name: '启用', exact: true }).click();
   await expect.poll(() => providerStatusRequests).toBe(2);
-  await expect(providerRow.locator('.el-tag')).toHaveText('启用');
+  await expect(providerRow.locator('.mar-ui-tag')).toHaveText('启用');
 
   await providerRow.getByRole('button', { name: '编辑', exact: true }).click();
   await expect(

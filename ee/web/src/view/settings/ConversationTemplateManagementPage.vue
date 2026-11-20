@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
@@ -263,13 +265,13 @@ onBeforeUnmount(() => {
     :close-icon="marIcon('close')"
   >
     <div v-loading="grantLoading" class="grant-dialog">
-      <el-alert
+      <MarAlert
         type="info"
         :closable="false"
         :title="translate('conversationTemplates.accessHint')"
       />
       <div v-if="writable" class="grant-form">
-        <el-cascader
+        <MarCascader
           v-model="targetOrganizationId"
           style="width: 100%"
           filterable

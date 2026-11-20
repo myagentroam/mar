@@ -3,7 +3,7 @@ import { shallowRef, useId, useTemplateRef, watch, watchPostEffect } from 'vue';
 
 const props = defineProps<{
   options: readonly { value: Value; label: string; accessibleLabel?: string }[];
-  label: string;
+  label?: string;
   block?: boolean;
   compact?: boolean;
 }>();

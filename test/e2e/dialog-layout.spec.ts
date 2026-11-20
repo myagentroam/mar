@@ -239,9 +239,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         const rows = dialog.locator('.effective-skill-row');
         await expect(rows).toHaveCount(60);
         if (resource === 'Skills') {
-          await expect(rows.nth(0).locator('.el-tag')).toHaveText(['Node HOME']);
-          await expect(rows.nth(1).locator('.el-tag')).toHaveText(['Workspace']);
-          await expect(rows.nth(2).locator('.el-tag')).toHaveText([
+          await expect(rows.nth(0).locator('.mar-ui-tag')).toHaveText(['Node HOME']);
+          await expect(rows.nth(1).locator('.mar-ui-tag')).toHaveText(['Workspace']);
+          await expect(rows.nth(2).locator('.mar-ui-tag')).toHaveText([
             'Incomplete installation',
             'Workspace'
           ]);

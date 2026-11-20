@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -84,7 +87,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
         :label="translate('marAgentModels.organization')"
         prop="ownerOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="modelOwnership.draft.ownerOrganizationId"
           :disabled="editing"
           style="width: 100%"
@@ -122,7 +125,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
         :label="translate('marAgentModels.organization')"
         prop="ownerOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="catalogOwnership.draft.ownerOrganizationId"
           :disabled="!writable"
           style="width: 100%"
@@ -157,7 +160,7 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
         :label="translate('marAgentModels.organization')"
         prop="ownerOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="credentialDraft.ownerOrganizationId"
           style="width: 100%"
           filterable
@@ -170,9 +173,9 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
     <template #model-access-column>
       <MarTableColumn :label="translate('marAgentModels.access')" width="110">
         <template #default="{ row }">
-          <el-tag :type="row.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
+          <MarTag :type="row.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
             accessLabel(row.access)
-          }}</el-tag>
+          }}</MarTag>
         </template>
       </MarTableColumn>
     </template>
@@ -186,17 +189,17 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
       ></template
     >
     <template #model-access-details="{ model }">
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="model.ownership"
         :label="translate('marAgentModels.modelOwnership')"
       >
         {{ ownership.label(model.ownership) }}
-      </el-descriptions-item>
-      <el-descriptions-item :label="translate('marAgentModels.access')">
-        <el-tag :type="model.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
+      </MarDescriptionsItem>
+      <MarDescriptionsItem :label="translate('marAgentModels.access')">
+        <MarTag :type="model.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
           accessLabel(model.access)
-        }}</el-tag>
-      </el-descriptions-item>
+        }}</MarTag>
+      </MarDescriptionsItem>
     </template>
     <template #model-extensions="{ refresh }"
       ><ModelGrantExtension ref="grants" :request="request" :writable="writable" :refresh="refresh"

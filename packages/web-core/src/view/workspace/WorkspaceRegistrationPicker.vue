@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
@@ -282,9 +284,9 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           <div class="workspace-directory-entry">
             <FileTypeIcon :name="pendingDirectoryName" kind="DIRECTORY" />
             <span>{{ pendingDirectoryName }}</span>
-            <el-tag type="warning">{{
+            <MarTag type="warning">{{
               translate('generated.workspaceRegistrationPicker.pending')
-            }}</el-tag>
+            }}</MarTag>
           </div>
           <button
             v-tooltip="translate('generated.workspaceRegistrationPicker.cancelNewDirectory2')"
@@ -358,11 +360,11 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         class="workspace-picker"
         @submit.prevent="submitRegistration"
       >
-        <el-checkbox
+        <MarCheckbox
           :model-value="preserveGitConfig ?? false"
           :disabled="loading || !nodeReady"
           @update:model-value="emit('update:preserveGitConfig', $event === true)"
-          >{{ translate('personalGit.preserve') }}</el-checkbox
+          >{{ translate('personalGit.preserve') }}</MarCheckbox
         >
         <MarFormItem prop="path" class="workspace-picker-selection">
           <code v-tooltip="selectedPath" v-if="selectedPath"
@@ -558,7 +560,7 @@ button.workspace-directory-entry:disabled {
   font-size: var(--mar-font-size-meta);
 }
 
-.workspace-directory-list .el-tag {
+.workspace-directory-list .mar-ui-tag {
   margin-left: auto;
 }
 

@@ -457,7 +457,7 @@ test('Enterprise administrators choose child organizations for skill sources and
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
   await expect(dialog.getByText('请选择组织', { exact: true })).toBeVisible();
   expect(createdSourceBody).toBeUndefined();
-  const organizationCascader = dialog.locator('.el-cascader');
+  const organizationCascader = dialog.locator('.mar-ui-cascader');
   await organizationCascader.locator('input').fill('平台研发组');
   await page.getByRole('listitem').filter({ hasText: '企业根 / 研发中心 / 平台研发组' }).click();
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
@@ -833,10 +833,10 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
       await sourceDialog.getByRole('button', { name: '确定', exact: true }).click();
       await expect(sourceDialog.getByText('请选择组织', { exact: true })).toBeVisible();
       expect(sourceBody).toBeUndefined();
-      await sourceDialog.locator('.el-cascader input').fill('平台组');
+      await sourceDialog.locator('.mar-ui-cascader input').fill('平台组');
       await page.getByRole('listitem').filter({ hasText: '平台组' }).click();
     } else {
-      await expect(sourceDialog.locator('.el-cascader')).toHaveCount(0);
+      await expect(sourceDialog.locator('.mar-ui-cascader')).toHaveCount(0);
     }
     await sourceDialog.getByRole('button', { name: '确定', exact: true }).click();
     await expect(sourceDialog).toBeHidden();
@@ -859,7 +859,7 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
     if (scope === 'ORGANIZATION') {
       await catalogDialog.getByRole('combobox').first().click();
       await page.getByRole('option', { name: '组织', exact: true }).click();
-      await catalogDialog.locator('.el-cascader input').fill('平台组');
+      await catalogDialog.locator('.mar-ui-cascader input').fill('平台组');
       await page.getByRole('listitem').filter({ hasText: '平台组' }).click();
     }
     await catalogDialog.getByRole('button', { name: '确定', exact: true }).click();

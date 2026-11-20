@@ -457,7 +457,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
   ).toBeVisible();
   await viewer.getByRole('button', { name: '关闭', exact: true }).click();
   await smtpDialog.locator('.smtp-toggle').getByRole('switch').click();
-  await expect(smtpDialog.locator('.smtp-form__pair .el-input-number .el-input__inner')).toHaveCSS(
+  await expect(smtpDialog.locator('.smtp-form__pair .mar-ui-input-number input')).toHaveCSS(
     'text-align',
     'left'
   );
@@ -1635,7 +1635,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.locator('.system-brand img')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'License 授权' })).toBeVisible();
   await expect(page.getByText('企业版', { exact: true })).toBeVisible();
-  await expect(page.locator('.license-version .el-tag')).toHaveText('过期');
+  await expect(page.locator('.license-version .mar-ui-tag')).toHaveText('过期');
   await expect(page.getByText('主机指纹')).toHaveCount(0);
   await expect(page.locator('.license-code-input input')).toHaveValue(
     'MAR1.random-license-request.checksum'

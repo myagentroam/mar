@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarEmpty } from '@myagentroam/mar-ui/empty';
+import { MarSegmented } from '@myagentroam/mar-ui/segmented';
+import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -303,7 +308,7 @@ function mcpErrorMessage(error: unknown): string {
         <strong>{{ translate('generated.mcpCenterPanel.configurationTarget') }}</strong
         ><span>{{ translate('generated.mcpCenterPanel.selectWhereTheMCPServerWillBe') }}</span>
       </div>
-      <el-segmented
+      <MarSegmented
         v-model="targetKind"
         :options="[
           { label: translate('generated.mcpCenterPanel.node'), value: 'NODE' },
@@ -346,17 +351,17 @@ function mcpErrorMessage(error: unknown): string {
         />
       </MarSelect>
     </section>
-    <el-alert v-if="targetIssue" :title="targetIssue" type="info" :closable="false" />
-    <el-tabs v-model="activeConfigTab" class="mcp-config-tabs">
-      <el-tab-pane
+    <MarAlert v-if="targetIssue" :title="targetIssue" type="info" :closable="false" />
+    <MarTabs v-model="activeConfigTab" class="mcp-config-tabs">
+      <MarTabPane
         :label="translate('generated.mcpCenterPanel.availableMCPServers')"
         name="available"
       />
-      <el-tab-pane
+      <MarTabPane
         :label="translate('generated.mcpCenterPanel.installedMCPServers')"
         name="installed"
       />
-    </el-tabs>
+    </MarTabs>
     <div class="mcp-filter-bar">
       <MarInput
         v-model="query"
@@ -434,13 +439,13 @@ function mcpErrorMessage(error: unknown): string {
           min-width="150"
         >
           <template #default="{ row }">
-            <el-tag
+            <MarTag
               v-if="
                 installedByName.get(row.serverName)?.origin === 'NODE' && targetKind === 'WORKSPACE'
               "
               type="info"
               effect="plain"
-              >{{ translate('generated.mcpCenterPanel.inheritedFromNode') }}</el-tag
+              >{{ translate('generated.mcpCenterPanel.inheritedFromNode') }}</MarTag
             >
             <span v-else>{{
               hasTargetUpdate(row)
@@ -452,12 +457,12 @@ function mcpErrorMessage(error: unknown): string {
         <MarTableColumn :label="translate('generated.mcpDetailsDialog.tags')" min-width="150">
           <template #default="{ row }">
             <div v-if="row.featured || row.tags.length > 0" class="mcp-tags">
-              <el-tag v-if="row.featured" type="warning" effect="plain"
-                >★ {{ translate('generated.mcpCenterPanel.featured') }}</el-tag
+              <MarTag v-if="row.featured" type="warning" effect="plain"
+                >★ {{ translate('generated.mcpCenterPanel.featured') }}</MarTag
               >
-              <el-tag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+              <MarTag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
                 tag
-              }}</el-tag>
+              }}</MarTag>
             </div>
           </template>
         </MarTableColumn>
@@ -535,7 +540,7 @@ function mcpErrorMessage(error: unknown): string {
           </template>
         </MarTableColumn>
       </MarTable>
-      <el-empty
+      <MarEmpty
         v-else
         :description="
           activeConfigTab === 'installed'

@@ -141,13 +141,13 @@ for (const english of [false, true]) {
     await expect(dialog).toContainText('Root / Platform / Research');
     await expect(dialog).toContainText('Root / Other');
     await expect(dialog.locator('.mar-ui-table__row').filter({ hasText: '99' })).toBeVisible();
-    await dialog.locator('.el-cascader input').fill('Other');
-    await expect(page.locator('.el-cascader__suggestion-item')).toHaveCount(0);
-    await dialog.locator('.el-cascader input').fill('Research');
+    await dialog.locator('.mar-ui-cascader input').fill('Other');
+    await expect(page.locator('.mar-ui-cascader__option')).toHaveCount(0);
+    await dialog.locator('.mar-ui-cascader input').fill('Research');
     await expect(
-      page.locator('.el-cascader__suggestion-item').filter({ hasText: 'Research' })
+      page.locator('.mar-ui-cascader__option').filter({ hasText: 'Research' })
     ).toBeVisible();
-    await page.locator('.el-cascader__suggestion-item').filter({ hasText: 'Research' }).click();
+    await page.locator('.mar-ui-cascader__option').filter({ hasText: 'Research' }).click();
     await dialog.getByRole('button', { name: english ? 'Grant' : '授权', exact: true }).click();
     await expect
       .poll(() => writes)
@@ -201,7 +201,7 @@ for (const english of [false, true]) {
       .click();
     const ownership = page.locator('.workspace-picker-ownership');
     await expect(ownership.locator('strong')).toHaveText('Root / Platform');
-    await expect(ownership.locator('.mar-ui-select, .el-cascader')).toHaveCount(0);
+    await expect(ownership.locator('.mar-ui-select, .mar-ui-cascader')).toHaveCount(0);
   });
 }
 
@@ -217,12 +217,12 @@ test('Workspace registration uses the searchable organization selector for the N
 
   const dialog = page.getByRole('dialog', { name: 'Register Workspace' });
   const selector = dialog.getByLabel('Resource Owner', { exact: true });
-  const dropdown = page.locator('.el-cascader__dropdown:visible');
-  const suggestions = dropdown.locator('.el-cascader__suggestion-item');
+  const dropdown = page.locator('.mar-ui-cascader__popup:visible');
+  const suggestions = dropdown.locator('.mar-ui-cascader__option');
   await expect(selector).toHaveValue('Root / Platform');
   await page.setViewportSize({ width: 390, height: 844 });
   await selector.fill('Other');
-  await expect(dropdown.locator('.el-cascader__empty-text')).toBeVisible();
+  await expect(dropdown.locator('.mar-ui-cascader__empty')).toBeVisible();
   await expect(suggestions).toHaveCount(0);
   await selector.fill('Research');
   const research = suggestions.filter({ hasText: /^Root \/ Platform \/ Research$/u });

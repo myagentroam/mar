@@ -99,7 +99,7 @@ describe('Public resource details', () => {
         await flushComponent();
         const controls = view.findAll('input').filter((input) => input.props['role'] === 'switch');
         expect(controls).toHaveLength(1);
-        expect(view.findAll('ElDescriptionsItem').map((item) => item.props['label'])).toContain(
+        expect(view.findAll('MarDescriptionsItem').map((item) => item.props['label'])).toContain(
           commonMessages['en-US'].generated.nodeDetailsDialogs.computerUse
         );
         expect(textContent(view.root)).not.toContain('Remote Desktop');
@@ -264,13 +264,13 @@ describe('Public resource details', () => {
       );
       expect(textContent(view.root)).not.toContain('personalGit.workspaceScope');
       expect(textContent(view.root)).not.toContain('personalGit.appliesLater');
-      expect(view.findAll('ElCheckbox')).toHaveLength(2);
+      expect(view.findAll('MarCheckbox')).toHaveLength(2);
       const controls = view
         .findAll('div')
         .find((element) => element.props['class'] === 'workspace-git-controls');
       expect(controls).toBeDefined();
-      await trigger(view.findAll('ElCheckbox')[0]!, 'onUpdate:modelValue', true);
-      await trigger(view.findAll('ElCheckbox')[1]!, 'onUpdate:modelValue', false);
+      await trigger(view.findAll('MarCheckbox')[0]!, 'onUpdate:modelValue', true);
+      await trigger(view.findAll('MarCheckbox')[1]!, 'onUpdate:modelValue', false);
       const save = view
         .findAll('MarButton')
         .find((button) => textContent(button).trim() === commonMessages['en-US'].personalGit.save)!;

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
@@ -44,56 +46,56 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
           translate('generated.skillDetailsDialog.noDescriptionIsAvailableForThisSkill')
         }}
       </p>
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem
           v-if="details.source"
           :label="translate('generated.skillDetailsDialog.source')"
-          >{{ details.source }}</el-descriptions-item
+          >{{ details.source }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.scope"
           :label="translate('generated.skillDetailsDialog.availability')"
-          >{{ details.scope }}</el-descriptions-item
+          >{{ details.scope }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.path"
           :label="translate('generated.skillDetailsDialog.skillPath')"
-          >{{ details.path }}</el-descriptions-item
+          >{{ details.path }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.version"
           :label="translate('generated.skillDetailsDialog.version')"
-          >{{ details.version }}</el-descriptions-item
+          >{{ details.version }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.updatedAt"
           :label="translate('generated.skillDetailsDialog.updated')"
-          >{{ details.updatedAt }}</el-descriptions-item
+          >{{ details.updatedAt }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.status"
           :label="translate('generated.skillDetailsDialog.status')"
-          >{{ details.status }}</el-descriptions-item
+          >{{ details.status }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.installs !== undefined"
           :label="translate('generated.skillDetailsDialog.installs')"
-          >{{ details.installs.toLocaleString(currentLocale()) }}</el-descriptions-item
+          >{{ details.installs.toLocaleString(currentLocale()) }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.featured || (details.tags?.length ?? 0) > 0"
           :label="translate('generated.skillDetailsDialog.tags')"
         >
           <div class="skill-tags">
-            <el-tag v-if="details.featured" type="warning" effect="plain"
-              >★ {{ translate('generated.skillDetailsDialog.featured') }}</el-tag
+            <MarTag v-if="details.featured" type="warning" effect="plain"
+              >★ {{ translate('generated.skillDetailsDialog.featured') }}</MarTag
             >
-            <el-tag v-for="tag in details.tags ?? []" :key="tag" type="info" effect="plain">{{
+            <MarTag v-for="tag in details.tags ?? []" :key="tag" type="info" effect="plain">{{
               tag
-            }}</el-tag>
+            }}</MarTag>
           </div>
-        </el-descriptions-item>
-      </el-descriptions>
+        </MarDescriptionsItem>
+      </MarDescriptions>
     </div>
     <template #footer>
       <MarButton @click="emit('update:modelValue', false)">{{

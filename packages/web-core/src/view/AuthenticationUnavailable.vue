@@ -1,9 +1,8 @@
 <script setup lang="ts">
+import { MarLink } from '@myagentroam/mar-ui/link';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElLink } from 'element-plus';
-import 'element-plus/es/components/link/style/css';
 import { useDocumentationAvailability } from '../service/documentation-availability.js';
 import {
   DEFAULT_LOCALE,
@@ -31,7 +30,7 @@ const helpPath = computed(() =>
       <MarButton type="primary" :loading="loading" @click="$emit('retry')">{{
         t('auth.retry')
       }}</MarButton>
-      <el-link v-if="documentationAvailable" :href="helpPath">{{ t('auth.help') }}</el-link>
+      <MarLink v-if="documentationAvailable" :href="helpPath">{{ t('auth.help') }}</MarLink>
     </div>
   </section>
 </template>

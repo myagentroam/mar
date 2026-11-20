@@ -14,6 +14,7 @@ export interface MarSelectProps<
   disabled?: boolean | undefined;
   validateEvent?: boolean;
   placeholder?: string;
+  prefixIcon?: MarIconName | Component;
   suffixIcon?: MarIconName | Component;
   clearIcon?: MarIconName | Component;
   clearable?: boolean & Clearable;

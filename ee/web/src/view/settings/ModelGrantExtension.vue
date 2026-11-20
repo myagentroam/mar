@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -283,13 +285,13 @@ defineExpose({ open: openGrants });
       <strong>{{ opening.model.name }}</strong>
       <code>{{ opening.model.modelId }}</code>
     </div>
-    <el-alert
+    <MarAlert
       :title="translate('marAgentModels.publicHint')"
       type="info"
       :closable="false"
       show-icon
       ><template #icon><MarIcon name="info" /></template
-    ></el-alert>
+    ></MarAlert>
     <div v-loading="opening.loading">
       <MarForm
         ref="grantFormRef"
@@ -314,7 +316,7 @@ defineExpose({ open: openGrants });
           :label="translate('marAgentModels.targetOrganization')"
           prop="targetOrganizationId"
         >
-          <el-cascader
+          <MarCascader
             v-model="opening.draft.targetOrganizationId"
             :disabled="!writable || opening.loading || opening.saving"
             style="width: 100%"

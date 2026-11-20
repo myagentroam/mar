@@ -968,7 +968,7 @@ describe('usage statistics settings contract', () => {
         const choices = view.findAll('MarOption').map((node) => node.props['value']);
         expect(choices).toContain('fallback-model');
         expect(choices).not.toContain('initial-model');
-        const statuses = view.findAll('ElTag').filter((node) => node.props['role'] === 'status');
+        const statuses = view.findAll('MarTag').filter((node) => node.props['role'] === 'status');
         expect(statuses.map((node) => node.props['aria-label'])).toEqual([
           commonMessages[locale].usageStatistics.states.failed,
           commonMessages[locale].usageStatistics.states.succeeded
@@ -988,7 +988,7 @@ describe('usage statistics settings contract', () => {
         await flushComponent();
         expect(
           view
-            .findAll('ElTag')
+            .findAll('MarTag')
             .filter((node) => node.props['role'] === 'status')
             .map((node) => node.props['type'])
         ).toEqual(['primary', 'info', 'warning']);

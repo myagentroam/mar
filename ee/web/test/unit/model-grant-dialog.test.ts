@@ -95,7 +95,7 @@ describe('Model grant dialog', () => {
   }
 
   async function chooseOrganization(id: number) {
-    await trigger(view.findAll('el-cascader')[0]!, 'onUpdate:modelValue', id);
+    await trigger(view.findAll('MarCascader')[0]!, 'onUpdate:modelValue', id);
   }
 
   it('keeps B context, rows and revoke target when the closed A read returns last', async () => {
@@ -176,7 +176,7 @@ describe('Model grant dialog', () => {
       await trigger(button('Close'), 'onClick');
       await open(model);
       expect(button('Grant').props.loading).toBe(false);
-      expect(view.findAll('el-cascader')[0]!.props.modelValue).toBeUndefined();
+      expect(view.findAll('MarCascader')[0]!.props.modelValue).toBeUndefined();
       await chooseOrganization(1);
       const savingNew = trigger(button('Grant'), 'onClick');
       await flushComponent();
@@ -255,7 +255,7 @@ describe('Model grant dialog', () => {
     expect(validate).toHaveBeenCalledOnce();
     expect(writeGrant).not.toHaveBeenCalled();
     expect(textContent(dialog())).toContain('Assistant B');
-    expect(view.findAll('el-cascader')[0]!.props.modelValue).toBe(2);
+    expect(view.findAll('MarCascader')[0]!.props.modelValue).toBe(2);
   });
 
   it('does not revoke when confirmation completes after the dialog is reopened', async () => {

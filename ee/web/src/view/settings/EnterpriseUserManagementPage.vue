@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -470,7 +474,7 @@ onUnmounted(() => {
       ></label>
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization2') }}</span
-        ><el-cascader
+        ><MarCascader
           v-model="organizationFilter"
           clearable
           filterable
@@ -554,11 +558,11 @@ onUnmounted(() => {
         :label="translate('generated.organizationUserManagementPage.status2')"
         width="100"
         ><template #default="{ row }"
-          ><el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
+          ><MarTag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
             row.enabled
               ? translate('generated.organizationUserManagementPage.enabled2')
               : translate('generated.organizationUserManagementPage.disabled2')
-          }}</el-tag></template
+          }}</MarTag></template
         ></MarTableColumn
       >
       <MarTableColumn
@@ -668,7 +672,7 @@ onUnmounted(() => {
             <span class="user-form-organization__name">{{
               translate('generated.organizationUserManagementPage.organization4')
             }}</span>
-            <el-cascader
+            <MarCascader
               v-model="userForm.organizationId"
               style="width: 100%"
               :disabled="creatingUser || userForm.role === 'ADMIN'"
@@ -707,7 +711,7 @@ onUnmounted(() => {
       width="min(440px, calc(100vw - 32px))"
       @close="dismissCredentials"
       :close-icon="marIcon('close')"
-      ><el-alert
+      ><MarAlert
         :title="
           translate(
             'generated.organizationUserManagementPage.temporaryCredentialsAreShownOnlyOnceThe'
@@ -717,22 +721,22 @@ onUnmounted(() => {
         :closable="false"
         show-icon
         ><template #icon><MarIcon name="warning" /></template
-      ></el-alert>
-      <el-descriptions
+      ></MarAlert>
+      <MarDescriptions
         v-if="credentials"
         class="credential-details mar-detail-descriptions"
         :column="1"
         border
       >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.username2')"
-          ><code>{{ credentials.username }}</code></el-descriptions-item
+          ><code>{{ credentials.username }}</code></MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.temporaryPassword')"
-          ><code>{{ credentials.password }}</code></el-descriptions-item
+          ><code>{{ credentials.password }}</code></MarDescriptionsItem
         >
-      </el-descriptions>
+      </MarDescriptions>
       <template #footer
         ><MarButton @click="copyCredentials">{{
           translate('generated.organizationUserManagementPage.copyUsernameAndPassword')
@@ -752,38 +756,36 @@ onUnmounted(() => {
       @update:model-value="userDetail = undefined"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('common.userId')">{{
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('common.userId')">{{
           userDetail.id
-        }}</el-descriptions-item>
-        <el-descriptions-item
-          :label="translate('generated.organizationUserManagementPage.user2')"
-          >{{ userDetail.username }}</el-descriptions-item
-        >
-        <el-descriptions-item
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.organizationUserManagementPage.user2')">{{
+          userDetail.username
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.email2')"
-          >{{ userDetail.email ?? '-' }}</el-descriptions-item
+          >{{ userDetail.email ?? '-' }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.displayName')"
-          >{{ userDetail.nickname ?? '-' }}</el-descriptions-item
+          >{{ userDetail.nickname ?? '-' }}</MarDescriptionsItem
         >
-        <el-descriptions-item
-          :label="translate('generated.organizationUserManagementPage.role2')"
-          >{{ roleLabel(userDetail.role) }}</el-descriptions-item
-        >
-        <el-descriptions-item
+        <MarDescriptionsItem :label="translate('generated.organizationUserManagementPage.role2')">{{
+          roleLabel(userDetail.role)
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.organization3')"
-          >{{ path(userDetail.organizationId) }}</el-descriptions-item
+          >{{ path(userDetail.organizationId) }}</MarDescriptionsItem
         >
-        <el-descriptions-item :label="translate('generated.organizationUserManagementPage.status2')"
-          ><el-tag :type="userDetail.enabled ? 'success' : 'info'" effect="plain">{{
+        <MarDescriptionsItem :label="translate('generated.organizationUserManagementPage.status2')"
+          ><MarTag :type="userDetail.enabled ? 'success' : 'info'" effect="plain">{{
             userDetail.enabled
               ? translate('generated.organizationUserManagementPage.enabled2')
               : translate('generated.organizationUserManagementPage.disabled2')
-          }}</el-tag></el-descriptions-item
+          }}</MarTag></MarDescriptionsItem
         >
-      </el-descriptions>
+      </MarDescriptions>
     </el-dialog>
   </section>
 </template>

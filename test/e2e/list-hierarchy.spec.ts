@@ -207,13 +207,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(title).toHaveCSS('font-weight', '400');
         await expect(title).toHaveCSS('color', (await colors(page)).primary);
       }
-      await expect(page.locator('.recent-sessions-list .el-tag--success')).toHaveCount(1);
-      await expect(page.locator('.recent-sessions-list .el-tag--info')).toHaveCount(1);
-      const statuses = page.locator('.recent-sessions-list .el-tag');
+      await expect(
+        page.locator('.recent-sessions-list .mar-ui-tag[data-type="success"]')
+      ).toHaveCount(1);
+      await expect(page.locator('.recent-sessions-list .mar-ui-tag[data-type="info"]')).toHaveCount(
+        1
+      );
+      const statuses = page.locator('.recent-sessions-list .mar-ui-tag');
       const recentPalette = await colors(page);
-      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      await expect(statuses.first()).toHaveAttribute('data-type', 'success');
       await expect(statuses.first()).toHaveCSS('color', recentPalette.success);
-      await expect(statuses.last()).toHaveClass(/el-tag--info/);
+      await expect(statuses.last()).toHaveAttribute('data-type', 'info');
       await page.locator('.recent-sessions-list button').last().click();
       await expect(page.getByTestId('opened')).toHaveText('Review second');
     }

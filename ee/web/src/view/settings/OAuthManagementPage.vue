@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -431,10 +434,10 @@ onMounted(() => {
         }}</template></MarTableColumn
       ><MarTableColumn :label="translate('generated.oAuthManagementPage.status')" width="110"
         ><template #default="{ row }"
-          ><el-tag
+          ><MarTag
             :type="row.enabled ? 'success' : row.testedAt === null ? 'warning' : 'info'"
             effect="plain"
-            >{{ providerStatusLabel(row) }}</el-tag
+            >{{ providerStatusLabel(row) }}</MarTag
           ></template
         ></MarTableColumn
       ><MarTableColumn :label="translate('generated.oAuthManagementPage.actions')" :width="320"
@@ -481,57 +484,57 @@ onMounted(() => {
       @closed="providerDetails = undefined"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions :column="1" border>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.providerKey')">
+      <MarDescriptions :column="1" border>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.providerKey')">
           <code>{{ providerDetails.providerKey }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.callbackURL')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.callbackURL')">
           <code>{{ providerCallbackUri(providerDetails) }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('common.clientId')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('common.clientId')">
           <code>{{ providerDetails.clientId }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.authorizationURL')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.authorizationURL')">
           <code>{{ providerDetails.authorizationEndpoint }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.tokenURL')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.tokenURL')">
           <code>{{ providerDetails.tokenEndpoint }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.userInfoURL')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.userInfoURL')">
           <code>{{ providerDetails.userinfoEndpoint }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.scopesOnePerLine')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.scopesOnePerLine')">
           {{ providerDetails.scopes.join(', ') }}
-        </el-descriptions-item>
-        <el-descriptions-item
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.oAuthManagementPage.externalUserIDJSONPointer')"
         >
           <code>{{ providerDetails.mappings.externalUserId }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.oAuthManagementPage.emailJSONPointerOptional')"
         >
           <code>{{ providerDetails.mappings.email || '-' }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.oAuthManagementPage.nameJSONPointerOptional')"
         >
           <code>{{ providerDetails.mappings.displayName || '-' }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('common.pkce')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('common.pkce')">
           {{ providerDetails.pkceMode }}
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.autoProvisioning')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.autoProvisioning')">
           {{
             providerDetails.autoProvisioningEnabled
               ? translate('generated.oAuthManagementPage.rootOrganizationMEMBER')
               : translate('generated.oAuthManagementPage.off')
           }}
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.oAuthManagementPage.status')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.oAuthManagementPage.status')">
           {{ providerStatusLabel(providerDetails) }}
-        </el-descriptions-item>
-      </el-descriptions>
+        </MarDescriptionsItem>
+      </MarDescriptions>
       <template #footer>
         <MarButton @click="providerDetailsOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
@@ -668,9 +671,9 @@ onMounted(() => {
               :label="translate('common.jsonBody')"
               value="client_secret_json" /></MarSelect></MarFormItem
         ><MarFormItem class="wide"
-          ><el-checkbox v-model="form.autoProvisioningEnabled">{{
+          ><MarCheckbox v-model="form.autoProvisioningEnabled">{{
             translate('generated.oAuthManagementPage.allowAutoProvisioningNewUsersAreCreated')
-          }}</el-checkbox></MarFormItem
+          }}</MarCheckbox></MarFormItem
         ></MarForm
       ><template #footer
         ><MarButton @click="open = false">{{

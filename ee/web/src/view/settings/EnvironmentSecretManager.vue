@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { marIcon } from '@myagentroam/web-core/icons';
@@ -128,7 +129,7 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
           role="group"
           :aria-label="translate('generated.environmentSecretManager.organization3')"
         >
-          <el-cascader
+          <MarCascader
             v-model="organizationId"
             :disabled="disabled"
             style="width: 100%"

@@ -209,7 +209,7 @@ describe('Registered enterprise users creation lifecycle', () => {
       'onUpdate:modelValue',
       'ORG_ADMIN'
     );
-    await trigger(fixture.view.findAll('el-cascader').filter(inForm)[0]!, 'onUpdate:modelValue', 2);
+    await trigger(fixture.view.findAll('MarCascader').filter(inForm)[0]!, 'onUpdate:modelValue', 2);
     await fixture.submit();
     expect(JSON.parse(fixture.writes()[0]![1]!.body as string)).toEqual({
       username: 'requested-user',

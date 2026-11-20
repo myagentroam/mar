@@ -1259,7 +1259,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await expect(page).toHaveURL(/view=management/);
   await expect(page).toHaveURL(/management=resource-nodes/);
   await expect(page.getByRole('button', { name: '刷新' })).toBeVisible();
-  await expect(page.locator('.el-tag').getByText('在线', { exact: true })).toBeVisible();
+  await expect(page.locator('.mar-ui-tag').getByText('在线', { exact: true })).toBeVisible();
   await expect(page.getByText('可升级到 0.1.7', { exact: true })).toBeVisible();
   await page.getByRole('cell', { name: '研发节点', exact: true }).click();
   const nodeDetails = page.getByRole('dialog', { name: '节点详情' });
@@ -1272,7 +1272,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await nodeStatusTrigger.click();
   await page.getByRole('option', { name: '离线', exact: true }).click();
   await expect(page).toHaveURL(/nodes.status=offline/);
-  await expect(page.locator('.el-tag').getByText('在线', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.mar-ui-tag').getByText('在线', { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('节点管理');
   await expect(

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
@@ -44,56 +46,56 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
           translate('generated.mcpDetailsDialog.noDescriptionIsAvailableForThisMCP')
         }}
       </p>
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem
           v-if="details.serverName"
           :label="translate('generated.mcpDetailsDialog.serverName')"
-          >{{ details.serverName }}</el-descriptions-item
+          >{{ details.serverName }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.source"
           :label="translate('generated.mcpDetailsDialog.source')"
-          >{{ details.source }}</el-descriptions-item
+          >{{ details.source }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.scope"
           :label="translate('generated.mcpDetailsDialog.availability')"
-          >{{ details.scope }}</el-descriptions-item
+          >{{ details.scope }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.version"
           :label="translate('generated.mcpDetailsDialog.version')"
-          >{{ details.version }}</el-descriptions-item
+          >{{ details.version }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.transport"
           :label="translate('generated.mcpDetailsDialog.transport')"
-          >{{ details.transport }}</el-descriptions-item
+          >{{ details.transport }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.updatedAt"
           :label="translate('generated.mcpDetailsDialog.updated')"
-          >{{ details.updatedAt }}</el-descriptions-item
+          >{{ details.updatedAt }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.status"
           :label="translate('generated.mcpDetailsDialog.status')"
-          >{{ details.status }}</el-descriptions-item
+          >{{ details.status }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="details.featured || (details.tags?.length ?? 0) > 0"
           :label="translate('generated.mcpDetailsDialog.tags')"
         >
           <div class="mcp-tags">
-            <el-tag v-if="details.featured" type="warning" effect="plain"
-              >★ {{ translate('generated.mcpDetailsDialog.featured') }}</el-tag
+            <MarTag v-if="details.featured" type="warning" effect="plain"
+              >★ {{ translate('generated.mcpDetailsDialog.featured') }}</MarTag
             >
-            <el-tag v-for="tag in details.tags ?? []" :key="tag" type="info" effect="plain">{{
+            <MarTag v-for="tag in details.tags ?? []" :key="tag" type="info" effect="plain">{{
               tag
-            }}</el-tag>
+            }}</MarTag>
           </div>
-        </el-descriptions-item>
-      </el-descriptions>
+        </MarDescriptionsItem>
+      </MarDescriptions>
     </div>
     <template #footer
       ><MarButton @click="emit('update:modelValue', false)">{{

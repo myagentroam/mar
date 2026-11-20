@@ -217,7 +217,7 @@ describe('Shared model, credential and image management', () => {
         app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
         app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);
-        expect(html).toContain('el-');
+        expect(html).toContain('mar-ui-');
         expect(html).not.toMatch(/enterprise|organization|全企业|组织/iu);
         expect(request).not.toHaveBeenCalled();
       }

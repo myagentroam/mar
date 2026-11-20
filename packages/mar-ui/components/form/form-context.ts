@@ -36,6 +36,7 @@ export const fieldControlKey: InjectionKey<{
   register(control: { id(): string | undefined; validates(): boolean }): () => void;
   invalid(): boolean;
   description(): string | undefined;
+  change(): void;
   blur(): void;
 }> = Symbol('mar-ui-form-field');
 
@@ -49,12 +50,19 @@ export function useMarFormControl(options: {
   id(): string | undefined;
   disabled(): boolean | undefined;
   validateEvent?: () => boolean | undefined;
+  validateModelChange?: false;
 }) {
   const field = inject(fieldControlKey, undefined);
   const generatedId = field ? useId() : undefined;
   const id = computed(() => options.id() ?? generatedId);
   const validates = () => options.validateEvent?.() !== false;
-  if (field) onScopeDispose(field.register({ id: () => id.value, validates }));
+  if (field)
+    onScopeDispose(
+      field.register({
+        id: () => id.value,
+        validates: () => options.validateModelChange !== false && validates()
+      })
+    );
   return {
     id,
     disabled: useMarFormDisabled(options.disabled),
@@ -74,6 +82,9 @@ export function useMarFormControl(options: {
       const error = field?.description();
       const ids = typeof existing === 'string' ? existing : undefined;
       return ids && error ? `${ids} ${error}` : ids || error;
+    },
+    change() {
+      if (validates()) field?.change();
     },
     blur() {
       if (validates()) field?.blur();

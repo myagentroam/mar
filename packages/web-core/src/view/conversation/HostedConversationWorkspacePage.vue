@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -1221,7 +1222,7 @@ onBeforeUnmount(() => {
       >
         <MarIcon name="folder-open" />
       </button>
-      <el-alert
+      <MarAlert
         v-if="workspace.snapshot.value?.error"
         class="snapshot-error-alert"
         :closable="false"
@@ -1229,8 +1230,8 @@ onBeforeUnmount(() => {
         type="error"
         :title="hostedErrorMessage(workspace.snapshot.value.error)"
         ><template #icon><MarIcon name="error" /></template
-      ></el-alert>
-      <el-alert
+      ></MarAlert>
+      <MarAlert
         v-if="readonlyVisible"
         class="readonly-alert"
         :closable="false"
@@ -1238,7 +1239,7 @@ onBeforeUnmount(() => {
         type="warning"
         :title="readonlyReason"
         ><template #icon><MarIcon name="warning" /></template
-      ></el-alert>
+      ></MarAlert>
       <section
         v-if="draftingNewConversation || selectedSummary === undefined"
         class="conversation-draft"

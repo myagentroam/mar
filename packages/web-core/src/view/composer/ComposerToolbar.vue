@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarScrollbar } from '@myagentroam/mar-ui/scrollbar';
 import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
 import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from './ComposerSendButton.vue';
@@ -238,7 +239,7 @@ function selectFiles(event: Event): void {
           >
             <div class="composer-model-menu-columns">
               <MarOptionGroup v-if="models.length" :label="translate('common.model')">
-                <el-scrollbar always max-height="var(--composer-model-list-height)">
+                <MarScrollbar always max-height="var(--composer-model-list-height)">
                   <MarOption
                     v-for="model in models"
                     :key="model.id"
@@ -246,10 +247,10 @@ function selectFiles(event: Event): void {
                     :label="model.label"
                     :value="`model:${model.id}`"
                   />
-                </el-scrollbar>
+                </MarScrollbar>
               </MarOptionGroup>
               <MarOptionGroup v-if="efforts.length" :label="translate('common.reasoning')">
-                <el-scrollbar always max-height="var(--composer-model-list-height)">
+                <MarScrollbar always max-height="var(--composer-model-list-height)">
                   <MarOption
                     v-for="effort in efforts"
                     :key="effort"
@@ -257,7 +258,7 @@ function selectFiles(event: Event): void {
                     :label="props.effortLabel(effort)"
                     :value="`effort:${effort}`"
                   />
-                </el-scrollbar>
+                </MarScrollbar>
               </MarOptionGroup>
             </div>
           </MarSelect>
@@ -717,13 +718,6 @@ function selectFiles(event: Event): void {
 .composer-model-menu-columns :deep(.mar-ui-option-group) {
   min-width: 0;
   min-height: 0;
-}
-
-.composer-model-menu-columns :deep(.el-scrollbar) {
-  --el-scrollbar-opacity: 1;
-  --el-scrollbar-hover-opacity: 1;
-  --el-scrollbar-bg-color: var(--mar-scrollbar-thumb);
-  --el-scrollbar-hover-bg-color: var(--mar-scrollbar-thumb-hover);
 }
 
 .composer-model-menu-columns :deep(.mar-ui-option-group__label) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { marIcon } from '@myagentroam/web-core/icons';
@@ -51,7 +52,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
     </label>
     <label v-if="ownerType === 'ORGANIZATION'" class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.organization2') }}</span>
-      <el-cascader
+      <MarCascader
         v-model="ownerOrganizationId"
         :aria-label="translate('generated.resourceSharingPage.organization2')"
         clearable

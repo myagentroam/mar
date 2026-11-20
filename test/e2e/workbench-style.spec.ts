@@ -1013,7 +1013,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '14px' : '13px'
       );
-      for (const tag of await inspector.locator('.repository-tags-row .el-tag').all()) {
+      for (const tag of await inspector.locator('.repository-tags-row .mar-ui-tag').all()) {
         const height = await tag.evaluate((element) =>
           Number.parseFloat(getComputedStyle(element).height)
         );
@@ -1061,9 +1061,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.mouse.move(0, 0);
         await expect(hint).toHaveCount(0);
       }
-      await expect(root.locator('.el-tag--warning')).toBeVisible();
-      await expect(headings.nth(1).locator('.el-tag--success')).toBeVisible();
-      await expect(headings.nth(2).locator('.el-tag--warning')).toBeVisible();
+      await expect(root.locator('.mar-ui-tag[data-type="warning"]')).toBeVisible();
+      await expect(headings.nth(1).locator('.mar-ui-tag[data-type="success"]')).toBeVisible();
+      await expect(headings.nth(2).locator('.mar-ui-tag[data-type="warning"]')).toBeVisible();
       await expect(inspector.locator('.change-file-name')).toHaveCSS(
         'font-size',
         width >= 768 ? '12px' : '11px'

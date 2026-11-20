@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -280,7 +282,7 @@ onMounted(() => {
       />
       <MarTableColumn :label="translate('generated.systemConfigurationPage.value')" min-width="180">
         <template #default="{ row }">
-          <el-input-number
+          <MarInputNumber
             v-if="row.type === 'number' && editingKey === row.key"
             :model-value="numberDraft(row.field)"
             :placeholder="
@@ -292,7 +294,7 @@ onMounted(() => {
             @update:model-value="service.setDraft(row.key, $event)"
             ><template #decrease-icon><MarIcon name="subtract" /></template
             ><template #increase-icon><MarIcon name="plus" /></template
-          ></el-input-number>
+          ></MarInputNumber>
           <span v-else-if="row.type === 'number'">{{ snapshot[row.field] }}</span>
           <MarForm
             v-else-if="row.type === 'origin' && editingKey === row.key"
@@ -388,7 +390,7 @@ onMounted(() => {
         label-position="top"
         class="smtp-form"
       >
-        <el-alert
+        <MarAlert
           v-if="smtpValidationError"
           :title="smtpValidationError"
           type="error"
@@ -404,7 +406,7 @@ onMounted(() => {
         </MarFormItem>
         <div class="smtp-form__pair">
           <MarFormItem :label="translate('generated.systemConfigurationPage.smtpPort')" prop="port">
-            <el-input-number
+            <MarInputNumber
               v-model="smtpModel.port"
               :aria-label="translate('generated.systemConfigurationPage.smtpPort')"
               :min="1"
@@ -508,11 +510,11 @@ onMounted(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
-.smtp-form__pair :deep(.el-input-number),
+.smtp-form__pair :deep(.mar-ui-input-number),
 .smtp-form__pair :deep(.mar-ui-select) {
   width: 100%;
 }
-.smtp-form__pair :deep(.el-input-number .el-input__inner) {
+.smtp-form__pair :deep(.mar-ui-input-number input) {
   text-align: left;
 }
 .smtp-template-row {

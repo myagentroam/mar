@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="ManagementSection extends string">
+import { MarLink } from '@myagentroam/mar-ui/link';
 import {
   MarDropdown,
   MarDropdownItem,
@@ -301,7 +302,7 @@ function runBlankMenuCommand(command: string): void {
           @remove-upload="emit('removeUpload', $event)"
         />
       </template>
-      <el-link
+      <MarLink
         v-tooltip="$t('navigation.help')"
         v-if="documentationAvailable"
         class="nav-menu-button documentation-link mar-icon-action"
@@ -314,7 +315,7 @@ function runBlankMenuCommand(command: string): void {
         <span class="nav-item-content">
           <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
         </span>
-      </el-link>
+      </MarLink>
     </nav>
     <div v-if="!mobileViewport" class="activity-rail-footer">
       <WebPerformanceIndicator :diagnostics="performanceDiagnostics" />
@@ -549,8 +550,8 @@ function runBlankMenuCommand(command: string): void {
   height: var(--mar-utility-control-size);
   place-items: center;
   box-sizing: border-box;
-  --el-link-text-color: var(--mar-text-secondary);
-  --el-link-hover-text-color: var(--mar-text-primary);
+  --mar-ui-link-text-color: var(--mar-text-secondary);
+  --mar-ui-link-hover-text-color: var(--mar-text-primary);
   padding: 2px;
   cursor: pointer;
   font-size: var(--mar-font-size-meta);

@@ -320,7 +320,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
     'aria-checked',
     'false'
   );
-  await expect(dialog.locator('.el-date-editor')).toBeVisible();
+  await expect(dialog.locator('.mar-ui-date-picker')).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: '时区' })).toHaveCount(0);
   await dialog.locator('textarea').fill('Review project');
   await dialog.getByRole('switch', { name: '任务通知' }).locator('..').click();
@@ -347,7 +347,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   });
   expect(JSON.parse(saved!.body)).not.toHaveProperty('timezone');
   await expect(dialog.getByText('李四', { exact: true })).toBeVisible();
-  await dialog.locator('.el-radio-button').filter({ hasText: 'Cron' }).click();
+  await dialog.locator('.mar-ui-radio-button').filter({ hasText: 'Cron' }).click();
   await dialog.getByRole('textbox', { name: 'Cron 表达式' }).fill('60 * * * *');
   await dialog.getByRole('button', { name: '保存' }).click();
   await expect(dialog.getByText('请输入有效的五字段 Cron 表达式。')).toBeVisible();

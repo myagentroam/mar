@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
+import { MarRadio, MarRadioGroup } from '@myagentroam/mar-ui/radio';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import './conversation-detail.css';
@@ -1245,7 +1247,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               class="user-input-question"
             >
               <span>{{ question.prompt }}</span>
-              <el-checkbox-group
+              <MarCheckboxGroup
                 v-if="question.input === 'MULTI_SELECT' && question.options.length"
                 :disabled="
                   loading ||
@@ -1262,14 +1264,14 @@ function stepDuration(item: ConversationItem): string | undefined {
                   )
                 "
               >
-                <el-checkbox
+                <MarCheckbox
                   v-for="option in question.options"
                   :key="option.value"
                   :value="option.value"
-                  >{{ option.label }}</el-checkbox
+                  >{{ option.label }}</MarCheckbox
                 >
-              </el-checkbox-group>
-              <el-radio-group
+              </MarCheckboxGroup>
+              <MarRadioGroup
                 v-else-if="question.options.length"
                 :disabled="
                   loading ||
@@ -1281,13 +1283,13 @@ function stepDuration(item: ConversationItem): string | undefined {
                   emit('setAnswer', displayItem.item.id, question.id, String($event))
                 "
               >
-                <el-radio
+                <MarRadio
                   v-for="option in question.options"
                   :key="option.value"
                   :value="option.value"
-                  >{{ option.label }}</el-radio
+                  >{{ option.label }}</MarRadio
                 >
-              </el-radio-group>
+              </MarRadioGroup>
               <MarInput
                 v-if="
                   question.options.length === 0 ||

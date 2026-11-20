@@ -36,7 +36,7 @@ export function createResourceOwnershipService(
   const organizationOptions = computed(() => organizationCascaderOptions(organizations.value));
   const registrationOwnerOptions = computed(() => [
     {
-      value: 'PERSONAL',
+      value: 'PERSONAL' as const,
       label: translate('generated.resourceSharingPage.personal5'),
       children: []
     },

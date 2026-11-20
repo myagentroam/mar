@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { translate } from '../../service/locale-preference-service.js';
 import SessionGroupTabs from '../common/SessionGroupTabs.vue';
 import type { RecentRun } from '../../service/workbench-notification-service.js';
@@ -80,9 +81,9 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
               >{{ translate('sessionGroups.unread') }}</span
             >
           </span>
-          <el-tag size="small" :type="runStatusType(run)">{{
+          <MarTag size="small" :type="runStatusType(run)">{{
             translate(RUN_STATUS_KEYS[runDisplayStatus(run)])
-          }}</el-tag>
+          }}</MarTag>
           <small v-tooltip="run.userMessage">{{ run.userMessage }}</small>
           <time :datetime="new Date(recentRunTimeReference(run)).toISOString()">{{
             runTime(run)
@@ -166,11 +167,11 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
   color: var(--mar-text-secondary);
   font-size: inherit;
 }
-.recent-sessions-list .el-tag {
+.recent-sessions-list .mar-ui-tag {
   grid-column: 2;
   justify-self: end;
 }
-.recent-sessions-list .el-tag {
+.recent-sessions-list .mar-ui-tag {
   grid-row: 1;
   height: 20px;
   padding: 0 0.38rem;
@@ -186,7 +187,7 @@ function runStatusType(run: RecentRun): 'success' | 'danger' | 'warning' | 'info
   align-self: center;
   color: var(--mar-text-secondary);
 }
-.recent-sessions-list .el-tag--success {
-  --el-tag-text-color: var(--mar-color-success-text);
+.recent-sessions-list .mar-ui-tag[data-type='success'] {
+  --mar-ui-tag-text-color: var(--mar-color-success-text);
 }
 </style>

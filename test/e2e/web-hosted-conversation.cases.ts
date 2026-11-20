@@ -1629,7 +1629,7 @@ test('Standalone chat reuses scrolling, Composer, and mobile history through one
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(page.locator('.workbench')).toHaveCSS('transition-duration', '0s');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await expect(workbenchHeader.locator('.el-tag')).toHaveCount(0);
+  await expect(workbenchHeader.locator('.mar-ui-tag')).toHaveCount(0);
   const collapseSidebarButton = page.getByRole('button', { name: '收起侧栏' });
   await expect(collapseSidebarButton).toBeVisible();
   const hostedLayout = () =>

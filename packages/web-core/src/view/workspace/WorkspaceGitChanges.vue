@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
@@ -264,7 +265,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             {{ worktreeReference(worktree) }}
           </code>
           <span class="git-worktree-statuses">
-            <el-tag
+            <MarTag
               v-if="worktree.current"
               class="repository-current"
               type="info"
@@ -272,16 +273,16 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               size="small"
             >
               {{ translate('gitWorktrees.current') }}
-            </el-tag>
-            <el-tag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
+            </MarTag>
+            <MarTag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
               {{ worktreeStatusLabel(worktree.status) }}
-            </el-tag>
-            <el-tag v-if="worktree.locked" type="warning" effect="plain" size="small">
+            </MarTag>
+            <MarTag v-if="worktree.locked" type="warning" effect="plain" size="small">
               {{ translate('gitWorktrees.locked') }}
-            </el-tag>
-            <el-tag v-if="worktree.prunable" type="info" effect="plain" size="small">
+            </MarTag>
+            <MarTag v-if="worktree.prunable" type="info" effect="plain" size="small">
               {{ translate('gitWorktrees.prunable') }}
-            </el-tag>
+            </MarTag>
           </span>
         </li>
       </ul>
@@ -341,10 +342,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </button>
             </div>
             <div class="repository-tags-row">
-              <el-tag class="repository-kind" type="info" effect="plain" size="small">
+              <MarTag class="repository-kind" type="info" effect="plain" size="small">
                 {{ repositoryKindLabel(repository.source) }}
-              </el-tag>
-              <el-tag
+              </MarTag>
+              <MarTag
                 v-if="repository.current"
                 class="repository-current"
                 type="info"
@@ -352,22 +353,22 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 size="small"
               >
                 {{ translate('gitWorktrees.current') }}
-              </el-tag>
-              <el-tag
+              </MarTag>
+              <MarTag
                 v-if="repository.status"
                 :type="worktreeStatusType(repository.status)"
                 effect="plain"
                 size="small"
               >
                 {{ worktreeStatusLabel(repository.status) }}
-              </el-tag>
-              <el-tag v-if="repository.locked" type="warning" effect="plain" size="small">
+              </MarTag>
+              <MarTag v-if="repository.locked" type="warning" effect="plain" size="small">
                 {{ translate('gitWorktrees.locked') }}
-              </el-tag>
-              <el-tag v-if="repository.prunable" type="info" effect="plain" size="small">
+              </MarTag>
+              <MarTag v-if="repository.prunable" type="info" effect="plain" size="small">
                 {{ translate('gitWorktrees.prunable') }}
-              </el-tag>
-              <el-tag
+              </MarTag>
+              <MarTag
                 v-if="
                   repository.tracking &&
                   (repository.tracking.ahead > 0 || repository.tracking.behind > 0)
@@ -381,7 +382,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 <span aria-hidden="true"
                   >↓ {{ repository.tracking.behind }} ↑ {{ repository.tracking.ahead }}</span
                 >
-              </el-tag>
+              </MarTag>
             </div>
             <code
               v-tooltip="repository.repositoryPath"
@@ -687,24 +688,24 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   gap: 0.25rem;
 }
 
-.repository-tags-row :deep(.el-tag),
-.git-worktree-statuses :deep(.el-tag) {
+.repository-tags-row :deep(.mar-ui-tag),
+.git-worktree-statuses :deep(.mar-ui-tag) {
   padding-inline: 0.28rem;
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
 }
 
-.repository-tags-row :deep(.el-tag) {
+.repository-tags-row :deep(.mar-ui-tag) {
   height: 1.65em;
 }
 
 .repository-kind,
 .repository-current {
-  --el-tag-border-color: light-dark(var(--mar-border-default), var(--mar-border-medium));
+  --mar-ui-tag-border-color: light-dark(var(--mar-border-default), var(--mar-border-medium));
 }
 
 .repository-sync-tag {
-  --el-tag-border-color: var(--mar-border-default);
+  --mar-ui-tag-border-color: var(--mar-border-default);
   font-variant-numeric: tabular-nums;
 }
 

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
+import { MarRadioButton, MarRadioGroup } from '@myagentroam/mar-ui/radio';
+import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -11,7 +14,6 @@ import MarIcon from '../common/MarIcon.vue';
 import MarSegmented from '../common/MarSegmented.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { tooltipOptions } from '../../util/tooltip.js';
-import type { TagProps } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
@@ -447,7 +449,7 @@ onUnmounted(() => {
           :label="t('usageStatistics.custom')"
           :validate-event="false"
           class="custom-range"
-          ><el-date-picker
+          ><MarDatePicker
             v-model="draft.range"
             type="datetimerange"
             single-panel
@@ -460,7 +462,7 @@ onUnmounted(() => {
             ><template #prev-month><MarIcon name="chevron-left" /></template
             ><template #next-month><MarIcon name="chevron-right" /></template
             ><template #prev-year><MarIcon name="chevrons-left" /></template
-            ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
+            ><template #next-year><MarIcon name="chevrons-right" /></template></MarDatePicker
         ></MarFormItem>
       </MarForm>
       <template v-if="state.overview">
@@ -601,11 +603,11 @@ onUnmounted(() => {
         </div>
         <div class="section-heading">
           <h3>{{ t('usageStatistics.distribution') }}</h3>
-          <el-radio-group v-model="metric" :aria-label="t('usageStatistics.metric')"
-            ><el-radio-button value="totalTokens">{{ t('usageStatistics.tokens') }}</el-radio-button
-            ><el-radio-button value="requests">{{
+          <MarRadioGroup v-model="metric" :aria-label="t('usageStatistics.metric')"
+            ><MarRadioButton value="totalTokens">{{ t('usageStatistics.tokens') }}</MarRadioButton
+            ><MarRadioButton value="requests">{{
               t('usageStatistics.requests')
-            }}</el-radio-button></el-radio-group
+            }}</MarRadioButton></MarRadioGroup
           >
         </div>
         <div class="distributions">
@@ -787,12 +789,12 @@ onUnmounted(() => {
           </MarTableColumn>
           <MarTableColumn :label="t('usageStatistics.state')" min-width="105"
             ><template #default="{ row }"
-              ><el-tag
+              ><MarTag
                 :type="usageStateTypes[row.state as keyof typeof usageStateTypes]"
                 effect="plain"
                 role="status"
                 :aria-label="t(`usageStatistics.states.${row.state}`)"
-                >{{ t(`usageStatistics.states.${row.state}`) }}</el-tag
+                >{{ t(`usageStatistics.states.${row.state}`) }}</MarTag
               ></template
             ></MarTableColumn
           >
@@ -822,7 +824,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-:where(.usage) :deep(.section-heading span) {
+:where(.usage) :deep(.section-heading > span) {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
@@ -940,7 +942,7 @@ p {
   position: static;
   line-height: 1.5;
 }
-.custom-range :deep(.el-date-editor) {
+.custom-range :deep(.mar-ui-date-picker) {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -948,6 +950,13 @@ p {
 .section-heading > span {
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
+}
+.section-heading :deep(.mar-ui-radio--button label) {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+}
+.section-heading :deep(.mar-ui-radio--button input:checked + label) {
+  color: var(--mar-text-primary);
 }
 .trend {
   padding: 0.5rem 0 1rem;

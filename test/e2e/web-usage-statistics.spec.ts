@@ -286,8 +286,12 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(purposeSelect).toHaveCount(mobile ? 1 : 0);
     await assertSelectedPurpose(purposeNames[0]!);
     await expect(refreshButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    const refreshSize = await refreshButton.boundingBox();
-    expect(refreshSize!.width).toBe(refreshSize!.height);
+    await expect
+      .poll(async () => {
+        const size = await refreshButton.boundingBox();
+        return size && Math.abs(size.width - size.height);
+      })
+      .toBe(0);
     const selectionIndicator = categories.locator('.mar-segmented-indicator');
     for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       await page.evaluate(
@@ -670,8 +674,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       animations: 'disabled',
       path: testInfo.outputPath(`usage-custom-${locale}.png`)
     });
-    await panel.locator('.custom-range .el-range-input').first().click();
-    const picker = page.locator('.el-date-range-picker:visible');
+    await panel.locator('.custom-range .mar-ui-date-picker__input').first().click();
+    const picker = page.locator('.mar-ui-date-picker__popup:visible');
     await expect(picker).toBeVisible();
     await page.screenshot({
       animations: 'disabled',
@@ -694,7 +698,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       };
       return { from: format(now - 2 * 86400000), to: format(now - 86400000) };
     }, now);
-    const inputs = panel.locator('.custom-range .el-range-input');
+    const inputs = panel.locator('.custom-range .mar-ui-date-picker__input');
     await inputs.first().fill(range.from);
     await inputs.last().fill(range.to);
     await inputs.last().press('Enter');

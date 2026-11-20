@@ -396,6 +396,12 @@ watch(controlDisabled, (disabled) => {
       @click="onFieldClick"
       @focusout="onFocusOut"
     >
+      <component
+        v-if="prefixIcon"
+        :is="resolveMarIcon(prefixIcon)"
+        class="mar-ui-select__icon"
+        aria-hidden="true"
+      />
       <div class="mar-ui-select__selection">
         <input
           v-if="filterable"

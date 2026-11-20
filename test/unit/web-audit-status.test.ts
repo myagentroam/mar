@@ -30,17 +30,17 @@ describe('audit result presentation', () => {
     const view = renderComponent(AuditManagementPage, { request });
     try {
       await flushComponent();
-      expect(view.findAll('ElTag').map((tag) => tag.props['type'])).toEqual([
+      expect(view.findAll('MarTag').map((tag) => tag.props['type'])).toEqual([
         'info',
         'warning',
         'danger'
       ]);
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const open = table.props['onRowClick'] as (row: unknown) => Promise<void>;
       for (const [index, type] of ['info', 'warning', 'danger'].entries()) {
         await open(events[index]);
         await flushComponent();
-        expect(view.findAll('ElTag').at(-1)?.props['type']).toBe(type);
+        expect(view.findAll('MarTag').at(-1)?.props['type']).toBe(type);
       }
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('TEST_FAILED');
     } finally {

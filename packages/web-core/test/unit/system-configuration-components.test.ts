@@ -85,7 +85,7 @@ describe('Public system configuration page', () => {
         const content = textContent(view.root);
         expect(content).toContain(messages.disableSkillSourceTLSVerification);
         expect(content).toContain(messages.keepThisOffByDefaultUseIt);
-        expect(view.findAll('ElAlert')).toHaveLength(0);
+        expect(view.findAll('MarAlert')).toHaveLength(0);
         expect(request).toHaveBeenCalledExactlyOnceWith('/api/system-settings');
       } finally {
         view.unmount();

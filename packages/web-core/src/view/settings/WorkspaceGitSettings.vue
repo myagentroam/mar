@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -82,14 +83,14 @@ async function save(): Promise<void> {
     <p v-if="!connected">{{ t('personalGit.offline') }}</p>
     <template v-else>
       <div class="workspace-git-controls">
-        <el-checkbox v-if="loaded" v-model="preserve" :disabled="!writable || saving">{{
+        <MarCheckbox v-if="loaded" v-model="preserve" :disabled="!writable || saving">{{
           t('personalGit.preserve')
-        }}</el-checkbox>
-        <el-checkbox
+        }}</MarCheckbox>
+        <MarCheckbox
           v-if="loaded && includeParent !== undefined"
           v-model="includeParent"
           :disabled="!writable || saving"
-          >{{ t('personalGit.includeParent') }}</el-checkbox
+          >{{ t('personalGit.includeParent') }}</MarCheckbox
         >
         <MarButton
           v-if="writable"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { marIcon } from '@myagentroam/web-core/icons';
@@ -83,7 +84,7 @@ async function submitCatalog(input: {
         v-if="sourceDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.mcpSourceManagementPage.organization3')"
         prop="organizationId"
-        ><el-cascader
+        ><MarCascader
           v-model="sourceDraft.organizationId"
           style="width: 100%"
           filterable
@@ -108,7 +109,7 @@ async function submitCatalog(input: {
         v-if="catalogDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.mcpSourceManagementPage.organization5')"
         prop="organizationId"
-        ><el-cascader
+        ><MarCascader
           v-model="catalogDraft.organizationId"
           style="width: 100%"
           filterable

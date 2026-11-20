@@ -188,7 +188,7 @@ async function selectOrganization(page: Page, form: Locator, strings: Locale): P
   const ownership = form.locator('.mar-ui-form-item').filter({ hasText: strings.modelOwnership });
   await ownership.getByRole('combobox').click();
   await page.getByRole('option', { name: strings.organizationScope, exact: true }).click();
-  const organization = form.locator('.el-cascader input');
+  const organization = form.locator('.mar-ui-cascader input');
   await organization.fill('Platform');
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
 }
@@ -300,7 +300,7 @@ for (const english of [false, true]) {
     await testDialog.getByRole('combobox').click();
     await page.getByRole('option', { name: 'Runtime Node', exact: true }).click();
     await testDialog.getByRole('button', { name: strings.test, exact: true }).click();
-    await expect(testDialog.locator('.model-test-result .el-tag')).toHaveText(
+    await expect(testDialog.locator('.model-test-result .mar-ui-tag')).toHaveText(
       english ? 'Success' : '成功'
     );
     await testDialog.getByRole('button', { name: strings.cancel, exact: true }).click();

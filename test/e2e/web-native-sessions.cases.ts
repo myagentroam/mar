@@ -697,7 +697,7 @@ test('Workspace session cleanup defaults to thirty days and refreshes the sessio
     deletedByRunner: {}
   });
   await expect(dialog.getByText('清理完成', { exact: true })).toBeVisible();
-  await expect(dialog.locator('.el-alert')).toHaveCount(0);
+  await expect(dialog.locator('.mar-ui-alert')).toHaveCount(0);
   await expect(dialog.getByText('254', { exact: true })).toBeVisible();
   await expect(dialog.getByText('按 Agent', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible();

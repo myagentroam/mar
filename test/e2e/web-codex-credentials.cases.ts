@@ -2285,7 +2285,7 @@ test('Enterprise model grants and organization credential ownership reuse shared
   const grantDialog = page.getByRole('dialog');
   await grantDialog.getByRole('combobox').first().click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
-  await grantDialog.locator('.el-cascader input').fill('Platform');
+  await grantDialog.locator('.mar-ui-cascader input').fill('Platform');
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
   await grantDialog.getByRole('button', { name: '授权', exact: true }).click();
   await expect(grantDialog.getByRole('button', { name: '撤销', exact: true })).toBeVisible();
@@ -2303,7 +2303,7 @@ test('Enterprise model grants and organization credential ownership reuse shared
   await credentialDialog.getByRole('textbox').first().fill('Organization Codex');
   await credentialDialog.getByRole('combobox').click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
-  await credentialDialog.locator('.el-cascader input').fill('Platform');
+  await credentialDialog.locator('.mar-ui-cascader input').fill('Platform');
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
   await credentialDialog.getByRole('button', { name: '开始设备登录', exact: true }).click();
   await expect.poll(() => loginWrites.length).toBe(1);

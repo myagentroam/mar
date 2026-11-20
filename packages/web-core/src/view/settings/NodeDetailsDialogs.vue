@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarProgress } from '@myagentroam/mar-ui/progress';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import {
@@ -131,31 +134,31 @@ function usagePercentageLabel(value: number): string {
     @update:model-value="emit('update:nodeOpen', $event)"
     :close-icon="marIcon('close')"
   >
-    <el-descriptions v-if="node !== undefined" class="mar-detail-descriptions" :column="1" border>
-      <el-descriptions-item :label="translate('common.nodeId')"
-        ><code>{{ node.id }}</code></el-descriptions-item
+    <MarDescriptions v-if="node !== undefined" class="mar-detail-descriptions" :column="1" border>
+      <MarDescriptionsItem :label="translate('common.nodeId')"
+        ><code>{{ node.id }}</code></MarDescriptionsItem
       >
-      <el-descriptions-item :label="translate('generated.nodeDetailsDialogs.name')">{{
+      <MarDescriptionsItem :label="translate('generated.nodeDetailsDialogs.name')">{{
         node.label
-      }}</el-descriptions-item>
-      <el-descriptions-item
+      }}</MarDescriptionsItem>
+      <MarDescriptionsItem
         v-if="ownershipTypeLabel !== undefined"
         :label="translate('generated.resourceSharingPage.ownershipType')"
-        ><el-tag :type="ownershipTypeTag ?? 'info'" effect="light">{{
+        ><MarTag :type="ownershipTypeTag ?? 'info'" effect="light">{{
           ownershipTypeLabel
-        }}</el-tag></el-descriptions-item
+        }}</MarTag></MarDescriptionsItem
       >
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="ownerLabel !== undefined"
         :label="translate('generated.resourceSharingPage.owner3')"
-        >{{ ownerLabel }}</el-descriptions-item
+        >{{ ownerLabel }}</MarDescriptionsItem
       >
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="node.registeredAddress !== undefined"
         :label="translate('generated.nodeDetailsDialogs.registeredAddress')"
-        >{{ node.registeredAddress }}</el-descriptions-item
+        >{{ node.registeredAddress }}</MarDescriptionsItem
       >
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="node.platform !== undefined"
         :label="translate('generated.nodeDetailsDialogs.system')"
       >
@@ -164,14 +167,14 @@ function usagePercentageLabel(value: number): string {
         }}<template v-if="osVersionLabel(node) !== undefined">
           · {{ osVersionLabel(node) }}</template
         >
-      </el-descriptions-item>
-      <el-descriptions-item
+      </MarDescriptionsItem>
+      <MarDescriptionsItem
         v-if="node.nodeAppVersion !== undefined"
         :label="translate('generated.nodeDetailsDialogs.nodeVersion')"
-        >{{ node.nodeAppVersion }}</el-descriptions-item
+        >{{ node.nodeAppVersion }}</MarDescriptionsItem
       >
       <slot name="node-properties" :node="node" />
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="computerUseCapability !== undefined"
         :label="translate('generated.nodeDetailsDialogs.computerUse')"
       >
@@ -198,16 +201,16 @@ function usagePercentageLabel(value: number): string {
             {{ translate('generated.nodeDetailsDialogs.computerUseDescription') }}
           </p>
         </div>
-      </el-descriptions-item>
-      <el-descriptions-item
+      </MarDescriptionsItem>
+      <MarDescriptionsItem
         v-if="upgrade !== undefined"
         :label="translate('generated.resourceSharingPage.upgradeStatus2')"
-        >{{ upgrade.label }}</el-descriptions-item
+        >{{ upgrade.label }}</MarDescriptionsItem
       >
-      <el-descriptions-item :label="translate('common.nodeJs')">{{
+      <MarDescriptionsItem :label="translate('common.nodeJs')">{{
         node.nodeVersion ?? translate('generated.nodeDetailsDialogs.unknown')
-      }}</el-descriptions-item>
-      <el-descriptions-item :label="translate('generated.nodeDetailsDialogs.toolEnvironment')">
+      }}</MarDescriptionsItem>
+      <MarDescriptionsItem :label="translate('generated.nodeDetailsDialogs.toolEnvironment')">
         <NodeRuntimeEnvironment
           :metadata="node.metadata"
           :computer-use="computerUseCapability"
@@ -215,15 +218,15 @@ function usagePercentageLabel(value: number): string {
           :refreshing="nodeRefreshing"
           @refresh="emit('refreshNode')"
         />
-      </el-descriptions-item>
-      <el-descriptions-item
+      </MarDescriptionsItem>
+      <MarDescriptionsItem
         v-if="node.connected !== undefined"
         :label="translate('generated.nodeDetailsDialogs.status')"
-        ><el-tag :type="nodeStatus(node).type" effect="light">{{
+        ><MarTag :type="nodeStatus(node).type" effect="light">{{
           nodeStatus(node).label
-        }}</el-tag></el-descriptions-item
+        }}</MarTag></MarDescriptionsItem
       >
-      <el-descriptions-item :label="translate('generated.nodeDetailsDialogs.supportedAgents')">
+      <MarDescriptionsItem :label="translate('generated.nodeDetailsDialogs.supportedAgents')">
         <div v-if="supportedAgents(node).length > 0" class="supported-agent-list">
           <div v-for="entry in supportedAgents(node)" :key="entry.runner">
             <span v-tooltip="supportedAgentTitle(entry)" class="supported-agent-label">{{
@@ -247,8 +250,8 @@ function usagePercentageLabel(value: number): string {
           </div>
         </div>
         <span v-else>{{ translate('generated.nodeDetailsDialogs.none') }}</span>
-      </el-descriptions-item>
-    </el-descriptions>
+      </MarDescriptionsItem>
+    </MarDescriptions>
     <slot name="node-sections" :node="node" />
     <div
       v-if="node !== undefined && (node.secretManageable ?? node.manageable) === true"
@@ -293,51 +296,51 @@ function usagePercentageLabel(value: number): string {
     @update:model-value="emit('update:workspaceOpen', $event)"
     :close-icon="marIcon('close')"
   >
-    <el-descriptions
+    <MarDescriptions
       v-if="workspace !== undefined"
       class="mar-detail-descriptions"
       :column="1"
       border
     >
-      <el-descriptions-item :label="translate('common.workspaceId')"
-        ><code>{{ workspace.id }}</code></el-descriptions-item
+      <MarDescriptionsItem :label="translate('common.workspaceId')"
+        ><code>{{ workspace.id }}</code></MarDescriptionsItem
       >
-      <el-descriptions-item :label="translate('generated.resourceSharingPage.workspaceName3')">{{
+      <MarDescriptionsItem :label="translate('generated.resourceSharingPage.workspaceName3')">{{
         workspace.label
-      }}</el-descriptions-item>
-      <el-descriptions-item
+      }}</MarDescriptionsItem>
+      <MarDescriptionsItem
         v-if="ownershipTypeLabel !== undefined"
         :label="translate('generated.resourceSharingPage.ownershipType')"
-        ><el-tag :type="ownershipTypeTag ?? 'info'" effect="light">{{
+        ><MarTag :type="ownershipTypeTag ?? 'info'" effect="light">{{
           ownershipTypeLabel
-        }}</el-tag></el-descriptions-item
+        }}</MarTag></MarDescriptionsItem
       >
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="ownerLabel !== undefined"
         :label="translate('generated.resourceSharingPage.owner3')"
-        >{{ ownerLabel }}</el-descriptions-item
+        >{{ ownerLabel }}</MarDescriptionsItem
       >
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="workspaceNodeLabel !== undefined"
         :label="translate('generated.resourceSharingPage.node')"
-        >{{ workspaceNodeLabel }}</el-descriptions-item
+        >{{ workspaceNodeLabel }}</MarDescriptionsItem
       >
-      <el-descriptions-item :label="translate('generated.resourceSharingPage.fullPath')">{{
+      <MarDescriptionsItem :label="translate('generated.resourceSharingPage.fullPath')">{{
         workspace.path ?? translate('generated.resourceSharingPage.theNodeIsOfflineThePathIs')
-      }}</el-descriptions-item>
-      <el-descriptions-item
+      }}</MarDescriptionsItem>
+      <MarDescriptionsItem
         v-if="workspace.kind !== undefined"
         :label="translate('generated.resourceSharingPage.type')"
         >{{
           workspaceKindLabel({ id: workspace.id, path: workspace.path ?? '', kind: workspace.kind })
-        }}</el-descriptions-item
+        }}</MarDescriptionsItem
       >
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="workspace.kind === 'GIT_WORKSPACE'"
         :label="translate('generated.resourceSharingPage.branch')"
-        >{{ workspace.gitSummary?.branch ?? '-' }}</el-descriptions-item
+        >{{ workspace.gitSummary?.branch ?? '-' }}</MarDescriptionsItem
       >
-    </el-descriptions>
+    </MarDescriptions>
     <WorkspaceGitSettings
       v-if="workspace !== undefined && workspaceNodeId !== undefined"
       :key="`${workspaceNodeId}:${workspace.id}`"
@@ -391,14 +394,14 @@ function usagePercentageLabel(value: number): string {
     @update:model-value="emit('update:usageOpen', $event)"
     :close-icon="marIcon('close')"
   >
-    <el-descriptions v-if="usage !== undefined" class="mar-detail-descriptions" :column="1" border>
-      <el-descriptions-item
+    <MarDescriptions v-if="usage !== undefined" class="mar-detail-descriptions" :column="1" border>
+      <MarDescriptionsItem
         v-for="window in usage.windows"
         :key="window.id"
         :label="runnerUsageWindowLabel(window)"
       >
         <div class="runner-usage-window">
-          <el-progress
+          <MarProgress
             :percentage="Math.round(window.usedPercentage * 10) / 10"
             :show-text="false"
             :stroke-width="8"
@@ -409,11 +412,11 @@ function usagePercentageLabel(value: number): string {
             }}{{ usageTimestampLabel(window.resetsAt) }}</span
           >
         </div>
-      </el-descriptions-item>
-      <el-descriptions-item :label="translate('generated.nodeDetailsDialogs.updated')">
+      </MarDescriptionsItem>
+      <MarDescriptionsItem :label="translate('generated.nodeDetailsDialogs.updated')">
         {{ usageTimestampLabel(usage.fetchedAt) }}
-      </el-descriptions-item>
-    </el-descriptions>
+      </MarDescriptionsItem>
+    </MarDescriptions>
     <template #footer>
       <MarButton @click="emit('update:usageOpen', false)">{{
         translate('generated.nodeDetailsDialogs.close2')
@@ -522,11 +525,11 @@ function usagePercentageLabel(value: number): string {
   font-size: var(--mar-font-size-body);
 }
 
-:global(.runner-usage-dialog .el-descriptions__label) {
-  width: 108px;
+:global(.runner-usage-dialog .mar-ui-descriptions) {
+  --mar-ui-descriptions-label-width: 108px;
 }
 
-:global(.runner-usage-window .el-progress) {
+:global(.runner-usage-window .mar-ui-progress) {
   min-width: 0;
 }
 

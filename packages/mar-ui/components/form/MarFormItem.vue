@@ -99,6 +99,9 @@ provide(fieldControlKey, {
   },
   invalid: () => error.value !== undefined,
   description: () => (error.value && props.showMessage ? errorId : undefined),
+  change: () => {
+    if (props.validateEvent) void validate('change');
+  },
   blur: () => {
     if (props.validateEvent) void validate('blur');
   }

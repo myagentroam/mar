@@ -516,10 +516,10 @@ for (const width of [1280, 390]) {
       await expect(panel.locator('.activity-running-count')).toHaveText('运行中 1');
       await expect(panel.locator('.session-state-badge')).toHaveCount(0);
       await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
-      const statuses = panel.locator('.recent-sessions-list .el-tag');
-      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      const statuses = panel.locator('.recent-sessions-list .mar-ui-tag');
+      await expect(statuses.first()).toHaveAttribute('data-type', 'success');
       await expect(statuses.first()).toHaveCSS('color', colors.runningText);
-      await expect(statuses.nth(1)).toHaveClass(/el-tag--info/);
+      await expect(statuses.nth(1)).toHaveAttribute('data-type', 'info');
       await expect(statuses.nth(1)).toHaveCSS('color', colors.completed);
       await page.screenshot({
         path: testInfo.outputPath(`activity-${width}-${theme}-recent.png`),

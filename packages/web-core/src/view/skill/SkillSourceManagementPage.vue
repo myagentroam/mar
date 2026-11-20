@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarTabPane, MarTabs } from '@myagentroam/mar-ui/tabs';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -500,11 +502,11 @@ function scopeLabel(scope: string): string {
       />
       <MarTableColumn :label="translate('generated.skillSourceManagementPage.status')" width="110"
         ><template #default="{ row }"
-          ><el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
+          ><MarTag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
             row.enabled
               ? translate('generated.skillSourceManagementPage.enabled')
               : translate('generated.skillSourceManagementPage.disabled')
-          }}</el-tag></template
+          }}</MarTag></template
         ></MarTableColumn
       >
       <MarTableColumn :label="translate('generated.skillSourceManagementPage.actions')" :width="180"
@@ -535,8 +537,8 @@ function scopeLabel(scope: string): string {
       >
     </MarTable>
 
-    <el-tabs v-model="activeSkillTab" class="skill-management-tabs">
-      <el-tab-pane
+    <MarTabs v-model="activeSkillTab" class="skill-management-tabs">
+      <MarTabPane
         :label="translate('generated.skillSourceManagementPage.sourceSkills')"
         name="source"
       >
@@ -640,9 +642,9 @@ function scopeLabel(scope: string): string {
             }}
           </div>
         </div>
-      </el-tab-pane>
+      </MarTabPane>
 
-      <el-tab-pane
+      <MarTabPane
         :label="translate('generated.skillSourceManagementPage.catalogSkills')"
         name="catalog"
       >
@@ -741,12 +743,12 @@ function scopeLabel(scope: string): string {
             <MarTableColumn :label="translate('generated.skillDetailsDialog.tags')" min-width="150">
               <template #default="{ row }">
                 <div v-if="row.featured || row.tags.length > 0" class="skill-tags">
-                  <el-tag v-if="row.featured" type="warning" effect="plain"
-                    >★ {{ translate('generated.skillSourceManagementPage.featured') }}</el-tag
+                  <MarTag v-if="row.featured" type="warning" effect="plain"
+                    >★ {{ translate('generated.skillSourceManagementPage.featured') }}</MarTag
                   >
-                  <el-tag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
+                  <MarTag v-for="tag in row.tags" :key="tag" type="info" effect="plain">{{
                     tag
-                  }}</el-tag>
+                  }}</MarTag>
                 </div>
               </template>
             </MarTableColumn>
@@ -821,8 +823,8 @@ function scopeLabel(scope: string): string {
             @load-more="pagination.loadMore"
           />
         </div>
-      </el-tab-pane>
-    </el-tabs>
+      </MarTabPane>
+    </MarTabs>
 
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
@@ -989,10 +991,10 @@ function scopeLabel(scope: string): string {
   min-height: 260px;
   min-width: 0;
 }
-.skill-management-tabs :deep(.el-tabs__content) {
+.skill-management-tabs :deep(.mar-ui-tabs__content) {
   min-width: 0;
 }
-.skill-management-tabs :deep(.el-tab-pane) {
+.skill-management-tabs :deep(.mar-ui-tab-pane) {
   display: grid;
   gap: 14px;
   min-width: 0;

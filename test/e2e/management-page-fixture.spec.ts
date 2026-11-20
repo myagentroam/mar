@@ -105,7 +105,9 @@ test('Usage distribution radio labels preserve section typography in both states
       window.managementPageFixture.settle(1, true)
     ])
   );
-  const labels = page.getByTestId('usage-statistics').locator('.section-heading .el-radio-button');
+  const labels = page
+    .getByTestId('usage-statistics')
+    .locator('.section-heading .mar-ui-radio--button');
   await expect(labels).toHaveCount(2);
   await page.evaluate(() => {
     const sentinel = document.createElement('div');
@@ -126,16 +128,16 @@ test('Usage distribution radio labels preserve section typography in both states
       });
     expect(outside.slice(0, 2)).toEqual(outside.slice(2));
     for (const selected of [0, 1]) {
-      await labels.nth(selected).click();
-      await expect(labels.nth(selected)).toHaveClass(/is-active/);
+      await labels.nth(selected).locator('label').click();
+      await expect(labels.nth(selected).getByRole('radio')).toBeChecked();
       for (const label of await labels.all()) {
         await expect
           .poll(() =>
-            label.locator('.el-radio-button__inner').evaluate((span) => {
+            label.locator('label').evaluate((span) => {
               const style = getComputedStyle(span);
               const probe = document.createElement('span');
-              probe.style.color = span.closest('.el-radio-button.is-active')
-                ? 'var(--el-radio-button-checked-text-color, var(--el-color-white))'
+              probe.style.color = span.matches('input:checked + label')
+                ? 'var(--mar-text-primary)'
                 : 'var(--mar-text-secondary)';
               probe.style.fontSize = 'var(--mar-font-size-meta)';
               span.append(probe);

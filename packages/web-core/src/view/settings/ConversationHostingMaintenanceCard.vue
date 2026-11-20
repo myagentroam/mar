@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -154,7 +156,7 @@ async function loadStorage(): Promise<void> {
 }
 
 async function previewCleanup(): Promise<void> {
-  if (!available.value) return;
+  if (!available.value || typeof inactiveDays.value !== 'number') return;
   const requestContext = {
     nodeId: props.nodeId,
     inactiveDays: inactiveDays.value,
@@ -377,13 +379,13 @@ onBeforeUnmount(() => {
       />
     </header>
 
-    <el-alert
+    <MarAlert
       v-if="availability.reasonCode === 'CONVERSATION_HOSTING_MAINTENANCE_NODE_OFFLINE'"
       type="warning"
       :closable="false"
       :title="translate('conversationHostingMaintenance.nodeOffline')"
     />
-    <el-alert
+    <MarAlert
       v-else-if="!available"
       type="warning"
       :closable="false"
@@ -394,7 +396,7 @@ onBeforeUnmount(() => {
         })
       "
     />
-    <el-alert
+    <MarAlert
       v-else-if="loadFailed"
       type="error"
       :closable="false"
@@ -462,7 +464,7 @@ onBeforeUnmount(() => {
             <h4>{{ translate('conversationHostingMaintenance.cleanupTitle') }}</h4>
             <p>{{ translate('conversationHostingMaintenance.cleanupSummary') }}</p>
           </div>
-          <el-input-number
+          <MarInputNumber
             v-model="inactiveDays"
             :min="1"
             :max="365"
@@ -472,13 +474,17 @@ onBeforeUnmount(() => {
             :aria-label="translate('conversationHostingMaintenance.inactiveDays')"
             ><template #decrease-icon><MarIcon name="subtract" /></template
             ><template #increase-icon><MarIcon name="plus" /></template
-          ></el-input-number>
+          ></MarInputNumber>
         </div>
         <p class="cleanup-range">{{ translate('conversationHostingMaintenance.rangeHint') }}</p>
         <div class="cleanup-actions">
-          <MarButton :icon="marIcon('view')" :loading="previewing" @click="previewCleanup">{{
-            translate('conversationHostingMaintenance.preview')
-          }}</MarButton>
+          <MarButton
+            :icon="marIcon('view')"
+            :loading="previewing"
+            :disabled="typeof inactiveDays !== 'number'"
+            @click="previewCleanup"
+            >{{ translate('conversationHostingMaintenance.preview') }}</MarButton
+          >
           <MarButton
             type="danger"
             plain
@@ -704,7 +710,7 @@ onBeforeUnmount(() => {
     align-items: stretch;
     flex-direction: column;
   }
-  .cleanup-heading :deep(.el-input-number) {
+  .cleanup-heading :deep(.mar-ui-input-number) {
     width: 100%;
   }
   .cleanup-result {

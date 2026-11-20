@@ -279,7 +279,7 @@ describe('Model management component behavior', () => {
       await flushComponent();
       await trigger(button(view, labels.edit), 'onClick');
       const setting = view
-        .findAll('ElCheckbox')
+        .findAll('MarCheckbox')
         .find((node) => textContent(node).trim() === labels.gcEnabled)!;
       expect(setting.props['modelValue']).toBe(expected);
       await trigger(setting, 'onUpdate:modelValue', !expected);
@@ -306,7 +306,7 @@ describe('Model management component behavior', () => {
         await flushComponent();
         await trigger(button(view, labels.edit), 'onClick');
         const setting = view
-          .findAll('ElCheckbox')
+          .findAll('MarCheckbox')
           .find((node) => textContent(node).trim() === labels.subagentModel)!;
         expect(setting.props['modelValue']).toBe(true);
         await trigger(setting, 'onUpdate:modelValue', false);
@@ -433,7 +433,7 @@ describe('Model management component behavior', () => {
     try {
       await flushComponent();
       expect(request.mock.calls.some(([path]) => path.endsWith('/compact'))).toBe(false);
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'compact');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'compact');
       await flushComponent();
       expect(textContent(view.root)).toContain(commonMessages['en-US'].promptCompletion.compact);
       expect(textContent(view.root)).toContain(messages.compactHint);
@@ -510,8 +510,8 @@ describe('Model management component behavior', () => {
       expect(textContent(view.root)).toContain('Host ownership field');
       for (const field of ['responsesEncoding', 'highDensityCompaction'])
         expect(view.findAll('MarForm')[0]?.props['model']).not.toHaveProperty(field);
-      expect(control(view, messages.context, 'ElInputNumber').props['modelValue']).toBe(256_000);
-      expect(control(view, messages.output, 'ElInputNumber').props['modelValue']).toBe(32_000);
+      expect(control(view, messages.context, 'MarInputNumber').props['modelValue']).toBe(256_000);
+      expect(control(view, messages.output, 'MarInputNumber').props['modelValue']).toBe(32_000);
       expect(control(view, messages.defaultReasoningEffort, 'MarSelect').props['modelValue']).toBe(
         'medium'
       );
@@ -547,7 +547,7 @@ describe('Model management component behavior', () => {
       );
       for (const label of [messages.titleGeneration, messages.codeMode])
         await trigger(
-          view.findAll('ElCheckbox').find((node) => textContent(node).trim() === label)!,
+          view.findAll('MarCheckbox').find((node) => textContent(node).trim() === label)!,
           'onUpdate:modelValue',
           true
         );
@@ -616,7 +616,7 @@ describe('Model management component behavior', () => {
         await flushComponent();
         await trigger(button(view, labels.edit), 'onClick');
         const setting = view
-          .findAll('ElCheckbox')
+          .findAll('MarCheckbox')
           .find((node) => textContent(node).trim() === labels.useResourceUrl)!;
         expect(setting.props['modelValue']).toBe(true);
         const field = view
@@ -656,7 +656,7 @@ describe('Model management component behavior', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
         .findAll('MarTable')
         .find(
@@ -706,7 +706,7 @@ describe('Model management component behavior', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
         .findAll('MarTable')
         .find(
@@ -997,7 +997,7 @@ describe('Model management component behavior', () => {
       });
       try {
         await flushComponent();
-        await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+        await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
         const table = view
           .findAll('MarTable')
           .find((node) =>
@@ -1070,7 +1070,7 @@ describe('Model management component behavior', () => {
     );
     try {
       await flushComponent();
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
         .findAll('MarTable')
         .find((node) =>
@@ -1085,8 +1085,8 @@ describe('Model management component behavior', () => {
       );
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('Host catalogue ownership');
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain('upstream-fixture');
-      expect(view.findAll('ElInputNumber')[0]?.props['modelValue']).toBe(256_000);
-      await trigger(view.findAll('ElCheckbox')[0]!, 'onUpdate:modelValue', true);
+      expect(view.findAll('MarInputNumber')[0]?.props['modelValue']).toBe(256_000);
+      await trigger(view.findAll('MarCheckbox')[0]!, 'onUpdate:modelValue', true);
       await trigger(button(view, messages.codexImport), 'onClick');
       const imported = request.mock.calls.find(([path]) => path.endsWith('/models/import'))!;
       expect(imported[0]).toBe('/api/admin/mar-agent/codex-credentials/credential-0/models/import');
@@ -1141,7 +1141,7 @@ describe('Model management component behavior', () => {
       });
       try {
         await flushComponent();
-        await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+        await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
         const table = view
           .findAll('MarTable')
           .find((node) =>
@@ -1227,7 +1227,7 @@ describe('Model management component behavior', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       await trigger(button(view, messages.edit), 'onClick');
       await trigger(
         control(view, messages.credentialName, 'MarInput'),
@@ -1289,7 +1289,7 @@ describe('Model management component behavior', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       await trigger(button(view, messages.codexAddCredential), 'onClick');
       await trigger(
         control(view, messages.credentialName, 'MarInput'),
@@ -1340,7 +1340,7 @@ describe('Model management component behavior', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
+      await trigger(view.findAll('MarTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
         .findAll('MarTable')
         .find(

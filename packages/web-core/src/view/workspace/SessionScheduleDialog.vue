@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarRadioButton, MarRadioGroup } from '@myagentroam/mar-ui/radio';
+import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
+import { MarTimeSelect } from '@myagentroam/mar-ui/time-select';
 import { MarPagination } from '@myagentroam/mar-ui/pagination';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -73,8 +76,8 @@ const canResolveProposals = ref(false);
 const formRef = ref<FormInstance>();
 const form = reactive({
   objective: '',
-  time: '09:00',
-  hourlyTime: '00:00',
+  time: '09:00' as string | null,
+  hourlyTime: '00:00' as string | undefined,
   cronExpression: ''
 });
 const rules: FormRules = {
@@ -239,10 +242,12 @@ function changeOccurrencePage(page: number): void {
   if (!loading.value && !saving.value) void load(page, false);
 }
 
-function cron(): string {
+function cron(): string | undefined {
   if (scheduleMode.value === 'CRON') return form.cronExpression.trim();
+  if (cadence.value === 'HOURLY')
+    return form.hourlyTime ? `${Number(form.hourlyTime.split(':')[1])} * * * *` : undefined;
+  if (!form.time) return undefined;
   const [hour, minute] = form.time.split(':').map(Number);
-  if (cadence.value === 'HOURLY') return `${Number(form.hourlyTime.split(':')[1])} * * * *`;
   if (cadence.value === 'DAILY') return `${minute} ${hour} * * *`;
   return `${minute} ${hour} * * ${weekday.value}`;
 }
@@ -344,6 +349,8 @@ async function save(): Promise<void> {
   )
     return;
   if (saving.value || loading.value) return;
+  const expression = cron();
+  if (expression === undefined) return;
   pendingAction.value = 'save';
   try {
     await props.request(path(), {
@@ -352,7 +359,7 @@ async function save(): Promise<void> {
         nodeId: props.nodeId,
         workspaceId: props.workspaceId,
         objective: form.objective.trim(),
-        cron: cron(),
+        cron: expression,
         enabled: enabled.value,
         notifyOnTerminal: notifyOnTerminal.value,
         ...(task.value === null ? {} : { expectedRevision: task.value.revision })
@@ -479,18 +486,18 @@ function occurrenceStatus(status: string): string {
         />
       </MarFormItem>
       <MarFormItem :label="translate('generated.scheduledSession.mode')">
-        <el-radio-group
+        <MarRadioGroup
           v-model="scheduleMode"
           :disabled="saving || loading || !taskLoaded"
           :aria-label="translate('generated.scheduledSession.mode')"
         >
-          <el-radio-button value="SIMPLE">
+          <MarRadioButton value="SIMPLE">
             {{ translate('generated.scheduledSession.simpleMode') }}
-          </el-radio-button>
-          <el-radio-button value="CRON">
+          </MarRadioButton>
+          <MarRadioButton value="CRON">
             {{ translate('generated.scheduledSession.cronMode') }}
-          </el-radio-button>
-        </el-radio-group>
+          </MarRadioButton>
+        </MarRadioGroup>
       </MarFormItem>
       <template v-if="scheduleMode === 'SIMPLE'">
         <MarFormItem :label="translate('generated.scheduledSession.repeat')">
@@ -529,7 +536,7 @@ function occurrenceStatus(status: string): string {
             :label="translate('generated.scheduledSession.minute')"
             prop="hourlyTime"
           >
-            <el-time-select
+            <MarTimeSelect
               v-model="form.hourlyTime"
               :disabled="saving || loading || !taskLoaded"
               start="00:00"
@@ -541,7 +548,7 @@ function occurrenceStatus(status: string): string {
             />
           </MarFormItem>
           <MarFormItem v-else :label="translate('generated.scheduledSession.time')" prop="time">
-            <el-time-picker
+            <MarTimePicker
               v-model="form.time"
               :disabled="saving || loading || !taskLoaded"
               format="HH:mm"
@@ -704,7 +711,7 @@ function occurrenceStatus(status: string): string {
 .schedule-form :deep(.mar-ui-input--textarea),
 .schedule-form :deep(.mar-ui-select),
 .schedule-form :deep(.el-select),
-.schedule-form :deep(.el-date-editor) {
+.schedule-form :deep(:is(.mar-ui-time-select, .mar-ui-time-picker)) {
   width: 100%;
 }
 .schedule-time-fields {

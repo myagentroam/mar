@@ -850,7 +850,7 @@ test('New sessions open Composer directly and submit settings with the first mes
   await expect(
     modelAndEffortMenu.locator('.mar-ui-option-group__label', { hasText: '推理' })
   ).toBeVisible();
-  await expect(modelAndEffortMenu.locator('.el-scrollbar__wrap').first()).toHaveCSS(
+  await expect(modelAndEffortMenu.locator('.mar-ui-scrollbar').first()).toHaveCSS(
     'overflow-y',
     'auto'
   );

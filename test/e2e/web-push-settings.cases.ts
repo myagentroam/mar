@@ -95,8 +95,9 @@ for (const device of ['desktop', 'mobile'] as const) {
         })
       ).toBeVisible();
       await expect(online.getByRole('status').first()).toHaveText(language.enabled);
-      await expect(online.getByRole('status').first().locator('.el-tag')).toHaveClass(
-        /el-tag--success/
+      await expect(online.getByRole('status').first().locator('.mar-ui-tag')).toHaveAttribute(
+        'data-type',
+        'success'
       );
       const action = online.getByRole('button').first();
       await expect(action).toHaveClass(/(?:^|\s)mar-text-action(?:\s|$)/);

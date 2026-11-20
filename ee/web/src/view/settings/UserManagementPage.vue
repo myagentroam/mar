@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -305,7 +307,7 @@ onUnmounted(() => usersPage.dispose());
       class="credential-result-dialog"
       @close="credentialResult = undefined"
       :close-icon="marIcon('close')"
-      ><el-alert
+      ><MarAlert
         :title="
           translate('generated.userManagementPage.copyAndSecurelyDeliverTheseCredentials', {
             value0: credentialResult === undefined ? '' : translate(credentialResult.titleKey)
@@ -315,7 +317,7 @@ onUnmounted(() => usersPage.dispose());
         :closable="false"
         show-icon
         ><template #icon><MarIcon name="success" /></template
-      ></el-alert>
+      ></MarAlert>
       <dl class="credential-result">
         <div>
           <dt>{{ translate('generated.userManagementPage.username3') }}</dt>
@@ -345,28 +347,28 @@ onUnmounted(() => usersPage.dispose());
       @update:model-value="userDetail = undefined"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('common.userId')">{{
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('common.userId')">{{
           userDetail.id
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.username')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.username')">{{
           userDetail.username
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.email')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.email')">{{
           userDetail.email ?? '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.nickname')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.nickname')">{{
           userDetail.nickname ?? '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.role')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.role')">{{
           userDetail.isAdmin
             ? translate('generated.userManagementPage.administrator')
             : translate('generated.userManagementPage.user')
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('common.createdAt')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('common.createdAt')">{{
           formatTime(userDetail.createdAt)
-        }}</el-descriptions-item>
-      </el-descriptions>
+        }}</MarDescriptionsItem>
+      </MarDescriptions>
     </el-dialog>
   </section>
 </template>
@@ -433,7 +435,7 @@ onUnmounted(() => usersPage.dispose());
 </style>
 
 <style scoped>
-:global(.credential-result-dialog .el-alert) {
+:global(.credential-result-dialog .mar-ui-alert) {
   margin-bottom: 20px;
 }
 </style>

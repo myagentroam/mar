@@ -183,13 +183,17 @@ for (const [width, height, theme, top] of [
         expect(modelBounds.x + modelBounds.width).toBeLessThanOrEqual(effortBounds.x + 1);
         expect(Math.abs(modelBounds.y - effortBounds.y)).toBeLessThan(1);
         if (height > 400) expect((await menu.boundingBox())!.height).toBeGreaterThan(400);
-        const scroll = modelGroup.locator('.el-scrollbar__wrap');
+        const scroll = modelGroup.locator('.mar-ui-scrollbar');
         expect(
           await scroll.evaluate((element) => element.scrollHeight > element.clientHeight)
         ).toBe(true);
-        await expect(modelGroup.locator('.el-scrollbar__bar.is-vertical')).toBeVisible();
-        await page.mouse.move(0, 0);
-        await expect(modelGroup.locator('.el-scrollbar__thumb').last()).toBeVisible();
+        await expect(scroll).toHaveCSS('overflow-y', 'auto');
+        expect(
+          await scroll.evaluate((element) => {
+            element.scrollTop = 16;
+            return element.scrollTop;
+          })
+        ).toBeGreaterThan(0);
         await page.screenshot({ path: info.outputPath('model-menu.png'), animations: 'disabled' });
         if (height < 400) {
           await page.setViewportSize({ width, height: 240 });
@@ -367,7 +371,7 @@ test('Touch selection keeps the other column value and short menus stay compact'
     const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');
     await expectMenuInsideViewport(menu);
     expect((await menu.boundingBox())!.height).toBeLessThan(250);
-    const columns = menu.getByRole('group').locator('.el-scrollbar__wrap');
+    const columns = menu.getByRole('group').locator('.mar-ui-scrollbar');
     for (const column of await columns.all())
       expect(await column.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
         true

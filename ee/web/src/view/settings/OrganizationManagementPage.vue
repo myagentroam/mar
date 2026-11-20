@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -355,30 +356,30 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       @update:model-value="organizationDetail = undefined"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.organizationID')"
-          >{{ organizationDetail.id }}</el-descriptions-item
+          >{{ organizationDetail.id }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.organizationName')"
-          >{{ organizationDetail.name }}</el-descriptions-item
+          >{{ organizationDetail.name }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.parentOrganization2')"
           >{{
             organizationDetail.parentOrganizationId === null
               ? translate('generated.organizationUserManagementPage.rootOrganization')
               : path(organizationDetail.parentOrganizationId)
-          }}</el-descriptions-item
+          }}</MarDescriptionsItem
         >
-        <el-descriptions-item :label="translate('common.createdAt')">{{
+        <MarDescriptionsItem :label="translate('common.createdAt')">{{
           formatTime(organizationDetail.createdAt)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('common.updatedAt')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('common.updatedAt')">{{
           formatTime(organizationDetail.updatedAt)
-        }}</el-descriptions-item>
-      </el-descriptions>
+        }}</MarDescriptionsItem>
+      </MarDescriptions>
     </el-dialog>
   </section>
 </template>

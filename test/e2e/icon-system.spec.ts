@@ -116,7 +116,9 @@ test('Git changes append at the repository boundary and refresh in place', async
       await expect(marker).not.toBeInViewport();
       const emptyRepository = changes.locator('[data-repository-path="empty"]');
       await expect(emptyRepository).toHaveCount(1);
-      const submoduleTag = emptyRepository.locator('.el-tag').filter({ hasText: /^Submodule$/ });
+      const submoduleTag = emptyRepository
+        .locator('.mar-ui-tag')
+        .filter({ hasText: /^Submodule$/ });
       await expect(submoduleTag).toHaveCSS(
         'border-top-color',
         theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
@@ -299,7 +301,7 @@ for (const theme of ['dark', 'light']) {
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
       const metadataBorder = theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)';
       for (const label of [/^Root$/, /^Current$/]) {
-        const tag = page.locator('.repository-tags-row .el-tag').filter({ hasText: label });
+        const tag = page.locator('.repository-tags-row .mar-ui-tag').filter({ hasText: label });
         await expect(tag).toHaveCSS('border-top-color', metadataBorder);
       }
       await expect(refreshGlyph).toHaveCSS('width', '14px');

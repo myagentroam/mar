@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -97,7 +98,7 @@ function detailsExtension(
           v-if="editing.ownership.ownerType === 'PERSONAL'"
           :model-value="translate('generated.resourceSharingPage.personal3')"
           disabled />
-        <el-cascader
+        <MarCascader
           v-else
           v-model="editOrganizationId"
           style="width: 100%"
@@ -114,7 +115,7 @@ function detailsExtension(
           v-if="edition === 'COMMUNITY'"
           :model-value="translate('generated.resourceSharingPage.personal4')"
           disabled />
-        <el-cascader
+        <MarCascader
           v-else
           v-model="registrationOwner"
           style="width: 100%"

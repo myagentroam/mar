@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
@@ -125,7 +126,7 @@ async function submit(): Promise<void> {
             :label="translate('generated.workspaceSessionCleanupDialog.inactiveDays')"
             prop="inactiveDays"
           >
-            <el-input-number
+            <MarInputNumber
               v-model="form.inactiveDays"
               :aria-label="translate('generated.workspaceSessionCleanupDialog.inactiveDays')"
               :disabled="loading"
@@ -135,7 +136,7 @@ async function submit(): Promise<void> {
               step-strictly
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
+            ></MarInputNumber>
           </MarFormItem>
         </MarForm>
       </template>

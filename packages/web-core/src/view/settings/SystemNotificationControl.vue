@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
@@ -32,13 +33,13 @@ const blocked = computed(
           }}
         </h3>
         <p role="status">
-          <el-tag
+          <MarTag
             v-if="service.status.value === 'enabled' || service.status.value === 'disabled'"
             :type="service.status.value === 'enabled' ? 'success' : 'info'"
             effect="plain"
             >{{
               translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
-            }}</el-tag
+            }}</MarTag
           >
           <template v-else>{{
             translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)

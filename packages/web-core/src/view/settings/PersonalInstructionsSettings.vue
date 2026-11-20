@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -234,7 +235,7 @@ async function clear(): Promise<void> {
       role="tablist"
       :aria-label="translate('personalInstructions.title')"
     >
-      <el-check-tag
+      <MarCheckTag
         v-for="(item, index) in scopeItems"
         :key="item.id"
         :id="`instruction-scope-${item.id}`"
@@ -255,7 +256,7 @@ async function clear(): Promise<void> {
           aria-hidden="true"
         />
         <span>{{ translate(item.label) }}</span>
-      </el-check-tag>
+      </MarCheckTag>
     </div>
     <p
       v-if="!loading && failed"
@@ -335,7 +336,7 @@ h2 {
   margin-bottom: 1rem;
 }
 
-.instruction-scopes :deep(.el-check-tag) {
+.instruction-scopes :deep(.mar-ui-check-tag) {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -352,21 +353,21 @@ h2 {
     color 120ms ease;
 }
 
-.instruction-scopes :deep(.el-check-tag:hover) {
+.instruction-scopes :deep(.mar-ui-check-tag:hover) {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
-.instruction-scopes :deep(.el-check-tag.is-checked) {
+.instruction-scopes :deep(.mar-ui-check-tag[aria-selected='true']) {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
 }
 
-.instruction-scopes :deep(.el-check-tag.is-checked:hover) {
+.instruction-scopes :deep(.mar-ui-check-tag[aria-selected='true']:hover) {
   background: var(--mar-fill-selection);
 }
 
-.instruction-scopes :deep(.el-check-tag:focus-visible) {
+.instruction-scopes :deep(.mar-ui-check-tag:focus-visible) {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }

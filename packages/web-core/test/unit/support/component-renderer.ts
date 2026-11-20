@@ -113,7 +113,21 @@ export function renderComponent(
         name === 'MarButton' ||
         name === 'MarForm' ||
         name === 'MarTable' ||
-        name === 'MarPagination'
+        name === 'MarPagination' ||
+        [
+          'MarCascader',
+          'MarTag',
+          'MarProgress',
+          'MarAlert',
+          'MarCheckbox',
+          'MarCheckTag',
+          'MarDescriptions',
+          'MarDescriptionsItem',
+          'MarLink',
+          'MarInputNumber',
+          'MarTabs',
+          'MarTabPane'
+        ].includes(name)
       )
         boundaryView(this.$, name);
       if (name === 'MarForm' && this.$.exposed && options.validate)

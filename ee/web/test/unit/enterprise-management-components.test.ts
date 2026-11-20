@@ -192,7 +192,7 @@ describe('Enterprise management components', () => {
           })
         );
         await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
-        const tabs = view.findAll('ElTabPane').map((node) => node.props['name']);
+        const tabs = view.findAll('MarTabPane').map((node) => node.props['name']);
         expect(tabs).toEqual(
           expect.arrayContaining(['modelOrder', 'models', 'codexCredentials', 'imageGeneration'])
         );
@@ -272,7 +272,7 @@ describe('Enterprise management components', () => {
     );
     try {
       await flushComponent();
-      const filter = view.findAll('el-cascader')[0]!;
+      const filter = view.findAll('MarCascader')[0]!;
       expect(filter.props['modelValue']).toBe(9);
       expect(
         view.findAll('MarInput').some((node) => node.props['modelValue'] === 'fixture-user')
@@ -291,7 +291,7 @@ describe('Enterprise management components', () => {
         .findAll('MarButton')
         .find((node) => textContent(node).trim() === 'Create user')!;
       await trigger(create, 'onClick');
-      const formCascade = view.findAll('el-cascader').at(-1)!;
+      const formCascade = view.findAll('MarCascader').at(-1)!;
       await trigger(formCascade, 'onUpdate:modelValue', 2);
       const username = view
         .findAll('MarInput')
@@ -329,7 +329,7 @@ describe('Enterprise management components', () => {
       'onUpdate:ownerOrganizationId': updates
     });
     try {
-      const organizationFilter = filters.findAll('el-cascader')[0]!;
+      const organizationFilter = filters.findAll('MarCascader')[0]!;
       expect(organizationFilter.props).toHaveProperty('filterable');
       expect(organizationFilter.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(organizationFilter, 'onUpdate:modelValue', 1);
@@ -518,7 +518,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research / Platform');
       expect(textContent(view.root)).toContain('88');
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props).toHaveProperty('filterable');
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 3);
@@ -564,7 +564,7 @@ describe('Enterprise management components', () => {
       await exposed.value!.open(model as never);
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research');
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 3);
       await trigger(button(view, 'Grant'), 'onClick');
@@ -646,7 +646,7 @@ describe('Enterprise management components', () => {
     );
     try {
       await flushComponent();
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader?.props).toMatchObject({
         modelValue: 2,
         props: { checkStrictly: true, emitPath: false },
@@ -709,13 +709,15 @@ describe('Enterprise management components', () => {
       const table = view.findAll('MarTable')[0]!;
       await trigger(table, 'onRowClick', existing);
       expect(textContent(view.root)).toContain('DEPLOY_TOKEN');
-      expect(textContent(view.findAll('ElDescriptions')[0]!)).not.toContain('fixture-secret-value');
+      expect(textContent(view.findAll('MarDescriptions')[0]!)).not.toContain(
+        'fixture-secret-value'
+      );
       await trigger(button(view, 'Close'), 'onClick');
       await trigger(button(view, 'Add Environment Secret'), 'onClick');
       const scope = view.findAll('MarSelect').find((node) => node.props.modelValue === 'PERSONAL')!;
       await trigger(scope, 'onUpdate:modelValue', 'ORGANIZATION');
       await flushComponent();
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 2);
       const inputs = view.findAll('MarInput');

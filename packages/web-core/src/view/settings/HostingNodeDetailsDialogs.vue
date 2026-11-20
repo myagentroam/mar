@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
@@ -51,7 +52,7 @@ const coreProps = computed(() => props);
     @computer-use-changed="emit('computerUseChanged', $event)"
   >
     <template #node-properties>
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="hosting !== undefined"
         :label="translate('conversationHostingEnablement.title')"
       >
@@ -80,7 +81,7 @@ const coreProps = computed(() => props);
           </div>
           <p class="hosting-enablement-hint">{{ hosting.hint }}</p>
         </div>
-      </el-descriptions-item>
+      </MarDescriptionsItem>
     </template>
     <template #node-sections>
       <ConversationHostingMaintenanceCard

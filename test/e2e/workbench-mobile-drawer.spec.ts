@@ -171,7 +171,7 @@ for (const theme of ['daylight', 'midnight']) {
       const notificationList = page.locator(
         '.workbench-activity-panel .workbench-notification-content .workbench-notification-list'
       );
-      await expect(notificationList.locator('.el-tag')).toHaveCount(0);
+      await expect(notificationList.locator('.mar-ui-tag')).toHaveCount(0);
       await expect(notificationList.locator('> li')).toHaveCount(30);
     }
   });

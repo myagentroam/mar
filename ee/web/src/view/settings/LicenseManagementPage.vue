@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
@@ -138,9 +139,9 @@ void load();
         <span>{{ translate('generated.licenseManagementPage.edition') }}</span>
         <div class="license-version">
           <strong>{{ editionLabel }}</strong>
-          <el-tag v-if="expired" type="danger" effect="plain">{{
+          <MarTag v-if="expired" type="danger" effect="plain">{{
             translate('generated.licenseManagementPage.expired')
-          }}</el-tag>
+          }}</MarTag>
         </div>
       </div>
       <div>
@@ -237,7 +238,7 @@ void load();
   align-items: center;
   gap: 6px;
 }
-.license-version :deep(.el-tag) {
+.license-version :deep(.mar-ui-tag) {
   height: 20px;
   padding-inline: 6px;
   font-size: var(--mar-font-size-meta);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -203,13 +204,13 @@ function createNodeToken(): void {
           />
           <MarTableColumn :label="translate('generated.settingsContent.status')" width="110">
             <template #default="{ row }">
-              <el-tag :type="row.bound ? 'success' : 'info'" effect="light">
+              <MarTag :type="row.bound ? 'success' : 'info'" effect="light">
                 {{
                   row.bound
                     ? translate('generated.settingsContent.bound')
                     : translate('generated.settingsContent.notBound')
                 }}
-              </el-tag>
+              </MarTag>
             </template>
           </MarTableColumn>
           <MarTableColumn :label="translate('generated.settingsContent.actions')" width="120">

@@ -77,9 +77,11 @@ describe('Workbench recent session groups', () => {
       const list = mounted.container.findAll(
         (node) => node.props.get('class') === 'recent-sessions-list'
       )[0]!;
-      const tags = list.findAll((node) => node.type === 'span' && node.props.has('type'));
+      const tags = list.findAll(
+        (node) => node.type === 'span' && node.props.get('class') === 'mar-ui-tag'
+      );
       expect(tags.map((node) => node.textContent)).toEqual([canceled, interrupted, canceled]);
-      expect(tags.map((node) => node.props.get('type'))).toEqual(['info', 'warning', 'info']);
+      expect(tags.map((node) => node.props.get('data-type'))).toEqual(['info', 'warning', 'info']);
     }
   );
 
@@ -106,8 +108,10 @@ describe('Workbench recent session groups', () => {
     const list = mounted.container.findAll(
       (node) => node.props.get('class') === 'recent-sessions-list'
     )[0]!;
-    const tags = list.findAll((node) => node.type === 'span' && node.props.has('type'));
-    expect(tags.map((node) => node.props.get('type'))).toEqual([
+    const tags = list.findAll(
+      (node) => node.type === 'span' && node.props.get('class') === 'mar-ui-tag'
+    );
+    expect(tags.map((node) => node.props.get('data-type'))).toEqual([
       'success',
       'success',
       'info',

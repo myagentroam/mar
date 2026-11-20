@@ -3,8 +3,10 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
@@ -466,20 +468,20 @@ function message(error: unknown): string {
       @closed="secretDetails = undefined"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions :column="1" border>
-        <el-descriptions-item :label="translate('generated.environmentSecretManager.name')">
+      <MarDescriptions :column="1" border>
+        <MarDescriptionsItem :label="translate('generated.environmentSecretManager.name')">
           <code>{{ secretDetails.name }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.environmentSecretManager.scope')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.environmentSecretManager.scope')">
           {{ secretScopeLabel(secretDetails) }}
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.environmentSecretManager.owner')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.environmentSecretManager.owner')">
           {{ secretOwnerLabel(secretDetails) }}
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.environmentSecretManager.visibility')">
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.environmentSecretManager.visibility')">
           {{ secretVisibilityLabel(secretDetails) }}
-        </el-descriptions-item>
-      </el-descriptions>
+        </MarDescriptionsItem>
+      </MarDescriptions>
       <template #footer>
         <MarButton @click="secretDetailsOpen = false">{{ translate('common.close') }}</MarButton>
       </template>

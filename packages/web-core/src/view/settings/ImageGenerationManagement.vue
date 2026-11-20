@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -440,41 +442,41 @@ onMounted(load);
       width="min(720px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('marAgentModels.imageGenerationConfigurationId')">
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationConfigurationId')">
           <code>{{ selectedDetail.id }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.name')">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.name')">{{
           selectedDetail.name
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.imageGenerationProvider')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationProvider')">{{
           providerLabel(selectedDetail.provider)
-        }}</el-descriptions-item>
-        <el-descriptions-item
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="selectedDetail.provider === 'CODEX'"
           :label="translate('marAgentModels.imageGenerationCredential')"
-          >{{ credentialName(selectedDetail.config.credentialId) }}</el-descriptions-item
+          >{{ credentialName(selectedDetail.config.credentialId) }}</MarDescriptionsItem
         >
-        <el-descriptions-item v-else :label="translate('marAgentModels.imageGenerationApiKey')">{{
+        <MarDescriptionsItem v-else :label="translate('marAgentModels.imageGenerationApiKey')">{{
           selectedDetail.config.hasApiKey
             ? translate('marAgentModels.imageGenerationApiKeyConfigured')
             : '—'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.imageGenerationModel')">
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationModel')">
           <code>{{ selectedDetail.config.modelId }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="selectedDetail.provider === 'BYTED_ARK'"
           :label="translate('marAgentModels.imageGenerationUrl')"
         >
           <code class="image-generation-detail-url">{{ selectedDetail.config.url ?? '—' }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.enabled')">
-          <el-tag :type="selectedDetail.enabled ? 'success' : 'info'" effect="plain">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.enabled')">
+          <MarTag :type="selectedDetail.enabled ? 'success' : 'info'" effect="plain">{{
             translate(selectedDetail.enabled ? 'marAgentModels.enabled' : 'marAgentModels.disabled')
-          }}</el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
+          }}</MarTag>
+        </MarDescriptionsItem>
+      </MarDescriptions>
       <template #footer>
         <MarButton @click="detailOpen = false">{{ translate('common.close') }}</MarButton>
       </template>

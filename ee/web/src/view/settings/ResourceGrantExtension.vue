@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormRules, type FormInstance } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -178,7 +179,7 @@ defineExpose({ open: openShare });
         :label="translate('generated.resourceSharingPage.targetOrganization')"
         prop="targetOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="targetOrganizationId"
           style="width: 100%"
           filterable

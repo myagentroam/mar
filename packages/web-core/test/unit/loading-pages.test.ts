@@ -276,7 +276,7 @@ describe('shared loading presentation', () => {
         expect(progress?.props).not.toHaveProperty('aria-valuemin');
         expect(progress?.props).not.toHaveProperty('aria-valuemax');
         expect(textContent(progress!)).not.toMatch(/\d+(?:\.\d+)?%/u);
-        expect(view.findAll('ElProgress')).toHaveLength(0);
+        expect(view.findAll('MarProgress')).toHaveLength(0);
 
         if (outcome === 'success')
           resolveInstall({ targetKind: 'NODE', installations: [installation] });
@@ -394,7 +394,7 @@ describe('shared loading presentation', () => {
         expect(progress?.props).not.toHaveProperty('aria-valuemin');
         expect(progress?.props).not.toHaveProperty('aria-valuemax');
         expect(textContent(progress!)).not.toMatch(/\d+(?:\.\d+)?%/u);
-        expect(view.findAll('ElProgress')).toHaveLength(0);
+        expect(view.findAll('MarProgress')).toHaveLength(0);
 
         resolveJob(
           outcome === 'success'

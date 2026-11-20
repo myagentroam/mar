@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { nextTick, ref } from 'vue';
@@ -65,9 +66,9 @@ defineExpose({
 <template>
   <section class="content-search">
     <div class="content-search-options">
-      <el-checkbox v-model="contentUseRegex" size="small">{{
+      <MarCheckbox v-model="contentUseRegex" size="small">{{
         translate('generated.workspaceInspector.useRegularExpression')
-      }}</el-checkbox>
+      }}</MarCheckbox>
     </div>
     <form class="explorer-toolbar content-search-toolbar" @submit.prevent="searchContent">
       <MarInput
@@ -200,7 +201,7 @@ button.watch-status[aria-disabled='true'] {
   padding: 0.375rem 0.375rem 0;
 }
 
-.content-search-options :deep(.el-checkbox) {
+.content-search-options :deep(.mar-ui-checkbox) {
   height: 1.2rem;
   font-size: var(--mar-font-size-meta);
 }

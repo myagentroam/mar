@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarLink } from '@myagentroam/mar-ui/link';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -355,14 +356,14 @@ async function confirmLogout(): Promise<void> {
         {{ translate('generated.settingsContent.createAOneTimeTokenThenComplete') }}
       </p>
       <p v-if="documentationAvailable" class="registration-guide">
-        <el-link
+        <MarLink
           type="primary"
           :icon="marIcon('link')"
           :underline="false"
           :href="localizedDocsPath(locale, 'deployment/node-installation')"
           target="_blank"
           rel="noopener noreferrer"
-          >{{ translate('generated.settingsContent.viewNodeDeploymentAndAutoStartGuide') }}</el-link
+          >{{ translate('generated.settingsContent.viewNodeDeploymentAndAutoStartGuide') }}</MarLink
         >
       </p>
       <div class="registration-action">
@@ -791,11 +792,11 @@ async function confirmLogout(): Promise<void> {
         <div v-if="documentationAvailable">
           <dt>{{ t('settings.documentation') }}</dt>
           <dd>
-            <el-link
+            <MarLink
               :href="localizedDocsPath(locale, 'getting-started/overview')"
               target="_blank"
               :underline="false"
-              >{{ t('settings.openDocumentation') }}</el-link
+              >{{ t('settings.openDocumentation') }}</MarLink
             >
           </dd>
         </div>
@@ -809,13 +810,13 @@ async function confirmLogout(): Promise<void> {
                 <dd>{{ t('settings.thirdPartyGroups.' + group + '.components') }}</dd>
               </div>
             </dl>
-            <el-link
+            <MarLink
               class="third-party-notices-link"
               href="/THIRD_PARTY_NOTICES.txt"
               target="_blank"
               rel="noopener noreferrer"
               :underline="false"
-              >{{ t('settings.viewThirdPartyNotices') }}</el-link
+              >{{ t('settings.viewThirdPartyNotices') }}</MarLink
             >
             <p class="third-party-scope">{{ t('settings.thirdPartyDistributionNotices') }}</p>
           </dd>
@@ -1095,7 +1096,7 @@ async function confirmLogout(): Promise<void> {
   line-height: 1.55;
 }
 
-.registration-guide :deep(.el-link) {
+.registration-guide :deep(.mar-ui-link) {
   font-size: var(--mar-font-size-body);
 }
 

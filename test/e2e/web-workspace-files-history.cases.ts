@@ -1385,7 +1385,7 @@ test('Recent sessions show their own count, status tags and cumulative duration'
   const textGeometry = await task.evaluate((element) => {
     const row = element.getBoundingClientRect();
     const title = element.querySelector('.recent-session-title')!.getBoundingClientRect();
-    const status = element.querySelector('.el-tag')!.getBoundingClientRect();
+    const status = element.querySelector('.mar-ui-tag')!.getBoundingClientRect();
     const summary = element.querySelector('small')!.getBoundingClientRect();
     return {
       rowWidth: row.width,
@@ -1400,9 +1400,9 @@ test('Recent sessions show their own count, status tags and cumulative duration'
   expect(textGeometry.summaryWidth).toBeGreaterThan(textGeometry.rowWidth * 0.75);
   await task.locator('.recent-session-title').hover();
   await expect(page.getByRole('tooltip')).toHaveText('my-agent-roam: 状态展示与长标题可读性覆盖');
-  await expect(task.locator('.el-tag')).toHaveText('运行中');
-  await expect(task.locator('.el-tag')).toHaveClass(/el-tag--success/);
-  const runningColors = await task.locator('.el-tag').evaluate((element) => {
+  await expect(task.locator('.mar-ui-tag')).toHaveText('运行中');
+  await expect(task.locator('.mar-ui-tag')).toHaveAttribute('data-type', 'success');
+  const runningColors = await task.locator('.mar-ui-tag').evaluate((element) => {
     const reference = document.createElement('span');
     reference.style.color = 'var(--mar-color-success-text)';
     element.append(reference);
@@ -1485,8 +1485,8 @@ for (const mobile of [false, true]) {
       const panel = page.getByRole('region', { name: '最近会话', exact: true });
       const tasks = panel.locator('.recent-sessions-list > li');
       await expect(tasks).toHaveCount(30);
-      await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--success/);
-      await expect(tasks.nth(1).locator('.el-tag')).toHaveClass(/el-tag--info/);
+      await expect(tasks.first().locator('.mar-ui-tag')).toHaveAttribute('data-type', 'success');
+      await expect(tasks.nth(1).locator('.mar-ui-tag')).toHaveAttribute('data-type', 'info');
       if (mobile) await expect(page.locator('.workbench-activity-panel.mobile-mode')).toBeVisible();
       else
         await expect(page.locator('.workbench-activity-popover:visible')).toHaveCSS('opacity', '1');
@@ -1575,7 +1575,7 @@ for (const mobile of [false, true]) {
         activeStatus = status;
         await trigger.click();
         await expect(tasks).toHaveCount(1);
-        await expect(tasks.first().locator('.el-tag')).toHaveText(label);
+        await expect(tasks.first().locator('.mar-ui-tag')).toHaveText(label);
         const active = status === 'STARTING' || status === 'CANCELLING';
         await expect(trigger).toHaveAttribute(
           'aria-description',
@@ -1584,8 +1584,8 @@ for (const mobile of [false, true]) {
         await expect(trigger.locator('.activity-entry-running')).toHaveCount(active ? 1 : 0);
         await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
         if (status === 'SUCCEEDED') {
-          await expect(tasks.first().locator('.el-tag')).toHaveText('已完成');
-          await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--info/);
+          await expect(tasks.first().locator('.mar-ui-tag')).toHaveText('已完成');
+          await expect(tasks.first().locator('.mar-ui-tag')).toHaveAttribute('data-type', 'info');
         }
         await trigger.click();
         await expect(panel).toBeHidden();

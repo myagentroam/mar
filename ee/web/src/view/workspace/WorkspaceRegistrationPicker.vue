@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CascaderInstance } from 'element-plus';
-import { computed, ref, watch, watchEffect } from 'vue';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { computed, ref, useId, watch } from 'vue';
 import CorePicker from '@myagentroam/web-core/WorkspaceRegistrationPicker.vue';
 import type { WorkspaceDirectoryListing } from '@myagentroam/web-core/workspace-registration';
 import {
@@ -34,22 +34,7 @@ const emit = defineEmits<{
 }>();
 const organizations = ref<readonly OrganizationSummary[]>([]);
 const ownerOrganizationId = ref<number>();
-const ownerPicker = ref<CascaderInstance>();
-watchEffect((onCleanup) => {
-  const picker = ownerPicker.value;
-  const popup = picker?.contentRef;
-  if (!picker || !popup) return;
-  // The teleported popup's Escape does not reach the cascader input's key handler.
-  const closeOnEscape = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape' || event.isComposing) return;
-    event.preventDefault();
-    event.stopPropagation();
-    picker.togglePopperVisible(false);
-    picker.focus();
-  };
-  popup.addEventListener('keydown', closeOnEscape, true);
-  onCleanup(() => popup.removeEventListener('keydown', closeOnEscape, true));
-});
+const ownerControlId = useId();
 const organizationOptions = computed(() => {
   if (props.nodeOwnership?.ownerType !== 'ORGANIZATION') return [];
   const rootId = props.nodeOwnership.ownerOrganizationId;
@@ -148,17 +133,20 @@ function submit(): void {
         <strong v-else-if="fixedOrganizationOwnership">{{
           organizationDisplayLabel(organizations, nodeOwnership.ownerOrganizationId)
         }}</strong>
-        <label v-else class="workspace-picker-owner-field">
-          <span>{{ translate('generated.workspaceRegistrationPicker.resourceOwner') }}</span>
-          <el-cascader
-            ref="ownerPicker"
+        <div v-else class="workspace-picker-owner-field">
+          <label :for="ownerControlId">{{
+            translate('generated.workspaceRegistrationPicker.resourceOwner')
+          }}</label>
+          <MarCascader
+            :id="ownerControlId"
             v-model="ownerOrganizationId"
+            style="width: 100%"
             :disabled="role === 'MEMBER' || loading"
             :options="organizationOptions"
             :props="{ checkStrictly: true, emitPath: false }"
             filterable
           />
-        </label>
+        </div>
         <small
           v-if="
             nodeOwnership?.ownerType === 'ORGANIZATION' &&
@@ -184,7 +172,7 @@ function submit(): void {
   flex-wrap: wrap;
 }
 .workspace-picker-ownership > span,
-.workspace-picker-owner-field > span {
+.workspace-picker-owner-field > label {
   margin: 0;
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
