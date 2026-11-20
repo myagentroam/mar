@@ -45,25 +45,27 @@ describe('workflow tools', () => {
     expect(execToolDefinition.description).toContain('with processId, not exec');
     expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
     expect(execWaitToolDefinition.codeModeExposure).toBe('both');
-    expect(execWaitToolDefinition.description).toContain('Prefer direct calls for a single wait');
-    expect(execWaitToolDefinition.description).toContain('use tools.exec_wait for composition');
+    expect(execWaitToolDefinition.description).toContain(
+      'Cancelling a wait does not terminate the process'
+    );
     expect(execWaitToolDefinition.description).toContain('incremental stdout/stderr');
     expect(execWaitToolDefinition.description).toContain('cannot start a process');
     expect(execToolDefinition.description).toContain('truncated');
-    expect(applyPatchToolDefinition.description).toContain(
-      'Returns changed file paths and operations'
-    );
-    expect(applyPatchToolDefinition.description).toContain(
-      'Do not batch all task files merely to reduce tool calls'
-    );
-    expect(applyPatchToolDefinition.description).toContain('successive bounded patches');
-    expect(applyPatchToolDefinition.description).toContain('Oversized patches are rejected');
-    expect(applyPatchToolDefinition.description).not.toContain('100 files');
-    expect(applyPatchToolDefinition.description).not.toContain('4 MiB');
-    expect(applyPatchToolDefinition.description).toContain('@@ <change context>');
-    expect(applyPatchToolDefinition.description).toContain(
-      'hunk match conflicts identify the affected path and hunk'
-    );
+    const patchDescription = applyPatchToolDefinition.description;
+    expect(patchDescription).toContain('Split long or hard-to-review patches');
+    expect(patchDescription).toContain('Oversized patches are rejected');
+    expect(patchDescription).not.toContain('100 files');
+    expect(patchDescription).not.toContain('4 MiB');
+    expect(patchDescription).not.toMatch(/freeform|JSON input example|Promise/u);
+    for (const syntax of [
+      '*** Add File: <path>',
+      '*** Update File: <path>',
+      '*** Delete File: <path>',
+      '*** Move to: <new path>',
+      '@@ <change context>'
+    ])
+      expect(patchDescription).toContain(syntax);
+    expect(patchDescription).toContain('Hunk conflicts identify the path and hunk');
     expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_PARTIAL');
     expect(todoToolDefinition.description).toContain(
       'Do not retain completed items from an earlier objective'

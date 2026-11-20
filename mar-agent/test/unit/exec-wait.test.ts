@@ -768,9 +768,7 @@ describe('exec_wait', () => {
           default: 60_000,
           minimum: 0,
           maximum: 300_000,
-          description: expect.stringContaining(
-            'Use the 60000 ms default when just waiting for completion.'
-          )
+          description: expect.stringContaining('Values below 10000 are treated as 10000.')
         }
       }
     });

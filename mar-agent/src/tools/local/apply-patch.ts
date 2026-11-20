@@ -22,7 +22,17 @@ export const applyPatchToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   codeModeExposure: 'both',
   parallelSafety: 'safe',
-  description: `Preferred for precise, reviewable local edits. Do not batch all task files merely to reduce tool calls. Group only a few tightly coupled edits whose combined patch is quick to generate and review; split broad or independent work into successive bounded patches before composing them. For freeform calls, submit the *** Begin Patch / *** End Patch text directly, each marker on its own line. For JSON calls, put the complete patch text in the input field. JSON input example: {"input":"*** Begin Patch\\n*** Add File: example.txt\\n+text\\n*** End Patch"}. Surrounding marker whitespace and an optional trailing *** are accepted; incomplete markers or extra text are rejected. Add File content lines, including blank lines, must start with +. Syntax errors include line/column and a bounded excerpt of the submitted patch with a caret at the error. Supports Add File, Update File, Delete File, and Move to. Add File may replace an existing regular file, and Move to may replace an existing regular destination; duplicate operations on the same resolved path remain invalid. Update hunks accept @@ or @@ <change context>. Context-only hunks, including trailing hunks, and unchanged file sections are validated in order but are not written or reported as edits. The patch must include a change or move. Context is searched forward with Codex-style exact, whitespace-tolerant, then common Unicode punctuation-tolerant matching. Syntax and resolved paths are validated before writing, then file units are committed in order. Each file unit is atomic, and a Move keeps its source and destination atomic. On MAR_AGENT_PATCH_PARTIAL, earlier files remain applied; the error lists applied, failed, and pending paths, so retry only failed and pending paths. Existing file permissions, line endings, and final-newline state are preserved. Returns changed file paths and operations with per-file and total line counts when all units succeed. In Code Mode, the Promise resolves on success and rejects with code/message on failure; the returned envelope has data.files and data.totals, not an ok or success flag. Oversized patches are rejected without advertising defensive limits as recommended patch sizes. A first-unit MAR_AGENT_PATCH_CONFLICT applies nothing; hunk match conflicts identify the affected path and hunk so you can reread only that file before retrying.`,
+  description: `Apply a patch to one or more files. Group closely related edits when the patch is easy to review. Split long or hard-to-review patches into smaller, valid patches. Oversized patches are rejected.
+
+Start with *** Begin Patch and end with *** End Patch, each on its own line. Use *** Add File: <path>, *** Update File: <path>, or *** Delete File: <path> as the file header. To move a file, put *** Move to: <new path> immediately after the Update File header. A move without content changes needs no hunks.
+
+Prefix each Add File content line with +, including blank lines. Start each update hunk with @@ or @@ <change context>, not a unified diff line-number range. In the hunk body, prefix unchanged lines with one space, deletions with -, and additions with +. An insertion-only hunk needs at least one unchanged line in its body.
+
+Add and Move may overwrite existing regular files. Duplicate operations on the same resolved path are invalid. A patch must change or move at least one file.
+
+Changes commit in order by file unit, not as one transaction. A move covers both paths in one unit. Syntax errors report line and column. Hunk conflicts identify the path and hunk; a conflict in the first unit leaves files unchanged. MAR_AGENT_PATCH_PARTIAL identifies applied, failed, and pending paths. Do not replay already applied units.
+
+On success, data.files lists file operations and line counts, and data.totals contains the totals.`,
   inputMode: 'freeform',
   outputSchema: {
     type: 'object',
@@ -65,7 +75,7 @@ export const applyPatchToolDefinition: ClientToolDefinition = {
     properties: {
       input: {
         type: 'string',
-        description: 'Complete patch text, including the *** Begin Patch and *** End Patch markers.'
+        description: 'Complete patch text, including the opening and closing markers.'
       }
     },
     required: ['input'],

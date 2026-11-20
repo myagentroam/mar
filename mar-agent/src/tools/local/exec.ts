@@ -127,7 +127,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
   codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends, then return incremental stdout/stderr. New output does not end the wait. write sends data to stdin; cancel terminates the process or removes its cached result. Terminal polls return a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Prefer direct calls for a single wait; use tools.exec_wait for composition. Do not duplicate an active wait for the same process. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
+    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends. New output does not end the wait. Uncached results return and consume incremental stdout/stderr from the process buffer shared by both entry points. write sends data to stdin; cancel terminates the process or removes its cached result. After the terminal result is collected, later polls can replay a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
   outputSchema: execToolDefinition.outputSchema!,
   inputSchema: {
     type: 'object',
@@ -144,7 +144,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
         minimum: 0,
         maximum: TOOL_EXECUTION_LIMITS.execMaxYieldMs,
         default: TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs,
-        description: `Poll wait window in milliseconds (floor: ${TOOL_EXECUTION_LIMITS.execMinYieldMs}). Use the ${TOOL_EXECUTION_LIMITS.execDefaultPollYieldMs} ms default when just waiting for completion.`
+        description: `Poll wait window in milliseconds. Values below ${TOOL_EXECUTION_LIMITS.execMinYieldMs} are treated as ${TOOL_EXECUTION_LIMITS.execMinYieldMs}.`
       },
       data: { type: 'string', description: 'Required stdin data for write.' }
     },

@@ -57,7 +57,9 @@ export const readToolDefinition: ClientToolDefinition = {
       }
     }
   },
-  description: `Read one or more known text files/ranges. Strict UTF-8 with optional BOM is the default; BOM-declared UTF-16LE/UTF-16BE is supported. Invalid text returns an item error instead of replacement characters. Always pass reads; use one item for a single file and up to ${TOOL_EXECUTION_LIMITS.readMaxBatchItems} items for a batch. Batch only already-located, bounded ranges whose combined content is likely to fit the model-visible output budget; for exploration, locate relevant files, symbols, or headings first, then read the smallest useful ranges. Results retain input order and use <mar_read_result> or <mar_read_error>. Successful items use 1-based line numbers and include <metadata> with path, encoding, newline, exact visible range, eof, truncation, nextOffset, and whether previewComplete. Items fail independently and run with bounded concurrency. Each item returns at most ${TOOL_EXECUTION_LIMITS.readMaxLines} lines/${TOOL_EXECUTION_LIMITS.readMaxBytes} bytes; the structured call shares a ${TOOL_EXECUTION_LIMITS.readMaxBatchBytes}-byte budget, while ordinary model-visible content fairly shares the common tool-output budget across all items. Structured data.results items provide text as decoded source for the returned range, preserving line endings and excluding BOM; content is numbered display text. Large files support bounded range reads. If previewComplete is false and nextOffset is present, continue only the still-relevant item from nextOffset. An oversized single line instead returns a head/tail preview with no line continuation cursor; use exec to obtain exact source before editing omitted content. Relative paths use the workspace; absolute paths are allowed. Prefer exec with rg for search and read for known files.`,
+  description: `Read text files or line ranges by path. Supports strict UTF-8 (BOM optional) and BOM-marked UTF-16LE/BE. When exec is available, the built-in rg can list paths (rg --files) or locate matching lines (rg -n).
+
+Results follow input order; items fail independently. data.results[].text contains the decoded source for the returned range; the numbered preview may show less. To continue, use nextOffset, when present, from the preview or the structured item you are reading. A long line may have a head/tail preview without a cursor, or return an item error if it exceeds the read limit.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -65,21 +67,21 @@ export const readToolDefinition: ClientToolDefinition = {
         type: 'array',
         minItems: 1,
         maxItems: TOOL_EXECUTION_LIMITS.readMaxBatchItems,
-        description: 'Known files or ranges to read in one ordered batch.',
+        description: 'Files or line ranges to read.',
         items: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Relative workspace path or absolute file path.' },
+            path: { type: 'string', description: 'Workspace-relative or absolute path.' },
             offset: {
               type: 'integer',
               minimum: 1,
-              description: 'First 1-based line; defaults to 1.'
+              description: 'First line (1-based; default: 1).'
             },
             limit: {
               type: 'integer',
               minimum: 1,
               maximum: TOOL_EXECUTION_LIMITS.readMaxLines,
-              description: `Maximum lines; defaults to ${TOOL_EXECUTION_LIMITS.readDefaultLines}.`
+              description: `Maximum lines (default: ${TOOL_EXECUTION_LIMITS.readDefaultLines}).`
             }
           },
           required: ['path'],
