@@ -498,6 +498,7 @@ test('MAR button preserves the icon and label positions during native submit loa
       return { height, borderRadius, fontSize, fontWeight, color, backgroundColor, borderColor };
     });
   const text = section.getByRole('button', { name: 'Text action' });
+  const idleText = section.getByRole('button', { name: 'Idle text reference' });
   const iconOnly = section.getByRole('button', { name: 'Refresh action' });
   const finish = section.getByRole('button', { name: 'Finish action' });
   const input = section.getByRole('textbox', { name: 'Action input' });
@@ -516,7 +517,9 @@ test('MAR button preserves the icon and label positions during native submit loa
 
   await submit.scrollIntoViewIfNeeded();
   const originalSubmitLayout = await layout(submit);
-  const originalTextLayout = await layout(text);
+  const originalTextBox = await text.boundingBox();
+  expect(originalTextBox!.width).toBeCloseTo((await idleText.boundingBox())!.width, 2);
+  await expect(text.locator('.mar-ui-button__icon')).toHaveCount(0);
   await expect(submit.locator('[data-mar-icon="check"]')).toBeVisible();
   expect(await appearance(submit)).toEqual(await appearance(reference));
   expect(await appearance(text)).toEqual(await appearance(referenceText));
@@ -534,7 +537,16 @@ test('MAR button preserves the icon and label positions during native submit loa
   await expect(iconOnly).toBeDisabled();
   await expect(iconOnly.locator('[data-mar-icon="loading-action"]')).toBeVisible();
   expect(await layout(submit)).toEqual(originalSubmitLayout);
-  expect(await layout(text)).toEqual(originalTextLayout);
+  expect(await text.boundingBox()).toEqual(originalTextBox);
+  await expect(text).toBeDisabled();
+  await expect(text).toHaveAttribute('aria-busy', 'true');
+  await expect(text).toHaveAccessibleName('Text action');
+  await expect(text.locator('.mar-ui-button__label')).toHaveCSS('opacity', '0');
+  const textBusyIcon = text.locator('[data-mar-icon="loading-action"]');
+  await expect(textBusyIcon).toBeVisible();
+  const [buttonBox, , iconBox] = await layout(text);
+  expect(iconBox.x + iconBox.width / 2).toBeCloseTo(buttonBox.x + buttonBox.width / 2, 0);
+  expect(iconBox.y + iconBox.height / 2).toBeCloseTo(buttonBox.y + buttonBox.height / 2, 0);
   await section.screenshot({ path: testInfo.outputPath('mar-button-loading.png') });
   await submit.click({ force: true });
   await input.press('Enter');
@@ -543,6 +555,9 @@ test('MAR button preserves the icon and label positions during native submit loa
   const disabled = section.getByRole('checkbox', { name: 'Disable submit action' });
   await disabled.check();
   await finish.click();
+  await expect(text.locator('.mar-ui-button__label')).toHaveCSS('opacity', '1');
+  await expect(textBusyIcon).toHaveCount(0);
+  expect(await text.boundingBox()).toEqual(originalTextBox);
   await expect(submit).toBeDisabled();
   await expect(submit).not.toHaveAttribute('aria-busy');
   await expect(reference).toBeDisabled();

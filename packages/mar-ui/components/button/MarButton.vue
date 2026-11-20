@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, useTemplateRef, type Component, type PropType } from 'vue';
+import { computed, useTemplateRef, type Component, type PropType } from 'vue';
 import type { MarIconName } from '../../icons/icon-shapes.js';
 import { resolveMarIcon } from '../../icons/mar-icons.js';
 import { useMarFormDisabled } from '../form/form-context.js';
@@ -24,7 +24,6 @@ const props = defineProps({
   loading: Boolean
 });
 const emit = defineEmits<{ click: [event: MouseEvent] }>();
-const reservesLoadingSpace = Object.hasOwn(getCurrentInstance()?.vnode.props ?? {}, 'loading');
 const spinner = computed(() => resolveMarIcon(props.loadingIcon ?? 'loading-action'));
 const disabled = useMarFormDisabled(() => props.disabled);
 const inactive = computed(() => disabled.value || props.loading);
@@ -56,7 +55,7 @@ function handleClick(event: MouseEvent): void {
         'mar-ui-button--circle': circle,
         'mar-ui-button--round': round,
         'mar-ui-button--small': size === 'small',
-        'mar-ui-button--text-only': reservesLoadingSpace && !icon && $slots.default && !link
+        'mar-ui-button--loading-in-label': loading && !icon && $slots.default
       }
     ]"
     :type="tag === 'button' ? nativeType : undefined"
@@ -67,11 +66,7 @@ function handleClick(event: MouseEvent): void {
     :aria-busy="loading || undefined"
     @click="handleClick"
   >
-    <span
-      v-if="icon || (reservesLoadingSpace && $slots.default && !link) || loading"
-      class="mar-ui-button__icon"
-      aria-hidden="true"
-    >
+    <span v-if="icon || loading" class="mar-ui-button__icon" aria-hidden="true">
       <component :is="spinner" v-if="loading" class="mar-ui-button__spinner" />
       <component :is="resolveMarIcon(icon)" v-else-if="icon" />
     </span>
@@ -249,13 +244,9 @@ function handleClick(event: MouseEvent): void {
   cursor: progress;
 }
 
-.mar-ui-button__icon,
-.mar-ui-button--text-only::after {
+.mar-ui-button__icon {
   flex: 0 0 1em;
   inline-size: 1em;
-}
-
-.mar-ui-button__icon {
   display: inline-grid;
   place-items: center;
   block-size: 1em;
@@ -273,8 +264,19 @@ function handleClick(event: MouseEvent): void {
   }
 }
 
-.mar-ui-button--text-only::after {
-  content: '';
+.mar-ui-button--loading-in-label {
+  position: relative;
+}
+
+.mar-ui-button--loading-in-label .mar-ui-button__icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+/* Keep the label's dimensions and accessible name while showing the busy glyph in its place. */
+.mar-ui-button--loading-in-label .mar-ui-button__label {
+  opacity: 0;
 }
 
 .mar-ui-button__label {
