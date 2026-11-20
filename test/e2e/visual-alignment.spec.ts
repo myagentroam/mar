@@ -1189,6 +1189,65 @@ test('Performance hover displays the details panel without a second hint', async
   await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
 });
 
+test('Performance diagnostics copy uses a compact independent hover surface', async ({
+  page
+}, testInfo) => {
+  await page.addInitScript(() => {
+    let copied = '';
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        readText: async () => copied,
+        writeText: async (text: string) => {
+          copied = text;
+        }
+      }
+    });
+  });
+  for (const [theme, locale, copyName] of [
+    ['vscode-dark-2026', 'zh-CN', '复制详细诊断信息'],
+    ['daylight', 'en-US', 'Copy detailed diagnostics']
+  ] as const) {
+    await page.goto(
+      `${fixture.url}visual-alignment.html?performance=1&theme=${theme}&locale=${locale}`
+    );
+    const trigger = page.locator('.web-performance-indicator');
+    const panel = page.locator('.web-performance-panel');
+    const copy = panel.getByRole('button', { name: copyName, exact: true });
+    const icon = copy.locator('[data-mar-icon="copy"]');
+    await trigger.focus();
+    await expect(copy).toBeVisible();
+    const box = (await copy.boundingBox())!;
+    const compactSize = await copy.evaluate((element) =>
+      parseFloat(getComputedStyle(element).getPropertyValue('--mar-compact-control-size'))
+    );
+    expect(box.width).toBeCloseTo(compactSize);
+    expect(box.height).toBeCloseTo(compactSize);
+
+    const idleColor = await icon.evaluate((element) => getComputedStyle(element).color);
+    const transparent = 'rgba(0, 0, 0, 0)';
+    await expect(copy).toHaveCSS('background-color', transparent);
+    await copy.hover();
+    await expect(copy).not.toHaveCSS('background-color', transparent);
+    await expect(icon).not.toHaveCSS('color', idleColor);
+    await expect(icon).toHaveCSS('color', await copy.evaluate((el) => getComputedStyle(el).color));
+    await expect(page.getByRole('tooltip')).toHaveText(copyName);
+    await panel.screenshot({ path: testInfo.outputPath(`performance-copy-hover-${theme}.png`) });
+
+    await page.mouse.move(box.x - 1, box.y + box.height / 2);
+    await expect(copy).toHaveCSS('background-color', transparent);
+    await trigger.press('Tab');
+    await expect(copy).toBeFocused();
+    await expect(copy).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
+    const clipboardText = () => page.evaluate(() => navigator.clipboard.readText());
+    await expect.poll(clipboardText).not.toBe('');
+    expect(JSON.parse(await clipboardText())).toMatchObject({
+      snapshot: expect.any(Object),
+      longTasks: expect.any(Array)
+    });
+  }
+});
+
 test('Performance popup arrow clears its larger surface corner near the viewport edge', async ({
   page
 }, testInfo) => {
