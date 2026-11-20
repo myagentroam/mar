@@ -22,6 +22,8 @@ test('a filterable multiple select creates tags without crossing the selection l
   await tags.fill('Alpha');
   await expect(list.getByRole('group', { name: 'Pinned' })).toHaveCount(0);
   await expect(list.getByRole('option')).toHaveCount(1);
+  const field = page.locator('.mar-ui-select__field').filter({ has: tags });
+  expect((await list.boundingBox())!.width).toBeCloseTo((await field.boundingBox())!.width, 0);
   await tags.press('Enter');
   await expect(page.getByTestId('tags')).toHaveText('["pinned","alpha"]');
   await tags.fill('新标记');

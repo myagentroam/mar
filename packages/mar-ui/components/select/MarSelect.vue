@@ -265,7 +265,7 @@ function expand(key?: string) {
       ? items.at(key === 'ArrowUp' || key === 'End' ? -1 : 0)
       : current;
   collapsedTagsOpen.value = false;
-  show(field.value, list.value, true);
+  show(field.value, list.value);
   if (open.value) revealActive();
 }
 
@@ -555,6 +555,8 @@ watch(controlDisabled, (disabled) => {
   width: 100%;
 }
 .mar-ui-select__popup {
+  width: max-content;
+  min-width: min(var(--mar-ui-popup-anchor-width, 0px), var(--mar-ui-popup-width-limit));
   padding-inline: 0;
 }
 .mar-ui-select__field {

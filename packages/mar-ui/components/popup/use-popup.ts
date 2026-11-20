@@ -23,7 +23,6 @@ export function usePopup(onClose: () => void) {
   let surface: HTMLElement | undefined;
   let listeners: AbortController | undefined;
   let resizeObserver: ResizeObserver | undefined;
-  let matchAnchorWidth = false;
   let placement: PopupPlacement = 'bottom-start';
   let offset: number | undefined;
   let dismissOutside = true;
@@ -41,7 +40,7 @@ export function usePopup(onClose: () => void) {
     const { style } = surface;
     const hasArrow = rect.width > 0 && rect.height > 0;
     const gap = offset ?? (hasArrow ? 12 : 4);
-    if (matchAnchorWidth) style.setProperty('--mar-ui-popup-width', `${rect.width}px`);
+    style.setProperty('--mar-ui-popup-anchor-width', `${rect.width}px`);
     style.setProperty('--mar-ui-popup-max-width', `${Math.max(0, width - 2 * edge)}px`);
     const below = height - rect.bottom - gap - edge;
     const above = rect.top - gap - edge;
@@ -53,7 +52,7 @@ export function usePopup(onClose: () => void) {
     const wantsRight = placement.startsWith('right');
     if (wantsRight)
       style.setProperty('--mar-ui-popup-max-height', String(height - 2 * edge) + 'px');
-    const lateralWidth = surface.offsetWidth;
+    const lateralWidth = surface.getBoundingClientRect().width;
     if (wantsRight && width - rect.right - gap >= lateralWidth + edge) {
       const panelHeight = surface.offsetHeight;
       const desired =
@@ -71,7 +70,7 @@ export function usePopup(onClose: () => void) {
       return;
     }
     style.setProperty('--mar-ui-popup-max-height', `${Math.max(0, flip ? above : below)}px`);
-    const menuWidth = surface.offsetWidth;
+    const menuWidth = surface.getBoundingClientRect().width;
     const left =
       placement === 'bottom-end'
         ? rect.right - menuWidth
@@ -106,7 +105,6 @@ export function usePopup(onClose: () => void) {
   function show(
     reference: PopupAnchor,
     popup: HTMLElement,
-    matchWidth = false,
     options?: {
       placement?: PopupPlacement | undefined;
       offset?: number | undefined;
@@ -117,7 +115,6 @@ export function usePopup(onClose: () => void) {
     const previousAnchor = anchor;
     anchor = reference;
     surface = popup;
-    matchAnchorWidth = matchWidth;
     placement = options?.placement ?? 'bottom-start';
     offset = options?.offset;
     dismissOutside = options?.outsideDismiss ?? true;

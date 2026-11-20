@@ -28,5 +28,6 @@ provide(optionGroupId, labelId);
   color: var(--mar-ui-text-secondary);
   font-size: var(--mar-ui-font-size-meta);
   line-height: var(--mar-ui-compact-control-size);
+  overflow-wrap: anywhere;
 }
 </style>

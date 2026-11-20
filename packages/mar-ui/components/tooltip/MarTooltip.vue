@@ -17,7 +17,7 @@ watch(
   [surface, () => props.anchor, () => props.placement],
   ([element, anchor, placement]) => {
     if (!anchor || !element) popup.close();
-    else popup.show(anchor, element, false, { placement });
+    else popup.show(anchor, element, { placement });
   },
   { flush: 'post' }
 );

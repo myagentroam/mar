@@ -268,6 +268,14 @@ for (const [width, height, theme, top] of [
         const option = (await menu.getByRole('option').first().boundingBox())!;
         expect(option.x - menuBounds.x).toBeCloseTo(edges[0], 0);
         expect(menuBounds.x + menuBounds.width - option.x - option.width).toBeCloseTo(edges[1], 0);
+        if (kind === 'access') {
+          const field = page.locator('.composer-access-select .mar-ui-select__field');
+          expect(menuBounds.width).toBeGreaterThan((await field.boundingBox())!.width);
+          const fullAccess = menu.getByText('Full access', { exact: true });
+          expect(await fullAccess.evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(
+            true
+          );
+        }
         await page.keyboard.press('Escape');
         await expect(menu).toBeHidden();
       }

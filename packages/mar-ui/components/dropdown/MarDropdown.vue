@@ -99,7 +99,7 @@ function expand(anchor: PopupAnchor, origin?: HTMLElement, last = false) {
       return;
     }
     const wasOpen = open.value;
-    show(anchor, menu, false, { placement: props.placement, offset: props.offset });
+    show(anchor, menu, { placement: props.placement, offset: props.offset });
     if (!open.value || wasOpen) return;
     announcedOpen = true;
     emit('visible-change', true);

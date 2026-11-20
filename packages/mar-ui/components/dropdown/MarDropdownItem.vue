@@ -49,6 +49,7 @@ function activate(event: MouseEvent) {
   color: var(--mar-ui-text-secondary);
   font: inherit;
   text-align: start;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .mar-ui-dropdown-item--divided {

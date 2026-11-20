@@ -139,7 +139,6 @@ watch(
               }
             : anchor,
         element,
-        false,
         { placement, outsideDismiss: props.outsideDismiss }
       );
     } else if (wasOpen && !open) void leave(element);
