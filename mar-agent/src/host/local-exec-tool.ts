@@ -57,6 +57,7 @@ interface ManagedProcess {
   terminalResultReturned: boolean;
   terminate?: Promise<void>;
   waiters: Set<() => void>;
+  supersedePoll?: () => void;
   outputSubscription?: {
     onChunk: (channel: 'stdout' | 'stderr', chunk: Buffer) => void;
     stop: () => void;
@@ -141,9 +142,10 @@ export class ExecTool {
         throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
       if (onExecutionSource) await onExecutionSource(processSource(process));
       if (signal?.aborted) throw executionAbortReason(signal);
-      let outcome: 'ready' | 'timeout' | 'interrupted' | undefined;
+      let outcome: ProcessWaitOutcome | undefined;
       if (input.action === 'poll')
         outcome = await waitForProcessCompletion(
+          'poll',
           input.processId,
           process,
           input.yieldMs,
@@ -151,6 +153,13 @@ export class ExecTool {
           waitInterrupt,
           onOutput
         );
+      // A skipped or displaced poll must not drain the active poll's output.
+      if (outcome === 'superseded' || (outcome === 'interrupted' && process.supersedePoll))
+        return {
+          ...this.#result(input.processId, process, false),
+          waitOutcome: 'interrupted',
+          reason: outcome === 'superseded' ? 'superseded' : 'steer'
+        };
       if (input.action === 'write') {
         if (process.status !== 'running')
           throw new AgentError(
@@ -206,6 +215,7 @@ export class ExecTool {
       managed.timer.unref();
     }
     const outcome = await waitForProcessCompletion(
+      'initial',
       id,
       managed,
       input.yieldMs ?? TOOL_EXECUTION_LIMITS.execDefaultYieldMs,
@@ -615,11 +625,12 @@ export class ExecTool {
     })();
     return managed.terminate;
   }
-  #result(id: string, process: ManagedProcess): ExecResult {
+  #result(id: string, process: ManagedProcess, consumeIncrement = true): ExecResult {
     // Uncollected terminal output is a live resource, not an expiring replay.
-    if (process.status !== 'running') process.terminalResultReturned = true;
-    const stdout = consumeOutput(process.stdout);
-    const stderr = consumeOutput(process.stderr);
+    if (consumeIncrement && process.status !== 'running') process.terminalResultReturned = true;
+    const empty = { value: '', droppedBytes: 0 };
+    const stdout = consumeIncrement ? consumeOutput(process.stdout) : empty;
+    const stderr = consumeIncrement ? consumeOutput(process.stderr) : empty;
     return {
       status: process.status,
       processId: id,
@@ -789,32 +800,48 @@ function notifyProcessChange(managed: ManagedProcess): void {
   for (const resolve of managed.waiters) resolve();
 }
 
+type ProcessWaitOutcome = 'ready' | 'timeout' | 'interrupted' | 'superseded';
+
 async function waitForProcessCompletion(
+  kind: 'initial' | 'poll',
   processId: string,
   managed: ManagedProcess,
   waitMs: number,
   signal?: AbortSignal,
   interrupt?: ToolWaitInterrupt,
   onOutput?: (output: ExecOutputSnapshot) => Promise<void>
-) {
-  // An immediately settled wait must not take over an active output subscription.
+): Promise<ProcessWaitOutcome> {
+  // An immediately settled wait must not take over an active poll or output subscription.
   signal?.throwIfAborted();
   if (managed.finalized) return 'ready';
   if (interrupt?.pending()) return 'interrupted';
-  const stopOutput = onOutput && watchProcessOutput(processId, managed, onOutput);
+  let stopOutput: (() => void) | undefined;
+  let superseded = false;
   try {
-    return await waitForToolCondition({
-      ready: () => managed.finalized,
+    const outcome = await waitForToolCondition({
+      ready: () => managed.finalized || superseded,
       subscribe: (notify) => {
+        const supersede = () => {
+          superseded = true;
+          stopOutput?.();
+          notify();
+        };
+        if (kind === 'poll') {
+          managed.supersedePoll?.();
+          managed.supersedePoll = supersede;
+        }
+        if (onOutput) stopOutput = watchProcessOutput(processId, managed, onOutput);
         managed.waiters.add(notify);
         return () => {
           managed.waiters.delete(notify);
+          if (managed.supersedePoll === supersede) delete managed.supersedePoll;
         };
       },
       waitMs,
       signal,
       interrupt
     });
+    return superseded ? 'superseded' : outcome;
   } finally {
     stopOutput?.();
   }

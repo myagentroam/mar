@@ -168,7 +168,7 @@ export interface ExecResult {
   executionSource?: ExecutionSource;
   status: 'running' | 'completed' | 'cancelled';
   waitOutcome?: import('./wait.js').ToolWaitOutcome;
-  reason?: 'steer';
+  reason?: 'steer' | 'superseded';
   processId?: string;
   stdout: string;
   stderr: string;

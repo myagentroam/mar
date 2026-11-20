@@ -395,9 +395,9 @@ describe('exec_wait', () => {
     });
   });
 
-  it.each(['older', 'newest'] as const)(
-    'only publishes live output to the newest subscriber when the %s wait ends',
-    async (ending) => {
+  it.each([true, false])(
+    'supersedes an older poll without consuming output (new poll streams: %s)',
+    async (streams) => {
       const child = Object.assign(new EventEmitter(), {
         stdin: new PassThrough(),
         stdout: new PassThrough(),
@@ -412,56 +412,58 @@ describe('exec_wait', () => {
       const { processId } = await startRunning('fixture');
       vi.useFakeTimers();
       const interval = TOOL_EXECUTION_LIMITS.execProgressIntervalMs;
-      const subscribe = () => {
-        const controller = new AbortController();
-        const onOutput = vi.fn(async () => {});
-        const result = call(
-          'exec_wait',
-          { processId },
-          {
-            ...context(),
-            signal: controller.signal,
-            onOutput
-          }
-        );
-        return { controller, onOutput, result };
-      };
-      const older = subscribe();
+      const olderOutput = vi.fn(async () => {});
+      const olderResult = vi.fn();
+      const older = call('exec_wait', { processId }, { ...context(), onOutput: olderOutput });
+      void older.then(olderResult, olderResult);
       await vi.advanceTimersByTimeAsync(0);
+      child.stdout.write('before');
       const skippedOutput = vi.fn(async () => {});
       await expect(
         call('exec_wait', { processId }, { ...pendingSteer(), onOutput: skippedOutput })
-      ).resolves.toMatchObject({ status: 'running', waitOutcome: 'interrupted' });
-      child.stdout.write('before');
+      ).resolves.toMatchObject({
+        status: 'running',
+        waitOutcome: 'interrupted',
+        reason: 'steer',
+        stdout: ''
+      });
       await vi.advanceTimersByTimeAsync(interval);
       expect(skippedOutput).not.toHaveBeenCalled();
-      expect(older.onOutput).toHaveBeenCalledExactlyOnceWith(
+      expect(olderOutput).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ mode: 'delta', stdout: 'before' })
       );
       child.stdout.write('-queued');
-      const newest = subscribe();
+      const newestOutput = vi.fn(async () => {});
+      const newest = call(
+        'exec_wait',
+        { processId },
+        { ...context(), ...(streams ? { onOutput: newestOutput } : {}) }
+      );
       await vi.advanceTimersByTimeAsync(0);
+      expect(olderResult).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          processId,
+          status: 'running',
+          waitOutcome: 'interrupted',
+          reason: 'superseded',
+          stdout: '',
+          stderr: ''
+        })
+      );
       child.stdout.write('-new');
       await vi.advanceTimersByTimeAsync(interval);
-      expect(older.onOutput).toHaveBeenCalledTimes(1);
-      expect(newest.onOutput).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ mode: 'snapshot', stdout: 'before-queued-new' })
-      );
-
-      const [stopped, remaining] = ending === 'older' ? [older, newest] : [newest, older];
-      const stoppedResult = expect(stopped.result).rejects.toThrow('stop wait');
-      stopped.controller.abort(new Error('stop wait'));
-      await stoppedResult;
-      child.stdout.write('-after');
-      await vi.advanceTimersByTimeAsync(interval);
-      expect(older.onOutput).toHaveBeenCalledTimes(1);
-      expect(newest.onOutput).toHaveBeenCalledTimes(ending === 'older' ? 2 : 1);
+      expect(olderOutput).toHaveBeenCalledTimes(1);
+      if (streams)
+        expect(newestOutput).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ mode: 'snapshot', stdout: 'before-queued-new' })
+        );
 
       child.exitCode = 0;
       child.emit('close', 0, null);
-      await expect(remaining.result).resolves.toMatchObject({
+      await expect(newest).resolves.toMatchObject({
         status: 'completed',
-        stdout: 'before-queued-new-after',
+        waitOutcome: 'completion',
+        stdout: 'before-queued-new',
         exitCode: 0
       });
     }

@@ -68,7 +68,7 @@ export const execToolDefinition: ClientToolDefinition = {
         properties: {
           status: { enum: ['running', 'completed', 'cancelled'] },
           waitOutcome: { enum: ['snapshot', 'completion', 'timeout', 'yield', 'interrupted'] },
-          reason: { enum: ['steer'] },
+          reason: { enum: ['steer', 'superseded'] },
           processId: { type: 'string' },
           stdout: { type: 'string' },
           stderr: { type: 'string' },
@@ -127,7 +127,7 @@ export const execWaitToolDefinition: ClientToolDefinition = {
   codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends. New output does not end the wait. Only the newest live output subscription receives new events; earlier waits are not cancelled. Uncached results return and consume incremental stdout/stderr from one process buffer shared by all calls, including overlapping polls. write sends data to stdin; cancel terminates the process or removes its cached result. After the terminal result is collected, later polls can replay a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
+    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends. New output does not end the wait. A new active poll takes over an older poll of the same process. The older poll returns normally with waitOutcome=interrupted and reason=superseded without consuming pending stdout/stderr or terminating the process. Both entry points share the same buffer of incremental stdout/stderr. write sends data to stdin; cancel terminates the process or removes its cached result. After the terminal result is collected, later polls can replay a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Interrupted with reason=steer ends only a foreground wait, never the process.',
   outputSchema: execToolDefinition.outputSchema!,
   inputSchema: {
     type: 'object',
