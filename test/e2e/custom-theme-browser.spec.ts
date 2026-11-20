@@ -187,6 +187,13 @@ test('MAR choice and command menus keep selection and actions separate', async (
     'aria-activedescendant',
     (await nextOption.getAttribute('id'))!
   );
+  await expect(nextOption).toHaveCSS('outline-style', 'solid');
+  await section.getByRole('option', { name: 'Unavailable choice' }).hover();
+  await expect(choice).toHaveAttribute(
+    'aria-activedescendant',
+    (await nextOption.getAttribute('id'))!
+  );
+  await expect(nextOption).toHaveCSS('outline-style', 'solid');
   await choice.press('Escape');
   await expect(page.getByRole('listbox')).toBeHidden();
   await expect(selected).toHaveText('false');

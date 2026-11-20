@@ -68,7 +68,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       const save = locale === 'zh-CN' ? '保存' : 'Save';
       await page.getByRole('button', { name: edit, exact: true }).click();
       const dialog = page.getByRole('dialog');
-      const reasoningEfforts = dialog.locator('.el-checkbox-group');
+      const reasoningEfforts = dialog.getByRole('group').filter({
+        has: page.getByRole('checkbox', { name: 'medium', exact: true })
+      });
       await expect(reasoningEfforts).toHaveAccessibleName(
         locale === 'zh-CN' ? '支持的思考强度' : 'Supported reasoning efforts'
       );
@@ -136,9 +138,9 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
   }
 }
 
-test('proxy transport tests require a compatible Node before opening the dialog', async ({
+test('proxy transport tests require a compatible Node and use standard Select states', async ({
   page
-}) => {
+}, testInfo) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     await route.fulfill({
@@ -154,10 +156,67 @@ test('proxy transport tests require a compatible Node before opening the dialog'
     page.getByText('No online Node supports this model transport configuration.', { exact: true })
   ).toBeVisible();
 
-  await page.goto(`${fixture.url}model-proxy.html?locale=en-US&test-node=socks5`);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}model-proxy.html?locale=en-US&test-node=socks5&theme=dark`);
   await page.getByRole('button', { name: 'Test', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('Execution Node', { exact: true }).click();
-  await expect(page.getByRole('option', { name: 'Fixture Node', exact: true })).toBeVisible();
+  const nodeCombobox = { name: 'Execution Node', exact: true };
+  const select = dialog.getByRole('combobox', nodeCombobox);
+  await select.click();
+  const list = dialog.getByRole('listbox');
+  const node = list.getByRole('option', { name: 'Fixture Node', exact: true });
+  const backup = list.getByRole('option', { name: 'Backup Node', exact: true });
+  await expect(backup).toBeVisible();
+  await node.hover();
+  await expect(node).toHaveAttribute('aria-selected', 'false');
+  await expect(node).toHaveCSS('outline-style', 'none');
+  const { leftGap, rightGap, fill, hover } = await node.evaluate((row) => {
+    const popup = row.closest<HTMLElement>('[role="listbox"]')!;
+    const { left, right } = popup.getBoundingClientRect();
+    const bounds = row.getBoundingClientRect();
+    const style = getComputedStyle(popup);
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--mar-ui-fill-row-hover)';
+    row.append(probe);
+    const hover = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      leftGap: bounds.left - left - parseFloat(style.borderLeftWidth),
+      rightGap: right - parseFloat(style.borderRightWidth) - bounds.right,
+      fill: getComputedStyle(row).backgroundColor,
+      hover
+    };
+  });
+  expect(leftGap).toBeCloseTo(0, 0);
+  expect(rightGap).toBeCloseTo(0, 0);
+  expect(fill).toBe(hover);
+  await page.screenshot({ path: testInfo.outputPath('model-test-node-hover.png') });
+  await select.pressSequentially('fixture');
+  await expect(select).toHaveValue('fixture');
+  await expect(backup).toBeHidden();
+  await expect(node).toBeVisible();
+  await select.press('ArrowDown');
+  await expect(node).toHaveCSS('outline-style', 'solid');
+  await expect(select).toHaveAttribute('aria-activedescendant', (await node.getAttribute('id'))!);
+  await list.screenshot({ path: testInfo.outputPath('model-test-node-keyboard.png') });
+  await node.hover({ position: { x: 12, y: 12 } });
+  await expect(node).toHaveCSS('outline-style', 'none');
+  await select.press('Escape');
+  await expect(list).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(select).toBeFocused();
+  await expect(select).toHaveValue('');
+  await select.pressSequentially('fixture');
+  await select.press('ArrowDown');
+  await select.press('Enter');
+  await expect(select).toHaveAttribute('placeholder', 'Fixture Node');
+  // The non-input end of the field must also open without a keyboard outline.
+  const field = dialog.locator('.mar-ui-select__field').filter({
+    has: page.getByRole('combobox', nodeCombobox)
+  });
+  const bounds = (await field.boundingBox())!;
+  await field.click({ position: { x: bounds.width - 18, y: bounds.height / 2 } });
+  await expect(node).toHaveAttribute('aria-selected', 'true');
+  await expect(node).toHaveCSS('outline-style', 'none');
 });
