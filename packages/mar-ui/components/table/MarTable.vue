@@ -562,6 +562,12 @@ const ColumnView = () => renderTable();
 .mar-ui-table__viewport :deep(th[aria-sort='descending'] [data-sort-order='descending']) {
   color: var(--mar-ui-text-primary);
 }
+@media (forced-colors: active) {
+  .mar-ui-table__viewport :deep(th[aria-sort='ascending'] [data-sort-order='ascending']),
+  .mar-ui-table__viewport :deep(th[aria-sort='descending'] [data-sort-order='descending']) {
+    outline: 1px solid ButtonText;
+  }
+}
 .mar-ui-table__viewport :deep(.mar-ui-table__indent) {
   display: inline-flex;
   flex: none;

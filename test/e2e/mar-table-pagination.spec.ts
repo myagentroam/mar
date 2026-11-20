@@ -75,6 +75,7 @@ test('Table uses solid neutral sort indicators and a low-contrast dark header su
   await expect(name).toHaveAttribute('aria-sort', 'ascending');
   await expect(ascending).toHaveCSS('color', primary!);
   await expect(descending).toHaveCSS('color', muted!);
+  await expect(ascending).toHaveCSS('outline-style', 'none');
   await expect(button).toBeFocused();
   await descending.click();
   await expect(name).toHaveAttribute('aria-sort', 'descending');
@@ -90,6 +91,31 @@ test('Table uses solid neutral sort indicators and a low-contrast dark header su
     root.style.setProperty('--mar-table-header-bg', '#324951');
   });
   await expect(name).toHaveCSS('background-color', 'rgb(50, 73, 81)');
+});
+
+test('Table distinguishes the active direction in forced colors', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  const header = page.getByRole('table', { name: 'Records' }).getByRole('columnheader', {
+    name: 'Name'
+  });
+  const button = header.getByRole('button');
+  const ascending = button.locator('[data-sort-order="ascending"]');
+  const descending = button.locator('[data-sort-order="descending"]');
+
+  await expect(ascending).toHaveCSS('outline-style', 'none');
+  await expect(descending).toHaveCSS('outline-style', 'none');
+  await button.press('Enter');
+  await expect(header).toHaveAttribute('aria-sort', 'ascending');
+  await expect(ascending).toHaveCSS('outline-style', 'solid');
+  await expect(descending).toHaveCSS('outline-style', 'none');
+  await button.press('Enter');
+  await expect(header).toHaveAttribute('aria-sort', 'descending');
+  await expect(ascending).toHaveCSS('outline-style', 'none');
+  await expect(descending).toHaveCSS('outline-style', 'solid');
+  await button.press('Enter');
+  await expect(header).not.toHaveAttribute('aria-sort');
+  await expect(descending).toHaveCSS('outline-style', 'none');
+  await expect(button).toBeFocused();
 });
 
 test('Table expands controlled details and tree branches without opening row actions', async ({
