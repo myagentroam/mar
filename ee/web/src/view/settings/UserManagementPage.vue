@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -10,7 +18,7 @@ import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { translate } from '@/service/locale-preference-service';
 import { errorMessage } from '@myagentroam/web-core/workbench-presentation';
 import { createUserManagementService } from '@/service/user-management-service';
@@ -111,13 +119,12 @@ async function reset(user: ManagedUser): Promise<void> {
 }
 async function confirmReset(user: ManagedUser): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.userManagementPage.resetThePasswordForTheUserMust', {
         value0: user.username
       }),
       translate('generated.userManagementPage.resetPassword'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         confirmButtonText: translate('generated.userManagementPage.resetPassword2'),
         cancelButtonText: translate('generated.userManagementPage.cancel'),
@@ -145,13 +152,12 @@ async function remove(user: ManagedUser): Promise<void> {
 }
 async function confirmRemove(user: ManagedUser): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.userManagementPage.deleteUserNodesRegisteredByThisUser', {
         value0: user.username
       }),
       translate('generated.userManagementPage.deleteUser'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         confirmButtonText: translate('generated.userManagementPage.deleteUser2'),
         cancelButtonText: translate('generated.userManagementPage.cancel2'),
@@ -190,17 +196,16 @@ onUnmounted(() => usersPage.dispose());
 </script>
 <template>
   <section
-    v-loading="usersPage.loading.value && !pageReady && !usersPage.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="usersPage.loading.value && !pageReady && !usersPage.failure.value"
     class="mar-management-page"
   >
     <div class="mar-table-actions">
-      <el-button type="primary" @click="createOpen = true">{{
+      <MarButton type="primary" @click="createOpen = true">{{
         translate('generated.userManagementPage.createUser')
-      }}</el-button>
+      }}</MarButton>
     </div>
-    <el-table
-      v-loading="
+    <MarTable
+      v-mar-loading:region="
         usersPage.loading.value &&
         pageReady &&
         !usersPage.loadingMore.value &&
@@ -211,19 +216,19 @@ onUnmounted(() => usersPage.dispose());
       row-key="id"
       @row-click="openUserDetail"
       @sort-change="changeSort"
-      ><el-table-column
+      ><MarTableColumn
         prop="username"
         :label="translate('generated.userManagementPage.username')"
         sortable="custom"
-      /><el-table-column
+      /><MarTableColumn
         prop="email"
         :label="translate('generated.userManagementPage.email')"
         sortable="custom"
-      /><el-table-column
+      /><MarTableColumn
         prop="nickname"
         :label="translate('generated.userManagementPage.nickname')"
         sortable="custom"
-      /><el-table-column
+      /><MarTableColumn
         prop="role"
         :label="translate('generated.userManagementPage.role')"
         sortable="custom"
@@ -231,27 +236,27 @@ onUnmounted(() => usersPage.dispose());
           row.isAdmin
             ? translate('generated.userManagementPage.administrator')
             : translate('generated.userManagementPage.user')
-        }}</template></el-table-column
-      ><el-table-column
+        }}</template></MarTableColumn
+      ><MarTableColumn
         :label="translate('generated.userManagementPage.actions')"
         :width="usersPage.mobileViewport.value ? undefined : 180"
         :min-width="usersPage.mobileViewport.value ? 144 : undefined"
         ><template #default="{ row }"
           ><div class="mar-row-actions mar-row-actions--wrap" @click.stop>
-            <el-button v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
+            <MarButton v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
               translate('generated.userManagementPage.resetPassword3')
-            }}</el-button
-            ><el-button
+            }}</MarButton
+            ><MarButton
               v-if="!row.isAdmin"
               link
               type="danger"
               :icon="marIcon('delete')"
               @click="confirmRemove(row)"
-              >{{ translate('generated.userManagementPage.delete') }}</el-button
+              >{{ translate('generated.userManagementPage.delete') }}</MarButton
             >
           </div></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <ManagementPagination
       :total="usersPage.total.value"
@@ -269,30 +274,29 @@ onUnmounted(() => usersPage.dispose());
       @retry="usersPage.retry"
       @load-more="usersPage.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-model="createOpen"
       :title="translate('generated.userManagementPage.createUser2')"
       width="420"
-      :close-icon="marIcon('close')"
-      ><el-form label-position="top"
-        ><el-form-item :label="translate('generated.userManagementPage.username2')" required
-          ><el-input v-model="form.username" /></el-form-item
-        ><el-form-item :label="translate('generated.userManagementPage.email2')"
-          ><el-input v-model="form.email" /></el-form-item
-        ><el-form-item :label="translate('generated.userManagementPage.nickname2')"
-          ><el-input v-model="form.nickname" /></el-form-item></el-form
+      ><MarForm label-position="top"
+        ><MarFormItem :label="translate('generated.userManagementPage.username2')" required
+          ><MarInput v-model="form.username" /></MarFormItem
+        ><MarFormItem :label="translate('generated.userManagementPage.email2')"
+          ><MarInput v-model="form.email" /></MarFormItem
+        ><MarFormItem :label="translate('generated.userManagementPage.nickname2')"
+          ><MarInput v-model="form.nickname" /></MarFormItem></MarForm
       ><template #footer
-        ><el-button @click="createOpen = false">{{
+        ><MarButton @click="createOpen = false">{{
           translate('generated.userManagementPage.cancel3')
-        }}</el-button
-        ><el-button type="primary" :disabled="!canCreate()" @click="create">{{
+        }}</MarButton
+        ><MarButton type="primary" :disabled="!canCreate()" @click="create">{{
           translate('generated.userManagementPage.createUser3')
-        }}</el-button></template
-      ></el-dialog
+        }}</MarButton></template
+      ></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       :model-value="credentialResult !== undefined"
@@ -300,8 +304,7 @@ onUnmounted(() => usersPage.dispose());
       width="420"
       class="credential-result-dialog"
       @close="credentialResult = undefined"
-      :close-icon="marIcon('close')"
-      ><el-alert
+      ><MarAlert
         :title="
           translate('generated.userManagementPage.copyAndSecurelyDeliverTheseCredentials', {
             value0: credentialResult === undefined ? '' : translate(credentialResult.titleKey)
@@ -311,7 +314,7 @@ onUnmounted(() => usersPage.dispose());
         :closable="false"
         show-icon
         ><template #icon><MarIcon name="success" /></template
-      ></el-alert>
+      ></MarAlert>
       <dl class="credential-result">
         <div>
           <dt>{{ translate('generated.userManagementPage.username3') }}</dt>
@@ -324,14 +327,14 @@ onUnmounted(() => usersPage.dispose());
           </dd>
         </div>
       </dl>
-      <el-button class="credential-copy-button" type="primary" @click="copyCredentials">{{
+      <MarButton class="credential-copy-button" type="primary" @click="copyCredentials">{{
         translate('generated.userManagementPage.copyUsernameAndPassword')
-      }}</el-button>
+      }}</MarButton>
       <p class="credential-hint">
         {{ translate('generated.userManagementPage.theUserMustChangeThePasswordAfter') }}
-      </p></el-dialog
+      </p></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userDetail !== undefined"
@@ -339,36 +342,35 @@ onUnmounted(() => usersPage.dispose());
       :title="translate('generated.userManagementPage.userDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="userDetail = undefined"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('common.userId')">{{
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('common.userId')">{{
           userDetail.id
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.username')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.username')">{{
           userDetail.username
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.email')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.email')">{{
           userDetail.email ?? '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.nickname')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.nickname')">{{
           userDetail.nickname ?? '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.userManagementPage.role')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.userManagementPage.role')">{{
           userDetail.isAdmin
             ? translate('generated.userManagementPage.administrator')
             : translate('generated.userManagementPage.user')
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('common.createdAt')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('common.createdAt')">{{
           formatTime(userDetail.createdAt)
-        }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
+        }}</MarDescriptionsItem>
+      </MarDescriptions>
+    </MarDialog>
   </section>
 </template>
 
 <style scoped>
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 
@@ -379,7 +381,7 @@ onUnmounted(() => usersPage.dispose());
   white-space: nowrap;
 }
 
-.mar-row-actions .el-button + .el-button {
+.mar-row-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
 
@@ -395,7 +397,7 @@ onUnmounted(() => usersPage.dispose());
 }
 
 .credential-result dt {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 600;
 }
@@ -403,17 +405,17 @@ onUnmounted(() => usersPage.dispose());
 .credential-result dd {
   margin: 0;
   overflow-wrap: anywhere;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--mar-border-default);
   border-radius: 6px;
-  background: var(--el-fill-color-light);
+  background: var(--mar-control-fill-color-light);
   padding: 10px 12px;
-  color: var(--el-text-color-primary);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   line-height: 1.45;
 }
 
 .credential-result dd code {
-  font-family: var(--el-font-family);
+  font-family: var(--mar-font-sans);
   font-size: inherit;
 }
 
@@ -423,13 +425,13 @@ onUnmounted(() => usersPage.dispose());
 
 .credential-hint {
   margin: 14px 0 0;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 </style>
 
 <style scoped>
-:global(.credential-result-dialog .el-alert) {
+:global(.credential-result-dialog .mar-ui-alert) {
   margin-bottom: 20px;
 }
 </style>

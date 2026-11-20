@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import RuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
 import UnitDetails from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
@@ -97,9 +97,9 @@ describe('Public resource details', () => {
       });
       try {
         await flushComponent();
-        const controls = view.findAll('ElSwitch');
+        const controls = view.findAll('input').filter((input) => input.props['role'] === 'switch');
         expect(controls).toHaveLength(1);
-        expect(view.findAll('ElDescriptionsItem').map((item) => item.props['label'])).toContain(
+        expect(view.findAll('MarDescriptionsItem').map((item) => item.props['label'])).toContain(
           commonMessages['en-US'].generated.nodeDetailsDialogs.computerUse
         );
         expect(textContent(view.root)).not.toContain('Remote Desktop');
@@ -107,7 +107,7 @@ describe('Public resource details', () => {
           view.findAll('div').find((item) => item.props['class'] === 'node-feature-control')!;
         expect(textContent(control())).toBe('Disabled');
         expect(controls[0]!.props['aria-label']).toBe('Computer Use');
-        await trigger(controls[0]!, 'onChange', true);
+        await trigger(controls[0]!, 'onChange', { currentTarget: { checked: true } });
         await flushComponent();
         expect(textContent(control())).toBe('Enabled');
         expect(
@@ -190,7 +190,7 @@ describe('Public resource details', () => {
       expect(textContent(view.root)).toContain('/usr/bin/git');
       expect(request).toHaveBeenCalledWith('/api/environment-secrets?nodeId=node-1');
       const refresh = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((button) => textContent(button).trim() === 'Refresh capabilities')!;
       expect(refresh.props['loading']).toBe(true);
       await trigger(refresh, 'onClick');
@@ -215,7 +215,7 @@ describe('Public resource details', () => {
       const root = view.findAll('div')[0]!;
       expect(root.props['class']).toContain('runtime-environment--refreshable');
       const action = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((button) => textContent(button).trim() === 'Refresh capabilities')!;
       expect(action.props['loading']).toBe(true);
       await trigger(action, 'onClick');
@@ -244,7 +244,7 @@ describe('Public resource details', () => {
   });
   it('keeps Workspace Git settings concise without stale message keys', async () => {
     i18n.global.locale.value = 'en-US';
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+
     const request = vi.fn(
       async <T>() => ({ preserveGitConfig: false, includeParentRepository: true }) as T
     );
@@ -264,15 +264,15 @@ describe('Public resource details', () => {
       );
       expect(textContent(view.root)).not.toContain('personalGit.workspaceScope');
       expect(textContent(view.root)).not.toContain('personalGit.appliesLater');
-      expect(view.findAll('ElCheckbox')).toHaveLength(2);
+      expect(view.findAll('MarCheckbox')).toHaveLength(2);
       const controls = view
         .findAll('div')
         .find((element) => element.props['class'] === 'workspace-git-controls');
       expect(controls).toBeDefined();
-      await trigger(view.findAll('ElCheckbox')[0]!, 'onUpdate:modelValue', true);
-      await trigger(view.findAll('ElCheckbox')[1]!, 'onUpdate:modelValue', false);
+      await trigger(view.findAll('MarCheckbox')[0]!, 'onUpdate:modelValue', true);
+      await trigger(view.findAll('MarCheckbox')[1]!, 'onUpdate:modelValue', false);
       const save = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((button) => textContent(button).trim() === commonMessages['en-US'].personalGit.save)!;
       await trigger(save, 'onClick');
       expect(request).toHaveBeenLastCalledWith(
@@ -350,7 +350,7 @@ describe('Public resource details', () => {
       });
       try {
         const text = textContent(view.root);
-        expect(view.findAll('ElDialog')).toHaveLength(3);
+        expect(view.findAll('MarDialog')).toHaveLength(3);
         expect(text).toContain('Public Node');
         expect(text).toContain('Public Workspace');
         expect(text).toContain('25%');
@@ -382,3 +382,14 @@ describe('Public resource details', () => {
     expect(html).not.toContain('bad-version');
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

@@ -263,7 +263,7 @@ const { t } = useI18n();
 .preview-label {
   display: block;
   margin: 0.65rem 0 0.45rem;
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
 }
 input {
   display: block;
@@ -273,23 +273,23 @@ input {
   margin-top: 0.2rem;
   border: 1px solid var(--mar-input-border);
   border-radius: var(--mar-radius-control);
-  background: var(--el-fill-color-blank);
-  color: var(--el-text-color-primary);
+  background: var(--mar-bg-panel);
+  color: var(--mar-text-primary);
   font: inherit;
 }
 input:hover {
   border-color: var(--mar-input-border-hover, var(--mar-input-border));
 }
 input::placeholder {
-  color: var(--el-text-color-placeholder);
+  color: var(--mar-text-secondary);
 }
 .preview-button {
   font: inherit;
   padding: 0.3rem 0.55rem;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--mar-input-border);
   border-radius: var(--mar-radius-control);
-  background: var(--el-fill-color-blank);
-  color: var(--el-text-color-regular);
+  background: var(--mar-bg-panel);
+  color: var(--mar-text-secondary);
   cursor: pointer;
 }
 .preview-button:hover:not(:disabled) {
@@ -304,8 +304,8 @@ input::placeholder {
 }
 .preview-button.primary {
   color: var(--mar-color-on-accent);
-  background: var(--el-color-primary);
-  border-color: var(--el-color-primary);
+  background: var(--mar-color-brand);
+  border-color: var(--mar-color-brand);
 }
 .preview-button.primary:hover {
   color: var(--mar-color-on-accent);
@@ -313,18 +313,18 @@ input::placeholder {
   border-color: var(--mar-color-brand-hover);
 }
 .preview-button.primary:active {
-  background: var(--el-color-primary-dark-2);
-  border-color: var(--el-color-primary-dark-2);
+  background: var(--mar-control-color-primary-dark-2);
+  border-color: var(--mar-control-color-primary-dark-2);
 }
 .preview-button:disabled {
-  background: var(--el-fill-color-light);
+  background: var(--mar-control-fill-color-light);
   color: var(--mar-text-disabled);
-  border-color: var(--el-border-color-light);
+  border-color: var(--mar-border-subtle);
   cursor: not-allowed;
 }
 button:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 1px;
 }
 .preview-controls > .caption {

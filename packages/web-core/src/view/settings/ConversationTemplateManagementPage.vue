@@ -1,4 +1,15 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
+import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { createUuid } from '../../util/uuid.js';
 import {
   mountMobileDialogReturn,
@@ -11,12 +22,11 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
 } from '@myagentroam/protocol';
-import type { FormInstance, FormRules, TagProps } from 'element-plus';
 import type { NodeSummary, Workspace } from '../../model/workbench.js';
 import {
   conversationTemplateBytesToMiB,
@@ -539,10 +549,10 @@ async function publish(row: AdminConversationTemplateSummary): Promise<void> {
       showMessage(translate('conversationTemplates.errorModelInvalid'), 'error');
       return;
     }
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('conversationTemplates.publishConfirmation', { name: row.name }),
       translate('conversationTemplates.publish'),
-      { closeIcon: marIcon('close'), ...confirmationOptions('conversationTemplates.publish') }
+      { ...confirmationOptions('conversationTemplates.publish') }
     );
     if (disposed) return;
     publishingIds.value = new Set(publishingIds.value).add(row.id);
@@ -640,10 +650,10 @@ async function confirmedMutation(
   type: 'warning' | 'danger' = 'warning'
 ): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(confirmationKey, { name: row.name }),
       translate(actionKey),
-      { closeIcon: marIcon('close'), ...confirmationOptions(actionKey, type) }
+      { ...confirmationOptions(actionKey, type) }
     );
     if (disposed) return;
     await action();
@@ -732,38 +742,36 @@ onMounted(() => {
 
 <template>
   <section
-    v-loading="pagination.loading.value && !pageReady && !pagination.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="pagination.loading.value && !pageReady && !pagination.failure.value"
     class="mar-management-page conversation-template-management"
     :aria-busy="pagination.loading.value && !pageReady"
   >
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('conversationTemplates.refresh') }}</el-button
+        >{{ translate('conversationTemplates.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable"
         type="primary"
         :icon="marIcon('plus')"
         :disabled="eligibleNodes.length === 0"
         @click="openCreate"
-        >{{ translate('conversationTemplates.add') }}</el-button
+        >{{ translate('conversationTemplates.add') }}</MarButton
       >
     </div>
-    <el-alert
+    <MarAlert
       v-if="eligibleNodes.length === 0"
       type="warning"
       :closable="false"
       show-icon
       :title="translate('conversationTemplates.noEligibleNode')"
       ><template #icon><MarIcon name="warning" /></template
-    ></el-alert>
-    <el-table
-      v-loading="
+    ></MarAlert>
+    <MarTable
+      v-mar-loading:region="
         pagination.loading.value &&
         pageReady &&
         !pagination.loadingMore.value &&
@@ -776,81 +784,80 @@ onMounted(() => {
       @row-click="openDetail"
       @sort-change="sortTemplates"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         sortable="custom"
         :label="translate('conversationTemplates.name')"
         min-width="180"
       />
-      <el-table-column :label="translate('conversationTemplates.source')" min-width="180">
+      <MarTableColumn :label="translate('conversationTemplates.source')" min-width="180">
         <template #default="{ row }">{{ nodeLabel(row.nodeId) }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('conversationTemplates.version')" width="110">
+      </MarTableColumn>
+      <MarTableColumn :label="translate('conversationTemplates.version')" width="110">
         <template #default="{ row }">{{
           row.publishedVersion ?? translate('conversationTemplates.none')
         }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('conversationTemplates.status')" width="130">
+      </MarTableColumn>
+      <MarTableColumn :label="translate('conversationTemplates.status')" width="130">
         <template #default="{ row }">
-          <el-tag :type="templateStatusType(row)" effect="plain">{{
+          <MarTag :type="templateStatusType(row)" effect="plain">{{
             templateStatusLabel(row)
-          }}</el-tag>
+          }}</MarTag>
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         prop="updatedAt"
         sortable="custom"
         :label="translate('conversationTemplates.updatedAt')"
         width="190"
       >
         <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('conversationTemplates.actions')" width="490">
+      </MarTableColumn>
+      <MarTableColumn :label="translate('conversationTemplates.actions')" width="490">
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
-            <el-button
+            <MarButton
               v-if="writable && row.status !== 'DELETED'"
               link
               :icon="marIcon('edit')"
               @click="openEdit(row)"
-              >{{ translate('conversationTemplates.edit') }}</el-button
+              >{{ translate('conversationTemplates.edit') }}</MarButton
             >
             <slot name="row-actions" :row="row" />
-            <el-button
+            <MarButton
               v-if="writable && row.status === 'ACTIVE'"
               link
               :icon="marIcon('upload')"
               :loading="publishingIds.has(row.id)"
               @click="publish(row)"
-              :loading-icon="marIcon('loading-action')"
-              >{{ translate('conversationTemplates.publish') }}</el-button
+              >{{ translate('conversationTemplates.publish') }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="writable && row.available"
               link
               :icon="marIcon('success')"
               @click="disable(row)"
-              >{{ translate('conversationTemplates.disable') }}</el-button
+              >{{ translate('conversationTemplates.disable') }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="writable && row.status === 'ACTIVE'"
               link
               :icon="marIcon('skill-source')"
               @click="archiveTemplate(row)"
-              >{{ translate('conversationTemplates.archive') }}</el-button
+              >{{ translate('conversationTemplates.archive') }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="writable && row.status !== 'DELETED'"
               link
               type="danger"
               :icon="marIcon('delete')"
               @click="remove(row)"
-              >{{ translate('conversationTemplates.remove') }}</el-button
+              >{{ translate('conversationTemplates.remove') }}</MarButton
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
     <ManagementPagination
       :total="pagination.total.value"
       :has-more="pagination.hasMore.value"
@@ -868,7 +875,7 @@ onMounted(() => {
       @load-more="pagination.loadMore"
     />
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editDialogOpen"
@@ -881,12 +888,11 @@ onMounted(() => {
       width="min(880px, calc(100vw - 32px))"
       destroy-on-close
       @closed="closeEditDialog"
-      :close-icon="marIcon('close')"
     >
-      <el-form ref="formRef" :model="draft" :rules="rules" label-position="top">
+      <MarForm ref="formRef" :model="draft" :rules="rules" label-position="top">
         <div class="form-grid">
-          <el-form-item :label="translate('conversationTemplates.node')" prop="nodeId">
-            <el-select
+          <MarFormItem :label="translate('conversationTemplates.node')" prop="nodeId">
+            <MarSelect
               v-model="draft.nodeId"
               filterable
               :disabled="editingTemplateId !== undefined"
@@ -894,16 +900,16 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="node in eligibleNodes"
                 :key="node.id"
                 :label="nodeLabel(node.id)"
                 :value="node.id"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="translate('conversationTemplates.workspace')" prop="workspaceId">
-            <el-select
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem :label="translate('conversationTemplates.workspace')" prop="workspaceId">
+            <MarSelect
               v-model="draft.workspaceId"
               filterable
               :disabled="editingTemplateId !== undefined"
@@ -911,33 +917,33 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="workspace in workspaces"
                 :key="workspace.id"
                 :label="workspace.displayName || workspace.path"
                 :value="workspace.id"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="translate('conversationTemplates.name')" prop="name">
-            <el-input v-model="draft.name" maxlength="128" show-word-limit />
-          </el-form-item>
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem :label="translate('conversationTemplates.name')" prop="name">
+            <MarInput v-model="draft.name" maxlength="128" show-word-limit />
+          </MarFormItem>
         </div>
-        <el-form-item :label="translate('conversationTemplates.description')">
-          <el-input
+        <MarFormItem :label="translate('conversationTemplates.description')">
+          <MarInput
             v-model="draft.description"
             type="textarea"
             :rows="2"
             maxlength="2000"
             show-word-limit
           />
-        </el-form-item>
+        </MarFormItem>
         <div class="form-grid">
-          <el-form-item
+          <MarFormItem
             :label="translate('conversationTemplates.allowedModels')"
             prop="allowedModels"
           >
-            <el-select
+            <MarSelect
               v-model="draft.allowedModels"
               multiple
               filterable
@@ -946,24 +952,24 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="model in availableModels"
                 :key="model.modelId"
                 :label="model.name"
                 :value="model.modelId"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem
             :label="translate('conversationTemplates.defaultModel')"
             prop="defaultModelId"
           >
-            <el-select
+            <MarSelect
               v-model="draft.defaultModelId"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="model in availableModels.filter((item) =>
                   draft.allowedModels.includes(item.modelId)
                 )"
@@ -971,12 +977,12 @@ onMounted(() => {
                 :label="model.name"
                 :value="model.modelId"
               />
-            </el-select>
-          </el-form-item>
+            </MarSelect>
+          </MarFormItem>
         </div>
         <div class="form-grid">
-          <el-form-item :label="translate('conversationTemplates.mcpIds')">
-            <el-select
+          <MarFormItem :label="translate('conversationTemplates.mcpIds')">
+            <MarSelect
               v-model="draft.mcpIds"
               multiple
               filterable
@@ -985,73 +991,79 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="option in mcpOptions"
                 :key="option.catalogEntryId"
                 :label="mcpOptionLabel(option)"
                 :value="option.catalogEntryId"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="translate('conversationTemplates.networkMode')">
-            <el-select
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem :label="translate('conversationTemplates.networkMode')">
+            <MarSelect
               v-model="draft.networkMode"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option :label="translate('conversationTemplates.networkNone')" value="NONE" />
-              <el-option
+              <MarOption :label="translate('conversationTemplates.networkNone')" value="NONE" />
+              <MarOption
                 :label="translate('conversationTemplates.networkUnrestricted')"
                 value="UNRESTRICTED"
               />
-            </el-select>
-          </el-form-item>
+            </MarSelect>
+          </MarFormItem>
         </div>
         <div class="quota-grid">
-          <el-form-item
+          <MarFormItem
             :label="translate('conversationTemplates.maxStorageBytes')"
             prop="maxStorageMiB"
           >
-            <el-input-number v-model="draft.maxStorageMiB" :min="1" :step="1"
+            <MarInputNumber
+              v-model="draft.maxStorageMiB"
+              :aria-label="translate('conversationTemplates.maxStorageBytes')"
+              :min="1"
+              :step="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
-          </el-form-item>
-          <el-form-item
+            ></MarInputNumber>
+          </MarFormItem>
+          <MarFormItem
             :label="translate('conversationTemplates.maxUploadBytes')"
             prop="maxUploadMiB"
           >
-            <el-input-number v-model="draft.maxUploadMiB" :min="1" :step="1"
+            <MarInputNumber
+              v-model="draft.maxUploadMiB"
+              :aria-label="translate('conversationTemplates.maxUploadBytes')"
+              :min="1"
+              :step="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
-          </el-form-item>
+            ></MarInputNumber>
+          </MarFormItem>
         </div>
-      </el-form>
+      </MarForm>
       <template #footer>
-        <el-button @click="editDialogOpen = false">{{
+        <MarButton @click="editDialogOpen = false">{{
           translate('conversationTemplates.cancel')
-        }}</el-button>
-        <el-button
+        }}</MarButton>
+        <MarButton
           v-if="editingTemplateId !== undefined"
           :loading="testing"
           :disabled="!writable || !modelSelectionAvailable"
           @click="testDraft"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('conversationTemplates.testDraft') }}</el-button
+          >{{ translate('conversationTemplates.testDraft') }}</MarButton
         >
-        <el-button
+        <MarButton
           type="primary"
           :loading="saving"
           :disabled="!writable || !modelSelectionAvailable"
           @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('conversationTemplates.save') }}</el-button
+          >{{ translate('conversationTemplates.save') }}</MarButton
         >
       </template>
-    </el-dialog>
+    </MarDialog>
 
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailDialogOpen && detail"
@@ -1059,45 +1071,44 @@ onMounted(() => {
       :title="detail.template.name"
       width="min(720px, calc(100vw - 32px))"
       @closed="closeDetailDialog"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions :column="2" border>
-        <el-descriptions-item :label="translate('conversationTemplates.templateId')">
+      <MarDescriptions :column="2" border>
+        <MarDescriptionsItem :label="translate('conversationTemplates.templateId')">
           <code>{{ detail.template.id }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('conversationTemplates.sourceNode')">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('conversationTemplates.sourceNode')">{{
           nodeLabel(detail.draft.nodeId)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('conversationTemplates.sourceWorkspace')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('conversationTemplates.sourceWorkspace')">{{
           workspaceLabel(detail.draft.workspaceId)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('conversationTemplates.currentVersion')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('conversationTemplates.currentVersion')">{{
           detail.template.publishedVersion ?? translate('conversationTemplates.none')
-        }}</el-descriptions-item>
-      </el-descriptions>
+        }}</MarDescriptionsItem>
+      </MarDescriptions>
       <h3>{{ translate('conversationTemplates.versions') }}</h3>
-      <el-table :data="detail.versions" max-height="240">
-        <el-table-column
+      <MarTable :data="detail.versions" max-height="240">
+        <MarTableColumn
           prop="version"
           :label="translate('conversationTemplates.version')"
           width="90"
         />
-        <el-table-column
+        <MarTableColumn
           prop="fileCount"
           :label="translate('conversationTemplates.fileCount')"
           width="100"
         />
-        <el-table-column :label="translate('conversationTemplates.totalBytes')" width="130">
+        <MarTableColumn :label="translate('conversationTemplates.totalBytes')" width="130">
           <template #default="{ row }">{{ fileSizeLabel(row.totalBytes) }}</template>
-        </el-table-column>
-        <el-table-column :label="translate('conversationTemplates.publishedAt')" min-width="180">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('conversationTemplates.publishedAt')" min-width="180">
           <template #default="{ row }">{{ formatDate(row.publishedAt) }}</template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
       <template #footer>
-        <el-button @click="detailDialogOpen = false">{{ translate('common.close') }}</el-button>
+        <MarButton @click="detailDialogOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 
@@ -1106,7 +1117,7 @@ onMounted(() => {
   overflow: auto;
 }
 
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 
@@ -1121,8 +1132,8 @@ onMounted(() => {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.form-grid :deep(.el-select),
-.quota-grid :deep(.el-input-number) {
+.form-grid :deep(.mar-ui-select),
+.quota-grid :deep(.mar-ui-input-number) {
   width: 100%;
 }
 

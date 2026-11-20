@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
 import type { EnvironmentSecretInput as CoreInput } from '@myagentroam/web-core/environment-secrets';
@@ -27,7 +30,7 @@ const service = createEnvironmentSecretService(props.request);
 const organizationId = ref<number>();
 const visibility = ref<OrganizationSecretVisibility>('PRIVATE');
 const organizationOptions = computed(() => organizationCascaderOptions(props.organizations ?? []));
-const formRules = computed(() => ({
+const formRules = computed<FormRules>(() => ({
   organizationId: [
     {
       required: true,
@@ -93,31 +96,31 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
     @create="openCreate"
     @clear-form="clearForm"
   >
-    <template #create-fields="{ scope }">
-      <el-form-item
+    <template #create-fields="{ scope, disabled }">
+      <MarFormItem
         v-if="scope === 'ORGANIZATION'"
         :label="translate('generated.environmentSecretManager.visibility2')"
         required
       >
-        <el-select
+        <MarSelect
           v-model="visibility"
           :placeholder="translate('generated.environmentSecretManager.selectVisibility')"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             :label="translate('generated.environmentSecretManager.privateThisOrganizationOnly')"
             value="PRIVATE"
           />
-          <el-option
+          <MarOption
             :label="
               translate('generated.environmentSecretManager.publicInheritedByChildOrganizations')
             "
             value="PUBLIC"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item
+        </MarSelect>
+      </MarFormItem>
+      <MarFormItem
         v-if="scope === 'ORGANIZATION'"
         :label="translate('generated.environmentSecretManager.organization3')"
         prop="organizationId"
@@ -126,8 +129,9 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
           role="group"
           :aria-label="translate('generated.environmentSecretManager.organization3')"
         >
-          <el-cascader
+          <MarCascader
             v-model="organizationId"
+            :disabled="disabled"
             style="width: 100%"
             filterable
             :placeholder="translate('generated.environmentSecretManager.selectAnOrganization2')"
@@ -136,7 +140,7 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
             :clear-icon="marIcon('clear-input')"
           />
         </div>
-      </el-form-item>
+      </MarFormItem>
     </template>
   </CoreManager>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { themePreferenceService } from './service/theme-preference-service.js';
+import { MarMessageBox } from './service/message-box-service.js';
 import { clearMessages } from './service/message-feedback-service.js';
 import {
   computed,
@@ -10,11 +11,11 @@ import {
   type Component
 } from 'vue';
 import { DOCUMENTATION_AVAILABLE_KEY } from './service/documentation-availability.js';
-import en from 'element-plus/es/locale/lang/en';
-import zhCn from 'element-plus/es/locale/lang/zh-cn';
+import marEn from '@myagentroam/mar-ui/locale/en';
+import marZhCn from '@myagentroam/mar-ui/locale/zh-cn';
+import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import { localePreferenceService } from './service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from './service/console-keyboard-shortcut-service.js';
-import { tableTooltipOptions } from './util/tooltip.js';
 import SharedTooltipHost from './view/common/SharedTooltipHost.vue';
 const SessionSharePage = defineAsyncComponent(
   () => import('./view/conversation/SessionSharePage.vue')
@@ -43,8 +44,11 @@ const standaloneFilePreview =
 document.documentElement.classList.toggle('console-ui', true);
 themePreferenceService();
 const localeService = localePreferenceService();
-const elementLocales = { 'zh-CN': zhCn, 'en-US': en } as const;
-const elementLocale = computed(() => elementLocales[localeService.locale.value]);
+const marLocales = { 'zh-CN': marZhCn, 'en-US': marEn } as const;
+provide(
+  marUiLocaleKey,
+  computed(() => marLocales[localeService.locale.value])
+);
 
 function revealApplication(): void {
   document.getElementById('mar-bootstrap')?.remove();
@@ -80,6 +84,7 @@ onMounted(() => {
     document.addEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
 });
 onBeforeUnmount(() => {
+  MarMessageBox.close();
   clearMessages();
   document.removeEventListener('contextmenu', preventBrowserContextMenu);
   document.removeEventListener('keydown', consoleKeyboardShortcutService.handle, { capture: true });
@@ -87,13 +92,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <SharedTooltipHost />
   <Suspense @resolve="revealApplication">
-    <el-config-provider :locale="elementLocale" :table="{ tooltipOptions: tableTooltipOptions }">
-      <SharedTooltipHost />
-      <SessionSharePage v-if="shareId" :share-id="shareId" />
-      <RemoteDesktopPage v-else-if="standaloneDesktop" :node-id="remoteDesktopNode!" />
-      <component :is="filePreview" v-else-if="standaloneFilePreview" />
-      <component :is="workbench" v-else />
-    </el-config-provider>
+    <SessionSharePage v-if="shareId" :share-id="shareId" />
+    <RemoteDesktopPage v-else-if="standaloneDesktop" :node-id="remoteDesktopNode!" />
+    <component :is="filePreview" v-else-if="standaloneFilePreview" />
+    <component :is="workbench" v-else />
   </Suspense>
 </template>

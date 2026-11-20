@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
@@ -31,13 +33,13 @@ const blocked = computed(
           }}
         </h3>
         <p role="status">
-          <el-tag
+          <MarTag
             v-if="service.status.value === 'enabled' || service.status.value === 'disabled'"
             :type="service.status.value === 'enabled' ? 'success' : 'info'"
             effect="plain"
             >{{
               translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
-            }}</el-tag
+            }}</MarTag
           >
           <template v-else>{{
             translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
@@ -48,14 +50,13 @@ const blocked = computed(
         </p>
       </div>
       <div class="notification-channel-actions">
-        <el-button
+        <MarButton
           class="mar-text-action"
           link
           :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
           :loading="service.requesting.value"
           :disabled="blocked"
           @click="service.setEnabled(!service.enabled.value)"
-          :loading-icon="marIcon('loading-action')"
         >
           {{
             translate(
@@ -68,8 +69,8 @@ const blocked = computed(
                   : 'workbenchNotificationCenter.systemNotifications.enable'
             )
           }}
-        </el-button>
-        <el-button
+        </MarButton>
+        <MarButton
           v-if="
             service.mode === 'mobile-push' &&
             service.enabled.value &&
@@ -79,7 +80,7 @@ const blocked = computed(
           link
           :icon="marIcon('notification')"
           @click="service.enablePush()"
-          >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button
+          >{{ translate('workbenchNotificationCenter.webPush.enable') }}</MarButton
         >
       </div>
     </div>

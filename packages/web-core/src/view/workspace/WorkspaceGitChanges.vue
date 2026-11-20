@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type { PublicError } from '@myagentroam/protocol';
 import { translate } from '../../service/locale-preference-service.js';
 import type { WorkspaceGitService } from '../../service/workspace-git-service.js';
@@ -180,7 +182,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       ? translate('generated.workspaceInspector.deleteUntrackedFile')
       : translate('generated.workspaceInspector.revertChanges');
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.workspaceInspector.thisActionCannotBeUndone', {
         value0: action,
         value1: workspacePath
@@ -218,7 +220,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 <template>
   <section class="current-changes">
     <div v-if="showRetryControl" class="changes-read-state">
-      <el-button
+      <MarButton
         v-tooltip="
           !changesLoading && service.changesError.value
             ? errorMessage(service.changesFailureCause.value)
@@ -236,7 +238,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       >
         <MarIcon v-if="changesLoading" name="loading-action" />
         {{ translate('common.loadFailedRetry') }}
-      </el-button>
+      </MarButton>
     </div>
     <div v-else-if="changesLoading && !hasRefreshButton" class="changes-read-state" role="status">
       <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
@@ -263,7 +265,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             {{ worktreeReference(worktree) }}
           </code>
           <span class="git-worktree-statuses">
-            <el-tag
+            <MarTag
               v-if="worktree.current"
               class="repository-current"
               type="info"
@@ -271,16 +273,16 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               size="small"
             >
               {{ translate('gitWorktrees.current') }}
-            </el-tag>
-            <el-tag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
+            </MarTag>
+            <MarTag :type="worktreeStatusType(worktree.status)" effect="plain" size="small">
               {{ worktreeStatusLabel(worktree.status) }}
-            </el-tag>
-            <el-tag v-if="worktree.locked" type="warning" effect="plain" size="small">
+            </MarTag>
+            <MarTag v-if="worktree.locked" type="warning" effect="plain" size="small">
               {{ translate('gitWorktrees.locked') }}
-            </el-tag>
-            <el-tag v-if="worktree.prunable" type="info" effect="plain" size="small">
+            </MarTag>
+            <MarTag v-if="worktree.prunable" type="info" effect="plain" size="small">
               {{ translate('gitWorktrees.prunable') }}
-            </el-tag>
+            </MarTag>
           </span>
         </li>
       </ul>
@@ -340,10 +342,10 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
               </button>
             </div>
             <div class="repository-tags-row">
-              <el-tag class="repository-kind" type="info" effect="plain" size="small">
+              <MarTag class="repository-kind" type="info" effect="plain" size="small">
                 {{ repositoryKindLabel(repository.source) }}
-              </el-tag>
-              <el-tag
+              </MarTag>
+              <MarTag
                 v-if="repository.current"
                 class="repository-current"
                 type="info"
@@ -351,22 +353,22 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 size="small"
               >
                 {{ translate('gitWorktrees.current') }}
-              </el-tag>
-              <el-tag
+              </MarTag>
+              <MarTag
                 v-if="repository.status"
                 :type="worktreeStatusType(repository.status)"
                 effect="plain"
                 size="small"
               >
                 {{ worktreeStatusLabel(repository.status) }}
-              </el-tag>
-              <el-tag v-if="repository.locked" type="warning" effect="plain" size="small">
+              </MarTag>
+              <MarTag v-if="repository.locked" type="warning" effect="plain" size="small">
                 {{ translate('gitWorktrees.locked') }}
-              </el-tag>
-              <el-tag v-if="repository.prunable" type="info" effect="plain" size="small">
+              </MarTag>
+              <MarTag v-if="repository.prunable" type="info" effect="plain" size="small">
                 {{ translate('gitWorktrees.prunable') }}
-              </el-tag>
-              <el-tag
+              </MarTag>
+              <MarTag
                 v-if="
                   repository.tracking &&
                   (repository.tracking.ahead > 0 || repository.tracking.behind > 0)
@@ -380,7 +382,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
                 <span aria-hidden="true"
                   >↓ {{ repository.tracking.behind }} ↑ {{ repository.tracking.ahead }}</span
                 >
-              </el-tag>
+              </MarTag>
             </div>
             <code
               v-tooltip="repository.repositoryPath"
@@ -448,7 +450,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             shortChange(entry.change)
           }}</span>
           <small v-tooltip="entry.state" class="change-status">{{ shortState(entry.state) }}</small>
-          <el-button
+          <MarButton
             v-tooltip="
               entry.state === 'UNTRACKED'
                 ? translate('generated.workspaceInspector.deleteUntrackedFile2')
@@ -457,7 +459,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             class="change-restore mar-icon-action mar-icon-action--inline"
             text
             :icon="marIcon('undo')"
-            :loading-icon="marIcon('loading-action')"
             :loading="restoringPath === changeKey(entry)"
             :disabled="restoringPath !== undefined"
             :aria-label="
@@ -687,24 +688,24 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
   gap: 0.25rem;
 }
 
-.repository-tags-row :deep(.el-tag),
-.git-worktree-statuses :deep(.el-tag) {
+.repository-tags-row :deep(.mar-ui-tag),
+.git-worktree-statuses :deep(.mar-ui-tag) {
   padding-inline: 0.28rem;
   font-size: var(--mar-font-size-meta);
   font-weight: 400;
 }
 
-.repository-tags-row :deep(.el-tag) {
+.repository-tags-row :deep(.mar-ui-tag) {
   height: 1.65em;
 }
 
 .repository-kind,
 .repository-current {
-  --el-tag-border-color: light-dark(var(--mar-border-default), var(--mar-border-medium));
+  --mar-ui-tag-border-color: light-dark(var(--mar-border-default), var(--mar-border-medium));
 }
 
 .repository-sync-tag {
-  --el-tag-border-color: var(--mar-border-default);
+  --mar-ui-tag-border-color: var(--mar-border-default);
   font-variant-numeric: tabular-nums;
 }
 
@@ -935,7 +936,7 @@ button.file-explorer-utility-button:disabled {
   font-size: var(--mar-action-icon-size);
 }
 
-:deep(.change-list .change-restore.el-button) {
+:deep(.change-list .change-restore.mar-ui-button) {
   min-height: 18px;
 }
 </style>

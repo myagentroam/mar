@@ -1,11 +1,18 @@
 <script setup lang="ts">
+import {
+  MarForm,
+  MarFormItem,
+  type FormInstance,
+  type FormItemProp,
+  type FormRules
+} from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import logoIcon from '../../assets/logo-icon.png';
 import { errorCode } from '../../util/api-error.js';
-import { marIcon } from '../../util/mar-icons.js';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { FormInstance, FormItemProp, FormRules, InputInstance } from 'element-plus';
 import { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import {
   createStandaloneFileWindowService,
@@ -38,7 +45,7 @@ const previewVersion = ref(0);
 const loading = ref(false);
 const restoring = ref(true);
 const form = ref<FormInstance>();
-const passwordInput = ref<InputInstance>();
+const passwordInput = ref<InstanceType<typeof MarInput>>();
 const unavailableStatus = ref<HTMLElement>();
 const fields = ref({ password: '' });
 const passwordVisible = ref(false);
@@ -180,7 +187,7 @@ onBeforeUnmount(() => {
       >
         {{ requestError || translate('sessionShare.invalid') }}
       </p>
-      <el-form
+      <MarForm
         v-else
         ref="form"
         class="auth-form"
@@ -193,14 +200,14 @@ onBeforeUnmount(() => {
         @validate="presentValidation"
         @submit.prevent="login"
       >
-        <el-form-item
+        <MarFormItem
           class="share-password-field"
           prop="password"
           for="share-password"
           :show-message="false"
           :label="translate('sessionShare.password')"
         >
-          <el-input
+          <MarInput
             id="share-password"
             ref="passwordInput"
             v-model="fields.password"
@@ -230,24 +237,20 @@ onBeforeUnmount(() => {
                 <MarIcon :name="passwordVisible ? 'view-off' : 'view'" />
               </button>
             </template>
-          </el-input>
+          </MarInput>
           <div id="share-password-error" role="alert">
             <p v-if="passwordError" class="share-entry-error">{{ passwordError }}</p>
           </div>
-        </el-form-item>
+        </MarFormItem>
         <div>
-          <el-button
-            type="primary"
-            native-type="submit"
-            :loading="loading"
-            :loading-icon="marIcon('loading-action')"
-            >{{ translate('sessionShare.enter') }}</el-button
-          >
+          <MarButton type="primary" native-type="submit" :loading="loading">{{
+            translate('sessionShare.enter')
+          }}</MarButton>
           <div role="alert">
             <p v-if="requestError" class="share-entry-error">{{ requestError }}</p>
           </div>
         </div>
-      </el-form>
+      </MarForm>
     </AuthEntryPanel>
   </main>
 </template>
@@ -265,15 +268,12 @@ onBeforeUnmount(() => {
 .share-password-field {
   margin: 0;
 }
-.share-password-field :deep(.el-form-item__label) {
+.share-password-field :deep(.mar-ui-form-item__label) {
   margin-bottom: 0.35rem;
   line-height: 1.4;
 }
-.share-password-field :deep(.el-form-item__content) {
+.share-password-field :deep(.mar-ui-form-item__content) {
   display: block;
-}
-.share-entry .share-password-field :deep(.el-input__wrapper:has(input[aria-invalid='true'])) {
-  border-color: var(--el-color-danger);
 }
 .share-entry-status {
   margin: 0;
@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: var(--el-bg-color);
+  background: var(--mar-bg-panel);
   overflow: auto;
 }
 .share-preview.is-embedded {

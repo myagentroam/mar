@@ -5,6 +5,20 @@ import WebPerformanceIndicator from '../../src/view/workbench/WebPerformanceIndi
 import { installPerformanceObserver } from './support/performance-observer-fixture.js';
 import { renderComponent, textContent } from './support/component-renderer.js';
 
+// Verify the diagnostic panel contents here; browser coverage exercises opening the native popover.
+vi.mock('@myagentroam/mar-ui/popover', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    MarPopover: defineComponent({
+      inheritAttrs: false,
+      setup:
+        (_, { slots }) =>
+        () =>
+          h('div', [slots.reference?.(), slots.default?.()])
+    })
+  };
+});
+
 const originalLocale = localePreferenceService().locale.value;
 afterEach(() => {
   localePreferenceService().setLocale(originalLocale);
@@ -48,7 +62,7 @@ describe('Long Task diagnostic indicator', () => {
       try {
         const copyLabel = i18n.global.t('performanceDiagnostics.copy');
         const copy = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => node.props['aria-label'] === copyLabel);
         expect(copy).toBeDefined();
         expect(copy?.props.title).toBeUndefined();

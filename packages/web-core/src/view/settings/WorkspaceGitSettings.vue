@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -76,36 +79,35 @@ async function save(): Promise<void> {
 }
 </script>
 <template>
-  <section class="workspace-git-settings" v-loading="loading">
+  <section class="workspace-git-settings" v-mar-loading:region="loading">
     <h3>{{ t('personalGit.workspaceTitle') }}</h3>
     <p v-if="!connected">{{ t('personalGit.offline') }}</p>
     <template v-else>
       <div class="workspace-git-controls">
-        <el-checkbox v-if="loaded" v-model="preserve" :disabled="!writable || saving">{{
+        <MarCheckbox v-if="loaded" v-model="preserve" :disabled="!writable || saving">{{
           t('personalGit.preserve')
-        }}</el-checkbox>
-        <el-checkbox
+        }}</MarCheckbox>
+        <MarCheckbox
           v-if="loaded && includeParent !== undefined"
           v-model="includeParent"
           :disabled="!writable || saving"
-          >{{ t('personalGit.includeParent') }}</el-checkbox
+          >{{ t('personalGit.includeParent') }}</MarCheckbox
         >
-        <el-button
+        <MarButton
           v-if="writable"
           type="primary"
           :icon="marIcon('check')"
           :disabled="!loaded || loading || saving"
           :loading="saving"
           @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ t('personalGit.save') }}</el-button
+          >{{ t('personalGit.save') }}</MarButton
         >
       </div>
       <p class="workspace-git-hint">{{ t('personalGit.preserveHint') }}</p>
       <p v-if="includeParent !== undefined" class="workspace-git-hint">
         {{ t('personalGit.includeParentHint') }}
       </p>
-      <el-button v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</el-button>
+      <MarButton v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</MarButton>
     </template>
   </section>
 </template>
@@ -121,7 +123,7 @@ async function save(): Promise<void> {
 }
 .workspace-git-hint {
   margin: 8px 0 0;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   line-height: 1.6;
 }
 </style>

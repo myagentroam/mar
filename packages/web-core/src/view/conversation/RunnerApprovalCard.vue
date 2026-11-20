@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/locale-preference-service.js';
 
@@ -20,7 +21,7 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
     </div>
     <slot />
     <div v-if="decidable" class="approval-actions">
-      <el-button
+      <MarButton
         type="primary"
         size="small"
         :icon="marIcon('check')"
@@ -28,15 +29,15 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
         @click="emit('decide', 'APPROVED')"
       >
         {{ translate('generated.conversationApprovals.allow') }}
-      </el-button>
-      <el-button
+      </MarButton>
+      <MarButton
         size="small"
         :icon="marIcon('close')"
         :disabled="disabled"
         @click="emit('decide', 'REJECTED')"
       >
         {{ translate('generated.conversationApprovals.deny') }}
-      </el-button>
+      </MarButton>
     </div>
   </section>
 </template>
@@ -69,14 +70,14 @@ const emit = defineEmits<{ decide: [decision: 'APPROVED' | 'REJECTED'] }>();
   margin-top: 0.5rem;
 }
 
-.approval-actions :deep(.el-button) {
+.approval-actions :deep(.mar-ui-button) {
   width: 100%;
   min-width: 0;
   margin: 0;
 }
 
 @media (max-width: 767px) {
-  .approval-actions :deep(.el-button) {
+  .approval-actions :deep(.mar-ui-button) {
     min-height: 2rem;
     height: auto;
     padding: 0.4rem 0.75rem;

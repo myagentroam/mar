@@ -263,7 +263,7 @@ test('Hosted send displays only request feedback before Watch, including after H
     await f.composer.evaluate((form: HTMLFormElement) => form.requestSubmit());
 
     f.reply(true);
-    await expect(page.locator('.el-message--error')).toBeVisible();
+    await expect(page.locator('.mar-message--error')).toBeVisible();
     await expect(f.sending).toHaveCount(0);
     await expect(f.input).toHaveValue(f.prompt);
     await expect(f.message).toHaveCount(0);
@@ -633,10 +633,10 @@ for (const width of [1280, 390]) {
       await selector.click();
       await expect(page.getByRole('menuitem', { name: 'Other host template' })).toHaveCount(0);
       await page.getByRole('menuitem', { name: target.name, exact: true }).click();
-      await expect(page.locator('.el-message-box')).toContainText(
+      await expect(page.locator('.mar-message-box')).toContainText(
         'Existing history and files will be kept'
       );
-      await expect(page.locator('.el-message-box')).toContainText('apply to the next run');
+      await expect(page.locator('.mar-message-box')).toContainText('apply to the next run');
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       expect(writes).toEqual([]);
       await expect(textarea).toHaveValue('Keep this unsent draft');
@@ -651,8 +651,8 @@ for (const width of [1280, 390]) {
       );
       expect(writes).toEqual([{ expectedTemplateId: template.id, templateId: target.id }]);
       expect(watchCount).toBe(2);
-      await expect(page.locator('.el-message--success')).toHaveCount(0);
-      await expect(page.locator('.el-message-box')).toBeHidden();
+      await expect(page.locator('.mar-message--success')).toHaveCount(0);
+      await expect(page.locator('.mar-message-box')).toBeHidden();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         width
       );
@@ -663,7 +663,7 @@ for (const width of [1280, 390]) {
       await selector.click();
       await page.getByRole('menuitem', { name: template.name, exact: true }).click();
       await page.getByRole('button', { name: 'Switch template', exact: true }).click();
-      await expect(page.locator('.el-message--error')).toBeVisible();
+      await expect(page.locator('.mar-message--error')).toBeVisible();
       await expect(selector).toContainText(target.name);
       await expect(textarea).toHaveValue('Keep this unsent draft');
       expect(watchCount).toBe(2);
@@ -691,7 +691,7 @@ test('A failed menu catalog refresh preserves the model and unknown create ident
   await refreshCatalog(page, f);
   expect(f.modelReads()).toBe(1);
   await expect(f.modelControl).toHaveText('Model Two');
-  await expect(page.locator('.el-message--error').last()).toContainText(
+  await expect(page.locator('.mar-message--error').last()).toContainText(
     'Hosted entry fixture request failed'
   );
   await sendDraft(page, f);

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TooltipService } from '../../src/service/tooltip-service.js';
-import { tableTooltipOptions } from '../../src/util/tooltip.js';
+import { TooltipService, tooltipDelays } from '../../src/service/tooltip-service.js';
 
 // These Node fakes exercise coordinator decisions, not browser layout or tooltip rendering.
 interface TestEvent {
@@ -179,7 +178,7 @@ describe('TooltipService', () => {
     const { document, service } = createCoordinator();
     const first = new FakeElement();
     const second = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
+    const showAfter = tooltipDelays.show;
 
     service.update(first as unknown as Element, 'First hint');
     service.update(second as unknown as Element, 'Second hint');
@@ -201,26 +200,26 @@ describe('TooltipService', () => {
     service.update(first as unknown as Element, 'First hint');
     service.update(second as unknown as Element, 'Second hint');
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     document.dispatch('pointerdown', { target: first, pointerType: 'mouse' });
     document.activeElement = first;
     document.dispatch('focusin', { target: first });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter * 2);
+    vi.advanceTimersByTime(tooltipDelays.show * 2);
     expect(service.active.value).toBeUndefined();
 
     document.dispatch('pointerout', { target: first, relatedTarget: null });
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(first);
     document.dispatch('pointerout', { target: first, relatedTarget: null });
-    vi.advanceTimersByTime(tableTooltipOptions.hideAfter);
+    vi.advanceTimersByTime(tooltipDelays.hide);
     expect(service.active.value).toBeUndefined();
 
     document.dispatch('keydown', { target: first, key: 'Tab' });
     document.activeElement = second;
     document.dispatch('focusout', { target: first, relatedTarget: second });
     document.dispatch('focusin', { target: second });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(second);
   });
 
@@ -231,7 +230,7 @@ describe('TooltipService', () => {
     service.update(first as unknown as Element, 'First hint');
     service.update(second as unknown as Element, 'Second hint');
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     document.dispatch('pointerout', { target: first, relatedTarget: second });
     pointerOver(document, second);
     expect(service.active.value?.target).toBe(first);
@@ -251,11 +250,11 @@ describe('TooltipService', () => {
     service.update(first as unknown as Element, 'First hint');
     service.update(second as unknown as Element, 'Second hint');
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     pointerOver(document, second);
     vi.advanceTimersByTime(50);
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(first);
     expect(second.getAttribute('aria-describedby')).toBeNull();
   });
@@ -269,16 +268,16 @@ describe('TooltipService', () => {
     document.activeElement = first;
     document.dispatch('focusin', { target: first });
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     pointerOver(document, second);
     vi.advanceTimersByTime(50);
     pointerOver(document, first);
     document.dispatch('pointerout', { target: first, relatedTarget: null });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(first);
     document.activeElement = null;
     document.dispatch('focusout', { target: first, relatedTarget: null });
-    vi.advanceTimersByTime(tableTooltipOptions.hideAfter);
+    vi.advanceTimersByTime(tooltipDelays.hide);
     expect(service.active.value).toBeUndefined();
   });
 
@@ -298,7 +297,7 @@ describe('TooltipService', () => {
         document.dispatch('focusin', { target: first });
       }
       if (ownership !== 'keyboard') pointerOver(document, first);
-      vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+      vi.advanceTimersByTime(tooltipDelays.show);
       expect(service.active.value?.target).toBe(first);
 
       pointerOver(document, second);
@@ -306,7 +305,7 @@ describe('TooltipService', () => {
       document.dispatch('pointerout', { target: second, relatedTarget: null });
       const retained = ownership === 'keyboard';
       expect(service.active.value?.target).toBe(retained ? first : undefined);
-      vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+      vi.advanceTimersByTime(tooltipDelays.show);
       expect(service.active.value?.target).toBe(retained ? first : undefined);
       expect(first.getAttribute('aria-describedby')).toBe(
         retained ? `existing-description ${descriptionId}` : 'existing-description'
@@ -315,7 +314,7 @@ describe('TooltipService', () => {
 
       document.activeElement = null;
       document.dispatch('focusout', { target: first, relatedTarget: null });
-      vi.advanceTimersByTime(tableTooltipOptions.hideAfter);
+      vi.advanceTimersByTime(tooltipDelays.hide);
       expect(service.active.value).toBeUndefined();
       expect(first.getAttribute('aria-describedby')).toBe('existing-description');
     }
@@ -330,13 +329,13 @@ describe('TooltipService', () => {
     service.update(ancestor as unknown as Element, 'Ancestor hint');
     document.activeElement = focused;
     document.dispatch('focusin', { target: focused });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(focused);
 
     pointerOver(document, ancestor);
     vi.advanceTimersByTime(50);
     document.dispatch('pointerout', { target: ancestor, relatedTarget: null });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(focused);
     expect(focused.getAttribute('aria-describedby')).toBe(descriptionId);
     expect(ancestor.getAttribute('aria-describedby')).toBeNull();
@@ -348,7 +347,7 @@ describe('TooltipService', () => {
     for (const [index, target] of targets.entries())
       service.update(target as unknown as Element, `Hint ${index}`);
     pointerOver(document, targets[0]!);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     pointerOver(document, targets[1]!);
     vi.advanceTimersByTime(50);
     pointerOver(document, targets[2]!);
@@ -366,10 +365,10 @@ describe('TooltipService', () => {
     service.update(first as unknown as Element, 'First hint');
     service.update(second as unknown as Element, 'Second hint');
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     pointerOver(document, second);
     document.dispatch(event, { target: second, key: 'Escape', pointerType: 'mouse' });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value).toBeUndefined();
     expect(first.getAttribute('aria-describedby')).toBeNull();
     expect(second.getAttribute('aria-describedby')).toBeNull();
@@ -384,7 +383,7 @@ describe('TooltipService', () => {
       service.update(first as unknown as Element, 'First hint');
       service.update(second as unknown as Element, 'Second hint');
       pointerOver(document, first);
-      vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+      vi.advanceTimersByTime(tooltipDelays.show);
       pointerOver(document, second);
       if (change === 'removed') service.remove(first as unknown as Element);
       else {
@@ -404,19 +403,19 @@ describe('TooltipService', () => {
     service.update(first as unknown as Element, 'First hint');
     service.update(second as unknown as Element, 'Second hint');
     pointerOver(document, first);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     document.activeElement = second;
     document.dispatch('focusin', { target: second });
     vi.advanceTimersByTime(50);
     document.dispatch('pointerout', { target: first, relatedTarget: null });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(second);
   });
 
   it('updates visible content and removes disabled hints from future targeting', () => {
     const { document, service } = createCoordinator();
     const target = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
+    const showAfter = tooltipDelays.show;
 
     service.update(target as unknown as Element, 'Initial hint');
     pointerOver(document, target);
@@ -438,7 +437,7 @@ describe('TooltipService', () => {
   it('merges its description id without replacing menu accessibility attributes', () => {
     const { document, service } = createCoordinator();
     const target = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
+    const showAfter = tooltipDelays.show;
     target.setAttribute('aria-describedby', 'menu-description');
     target.setAttribute('aria-haspopup', 'menu');
     target.setAttribute('aria-expanded', 'true');
@@ -458,7 +457,7 @@ describe('TooltipService', () => {
     const { document, service, cleanup } = createCoordinator();
     const removed = new FakeElement();
     const remaining = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
+    const showAfter = tooltipDelays.show;
     service.update(removed as unknown as Element, 'Removable hint');
     service.update(remaining as unknown as Element, { content: 'Remaining hint', touch: true });
 
@@ -482,7 +481,7 @@ describe('TooltipService', () => {
   it('preserves ordinary, pending and composing keys while isolating a visible hint from document shortcuts', () => {
     const { document, service } = createCoordinator();
     const target = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
+    const showAfter = tooltipDelays.show;
     const laterKeyHandler = vi.fn();
     document.addEventListener('keydown', laterKeyHandler);
     service.update(target as unknown as Element, 'Keyboard hint');
@@ -528,7 +527,7 @@ describe('TooltipService', () => {
     document.addEventListener('keydown', () => received.push('document'));
     service.update(target as unknown as Element, 'Cancel edit');
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     document.dispatch('keydown', { target, key: 'Escape' });
     expect(received).toEqual(['target', 'owner']);
@@ -542,7 +541,7 @@ describe('TooltipService', () => {
     composer.addEventListener('keydown', stop);
     service.update(target as unknown as Element, 'Run action hint');
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     document.dispatch('keydown', { target: composer, key: 'Escape' });
     expect(service.active.value).toBeUndefined();
@@ -557,7 +556,7 @@ describe('TooltipService', () => {
     target.addEventListener('keydown', (event) => event.stopPropagation());
     service.update(target as unknown as Element, 'Select hint');
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     document.dispatch('keydown', { target, key: 'Escape' });
     expect(service.active.value).toBeUndefined();
@@ -574,7 +573,7 @@ describe('TooltipService', () => {
     document.addEventListener('keydown', dismissMenu);
     service.update(target as unknown as Element, 'Menu action hint');
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     const escape = document.dispatch('keydown', { target, key: 'Escape' });
     expect(service.active.value).toBeUndefined();
@@ -594,7 +593,7 @@ describe('TooltipService', () => {
     document.addEventListener('keydown', dismissOuterDialog);
     service.update(target as unknown as Element, 'Trigger hint');
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     document.dispatch('keydown', { target, key: 'Escape' });
     expect(handleControl).toHaveBeenCalledOnce();
@@ -609,7 +608,7 @@ describe('TooltipService', () => {
     document.hidden = true;
 
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     expect(service.active.value).toBeUndefined();
   });
@@ -624,7 +623,7 @@ describe('TooltipService', () => {
     document.activeElement = target;
     document.dispatch('focusin', { target });
     document.dispatch('click', { target, pointerType: 'touch', detail: 1 });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
 
     expect(service.active.value).toBeUndefined();
   });
@@ -637,11 +636,11 @@ describe('TooltipService', () => {
     service.update(target as unknown as Element, { content: 'Touch details', touch: true });
 
     document.dispatch('pointerdown', { target: child, pointerType: 'touch' });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter * 2);
+    vi.advanceTimersByTime(tooltipDelays.show * 2);
     expect(service.active.value).toBeUndefined();
     document.dispatch('click', { target: child, pointerType: 'touch', detail: 1 });
     document.dispatch('pointerout', { target: child, pointerType: 'touch' });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value).toMatchObject({ content: 'Touch details', target });
 
     document.dispatch('pointerdown', { target: new FakeElement(), pointerType: 'touch' });
@@ -655,10 +654,10 @@ describe('TooltipService', () => {
     service.update(target as unknown as Element, { content: 'Touch details', touch: true });
     document.dispatch('pointerdown', { target, pointerType: 'touch' });
     document.dispatch('click', { target, detail: 0 });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value).toBeUndefined();
     document.dispatch('click', { target, detail: 1 });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.target).toBe(target);
     document.dispatch('scroll');
     expect(service.active.value).toBeUndefined();
@@ -667,8 +666,8 @@ describe('TooltipService', () => {
   it('keeps focus-owned hints open across pointer exit, then closes on focus exit', () => {
     const { document, service } = createCoordinator();
     const target = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
-    const hideAfter = tableTooltipOptions.hideAfter;
+    const showAfter = tooltipDelays.show;
+    const hideAfter = tooltipDelays.hide;
     service.update(target as unknown as Element, 'Focused hint');
     document.activeElement = target;
     document.dispatch('focusin', { target });
@@ -688,8 +687,8 @@ describe('TooltipService', () => {
   it('keeps pointer-owned hints when the same target loses focus', () => {
     const { document, service } = createCoordinator();
     const target = new FakeElement();
-    const showAfter = tableTooltipOptions.showAfter;
-    const hideAfter = tableTooltipOptions.hideAfter;
+    const showAfter = tooltipDelays.show;
+    const hideAfter = tooltipDelays.hide;
     service.update(target as unknown as Element, 'Pointer hint');
     pointerOver(document, target);
     vi.advanceTimersByTime(showAfter);
@@ -715,17 +714,17 @@ describe('TooltipService', () => {
     child.parentElement = target;
     service.update(target as unknown as Element, 'Control hint');
     pointerOver(document, target);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     document.dispatch('keydown', { target, key: 'Escape' });
     document.dispatch('pointerover', {
       target: child,
       relatedTarget: target,
       pointerType: 'mouse'
     });
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value).toBeUndefined();
     pointerOver(document, child);
-    vi.advanceTimersByTime(tableTooltipOptions.showAfter);
+    vi.advanceTimersByTime(tooltipDelays.show);
     expect(service.active.value?.content).toBe('Control hint');
   });
 });

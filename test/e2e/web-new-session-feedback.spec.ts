@@ -1,5 +1,39 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { fulfillMockSessionWatch, json, mockConsoleApi } from './support/web-console-api.js';
+
+async function openWorkspaceDraft(page: Page) {
+  await page.goto('/console');
+  await page.getByRole('button', { name: '进入控制台' }).click();
+  await page.getByRole('button', { name: '工作', exact: true }).click();
+  const tree = page.locator('.workspace-tree');
+  await tree.getByRole('button', { name: /node-1/ }).click();
+  await tree.getByRole('button', { name: 'project', exact: true }).click();
+}
+
+for (const { width, theme, scheme } of [
+  { width: 1280, theme: 'vscode-dark-2026', scheme: 'dark' },
+  { width: 390, theme: 'daylight', scheme: 'light' }
+]) {
+  test(`New session canvas matches its header in ${theme} at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.addInitScript((value) => localStorage.setItem('mar.theme', value), theme);
+    await mockConsoleApi(page, 'MANAGED', ['history.read', 'turn.start'], []);
+    await openWorkspaceDraft(page);
+    await expect(page.locator('html')).toHaveCSS('color-scheme', scheme);
+    const panel = page.locator('.conversation-panel');
+    const header = panel.locator('.conversation-header');
+    await expect(panel.locator('.conversation-empty')).toBeVisible();
+    await expect(header).toBeVisible();
+    const canvas = await header.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await expect(panel).toHaveCSS('background-color', canvas);
+    await page.screenshot({
+      path: testInfo.outputPath('new-session-canvas.png'),
+      animations: 'disabled'
+    });
+  });
+}
 
 for (const { width, theme, lateSuccess } of [
   { width: 1280, theme: 'daylight', lateSuccess: false },
@@ -101,12 +135,7 @@ for (const { width, theme, lateSuccess } of [
         }
       });
     });
-    await page.goto('/console');
-    await page.getByRole('button', { name: '进入控制台' }).click();
-    await page.getByRole('button', { name: '工作', exact: true }).click();
-    const tree = page.locator('.workspace-tree');
-    await tree.getByRole('button', { name: /node-1/ }).click();
-    await tree.getByRole('button', { name: 'project', exact: true }).click();
+    await openWorkspaceDraft(page);
     if (theme === 'daylight') await expect(page.locator('html')).not.toHaveClass(/dark/u);
     else await expect(page.locator('html')).toHaveClass(/dark/u);
     const input = page.getByRole('textbox', { name: '输入消息' });
@@ -125,13 +154,14 @@ for (const { width, theme, lateSuccess } of [
       await expect(send).toBeVisible();
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute('aria-busy', 'true');
-      await expect(send.locator('.is-loading')).toBeVisible();
+      await expect(send.locator('[data-mar-icon="loading-action"]')).toBeVisible();
       if (width === 390)
-        await expect(send.locator('.is-loading')).toHaveCSS('animation-name', 'none');
+        await expect(send.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
+          'animation-name',
+          'none'
+        );
       await expect(page.locator('.composer-runner-select')).toBeVisible();
-      await expect(page.locator('.composer-runner-select .el-select__wrapper')).toHaveClass(
-        /is-disabled/u
-      );
+      await expect(page.locator('.composer-runner-select').getByRole('combobox')).toBeDisabled();
       await expect(page.locator('.composer-working')).toHaveCount(0);
       await expect(page.locator('.conversation-message')).toHaveCount(0);
       await expect(shell).toHaveCSS('background-color', background);
@@ -155,9 +185,7 @@ for (const { width, theme, lateSuccess } of [
         });
         await expect(input).toBeEditable();
         await expect(send).toBeEnabled();
-        await expect(page.locator('.composer-runner-select .el-select__wrapper')).toHaveClass(
-          /is-disabled/u
-        );
+        await expect(page.locator('.composer-runner-select').getByRole('combobox')).toBeDisabled();
         await send.click();
         await expect.poll(() => requests.length).toBe(count + 2);
         expect(bodies[count + 1]).toEqual(bodies[count]);

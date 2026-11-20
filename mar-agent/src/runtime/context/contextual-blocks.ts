@@ -38,19 +38,10 @@ export function contextualBlock(
   };
 }
 
-const CORE_IDS = new Set([
-  'core:identity',
-  'core:instruction-priority',
-  'core:workspace-discipline',
-  'core:workflow',
-  'core:interaction',
-  'core:safety',
-  'core:output-style'
-]);
+const CORE_IDS = new Set(['core:identity', 'core:instruction-priority', 'core:safety']);
 const SDK_CONTEXTUAL_IDS = new Set([
   'core:environment-rules',
   'core:tools',
-  'core:long-running',
   'core:mode',
   'core:compaction',
   'core:subagent',

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { translate } from '../../service/locale-preference-service.js';
 
 defineProps<{ readonly message: string; readonly retryable?: boolean }>();
@@ -9,9 +10,9 @@ const emit = defineEmits<{ retry: [] }>();
   <section class="file-preview-state" role="status">
     <p>{{ message }}</p>
     <slot name="actions"
-      ><el-button v-if="retryable" size="small" @click="emit('retry')">
+      ><MarButton v-if="retryable" size="small" @click="emit('retry')">
         {{ translate('common.retry') }}
-      </el-button></slot
+      </MarButton></slot
     >
   </section>
 </template>
@@ -41,7 +42,7 @@ const emit = defineEmits<{ retry: [] }>();
   white-space: pre-wrap;
 }
 
-.file-preview-state :deep(.el-button) {
+.file-preview-state :deep(.mar-ui-button) {
   flex-shrink: 0;
 }
 </style>

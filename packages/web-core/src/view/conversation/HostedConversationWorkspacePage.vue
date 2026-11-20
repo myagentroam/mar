@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 // Owns Hosted workspace presentation, local upload batches and preview lifetimes.
 // Domain state, requests and Watch ownership stay with the workspace services.
 import { createUuid } from '../../util/uuid.js';
@@ -17,7 +22,7 @@ import type {
   HostedConversationSnapshot,
   HostedConversationSummary
 } from '@myagentroam/protocol';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   computed,
   inject,
@@ -485,11 +490,10 @@ async function editConversationTitle(conversation: HostedConversationSummary): P
   let title: string;
   try {
     title = (
-      await ElMessageBox.prompt(
+      await MarMessageBox.prompt(
         translate('hostedConversations.titlePrompt'),
         translate('hostedConversations.editTitle'),
         {
-          closeIcon: marIcon('close'),
           inputValue: hostedConversationTitle(conversation),
           inputPlaceholder: translate('hostedConversations.titlePlaceholder'),
           inputValidator: (candidate) => {
@@ -539,13 +543,12 @@ async function setConversationPinned(
 async function deleteConversation(conversation: HostedConversationSummary): Promise<void> {
   if (mutatingConversationKey.value !== undefined) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.deleteConfirmation', {
         title: hostedConversationTitle(conversation)
       }),
       translate('hostedConversations.deleteTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.delete'),
@@ -663,11 +666,10 @@ async function rollbackConversation(turn: ConversationTurn, item: ConversationIt
   const boundary = turn.rewind.before;
   const conversationKeyAtConfirmation = selectedConversationKey.value;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.rollbackConfirmation'),
       translate('hostedConversations.rollbackTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.rollback'),
@@ -784,11 +786,10 @@ function dragContainsFiles(event: DragEvent): boolean {
 async function deleteProjectedFile(file: ConversationFileProjection): Promise<void> {
   if (!filesWritable.value || deletingFileId.value !== undefined) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('hostedConversations.fileDeleteConfirmation', { name: file.displayName }),
       translate('hostedConversations.fileDeleteTitle'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('hostedConversations.fileDelete'),
@@ -1006,7 +1007,7 @@ onBeforeUnmount(() => {
       </header>
       <div class="history-controls">
         <div class="history-search-row">
-          <el-input
+          <MarInput
             v-model="filter"
             clearable
             :prefix-icon="marIcon('search')"
@@ -1014,7 +1015,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('hostedConversations.searchHistory')"
             :clear-icon="marIcon('clear-input')"
           />
-          <el-button
+          <MarButton
             v-tooltip="translate('hostedConversations.refreshHistory')"
             class="history-refresh-button mar-icon-action"
             :aria-label="translate('hostedConversations.refreshHistory')"
@@ -1025,17 +1026,21 @@ onBeforeUnmount(() => {
             size="small"
             text
             @click="refreshDirectory"
-            :loading-icon="marIcon('loading-action')"
           />
         </div>
-        <el-button class="history-create-button mar-soft-button" @click="beginNewConversation">
-          <MarIcon name="session-add" />
-          <span>{{ translate('hostedConversations.create') }}</span>
-        </el-button>
+        <MarButton
+          class="history-create-button mar-soft-button"
+          icon="session-add"
+          @click="beginNewConversation"
+        >
+          {{ translate('hostedConversations.create') }}
+        </MarButton>
       </div>
       <div
         ref="historyList"
-        v-loading="workspace.loadingConversations.value && !workspace.conversationsLoaded.value"
+        v-mar-loading:region="
+          workspace.loadingConversations.value && !workspace.conversationsLoaded.value
+        "
         v-session-reorder-motion="historyReorderSnapshot"
         class="history-list"
       >
@@ -1109,7 +1114,7 @@ onBeforeUnmount(() => {
               }}
             </time>
           </button>
-          <el-dropdown
+          <MarDropdown
             v-if="conversationActionsVisible(conversationKey(conversation))"
             class="history-row-actions"
             placement="bottom-end"
@@ -1137,8 +1142,8 @@ onBeforeUnmount(() => {
               <MarIcon name="more" />
             </button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item
+              <MarDropdownMenu>
+                <MarDropdownItem
                   @click="setConversationPinned(conversation, conversation.pinnedAt === null)"
                 >
                   <MarIcon name="pin" />
@@ -1149,18 +1154,18 @@ onBeforeUnmount(() => {
                         : 'hostedConversations.unpin'
                     )
                   }}
-                </el-dropdown-item>
-                <el-dropdown-item @click="editConversationTitle(conversation)">
+                </MarDropdownItem>
+                <MarDropdownItem @click="editConversationTitle(conversation)">
                   <MarIcon name="edit" />
                   {{ translate('hostedConversations.editTitle') }}
-                </el-dropdown-item>
-                <el-dropdown-item divided @click="deleteConversation(conversation)">
+                </MarDropdownItem>
+                <MarDropdownItem divided @click="deleteConversation(conversation)">
                   <MarIcon name="delete" />
                   {{ translate('hostedConversations.delete') }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
+                </MarDropdownItem>
+              </MarDropdownMenu>
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </article>
         <p v-if="filter.trim()" class="history-filter-note">
           {{ translate('hostedConversations.filterLoadedOnly') }}
@@ -1177,7 +1182,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('common.loading')"
             ><BusyIndicator class="mar-read-loading-indicator"
           /></span>
-          <el-button
+          <MarButton
             v-if="
               retryingDirectory ||
               (workspace.loadMoreConversationsError.value &&
@@ -1196,7 +1201,7 @@ onBeforeUnmount(() => {
               class="mar-read-loading-indicator"
             />
             <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-          </el-button>
+          </MarButton>
         </div>
       </div>
     </WorkbenchSidebarPanel>
@@ -1216,7 +1221,7 @@ onBeforeUnmount(() => {
       >
         <MarIcon name="folder-open" />
       </button>
-      <el-alert
+      <MarAlert
         v-if="workspace.snapshot.value?.error"
         class="snapshot-error-alert"
         :closable="false"
@@ -1224,8 +1229,8 @@ onBeforeUnmount(() => {
         type="error"
         :title="hostedErrorMessage(workspace.snapshot.value.error)"
         ><template #icon><MarIcon name="error" /></template
-      ></el-alert>
-      <el-alert
+      ></MarAlert>
+      <MarAlert
         v-if="readonlyVisible"
         class="readonly-alert"
         :closable="false"
@@ -1233,7 +1238,7 @@ onBeforeUnmount(() => {
         type="warning"
         :title="readonlyReason"
         ><template #icon><MarIcon name="warning" /></template
-      ></el-alert>
+      ></MarAlert>
       <section
         v-if="draftingNewConversation || selectedSummary === undefined"
         class="conversation-draft"
@@ -1359,7 +1364,7 @@ onBeforeUnmount(() => {
             }}
           </span>
         </button>
-        <div v-loading="uploadingDroppedFiles" class="files-list">
+        <div v-mar-loading:region="uploadingDroppedFiles" class="files-list">
           <section v-for="group in filesByCategory" :key="group.category">
             <h3>{{ categoryLabel(group.category) }}</h3>
             <p v-if="group.nodes.length === 0">{{ translate('hostedConversations.noFiles') }}</p>
@@ -1707,7 +1712,7 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
-:global(.session-action-menu .el-dropdown-menu__item) {
+:global(.session-action-menu .mar-ui-dropdown-item) {
   gap: 0.4rem;
 }
 

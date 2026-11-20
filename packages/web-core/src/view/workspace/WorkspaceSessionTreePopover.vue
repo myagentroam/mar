@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarPopover } from '@myagentroam/mar-ui/popover';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { NavigationSnapshot } from '../../service/session-navigation-projection.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
@@ -71,19 +72,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-popover
+  <MarPopover
+    :outside-dismiss="false"
     :visible="visible"
     :virtual-ref="virtualReference"
-    virtual-triggering
     :placement="placement ?? 'bottom-start'"
     :show-arrow="false"
-    :persistent="false"
     popper-class="session-tree-popover mar-content-popover"
     :popper-style="visible ? undefined : { pointerEvents: 'none' }"
     width="min(480px, calc(100vw - 24px))"
-    :popper-options="{
-      modifiers: [{ name: 'preventOverflow', options: { padding: 12, tether: false } }]
-    }"
     @after-leave="!visible && emit('after-leave')"
   >
     <section
@@ -110,7 +107,7 @@ onBeforeUnmount(() => {
         />
       </div>
     </section>
-  </el-popover>
+  </MarPopover>
 </template>
 
 <style scoped>

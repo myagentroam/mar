@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
 import { translate } from '../../service/locale-preference-service';
@@ -57,20 +59,14 @@ function computerUseStatus(capability: ComputerUseCapability): string {
 <template>
   <div class="runtime-environment" :class="{ 'runtime-environment--refreshable': refreshable }">
     <div v-if="refreshable" class="runtime-environment-actions">
-      <el-button
-        link
-        :icon="marIcon('refresh')"
-        :loading="refreshing"
-        @click="emit('refresh')"
-        :loading-icon="marIcon('loading-action')"
-      >
+      <MarButton link :icon="marIcon('refresh')" :loading="refreshing" @click="emit('refresh')">
         {{ translate('generated.nodeDetailsDialogs.refreshCapabilities') }}
-      </el-button>
+      </MarButton>
     </div>
     <div v-if="rows.length || computerUse !== undefined" class="runtime-command-list">
       <div v-if="computerUse !== undefined" class="runtime-command-row">
         <code>{{ translate('generated.nodeRuntimeEnvironment.gui') }}</code>
-        <el-tag
+        <MarTag
           :type="
             computerUse.state === 'AVAILABLE'
               ? 'success'
@@ -81,20 +77,20 @@ function computerUseStatus(capability: ComputerUseCapability): string {
           effect="plain"
         >
           {{ computerUseStatus(computerUse) }}
-        </el-tag>
+        </MarTag>
         <span class="runtime-command-version">{{
           translate('generated.nodeRuntimeEnvironment.pyAutoGui')
         }}</span>
       </div>
       <div v-for="row in rows" :key="row.id" class="runtime-command-row">
         <code>{{ row.command }}</code>
-        <el-tag :type="row.available ? 'success' : 'info'" effect="plain">
+        <MarTag :type="row.available ? 'success' : 'info'" effect="plain">
           {{
             row.available
               ? translate('generated.nodeRuntimeEnvironment.available')
               : translate('generated.nodeRuntimeEnvironment.notFound')
           }}
-        </el-tag>
+        </MarTag>
         <span v-if="row.version" class="runtime-command-version">{{ row.version }}</span>
         <span v-tooltip="row.path" v-if="row.path" class="runtime-command-path">{{
           row.path
@@ -137,13 +133,13 @@ function computerUseStatus(capability: ComputerUseCapability): string {
   min-width: 0;
   align-items: center;
   gap: 8px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
 .runtime-command-row code {
   flex: 0 0 54px;
-  color: var(--el-text-color-primary);
+  color: var(--mar-text-primary);
 }
 
 .runtime-command-version {

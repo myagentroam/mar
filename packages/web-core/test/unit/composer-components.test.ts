@@ -856,13 +856,13 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         effortLabel: (value: string) => value
       };
       const html = await render(ComposerToolbar, props);
-      const runnerInputPattern = new RegExp(
-        `<input\\b(?=[^>]*aria-label="${i18n.global.t('common.runner')}")[^>]*>`,
+      const runnerTriggerPattern = new RegExp(
+        `<button\\b(?=[^>]*role="combobox")(?=[^>]*aria-label="${i18n.global.t('common.runner')}")[^>]*>`,
         'u'
       );
-      const runnerInput = runnerInputPattern.exec(html)?.[0];
-      expect(runnerInput).toBeDefined();
-      expect(runnerInput).not.toMatch(/\sdisabled(?:[\s=>])/u);
+      const runnerTrigger = runnerTriggerPattern.exec(html)?.[0];
+      expect(runnerTrigger).toBeDefined();
+      expect(runnerTrigger).not.toMatch(/\sdisabled(?:[\s=>])/u);
       const send = /<button\b(?=[^>]*class="[^"]*\bcomposer-send-button\b)[^>]*>/u.exec(html)?.[0];
       const stop = /<button\b(?=[^>]*class="[^"]*\bcomposer-stop-button\b)[^>]*>/u.exec(html)?.[0];
       expect(send).toBeDefined();
@@ -917,7 +917,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Composer components (%s)', (l
         submitting: true,
         runnerDisabled: true
       });
-      expect(runnerInputPattern.exec(submitting)?.[0]).toMatch(/\sdisabled(?:[\s=>])/u);
+      expect(runnerTriggerPattern.exec(submitting)?.[0]).toMatch(/\sdisabled(?:[\s=>])/u);
       expect(submitting).toMatch(
         /<span\b(?=[^>]*class="[^"]*\bcomposer-submitting\b)(?=[^>]*role="status")[^>]*>/u
       );

@@ -1,0 +1,276 @@
+import { expect, test } from '@playwright/test';
+import { startCustomThemeFixture } from './support/custom-theme-vite.js';
+
+let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
+test.beforeAll(async () => {
+  fixture = await startCustomThemeFixture('test/e2e/support/mar-controls.html');
+});
+test.afterAll(async () => {
+  await fixture?.close();
+});
+
+for (const [theme, width] of [
+  ['light', 1280],
+  ['dark', 390]
+] as const) {
+  test(`MAR controls render and keep interactive state at ${width}px in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 930 });
+    await page.goto(`${fixture.url}mar-controls.html?theme=${theme}`);
+    await expect(page.getByRole('alert')).toContainText('Changes are saved as a draft.');
+    await expect(page.getByText('SomePathWithoutSpaces/Segment/AnotherSegment')).toBeVisible();
+    const details = page.locator('.mar-ui-descriptions');
+    const columns = await details.evaluate(
+      (node) => getComputedStyle(node).gridTemplateColumns.split(' ').length
+    );
+    expect(columns).toBe(width === 390 ? 1 : 2);
+    await page.getByRole('checkbox', { name: 'Read' }).check();
+    await expect(page.getByRole('checkbox', { name: 'Write' })).toBeDisabled();
+    await expect(page.getByLabel('Permissions value')).toHaveText('read');
+    await page.getByRole('radio', { name: 'Requests' }).check();
+    await expect(page.getByLabel('Metric value')).toHaveText('b');
+    const quantity = page.getByRole('spinbutton', { name: 'Quantity' });
+    await quantity.press('ArrowUp');
+    await expect(quantity).toHaveValue('3');
+    await expect(page.getByRole('button', { name: /increase/i })).toBeDisabled();
+    await page.getByRole('tab', { name: 'Overview' }).press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Details' })).toBeFocused();
+    await expect(page.getByRole('tabpanel')).toHaveText('Details panel');
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(width);
+    await page.screenshot({ path: testInfo.outputPath(`${theme}-${width}.png`) });
+  });
+}
+
+test('MAR complex fields keep scalar values, explicit commits and localized UI', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const owner = page.getByRole('combobox', { name: 'Owner' });
+  await owner.click();
+  await owner.fill('Release');
+  await owner.press('Enter');
+  await expect(page.getByLabel('Owner value')).toHaveText('2');
+  await page.getByRole('button', { name: 'Clear', exact: true }).first().click();
+  await expect(page.getByLabel('Owner value')).toBeEmpty();
+  await owner.click();
+  await owner.fill('Platform');
+  await owner.press('Enter');
+  await expect(page.getByLabel('Owner value')).toHaveText('1');
+  const rangeButton = page.getByRole('button', { name: 'Calendar', exact: true }).first();
+  await rangeButton.click();
+  let calendar = page.getByRole('dialog', { name: 'Calendar' });
+  await expect(calendar.locator('.mar-ui-calendar-month')).toHaveCount(1);
+  const days = calendar.locator('.mar-ui-calendar-month__days button');
+  await days.nth(3).click();
+  await expect(page.getByLabel('Range changes')).toHaveText('0');
+  await days.nth(6).click();
+  await expect(page.getByLabel('Range value')).toHaveText('0,0');
+  await expect(page.getByLabel('Range changes')).toHaveText('0');
+  await page.screenshot({ path: testInfo.outputPath('mobile-calendar.png') });
+  await page.getByRole('heading', { name: 'MAR controls' }).click();
+  await expect(calendar).toBeHidden();
+  await expect(page.getByLabel('Range changes')).toHaveText('1');
+  await rangeButton.click();
+  calendar = page.getByRole('dialog', { name: 'Calendar' });
+  await calendar.locator('.mar-ui-calendar-month__days button').nth(2).click();
+  await page.keyboard.press('Escape');
+  await expect(calendar).toBeHidden();
+  await expect(page.getByLabel('Range changes')).toHaveText('1');
+  await page.locator('.mar-ui-date-picker').first().getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByLabel('Range value')).toBeEmpty();
+  await expect(page.getByLabel('Range changes')).toHaveText('2');
+  await page.getByRole('textbox', { name: 'Time', exact: true }).click();
+  const timePanel = page.getByRole('dialog', { name: 'Time' });
+  await timePanel
+    .getByRole('group', { name: 'Hours' })
+    .getByRole('button', { name: '10', exact: true })
+    .click();
+  await timePanel
+    .getByRole('group', { name: 'Minutes' })
+    .getByRole('button', { name: '15', exact: true })
+    .click();
+  await expect(page.getByLabel('Time value')).toHaveText('10:15');
+  await expect(page.getByLabel('Time changes')).toHaveText('0');
+  await timePanel.getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByLabel('Time value')).toHaveText('10:15');
+  await expect(page.getByLabel('Time changes')).toHaveText('1');
+  const timeInput = page.getByRole('textbox', { name: 'Time', exact: true });
+  await timeInput.press('ArrowDown');
+  const hours = timePanel.getByRole('group', { name: 'Hours' });
+  await expect(hours.getByRole('button', { name: '10', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(hours.getByRole('button', { name: '11', exact: true })).toBeFocused();
+  await expect(page.getByLabel('Time value')).toHaveText('11:15');
+  await timePanel.getByRole('button', { name: 'Cancel' }).click();
+  await expect(timeInput).toBeFocused();
+  await expect(page.getByLabel('Time value')).toHaveText('10:15');
+  await expect(page.getByLabel('Time changes')).toHaveText('1');
+  await timeInput.click();
+  await timeInput.fill('13:20');
+  await page.getByRole('heading', { name: 'MAR controls' }).click();
+  await expect(page.getByLabel('Time value')).toHaveText('13:20');
+  await expect(page.getByLabel('Time changes')).toHaveText('2');
+  await page.getByRole('combobox', { name: 'Minutes' }).click();
+  await page.getByRole('option', { name: '00:15' }).click();
+  await expect(page.getByLabel('Minute value')).toHaveText('00:15');
+  await page.locator('.mar-ui-time-select').getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByLabel('Minute value')).toHaveText('undefined');
+  await page.locator('.mar-ui-time-picker').getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByLabel('Time value')).toHaveText('null');
+  await page.getByRole('button', { name: 'Chinese controls' }).click();
+  await expect(page.getByRole('button', { name: '日历' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '清空' }).first()).toBeVisible();
+});
+
+test('MAR single datetime commits local dates and clears to null', async ({ page }) => {
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const expiration = page.getByRole('region', { name: 'Expiration field' });
+  const input = expiration.getByRole('textbox', { name: 'Expires at' });
+  const observed = expiration.getByLabel('Expiration value');
+  await input.fill('2026-02-30 12:15:00');
+  await input.press('Tab');
+  await expect(observed).toBeEmpty();
+  await input.fill('2026-02-27 12:15:00');
+  await input.press('Enter');
+  const expected = await page.evaluate(() => new Date(2026, 1, 27, 12, 15).toISOString());
+  await expect(observed).toHaveText(expected);
+  await expiration.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(observed).toBeEmpty();
+  await expect(input).toBeFocused();
+});
+
+test('MAR datetime supports calendar navigation without tabbing through every date', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const picker = page.getByRole('region', { name: 'Expiration field' });
+  const input = picker.getByRole('textbox', { name: 'Expires at' });
+  await input.fill('2026-01-31 12:15:00');
+  await input.press('Enter');
+  await input.press('ArrowDown');
+  const calendar = picker.getByRole('dialog', { name: 'Calendar' });
+  const active = calendar.getByRole('button', { name: '2026-01-31' });
+  await expect(active).toBeFocused();
+  await expect(calendar.locator('.mar-ui-calendar-month__days button[tabindex="0"]')).toHaveCount(
+    1
+  );
+  await active.press('ArrowRight');
+  const nextMonth = calendar.getByRole('button', { name: '2026-02-01' });
+  await expect(nextMonth).toBeFocused();
+  await expect(nextMonth).toHaveAttribute('data-outside', 'false');
+  await nextMonth.press('Enter');
+  await expect(input).toHaveValue('2026-02-01 12:15:00');
+  await nextMonth.press('Escape');
+  await expect(calendar).toBeHidden();
+  await expect(input).toBeFocused();
+});
+
+test('MAR time commits keyboard edits without needing to click the picker', async ({ page }) => {
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const input = page.getByRole('textbox', { name: 'Time', exact: true });
+  const panel = page.getByRole('dialog', { name: 'Time' });
+  const value = page.getByLabel('Time value');
+  const changes = page.getByLabel('Time changes');
+
+  await input.focus();
+  await input.fill('14:20');
+  await expect(panel).toBeVisible();
+  await expect(value).toHaveText('08:00');
+  await input.press('Enter');
+  await expect(panel).toBeHidden();
+  await expect(value).toHaveText('14:20');
+  await expect(changes).toHaveText('1');
+
+  await input.fill('16:45');
+  await page.getByRole('combobox', { name: 'Minutes' }).focus();
+  await expect(panel).toBeHidden();
+  await expect(value).toHaveText('16:45');
+  await expect(changes).toHaveText('2');
+});
+
+test('MAR date and time do not commit an IME confirmation key', async ({ page }) => {
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const now = page.getByRole('textbox', { name: 'Time', exact: true });
+  const expiration = page.getByRole('textbox', { name: 'Expires at' });
+  for (const [field, draft, model, original, popup] of [
+    [now, '14:20', 'Time value', '08:00', 'Time'],
+    [expiration, '2026-02-27 12:15:00', 'Expiration value', '', 'Calendar']
+  ] as const) {
+    await field.click();
+    await field.fill(draft);
+    const panel = page.getByRole('dialog', { name: popup });
+    await expect(panel).toBeVisible();
+    await field.dispatchEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true });
+    await expect(page.getByLabel(model)).toHaveText(original);
+    await expect(panel).toBeVisible();
+    await field.press('Enter');
+    await expect(panel).toBeHidden();
+    await expect(page.getByLabel(model)).not.toHaveText(original);
+  }
+});
+
+test('Audit requests one complete range after keyboard selection and dismissal', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${fixture.url}management-page.html?area=audit`);
+  const calls = () => page.evaluate(() => window.managementPageFixture.calls());
+  await expect.poll(async () => (await calls()).length).toBe(1);
+  await page.evaluate(() => window.managementPageFixture.settle(0, true));
+  const audit = page.locator('.audit-management');
+  const input = audit.locator('.audit-range-picker input').first();
+  await input.press('ArrowDown');
+  const calendar = audit.getByRole('dialog', { name: 'Calendar' });
+  await expect(calendar.locator('.mar-ui-calendar-month')).toHaveCount(2);
+  const date = calendar.locator('[data-day]:focus');
+  const first = await date.getAttribute('data-day');
+  await date.press('Enter');
+  expect(await calls()).toHaveLength(1);
+  await date.press('ArrowRight');
+  const second = await date.getAttribute('data-day');
+  expect(second).not.toBe(first);
+  await date.press('Enter');
+  expect(await calls()).toHaveLength(1);
+  await date.press('Escape');
+  await expect(calendar).toBeHidden();
+  await expect(input).toBeFocused();
+  await expect.poll(async () => (await calls()).length).toBe(2);
+  const query = new URL((await calls())[1]!, 'http://fixture').searchParams;
+  const pickedDays = await page.evaluate(
+    (epochs) =>
+      epochs.map((epoch) => {
+        const date = new Date(Number(epoch));
+        return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+          .map((part) => String(part).padStart(2, '0'))
+          .join('-');
+      }),
+    [query.get('from'), query.get('to')]
+  );
+  expect(pickedDays).toEqual([first, second]);
+});
+
+test('MAR number reports edits immediately but change only on commit', async ({ page }) => {
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const quantity = page.getByRole('spinbutton', { name: 'Quantity' });
+  const observed = page.getByLabel('Quantity value');
+  const changes = page.getByLabel('Quantity changes');
+  await expect(
+    page.getByRole('button', { name: /decrease/i }).locator('[data-test-icon]')
+  ).toBeVisible();
+  await quantity.fill('9');
+  await expect(quantity).toHaveValue('9');
+  await expect(observed).toHaveText('3');
+  await expect(changes).toBeEmpty();
+  await quantity.press('Tab');
+  await expect(quantity).toHaveValue('3');
+  await expect(changes).toHaveText('2->3');
+  await quantity.clear();
+  await expect(observed).toHaveText('null');
+  await expect(changes).toHaveText('2->3');
+  await quantity.press('Enter');
+  await expect(changes).toHaveText('2->3,3->null');
+});

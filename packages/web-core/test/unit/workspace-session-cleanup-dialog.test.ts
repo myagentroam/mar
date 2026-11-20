@@ -28,7 +28,7 @@ describe('Workspace cleanup partial result presentation', () => {
         })
       });
       try {
-        const submit = view.findAll('ElButton').find((button) => button.props.type === 'danger')!;
+        const submit = view.findAll('MarButton').find((button) => button.props.type === 'danger')!;
         await trigger(submit, 'onClick');
         await flushComponent();
         const text = textContent(view.root);

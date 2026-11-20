@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import { computed, ref, watch } from 'vue';
 import type { SettingsSection, UserSessionSummary, QuickPrompt } from '@/model/workbench';
 import {
@@ -135,10 +140,10 @@ async function bindOAuth(provider: OAuthBinding): Promise<void> {
 }
 async function unbindOAuth(provider: OAuthBinding): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.settingsContent.unbindFromTheCurrentAccount', { value0: provider.name }),
       translate('generated.settingsContent.unbindOAuth'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     await props.request(`/api/oauth-bindings/${encodeURIComponent(provider.providerKey)}`, {
       method: 'DELETE'
@@ -177,81 +182,80 @@ function createNodeToken(): void {
       >
         <div class="admin-sessions-heading">
           <h3>{{ translate('generated.settingsContent.oAuthAccountBindings2') }}</h3>
-          <el-button
+          <MarButton
             v-tooltip="translate('generated.settingsContent.refresh')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
             :loading="oauthRefreshing"
-            :loading-icon="marIcon('loading-action')"
             :disabled="oauthLoading"
             :aria-label="translate('generated.settingsContent.refresh')"
             text
             @click="refreshOAuthBindings"
           />
         </div>
-        <el-table
-          v-loading="oauthLoading && !oauthRefreshing"
+        <MarTable
+          v-mar-loading:region="oauthLoading && !oauthRefreshing"
           :aria-busy="oauthLoading"
           :data="oauthBindings"
           row-key="providerKey"
         >
-          <el-table-column
+          <MarTableColumn
             prop="name"
             :label="translate('generated.settingsContent.identityProvider')"
           />
-          <el-table-column :label="translate('generated.settingsContent.status')" width="110">
+          <MarTableColumn :label="translate('generated.settingsContent.status')" width="110">
             <template #default="{ row }">
-              <el-tag :type="row.bound ? 'success' : 'info'" effect="light">
+              <MarTag :type="row.bound ? 'success' : 'info'" effect="light">
                 {{
                   row.bound
                     ? translate('generated.settingsContent.bound')
                     : translate('generated.settingsContent.notBound')
                 }}
-              </el-tag>
+              </MarTag>
             </template>
-          </el-table-column>
-          <el-table-column :label="translate('generated.settingsContent.actions')" width="120">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('generated.settingsContent.actions')" width="120">
             <template #default="{ row }">
-              <el-button
+              <MarButton
                 v-if="!row.bound"
                 link
                 :icon="marIcon('link')"
                 :disabled="managementWritable !== true || oauthLoading"
                 @click="bindOAuth(row)"
-                >{{ translate('generated.settingsContent.bind') }}</el-button
+                >{{ translate('generated.settingsContent.bind') }}</MarButton
               >
-              <el-button
+              <MarButton
                 v-else
                 link
                 type="danger"
                 :icon="marIcon('unlock')"
                 :disabled="managementWritable !== true || oauthLoading"
                 @click="unbindOAuth(row)"
-                >{{ translate('generated.settingsContent.unbind') }}</el-button
+                >{{ translate('generated.settingsContent.unbind') }}</MarButton
               >
             </template>
-          </el-table-column>
-        </el-table>
+          </MarTableColumn>
+        </MarTable>
       </section>
     </template>
     <template #registration-owner>
       <label v-if="edition === 'ENTERPRISE'" class="registration-owner">
         <span>{{ translate('generated.settingsContent.nodeOwnership') }}</span>
-        <el-select
+        <MarSelect
           v-model="registrationOwner"
           :placeholder="translate('generated.settingsContent.selectOwnership')"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option :label="translate('generated.settingsContent.personal')" value="PERSONAL" />
-          <el-option
+          <MarOption :label="translate('generated.settingsContent.personal')" value="PERSONAL" />
+          <MarOption
             v-for="organization in organizations"
             :key="organization.id"
             :label="organizationPath(organizations, organization.id)"
             :value="organization.id"
             :disabled="role === 'MEMBER' || managementWritable !== true"
           />
-        </el-select>
+        </MarSelect>
       </label>
     </template>
   </SharedSettingsContent>
@@ -264,7 +268,7 @@ function createNodeToken(): void {
   font-size: var(--mar-font-size-meta);
 }
 
-.registration-owner .el-select {
+.registration-owner .mar-ui-select {
   width: min(280px, 70vw);
 }
 

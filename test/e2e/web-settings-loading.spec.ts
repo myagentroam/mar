@@ -72,7 +72,7 @@ for (const viewport of [
           await page.getByRole('button', { name: entry.navigation, exact: true }).click();
         await page.getByRole('button', { name: entry.label, exact: true }).click();
         const panel = page.locator(entry.selector);
-        const mask = panel.locator(':scope > .el-loading-mask');
+        const mask = panel.locator(':scope > .mar-ui-loading');
         await expect(mask).toBeVisible();
         const available = await panel.evaluate((element) => {
           const parent = element.parentElement!;
@@ -93,49 +93,37 @@ for (const viewport of [
         expect(box).not.toBeNull();
         for (const key of ['x', 'y', 'width', 'height'] as const)
           expect(Math.abs(box![key] - available[key])).toBeLessThanOrEqual(1);
-        const spinner = mask.locator('.el-loading-spinner');
+        const spinner = mask.locator('.mar-ui-loading__indicator');
         await expect(spinner).toBeVisible();
-        let spinnerBox;
-        if (entry.variant === 'page') {
-          await expect(mask).toHaveClass(/mar-page-loading/);
-          await expect(mask.locator('.circular')).toBeHidden();
-          const ring = await spinner.evaluate((element) => {
-            const style = getComputedStyle(element, '::before');
-            return {
-              content: style.content,
-              display: style.display,
-              width: parseFloat(style.width),
-              height: parseFloat(style.height),
-              rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
-              borderStyle: style.borderTopStyle
-            };
-          });
-          expect(['none', 'normal']).not.toContain(ring.content);
-          expect(ring.display).toBe('inline-block');
-          expect(ring.width).toBeCloseTo(ring.rootSize * 1.25, 1);
-          expect(ring.height).toBeCloseTo(ring.rootSize * 1.25, 1);
-          expect(ring.borderStyle).toBe('solid');
-          spinnerBox = await spinner.boundingBox();
-          expect(spinnerBox!.height).toBeCloseTo(ring.height, 1);
-        } else {
-          // Region loading retains the standard Element Plus indicator, not the page ring.
-          await expect(mask).not.toHaveClass(/mar-page-loading/);
-          const circular = mask.locator('.circular');
-          await expect(circular).toBeVisible();
-          await expect(circular).toHaveCSS('width', '42px');
-          await expect(circular).toHaveCSS('height', '42px');
-          await expect(circular).not.toHaveCSS('animation-name', 'none');
-          const color = await spinner.evaluate((element) => {
-            const probe = document.createElement('span');
-            probe.style.color = 'var(--mar-color-brand)';
-            element.append(probe);
-            const result = getComputedStyle(probe).color;
-            probe.remove();
-            return result;
-          });
-          await expect(circular.locator('.path')).toHaveCSS('stroke', color);
-          spinnerBox = await circular.boundingBox();
-        }
+        await expect(mask).toHaveAttribute('data-variant', entry.variant);
+        const indicator = await spinner.evaluate((element, variant) => {
+          const style = getComputedStyle(element);
+          const probe = document.createElement('span');
+          probe.style.color =
+            variant === 'page' ? 'var(--mar-color-brand-text)' : 'var(--mar-color-brand)';
+          element.append(probe);
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          const size =
+            variant === 'page'
+              ? 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+              : 42;
+          return {
+            width: parseFloat(style.width),
+            height: parseFloat(style.height),
+            border: style.borderTopStyle,
+            animation: style.animationName,
+            actualColor: style.borderTopColor,
+            color,
+            size
+          };
+        }, entry.variant);
+        expect(indicator.width).toBeCloseTo(indicator.size);
+        expect(indicator.height).toBeCloseTo(indicator.size);
+        expect(indicator.border).toBe('solid');
+        expect(indicator.animation).not.toBe('none');
+        expect(indicator.actualColor).toBe(indicator.color);
+        const spinnerBox = await spinner.boundingBox();
         expect(spinnerBox).not.toBeNull();
         expect(
           Math.abs(spinnerBox!.y + spinnerBox!.height / 2 - (available.y + available.height / 2))
@@ -164,7 +152,7 @@ for (const viewport of [
             dialog.evaluate(
               (element, point) =>
                 element
-                  .closest('.el-overlay')
+                  .closest('dialog[open]')
                   ?.contains(document.elementFromPoint(point.x, point.y)) ?? false,
               {
                 x: navigation!.x + navigation!.width / 2,

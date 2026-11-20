@@ -322,7 +322,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         })
         .click();
       await page
-        .locator('.workspace-tab-menu-list .el-dropdown-menu__item')
+        .locator('.workspace-tab-menu-list [role="menuitem"]')
         .filter({ hasText: 'project-1' })
         .click();
       await expect(header).toContainText('Priority outside-2');
@@ -476,14 +476,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         expect(watchPosts).toBe(0);
         expect(readPosts).toEqual([]);
         await expect(page.getByText('Gap recovery history', { exact: true })).toHaveCount(0);
-        await page.locator('.el-message__closeBtn').click();
+        await page.locator('.mar-ui-message__close').click();
         await expect(page.locator('.el-message')).toHaveCount(0);
         await tab.getByRole('tab').click();
         await expect(page.locator('.conversation-reload')).toBeVisible();
         expect(watchPosts).toBe(0);
         expect(readPosts).toEqual([]);
         await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
-        await page.locator('.el-message__closeBtn').click();
+        await page.locator('.mar-ui-message__close').click();
         await expect(page.locator('.el-message')).toHaveCount(0);
         await page.evaluate(() => {
           const gap = (

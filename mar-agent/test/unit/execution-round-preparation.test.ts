@@ -13,7 +13,6 @@ describe('execution round preparation', () => {
     const prepare = (body: string) =>
       prepareExecutionRoundRequest({
         messages: [{ role: 'user', content: 'Follow the workflow.' }],
-        continuation: undefined,
         model: { protocol: 'OPENAI_RESPONSES', inputCapabilities: ['TEXT'] },
         requestBase: {},
         residentTools: () => [],
@@ -40,22 +39,30 @@ describe('execution round preparation', () => {
     );
     expect(world.entries.some((entry) => entry.block?.id === skillId)).toBe(false);
     const accepted = await prepare('Accepted guidance.');
+    expect(accepted.replacesSkillContext).toBe(false);
     expect(world.entries.some((entry) => entry.block?.id === skillId)).toBe(false);
     await accepted.acknowledgeSkillContext!();
     expect(
       world.entries.filter((entry) => entry.block?.id === skillId).map((entry) => entry.content)
     ).toEqual(['Accepted guidance.']);
+    const unchanged = await prepare('Accepted guidance.');
+    expect(unchanged.replacesSkillContext).toBe(false);
+    const replacement = await prepare('Replacement guidance.');
+    expect(replacement.replacesSkillContext).toBe(true);
+    expect(world.entries.find((entry) => entry.block?.id === skillId)?.content).toBe(
+      'Accepted guidance.'
+    );
   });
 
   it('rebuilds after late input and resource adoption without recollecting subagent updates', async () => {
     const calls: string[] = [];
     let attempt = 0;
-    const prepare = createExecutionRoundPreparer<string, number, number>({
+    const prepare = createExecutionRoundPreparer<number, number>({
       prepareInputs: async (collect) => {
         calls.push(`inputs:${collect}`);
       },
-      buildCandidate: async (continuation) => {
-        calls.push(`candidate:${continuation}`);
+      buildCandidate: async () => {
+        calls.push('candidate');
         return ++attempt;
       },
       adoptLateInput: async () => {
@@ -67,17 +74,17 @@ describe('execution round preparation', () => {
         return candidate === 2 ? { retry: true } : { round: candidate };
       }
     });
-    await expect(prepare('continuation')).resolves.toBe(3);
+    await expect(prepare()).resolves.toBe(3);
     expect(calls).toEqual([
       'inputs:true',
-      'candidate:continuation',
+      'candidate',
       'late',
       'inputs:false',
-      'candidate:continuation',
+      'candidate',
       'late',
       'resources:2',
       'inputs:false',
-      'candidate:continuation',
+      'candidate',
       'late',
       'resources:3'
     ]);

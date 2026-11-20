@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WorkspaceTab } from '../../model/workbench.js';
@@ -167,7 +168,9 @@ async function openContextMenu(event: MouseEvent, tab: WorkspaceTab): Promise<vo
   if (contextMenu.value?.tabId === menu.tabId) contextMenuTrigger.value?.click();
 }
 
-function contextCommand(command: 'previous' | 'next' | 'close' | 'pin'): void {
+type TabCommand = 'previous' | 'next' | 'close' | 'pin';
+
+function contextCommand(command: TabCommand): void {
   const index = contextTabIndex.value;
   const tab = props.tabs[index];
   contextMenu.value = undefined;
@@ -440,7 +443,7 @@ function activate(tab: WorkspaceTab): void {
       >
         <MarIcon name="chevron-right" />
       </button>
-      <el-dropdown trigger="click" @command="activateFromMenu">
+      <MarDropdown trigger="click" @command="activateFromMenu">
         <button
           class="workspace-tab-menu mar-icon-action"
           :aria-label="translate('workspaceTabs.allOpenWorkspaces')"
@@ -449,8 +452,8 @@ function activate(tab: WorkspaceTab): void {
           <MarIcon name="chevron-down" />
         </button>
         <template #dropdown>
-          <el-dropdown-menu class="workspace-tab-menu-list">
-            <el-dropdown-item
+          <MarDropdownMenu class="workspace-tab-menu-list">
+            <MarDropdownItem
               v-for="tab in tabs"
               :key="tab.id"
               :class="{ active: activeTabId === tab.id }"
@@ -484,17 +487,18 @@ function activate(tab: WorkspaceTab): void {
                   >{{ translate('workspaceTabs.unread') }}</span
                 >
               </small>
-            </el-dropdown-item>
-          </el-dropdown-menu>
+            </MarDropdownItem>
+          </MarDropdownMenu>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </div>
     <div
       v-if="contextMenu !== undefined"
       class="workspace-tab-context-anchor"
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     >
-      <el-dropdown
+      <!-- @vue-generic {TabCommand} -->
+      <MarDropdown
         trigger="click"
         placement="bottom-start"
         @command="contextCommand"
@@ -507,27 +511,27 @@ function activate(tab: WorkspaceTab): void {
           tabindex="-1"
         />
         <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="pin">
+          <MarDropdownMenu>
+            <MarDropdownItem command="pin">
               <MarIcon name="pin" />{{
                 translate(contextTabPinned ? 'workspaceTabs.unpin' : 'workspaceTabs.pin')
               }}
-            </el-dropdown-item>
-            <el-dropdown-item command="previous" :disabled="contextTabIndex <= 0">
+            </MarDropdownItem>
+            <MarDropdownItem command="previous" :disabled="contextTabIndex <= 0">
               <MarIcon name="chevron-left" />{{ translate('workspaceTabs.movePrevious') }}
-            </el-dropdown-item>
-            <el-dropdown-item
+            </MarDropdownItem>
+            <MarDropdownItem
               command="next"
               :disabled="contextTabIndex < 0 || contextTabIndex >= tabs.length - 1"
             >
               <MarIcon name="chevron-right" />{{ translate('workspaceTabs.moveNext') }}
-            </el-dropdown-item>
-            <el-dropdown-item command="close" divided :disabled="contextTabPinned">
+            </MarDropdownItem>
+            <MarDropdownItem command="close" divided :disabled="contextTabPinned">
               <MarIcon name="close" />{{ translate('workspaceTabs.close') }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
+            </MarDropdownItem>
+          </MarDropdownMenu>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </div>
   </section>
 </template>
@@ -631,26 +635,26 @@ function activate(tab: WorkspaceTab): void {
   z-index: 1;
 }
 
-:global(.workspace-tab-menu-list .el-dropdown-menu__item) {
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item) {
   display: grid;
   min-width: 220px;
   grid-template-columns: minmax(0, 1fr);
   gap: 1px;
 }
 
-:global(.workspace-tab-menu-list .el-dropdown-menu__item > span),
-:global(.workspace-tab-menu-list .el-dropdown-menu__item > small) {
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item > span),
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item > small) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:global(.workspace-tab-menu-list .el-dropdown-menu__item > small) {
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item > small) {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
-:global(.workspace-tab-menu-list .el-dropdown-menu__item.active) {
+:global(.workspace-tab-menu-list .mar-ui-dropdown-item.active) {
   color: var(--mar-color-brand);
 }
 

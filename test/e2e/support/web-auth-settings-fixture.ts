@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { json } from './web-console-api.js';
 
 export async function mockPersonalResources(page: Page): Promise<void> {
@@ -32,11 +32,9 @@ export async function selectAppearanceOption(
   field: string,
   option: string
 ): Promise<void> {
+  await page.getByRole('combobox', { name: field, exact: true }).click();
   await page
-    .getByRole('combobox', { name: field, exact: true })
-    .locator(
-      'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " el-select ")][1]'
-    )
+    .getByRole('listbox', { name: field, exact: true })
+    .getByRole('option', { name: option, exact: true })
     .click();
-  await page.getByRole('option', { name: option, exact: true }).click();
 }

@@ -298,7 +298,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const picker = page.getByRole('dialog', { name: 'Register Workspace' });
       const standard = picker.locator('.workspace-picker-filter');
       const appearance = (input: Locator) =>
-        input.locator('.el-input__wrapper').evaluate(async (wrapper) => {
+        input.evaluate(async (wrapper) => {
           await Promise.all(wrapper.getAnimations().map((animation) => animation.finished));
           const style = getComputedStyle(wrapper);
           return {
@@ -308,7 +308,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             background: style.backgroundColor,
             shadow: style.boxShadow,
             height: style.height,
-            padding: style.padding,
+            padding: getComputedStyle(wrapper.querySelector('.mar-ui-input__body')!).padding,
             font: getComputedStyle(wrapper.querySelector('input')!).fontSize
           };
         });
@@ -326,9 +326,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
       for (const [name, input] of [
         ['files', files],
-        ['resources', page.locator('.workspace-tree-filter .el-input')],
-        ['sessions', page.locator('.session-search .el-input')],
-        ['content', inspector.locator('.content-search .el-input')]
+        ['resources', page.locator('.workspace-tree-filter .mar-ui-input')],
+        ['sessions', page.locator('.session-search .mar-ui-input')],
+        ['content', inspector.locator('.content-search .mar-ui-input')]
       ] as const) {
         if (name === 'content')
           await inspector.getByRole('tab', { name: 'Search', exact: true }).click();
@@ -355,13 +355,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(inspector.locator('.git-history .mar-empty')).toBeVisible();
       await expect(inspector.locator('.git-history .git-fetch-notice')).toHaveCount(0);
       await expect(inspector.locator('.history-filter').first()).toContainText('my-agent-roam');
-      const historyFilters = inspector.locator('.history-filter .el-select__wrapper');
+      const historyFilters = inspector.locator('.history-filter .mar-ui-select__field');
       await expect(historyFilters).toHaveCount(2);
       for (const filter of await historyFilters.all()) {
         await expect(filter).toHaveCSS('background-color', normal.background);
         await expect(filter).toHaveCSS('border-radius', normal.radius);
         await expect(filter).toHaveCSS('box-shadow', normal.shadow);
-        await filter.locator('input').focus();
+        await filter.getByRole('combobox').focus();
         await expect(filter).toHaveCSS('box-shadow', focused.shadow);
       }
       await inspector.screenshot({ path: testInfo.outputPath('history-standard-filters.png') });
@@ -1013,7 +1013,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         'font-size',
         width >= 768 ? '14px' : '13px'
       );
-      for (const tag of await inspector.locator('.repository-tags-row .el-tag').all()) {
+      for (const tag of await inspector.locator('.repository-tags-row .mar-ui-tag').all()) {
         const height = await tag.evaluate((element) =>
           Number.parseFloat(getComputedStyle(element).height)
         );
@@ -1061,9 +1061,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.mouse.move(0, 0);
         await expect(hint).toHaveCount(0);
       }
-      await expect(root.locator('.el-tag--warning')).toBeVisible();
-      await expect(headings.nth(1).locator('.el-tag--success')).toBeVisible();
-      await expect(headings.nth(2).locator('.el-tag--warning')).toBeVisible();
+      await expect(root.locator('.mar-ui-tag[data-type="warning"]')).toBeVisible();
+      await expect(headings.nth(1).locator('.mar-ui-tag[data-type="success"]')).toBeVisible();
+      await expect(headings.nth(2).locator('.mar-ui-tag[data-type="warning"]')).toBeVisible();
       await expect(inspector.locator('.change-file-name')).toHaveCSS(
         'font-size',
         width >= 768 ? '12px' : '11px'

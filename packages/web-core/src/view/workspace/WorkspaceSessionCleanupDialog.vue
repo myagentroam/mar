@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,8 +11,6 @@ import { errorMessage } from '../../util/error-presentation.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
-import type { FormInstance, FormRules } from 'element-plus';
 
 import { computed, reactive, ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
@@ -99,7 +101,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="modelValue"
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -112,20 +114,20 @@ async function submit(): Promise<void> {
     :title="translate('generated.workspaceSessionCleanupDialog.title')"
     width="min(480px, calc(100vw - 32px))"
     @update:model-value="emit('update:modelValue', $event)"
-    :close-icon="marIcon('close')"
   >
     <div class="workspace-session-cleanup-content" :aria-busy="loading">
       <template v-if="result === undefined">
         <p class="workspace-session-cleanup-description">
           {{ translate('generated.workspaceSessionCleanupDialog.description') }}
         </p>
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
-          <el-form-item
+        <MarForm ref="formRef" :model="form" :rules="rules" label-position="top">
+          <MarFormItem
             :label="translate('generated.workspaceSessionCleanupDialog.inactiveDays')"
             prop="inactiveDays"
           >
-            <el-input-number
+            <MarInputNumber
               v-model="form.inactiveDays"
+              :aria-label="translate('generated.workspaceSessionCleanupDialog.inactiveDays')"
               :disabled="loading"
               :max="365"
               :min="1"
@@ -133,9 +135,9 @@ async function submit(): Promise<void> {
               step-strictly
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
-            ></el-input-number>
-          </el-form-item>
-        </el-form>
+            ></MarInputNumber>
+          </MarFormItem>
+        </MarForm>
       </template>
 
       <template v-else>
@@ -175,20 +177,16 @@ async function submit(): Promise<void> {
 
     <template #footer>
       <template v-if="result === undefined">
-        <el-button :disabled="loading" @click="close">{{
+        <MarButton :disabled="loading" @click="close">{{
           translate('generated.workspaceSessionCleanupDialog.cancel')
-        }}</el-button>
-        <el-button
-          type="danger"
-          :loading="loading"
-          :loading-icon="marIcon('loading-action')"
-          @click="submit"
-          >{{ translate('generated.workspaceSessionCleanupDialog.cleanup') }}</el-button
-        >
+        }}</MarButton>
+        <MarButton type="danger" :loading="loading" @click="submit">{{
+          translate('generated.workspaceSessionCleanupDialog.cleanup')
+        }}</MarButton>
       </template>
-      <el-button v-else @click="close">{{ translate('common.close') }}</el-button>
+      <MarButton v-else @click="close">{{ translate('common.close') }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
@@ -208,7 +206,7 @@ async function submit(): Promise<void> {
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--mar-border-subtle);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: var(--mar-bg-panel);
 }
 
@@ -251,7 +249,7 @@ async function submit(): Promise<void> {
 }
 
 .workspace-session-cleanup-statistics > .failed dd {
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
 }
 
 .workspace-session-cleanup-by-runner {

@@ -199,13 +199,25 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
       );
       if (!isDeepStrictEqual(worldState, nextInstructionWorldState))
         await commitWorldState(nextInstructionWorldState);
-      // Compact can be the first operation after an upgrade, before a normal
-      // prompt composition has a chance to revoke the old catalog instruction.
+      // Compact can run before normal prompt composition after an upgrade.
+      // Revoke retired SDK instructions before either path projects the world state.
       if (worldState.promptSnapshot !== undefined) {
+        // A manual Compact's instruction anchor may precede the last Run's prompt blocks.
+        const retiredPromptAnchor = worldState.entries.reduce(
+          (anchor, entry) =>
+            entry.block?.id === 'core:long-running' && entry.block.source === 'sdk'
+              ? Math.max(anchor, entry.index)
+              : anchor,
+          instructionInsertIndex
+        );
         const migrated = updatePromptWorldState(
           worldState,
-          instructionInsertIndex,
-          worldState.promptSnapshot.filter((part) => part.id !== 'core:skill-catalog')
+          retiredPromptAnchor,
+          worldState.promptSnapshot.filter(
+            (part) =>
+              part.id !== 'core:skill-catalog' &&
+              !(part.id === 'core:long-running' && part.source === 'sdk')
+          )
         );
         if (migrated !== worldState) await commitWorldState(migrated);
       }

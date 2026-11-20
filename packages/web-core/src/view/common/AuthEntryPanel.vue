@@ -84,11 +84,7 @@ h1 {
   font-weight: 600;
 }
 
-.gate-panel :deep(.auth-form .el-input) {
-  width: 100%;
-}
-
-.gate-panel :deep(.auth-form .el-input__wrapper) {
+.gate-panel :deep(.auth-form .mar-ui-input) {
   min-height: 34px;
   border: 1px solid var(--mar-border-default);
   border-radius: 6px;
@@ -96,14 +92,13 @@ h1 {
   box-shadow: none;
 }
 
-.gate-panel :deep(.auth-form .el-input__wrapper.is-focus),
-.gate-panel :deep(.auth-form .el-input__wrapper:focus-within) {
+.gate-panel :deep(.auth-form .mar-ui-input:focus-within) {
   background: var(--mar-bg-panel);
   border-color: var(--mar-color-brand-border);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
 }
 
-.gate-panel :deep(.auth-form .el-button) {
+.gate-panel :deep(.auth-form > button[type='submit']) {
   width: 100%;
   min-height: 34px;
   margin-top: 0.1rem;

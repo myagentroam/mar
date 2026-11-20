@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { nextTick, onBeforeUnmount, ref } from 'vue';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../src/service/mobile-dialog-return-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import ImagePreviewDialogs from '../../src/view/conversation/ImagePreviewDialogs.vue';
 import WorkbenchNavigation from '../../src/view/workbench/WorkbenchNavigation.vue';
 import QuickOpenDialog from '../../src/view/workspace/QuickOpenDialog.vue';
@@ -117,6 +118,17 @@ const uploads: WorkspaceUploadTask[] = params.has('uploads')
     }))
   : [];
 const quickOpen = ref(false);
+let quickOpenOrigin: HTMLElement | undefined;
+function showQuickOpen(): void {
+  quickOpenOrigin =
+    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  quickOpen.value = true;
+}
+function closeQuickOpen(selected = false): void {
+  quickOpen.value = false;
+  // Mirror the workbench's explicit focus return for pointer dismissal.
+  if (!selected) void nextTick(() => quickOpenOrigin?.focus());
+}
 const detailsOpen = ref(false);
 const imageOpen = ref(false);
 const draft = ref('Keep this draft');
@@ -186,7 +198,7 @@ const imageAttachment: ComposerAttachment = {
 };
 async function closeDetails(done: () => void): Promise<void> {
   try {
-    await ElMessageBox.confirm('Discard draft?', 'Confirm discard');
+    await MarMessageBox.confirm('Discard draft?', 'Confirm discard');
     done();
   } catch {
     /* Cancellation retains the draft. */
@@ -194,7 +206,7 @@ async function closeDetails(done: () => void): Promise<void> {
 }
 async function messageBox(variant: 'alert' | 'prompt'): Promise<void> {
   try {
-    await ElMessageBox[variant]('Message', 'Notice');
+    await MarMessageBox[variant]('Message', 'Notice');
     opened.value = 'confirmed';
   } catch {
     opened.value = 'cancelled';
@@ -215,6 +227,7 @@ function preview(): void {
     kind: 'web-update',
     title: 'New version',
     message: 'Reload to update',
+    version: '0.10.2',
     action: 'RELOAD_PAGE'
   });
 }
@@ -319,14 +332,14 @@ onBeforeUnmount(() => {
       </template>
       <input aria-label="Background input" />
       <button type="button" @click="preview">Preview notification</button>
-      <button type="button" @click="quickOpen = true">Open quick open</button>
+      <button type="button" @click="showQuickOpen">Open quick open</button>
       <button type="button" @click="detailsOpen = true">Open guarded details</button>
       <button type="button" @click="imageOpen = true">Open image preview</button>
       <button type="button" @click="messageBox('alert')">Open alert</button>
       <button type="button" @click="messageBox('prompt')">Open prompt</button>
       <output aria-label="Opened target">{{ opened }}</output>
     </section>
-    <el-dialog
+    <MarDialog
       v-if="detailsOpen"
       v-model="detailsOpen"
       title="Guarded details"
@@ -335,7 +348,7 @@ onBeforeUnmount(() => {
       @vue:before-unmount="unmountMobileDialogReturn"
     >
       <input v-model="draft" aria-label="Draft" />
-    </el-dialog>
+    </MarDialog>
     <ImagePreviewDialogs
       :attachment-open="attachmentPreview && imageOpen"
       :attachment="attachmentPreview ? imageAttachment : undefined"
@@ -357,7 +370,7 @@ onBeforeUnmount(() => {
       :open-session="async () => undefined"
       :open-workspace="async () => false"
       :workspace-tabs="[]"
-      @close="quickOpen = false"
+      @close="closeQuickOpen"
     />
   </main>
 </template>

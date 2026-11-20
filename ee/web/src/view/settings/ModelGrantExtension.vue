@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -8,8 +16,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import type { MarAgentModelSummary as ModelSummary } from '@myagentroam/protocol';
 import {
   organizationCascaderOptions,
@@ -215,11 +222,10 @@ async function removeGrant(dialog: GrantOpening, grant: Grant): Promise<void> {
   dialog.revokingGrantIds.add(grantId);
   let submitted = false;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('marAgentModels.confirmRevoke'),
       translate('marAgentModels.revoke'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('marAgentModels.revoke'),
@@ -265,7 +271,7 @@ onBeforeUnmount(() => opening.value?.close());
 defineExpose({ open: openGrants });
 </script>
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="opening"
@@ -274,21 +280,20 @@ defineExpose({ open: openGrants });
     :before-close="opening.close"
     :title="translate('marAgentModels.accessDialogTitle')"
     width="min(640px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
   >
     <div class="model-access-context">
       <strong>{{ opening.model.name }}</strong>
       <code>{{ opening.model.modelId }}</code>
     </div>
-    <el-alert
+    <MarAlert
       :title="translate('marAgentModels.publicHint')"
       type="info"
       :closable="false"
       show-icon
       ><template #icon><MarIcon name="info" /></template
-    ></el-alert>
-    <div v-loading="opening.loading">
-      <el-form
+    ></MarAlert>
+    <div v-mar-loading:region="opening.loading">
+      <MarForm
         ref="grantFormRef"
         :model="opening.draft"
         :rules="grantRules"
@@ -296,23 +301,24 @@ defineExpose({ open: openGrants });
         class="grant-create"
         label-position="top"
       >
-        <el-form-item :label="translate('marAgentModels.targetType')">
-          <el-select
+        <MarFormItem :label="translate('marAgentModels.targetType')">
+          <MarSelect
             v-model="opening.draft.targetType"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option :label="translate('marAgentModels.organization')" value="ORGANIZATION" />
-            <el-option :label="translate('marAgentModels.user')" value="USER" />
-          </el-select>
-        </el-form-item>
-        <el-form-item
+            <MarOption :label="translate('marAgentModels.organization')" value="ORGANIZATION" />
+            <MarOption :label="translate('marAgentModels.user')" value="USER" />
+          </MarSelect>
+        </MarFormItem>
+        <MarFormItem
           v-if="opening.draft.targetType === 'ORGANIZATION'"
           :label="translate('marAgentModels.targetOrganization')"
           prop="targetOrganizationId"
         >
-          <el-cascader
+          <MarCascader
             v-model="opening.draft.targetOrganizationId"
+            :disabled="!writable || opening.loading || opening.saving"
             style="width: 100%"
             :placeholder="translate('marAgentModels.selectOrganization')"
             filterable
@@ -320,34 +326,34 @@ defineExpose({ open: openGrants });
             :props="{ checkStrictly: true, emitPath: false }"
             :clear-icon="marIcon('clear-input')"
           />
-        </el-form-item>
-        <el-form-item
+        </MarFormItem>
+        <MarFormItem
           v-else-if="opening.draft.targetType === 'USER'"
           :label="translate('marAgentModels.targetUser')"
           prop="targetUserId"
         >
-          <el-select
+          <MarSelect
             v-model="opening.draft.targetUserId"
             :placeholder="translate('marAgentModels.selectUser')"
             filterable
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option
+            <MarOption
               v-for="user in opening.users"
               :key="user.id"
               :label="`${user.username} · ${organizationLabel(opening, user.organizationId)}`"
               :value="user.id"
             />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <el-table
+          </MarSelect>
+        </MarFormItem>
+      </MarForm>
+      <MarTable
         :data="opening.grants"
         row-key="id"
         :empty-text="translate('marAgentModels.noGrants')"
       >
-        <el-table-column :label="translate('marAgentModels.targetType')" width="140">
+        <MarTableColumn :label="translate('marAgentModels.targetType')" width="140">
           <template #default="{ row }">
             {{
               row.targetType === 'USER'
@@ -355,41 +361,39 @@ defineExpose({ open: openGrants });
                 : translate('marAgentModels.organization')
             }}
           </template>
-        </el-table-column>
-        <el-table-column :label="translate('marAgentModels.target')" min-width="200">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('marAgentModels.target')" min-width="200">
           <template #default="{ row }">{{ grantTargetLabel(opening, row) }}</template>
-        </el-table-column>
-        <el-table-column :label="translate('marAgentModels.actions')" width="100">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('marAgentModels.actions')" width="100">
           <template #default="{ row }">
-            <el-button
+            <MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable"
               :loading="opening.revokingGrantIds.has(row.id)"
               :onClick="removeGrant.bind(null, opening, row)"
-              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('marAgentModels.revoke') }}
-            </el-button>
+            </MarButton>
           </template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
     </div>
     <template #footer>
-      <el-button :onClick="opening.close">{{ translate('marAgentModels.close') }}</el-button>
-      <el-button
+      <MarButton :onClick="opening.close">{{ translate('marAgentModels.close') }}</MarButton>
+      <MarButton
         type="primary"
         :icon="marIcon('share')"
         :disabled="!writable || opening.loading"
         :loading="opening.saving"
         :onClick="createGrant.bind(null, opening)"
-        :loading-icon="marIcon('loading-action')"
       >
         {{ translate('common.grant') }}
-      </el-button>
+      </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 <style scoped>
 .model-access-context {

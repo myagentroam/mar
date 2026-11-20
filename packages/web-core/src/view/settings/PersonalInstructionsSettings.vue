@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarCheckTag } from '@myagentroam/mar-ui/check-tag';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
 import claudeCodeLogo from '../../assets/runner-claude-code.png';
@@ -192,10 +195,10 @@ async function clear(): Promise<void> {
   const content = formState.value.content;
   saving.value = true;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('personalInstructions.clearConfirmation'),
       translate('personalInstructions.clear'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     const response = await props.request<{ instructions: Instructions }>(
       `/api/personal-instructions/${scope}`,
@@ -219,8 +222,7 @@ async function clear(): Promise<void> {
 
 <template>
   <section
-    v-loading="loading"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading"
     class="personal-instructions settings-panel"
     :aria-busy="loading"
   >
@@ -233,7 +235,7 @@ async function clear(): Promise<void> {
       role="tablist"
       :aria-label="translate('personalInstructions.title')"
     >
-      <el-check-tag
+      <MarCheckTag
         v-for="(item, index) in scopeItems"
         :key="item.id"
         :id="`instruction-scope-${item.id}`"
@@ -254,7 +256,7 @@ async function clear(): Promise<void> {
           aria-hidden="true"
         />
         <span>{{ translate(item.label) }}</span>
-      </el-check-tag>
+      </MarCheckTag>
     </div>
     <p
       v-if="!loading && failed"
@@ -265,7 +267,7 @@ async function clear(): Promise<void> {
     >
       {{ translate('personalInstructions.loadFailed') }}
     </p>
-    <el-form
+    <MarForm
       v-else
       id="personal-instructions-panel"
       role="tabpanel"
@@ -276,8 +278,13 @@ async function clear(): Promise<void> {
       :disabled="loading"
       label-position="top"
     >
-      <el-form-item :label="translate('personalInstructions.prompt')" prop="content">
+      <MarFormItem
+        :label="translate('personalInstructions.prompt')"
+        prop="content"
+        for="personal-instructions-content"
+      >
         <textarea
+          id="personal-instructions-content"
           v-model="formState.content"
           :aria-label="translate('personalInstructions.prompt')"
           :disabled="loading"
@@ -285,25 +292,16 @@ async function clear(): Promise<void> {
           :placeholder="translate('personalInstructions.placeholder')"
           @blur="validateContent"
         ></textarea>
-      </el-form-item>
+      </MarFormItem>
       <div class="instruction-actions">
-        <el-button
-          :icon="marIcon('delete')"
-          :loading="saving"
-          @click="clear"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('personalInstructions.clear') }}</el-button
-        >
-        <el-button
-          :icon="marIcon('check')"
-          type="primary"
-          :loading="saving"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('common.save') }}</el-button
-        >
+        <MarButton icon="delete" :disabled="loading" :loading="saving" @click="clear">
+          {{ translate('personalInstructions.clear') }}
+        </MarButton>
+        <MarButton icon="check" type="primary" :disabled="loading" :loading="saving" @click="save">
+          {{ translate('common.save') }}
+        </MarButton>
       </div>
-    </el-form>
+    </MarForm>
   </section>
 </template>
 
@@ -338,7 +336,7 @@ h2 {
   margin-bottom: 1rem;
 }
 
-.instruction-scopes :deep(.el-check-tag) {
+.instruction-scopes :deep(.mar-ui-check-tag) {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -355,21 +353,21 @@ h2 {
     color 120ms ease;
 }
 
-.instruction-scopes :deep(.el-check-tag:hover) {
+.instruction-scopes :deep(.mar-ui-check-tag:hover) {
   background: var(--mar-fill-row-hover);
   color: var(--mar-text-primary);
 }
 
-.instruction-scopes :deep(.el-check-tag.is-checked) {
+.instruction-scopes :deep(.mar-ui-check-tag[aria-selected='true']) {
   background: var(--mar-fill-selection);
   color: var(--mar-text-primary);
 }
 
-.instruction-scopes :deep(.el-check-tag.is-checked:hover) {
+.instruction-scopes :deep(.mar-ui-check-tag[aria-selected='true']:hover) {
   background: var(--mar-fill-selection);
 }
 
-.instruction-scopes :deep(.el-check-tag:focus-visible) {
+.instruction-scopes :deep(.mar-ui-check-tag:focus-visible) {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
@@ -384,7 +382,7 @@ h2 {
   width: 100%;
   align-self: flex-start;
 }
-.personal-instructions :deep(.el-form-item) {
+.personal-instructions :deep(.mar-ui-form-item) {
   margin-bottom: 1.5rem;
 }
 .personal-instructions textarea {
@@ -392,10 +390,10 @@ h2 {
   width: 100%;
   min-height: 12rem;
   height: clamp(12rem, 40vh, 28rem);
-  border: 1px solid var(--el-border-color);
-  border-radius: var(--el-border-radius-base);
+  border: 1px solid var(--mar-input-border);
+  border-radius: var(--mar-radius-control);
   outline: none;
-  background: var(--el-fill-color-blank);
+  background: var(--mar-bg-panel);
   color: var(--mar-text-primary);
   padding: 0.5rem 0.7rem;
   font-family: inherit;
@@ -408,11 +406,11 @@ h2 {
   opacity: 1;
 }
 .personal-instructions textarea:focus {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px var(--el-color-primary-light-8);
+  border-color: var(--mar-color-brand);
+  box-shadow: 0 0 0 1px var(--mar-control-color-primary-light-8);
 }
 .personal-instructions :deep(.is-error) textarea {
-  border-color: var(--el-color-danger);
+  border-color: var(--mar-control-color-danger);
 }
 .instruction-state {
   flex: 1 1 auto;
@@ -423,8 +421,5 @@ h2 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.75rem;
-}
-.instruction-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
 }
 </style>

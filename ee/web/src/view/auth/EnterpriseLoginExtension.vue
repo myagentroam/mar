@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { currentLocale } from '@/service/locale-preference-service';
@@ -26,12 +27,12 @@ onMounted(async () => {
     <div>
       <span>{{ t('auth.orEnterprise') }}</span>
     </div>
-    <el-button
+    <MarButton
       v-for="provider in providers"
       :key="provider.providerKey"
       tag="a"
       :href="`/api/oauth/${encodeURIComponent(provider.providerKey)}/login?locale=${encodeURIComponent(currentLocale())}`"
-      >{{ t('auth.loginWith', { provider: provider.name }) }}</el-button
+      >{{ t('auth.loginWith', { provider: provider.name }) }}</MarButton
     >
   </div>
 </template>

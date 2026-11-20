@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormRules, type FormInstance } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,8 +13,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import { type FormRules, type FormInstance } from 'element-plus';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   organizationCascaderOptions,
   organizationDisplayLabel,
@@ -114,11 +119,10 @@ async function createGrant(): Promise<void> {
 }
 async function removeGrant(grant: Grant): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.resourceSharingPage.afterRevocationTheTargetImmediatelyLosesDirect'),
       translate('generated.resourceSharingPage.revokeGrant'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.revoke'),
@@ -136,46 +140,45 @@ async function removeGrant(grant: Grant): Promise<void> {
 defineExpose({ open: openShare });
 </script>
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="shareOpen"
     v-model="shareOpen"
     :title="translate('generated.resourceSharingPage.resourceGrants')"
     width="min(620px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
     ><div v-if="selected" class="resource-context">
       <strong>{{ selected.label }}</strong
       ><code
         >{{ selected.nodeId }}{{ selected.workspaceId ? ` / ${selected.workspaceId}` : '' }}</code
       >
     </div>
-    <el-form
+    <MarForm
       ref="grantFormRef"
       :model="{ targetType, targetOrganizationId, targetUserId }"
       :rules="grantRules"
       class="grant-create"
       label-position="top"
     >
-      <el-form-item :label="translate('generated.resourceSharingPage.targetType')">
-        <el-select
+      <MarFormItem :label="translate('generated.resourceSharingPage.targetType')">
+        <MarSelect
           v-model="targetType"
           :placeholder="translate('generated.resourceSharingPage.selectATargetType')"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.resourceSharingPage.organization3')"
-            value="ORGANIZATION" /><el-option
+            value="ORGANIZATION" /><MarOption
             :label="translate('generated.resourceSharingPage.user')"
             value="USER"
-        /></el-select>
-      </el-form-item>
-      <el-form-item
+        /></MarSelect>
+      </MarFormItem>
+      <MarFormItem
         v-if="targetType === 'ORGANIZATION'"
         :label="translate('generated.resourceSharingPage.targetOrganization')"
         prop="targetOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="targetOrganizationId"
           style="width: 100%"
           filterable
@@ -184,60 +187,60 @@ defineExpose({ open: openShare });
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
         />
-      </el-form-item>
-      <el-form-item
+      </MarFormItem>
+      <MarFormItem
         v-else-if="targetType === 'USER'"
         :label="translate('generated.resourceSharingPage.targetUser')"
         prop="targetUserId"
       >
-        <el-select
+        <MarSelect
           v-model="targetUserId"
           :placeholder="translate('generated.resourceSharingPage.selectATargetUser2')"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             v-for="user in users"
             :key="user.id"
             :value="user.id"
             :label="`${user.username} · ${path(user.organizationId)}`"
-        /></el-select>
-      </el-form-item>
-    </el-form>
-    <el-table :data="grants" row-key="id"
-      ><el-table-column :label="translate('generated.resourceSharingPage.targetType2')"
+        /></MarSelect>
+      </MarFormItem>
+    </MarForm>
+    <MarTable :data="grants" row-key="id"
+      ><MarTableColumn :label="translate('generated.resourceSharingPage.targetType2')"
         ><template #default="{ row }">{{
           row.targetType === 'USER'
             ? translate('generated.resourceSharingPage.user2')
             : translate('generated.resourceSharingPage.organization4')
-        }}</template></el-table-column
-      ><el-table-column :label="translate('generated.resourceSharingPage.target')"
+        }}</template></MarTableColumn
+      ><MarTableColumn :label="translate('generated.resourceSharingPage.target')"
         ><template #default="{ row }">{{
           row.targetType === 'USER'
             ? users.find((user) => user.id === row.targetUserId)?.username
             : path(row.targetOrganizationId)
-        }}</template></el-table-column
-      ><el-table-column :label="translate('generated.resourceSharingPage.actions2')" :width="180"
+        }}</template></MarTableColumn
+      ><MarTableColumn :label="translate('generated.resourceSharingPage.actions2')" :width="180"
         ><template #default="{ row }"
-          ><el-button
+          ><MarButton
             link
             type="danger"
             :icon="marIcon('delete')"
             :disabled="!writable"
             @click="removeGrant(row)"
-            >{{ translate('generated.resourceSharingPage.revoke2') }}</el-button
+            >{{ translate('generated.resourceSharingPage.revoke2') }}</MarButton
           ></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <template #footer>
-      <el-button @click="shareOpen = false">{{
+      <MarButton @click="shareOpen = false">{{
         translate('generated.resourceSharingPage.close4')
-      }}</el-button>
-      <el-button type="primary" :icon="marIcon('share')" :disabled="!writable" @click="createGrant">
+      }}</MarButton>
+      <MarButton type="primary" :icon="marIcon('share')" :disabled="!writable" @click="createGrant">
         {{ translate('common.grant') }}
-      </el-button>
+      </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 <style scoped>
 .resource-context {

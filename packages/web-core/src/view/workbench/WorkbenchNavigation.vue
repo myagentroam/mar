@@ -1,7 +1,13 @@
 <script setup lang="ts" generic="ManagementSection extends string">
+import { MarLink } from '@myagentroam/mar-ui/link';
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type MarDropdownInstance
+} from '@myagentroam/mar-ui/dropdown';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import type { DropdownInstance } from 'element-plus';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
@@ -195,7 +201,7 @@ const forwardWorkspaceDetails = (nodeId: string, workspace: Workspace) =>
   emit('openWorkspaceDetails', nodeId, workspace);
 const forwardWorkspaceRename = (nodeId: string, workspace: Workspace) =>
   emit('renameWorkspace', nodeId, workspace);
-const blankMenu = ref<DropdownInstance>();
+const blankMenu = ref<MarDropdownInstance>();
 const blankMenuAnchor = shallowRef<DOMRect>();
 const blankMenuReference = { getBoundingClientRect: () => blankMenuAnchor.value ?? new DOMRect() };
 const blankMenuVisible = ref(false);
@@ -296,7 +302,7 @@ function runBlankMenuCommand(command: string): void {
           @remove-upload="emit('removeUpload', $event)"
         />
       </template>
-      <el-link
+      <MarLink
         v-tooltip="$t('navigation.help')"
         v-if="documentationAvailable"
         class="nav-menu-button documentation-link mar-icon-action"
@@ -309,7 +315,7 @@ function runBlankMenuCommand(command: string): void {
         <span class="nav-item-content">
           <MarIcon class="documentation-icon" aria-hidden="true" name="help" />
         </span>
-      </el-link>
+      </MarLink>
     </nav>
     <div v-if="!mobileViewport" class="activity-rail-footer">
       <WebPerformanceIndicator :diagnostics="performanceDiagnostics" />
@@ -352,31 +358,28 @@ function runBlankMenuCommand(command: string): void {
         class="mobile-menu-content"
       />
       <template v-if="displayUtility === undefined && displayView === 'nodes'">
-        <el-dropdown
+        <MarDropdown
           v-if="!workspaceStartupBlocked && blankMenuAnchor && sidebarVisible"
           ref="blankMenu"
           virtual-triggering
           :virtual-ref="blankMenuReference"
           trigger="contextmenu"
           placement="bottom-start"
-          :show-arrow="false"
-          :popper-options="{ modifiers: [{ name: 'offset', options: { offset: [0, 2] } }] }"
-          :show-timeout="0"
-          :hide-timeout="0"
+          :offset="2"
           @visible-change="blankMenuVisible = $event"
           @command="runBlankMenuCommand"
         >
           <template #dropdown>
-            <el-dropdown-menu :aria-label="menuLabel" @keydown.capture.esc="handleBlankMenuEscape">
-              <el-dropdown-item v-if="canRegisterNode" command="register" :icon="marIcon('plus')">{{
+            <MarDropdownMenu :aria-label="menuLabel" @keydown.capture.esc="handleBlankMenuEscape">
+              <MarDropdownItem v-if="canRegisterNode" command="register" :icon="marIcon('plus')">{{
                 $t('generated.resourceSharingPage.registerNode')
-              }}</el-dropdown-item>
-              <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
+              }}</MarDropdownItem>
+              <MarDropdownItem command="refresh" :icon="marIcon('refresh')">{{
                 $t('generated.workspaceTree.refreshWorkspaces')
-              }}</el-dropdown-item>
-            </el-dropdown-menu>
+              }}</MarDropdownItem>
+            </MarDropdownMenu>
           </template>
-        </el-dropdown>
+        </MarDropdown>
         <WorkspaceTree
           v-if="sidebarContentVisible || mobileViewport"
           :nodes="nodes"
@@ -547,8 +550,8 @@ function runBlankMenuCommand(command: string): void {
   height: var(--mar-utility-control-size);
   place-items: center;
   box-sizing: border-box;
-  --el-link-text-color: var(--mar-text-secondary);
-  --el-link-hover-text-color: var(--mar-text-primary);
+  --mar-ui-link-text-color: var(--mar-text-secondary);
+  --mar-ui-link-hover-text-color: var(--mar-text-primary);
   padding: 2px;
   cursor: pointer;
   font-size: var(--mar-font-size-meta);
@@ -698,7 +701,7 @@ function runBlankMenuCommand(command: string): void {
   min-height: var(--mar-settings-row-height);
   width: 100%;
   border: 0;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   width: calc(100% - 12px);

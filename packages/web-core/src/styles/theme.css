@@ -3,13 +3,23 @@
 :root,
 html.console-ui,
 .mar-theme-preview {
+  --mar-motion-duration-fast: 0.2s;
   --mar-motion-duration-collapse: 160ms;
   --mar-motion-easing-collapse: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  html.console-ui,
+  .mar-theme-preview {
+    --mar-motion-duration-fast: 0s;
+  }
 }
 
 :root,
 .mar-theme-preview {
   --mar-compact-overlay-shadow: 0 4px 12px var(--mar-shadow-medium);
+  --mar-control-shadow-light: 0 0.375rem 1rem var(--mar-shadow-soft);
   --mar-font-sans: Inter, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color-scheme: light;
   --mar-bg-page: #f7f9fd;

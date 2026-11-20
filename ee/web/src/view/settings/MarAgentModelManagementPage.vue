@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, ref } from 'vue';
 import type { MarAgentModelSummary } from '@myagentroam/protocol';
@@ -57,30 +64,30 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
     :credential-scope-label="ownership.label"
   >
     <template #model-ownership="{ editing }">
-      <el-form-item :label="translate('marAgentModels.modelOwnership')">
-        <el-select
+      <MarFormItem :label="translate('marAgentModels.modelOwnership')">
+        <MarSelect
           v-model="modelOwnership.draft.ownerType"
           :disabled="editing"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             :label="translate('marAgentModels.codexCredentialScopePersonal')"
             value="PERSONAL"
           />
-          <el-option
+          <MarOption
             v-if="canSelectOrganization || modelOwnership.draft.ownerType === 'ORGANIZATION'"
             :label="translate('marAgentModels.codexCredentialScopeOrganizationOption')"
             value="ORGANIZATION"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item
+        </MarSelect>
+      </MarFormItem>
+      <MarFormItem
         v-if="modelOwnership.draft.ownerType === 'ORGANIZATION'"
         :label="translate('marAgentModels.organization')"
         prop="ownerOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="modelOwnership.draft.ownerOrganizationId"
           :disabled="editing"
           style="width: 100%"
@@ -89,36 +96,36 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
         />
-      </el-form-item>
+      </MarFormItem>
       <p v-if="!editing" class="ownership-hint">
         {{ translate('marAgentModels.modelOwnershipHint') }}
       </p>
     </template>
     <template #catalog-ownership>
-      <el-form-item :label="translate('marAgentModels.modelOwnership')">
-        <el-select
+      <MarFormItem :label="translate('marAgentModels.modelOwnership')">
+        <MarSelect
           v-model="catalogOwnership.draft.ownerType"
           :disabled="!writable"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             :label="translate('marAgentModels.codexCredentialScopePersonal')"
             value="PERSONAL"
           />
-          <el-option
+          <MarOption
             v-if="canSelectOrganization"
             :label="translate('marAgentModels.codexCredentialScopeOrganizationOption')"
             value="ORGANIZATION"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item
+        </MarSelect>
+      </MarFormItem>
+      <MarFormItem
         v-if="catalogOwnership.draft.ownerType === 'ORGANIZATION'"
         :label="translate('marAgentModels.organization')"
         prop="ownerOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="catalogOwnership.draft.ownerOrganizationId"
           :disabled="!writable"
           style="width: 100%"
@@ -127,33 +134,33 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
         />
-      </el-form-item>
+      </MarFormItem>
       <p class="ownership-hint">{{ translate('marAgentModels.modelOwnershipHint') }}</p>
     </template>
     <template #credential-ownership>
-      <el-form-item :label="translate('marAgentModels.codexCredentialScope')">
-        <el-select
+      <MarFormItem :label="translate('marAgentModels.codexCredentialScope')">
+        <MarSelect
           v-model="credentialDraft.ownerType"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             :label="translate('marAgentModels.codexCredentialScopePersonal')"
             value="PERSONAL"
           />
-          <el-option
+          <MarOption
             v-if="edition === 'ENTERPRISE' && (role === 'ADMIN' || role === 'ORG_ADMIN')"
             :label="translate('marAgentModels.codexCredentialScopeOrganizationOption')"
             value="ORGANIZATION"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item
+        </MarSelect>
+      </MarFormItem>
+      <MarFormItem
         v-if="credentialDraft.ownerType === 'ORGANIZATION'"
         :label="translate('marAgentModels.organization')"
         prop="ownerOrganizationId"
       >
-        <el-cascader
+        <MarCascader
           v-model="credentialDraft.ownerOrganizationId"
           style="width: 100%"
           filterable
@@ -161,38 +168,38 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
         />
-      </el-form-item>
+      </MarFormItem>
     </template>
     <template #model-access-column>
-      <el-table-column :label="translate('marAgentModels.access')" width="110">
+      <MarTableColumn :label="translate('marAgentModels.access')" width="110">
         <template #default="{ row }">
-          <el-tag :type="row.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
+          <MarTag :type="row.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
             accessLabel(row.access)
-          }}</el-tag>
+          }}</MarTag>
         </template>
-      </el-table-column>
+      </MarTableColumn>
     </template>
     <template #model-actions="{ model }"
-      ><el-button
+      ><MarButton
         v-if="model.ownership?.ownerType !== 'PERSONAL'"
         link
         :icon="marIcon('share')"
         @click="grants?.open(model)"
-        >{{ translate('common.grant') }}</el-button
+        >{{ translate('common.grant') }}</MarButton
       ></template
     >
     <template #model-access-details="{ model }">
-      <el-descriptions-item
+      <MarDescriptionsItem
         v-if="model.ownership"
         :label="translate('marAgentModels.modelOwnership')"
       >
         {{ ownership.label(model.ownership) }}
-      </el-descriptions-item>
-      <el-descriptions-item :label="translate('marAgentModels.access')">
-        <el-tag :type="model.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
+      </MarDescriptionsItem>
+      <MarDescriptionsItem :label="translate('marAgentModels.access')">
+        <MarTag :type="model.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
           accessLabel(model.access)
-        }}</el-tag>
-      </el-descriptions-item>
+        }}</MarTag>
+      </MarDescriptionsItem>
     </template>
     <template #model-extensions="{ refresh }"
       ><ModelGrantExtension ref="grants" :request="request" :writable="writable" :refresh="refresh"

@@ -32,7 +32,7 @@ async function expectReadIndicator(indicator: Locator, size: number) {
 async function expectNeutralRetry(button: Locator) {
   const color = await button.evaluate((element) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--el-text-color-regular)';
+    probe.style.color = 'var(--mar-text-secondary)';
     element.append(probe);
     const expected = getComputedStyle(probe).color;
     probe.remove();
@@ -49,12 +49,13 @@ test('Library loading has a single animated ring without mounting BusyIndicator'
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.url}library-loading.html`);
   await expect(page.locator('.mar-busy-indicator')).toHaveCount(0);
-  const spinner = page.locator('#library-loading .el-loading-spinner');
+  await expect(page.locator('#library-loading')).toHaveAttribute('aria-busy', 'true');
+  const spinner = page.locator('#library-loading .mar-ui-loading__indicator');
+  await expect(spinner).toHaveCount(1);
   await expect(spinner).toBeVisible();
-  await expect(spinner.locator('.circular')).toBeHidden();
   const ring = async () =>
     spinner.evaluate((element) => {
-      const style = getComputedStyle(element, '::before');
+      const style = getComputedStyle(element);
       const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
       return {
         width: parseFloat(style.width) / rootSize,
@@ -67,7 +68,7 @@ test('Library loading has a single animated ring without mounting BusyIndicator'
     width: 1.25,
     height: 1.25,
     border: '2px',
-    animation: 'mar-busy-indicator-spin'
+    animation: 'mar-ui-loading-spin'
   });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect.poll(async () => (await ring()).animation).toBe('none');
@@ -96,16 +97,16 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(controls).toHaveAttribute('data-inactive-days', '45');
       await expect(dialog.getByText('Enter a whole number of days from 1 to 365.')).toBeHidden();
       await expect(submit).toHaveText('Clean up sessions');
-      await expect(submit).toHaveClass(/is-loading/);
+      await expect(submit).toHaveAttribute('aria-busy', 'true');
       await expect(submit.locator('[data-mar-icon="loading-action"]')).toBeVisible();
-      await expect(dialog.locator('.el-loading-mask')).toHaveCount(0);
+      await expect(dialog.locator('.mar-ui-loading')).toHaveCount(0);
       await expect(dialog.locator('.workspace-session-cleanup-content')).toHaveAttribute(
         'aria-busy',
         'true'
       );
       await expect(days).toBeDisabled();
       await expect(cancel).toBeDisabled();
-      await expect(dialog.locator('.el-dialog__headerbtn')).toHaveCount(0);
+      await expect(dialog.locator('.mar-ui-dialog__close')).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(dialog).toBeVisible();
       await page.mouse.click(2, 2);
@@ -118,12 +119,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await controls
         .getByRole('button', { name: 'Fail cleanup', exact: true })
         .dispatchEvent('click');
-      await expect(page.locator('.el-message--error')).toContainText('Fixture cleanup failed');
-      await expect(submit).not.toHaveClass(/is-loading/);
+      await expect(page.locator('.mar-message--error')).toContainText('Fixture cleanup failed');
+      await expect(submit).not.toHaveAttribute('aria-busy', 'true');
       await expect(days).toBeEnabled();
       await expect(days).toHaveValue('45');
       await expect(cancel).toBeEnabled();
-      await expect(dialog.locator('.el-dialog__headerbtn')).toBeVisible();
+      await expect(dialog.locator('.mar-ui-dialog__close')).toBeVisible();
       await submit.click();
       await expect(controls).toHaveAttribute('data-request-count', '2');
       await controls
@@ -146,7 +147,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         ).toHaveText(value);
       }
       await expect(dialog.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
-      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      await dialog.locator('footer').getByRole('button', { name: 'Close', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await controls.getByRole('button', { name: 'Open cleanup', exact: true }).click();
       await expect(days).toHaveValue('30');
@@ -165,13 +166,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(tree).toHaveAttribute('data-request-count', '1');
       const retry = tree.locator('.file-tree-load-more button');
       await expect(retry).toBeVisible();
-      await expect(retry).toHaveClass(/is-link/);
+      await expect(retry).toHaveClass(/mar-ui-button--inline/);
       await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await retry.hover();
       await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const hoverColor = await retry.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--el-button-hover-link-text-color)';
+        probe.style.color = 'var(--mar-ui-button-hover-fg)';
         element.append(probe);
         const color = getComputedStyle(probe).color;
         probe.remove();

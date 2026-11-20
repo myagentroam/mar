@@ -58,7 +58,7 @@ function unavailable(): void {
   cursor: pointer;
 }
 .conversation-user-image-button:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .conversation-user-image {

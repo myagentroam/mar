@@ -132,22 +132,22 @@ for (const english of [false, true]) {
       return json(route, { grants });
     });
     await page.goto('/console?view=management&management=conversation-templates');
-    const row = page.locator('.el-table__row').filter({ hasText: 'Organization template' });
+    const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Organization template' });
     await row.getByRole('button', { name: english ? 'Grant' : '授权', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(
-      dialog.locator('.el-table__row').filter({ hasText: 'Root / Platform' })
+      dialog.locator('.mar-ui-table__row').filter({ hasText: 'Root / Platform' })
     ).toHaveCount(2);
     await expect(dialog).toContainText('Root / Platform / Research');
     await expect(dialog).toContainText('Root / Other');
-    await expect(dialog.locator('.el-table__row').filter({ hasText: '99' })).toBeVisible();
-    await dialog.locator('.el-cascader input').fill('Other');
-    await expect(page.locator('.el-cascader__suggestion-item')).toHaveCount(0);
-    await dialog.locator('.el-cascader input').fill('Research');
+    await expect(dialog.locator('.mar-ui-table__row').filter({ hasText: '99' })).toBeVisible();
+    await dialog.locator('.mar-ui-cascader input').fill('Other');
+    await expect(page.locator('.mar-ui-cascader__option')).toHaveCount(0);
+    await dialog.locator('.mar-ui-cascader input').fill('Research');
     await expect(
-      page.locator('.el-cascader__suggestion-item').filter({ hasText: 'Research' })
+      page.locator('.mar-ui-cascader__option').filter({ hasText: 'Research' })
     ).toBeVisible();
-    await page.locator('.el-cascader__suggestion-item').filter({ hasText: 'Research' }).click();
+    await page.locator('.mar-ui-cascader__option').filter({ hasText: 'Research' }).click();
     await dialog.getByRole('button', { name: english ? 'Grant' : '授权', exact: true }).click();
     await expect
       .poll(() => writes)
@@ -159,11 +159,11 @@ for (const english of [false, true]) {
           targetOrganizationId: 8
         }
       ]);
-    await expect(dialog.locator('.el-table__row')).toHaveCount(5);
-    await dialog.locator('.el-table__row').last().getByRole('button').click();
-    await page.locator('.el-message-box .el-button--primary').click();
+    await expect(dialog.locator('.mar-ui-table__row')).toHaveCount(5);
+    await dialog.locator('.mar-ui-table__row').last().getByRole('button').click();
+    await page.locator('.mar-message-box .el-button--primary').click();
     await expect.poll(() => revoked).toEqual(['grant-created']);
-    await expect(dialog.locator('.el-table__row')).toHaveCount(4);
+    await expect(dialog.locator('.mar-ui-table__row')).toHaveCount(4);
   });
 
   test(`Organization names appear in resource detail grants and fixed-Workspace registration ${language}`, async ({
@@ -179,7 +179,7 @@ for (const english of [false, true]) {
       })
     );
     await page.goto('/console?view=management&management=resource-nodes');
-    const row = page.locator('.el-table__row').filter({ hasText: 'Organization Node' });
+    const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Organization Node' });
     await expect(row).toContainText('Root / Platform');
     await row.click();
     const details = page.getByRole('dialog');
@@ -188,7 +188,7 @@ for (const english of [false, true]) {
     await row.getByRole('button', { name: english ? 'Grant' : '授权', exact: true }).click();
     const grants = page.getByRole('dialog');
     await expect(grants).toContainText('Root / Platform');
-    await expect(grants.locator('.el-table__row').filter({ hasText: '99' })).toBeVisible();
+    await expect(grants.locator('.mar-ui-table__row').filter({ hasText: '99' })).toBeVisible();
     await grants.getByRole('button', { name: english ? 'Close' : '关闭', exact: true }).click();
     await page.getByRole('button', { name: english ? 'Work' : '工作', exact: true }).click();
     const tree = page.locator('.workspace-tree');
@@ -201,7 +201,7 @@ for (const english of [false, true]) {
       .click();
     const ownership = page.locator('.workspace-picker-ownership');
     await expect(ownership.locator('strong')).toHaveText('Root / Platform');
-    await expect(ownership.locator('.el-select, .el-cascader')).toHaveCount(0);
+    await expect(ownership.locator('.mar-ui-select, .mar-ui-cascader')).toHaveCount(0);
   });
 }
 
@@ -217,12 +217,12 @@ test('Workspace registration uses the searchable organization selector for the N
 
   const dialog = page.getByRole('dialog', { name: 'Register Workspace' });
   const selector = dialog.getByLabel('Resource Owner', { exact: true });
-  const dropdown = page.locator('.el-cascader__dropdown:visible');
-  const suggestions = dropdown.locator('.el-cascader__suggestion-item');
+  const dropdown = page.locator('.mar-ui-cascader__popup:visible');
+  const suggestions = dropdown.locator('.mar-ui-cascader__option');
   await expect(selector).toHaveValue('Root / Platform');
   await page.setViewportSize({ width: 390, height: 844 });
   await selector.fill('Other');
-  await expect(dropdown.locator('.el-cascader__empty-text')).toBeVisible();
+  await expect(dropdown.locator('.mar-ui-cascader__empty')).toBeVisible();
   await expect(suggestions).toHaveCount(0);
   await selector.fill('Research');
   const research = suggestions.filter({ hasText: /^Root \/ Platform \/ Research$/u });

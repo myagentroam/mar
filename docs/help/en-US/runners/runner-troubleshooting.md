@@ -1,6 +1,6 @@
 ---
 title: Agent or Model Unavailable
-lastUpdated: 2026-09-25
+lastUpdated: 2026-11-20
 ---
 
 # Agent or Model Unavailable
@@ -16,6 +16,8 @@ First distinguish built-in MAR Agent from external Agents. Repeated refreshes or
 5. Return to the Workspace and choose a valid model. If none is available, fix configuration or access rather than deleting history or installing the Codex CLI.
 
 See [Configure and Use MAR Agent](mar-agent.md).
+
+If a reply is cut off by the model's output limit, MAR Agent ends the run without sending another request. Send a new message asking it to continue the unfinished part, or ask an administrator to check the model's maximum output tokens. Tool actions that already completed are not rolled back.
 
 ## Codex, Claude Code, and OpenCode
 

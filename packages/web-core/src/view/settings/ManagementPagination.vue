@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { marIcon } from '../../util/mar-icons.js';
+import { MarPagination } from '@myagentroam/mar-ui/pagination';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { MANAGEMENT_PAGE_SIZE } from '../../service/management-pagination-service.js';
@@ -86,7 +87,7 @@ onUnmounted(() => observer?.disconnect());
 
 <template>
   <div :class="['management-pagination', { 'is-desktop': !mobile }]">
-    <el-pagination
+    <MarPagination
       v-if="!mobile"
       :current-page="page"
       :page-size="pageSize"
@@ -95,12 +96,10 @@ onUnmounted(() => observer?.disconnect());
       layout="total, prev, pager, next"
       background
       @current-change="emit('page', $event)"
-      :prev-icon="marIcon('chevron-left')"
-      :next-icon="marIcon('chevron-right')"
     />
     <div v-else class="management-mobile-status">
       <span ref="sentinel" aria-hidden="true" />
-      <el-button
+      <MarButton
         v-if="failed && incrementalFailed"
         link
         v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
@@ -112,7 +111,7 @@ onUnmounted(() => observer?.disconnect());
       >
         <BusyIndicator v-if="loading" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </el-button>
+      </MarButton>
       <span
         v-else-if="loading && loadingMore"
         class="management-mobile-loading"

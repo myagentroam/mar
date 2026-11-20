@@ -63,7 +63,20 @@ function responseEvents(answer = 'Completed') {
   ];
 }
 
-function toolResponseEvents(callId = 'exec-1') {
+function toolResponseEvents(
+  callId = 'exec-1',
+  tool: {
+    responseId: string;
+    itemId?: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  } = {
+    responseId: 'response-tool',
+    itemId: 'function-call-1',
+    name: 'exec',
+    arguments: { command: 'pwd', yieldMs: 1_000, timeoutMs: 10_000 }
+  }
+) {
   return [
     {
       type: 'response.metadata',
@@ -71,22 +84,22 @@ function toolResponseEvents(callId = 'exec-1') {
     },
     {
       type: 'response.created',
-      response: { id: 'response-tool' }
+      response: { id: tool.responseId }
     },
     {
       type: 'response.output_item.done',
       item: {
         type: 'function_call',
-        id: 'function-call-1',
+        id: tool.itemId ?? `function-${callId}`,
         call_id: callId,
-        name: 'exec',
-        arguments: JSON.stringify({ command: 'pwd', yieldMs: 1_000, timeoutMs: 10_000 })
+        name: tool.name,
+        arguments: JSON.stringify(tool.arguments)
       }
     },
     {
       type: 'response.completed',
       response: {
-        id: 'response-tool',
+        id: tool.responseId,
         usage: {
           input_tokens: 10,
           output_tokens: 2,
@@ -949,6 +962,125 @@ describe('MAR Agent runtime credentials', () => {
       });
     } finally {
       await agent.dispose();
+    }
+  });
+
+  it.each([
+    { scenario: 'normal acknowledgement', failFirstAck: false },
+    { scenario: 'failed first acknowledgement', failFirstAck: true }
+  ])('keeps Skill tool results paired across rounds: $scenario', async ({ failFirstAck }) => {
+    const loadSkill = vi
+      .fn(async () => 'Updated workflow guidance.')
+      .mockResolvedValueOnce('Original workflow guidance.')
+      .mockResolvedValueOnce('Original workflow guidance.');
+    const server = await startResponsesWebSocketServer([], {
+      responsesByRequest: [
+        ...[1, 2, 3, 4].map((index) =>
+          toolResponseEvents(`load-${index}`, {
+            responseId: `response-load-${index}`,
+            name: 'skill_load',
+            arguments: { name: 'workflow' }
+          })
+        ),
+        finalResponseEvents('response-skill-final')
+      ]
+    });
+    servers.push(server.server);
+    const home = await mkdtemp(join(tmpdir(), 'mar-agent-websocket-skill-'));
+    homes.push(home);
+    const workspace = join(home, 'workspace');
+    await mkdir(workspace);
+    const host = new LocalAgentHost({ homeDirectory: home, workspace });
+    host.bindExecutionExtensions({
+      tools: [],
+      skills: [
+        { name: 'workflow', description: 'A workflow.', requiredTools: [], load: loadSkill }
+      ],
+      executeTool: async () => ({ content: 'Unexpected host tool invocation' })
+    });
+    const store = await JsonlSessionStore.open(home);
+    let failedAck = false;
+    if (failFirstAck) {
+      const write = store.writeContextualWorldState.bind(store);
+      vi.spyOn(store, 'writeContextualWorldState').mockImplementation(async (sessionId, state) => {
+        const world = state as { pendingSkills?: unknown; entries: readonly { kind: string }[] };
+        if (
+          !failedAck &&
+          world.pendingSkills === undefined &&
+          world.entries.some((entry) => entry.kind === 'loaded-skill')
+        ) {
+          failedAck = true;
+          throw new Error('Skill acknowledgement sidecar write failed');
+        }
+        await write(sessionId, state);
+      });
+    }
+    const agent = await createAgent({
+      mode: 'normal',
+      host,
+      sessionStore: store,
+      models: [
+        dynamicConfiguration(
+          server.baseUrl,
+          {
+            acquire: async () => ({
+              revision: 1,
+              expiresAt: Date.now() + 60_000,
+              bearer: new SecretValue('ws-token'),
+              headers: {}
+            }),
+            invalidate: () => {},
+            close: async () => {}
+          },
+          { transport: 'WEBSOCKET' }
+        )
+      ]
+    });
+    try {
+      const session = await agent.createSession({
+        workspace,
+        title: 'WebSocket Skill replacement'
+      });
+      await expect(session.run({ prompt: 'Load the workflow' }).result()).resolves.toMatchObject({
+        status: 'completed',
+        finalAnswer: 'Completed'
+      });
+      expect(loadSkill).toHaveBeenCalledTimes(4);
+      expect(failedAck).toBe(failFirstAck);
+      expect(server.connections()).toBe(1);
+      expect(server.requests).toHaveLength(5);
+      for (const index of failFirstAck ? [1, 4] : [1, 2, 4])
+        expect(server.requests[index]).toMatchObject({
+          previous_response_id: `response-load-${index}`,
+          input: expect.arrayContaining([
+            expect.objectContaining({ type: 'function_call_output', call_id: `load-${index}` })
+          ])
+        });
+      if (failFirstAck) {
+        const retryDelivery = server.requests[2]!;
+        expect(retryDelivery.input).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'function_call', call_id: 'load-2' }),
+            expect.objectContaining({ type: 'function_call_output', call_id: 'load-2' })
+          ])
+        );
+        expect(retryDelivery).not.toHaveProperty('previous_response_id');
+        expect(JSON.stringify(retryDelivery.input)).toContain('Original workflow guidance.');
+      }
+      const replay = server.requests[3]!;
+      expect(replay).not.toHaveProperty('previous_response_id');
+      expect(replay.input).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'function_call', call_id: 'load-3' }),
+          expect.objectContaining({ type: 'function_call_output', call_id: 'load-3' })
+        ])
+      );
+      const replayedHistory = JSON.stringify(replay.input);
+      expect(replayedHistory).toContain('Updated workflow guidance.');
+      expect(replayedHistory).not.toContain('Original workflow guidance.');
+    } finally {
+      await agent.dispose();
+      await store.close();
     }
   });
 

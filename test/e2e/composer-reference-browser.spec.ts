@@ -254,10 +254,13 @@ for (const [width, theme] of [
       await placeCursor(page, text.length);
       const picker = page.locator('.command-picker');
       await expect(picker).toBeVisible();
-      await expect(picker).toHaveCSS(
-        'background-color',
-        theme === 'daylight' ? 'rgb(255, 255, 255)' : 'rgb(26, 34, 48)'
-      );
+      await expect
+        .poll(async () =>
+          resolvedColorToHex(
+            await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
+          )
+        )
+        .toBe(theme === 'daylight' ? '#ffffff' : '#1a2230');
       if (name !== 'commands')
         await expect(picker.getByRole('option')).toHaveCount(name === 'references' ? 2 : 1);
       await expect

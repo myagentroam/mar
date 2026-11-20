@@ -64,14 +64,16 @@ for (const viewport of [
     await expect(rows).toHaveCount(2);
     const editAction = rows.first().getByRole('button', { name: 'Edit', exact: true });
     const deleteAction = rows.first().getByRole('button', { name: 'Delete', exact: true });
-    await expect(editAction).toHaveClass(/el-button--primary/);
-    await expect(deleteAction).toHaveClass(/el-button--danger/);
+    await expect(editAction).toHaveClass(/mar-ui-button--default/);
+    await expect(editAction).toHaveClass(/mar-ui-button--inline/);
+    await expect(deleteAction).toHaveClass(/mar-ui-button--danger/);
+    await expect(deleteAction).toHaveClass(/mar-ui-button--inline/);
     expect(
       await deleteAction.evaluate((button) => {
         const style = getComputedStyle(button);
         return (
-          style.getPropertyValue('--el-button-text-color').trim() ===
-          style.getPropertyValue('--el-color-danger').trim()
+          style.getPropertyValue('--mar-ui-button-fg').trim() ===
+          style.getPropertyValue('--mar-control-color-danger').trim()
         );
       })
     ).toBe(true);
@@ -154,7 +156,7 @@ test('Quick prompt settings create, edit, and retain failed drafts for retry', a
   await dialog.getByRole('textbox', { name: /Prompt$/ }).fill('Retained edit');
   fail = true;
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.locator('.el-message--error')).toContainText('Unable to save quick prompt');
+  await expect(page.locator('.mar-message--error')).toContainText('Unable to save quick prompt');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Retained edit');
   await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
@@ -170,7 +172,7 @@ test('Quick prompt settings create, edit, and retain failed drafts for retry', a
   });
 });
 
-test('Quick prompt settings invalidate saving before the close animation finishes', async ({
+test('Quick prompt settings invalidate an in-flight save on close without reopening', async ({
   page
 }) => {
   await prepare(page);
@@ -191,19 +193,24 @@ test('Quick prompt settings invalidate saving before the close animation finishe
     return json(route, { prompt: prompts[0] });
   });
   try {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await openSettings(page);
     const initialReads = reads;
-    await page.addStyleTag({
+    const pause = await page.addStyleTag({
       content:
-        '.dialog-fade-leave-active { animation-duration: 60s !important; transition-duration: 60s !important; }'
+        'dialog.mar-ui-dialog-overlay[open][data-closing] { animation-play-state: paused !important; }'
     });
-    let dialog = await edit(page, 'first');
+    const dialog = await edit(page, 'first');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await started.promise;
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
     await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click();
-    // Closing must destroy the editor now, not defer invalidation to afterLeave.
-    await expect(page.locator('.el-dialog')).toHaveCount(0, { timeout: 1500 });
-    dialog = await edit(page, 'second');
+    // The editor must unmount even if a native dialog exit animation cannot finish.
+    const dialogRoot = page.locator('dialog.mar-ui-dialog-overlay');
+    await expect(dialogRoot).toHaveCount(0);
     const response = page.waitForResponse((value) =>
       value.url().endsWith('/api/quick-prompts/first')
     );
@@ -215,14 +222,13 @@ test('Quick prompt settings invalidate saving before the close animation finishe
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         )
     );
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
-    await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
-    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveClass(
-      /is-loading/
-    );
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(dialogRoot).toHaveCount(0);
+    await expect(page.locator('.mar-ui-message')).toHaveCount(0);
     expect(reads).toBe(initialReads);
+    await pause.evaluate((style) => style.remove());
+    const nextDialog = await edit(page, 'second');
+    await expect(nextDialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
+    await expect(nextDialog.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   } finally {
     pending.release();
   }
@@ -270,10 +276,10 @@ for (const outcome of ['success', 'failure'] as const) {
         await expect(dialog).toHaveCount(0);
         dialog = await edit(page, 'second');
         const save = dialog.getByRole('button', { name: 'Save', exact: true });
-        await expect(save).not.toHaveClass(/is-loading/);
+        await expect(save).not.toHaveAttribute('aria-busy', 'true');
         await save.click();
         await currentStarted.promise;
-        await expect(save).toHaveClass(/is-loading/);
+        await expect(save).toHaveAttribute('aria-busy', 'true');
         const response = page.waitForResponse((value) =>
           value.url().endsWith('/api/quick-prompts/first')
         );
@@ -289,8 +295,8 @@ for (const outcome of ['success', 'failure'] as const) {
         await expect(dialog).toBeVisible();
         await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
         await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
-        await expect(save).toHaveClass(/is-loading/);
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(save).toHaveAttribute('aria-busy', 'true');
+        await expect(page.locator('.mar-ui-message')).toHaveCount(0);
         expect(reads).toBe(initialReads);
         const saved = page.waitForRequest(
           (value) => value.method() === 'GET' && value.url().endsWith('/api/quick-prompts')
@@ -298,7 +304,7 @@ for (const outcome of ['success', 'failure'] as const) {
         current.release();
         await saved;
         await expect(dialog).toHaveCount(0);
-        await expect(page.locator('.el-message--success')).toContainText('Quick prompt saved.');
+        await expect(page.locator('.mar-message--success')).toContainText('Quick prompt saved.');
       } finally {
         old.release();
         current.release();
@@ -332,11 +338,11 @@ for (const outcome of ['success', 'failure'] as const) {
         holdRefresh = true;
         await dialog.getByRole('button', { name: 'Save', exact: true }).click();
         await refreshStarted.promise;
-        await dialog.locator('.el-dialog__headerbtn').click();
+        await dialog.locator('.mar-ui-dialog__close').click();
         await expect(dialog).toHaveCount(0);
         refresh.release();
         await expect(page.locator('.quick-prompts')).toHaveAttribute('aria-busy', 'false');
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-ui-message')).toHaveCount(0);
         if (outcome === 'failure') {
           await expect(page.locator('.quick-prompts')).toContainText(
             'Unable to load quick prompts'
@@ -348,8 +354,9 @@ for (const outcome of ['success', 'failure'] as const) {
           await edit(page, 'first');
           await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('First body');
         }
-        await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveClass(
-          /is-loading/
+        await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveAttribute(
+          'aria-busy',
+          'true'
         );
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
       } finally {

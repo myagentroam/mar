@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { createUuid } from '../../util/uuid.js';
 import { ref, watch } from 'vue';
 import MarIcon from '../common/MarIcon.vue';
@@ -6,7 +10,7 @@ import WorkspaceFileTree from './WorkspaceFileTree.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import { fileSizeLabel, workspaceAbsolutePath } from '../../util/file-presentation.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { translate } from '../../service/locale-preference-service.js';
 import {
   mountMobileDialogReturn,
@@ -63,8 +67,7 @@ function childPath(directory: string, name: string): string {
 
 async function promptName(title: string, initialValue = ''): Promise<string | undefined> {
   try {
-    const result = await ElMessageBox.prompt('', title, {
-      closeIcon: marIcon('close'),
+    const result = await MarMessageBox.prompt('', title, {
       inputValue: initialValue,
       inputPlaceholder: translate('generated.workspaceInspector.enterAName'),
       confirmButtonText: translate('generated.workspaceInspector.confirm'),
@@ -162,7 +165,7 @@ async function onFileTreeAction(
       await filesController.mutate(scope, 'MOVE', node.path, childPath(parent, name));
       return;
     }
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       node.kind === 'DIRECTORY'
         ? translate('generated.workspaceInspector.deleteFolderAndAllOfItsContents', {
             value0: node.name
@@ -170,7 +173,6 @@ async function onFileTreeAction(
         : translate('generated.workspaceInspector.deleteFile', { value0: node.name }),
       translate('generated.workspaceInspector.confirmDeletion'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.workspaceInspector.delete'),
@@ -303,7 +305,7 @@ defineExpose({
         multiple
         @change="onUploadFiles"
       />
-      <el-input
+      <MarInput
         v-model="fileDisplayFilter"
         class="file-display-filter"
         :aria-label="translate('workspaceDisplayFilter.label')"
@@ -313,7 +315,7 @@ defineExpose({
         :clear-icon="marIcon('clear-input')"
       >
         <template #prefix><MarIcon name="search" /></template>
-      </el-input>
+      </MarInput>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshFiles2')"
         class="file-explorer-utility-button mar-icon-action"
@@ -338,7 +340,7 @@ defineExpose({
         <MarIcon name="document-add" v-else />
       </button>
     </div>
-    <el-button
+    <MarButton
       v-if="
         (watchStatus === 'loading' || watchStatus === 'failed') &&
         !filesBusy &&
@@ -356,8 +358,8 @@ defineExpose({
         {{ translate('generated.workspaceInspector.loading') }}</template
       >
       <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </el-button>
-    <el-button
+    </MarButton>
+    <MarButton
       v-if="fileTree.refreshError.value"
       v-tooltip="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : ''"
       :aria-description="!filesBusy ? errorMessage(fileTree.refreshError.value.cause) : undefined"
@@ -373,7 +375,7 @@ defineExpose({
         {{ translate('generated.workspaceInspector.loading') }}</template
       >
       <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </el-button>
+    </MarButton>
     <p v-else-if="filesBusy" class="watch-status" role="status">
       <MarIcon name="loading-action" />
       {{ translate('generated.workspaceInspector.loading') }}
@@ -405,7 +407,7 @@ defineExpose({
         )
       "
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="uploadDialogOpen"
@@ -414,7 +416,6 @@ defineExpose({
       :title="translate('generated.workspaceInspector.confirmFileUpload')"
       append-to-body
       width="560px"
-      :close-icon="marIcon('close')"
     >
       <p class="upload-dialog-target">
         {{ translate('generated.workspaceInspector.targetDirectory') }}:
@@ -426,17 +427,15 @@ defineExpose({
             ><strong>{{ entry.file.name }}</strong
             ><small>{{ fileSizeLabel(entry.file.size) }}</small></span
           >
-          <el-select
+          <MarSelect
             v-if="entry.status === 'EXISTS_FILE'"
             v-model="entry.overwrite"
             :aria-label="translate('generated.workspaceInspector.existingFileHandling')"
             size="small"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option :value="false" :label="translate('generated.workspaceInspector.skip')" />
-            <el-option :value="true" :label="translate('generated.workspaceInspector.overwrite')" />
-          </el-select>
+            <MarOption :value="false" :label="translate('generated.workspaceInspector.skip')" />
+            <MarOption :value="true" :label="translate('generated.workspaceInspector.overwrite')" />
+          </MarSelect>
           <small v-else-if="entry.status === 'READY'">{{
             translate('generated.workspaceInspector.newFile2')
           }}</small>
@@ -451,14 +450,14 @@ defineExpose({
         </li>
       </ul>
       <template #footer>
-        <el-button @click="uploadDialogOpen = false">{{
+        <MarButton @click="uploadDialogOpen = false">{{
           translate('generated.workspaceInspector.cancel4')
-        }}</el-button>
-        <el-button type="primary" @click="confirmUploads">{{
+        }}</MarButton>
+        <MarButton type="primary" @click="confirmUploads">{{
           translate('generated.workspaceInspector.startUpload')
-        }}</el-button>
+        }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref } from 'vue';
 import type { NodeSummary } from '@myagentroam/web-core/node-model';
@@ -89,12 +93,12 @@ function detailsExtension(
         :user-options="ownerUserOptions"
     /></template>
     <template #edit-owner="{ resource: editing }">
-      <el-form-item :label="translate('generated.resourceSharingPage.owner2')"
-        ><el-input
+      <MarFormItem :label="translate('generated.resourceSharingPage.owner2')"
+        ><MarInput
           v-if="editing.ownership.ownerType === 'PERSONAL'"
           :model-value="translate('generated.resourceSharingPage.personal3')"
           disabled />
-        <el-cascader
+        <MarCascader
           v-else
           v-model="editOrganizationId"
           style="width: 100%"
@@ -103,15 +107,15 @@ function detailsExtension(
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
-      /></el-form-item>
+      /></MarFormItem>
     </template>
     <template #registration-owner>
-      <el-form-item :label="translate('generated.resourceSharingPage.owner4')"
-        ><el-input
+      <MarFormItem :label="translate('generated.resourceSharingPage.owner4')"
+        ><MarInput
           v-if="edition === 'COMMUNITY'"
           :model-value="translate('generated.resourceSharingPage.personal4')"
           disabled />
-        <el-cascader
+        <MarCascader
           v-else
           v-model="registrationOwner"
           style="width: 100%"
@@ -120,16 +124,16 @@ function detailsExtension(
           :options="registrationOwnerOptions"
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
-      /></el-form-item>
+      /></MarFormItem>
     </template>
     <template #resource-actions="{ resource: row }">
-      <el-button
+      <MarButton
         v-if="row.ownership.ownerType === 'ORGANIZATION'"
         link
         :icon="marIcon('share')"
         :disabled="!writable"
         @click="grants?.open(row)"
-        >{{ translate('common.grant') }}</el-button
+        >{{ translate('common.grant') }}</MarButton
       >
     </template>
     <template #extensions

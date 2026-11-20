@@ -107,10 +107,7 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
       if (supportsTapHighlight)
-        await expect(page.locator('.el-overlay').filter({ has: dialog })).toHaveCSS(
-          '-webkit-tap-highlight-color',
-          'rgba(0, 0, 0, 0)'
-        );
+        await expect(dialog).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
     }
@@ -171,7 +168,7 @@ for (const theme of ['daylight', 'midnight']) {
       const notificationList = page.locator(
         '.workbench-activity-panel .workbench-notification-content .workbench-notification-list'
       );
-      await expect(notificationList.locator('.el-tag')).toHaveCount(0);
+      await expect(notificationList.locator('.mar-ui-tag')).toHaveCount(0);
       await expect(notificationList.locator('> li')).toHaveCount(30);
     }
   });
@@ -209,8 +206,8 @@ for (const theme of ['daylight', 'midnight']) {
         if (width >= 768) {
           const bounds = (await help.boundingBox())!;
           expect(bounds.width).toBe(bounds.height);
-          expect(width - bounds.x - bounds.width).toBeGreaterThanOrEqual(8);
-          expect(width - bounds.x - bounds.width).toBeLessThanOrEqual(12);
+          // Match the desktop shell inset; the mobile link stays in the rail flow.
+          expect(width - bounds.x - bounds.width).toBe(16);
         } else await expect(help).toHaveCSS('position', 'static');
         await help.screenshot({ path: testInfo.outputPath(`help-density-${width}.png`) });
         for (const custom of [false, true]) {
@@ -762,6 +759,39 @@ test.describe('Touch resource tree', () => {
   }
 });
 
+for (const dismissal of ['Escape', 'the backdrop', 'browser Back'] as const) {
+  test(`Quick Open completes its exit animation when dismissed with ${dismissal}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
+    const pause = await page.addStyleTag({
+      content: `dialog.mar-ui-dialog-overlay[open][data-closing] {
+        animation-play-state: paused !important;
+      }`
+    });
+    const trigger = page.getByRole('button', { name: 'Open quick open', exact: true });
+    const dialog = page.getByRole('dialog', { name: 'Quick Open' });
+    await trigger.click();
+    await expect(dialog.getByRole('textbox')).toBeFocused();
+    await expect(dialog).toHaveCSS('opacity', '1');
+
+    if (dismissal === 'Escape') await page.keyboard.press('Escape');
+    else if (dismissal === 'browser Back') await page.goBack();
+    else await dialog.click({ position: { x: 4, y: 4 } });
+
+    await expect(dialog).toHaveAttribute('data-closing', 'true');
+    await expect(dialog).toHaveCSS('animation-play-state', 'paused');
+    await expect(dialog).toBeVisible();
+    await pause.evaluate((style) => style.remove());
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expect(dialog.getByRole('textbox')).toBeFocused();
+  });
+}
+
 test('Escape closes only the visible layer after Quick Open has been closed', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
@@ -770,8 +800,8 @@ test('Escape closes only the visible layer after Quick Open has been closed', as
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.locator('.el-overlay-dialog')).toHaveCount(0);
-  await expect(page.locator('.el-overlay-dialog')).not.toBeVisible();
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).not.toBeVisible();
   const activity = page.getByRole('button', {
     name: 'Sessions & notifications',
     exact: true
@@ -789,7 +819,7 @@ test('Escape closes only the visible layer after Quick Open has been closed', as
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.locator('.el-overlay-dialog')).not.toBeVisible();
+  await expect(page.locator('.mar-ui-dialog-overlay[open]')).not.toBeVisible();
   await expect(menu).toBeVisible();
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.keyboard.press('Escape');

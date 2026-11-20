@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
-// @test-covers packages/web-core/src/styles/element-plus-theme.css
+// @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
 
 test.use({ hasTouch: true });
@@ -442,12 +442,12 @@ for (const width of [1280, 390]) {
         };
         const result = {
           unread: color('--mar-color-brand'),
-          running: color('--el-color-success'),
+          running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
           divider: color('--mar-border-subtle'),
           runningText: color('--mar-color-success-text'),
-          completed: color('--el-color-info')
+          completed: color('--mar-text-secondary')
         };
         probe.remove();
         return result;
@@ -516,10 +516,10 @@ for (const width of [1280, 390]) {
       await expect(panel.locator('.activity-running-count')).toHaveText('运行中 1');
       await expect(panel.locator('.session-state-badge')).toHaveCount(0);
       await expect(panel.locator('.recent-sessions-list > li')).toHaveCount(30);
-      const statuses = panel.locator('.recent-sessions-list .el-tag');
-      await expect(statuses.first()).toHaveClass(/el-tag--success/);
+      const statuses = panel.locator('.recent-sessions-list .mar-ui-tag');
+      await expect(statuses.first()).toHaveAttribute('data-type', 'success');
       await expect(statuses.first()).toHaveCSS('color', colors.runningText);
-      await expect(statuses.nth(1)).toHaveClass(/el-tag--info/);
+      await expect(statuses.nth(1)).toHaveAttribute('data-type', 'info');
       await expect(statuses.nth(1)).toHaveCSS('color', colors.completed);
       await page.screenshot({
         path: testInfo.outputPath(`activity-${width}-${theme}-recent.png`),
@@ -551,7 +551,8 @@ for (const width of [1280, 390]) {
       await input.focus();
       await announcePreview();
       const preview = page.locator('.activity-preview:visible');
-      await expect(preview).toContainText('New version');
+      await expect(preview).toContainText('Application update available');
+      await expect(preview).toContainText('0.10.2');
       await expect(input).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       const popover = page.locator('.workbench-activity-popover:visible');
@@ -564,26 +565,21 @@ for (const width of [1280, 390]) {
       for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right'])
         await expect(preview).toHaveCSS(`border-${corner}-radius`, radius);
       await expect(preview).toHaveCSS('overflow', 'hidden');
-      const arrow = popover.locator('.el-popper__arrow');
       if (width >= 768) {
-        await expect(arrow).toBeVisible();
-        expect((await arrow.boundingBox())!.x).toBeLessThan((await popover.boundingBox())!.x);
-        const arrowBackground = await arrow.evaluate(
-          (element) => getComputedStyle(element, '::before').backgroundColor
-        );
-        const background = await popover.evaluate(
-          (element) => getComputedStyle(element).backgroundColor
-        );
-        expect(resolvedColorToHex(arrowBackground)).toBe(resolvedColorToHex(background));
-        const arrowEdges = await arrow.evaluate((element) => {
-          const arrowStyle = getComputedStyle(element, '::before');
-          return [arrowStyle.borderBottomColor, arrowStyle.borderLeftColor];
+        await expect(popover).toHaveAttribute('data-side', 'right');
+        await expect(popover).toHaveAttribute('data-arrow');
+        const { arrow, surface } = await popover.evaluate((element) => {
+          const style = getComputedStyle(element, '::before');
+          const panel = getComputedStyle(element);
+          return {
+            arrow: [style.backgroundColor, style.borderTopColor, style.borderLeftColor, style.left],
+            surface: [panel.backgroundColor, panel.borderTopColor]
+          };
         });
-        const outline = await popover.evaluate(
-          (element) => getComputedStyle(element).borderTopColor
-        );
-        expect(arrowEdges).toEqual([outline, outline]);
-      } else await expect(arrow).toHaveCount(0);
+        expect(resolvedColorToHex(arrow[0]!)).toBe(resolvedColorToHex(surface[0]!));
+        expect(arrow.slice(1, 3)).toEqual([surface[1], surface[1]]);
+        expect(parseFloat(arrow[3]!)).toBeLessThan(0);
+      } else await expect(popover).toHaveClass(/mar-ui-popover--no-arrow/);
       await expect(popover).toHaveCSS('opacity', '1');
       await page.screenshot({
         path: testInfo.outputPath(`notification-preview-${width}-${theme}.png`),

@@ -19,12 +19,9 @@ for (const locale of ['en-US', 'zh-CN']) {
       const panel = page.getByTestId('usage-statistics');
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await panel
-        .locator('.el-select')
-        .filter({
-          has: page.getByRole('combobox', {
-            name: locale === 'en-US' ? 'Time range' : '时间范围',
-            exact: true
-          })
+        .getByRole('combobox', {
+          name: locale === 'en-US' ? 'Time range' : '时间范围',
+          exact: true
         })
         .click();
       await page
@@ -64,9 +61,9 @@ for (const locale of ['en-US', 'zh-CN']) {
         await inputs.last().fill(to);
         await inputs.last().press('Enter');
         await refresh.click();
-        if (!valid) await expect(panel.locator('.el-form-item__error')).toBeVisible();
+        if (!valid) await expect(panel.getByRole('alert')).toBeVisible();
         else {
-          await expect(panel.locator('.el-form-item__error')).toHaveCount(0);
+          await expect(panel.getByRole('alert')).toHaveCount(0);
           await expect(panel).toHaveAttribute('aria-busy', 'false');
         }
       }

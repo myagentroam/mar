@@ -134,7 +134,7 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
           width: expectedWidth,
           height: expectedHeight
         });
-      const title = dialog.locator('.el-dialog__title');
+      const title = dialog.locator('.mar-ui-dialog__title');
       await expect(title).toHaveCSS(
         'font-size',
         await title.evaluate((element) =>
@@ -154,11 +154,11 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
       await expect(dialog.locator('img')).toHaveCSS('object-fit', 'contain');
       await expect(dialog.locator('img')).toHaveCSS('object-position', '50% 50%');
       const layout = await frame.evaluate((element) => {
-        const body = element.querySelector('.el-dialog__body')!.getBoundingClientRect();
+        const body = element.querySelector('.mar-ui-dialog__body')!.getBoundingClientRect();
         const displayedImage = element.querySelector('img')!;
         const image = displayedImage.getBoundingClientRect();
-        const close = element.querySelector('.el-dialog__headerbtn')!.getBoundingClientRect();
-        const header = element.querySelector('.el-dialog__header')!.getBoundingClientRect();
+        const close = element.querySelector('.mar-ui-dialog__close')!.getBoundingClientRect();
+        const header = element.querySelector('.mar-ui-dialog__header')!.getBoundingClientRect();
         return {
           imageFitsBody:
             image.left >= body.left &&
@@ -717,7 +717,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       .poll(() => dialog.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth))
       .toBeGreaterThan(0);
     expect(imageReads).toBe(1);
-    await dialog.locator('.el-dialog__headerbtn').click();
+    await dialog.locator('.mar-ui-dialog__close').click();
     await expect(dialog).not.toBeVisible();
     imageExpired = true;
     await imageFile.click();
@@ -879,7 +879,14 @@ test('History loading failures keep multiline errors readable with diagnostics',
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.locator('.session-list .session-link').first().click();
 
-  const content = page.locator('.el-message__content').filter({ hasText: 'req-multiline-message' });
+  // History errors belong to the retry control rather than a transient notification.
+  const retry = page.getByRole('button', { name: '加载失败，点击重试', exact: true });
+  await expect(retry).toHaveAttribute(
+    'aria-description',
+    /NODE_OFFLINE[\s\S]*req-multiline-message/
+  );
+  await retry.hover();
+  const content = page.getByRole('tooltip').filter({ hasText: 'req-multiline-message' });
   await expect(content).toContainText('NODE_OFFLINE');
   await expect(content).toContainText('req-multiline-message');
   const layout = await content.evaluate((element) => {
@@ -2154,7 +2161,7 @@ test.describe('Independent tool presentation', () => {
           .toBe(0);
         await page.screenshot({ path: testInfo.outputPath('tools-desktop.png') });
         await page.evaluate(() =>
-          document.documentElement.style.setProperty('--el-transition-duration-fast', '1s')
+          document.documentElement.style.setProperty('--mar-motion-duration-fast', '1s')
         );
         await skill.locator('summary').evaluate((element: HTMLElement) => element.click());
         await expect(skill).toHaveAttribute('data-disclosure-closing', '');
@@ -2171,7 +2178,7 @@ test.describe('Independent tool presentation', () => {
         await expect(skill).not.toHaveAttribute('open');
         expect((await skillPreview.boundingBox())!.width).toBeCloseTo(closingWidth, 1);
         await page.evaluate(() =>
-          document.documentElement.style.removeProperty('--el-transition-duration-fast')
+          document.documentElement.style.removeProperty('--mar-motion-duration-fast')
         );
         await search.locator('summary').click();
         await expect(skill).not.toHaveAttribute('open');
@@ -2878,9 +2885,9 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       assistantMessage.getByRole('button', { name: '从此轮结束处创建会话分支' })
     ).toHaveCount(0);
     await expect(userMessage.getByRole('button', { name: /^复制.*消息$/u })).toBeVisible();
-    await expect(page.locator('.composer-model-effort-select .el-select__wrapper')).toHaveClass(
-      /is-disabled/u
-    );
+    await expect(
+      page.locator('.composer-model-effort-select').getByRole('combobox')
+    ).toBeDisabled();
     const sessionRow = page.locator('.session-row', { hasText: 'Rollback 会话' });
     await sessionRow.hover();
     await sessionRow.getByRole('button', { name: /更多会话操作/u }).click();
@@ -2900,14 +2907,14 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       [rollbackButton, '确认回滚']
     ] as const) {
       await button.click();
-      await expect(page.locator('.el-message-box')).toBeVisible();
+      await expect(page.locator('.mar-message-box')).toBeVisible();
       await emitMockSessionEvent(page, 'session', { session: activeSession });
       await expect(button).toHaveCount(0);
       await page
-        .locator('.el-message-box')
+        .locator('.mar-message-box')
         .getByRole('button', { name: confirmName, exact: true })
         .click();
-      await expect(page.locator('.el-message-box')).toBeHidden();
+      await expect(page.locator('.mar-message-box')).toBeHidden();
       expect(rollbackBody).toBeUndefined();
       expect(writes.filter((entry) => /\/(rewind|rollback)$/.test(entry.url))).toHaveLength(0);
       await emitMockSessionEvent(page, 'session', { session });
@@ -2915,11 +2922,11 @@ for (const runner of ['mar-agent', 'codex'] as const) {
     }
 
     await userMessage.getByRole('button', { name: '永久删除此用户消息及其后的对话记录' }).click();
-    const confirmation = page.locator('.el-message-box');
+    const confirmation = page.locator('.mar-message-box');
     await expect(confirmation).toContainText('永久删除这条用户消息及其后的全部对话记录');
     await expect(confirmation.locator('[data-mar-icon="warning"]')).toBeVisible();
     await expect(
-      confirmation.locator('.el-message-box__headerbtn [data-mar-icon="close"]')
+      confirmation.locator('.mar-ui-dialog__close [data-mar-icon="close"]')
     ).toBeVisible();
     await confirmation.getByRole('button', { name: '确认回滚', exact: true }).click();
 
@@ -3027,17 +3034,17 @@ for (const outcome of ['success', 'navigation-failure'] as const) {
       .locator('.conversation-item.user_message', { hasText: 'Original user text' })
       .getByRole('button', { name: '从此消息之前创建会话分支' })
       .click();
-    const confirmation = page.locator('.el-message-box');
+    const confirmation = page.locator('.mar-message-box');
     await expect(confirmation.locator('[data-mar-icon="warning"]')).toBeVisible();
     await expect(
-      confirmation.locator('.el-message-box__headerbtn [data-mar-icon="close"]')
+      confirmation.locator('.mar-ui-dialog__close [data-mar-icon="close"]')
     ).toBeVisible();
     await page
-      .locator('.el-message-box')
+      .locator('.mar-message-box')
       .getByRole('button', { name: '创建分支', exact: true })
       .click();
     if (outcome === 'success') {
-      await expect(page.locator('.el-message--success [data-mar-icon="success"]')).toBeVisible();
+      await expect(page.locator('.mar-message--success [data-mar-icon="success"]')).toBeVisible();
       await expect(
         page.locator('.conversation-item.user_message', { hasText: 'Branch history' })
       ).toBeVisible();
@@ -3045,7 +3052,7 @@ for (const outcome of ['success', 'navigation-failure'] as const) {
       await expect(composer).toBeFocused();
     } else {
       await expect(page.getByText(/会话分支已创建，但无法打开/)).toBeVisible();
-      await expect(page.locator('.el-message--error [data-mar-icon="error"]')).toBeVisible();
+      await expect(page.locator('.mar-message--error [data-mar-icon="error"]')).toBeVisible();
       await expect(page.locator('.session-link', { hasText: 'Source conversation' })).toHaveClass(
         /selected/
       );
@@ -3180,7 +3187,7 @@ for (const operation of ['rewind', 'rollback'] as const) {
         })
         .click();
       await page
-        .locator('.el-message-box')
+        .locator('.mar-message-box')
         .getByRole('button', {
           name: operation === 'rewind' ? '创建分支' : '确认回滚',
           exact: true
@@ -3221,7 +3228,7 @@ for (const operation of ['rewind', 'rollback'] as const) {
       release();
       await response;
       if (outcome === 'failure')
-        await expect(page.locator('.el-message--error [data-mar-icon="error"]')).toBeVisible();
+        await expect(page.locator('.mar-message--error [data-mar-icon="error"]')).toBeVisible();
       await expect(targetRow.locator('.session-more-button')).toBeEnabled();
       await expect(targetRow.locator('.session-link')).toHaveClass(/selected/u);
       if (outcome === 'watch-failure') {

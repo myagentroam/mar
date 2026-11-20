@@ -323,10 +323,7 @@ test('Dark theme uses consistent blue emphasis for new sessions and primary mana
   await expect(newSession).toHaveCSS('background-color', 'rgb(48, 147, 255)');
   await newSession.hover();
   await expect(newSession).toHaveCSS('background-color', 'rgb(74, 163, 255)');
-  await expect(page.locator('html')).toHaveCSS(
-    '--el-color-primary-light-9',
-    'rgb(48 147 255 / 0.14)'
-  );
+  await expect(page.locator('html')).toHaveCSS('--mar-control-color-primary-light-9', '#1f73cf24');
 });
 
 test('Composer Alt+M opens the model menu and delegates arrow keys to it', async ({ page }) => {
@@ -343,7 +340,7 @@ test('Composer Alt+M opens the model menu and delegates arrow keys to it', async
 
   const composer = page.getByRole('textbox', { name: '输入消息' });
   const model = page.locator('.composer-model-effort-select');
-  const menu = page.locator('.el-select-dropdown.composer-model-effort-popper');
+  const menu = page.locator('.mar-ui-popup.composer-model-effort-popper');
   await expect(model).toContainText('GPT-5.6 Sol Medium');
   await composer.fill('draft');
   await composer.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(2, 2));
@@ -353,7 +350,7 @@ test('Composer Alt+M opens the model menu and delegates arrow keys to it', async
   await expect(select).toBeFocused();
   await expect(menu).toBeVisible();
   await select.press('ArrowDown');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveCount(1);
+  await expect(menu.locator('.mar-ui-option--active')).toHaveCount(1);
   await select.press('Enter');
   await expect(menu).not.toBeVisible();
   await expect(model).toContainText('GPT-5.6 Sol Low');
@@ -365,15 +362,15 @@ test('Composer Alt+M opens the model menu and delegates arrow keys to it', async
   await expect(menu).toBeVisible();
   await select.press('Tab');
   await expect(select).toBeFocused();
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('GPT-5.6 Sol');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('GPT-5.6 Sol');
   await select.press('Shift+Tab');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('Low');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('Low');
   await select.press('ArrowDown');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('Medium');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('Medium');
   await select.press('Tab');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('GPT-5.6 Sol');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('GPT-5.6 Sol');
   await select.press('Shift+Tab');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('Low');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('Low');
   await select.press('ArrowDown');
   await select.press('Enter');
   await expect(model).toContainText('GPT-5.6 Sol Medium');
@@ -383,15 +380,15 @@ test('Composer Alt+M opens the model menu and delegates arrow keys to it', async
   await model.click();
   await select.press('Tab');
   await select.press('ArrowDown');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('GPT-5.6 Terra');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('GPT-5.6 Terra');
   await select.press('Enter');
   await expect(model).toContainText('GPT-5.6 Terra Medium');
   await expect(composer).toBeFocused();
   await model.click();
   await select.press('Shift+Tab');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('Medium');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('Medium');
   await select.press('ArrowDown');
-  await expect(menu.locator('.el-select-dropdown__item.is-hovering')).toHaveText('High');
+  await expect(menu.locator('.mar-ui-option--active')).toHaveText('High');
   await menu.getByText('High', { exact: true }).click();
   await expect(model).toContainText('GPT-5.6 Terra High');
   await expect(composer).toBeFocused();
@@ -756,7 +753,7 @@ test('New sessions open Composer directly and submit settings with the first mes
     .click();
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
-  await expect(page.locator('.el-dialog')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-dialog')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '新建会话' })).toBeVisible();
   await expect(page.locator('.composer-shell')).toHaveCount(1);
   await expect(page.getByText('Runner 默认', { exact: true })).toHaveCount(0);
@@ -765,12 +762,14 @@ test('New sessions open Composer directly and submit settings with the first mes
   await expect(modelAndEffort).toContainText('GPT-5.6 Sol Medium');
   await expect(page.locator('.composer-model-effort-select')).toBeVisible();
   await expect(page.locator('.composer-runner-select')).toBeVisible();
-  await expect(page.locator('.composer-runner-select')).toHaveClass(/el-select--small/);
-  await expect(page.locator('.composer-runner-select .el-select__wrapper')).toHaveCSS(
+  await expect(page.locator('.composer-runner-select .mar-ui-select__field')).toHaveClass(
+    /mar-ui-select__field--small/u
+  );
+  await expect(page.locator('.composer-runner-select .mar-ui-select__field')).toHaveCSS(
     'box-shadow',
     'none'
   );
-  await expect(page.locator('.composer-model-effort-select .el-select__wrapper')).toHaveCSS(
+  await expect(page.locator('.composer-model-effort-select .mar-ui-select__field')).toHaveCSS(
     'box-shadow',
     'none'
   );
@@ -801,24 +800,22 @@ test('New sessions open Composer directly and submit settings with the first mes
   expect(controlLayout.controls.every((control) => control.flexGrow === '0')).toBe(true);
   expect(controlLayout.controls.every((control) => control.width < controlLayout.width)).toBe(true);
   expect(
-    await modelAndEffort
-      .locator('.el-select__selected-item:not(.el-select__input-wrapper)')
-      .evaluate((element) => element.clientWidth)
+    await modelAndEffort.locator('.mar-ui-select__label').evaluate((element) => element.clientWidth)
   ).toBeGreaterThan(100);
   expect(
     await page
-      .locator('.composer-runner-select .el-select__selected-item:not(.el-select__input-wrapper)')
+      .locator('.composer-runner-select .mar-ui-select__label')
       .evaluate((element) => element.clientWidth)
   ).toBeGreaterThan(30);
   expect(
     await page
-      .locator('.composer-access-select .el-select__selected-item:not(.el-select__input-wrapper)')
+      .locator('.composer-access-select .mar-ui-select__label')
       .evaluate((element) => element.clientWidth)
   ).toBeGreaterThan(50);
   const access = page.getByRole('combobox', { name: '权限' });
   await expect(page.locator('.composer-access-select')).toContainText('按需确认');
   await expect(page.locator('.composer-access-select')).toBeVisible();
-  await expect(page.locator('.composer-access-select .el-select__wrapper')).toHaveCSS(
+  await expect(page.locator('.composer-access-select .mar-ui-select__field')).toHaveCSS(
     'box-shadow',
     'none'
   );
@@ -826,33 +823,33 @@ test('New sessions open Composer directly and submit settings with the first mes
     /new-session-button/
   );
   await page.locator('.composer-runner-select').click();
-  const runnerMenu = page.locator('.el-select-dropdown.composer-runner-popper');
+  const runnerMenu = page.locator('.mar-ui-popup.composer-runner-popper');
   await expect(runnerMenu).toBeVisible();
-  await expect(runnerMenu.locator('.el-select-dropdown__item', { hasText: 'Codex' })).toHaveCSS(
+  await expect(runnerMenu.locator('[role="option"]', { hasText: 'Codex' })).toHaveCSS(
     'height',
     '26px'
   );
-  await expect(runnerMenu.evaluate((node) => node.closest('.composer-shell'))).resolves.toBeNull();
+  await expect(runnerMenu.evaluate((node) => node.matches(':popover-open'))).resolves.toBe(true);
   await runnerMenu.getByText('Claude Code', { exact: true }).click();
   await expect(page.locator('.composer-runner-select')).toContainText('Claude Code');
   await page.locator('.composer-runner-select').click();
   await runnerMenu.getByText('Codex', { exact: true }).click();
   await expect(page.locator('.composer-runner-select')).toContainText('Codex');
   await modelAndEffort.click();
-  const modelAndEffortMenu = page.locator('.el-select-dropdown.composer-model-effort-popper');
+  const modelAndEffortMenu = page.locator('.mar-ui-popup.composer-model-effort-popper');
   await expect(modelAndEffortMenu).toBeVisible();
+  await expect(modelAndEffortMenu.evaluate((node) => node.matches(':popover-open'))).resolves.toBe(
+    true
+  );
   await expect(
-    modelAndEffortMenu.evaluate((node) => node.closest('.composer-shell'))
-  ).resolves.toBeNull();
-  await expect(
-    modelAndEffortMenu.locator('.el-select-group__title', { hasText: '模型' })
+    modelAndEffortMenu.locator('.mar-ui-option-group__label', { hasText: '模型' })
   ).toBeVisible();
   await expect(
-    modelAndEffortMenu.locator('.el-select-group__title', { hasText: '推理' })
+    modelAndEffortMenu.locator('.mar-ui-option-group__label', { hasText: '推理' })
   ).toBeVisible();
-  await expect(modelAndEffortMenu.locator('.el-select-dropdown__wrap')).toHaveCSS(
-    'max-height',
-    'none'
+  await expect(modelAndEffortMenu.locator('.mar-ui-scrollbar').first()).toHaveCSS(
+    'overflow-y',
+    'auto'
   );
   await modelAndEffortMenu.getByText('High', { exact: true }).click();
   await expect(modelAndEffort).toContainText('GPT-5.6 Sol High');
@@ -862,7 +859,7 @@ test('New sessions open Composer directly and submit settings with the first mes
   });
   await expect(selectedHigh).toBeVisible();
   await expect(selectedHigh).toHaveCSS('background-color', 'rgb(237, 241, 245)');
-  await expect(selectedHigh).toHaveCSS('font-weight', '700');
+  await expect(selectedHigh).toHaveCSS('font-weight', '400');
   await expect(
     modelAndEffortMenu.locator('.composer-model-effort-option-selected', {
       hasText: 'GPT-5.6 Sol'
@@ -872,7 +869,7 @@ test('New sessions open Composer directly and submit settings with the first mes
   await expect(modelAndEffort).toContainText('GPT-5.6 Terra Medium');
   await expect(access).toBeVisible();
   await page.locator('.composer-access-select').click();
-  const accessMenu = page.locator('.el-select-dropdown.composer-access-popper');
+  const accessMenu = page.locator('.mar-ui-popup.composer-access-popper');
   await expect(accessMenu).toBeVisible();
   await accessMenu.getByText('完全访问', { exact: true }).click();
   await expect(page.locator('.composer-access-select')).toContainText('完全访问');
@@ -890,7 +887,7 @@ test('New sessions open Composer directly and submit settings with the first mes
   const composerToolbarAlignment = await page.locator('.composer-toolbar').evaluate((toolbar) => {
     const attachment = toolbar.querySelector<HTMLButtonElement>('.composer-attachment-button');
     const runner = toolbar.querySelector<HTMLElement>(
-      '.composer-runner-select .el-select__wrapper'
+      '.composer-runner-select .mar-ui-select__field'
     );
     if (attachment === null || runner === null) throw new Error('composer controls are missing');
     const attachmentRect = attachment.getBoundingClientRect();
@@ -1109,9 +1106,7 @@ test('Runner menus show only Runners supported by the current Node Profile', asy
   await expect(page.locator('.composer-runner-select')).toContainText('Claude Code');
   await page.locator('.composer-runner-select').click();
 
-  const options = page.locator(
-    '.el-select-dropdown.composer-runner-popper .el-select-dropdown__item'
-  );
+  const options = page.locator('.mar-ui-popup.composer-runner-popper [role="option"]');
   await expect(options).toHaveCount(1);
   await expect(options).toContainText(['Claude Code']);
   await expect(options).not.toContainText('Codex');
@@ -1194,7 +1189,7 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
 
   await page.locator('.composer-runner-select').click();
   await page
-    .locator('.el-select-dropdown.composer-runner-popper')
+    .locator('.mar-ui-popup.composer-runner-popper')
     .getByText('Claude Code', { exact: true })
     .click();
   await expect(page.locator('.composer-model-effort-select')).toContainText('Claude Sonnet High');
@@ -1202,7 +1197,7 @@ test('New sessions restore Node-saved Composer defaults per Runner and persist n
 
   await page.locator('.composer-access-select').click();
   await page
-    .locator('.el-select-dropdown.composer-access-popper')
+    .locator('.mar-ui-popup.composer-access-popper')
     .getByText('默认', { exact: true })
     .click();
   await expect

@@ -155,14 +155,14 @@ watch(open, async () => {
   background-color: var(--mar-fill-row-hover);
 }
 .process-heading:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .process-chevron {
   width: 1em;
   height: 1em;
   flex: none;
-  transition: transform var(--el-transition-duration-fast);
+  transition: transform var(--mar-motion-duration-fast);
 }
 .process-chevron.is-open {
   transform: rotate(90deg);
@@ -224,7 +224,7 @@ watch(open, async () => {
 .process-body {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows var(--el-transition-duration-fast);
+  transition: grid-template-rows var(--mar-motion-duration-fast);
 }
 .process-body.is-collapsed {
   grid-template-rows: 0fr;
@@ -236,7 +236,7 @@ watch(open, async () => {
 }
 .process-content-enter-active,
 .process-content-leave-active {
-  transition: opacity var(--el-transition-duration-fast);
+  transition: opacity var(--mar-motion-duration-fast);
 }
 .process-content-enter-from,
 .process-content-leave-to {

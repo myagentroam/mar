@@ -293,7 +293,25 @@ test('Login shows multiple OAuth 2.0 SSO entries by provider identity', async ({
     })
   );
   await page.goto('/console');
-  await expect(page.locator('.auth-form .el-input input').first()).toHaveValue('');
+  await expect(page.locator('.auth-form input[autocomplete="username"]')).toHaveValue('');
+  const loginPanel = page.locator('.gate-panel');
+  await expect(loginPanel).toHaveCSS('border-radius', '8px');
+  await expect(loginPanel).toHaveCSS('box-shadow', 'none');
+  await expect(loginPanel.locator('.mar-ui-input').first()).toHaveCSS('min-height', '34px');
+  await expect(page.getByRole('button', { name: '进入控制台' })).toHaveCSS('min-height', '34px');
+  const gateLayout = await loginPanel.evaluate((panel) => {
+    const rect = panel.getBoundingClientRect();
+    return {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      documentHeight: document.documentElement.scrollHeight
+    };
+  });
+  expect(Math.abs(gateLayout.centerX - gateLayout.viewportWidth / 2)).toBeLessThanOrEqual(1);
+  expect(Math.abs(gateLayout.centerY - gateLayout.viewportHeight / 2)).toBeLessThanOrEqual(1);
+  expect(gateLayout.documentHeight).toBeLessThanOrEqual(gateLayout.viewportHeight);
   await expect(page.getByRole('link', { name: '使用 飞书企业 登录' })).toHaveAttribute(
     'href',
     '/api/oauth/feishu/login?locale=zh-CN'
@@ -435,12 +453,12 @@ test('Account security shows at most five redacted login sessions', async ({ pag
   await expect(userAgent).toHaveAttribute('title', 'MyAgentRoam Test Browser');
   await expect(page.getByText(/192\.0\.2\.8/)).toBeVisible();
   await expect(page.locator('.admin-sessions li')).toHaveCSS('display', 'grid');
-  await expect(page.getByRole('button', { name: '注销' })).toHaveClass(/el-button--danger/);
+  await expect(page.getByRole('button', { name: '注销' })).toHaveClass(/mar-ui-button--danger/);
 
   const updatePassword = page.getByRole('button', { name: '修改密码' });
   await expect(updatePassword).toBeEnabled();
   const logout = page.getByRole('button', { name: '退出登录' });
-  await expect(logout).not.toHaveClass(/el-button--small/);
+  await expect(logout).not.toHaveClass(/mar-ui-button--small/);
   await expect(page.locator('.account-actions')).toHaveCSS('border-top-width', '1px');
   await updatePassword.click();
   await expect(page.getByRole('dialog', { name: '修改密码' })).toBeVisible();
@@ -518,11 +536,11 @@ test('Personal password dialog closes only after success and reopens without sen
   await expect(dialog).toBeVisible();
   await expect(current).toHaveValue('old-password');
   await expect(next).toHaveValue('updated-password');
-  await expect(submit).not.toHaveClass(/is-loading/);
+  await expect(submit).not.toHaveAttribute('aria-busy', 'true');
   await submit.click();
   await expect.poll(() => requests).toBe(2);
   await expect(dialog).toBeVisible();
-  await expect(submit).toHaveClass(/is-loading/);
+  await expect(submit).toHaveAttribute('aria-busy', 'true');
   await finish();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.el-message').filter({ hasText: '密码已更新' })).toBeVisible();
@@ -531,7 +549,7 @@ test('Personal password dialog closes only after success and reopens without sen
   );
   await open.click();
   for (const input of [current, next, confirmation]) await expect(input).toHaveValue('');
-  await expect(dialog.locator('.el-form-item__error')).toHaveCount(0);
+  await expect(dialog.locator('.mar-ui-form-item').getByRole('alert')).toHaveCount(0);
   await expect(dialog.getByRole('alert')).toHaveCount(0);
 });
 
@@ -553,7 +571,7 @@ test('Personal password dialog clears drafts and validation on every manual clos
     await expect(dialog.getByRole('alert')).toContainText('8');
     if (method === 'cancel')
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
-    else if (method === 'header') await dialog.locator('.el-dialog__headerbtn').click();
+    else if (method === 'header') await dialog.locator('.mar-ui-dialog__close').click();
     else if (method === 'escape') await page.keyboard.press('Escape');
     else await dialog.click({ position: { x: 5, y: 5 } });
     await expect(dialog).toHaveCount(0);
@@ -561,7 +579,7 @@ test('Personal password dialog clears drafts and validation on every manual clos
     for (const name of ['当前密码', '新密码', '再次输入新密码']) {
       await expect(dialog.getByRole('textbox', { name, exact: true })).toHaveValue('');
     }
-    await expect(dialog.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(dialog.locator('.mar-ui-form-item').getByRole('alert')).toHaveCount(0);
     await expect(dialog.getByRole('alert')).toHaveCount(0);
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
   }
@@ -628,7 +646,10 @@ test('Personal password dialog ignores a previous opening completing after it is
   await expect(current).toHaveValue('');
   await current.fill('new-draft-password');
   await finish();
-  await expect(dialog.getByRole('button', { name: '确认修改' })).not.toHaveClass(/is-loading/);
+  await expect(dialog.getByRole('button', { name: '确认修改' })).not.toHaveAttribute(
+    'aria-busy',
+    'true'
+  );
   await expect(dialog).toBeVisible();
   await expect(current).toHaveValue('new-draft-password');
 });
@@ -686,10 +707,10 @@ for (const delayedStep of ['workbench recovery', 'session refresh'] as const) {
         await expect(dialog.getByRole('textbox', { name, exact: true })).toHaveValue('');
       }
       await expect(dialog.getByRole('alert')).toHaveCount(0);
-      await expect(submit).toHaveClass(/is-loading/);
+      await expect(submit).toHaveAttribute('aria-busy', 'true');
     } finally {
       release();
-      await expect(submit).not.toHaveClass(/is-loading/);
+      await expect(submit).not.toHaveAttribute('aria-busy', 'true');
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
     }
   });
@@ -729,11 +750,11 @@ test('Quick prompts save on Enter without reloading the page', async ({ page }) 
   await page.getByRole('button', { name: '快捷提示词', exact: true }).click();
   const panel = page.locator('.quick-prompts');
   await expect(panel).toHaveAttribute('aria-busy', 'true');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeVisible();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeVisible();
   await expect(panel.locator('.prompt-empty')).toHaveCount(0);
   finishRead();
   await expect(panel).toHaveAttribute('aria-busy', 'false');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeHidden();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeHidden();
   await page.getByRole('button', { name: '新增提示词' }).click();
 
   const phrase = page.getByRole('textbox', { name: '短语' });
@@ -782,11 +803,11 @@ test('Personalized prompts put the common option first and select it by default'
 
   const panel = page.locator('.personal-instructions');
   await expect(panel).toHaveAttribute('aria-busy', 'true');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeVisible();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeVisible();
   await expect(panel.getByRole('textbox', { name: '个性化提示词' })).toBeDisabled();
   finishRead();
   await expect(panel).toHaveAttribute('aria-busy', 'false');
-  await expect(panel.locator(':scope > .el-loading-mask')).toBeHidden();
+  await expect(panel.locator(':scope > .mar-ui-loading')).toBeHidden();
 
   const scopes = page.locator('.instruction-scopes [role="tab"]');
   await expect(scopes).toHaveText(['公共', 'MAR Agent', 'Codex', 'Claude Code', 'OpenCode']);
@@ -840,20 +861,12 @@ test('Appearance changes UI and file preferences independently of the MAR icon t
   await page.reload();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '外观', exact: true }).click();
-  await expect(
-    page
-      .getByRole('combobox', { name: '图标主题', exact: true })
-      .locator(
-        'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " el-select ")][1]'
-      )
-  ).toContainText('MAR File Icons');
-  await expect(
-    page
-      .getByRole('combobox', { name: '文件默认打开方式', exact: true })
-      .locator(
-        'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " el-select ")][1]'
-      )
-  ).toContainText('只读');
+  await expect(page.getByRole('combobox', { name: '图标主题', exact: true })).toContainText(
+    'MAR File Icons'
+  );
+  await expect(page.getByRole('combobox', { name: '文件默认打开方式', exact: true })).toContainText(
+    '只读'
+  );
 });
 
 test('About shows versions, documentation, and third-party notices without duplicating system information', async ({
@@ -1062,24 +1075,6 @@ test('Branding spans the two left columns while settings panels switch on the ri
   );
 
   await page.goto('/console');
-  const loginPanel = page.locator('.gate-panel');
-  await expect(loginPanel).toHaveCSS('border-radius', '8px');
-  await expect(loginPanel).toHaveCSS('box-shadow', 'none');
-  await expect(loginPanel.locator('.el-input__wrapper').first()).toHaveCSS('min-height', '34px');
-  await expect(page.getByRole('button', { name: '进入控制台' })).toHaveCSS('min-height', '34px');
-  const gateLayout = await loginPanel.evaluate((panel) => {
-    const rect = panel.getBoundingClientRect();
-    return {
-      centerX: rect.left + rect.width / 2,
-      centerY: rect.top + rect.height / 2,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      documentHeight: document.documentElement.scrollHeight
-    };
-  });
-  expect(Math.abs(gateLayout.centerX - gateLayout.viewportWidth / 2)).toBeLessThanOrEqual(1);
-  expect(Math.abs(gateLayout.centerY - gateLayout.viewportHeight / 2)).toBeLessThanOrEqual(1);
-  expect(gateLayout.documentHeight).toBeLessThanOrEqual(gateLayout.viewportHeight);
   await page.getByRole('button', { name: '进入控制台' }).click();
   const brand = page.getByTestId('workbench-brand');
   await expect(brand).toBeVisible();
@@ -1174,7 +1169,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
   const newSessionButton = page.getByRole('button', { name: '新建会话', exact: true });
   const refreshSessionsButton = page.getByRole('button', { name: '刷新当前工作区会话' });
-  await expect(newSessionButton.locator('.el-icon svg')).toHaveCount(1);
+  await expect(newSessionButton.locator('[data-mar-icon]')).toHaveCount(1);
   await expect(newSessionButton).toHaveCSS('height', '32px');
   await expect(refreshSessionsButton).toHaveCSS('height', '26px');
   const selectedWorkspace = page.locator('.workspace-branches > li.selected');
@@ -1196,14 +1191,14 @@ test('Branding spans the two left columns while settings panels switch on the ri
   expect(nodeTreeFilterGap).toBeLessThanOrEqual(1);
   const sidebarMenuIcon = await page
     .getByRole('button', { name: '收起侧栏' })
-    .locator('.el-icon svg')
+    .locator('[data-mar-icon]')
     .evaluate((element) => element.outerHTML);
   await page.getByRole('button', { name: '收起侧栏' }).click();
   const expandSidebarButton = page.getByRole('button', { name: '展开侧栏' });
   await expect(expandSidebarButton).toHaveAttribute('aria-expanded', 'false');
   await expect
     .poll(() =>
-      expandSidebarButton.locator('.el-icon svg').evaluate((element) => element.outerHTML)
+      expandSidebarButton.locator('[data-mar-icon]').evaluate((element) => element.outerHTML)
     )
     .not.toBe(sidebarMenuIcon);
   await expect(brand.getByText('MyAgentRoam', { exact: true })).toBeHidden();
@@ -1228,7 +1223,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
     .poll(() =>
       page
         .getByRole('button', { name: '收起侧栏' })
-        .locator('.el-icon svg')
+        .locator('[data-mar-icon]')
         .evaluate((element) => element.outerHTML)
     )
     .toBe(sidebarMenuIcon);
@@ -1264,7 +1259,7 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await expect(page).toHaveURL(/view=management/);
   await expect(page).toHaveURL(/management=resource-nodes/);
   await expect(page.getByRole('button', { name: '刷新' })).toBeVisible();
-  await expect(page.locator('.el-tag').getByText('在线', { exact: true })).toBeVisible();
+  await expect(page.locator('.mar-ui-tag').getByText('在线', { exact: true })).toBeVisible();
   await expect(page.getByText('可升级到 0.1.7', { exact: true })).toBeVisible();
   await page.getByRole('cell', { name: '研发节点', exact: true }).click();
   const nodeDetails = page.getByRole('dialog', { name: '节点详情' });
@@ -1273,18 +1268,18 @@ test('Branding spans the two left columns while settings panels switch on the ri
   const nodeStatusTrigger = page
     .locator('.mar-resource-filters .mar-filter-field')
     .filter({ hasText: '状态：' })
-    .locator('.el-select__wrapper');
+    .getByRole('combobox');
   await nodeStatusTrigger.click();
   await page.getByRole('option', { name: '离线', exact: true }).click();
   await expect(page).toHaveURL(/nodes.status=offline/);
-  await expect(page.locator('.el-tag').getByText('在线', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.mar-ui-tag').getByText('在线', { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('节点管理');
   await expect(
     page
       .locator('.mar-resource-filters .mar-filter-field')
       .filter({ hasText: '状态：' })
-      .locator('.el-select__placeholder')
+      .getByRole('combobox')
   ).toContainText('离线');
   const registrationButton = page.getByRole('button', { name: '注册节点' });
   await expect(registrationButton).toBeVisible();

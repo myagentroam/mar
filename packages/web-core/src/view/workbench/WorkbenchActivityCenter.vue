@@ -1,7 +1,6 @@
 <script setup lang="ts">
+import { MarPopover } from '@myagentroam/mar-ui/popover';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElPopover } from 'element-plus';
-import 'element-plus/es/components/popover/style/css';
 import type { SessionGroup } from '@myagentroam/protocol';
 import MarIcon from '../common/MarIcon.vue';
 import WorkbenchActivityPanel from './WorkbenchActivityPanel.vue';
@@ -202,19 +201,15 @@ onBeforeUnmount(() => {
         />
       </button>
     </span>
-    <ElPopover
+    <MarPopover
       v-if="trigger"
       v-model:visible="popoverOpen"
-      virtual-triggering
       :virtual-ref="trigger"
       trigger="click"
-      :trigger-keys="[]"
       :hide-after="0"
       :placement="mobileMode ? 'bottom-start' : 'right-start'"
       width="min(390px, calc(100vw - 16px))"
       :show-arrow="!mobileMode && previewId !== undefined"
-      :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 8 } }] }"
-      :persistent="false"
       popper-class="workbench-activity-popover mar-content-popover"
     >
       <WorkbenchNotificationList
@@ -243,7 +238,7 @@ onBeforeUnmount(() => {
         @cancel-upload="emit('cancelUpload', $event)"
         @remove-upload="emit('removeUpload', $event)"
       />
-    </ElPopover>
+    </MarPopover>
     <Teleport
       v-if="mobileMode && (mobilePresented ?? open) && mobilePanelTarget"
       :to="mobilePanelTarget"
@@ -341,7 +336,10 @@ onBeforeUnmount(() => {
   border-radius: inherit;
   overflow: hidden;
 }
-:global(.workbench-activity-popover.el-popover) {
-  padding: 0;
+:global(.workbench-activity-popover.mar-ui-popover) {
+  --mar-ui-popup-padding: 0;
+}
+:global(.workbench-activity-popover > .mar-ui-popup__content) {
+  overflow: visible;
 }
 </style>

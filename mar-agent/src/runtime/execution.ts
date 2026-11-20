@@ -6,7 +6,6 @@ import type { AgentModelConfiguration } from '../model/configuration.js';
 import type { ModelEvent, ModelRetryState, ModelUsage } from '../model/contracts.js';
 import { isProviderContextOverflow, recoverModelStream } from '../model/recovery.js';
 import { modelStreamEventObservedAt } from '../model/sse.js';
-import { modelOutputContinuationMessage } from '../prompts/output.js';
 import type { ClientToolCall, ExecutedToolCall } from './tool-round-contract.js';
 import type { AuthoritativeModelUsage } from './context/usage.js';
 import type { ExecutionMode } from './contracts.js';
@@ -32,9 +31,7 @@ export interface ExecutionLoopInput<TScope = unknown> {
   readonly toolImages: { readonly mimeType: string; readonly data: Buffer }[];
   readonly publish: (event: EventPayload) => Promise<void>;
   readonly appendContext: (message: ModelMessage) => Promise<void>;
-  readonly prepareRound: (
-    continuation: ModelMessage | undefined
-  ) => Promise<PreparedExecutionRound<TScope>>;
+  readonly prepareRound: () => Promise<PreparedExecutionRound<TScope>>;
   readonly runTools: (
     calls: readonly ClientToolCall[],
     scope: TScope
@@ -78,8 +75,6 @@ export class ExecutionLoop<TScope = unknown> {
     const input = this.input;
     const { mode, messages } = input;
     let recoveringFromContextOverflow = false;
-    let maxOutputContinuationUsed = false;
-    let pendingOutputContinuation: ModelMessage | undefined;
     const modelRetryState: ModelRetryState = { attempts: 0 };
     while (true) {
       let stop: string | undefined;
@@ -88,7 +83,7 @@ export class ExecutionLoop<TScope = unknown> {
       let roundServerUsage: Omit<AuthoritativeModelUsage, 'historyMessages'> | undefined;
       const pendingTools: ClientToolCall[] = [];
       let incompleteToolCall = false;
-      const round = await input.prepareRound(pendingOutputContinuation);
+      const round = await input.prepareRound();
       const reasoningScope = randomUUID();
       const publishedReasoning = new Set<string>();
       const startedMessages = new Set<string>();
@@ -330,7 +325,6 @@ export class ExecutionLoop<TScope = unknown> {
           requestCompletedAt !== undefined
         )
           await emitFinalPerformance(requestCompletedAt);
-        pendingOutputContinuation = undefined;
         incompleteToolCall = pendingTools.some((call) => call.argumentError !== undefined);
         if (!(stop === 'max_output' && incompleteToolCall)) {
           await persistToolCalls(pendingTools);
@@ -371,6 +365,8 @@ export class ExecutionLoop<TScope = unknown> {
         } else throw error;
       }
       recoveringFromContextOverflow = false;
+      const outputLimitReached = mode !== 'compact' && stop === 'max_output';
+      if (outputLimitReached) this.finalAnswer = '';
       input.observeUsage(roundServerUsage);
       const emptyCompletion = stop === 'completed' && !sawTool && !this.finalAnswer.trim();
       await input.afterModel?.(
@@ -424,31 +420,18 @@ export class ExecutionLoop<TScope = unknown> {
         modelRetryState.attempts = 0;
         if (input.sourceType === 'subagent') this.finalAnswer = '';
       }
-      if (mode !== 'compact' && stop === 'max_output') {
-        const needsContinuation = !sawTool || incompleteToolCall;
-        if (needsContinuation) {
-          if (maxOutputContinuationUsed)
-            throw new AgentError(
-              'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE',
-              'Model output reached its limit before completing.'
-            );
-          maxOutputContinuationUsed = true;
-          pendingOutputContinuation = {
-            role: 'user',
-            content: modelOutputContinuationMessage
-          };
-          this.finalAnswer = '';
-          modelRetryState.attempts = 0;
-          continue;
-        }
-        maxOutputContinuationUsed = false;
-      } else maxOutputContinuationUsed = false;
       await input.checkpoint(round, latestUsage);
       if (input.signal.aborted) {
         const aborted = toolResults.find(
           (result): result is Extract<ExecutedToolCall, { failed: true }> => result.failed
         )?.error;
         throw aborted ?? new AgentError('MAR_AGENT_EXECUTION_CANCELLED', 'Execution cancelled.');
+      }
+      if (outputLimitReached && (!sawTool || incompleteToolCall)) {
+        throw new AgentError(
+          'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE',
+          'Model output reached its limit before completing.'
+        );
       }
       if (input.permissionStop?.()) {
         input.mailbox.close();

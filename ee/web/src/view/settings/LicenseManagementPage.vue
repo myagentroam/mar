@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
@@ -121,11 +125,7 @@ void load();
 </script>
 
 <template>
-  <section
-    class="mar-management-page license-management"
-    v-loading="loading && !ready"
-    element-loading-custom-class="mar-page-loading"
-  >
+  <section class="mar-management-page license-management" v-mar-loading:page="loading && !ready">
     <h3 v-if="embedded">{{ translate('generated.licenseManagementPage.license') }}</h3>
     <div
       v-if="status"
@@ -136,9 +136,9 @@ void load();
         <span>{{ translate('generated.licenseManagementPage.edition') }}</span>
         <div class="license-version">
           <strong>{{ editionLabel }}</strong>
-          <el-tag v-if="expired" type="danger" effect="plain">{{
+          <MarTag v-if="expired" type="danger" effect="plain">{{
             translate('generated.licenseManagementPage.expired')
-          }}</el-tag>
+          }}</MarTag>
         </div>
       </div>
       <div>
@@ -166,7 +166,7 @@ void load();
       <div class="section-label">
         {{ translate('generated.licenseManagementPage.licenseRequestCode') }}
       </div>
-      <el-input
+      <MarInput
         class="license-code-input"
         :model-value="requestCode"
         :placeholder="
@@ -179,14 +179,14 @@ void load();
         readonly
       >
         <template #append>
-          <el-button
+          <MarButton
             :disabled="requestCode.length === 0"
             :aria-label="translate('generated.licenseManagementPage.copyLicenseRequestCode')"
             @click="copyRequestCode"
-            >{{ translate('generated.licenseManagementPage.copy') }}</el-button
+            >{{ translate('generated.licenseManagementPage.copy') }}</MarButton
           >
         </template>
-      </el-input>
+      </MarInput>
       <p>
         {{ translate('generated.licenseManagementPage.sendThisCodeToTheLicenseIssuer') }}
       </p>
@@ -195,7 +195,7 @@ void load();
       <label class="section-label" for="license-document">{{
         translate('generated.licenseManagementPage.licenseDocument')
       }}</label>
-      <el-input
+      <MarInput
         id="license-document"
         v-model="document"
         type="textarea"
@@ -204,9 +204,9 @@ void load();
         autocomplete="off"
         :placeholder="translate('generated.licenseManagementPage.pasteTheCompleteLicenseDocument')"
       />
-      <el-button type="primary" :disabled="document.trim().length === 0" @click="importLicense">{{
+      <MarButton type="primary" :disabled="document.trim().length === 0" @click="importLicense">{{
         translate('generated.licenseManagementPage.importLicense')
-      }}</el-button>
+      }}</MarButton>
     </div>
   </section>
 </template>
@@ -235,21 +235,21 @@ void load();
   align-items: center;
   gap: 6px;
 }
-.license-version :deep(.el-tag) {
+.license-version :deep(.mar-ui-tag) {
   height: 20px;
   padding-inline: 6px;
   font-size: var(--mar-font-size-meta);
 }
 .license-ledger code {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .license-ledger .empty-value {
-  color: var(--el-text-color-regular);
-  font-family: var(--el-font-family);
+  color: var(--mar-text-secondary);
+  font-family: var(--mar-font-sans);
   font-size: var(--mar-font-size-body);
   font-weight: 400;
 }
@@ -259,18 +259,18 @@ void load();
   gap: 6px;
 }
 .section-label {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
   line-height: 20px;
 }
-.license-code-input :deep(.el-input__inner) {
-  color: var(--el-text-color-regular);
+.license-code-input :deep(.mar-ui-input__field) {
+  color: var(--mar-text-secondary);
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-input);
   text-overflow: ellipsis;
 }
-.license-code-input :deep(.el-input-group__append .el-button) {
+.license-code-input :deep(.mar-ui-input__append .mar-ui-button) {
   min-width: 64px;
 }
 .license-request p {
@@ -279,12 +279,12 @@ void load();
   font-size: var(--mar-font-size-meta);
   line-height: 18px;
 }
-.license-import .el-button {
+.license-import .mar-ui-button {
   justify-self: start;
 }
-.license-import :deep(.el-textarea__inner) {
+.license-import :deep(textarea) {
   min-height: 92px !important;
-  font-family: var(--el-font-family);
+  font-family: var(--mar-font-sans);
   font-size: var(--mar-font-size-input);
   line-height: 18px;
 }

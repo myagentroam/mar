@@ -89,10 +89,10 @@ function detailFixture() {
     view,
     pending,
     open(index: number) {
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       return (table.props['onRowClick'] as (event: unknown) => Promise<void>)(events[index]);
     },
-    text: () => textContent(view.findAll('ElDialog')[0]!)
+    text: () => textContent(view.findAll('MarDialog')[0]!)
   };
 }
 
@@ -157,16 +157,16 @@ describe('Audit management behavior', () => {
         await flushComponent();
         const a = fixture.open(0);
         await flushComponent();
-        const dialog = fixture.view.findAll('ElDialog')[0]!;
+        const dialog = fixture.view.findAll('MarDialog')[0]!;
         if (close === 'footer') {
           const button = fixture.view
-            .findAll('ElButton')
+            .findAll('MarButton')
             .find((entry) => textContent(entry) === i18n.global.t('common.close'))!;
           await trigger(button, 'onClick');
         } else {
           await trigger(dialog, close === 'close' ? 'onClose' : 'onUpdate:modelValue', false);
         }
-        expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+        expect(fixture.view.findAll('MarDialog')).toHaveLength(0);
         const reopened = fixture.open(0);
         fixture.pending[0]!.resolve(detail(0, 'Closed payload'));
         await a;
@@ -190,12 +190,12 @@ describe('Audit management behavior', () => {
         await flushComponent();
         const pending = fixture.open(0);
         await flushComponent();
-        await trigger(fixture.view.findAll('ElDialog')[0]!, 'onClose');
+        await trigger(fixture.view.findAll('MarDialog')[0]!, 'onClose');
         if (outcome === 'success') fixture.pending[0]!.resolve(detail(0, 'Closed payload'));
         else fixture.pending[0]!.reject(new Error('Closed failure'));
         await pending;
         await flushComponent();
-        expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+        expect(fixture.view.findAll('MarDialog')).toHaveLength(0);
         expect(showMessage).not.toHaveBeenCalled();
       } finally {
         fixture.view.unmount();
@@ -215,7 +215,7 @@ describe('Audit management behavior', () => {
       await pending;
       await flushComponent();
       expect(showMessage).not.toHaveBeenCalled();
-      expect(fixture.view.findAll('ElDialog')).toHaveLength(0);
+      expect(fixture.view.findAll('MarDialog')).toHaveLength(0);
     }
   );
 
@@ -242,8 +242,8 @@ describe('Audit management behavior', () => {
         const query = new URL(request.mock.calls[0]![0], 'https://fixture.test').searchParams;
         expect(query.get('limit')).toBe('20');
         expect(query.get('page')).toBe('1');
-        expect(view.findAll('ElTable')[0]!.props.data).toEqual(events);
-        const paginator = view.findAll('ElPagination')[0]!;
+        expect(view.findAll('MarTable')[0]!.props.data).toEqual(events);
+        const paginator = view.findAll('MarPagination')[0]!;
         expect(paginator.props.total).toBe(47);
         expect(paginator.props['current-page']).toBe(3);
         await trigger(paginator, 'onCurrentChange', 2);
@@ -252,25 +252,26 @@ describe('Audit management behavior', () => {
           new URL(request.mock.calls[1]![0], 'https://fixture.test').searchParams.get('page')
         ).toBe('2');
         for (const [index, [, key]] of modes.entries()) {
-          await trigger(view.findAll('ElTable')[0]!, 'onRowClick', events[index]);
+          await trigger(view.findAll('MarTable')[0]!, 'onRowClick', events[index]);
           await flushComponent();
           expect(request).toHaveBeenLastCalledWith(
             `/api/audit-events/${encodeURIComponent(events[index]!.id)}`,
             { cache: 'no-store' }
           );
-          const dialog = view.findAll('ElDialog')[0]!;
+          const dialog = view.findAll('MarDialog')[0]!;
           const label = i18n.global.t(`generated.auditManagementPage.${key}`);
           expect(label).not.toContain('generated.');
           expect(textContent(dialog)).toContain(label);
           expect(textContent(dialog)).toContain('Original user content');
           expect(textContent(dialog)).not.toContain('MUST_NOT_DISPLAY');
-          const labels = view.findAll('ElDescriptionsItem').map((item) => item.props.label);
+          const labels = view.findAll('MarDescriptionsItem').map((item) => item.props.label);
+          expect(labels.length).toBeGreaterThan(0);
           expect(labels).not.toContain(i18n.global.t('generated.auditManagementPage.requestID'));
           const close = view
-            .findAll('ElButton')
+            .findAll('MarButton')
             .find((button) => textContent(button) === i18n.global.t('common.close'))!;
           await trigger(close, 'onClick');
-          expect(view.findAll('ElDialog')).toHaveLength(0);
+          expect(view.findAll('MarDialog')).toHaveLength(0);
         }
       } finally {
         view.unmount();
@@ -298,12 +299,12 @@ describe('Audit management behavior', () => {
     const view = renderComponent(Audit, { request });
     try {
       await flushComponent();
-      expect(view.findAll('ElPagination')).toHaveLength(0);
+      expect(view.findAll('MarPagination')).toHaveLength(0);
       expect(intersection).toBeDefined();
       intersection!([{ isIntersecting: true }]);
       await flushComponent();
       expect(request.mock.calls.at(-1)![0]).toContain('page=2');
-      expect(view.findAll('ElTable')[0]!.props.data).toEqual([
+      expect(view.findAll('MarTable')[0]!.props.data).toEqual([
         ...firstPage,
         { ...events[1], id: 'next-event' }
       ]);

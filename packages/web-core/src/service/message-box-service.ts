@@ -1,51 +1,87 @@
-import { h, type AppContext } from 'vue';
-import { ElMessageBox as ElementMessageBox, type ElMessageBoxOptions } from 'element-plus';
-import 'element-plus/es/components/message-box/style/css';
-import { createMobileLayerHistoryService } from './mobile-layer-history-service.js';
+import { createApp, type Component, type VNode } from 'vue';
+import MarMessageBoxView from '../view/common/MarMessageBoxView.vue';
 
-type Message = ElMessageBoxOptions['message'];
-type Variant = 'alert' | 'confirm' | 'prompt';
-
-function open(
-  variant: Variant,
-  message: Message,
-  titleOrOptions?: ElMessageBoxOptions['title'] | ElMessageBoxOptions,
-  options?: ElMessageBoxOptions,
-  context?: AppContext | null
-) {
-  const settings = typeof titleOrOptions === 'object' ? titleOrOptions : options;
-  const original = settings?.message ?? message;
-  let close: (() => void) | undefined;
-  const history = createMobileLayerHistoryService({ isOpen: () => true, close: () => close?.() });
-  const configured: ElMessageBoxOptions = {
-    ...settings,
-    message: (actions) => {
-      close = actions.close;
-      const content = typeof original === 'function' ? original(actions) : original;
-      const lifecycle = {
-        onVnodeMounted: () => history.start(),
-        onVnodeBeforeUnmount: () => history.dispose()
-      };
-      return typeof content === 'string' && settings?.dangerouslyUseHTMLString
-        ? h('span', { ...lifecycle, innerHTML: content })
-        : h('span', lifecycle, [content]);
-    }
-  };
-  const promise =
-    typeof titleOrOptions === 'object'
-      ? context === undefined
-        ? ElementMessageBox[variant](message, configured)
-        : ElementMessageBox[variant](message, configured, context)
-      : context === undefined
-        ? ElementMessageBox[variant](message, titleOrOptions, configured)
-        : ElementMessageBox[variant](message, titleOrOptions, configured, context);
-  return promise.finally(() => history.dispose());
+export interface MarMessageBoxOptions {
+  type?: 'info' | 'success' | 'warning' | 'error';
+  icon?: Component;
+  confirmButtonType?: 'primary' | 'danger';
+  confirmButtonText?: string;
+  cancelButtonText?: string;
+  customClass?: string;
+  inputType?: 'text' | 'password';
+  inputValue?: string;
+  inputPlaceholder?: string;
+  inputPattern?: RegExp;
+  inputErrorMessage?: string;
+  inputValidator?: (value: string) => boolean | string | undefined;
 }
 
-/** Keep Element Plus actions and guards; add only per-instance mobile return. */
-export const ElMessageBox = {
-  alert: (...args: Parameters<typeof ElementMessageBox.alert>) => open('alert', ...args),
-  confirm: (...args: Parameters<typeof ElementMessageBox.confirm>) => open('confirm', ...args),
-  prompt: (...args: Parameters<typeof ElementMessageBox.prompt>) => open('prompt', ...args),
-  close: () => ElementMessageBox.close()
+export type MarMessageBoxVariant = 'alert' | 'confirm' | 'prompt';
+export type MarMessageBoxAction = 'confirm' | 'cancel' | 'close';
+type Message = string | VNode;
+const dismissals = new Set<() => void>();
+let sequence = 0;
+
+/** Mounts each independent request once and settles it exactly once after its UI is removed. */
+function open(
+  variant: MarMessageBoxVariant,
+  message: Message,
+  title: string,
+  options: MarMessageBoxOptions = {}
+) {
+  return new Promise<{ value: string; action: 'confirm' }>((resolve, reject) => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    let finished = false;
+
+    function finish(action: MarMessageBoxAction, value = '') {
+      if (finished) return;
+      finished = true;
+      dismissals.delete(dismiss);
+      queueMicrotask(() => {
+        app.unmount();
+        host.remove();
+        if (action === 'confirm') resolve({ value, action });
+        else reject('cancel');
+      });
+    }
+
+    function dismiss() {
+      finish('close');
+    }
+
+    dismissals.add(dismiss);
+    const app = createApp(MarMessageBoxView, {
+      message,
+      title,
+      options,
+      variant,
+      onFinish: finish
+    });
+    app.config.idPrefix = `mar-message-box-${++sequence}`;
+    try {
+      app.mount(host);
+    } catch (error) {
+      dismissals.delete(dismiss);
+      host.remove();
+      reject(error);
+    }
+  });
+}
+
+export const MarMessageBox = {
+  async alert(message: Message, title: string, options?: MarMessageBoxOptions) {
+    await open('alert', message, title, options);
+    return 'confirm' as const;
+  },
+  async confirm(message: Message, title: string, options?: MarMessageBoxOptions) {
+    await open('confirm', message, title, options);
+    return 'confirm' as const;
+  },
+  prompt(message: Message, title: string, options?: MarMessageBoxOptions) {
+    return open('prompt', message, title, options);
+  },
+  close() {
+    for (const dismiss of [...dismissals].reverse()) dismiss();
+  }
 };

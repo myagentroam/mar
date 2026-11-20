@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -6,8 +10,7 @@ import {
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { QuickPrompt } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -107,10 +110,10 @@ async function save(): Promise<void> {
 }
 async function remove(prompt: QuickPrompt): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('quickPrompts.removeConfirmation', { value0: `#${prompt.phrase}` }),
       translate('quickPrompts.remove'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     await props.request(`/api/quick-prompts/${encodeURIComponent(prompt.id)}`, {
       method: 'DELETE'
@@ -138,9 +141,9 @@ async function remove(prompt: QuickPrompt): Promise<void> {
         </div>
       </header>
       <div class="prompt-list-toolbar">
-        <el-button :icon="marIcon('plus')" type="primary" :disabled="loading" @click="openCreate">
+        <MarButton :icon="marIcon('plus')" type="primary" :disabled="loading" @click="openCreate">
           {{ translate('quickPrompts.add') }}
-        </el-button>
+        </MarButton>
       </div>
       <p v-if="!loading && failed" class="prompt-state">
         {{ translate('quickPrompts.loadFailed') }}
@@ -155,22 +158,22 @@ async function remove(prompt: QuickPrompt): Promise<void> {
           </div>
           <p>{{ prompt.prompt }}</p>
           <div class="prompt-actions">
-            <el-button :icon="marIcon('edit')" link :disabled="loading" @click="openEdit(prompt)">{{
+            <MarButton :icon="marIcon('edit')" link :disabled="loading" @click="openEdit(prompt)">{{
               translate('quickPrompts.edit')
-            }}</el-button>
-            <el-button
+            }}</MarButton>
+            <MarButton
               :icon="marIcon('delete')"
               link
               type="danger"
               :disabled="loading"
               @click="remove(prompt)"
-              >{{ translate('quickPrompts.remove') }}</el-button
+              >{{ translate('quickPrompts.remove') }}</MarButton
             >
           </div>
         </article>
       </div>
     </div>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
@@ -180,39 +183,34 @@ async function remove(prompt: QuickPrompt): Promise<void> {
       width="min(560px, calc(100vw - 32px))"
       append-to-body
       :before-close="close"
-      :close-icon="marIcon('close')"
     >
-      <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
-        <el-form-item :label="translate('quickPrompts.phrase')" prop="phrase">
-          <el-input
+      <MarForm ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
+        <MarFormItem :label="translate('quickPrompts.phrase')" prop="phrase">
+          <MarInput
             v-model="draft.phrase"
             maxlength="80"
             :placeholder="translate('quickPrompts.phraseHint')"
           >
             <template #prepend>#</template>
-          </el-input>
-        </el-form-item>
-        <el-form-item :label="translate('quickPrompts.prompt')" prop="prompt">
-          <el-input
+          </MarInput>
+        </MarFormItem>
+        <MarFormItem :label="translate('quickPrompts.prompt')" prop="prompt">
+          <MarInput
             v-model="draft.prompt"
             maxlength="10000"
             :rows="7"
             resize="vertical"
             type="textarea"
           />
-        </el-form-item>
-      </el-form>
+        </MarFormItem>
+      </MarForm>
       <template #footer>
-        <el-button @click="close">{{ translate('common.cancel') }}</el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('common.save') }}</el-button
-        >
+        <MarButton @click="close">{{ translate('common.cancel') }}</MarButton>
+        <MarButton type="primary" :loading="saving" @click="save">{{
+          translate('common.save')
+        }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </LoadingPanel>
 </template>
 
@@ -316,13 +314,13 @@ async function remove(prompt: QuickPrompt): Promise<void> {
   white-space: nowrap;
 }
 
-.prompt-actions :deep(.el-button) {
+.prompt-actions :deep(.mar-ui-button) {
   min-height: var(--mar-compact-control-size);
   padding-inline: 2px;
   font-size: var(--mar-font-size-body);
 }
 
-.prompt-actions :deep(.el-button + .el-button) {
+.prompt-actions :deep(.mar-ui-button + .mar-ui-button) {
   margin-left: 0;
 }
 </style>

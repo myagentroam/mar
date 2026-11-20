@@ -323,13 +323,13 @@ for (const theme of ['light', 'dark']) {
             probe.remove();
             return result;
           });
-          for (const button of await toolbar.locator('.el-button:visible').all()) {
+          for (const button of await toolbar.locator('.mar-ui-button:visible').all()) {
             await expect(button).toHaveCSS('background-color', tokens.background);
             await expect(button).toHaveCSS(
               'border-color',
               (await button.isDisabled()) ? tokens.disabledBorder : tokens.border
             );
-            if (!(await button.isDisabled())) {
+            if (width >= 768 && !(await button.isDisabled())) {
               await button.hover();
               await expect(button).toHaveCSS('background-color', tokens.hoverBackground);
               await expect(button).toHaveCSS('border-color', tokens.hoverBorder);
@@ -347,13 +347,15 @@ for (const theme of ['light', 'dark']) {
             await toolbar.screenshot({
               path: testInfo.outputPath(`file-tools-${theme}-${width}-normal.png`)
             });
-            await save.hover();
-            await expect(save).toHaveCSS('background-color', tokens.hoverBackground);
-            await expect(save).toHaveCSS('border-color', tokens.hoverBorder);
-            await expect(save).toHaveCSS('color', tokens.hoverText);
-            await toolbar.screenshot({
-              path: testInfo.outputPath(`file-tools-${theme}-${width}-hover.png`)
-            });
+            if (width >= 768) {
+              await save.hover();
+              await expect(save).toHaveCSS('background-color', tokens.hoverBackground);
+              await expect(save).toHaveCSS('border-color', tokens.hoverBorder);
+              await expect(save).toHaveCSS('color', tokens.hoverText);
+              await toolbar.screenshot({
+                path: testInfo.outputPath(`file-tools-${theme}-${width}-hover.png`)
+              });
+            }
             if (width === 1280)
               await page.screenshot({ path: testInfo.outputPath(`file-editor-${theme}.png`) });
             await save.focus();
@@ -362,6 +364,8 @@ for (const theme of ['light', 'dark']) {
             await expect(save).toBeFocused();
             await expect(save).toHaveCSS('outline-color', tokens.focus);
             await expect(save).toHaveCSS('outline-width', '2px');
+            await page.mouse.move(0, 0);
+            await expect(save).toHaveCSS('background-color', tokens.background);
             const enabled = await save.evaluate(
               (element) => getComputedStyle(element).backgroundColor
             );
@@ -373,7 +377,7 @@ for (const theme of ['light', 'dark']) {
                 'background-color',
                 active ? tokens.pressedBackground : enabled
               );
-              await expect(save).toHaveCSS('color', tokens.hoverText);
+              if (active || width >= 768) await expect(save).toHaveCSS('color', tokens.hoverText);
             } finally {
               await page.keyboard.up('Space');
             }
@@ -407,13 +411,19 @@ for (const theme of ['light', 'dark']) {
               probe.remove();
               return color;
             });
-            const searchButtons = await search.locator('.el-button').all();
+            const searchButtons = await search.locator('.mar-ui-button:enabled').all();
             for (const [index, button] of searchButtons.entries()) {
-              await button.hover();
-              await expect(button).toHaveCSS('color', tokens.hoverText);
-              await expect(button).toHaveCSS('background-color', rowHoverBackground);
-              await expect(button).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
+              if (width >= 768) {
+                await button.hover();
+                await expect(button).toHaveCSS('color', tokens.hoverText);
+                await expect(button).toHaveCSS('background-color', rowHoverBackground);
+                await expect(button).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
+              }
               await search.getByRole('textbox').focus();
+              await page.keyboard.press('Tab');
+              await expect(
+                search.getByRole('button', { name: 'Clear', exact: true })
+              ).toBeFocused();
               for (let step = 0; step <= index; step += 1) await page.keyboard.press('Tab');
               await expect(button).toBeFocused();
               await expect(button).toHaveCSS('outline-width', '2px');
@@ -492,7 +502,7 @@ for (const [notice, message, width] of [
     await expect(
       page.getByText('No definitions or references found.', { exact: true })
     ).toHaveCount(0);
-    await expect(page.locator('.el-message--error')).toHaveCount(0);
+    await expect(page.locator('.mar-message--error')).toHaveCount(0);
     const bounds = (await dropdown.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
@@ -588,17 +598,19 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
       );
       await page.mouse.move(0, 0);
       const retry = page.locator('.file-preview-state').getByRole('button', { name: 'Retry' });
-      await expect(retry).not.toHaveClass(/is-link|is-text|el-button--(?:primary|danger)/);
+      await expect(retry).not.toHaveClass(
+        /mar-ui-button--inline|mar-ui-button--ghost|mar-ui-button--(?:primary|danger)/
+      );
       await expect(retry).toHaveCSS('border-top-width', '1px');
       await expect(retry).toHaveCSS('border-top-style', 'solid');
       const color = await retry.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--el-text-color-regular)';
+        probe.style.color = 'var(--mar-text-secondary)';
         element.append(probe);
         const action = getComputedStyle(probe).color;
-        probe.style.color = 'var(--el-button-bg-color)';
+        probe.style.color = 'var(--mar-ui-button-bg)';
         const background = getComputedStyle(probe).color;
-        probe.style.color = 'var(--el-button-border-color)';
+        probe.style.color = 'var(--mar-ui-button-border)';
         const border = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-text-secondary)';
         const message = getComputedStyle(probe).color;

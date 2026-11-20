@@ -12,7 +12,6 @@ import { prepareSessionModelRequest } from './request-preparation.js';
 /** Capture and transform a candidate; only ordinary prompt updates commit during preparation. */
 export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
   readonly messages: SessionModelMessage[];
-  readonly continuation: SessionModelMessage | undefined;
   readonly model: Pick<AgentModelConfiguration, 'protocol' | 'inputCapabilities'>;
   readonly requestBase: Omit<SessionModelRequest, 'system' | 'systemBlocks' | 'messages' | 'tools'>;
   residentTools(): readonly ClientToolDefinition[];
@@ -36,8 +35,6 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
 }) {
   const { roundTools, roundBindings, toolScope, composeSystemPrompt } = input.capture();
   const residentTools = input.residentTools();
-  const requestMessages =
-    input.continuation === undefined ? input.messages : [...input.messages, input.continuation];
   input.bind(toolScope);
   const composed = splitContextualPrompt(await composeSystemPrompt());
   const skillAnchor = input.messages.length;
@@ -46,12 +43,17 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
   const world = loads?.size
     ? updateLoadedSkillWorldState(promptWorld, skillAnchor, loads)
     : promptWorld;
+  // Append-only changes retain the existing entries by reference. A Skill replacement
+  // removes an earlier anchor and invalidates the provider's committed message count.
+  const replacesSkillContext =
+    world !== promptWorld &&
+    promptWorld.entries.some((entry, index) => entry !== world.entries[index]);
   const candidateRequest = prepareSessionModelRequest(
     {
       ...input.requestBase,
       system: composed.system,
       ...(composed.systemBlocks ? { systemBlocks: composed.systemBlocks } : {}),
-      messages: requestMessages,
+      messages: input.messages,
       tools: roundTools
     },
     input.model,
@@ -72,6 +74,7 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
     candidateRequest,
     request,
     toolScope,
+    replacesSkillContext,
     acknowledgeSkillContext: loads?.size
       ? async () => {
           const current = input.world();

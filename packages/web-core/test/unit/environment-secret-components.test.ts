@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SecretPage from '../../src/view/settings/SecretManagementPage.vue?unit-render';
 import Details from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
 import SecretManager from '../../src/view/settings/EnvironmentSecretManager.vue?unit-render';
@@ -38,7 +38,7 @@ describe('Public environment secret management', () => {
         history: { replaceState: vi.fn() },
         matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
       });
-      const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+      const error = feedback.error;
       const request = vi.fn().mockRejectedValue(cause);
       const view = renderComponent(SecretManager, {
         request,
@@ -71,7 +71,7 @@ describe('Public environment secret management', () => {
     });
     try {
       const button = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')));
       expect(button).toBeDefined();
       await trigger(button!, 'onClick');
@@ -144,15 +144,15 @@ describe('Public environment secret management', () => {
         );
         expect(textContent(view.root)).toContain('TARGET_WORKSPACE');
         expect(textContent(view.root)).not.toMatch(/WRONG_NODE|WRONG_WORKSPACE/u);
-        const add = view.findAll('ElButton').find((node) => node.props['type'] === 'primary')!;
+        const add = view.findAll('MarButton').find((node) => node.props['type'] === 'primary')!;
         await trigger(add, 'onClick');
-        expect(view.findAll('ElForm')).toHaveLength(1);
+        expect(view.findAll('MarForm')).toHaveLength(1);
         workspaceId.value = 'workspace/two';
         await flushComponent();
         expect(request).toHaveBeenLastCalledWith(
           '/api/environment-secrets?nodeId=node%2Fid&workspaceId=workspace%2Ftwo'
         );
-        expect(view.findAll('ElForm')).toHaveLength(0);
+        expect(view.findAll('MarForm')).toHaveLength(0);
         expect(textContent(view.root)).not.toContain('workspace/one');
       } finally {
         view.unmount();
@@ -182,8 +182,8 @@ describe('Public environment secret management', () => {
     };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+    const error = feedback.error;
+
     let failSave = true;
     const request = vi.fn(async (_path: string, init?: RequestInit) => {
       if (init?.method === 'POST' && failSave) throw new Error('Fixture save failure');
@@ -200,12 +200,12 @@ describe('Public environment secret management', () => {
     );
     try {
       await flushComponent();
-      const keyword = view.findAll('ElInput')[0]!;
+      const keyword = view.findAll('MarInput')[0]!;
       await trigger(keyword, 'onUpdate:modelValue', 'fixture-filter');
       expect(replaceState.mock.calls.at(-1)?.[2]).toContain('secrets.keyword=fixture-filter');
       await trigger(
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find(
             (node) =>
               textContent(node).trim() ===
@@ -214,18 +214,18 @@ describe('Public environment secret management', () => {
         'onClick'
       );
       expect(textContent(view.root)).toContain('Host owner fields');
-      expect(view.findAll('ElForm')[0]?.props['model']).toMatchObject({ fixtureOwner: 27 });
-      const inputs = view.findAll('ElInput').filter((node) => node !== keyword);
+      expect(view.findAll('MarForm')[0]?.props['model']).toMatchObject({ fixtureOwner: 27 });
+      const inputs = view.findAll('MarInput').filter((node) => node !== keyword);
       await trigger(inputs[0]!, 'onUpdate:modelValue', 'FIXTURE_VALUE');
       await trigger(inputs[1]!, 'onUpdate:modelValue', 'fixture-only-value');
       await trigger(
-        view.findAll('ElButton').find((node) => textContent(node).trim() === 'Save')!,
+        view.findAll('MarButton').find((node) => textContent(node).trim() === 'Save')!,
         'onClick'
       );
       expect(validate).toHaveBeenCalledOnce();
       expect(request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
       await trigger(
-        view.findAll('ElButton').find((node) => textContent(node).trim() === 'Save')!,
+        view.findAll('MarButton').find((node) => textContent(node).trim() === 'Save')!,
         'onClick'
       );
       expect(request).toHaveBeenCalledWith('/api/environment-secrets', {
@@ -237,13 +237,13 @@ describe('Public environment secret management', () => {
         })
       });
       expect(error).toHaveBeenCalledOnce();
-      expect(view.findAll('ElForm')).toHaveLength(1);
+      expect(view.findAll('MarForm')).toHaveLength(1);
       failSave = false;
       await trigger(
-        view.findAll('ElButton').find((node) => textContent(node).trim() === 'Save')!,
+        view.findAll('MarButton').find((node) => textContent(node).trim() === 'Save')!,
         'onClick'
       );
-      expect(view.findAll('ElForm')).toHaveLength(0);
+      expect(view.findAll('MarForm')).toHaveLength(0);
       expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
@@ -287,3 +287,18 @@ describe('Public environment secret management', () => {
     }
   );
 });
+
+beforeEach(() => {
+  for (const spy of Object.values(feedback)) spy.mockClear();
+});
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

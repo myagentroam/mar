@@ -164,7 +164,7 @@ describe('Shared personal settings components', () => {
       });
       try {
         const select = () =>
-          view.findAll('ElSelect').find((node) => node.props['id'] === 'appearance-icon-theme')!;
+          view.findAll('MarSelect').find((node) => node.props['id'] === 'appearance-icon-theme')!;
         expect(select().props['modelValue']).toBe('mar');
         for (let attempt = 1; attempt <= 2; attempt += 1) {
           await trigger(select(), 'onUpdate:modelValue', 'mar');
@@ -242,6 +242,7 @@ describe('Shared personal settings components', () => {
       const about = await render('about');
       expect(about.html).toContain('test-version');
       expect(about.html).toContain('THIRD_PARTY_NOTICES.txt');
+      expect(about.html).not.toContain('Element Plus');
       expect(about.html).toContain(commonMessages[locale].settings.about);
       for (const component of [
         'Vue',

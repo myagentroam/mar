@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import Page from '../../src/view/settings/ConversationTemplateManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import { showMessage } from '../../src/service/message-feedback-service.js';
@@ -80,7 +80,7 @@ function fixture() {
   });
 }
 function button(view: ReturnType<typeof renderComponent>, label: string) {
-  return view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+  return view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
 }
 beforeEach(() => {
   i18n.global.locale.value = 'en-US';
@@ -105,19 +105,19 @@ describe('Template management component behavior', () => {
     const view = renderComponent(Page, { request, writable: true, nodes: [] });
     try {
       await flushComponent();
-      const paging = view.findAll('ElPagination')[0]!;
+      const paging = view.findAll('MarPagination')[0]!;
       expect(paging.props.total).toBe(21);
       await trigger(paging, 'onCurrentChange', 2);
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const rows = table.props.data as Array<{ id: string }>;
       expect(rows.map((row) => row.id)).toEqual(['template-2']);
       await trigger(table, 'onRowClick', rows[0]);
-      expect(view.findAll('ElDialog')[0]!.props.title).toBe('template-2');
-      expect(view.findAll('ElTable').at(-1)!.props.data).toEqual([
+      expect(view.findAll('MarDialog')[0]!.props.title).toBe('template-2');
+      expect(view.findAll('MarTable').at(-1)!.props.data).toEqual([
         { ...version, templateId: 'template-2' }
       ]);
       await trigger(button(view, i18n.global.t('common.close')), 'onClick');
-      expect(view.findAll('ElDialog')).toHaveLength(0);
+      expect(view.findAll('MarDialog')).toHaveLength(0);
     } finally {
       view.unmount();
     }
@@ -135,12 +135,12 @@ describe('Template management component behavior', () => {
     const view = renderComponent(Page, { request, writable: false, nodes: [] });
     try {
       await flushComponent();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const first = trigger(table, 'onRowClick', template);
       await trigger(table, 'onRowClick', { ...template, id: 'template-2' });
       release(detail());
       await first;
-      expect(view.findAll('ElDialog')[0]!.props.title).toBe('template-2');
+      expect(view.findAll('MarDialog')[0]!.props.title).toBe('template-2');
       expect(showMessage).not.toHaveBeenCalled();
     } finally {
       view.unmount();
@@ -151,8 +151,8 @@ describe('Template management component behavior', () => {
     'confirms publication, polls the job and reports %s',
     async (status) => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(
-        'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+      vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(
+        'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
       );
       const job = {
         id: 'job-1',
@@ -187,7 +187,7 @@ describe('Template management component behavior', () => {
           'onClick'
         );
         await flushComponent();
-        expect(ElMessageBox.confirm).toHaveBeenCalledOnce();
+        expect(MarMessageBox.confirm).toHaveBeenCalledOnce();
         const write = request.mock.calls.find(([, init]) => init?.method === 'POST')!;
         expect(write[0]).toBe('/api/admin/conversation-templates/template-1/publish');
         expect(JSON.parse(String(write[1]!.body))).toMatchObject({

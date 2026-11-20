@@ -319,21 +319,23 @@ describe('QuickJS Code Mode', () => {
     expect(applyPatchToolDefinition.description).toContain('resolves on success');
   });
 
-  it('executes its documented parallel-read and read-then-patch examples unchanged', async () => {
+  it('executes its documented examples unchanged and preserves embedded backslashes', async () => {
     const examples = Array.from(
       codeModeToolDefinition.description.matchAll(/```js\n([\s\S]*?)\n```/gu),
       (match) => match[1]!
     );
-    expect(examples).toHaveLength(2);
+    expect(examples).toHaveLength(3);
     const { home, workspace } = await fixture();
     await writeFile(join(workspace, 'a.txt'), 'a-evidence\n');
     await writeFile(join(workspace, 'b.txt'), 'b-evidence\n');
     await writeFile(join(workspace, 'source.txt'), 'original=1\n');
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     const input = context();
+    const runExec = vi.fn(async (_call: { arguments: unknown }) => ({ content: 'exec evidence' }));
     input.codeMode = {
-      tools: [readToolDefinition, applyPatchToolDefinition],
-      invoke: (call, signal) => host.executeTool(call, { ...input, signal })
+      tools: [readToolDefinition, applyPatchToolDefinition, execToolDefinition],
+      invoke: (call, signal) =>
+        call.name === 'exec' ? runExec(call) : host.executeTool(call, { ...input, signal })
     };
     try {
       const parallel = await host.executeTool(
@@ -365,7 +367,17 @@ describe('QuickJS Code Mode', () => {
           result: { data: { totals: { files: 1 } } }
         }
       ]);
-      expect(await readFile(join(workspace, 'source.txt'), 'utf8')).toBe('original=1\nupdated=2\n');
+      expect(await readFile(join(workspace, 'source.txt'), 'utf8')).toBe(
+        'original=1\nupdated=2\npattern=\\bword\\b\n'
+      );
+      const exec = await host.executeTool({ name: 'code_exec', arguments: examples[2]! }, input);
+      expectCellEnvelope(exec, 'completed');
+      expect(runExec).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          name: 'exec',
+          arguments: { command: "python3 - <<'PY'\nprint('a\\0b'.split('\\0'))\nPY" }
+        })
+      );
     } finally {
       await host.dispose();
     }
@@ -565,14 +577,7 @@ describe('QuickJS Code Mode', () => {
   });
 
   it('projects direct-only and dual-exposure tools with the full bounded programmatic input directory', () => {
-    const controls = new Set([
-      'code_exec',
-      'code_exec_wait',
-      'tool_search',
-      'question',
-      'skill',
-      'sleep'
-    ]);
+    const controls = new Set(['code_exec', 'code_exec_wait', 'question', 'sleep']);
     const legacyControls = new Set(['agent_start', 'agent_wait', 'agent_message', 'agent_cancel']);
     for (const tool of BUILTIN_TOOL_DEFINITIONS)
       expect(tool.allowedCallers, tool.name).toEqual(
@@ -632,10 +637,10 @@ describe('QuickJS Code Mode', () => {
     expect(names).not.toContain('programmatic_only');
     expect(names).not.toContain('exec');
     expect(names).not.toContain('read');
+    expect(names).not.toContain('skill_load');
+    expect(names).not.toContain('tool_search');
     expect(names).toContain('apply_patch');
     expect(names).toEqual([
-      'skill',
-      'tool_search',
       'exec_wait',
       'code_exec',
       'code_exec_wait',
@@ -652,6 +657,8 @@ describe('QuickJS Code Mode', () => {
     expect(description).not.toContain('ToolResults');
     expect(directory.callableNames).toContain('programmatic_only');
     expect(directory.callableNames).toContain('exec');
+    expect(directory.callableNames).toContain('skill_load');
+    expect(directory.callableNames).toContain('tool_search');
     for (const name of controls) {
       expect(names).toContain(name);
       expect(directory.callableNames).not.toContain(name);
@@ -681,6 +688,8 @@ describe('QuickJS Code Mode', () => {
     expect(withoutCodeMode.some((tool) => tool.name === 'programmatic_only')).toBe(false);
     expect(withoutCodeMode.some((tool) => tool.name === 'read')).toBe(true);
     expect(withoutCodeMode.some((tool) => tool.name === 'exec')).toBe(true);
+    expect(withoutCodeMode.some((tool) => tool.name === 'skill_load')).toBe(true);
+    expect(withoutCodeMode.some((tool) => tool.name === 'tool_search')).toBe(true);
   });
 
   it('hides transport input modes only in programmatic tool declarations', () => {
@@ -1277,14 +1286,12 @@ describe('QuickJS Code Mode', () => {
           allowedCallers: ['direct'],
           inputSchema: { type: 'object' }
         },
-        ...['code_exec', 'code_exec_wait', 'tool_search', 'question', 'skill', 'sleep'].map(
-          (name) => ({
-            name,
-            description: 'Control tools remain direct-only.',
-            allowedCallers: ['direct', 'programmatic'] as const,
-            inputSchema: { type: 'object' }
-          })
-        )
+        ...['code_exec', 'code_exec_wait', 'question', 'sleep'].map((name) => ({
+          name,
+          description: 'Control tools remain direct-only.',
+          allowedCallers: ['direct', 'programmatic'] as const,
+          inputSchema: { type: 'object' }
+        }))
       ],
       invoke: async (call) => {
         invoked.push(call.name);

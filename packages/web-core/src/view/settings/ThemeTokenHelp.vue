@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarInput } from '@myagentroam/mar-ui/input';
 
-import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -44,15 +46,15 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <el-button
+  <MarButton
     v-tooltip="t('customThemes.tokenHelp')"
     class="mar-icon-action"
     text
-    :icon="marIcon('help')"
+    icon="help"
     :aria-label="t('customThemes.tokenHelp')"
     @click="show"
   />
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="open"
@@ -61,16 +63,14 @@ async function copy(token: string): Promise<void> {
     width="min(720px, calc(100vw - 32px))"
     append-to-body
     class="theme-token-help"
-    :close-icon="marIcon('close')"
   >
     <p class="hint">{{ t('customThemes.tokenHint') }}</p>
-    <el-input
+    <MarInput
       v-model="search"
-      :prefix-icon="marIcon('search')"
+      prefix-icon="search"
       :placeholder="t('customThemes.tokenSearch')"
       :aria-label="t('customThemes.tokenSearch')"
       clearable
-      :clear-icon="marIcon('clear-input')"
     />
     <div class="reference-body">
       <section v-for="group in groups" :key="group.key">
@@ -84,11 +84,11 @@ async function copy(token: string): Promise<void> {
                 aria-hidden="true"
               />
               <code>{{ item.token }}</code>
-              <el-button
+              <MarButton
                 v-tooltip="t('customThemes.tokenCopy', { token: item.token })"
                 class="mar-icon-action"
                 text
-                :icon="marIcon('copy')"
+                icon="copy"
                 :aria-label="t('customThemes.tokenCopy', { token: item.token })"
                 @click="copy(item.token)"
               />
@@ -99,7 +99,7 @@ async function copy(token: string): Promise<void> {
       </section>
       <p v-if="!groups.length" class="hint">{{ t('customThemes.tokenEmpty') }}</p>
     </div>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { nextTick, ref } from 'vue';
 import MarIcon from '../common/MarIcon.vue';
 import FileTypeIcon from './FileTypeIcon.vue';
@@ -63,12 +66,12 @@ defineExpose({
 <template>
   <section class="content-search">
     <div class="content-search-options">
-      <el-checkbox v-model="contentUseRegex" size="small">{{
+      <MarCheckbox v-model="contentUseRegex" size="small">{{
         translate('generated.workspaceInspector.useRegularExpression')
-      }}</el-checkbox>
+      }}</MarCheckbox>
     </div>
     <form class="explorer-toolbar content-search-toolbar" @submit.prevent="searchContent">
-      <el-input
+      <MarInput
         ref="contentSearchInput"
         v-model="contentQuery"
         :aria-label="translate('generated.workspaceInspector.searchFileContents')"
@@ -88,7 +91,7 @@ defineExpose({
         <MarIcon :name="contentSearchLoading ? 'loading-action' : 'refresh'" />
       </button>
     </form>
-    <el-button
+    <MarButton
       v-if="contentSearchError !== undefined"
       v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
       :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
@@ -103,7 +106,7 @@ defineExpose({
         ><MarIcon name="loading-action" />
         {{ translate('generated.workspaceInspector.loading') }}</template
       ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </el-button>
+    </MarButton>
     <p v-else-if="contentSearchLoading" class="watch-status" role="status">
       <MarIcon name="loading-action" />
       {{ translate('generated.workspaceInspector.loading') }}
@@ -198,7 +201,7 @@ button.watch-status[aria-disabled='true'] {
   padding: 0.375rem 0.375rem 0;
 }
 
-.content-search-options :deep(.el-checkbox) {
+.content-search-options :deep(.mar-ui-checkbox) {
   height: 1.2rem;
   font-size: var(--mar-font-size-meta);
 }

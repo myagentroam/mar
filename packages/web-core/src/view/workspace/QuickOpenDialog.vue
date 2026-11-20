@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeSummary, Session, WorkspaceTab } from '../../model/workbench.js';
@@ -41,15 +42,17 @@ const emit = defineEmits<{
   close: [selected?: boolean];
   openFile: [path: string, line: number | undefined, column: number | undefined, external: boolean];
 }>();
+const dialog = ref<InstanceType<typeof MarDialog>>();
 const input = ref<HTMLInputElement>();
 const results = ref<HTMLUListElement>();
 const tab = ref<QuickOpenTab>('ALL');
 const query = ref('');
 const activeKey = ref<string>();
 const selectionCommitted = ref(false);
+const dismissing = ref(false);
 const http = inject(WORKBENCH_HTTP_KEY, undefined) ?? createScopedHttpService();
 const queryService = createQuickOpenQueryService({
-  open: () => props.open,
+  open: () => props.open && !dismissing.value,
   query: () => query.value,
   tab: () => tab.value,
   nodeId: () => props.nodeId,
@@ -63,7 +66,9 @@ const queryService = createQuickOpenQueryService({
 });
 const { workspaces, files, symbols, workspaceStatus, fileStatus, symbolStatus, referenceStatus } =
   queryService;
-const scheduleSearch = queryService.scheduleSearch;
+const scheduleSearch = () => {
+  if (!dismissing.value) queryService.scheduleSearch();
+};
 const loadWorkspaces = queryService.loadWorkspaces;
 const busy = (source: QuickOpenSourceStatus) =>
   source.phase === 'SEARCHING' || source.phase === 'BUILDING';
@@ -173,6 +178,7 @@ watch(
     tab.value = 'ALL';
     query.value = '';
     selectionCommitted.value = false;
+    dismissing.value = false;
     files.value = [];
     symbols.value = [];
     activeKey.value = undefined;
@@ -193,7 +199,14 @@ function cancelSearch(): void {
   queryService.cancel();
 }
 
+function onDismissStart(): void {
+  dismissing.value = true;
+  // Abort immediately without changing the content or layout as the dialog fades out.
+  queryService.cancel({ preserveStatus: true });
+}
+
 function onVisibilityChange(): void {
+  if (dismissing.value) return;
   if (document.visibilityState === 'hidden') cancelSearch();
   else if (props.open) {
     void loadWorkspaces();
@@ -211,7 +224,10 @@ onMounted(() => {
       owner: () => input.value,
       keys: fileKeys.choose,
       when: () =>
-        props.open && !selectionCommitted.value && entries.value[activeIndex.value] !== undefined,
+        props.open &&
+        !dismissing.value &&
+        !selectionCommitted.value &&
+        entries.value[activeIndex.value] !== undefined,
       execute: (event) => {
         choose(undefined, event.ctrlKey || event.metaKey);
         return 'HANDLED';
@@ -225,7 +241,7 @@ onMounted(() => {
       keys: fileKeys.dismiss,
       when: () => props.open,
       execute: () => {
-        emit('close');
+        dialog.value?.handleClose();
         return 'HANDLED';
       }
     })
@@ -241,7 +257,7 @@ onBeforeUnmount(() => {
 });
 
 function choose(entry = entries.value[activeIndex.value], external = false): void {
-  if (entry === undefined || selectionCommitted.value) return;
+  if (entry === undefined || dismissing.value || selectionCommitted.value) return;
   if (
     (entry.kind === 'FILE' || entry.kind === 'SYMBOL') &&
     (entry.nodeId !== props.nodeId || entry.workspaceId !== props.workspaceId)
@@ -322,8 +338,9 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     v-if="open"
+    ref="dialog"
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="open"
@@ -332,9 +349,9 @@ function onKeydown(event: KeyboardEvent): void {
     :class="{ 'has-status-notices': statusNotices.length > 0 }"
     width="min(680px, calc(100vw - 32px))"
     :show-close="false"
-    @close="emit('close')"
+    @close="onDismissStart"
+    @closed="emit('close')"
     @focus.once="input?.focus({ preventScroll: true })"
-    :close-icon="marIcon('close')"
   >
     <div
       class="quick-open-tabs"
@@ -462,20 +479,20 @@ function onKeydown(event: KeyboardEvent): void {
           </summary>
           <pre>{{ errorMessage(notice.status.error) }}</pre>
         </details>
-        <el-button
+        <MarButton
           v-if="notice.status.phase === 'FAILED' || notice.status.phase === 'TIMED_OUT'"
           link
           @click="retrySource(notice.kind)"
         >
           {{ translate('generated.quickOpenDialog.retry') }}
-        </el-button>
+        </MarButton>
       </div>
     </div>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
-:global(.quick-open-dialog > .el-dialog__body) {
+:global(.quick-open-dialog > .mar-ui-dialog__body) {
   display: flex;
   flex-direction: column;
 }

@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -6,12 +11,13 @@ import {
 import { showMessage } from '../../service/message-feedback-service.js';
 import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
 
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   type BuiltinTheme,
   type CustomTheme,
@@ -40,6 +46,7 @@ const themes = computed<ThemeRow[]>(() => [
   }))
 ]);
 const form = ref<FormInstance>();
+const editorId = useId();
 const fileInput = ref<HTMLInputElement>();
 const selectedId = ref<CustomTheme['id']>();
 const selectedBuiltin = ref<BuiltinTheme | undefined>('vscode-dark-2026');
@@ -85,8 +92,7 @@ const rules = computed<FormRules>(() => ({
 async function confirmDiscard(): Promise<boolean> {
   if (!unsaved.value) return true;
   try {
-    await ElMessageBox.confirm(t('customThemes.discard'), t('customThemes.title'), {
-      closeIcon: marIcon('close'),
+    await MarMessageBox.confirm(t('customThemes.discard'), t('customThemes.title'), {
       icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.discardAction'),
@@ -122,8 +128,7 @@ async function selectTheme(item: ThemeRow): Promise<void> {
 async function reset(): Promise<void> {
   if (!dirty.value) return;
   try {
-    await ElMessageBox.confirm(t('customThemes.resetConfirm'), t('customThemes.title'), {
-      closeIcon: marIcon('close'),
+    await MarMessageBox.confirm(t('customThemes.resetConfirm'), t('customThemes.title'), {
       icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.reset'),
@@ -160,8 +165,7 @@ async function save(): Promise<void> {
 }
 async function remove(item: Pick<CustomTheme, 'id'>): Promise<void> {
   try {
-    await ElMessageBox.confirm(t('customThemes.deleteConfirm'), t('customThemes.title'), {
-      closeIcon: marIcon('close'),
+    await MarMessageBox.confirm(t('customThemes.deleteConfirm'), t('customThemes.title'), {
       icon: marIcon('warning'),
       type: 'warning',
       confirmButtonText: t('customThemes.remove'),
@@ -243,9 +247,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
     <h2>{{ t('customThemes.title') }}</h2>
     <p class="summary">{{ t('customThemes.summary') }}</p>
     <div class="actions">
-      <el-button :icon="marIcon('upload')" @click="fileInput?.click()">{{
+      <MarButton icon="upload" @click="fileInput?.click()">{{
         t('customThemes.import')
-      }}</el-button>
+      }}</MarButton>
       <input
         ref="fileInput"
         class="file-input"
@@ -283,38 +287,34 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           <span v-if="item.builtin" class="theme-meta">{{ t('customThemes.builtin') }}</span>
         </button>
         <div class="theme-controls">
-          <el-button
+          <MarButton
+            class="theme-apply"
             link
-            :icon="marIcon('check')"
+            icon="check"
             :disabled="service.theme.value === item.id"
             @click="applyTheme(item)"
           >
             {{ t(service.theme.value === item.id ? 'customThemes.active' : 'customThemes.apply') }}
-          </el-button>
-          <el-dropdown trigger="click" @command="themeAction(item, $event)">
-            <el-button
+          </MarButton>
+          <MarDropdown trigger="click" @command="themeAction(item, $event)">
+            <MarButton
               v-tooltip="t('customThemes.moreActions', { name: item.name })"
               class="mar-icon-action"
               text
+              icon="more"
               :aria-label="t('customThemes.moreActions', { name: item.name })"
-            >
-              <MarIcon name="more" />
-            </el-button>
+            />
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="duplicate" :icon="marIcon('copy')">{{
+              <MarDropdownMenu>
+                <MarDropdownItem command="duplicate" icon="copy">{{
                   t('customThemes.duplicate')
-                }}</el-dropdown-item>
-                <el-dropdown-item
-                  v-if="!item.builtin"
-                  command="remove"
-                  :icon="marIcon('delete')"
-                  divided
-                  >{{ t('customThemes.remove') }}</el-dropdown-item
-                >
-              </el-dropdown-menu>
+                }}</MarDropdownItem>
+                <MarDropdownItem v-if="!item.builtin" command="remove" icon="delete" divided>{{
+                  t('customThemes.remove')
+                }}</MarDropdownItem>
+              </MarDropdownMenu>
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </div>
       </li>
     </ul>
@@ -328,74 +328,65 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
               : t('customThemes.newTheme')
         }}
       </h3>
-      <el-tag v-if="unsaved" type="warning">{{ t('customThemes.unsaved') }}</el-tag>
+      <MarTag v-if="unsaved" type="warning">{{ t('customThemes.unsaved') }}</MarTag>
     </div>
     <div class="editor-layout">
-      <el-form ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
+      <MarForm ref="form" :model="draft" :rules="rules" label-position="top" @submit.prevent="save">
         <div class="actions">
-          <el-button
-            v-if="!isBuiltin"
-            :icon="marIcon('check')"
-            type="primary"
-            native-type="submit"
-            >{{ t('customThemes.save') }}</el-button
-          >
-          <el-button v-if="!isBuiltin" :icon="marIcon('administration')" @click="format">{{
+          <MarButton v-if="!isBuiltin" icon="check" type="primary" native-type="submit">{{
+            t('customThemes.save')
+          }}</MarButton>
+          <MarButton v-if="!isBuiltin" icon="administration" @click="format">{{
             t('customThemes.format')
-          }}</el-button>
-          <el-button v-if="!isBuiltin" :icon="marIcon('undo')" :disabled="!dirty" @click="reset">{{
+          }}</MarButton>
+          <MarButton v-if="!isBuiltin" icon="undo" :disabled="!dirty" @click="reset">{{
             t('customThemes.reset')
-          }}</el-button>
-          <el-button :icon="marIcon('copy')" @click="copy">{{
-            t('customThemes.copyJson')
-          }}</el-button>
-          <el-button :icon="marIcon('download')" @click="exportFile">{{
-            t('customThemes.export')
-          }}</el-button>
+          }}</MarButton>
+          <MarButton icon="copy" @click="copy">{{ t('customThemes.copyJson') }}</MarButton>
+          <MarButton icon="download" @click="exportFile">{{ t('customThemes.export') }}</MarButton>
         </div>
-        <el-form-item :label="t('customThemes.json')" prop="source">
-          <template #label>
-            <span class="editor-label"
-              >{{ t('customThemes.json') }}<ThemeTokenHelp :colors="previewColors"
-            /></span>
-          </template>
-          <el-input
+        <div class="editor-label">
+          <label :for="editorId">{{ t('customThemes.json') }}</label>
+          <ThemeTokenHelp :colors="previewColors" />
+        </div>
+        <MarFormItem prop="source">
+          <MarInput
+            :id="editorId"
             v-model="draft.source"
             type="textarea"
             :rows="20"
             :readonly="isBuiltin"
             spellcheck="false"
-            :aria-label="t('customThemes.json')"
             class="json-editor"
           />
-        </el-form-item>
-      </el-form>
+        </MarFormItem>
+      </MarForm>
       <aside :aria-label="t('customThemes.inspector')">
         <div class="validation" aria-live="polite">
-          <el-alert
+          <MarAlert
             v-if="!analysis.validJson"
             type="error"
             :closable="false"
             show-icon
             :title="t('customThemes.invalidJson')"
             ><template #icon><MarIcon name="error" /></template
-          ></el-alert>
-          <el-alert
+          ></MarAlert>
+          <MarAlert
             v-else-if="analysis.warnings.length"
             type="warning"
             :closable="false"
             show-icon
             :title="t('customThemes.warningSummary', { count: analysis.warnings.length })"
             ><template #icon><MarIcon name="warning" /></template
-          ></el-alert>
-          <el-alert
+          ></MarAlert>
+          <MarAlert
             v-else
             type="success"
             :closable="false"
             show-icon
             :title="t('customThemes.valid')"
             ><template #icon><MarIcon name="success" /></template
-          ></el-alert>
+          ></MarAlert>
           <ul v-if="analysis.warnings.length" class="warnings">
             <li v-for="(warning, index) in analysis.warnings" :key="index">
               {{ t(`customThemes.warnings.${warning.code}`, { field: warning.field }) }}
@@ -404,15 +395,15 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
         </div>
         <div class="preview-heading">
           <h3>{{ t('customThemes.preview') }}</h3>
-          <el-button :icon="marIcon('zoom-in')" @click="expandedPreview = true">{{
+          <MarButton icon="zoom-in" @click="expandedPreview = true">{{
             t('customThemes.expandPreview')
-          }}</el-button>
+          }}</MarButton>
         </div>
         <p class="summary">{{ t('customThemes.previewHint') }}</p>
         <ThemePreview :name="analysis.name ?? t('customThemes.untitled')" :colors="previewColors" />
       </aside>
     </div>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="expandedPreview"
@@ -420,14 +411,13 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
       :title="t('customThemes.preview')"
       width="min(54rem, calc(100vw - 32px))"
       append-to-body
-      :close-icon="marIcon('close')"
     >
       <ThemePreview
         :name="analysis.name ?? t('customThemes.untitled')"
         :colors="previewColors"
         expanded
       />
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 
@@ -469,8 +459,8 @@ h3 {
 .actions {
   margin-bottom: 1rem;
 }
-.actions :deep(.el-button + .el-button) {
-  margin-left: 0;
+.actions :deep(.mar-ui-button + .mar-ui-button) {
+  margin-inline-start: 0;
 }
 .file-input {
   display: none;
@@ -543,7 +533,7 @@ h3 {
   justify-content: space-between;
   padding: 0 0.5rem 0.5rem 0.75rem;
 }
-.theme-option.active .theme-controls :deep(.el-button.is-disabled) {
+.theme-option.active .theme-apply:disabled {
   color: var(--mar-color-success-text);
 }
 .editor-heading {
@@ -586,24 +576,35 @@ aside {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  margin-block-end: 6px;
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-input);
 }
 @container (min-width: 760px) {
-  .editor-layout > :deep(.el-form) {
+  .editor-layout > :deep(.mar-ui-form) {
     display: flex;
     flex-direction: column;
     align-self: stretch;
   }
-  .editor-layout :deep(.el-form-item) {
+  .editor-layout :deep(.mar-ui-form-item) {
     display: flex;
     flex: 1;
     flex-direction: column;
     margin-bottom: 0;
   }
-  .editor-layout :deep(.el-form-item__content) {
-    align-items: stretch;
+  .editor-layout :deep(.mar-ui-form-item__content) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
   }
   .json-editor {
     display: flex;
+    flex: 1;
+  }
+  .json-editor :deep(.mar-ui-input__body) {
+    display: flex;
+    flex: 1;
+    align-items: stretch;
   }
   .json-editor :deep(textarea) {
     flex: 1;

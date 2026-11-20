@@ -8,7 +8,7 @@
  */
 import { computed, getCurrentScope, onScopeDispose, ref, watch as watchRef, type Ref } from 'vue';
 import type { ComposerQuoteTarget } from '../model/composer-quote.js';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from './message-box-service.js';
 import { sessionSubmissionContext } from './workbench-submission-service.js';
 import { errorCode } from '../util/api-error.js';
 import { agentSessionPathId } from '../util/workbench-presentation.js';
@@ -538,7 +538,7 @@ export function createWorkspaceSessionPaneController(
     canRollback: () => presentation.rollbackConversationEnabled.value,
     confirmRewind: async (before) => {
       try {
-        await ElMessageBox.confirm(
+        await MarMessageBox.confirm(
           translate(
             before
               ? 'generated.workbenchPageController.createANewSessionBranchBeforeThis'
@@ -546,7 +546,6 @@ export function createWorkspaceSessionPaneController(
           ),
           translate('generated.workbenchPageController.createSessionBranch'),
           {
-            closeIcon: marIcon('close'),
             icon: marIcon('warning'),
             confirmButtonText: translate('generated.workbenchPageController.createBranch'),
             cancelButtonText: translate('generated.workbenchPageController.cancel'),
@@ -560,11 +559,10 @@ export function createWorkspaceSessionPaneController(
     },
     confirmRollback: async () => {
       try {
-        await ElMessageBox.confirm(
+        await MarMessageBox.confirm(
           translate('generated.workbenchPageController.rollbackConversationWarning'),
           translate('generated.workbenchPageController.rollbackConversation'),
           {
-            closeIcon: marIcon('close'),
             icon: marIcon('warning'),
             confirmButtonText: translate(
               'generated.workbenchPageController.confirmRollbackConversation'

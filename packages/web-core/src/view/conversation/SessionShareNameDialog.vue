@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
-import { marIcon } from '../../util/mar-icons.js';
 import { ref } from 'vue';
 import { channelDisplayNameSchema } from '@myagentroam/protocol';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/locale-preference-service.js';
 const props = defineProps<{ initialName?: string; editing?: boolean }>();
 const emit = defineEmits<{ confirm: [name: string]; cancel: [] }>();
@@ -30,31 +32,30 @@ async function submit(): Promise<void> {
 }
 </script>
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
     :title="translate(editing ? 'sessionShare.editName' : 'sessionShare.setName')"
     width="min(420px, calc(100vw - 32px))"
     @close="emit('cancel')"
-    :close-icon="marIcon('close')"
   >
-    <el-form
+    <MarForm
       ref="form"
       :model="values"
       :rules="rules"
       label-position="top"
       @submit.prevent="submit"
     >
-      <el-form-item prop="name" :label="translate('sessionShare.name')"
-        ><el-input v-model="values.name" autofocus :maxlength="80"
-      /></el-form-item>
-    </el-form>
+      <MarFormItem prop="name" :label="translate('sessionShare.name')"
+        ><MarInput v-model="values.name" autofocus :maxlength="80"
+      /></MarFormItem>
+    </MarForm>
     <template #footer
-      ><el-button @click="emit('cancel')">{{ translate('sessionShare.cancel') }}</el-button
-      ><el-button type="primary" @click="submit">{{
+      ><MarButton @click="emit('cancel')">{{ translate('sessionShare.cancel') }}</MarButton
+      ><MarButton type="primary" @click="submit">{{
         translate(editing ? 'sessionShare.saveName' : 'sessionShare.confirmName')
-      }}</el-button></template
+      }}</MarButton></template
     >
-  </el-dialog>
+  </MarDialog>
 </template>

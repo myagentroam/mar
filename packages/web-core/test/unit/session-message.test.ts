@@ -1,3 +1,4 @@
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { parseComposerTags, composerVisibleText } from '@myagentroam/protocol';
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,7 +24,9 @@ import { translate } from '../../src/service/locale-preference-service.js';
 import { temporarySessionTitle } from '../../src/util/session-presentation.js';
 import { createSessionDraftService } from '../../src/service/session-draft-service.js';
 
-vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
+vi.mock('../../src/service/message-box-service.js', () => ({
+  MarMessageBox: { confirm: vi.fn() }
+}));
 
 const session: Session = {
   id: 'session-1',
@@ -612,7 +615,7 @@ describe('Workbench Message Submission Status', () => {
   });
 
   it('does not execute a destructive command after its confirmation crosses Workspaces', async () => {
-    const { ElMessageBox } = await import('element-plus');
+    const { MarMessageBox } = await import('../../src/service/message-box-service.js');
     const harness = pendingRequestHarness();
     harness.selectedCommand.value = {
       id: 'clear',
@@ -626,10 +629,10 @@ describe('Workbench Message Submission Status', () => {
       reasonCode: null
     };
     let confirm!: () => void;
-    vi.mocked(ElMessageBox.confirm).mockImplementationOnce(
+    vi.mocked(MarMessageBox.confirm).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          confirm = () => resolve('confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>);
+          confirm = () => resolve('confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>);
         })
     );
     const sending = harness.service.send(undefined, true);
@@ -740,12 +743,12 @@ describe('Workbench Message Submission Status', () => {
   });
 
   it('does not clear a same-ID session on another Node after confirmation', async () => {
-    const { ElMessageBox } = await import('element-plus');
+    const { MarMessageBox } = await import('../../src/service/message-box-service.js');
     const harness = pendingRequestHarness();
     harness.selectedCommand.value = { id: 'clear', interaction: 'DESTRUCTIVE_ACTION' } as never;
-    vi.mocked(ElMessageBox.confirm).mockImplementationOnce(async () => {
+    vi.mocked(MarMessageBox.confirm).mockImplementationOnce(async () => {
       harness.selectedNodeId.value = 'node-2';
-      return 'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
+      return 'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>;
     });
     await harness.service.send();
     expect(harness.executeCommand).not.toHaveBeenCalled();
@@ -931,7 +934,7 @@ describe('Workbench Message Submission Status', () => {
   });
 
   it('requires confirmation before submitting a destructive Runner command', async () => {
-    const { ElMessageBox } = await import('element-plus');
+    const { MarMessageBox } = await import('../../src/service/message-box-service.js');
     const harness = pendingRequestHarness();
     harness.selectedCommand.value = {
       id: 'clear',
@@ -944,7 +947,7 @@ describe('Workbench Message Submission Status', () => {
       available: true,
       reasonCode: null
     };
-    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel');
+    vi.mocked(MarMessageBox.confirm).mockRejectedValueOnce('cancel');
 
     await harness.service.send(undefined, true);
 
@@ -954,7 +957,7 @@ describe('Workbench Message Submission Status', () => {
   });
 
   it('submits a destructive Runner command only after confirmation', async () => {
-    const { ElMessageBox } = await import('element-plus');
+    const { MarMessageBox } = await import('../../src/service/message-box-service.js');
     const harness = pendingRequestHarness();
     harness.selectedCommand.value = {
       id: 'clear',
@@ -967,8 +970,8 @@ describe('Workbench Message Submission Status', () => {
       available: true,
       reasonCode: null
     };
-    vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.mocked(MarMessageBox.confirm).mockResolvedValueOnce(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
 
     await harness.service.send(undefined, true);

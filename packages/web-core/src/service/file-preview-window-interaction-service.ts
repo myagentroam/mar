@@ -27,11 +27,11 @@ export function createFilePreviewWindowInteractionService(
   const frameBindings = new Map<HTMLIFrameElement, () => void>();
 
   function isOwnOverlay(element: Element): boolean {
-    return element === options.root?.()?.closest('.el-overlay-dialog');
+    return element === options.root?.()?.closest('.mar-ui-dialog-overlay[open]');
   }
 
   function hasOverlay(): boolean {
-    return [...document.querySelectorAll('.el-overlay-message-box, .el-overlay-dialog')].some(
+    return [...document.querySelectorAll('.mar-ui-dialog-overlay[open]')].some(
       (overlay) => !isOwnOverlay(overlay) && overlay.getClientRects().length > 0
     );
   }
@@ -75,13 +75,13 @@ export function createFilePreviewWindowInteractionService(
       event.defaultPrevented ||
       event.isComposing ||
       event.keyCode === 229 ||
-      // Element Plus closes dialogs without consuming Escape. The original
+      // A dialog can disappear before a listener sees Escape. The original
       // propagation path still identifies a dialog after it has been removed.
       event.composedPath().some((target) => {
         const element = target as Element;
         return (
           element.nodeType === 1 &&
-          element.matches('.el-overlay-message-box, .el-overlay-dialog') &&
+          element.matches('.mar-ui-dialog-overlay[open]') &&
           !isOwnOverlay(element)
         );
       }) ||

@@ -2,7 +2,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 async function expectNeutralAction(action: Locator) {
-  await expect(action).not.toHaveClass(/is-link|el-button--(?:primary|danger)/);
+  await expect(action).not.toHaveClass(/mar-ui-button--inline|mar-ui-button--(?:primary|danger)/);
   await expect(action).toHaveCSS('border-top-style', 'solid');
   await expect(action).toHaveCSS('border-top-width', '1px');
   await expect(action).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -60,7 +60,7 @@ for (const theme of ['light', 'dark']) {
           await expect(state.locator('p')).toHaveText(scene.copy);
           const action = state.getByRole('button', { name: scene.action, exact: true });
           await expectNeutralAction(action);
-          await expect(page.locator('.el-message')).toHaveCount(0);
+          await expect(page.locator('.mar-ui-message')).toHaveCount(0);
           await page.screenshot({
             path: testInfo.outputPath(`state-${scene.id}-${theme}-${width}.png`),
             animations: 'disabled'
@@ -134,7 +134,7 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
         await expectNeutralAction(retry);
         await page.mouse.move(0, 0);
         await expect(page.locator('.cm-editor')).toHaveCount(0);
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-ui-message')).toHaveCount(0);
         expect(await page.locator('html').getAttribute('data-file-notice')).toBeNull();
         const layout = await failure.evaluate((element) => {
           const message = element.querySelector('p')!;
@@ -146,7 +146,7 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
           probe.style.color = 'var(--mar-text-secondary)';
           element.appendChild(probe);
           const messageColor = getComputedStyle(probe).color;
-          probe.style.color = 'var(--el-text-color-regular)';
+          probe.style.color = 'var(--mar-text-secondary)';
           const actionColor = getComputedStyle(probe).color;
           probe.remove();
           return {

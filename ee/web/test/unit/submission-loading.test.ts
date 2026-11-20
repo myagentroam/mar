@@ -8,7 +8,7 @@ import {
   translate
 } from '../../../../packages/web-core/src/service/locale-preference-service.js';
 import { showMessage } from '../../../../packages/web-core/src/service/message-feedback-service.js';
-import { ElMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
+import { MarMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
 import {
   flushComponent,
   renderComponent,
@@ -39,7 +39,7 @@ beforeEach(() => {
     history: { replaceState() {} },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   });
-  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
+  vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirm' as never);
 });
 afterEach(() => {
   i18n.global.locale.value = originalLocale;
@@ -59,7 +59,7 @@ function deferred<T = unknown>() {
 }
 function button(view: ReturnType<typeof renderComponent>, label: string) {
   const found = view
-    .findAll('ElButton')
+    .findAll('MarButton')
     .find((node) => textContent(node).trim() === label || node.props['aria-label'] === label);
   expect(found, label).toBeDefined();
   return found!;
@@ -98,11 +98,14 @@ describe('submission and authoritative reread loading', () => {
         button(view, translate('generated.environmentSecretManager.addSecret')),
         'onClick'
       );
+      const fields = view.findAll('MarInput').slice(-2);
+      await trigger(fields[0]!, 'onUpdate:modelValue', 'FIXTURE_SECRET');
+      await trigger(fields[1]!, 'onUpdate:modelValue', 'fixture value');
       const submission = clickPending(view, 'Save');
       await flushComponent();
       expect(button(view, 'Save').props.loading).toBe(true);
       expect(button(view, 'Cancel').props.disabled).toBe(true);
-      expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
+      expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
       expect(
         view
           .findAll('section')
@@ -111,7 +114,7 @@ describe('submission and authoritative reread loading', () => {
         ]
       ).toBe(false);
       const close = vi.fn();
-      (view.findAll('ElDialog')[0]!.props['before-close'] as (done: () => void) => void)(close);
+      (view.findAll('MarDialog')[0]!.props['before-close'] as (done: () => void) => void)(close);
       expect(close).not.toHaveBeenCalled();
       await clickPending(view, 'Save');
       expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
@@ -120,12 +123,12 @@ describe('submission and authoritative reread loading', () => {
         await submission;
         await flushComponent();
         expect(button(view, 'Save').props.loading).toBe(false);
-        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(false);
+        expect(view.findAll('MarForm')[0]!.props.disabled).toBe(false);
         expect(request).toHaveBeenCalledTimes(2);
       } else {
         write.resolve({});
         await flushComponent();
-        expect(view.findAll('ElForm')).toHaveLength(0);
+        expect(view.findAll('MarForm')).toHaveLength(0);
         expect(request).toHaveBeenCalledTimes(3);
         expect(
           view
@@ -174,7 +177,7 @@ describe('submission and authoritative reread loading', () => {
         .mockImplementationOnce(() => write.promise)
         .mockImplementationOnce(() => freshRead.promise);
       const view = renderComponent(OrganizationPage, { request, writable: true });
-      const table = () => view.findAll('ElTable')[0]!;
+      const table = () => view.findAll('MarTable')[0]!;
       const refreshLabel = translate('generated.organizationUserManagementPage.refresh');
       const readError = new Error('Current organization read failed');
       try {
@@ -261,7 +264,7 @@ describe('submission and authoritative reread loading', () => {
       );
       // Row actions are rendered through the public table slot.
       const rowButton = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => textContent(node).trim() === openLabel);
       expect(rowButton).toBeDefined();
       await trigger(rowButton!, 'onClick', { stopPropagation() {} });
@@ -270,16 +273,24 @@ describe('submission and authoritative reread loading', () => {
           ? 'generated.organizationUserManagementPage.createOrganization2'
           : 'generated.organizationUserManagementPage.save'
       );
+      const name = view
+        .findAll('MarInput')
+        .find(
+          (node) =>
+            node.props.placeholder ===
+            translate('generated.organizationUserManagementPage.enterAnOrganizationName2')
+        );
+      await trigger(name!, 'onUpdate:modelValue', 'Fixture Team');
       const submission = clickPending(view, saveLabel);
       await flushComponent();
       expect(button(view, saveLabel).props.loading).toBe(true);
-      expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
+      expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
       await clickPending(view, saveLabel);
       expect(request).toHaveBeenCalledTimes(2);
       if (success) {
         write.resolve({});
         await flushComponent();
-        expect(view.findAll('ElForm')).toHaveLength(0);
+        expect(view.findAll('MarForm')).toHaveLength(0);
         expect(request).toHaveBeenCalledTimes(3);
         read.resolve(result);
       } else {
@@ -289,7 +300,7 @@ describe('submission and authoritative reread loading', () => {
       await flushComponent();
       if (!success) {
         expect(button(view, saveLabel).props.loading).toBe(false);
-        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(false);
+        expect(view.findAll('MarForm')[0]!.props.disabled).toBe(false);
         expect(request).toHaveBeenCalledTimes(2);
       }
     } finally {
@@ -353,10 +364,10 @@ describe('submission and authoritative reread loading', () => {
       const submission = clickPending(view, label);
       await flushComponent();
       expect(button(view, label).props.loading).toBe(true);
-      expect(view.findAll('ElButton').filter((node) => node.props.loading)).toHaveLength(1);
-      expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
-      expect(view.findAll('ElForm')[0]!.props['aria-busy']).toBe(false);
-      await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
+      expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(1);
+      expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
+      expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
+      await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
       expect(close).not.toHaveBeenCalled();
       await clickPending(view, label);
       expect(request).toHaveBeenCalledTimes(2);
@@ -364,9 +375,9 @@ describe('submission and authoritative reread loading', () => {
         write.reject(new Error('Write failed'));
         await submission;
         await flushComponent();
-        expect(view.findAll('ElButton').filter((node) => node.props.loading)).toHaveLength(0);
-        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(false);
-        expect(view.findAll('ElForm')[0]!.props['aria-busy']).toBe(false);
+        expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(0);
+        expect(view.findAll('MarForm')[0]!.props.disabled).toBe(false);
+        expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
         expect(request).toHaveBeenCalledTimes(2);
         expect(
           vi.mocked(showMessage).mock.calls.filter(([, type]) => type === 'error')
@@ -375,15 +386,15 @@ describe('submission and authoritative reread loading', () => {
       }
       write.resolve({});
       await flushComponent();
-      expect(view.findAll('ElButton').filter((node) => node.props.loading)).toHaveLength(0);
-      expect(view.findAll('ElForm')[0]!.props['aria-busy']).toBe(true);
-      expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
+      expect(view.findAll('MarButton').filter((node) => node.props.loading)).toHaveLength(0);
+      expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(true);
+      expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
       expect(request).toHaveBeenCalledTimes(3);
       read.resolve(result);
       await submission;
       await flushComponent();
-      expect(view.findAll('ElForm')[0]!.props['aria-busy']).toBe(false);
-      expect(view.findAll('ElForm')[0]!.props.disabled).toBe(false);
+      expect(view.findAll('MarForm')[0]!.props['aria-busy']).toBe(false);
+      expect(view.findAll('MarForm')[0]!.props.disabled).toBe(false);
     } finally {
       view.unmount();
     }
@@ -436,7 +447,7 @@ describe('submission and authoritative reread loading', () => {
           false
         );
         expect(
-          view.findAll('ElTable').find((node) => node.props['row-key'] === 'providerKey')!.props
+          view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!.props
             .data
         ).toEqual(result.bindings);
         expect(
@@ -494,7 +505,7 @@ describe('submission and authoritative reread loading', () => {
         expect(request).toHaveBeenCalledTimes(4);
         expect(button(view, refreshLabel).props.loading).toBe(false);
         const table = () =>
-          view.findAll('ElTable').find((node) => node.props['row-key'] === 'providerKey')!;
+          view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!;
         expect(table().props['aria-busy']).toBe(true);
         freshRead.resolve(updated);
         await unbind;

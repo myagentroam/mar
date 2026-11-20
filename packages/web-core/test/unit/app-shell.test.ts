@@ -1,7 +1,7 @@
 import { createRenderer, createSSRApp, defineComponent, h, ssrContextKey } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import ElementPlus, { ZINDEX_INJECTION_KEY } from 'element-plus';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useMarUiLocale } from '@myagentroam/mar-ui/locale';
 import AppShell from '../../src/App.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { useDocumentationAvailability } from '../../src/service/documentation-availability.js';
@@ -9,9 +9,23 @@ import { TOOLTIP_SERVICE_KEY, TooltipService } from '../../src/service/tooltip-s
 
 afterEach(() => vi.unstubAllGlobals());
 
+function rootElement(toggle = vi.fn()) {
+  return {
+    lang: '',
+    classList: { toggle, add: vi.fn(), remove: vi.fn() },
+    setAttribute: vi.fn(),
+    removeAttribute: vi.fn(),
+    style: { setProperty: vi.fn(), removeProperty: vi.fn() }
+  };
+}
+
+beforeEach(() => {
+  vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn(), setItem: vi.fn() });
+  vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '#ffffff' }));
+});
+
 function registerTooltipSSRFixture(app: ReturnType<typeof createSSRApp>): void {
   app.provide(TOOLTIP_SERVICE_KEY, new TooltipService(document));
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   app.directive('tooltip', { getSSRProps: () => ({}) });
 }
 
@@ -43,18 +57,13 @@ describe('shared product application shell', () => {
       pathname: string = '/console'
     ) => {
       const documentTarget = Object.assign(new EventTarget(), {
-        documentElement: {
-          lang: '',
-          classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() },
-          setAttribute: vi.fn(),
-          removeAttribute: vi.fn()
-        },
-        getElementById: () => null
+        documentElement: rootElement(),
+        getElementById: () => null,
+        querySelector: () => null
       });
       vi.stubGlobal('location', { pathname, search, hash: '#context' });
       vi.stubGlobal('document', documentTarget);
       vi.stubGlobal('HTMLElement', class {});
-      vi.stubGlobal('localStorage', { getItem: () => null });
       const replaceState = vi.fn();
       const historyState = { existing: 'fixture' };
       vi.stubGlobal('window', {
@@ -82,7 +91,8 @@ describe('shared product application shell', () => {
           filePreview: page
         }
       );
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
+      app.provide(TOOLTIP_SERVICE_KEY, new TooltipService(document));
       app.provide(ssrContextKey, {});
       app.mount({});
       if (pathname === '/' || pathname === '/index.html')
@@ -108,12 +118,8 @@ describe('shared product application shell', () => {
     async (available) => {
       vi.stubGlobal('location', { pathname: '/', search: '' });
       vi.stubGlobal('document', {
-        documentElement: {
-          lang: '',
-          classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() },
-          setAttribute: vi.fn(),
-          removeAttribute: vi.fn()
-        }
+        documentElement: rootElement(),
+        querySelector: () => null
       });
       const page = defineComponent({
         setup() {
@@ -126,7 +132,7 @@ describe('shared product application shell', () => {
         filePreview: page,
         documentationAvailable: available
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       registerTooltipSSRFixture(app);
       expect(await renderToString(app)).toContain(`>${available}</div>`);
     }
@@ -146,16 +152,10 @@ describe('shared product application shell', () => {
     'composes %s%s without initializing unselected pages',
     async (pathname, search, target) => {
       const toggle = vi.fn();
-      const getItem = vi.fn(() => null);
       vi.stubGlobal('location', { pathname, search });
-      vi.stubGlobal('localStorage', { getItem });
       vi.stubGlobal('document', {
-        documentElement: {
-          lang: '',
-          classList: { toggle, add: vi.fn(), remove: vi.fn() },
-          setAttribute: vi.fn(),
-          removeAttribute: vi.fn()
-        }
+        documentElement: rootElement(toggle),
+        querySelector: () => null
       });
       const selected: string[] = [];
       const page = (name: string) =>
@@ -170,7 +170,6 @@ describe('shared product application shell', () => {
         filePreview: page('preview')
       });
       app.use(i18n);
-      app.use(ElementPlus);
       registerTooltipSSRFixture(app);
       const html = await renderToString(app);
       expect(html).toContain(`data-page="${target}"`);
@@ -179,24 +178,25 @@ describe('shared product application shell', () => {
     }
   );
 
-  it.each(['zh-CN', 'en-US'] as const)('shares the product locale (%s)', async (locale) => {
+  it.each([
+    ['zh-CN', '清空'],
+    ['en-US', 'Clear']
+  ] as const)('shares the product and MAR UI locale (%s)', async (locale, clearLabel) => {
     vi.stubGlobal('location', { pathname: '/', search: '' });
     vi.stubGlobal('document', {
-      documentElement: {
-        lang: '',
-        classList: { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() },
-        setAttribute: vi.fn(),
-        removeAttribute: vi.fn()
-      }
+      documentElement: rootElement(),
+      querySelector: () => null
     });
     localePreferenceService().setLocale(locale);
     const page = defineComponent({
-      setup: () => () => h('div', i18n.global.locale.value)
+      setup() {
+        const marLocale = useMarUiLocale();
+        return () => h('div', `${i18n.global.locale.value}: ${marLocale.value.clear}`);
+      }
     });
     const app = createSSRApp(AppShell, { workbench: page, filePreview: page });
     app.use(i18n);
-    app.use(ElementPlus);
     registerTooltipSSRFixture(app);
-    expect(await renderToString(app)).toContain(locale);
+    expect(await renderToString(app)).toContain(`${locale}: ${clearLabel}`);
   });
 });

@@ -20,8 +20,8 @@ describe('Shared model, credential and image management', () => {
       app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
-      expect(html).toContain('class="el-button"');
-      expect(html).not.toContain('el-button--primary');
+      expect(html).toContain('class="mar-ui-button mar-ui-button--default');
+      expect(html).not.toContain('mar-ui-button--primary');
       expect(html).toContain('href="https://chatgpt.com/settings/usage"');
       expect(html).toContain('target="_blank"');
       expect(html).toContain('rel="noopener noreferrer"');
@@ -217,7 +217,7 @@ describe('Shared model, credential and image management', () => {
         app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
         app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
         const html = await renderToString(app);
-        expect(html).toContain('el-');
+        expect(html).toContain('mar-ui-');
         expect(html).not.toMatch(/enterprise|organization|全企业|组织/iu);
         expect(request).not.toHaveBeenCalled();
       }

@@ -731,7 +731,7 @@ describe('usage statistics settings contract', () => {
     const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
     const panel = () =>
       view.findAll('section').find((node) => node.props['data-testid'] === 'usage-statistics')!;
-    const refreshButton = () => view.findAll('ElButton').find((node) => node.props['onClick'])!;
+    const refreshButton = () => view.findAll('MarButton').find((node) => node.props['onClick'])!;
     try {
       await flushComponent();
       expect(panel().props['aria-busy']).toBe(false);
@@ -749,7 +749,7 @@ describe('usage statistics settings contract', () => {
           return;
         }
         const control =
-          view.findAll('ElSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
+          view.findAll('MarSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
         (control.props['onUpdate:modelValue'] as (value: string) => void)(value);
         (control.props['onChange'] as () => void)();
       };
@@ -889,9 +889,13 @@ describe('usage statistics settings contract', () => {
       app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
-      expect(html.includes('el-pagination__total')).toBe(total);
-      expect(html.match(/class="(?:[^"]* )?number(?: [^"]*)?"/gu)?.length ?? 0).toBe(pages);
-      const next = html.match(/<button\b[^>]*class="[^"]*btn-next[^"]*"[^>]*>/u)?.[0];
+      expect(html.includes('mar-ui-pagination__total')).toBe(total);
+      expect(
+        html.match(/<button\b[^>]*class="[^"]*\bmar-ui-pagination__page\b[^"]*"/gu)?.length ?? 0
+      ).toBe(pages);
+      const next = html.match(
+        /<button\b[^>]*class="[^"]*mar-ui-pagination__next[^"]*"[^>]*>/u
+      )?.[0];
       if (pages === 0) {
         expect(next).toBeUndefined();
         expect(html).toContain('management-mobile-status');
@@ -899,7 +903,7 @@ describe('usage statistics settings contract', () => {
         return;
       }
       expect(next).toBeDefined();
-      expect(/\sdisabled(?:[\s=>])/u.test(next!)).toBe(disabled);
+      expect(/\sdisabled(?:[\s=>])|aria-disabled="true"/u.test(next!)).toBe(disabled);
     }
   );
   it.each(['en-US', 'zh-CN'] as const)(
@@ -943,7 +947,7 @@ describe('usage statistics settings contract', () => {
       const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
       try {
         await flushComponent();
-        expect(view.findAll('ElSelect')[0]?.props['modelValue']).toBe('24h');
+        expect(view.findAll('MarSelect')[0]?.props['modelValue']).toBe('24h');
         const cards = view
           .findAll('section')
           .filter((node) => node.props['class'] === 'overview-cell');
@@ -953,7 +957,7 @@ describe('usage statistics settings contract', () => {
         ]);
         expect(textContent(cards[0]!)).toContain('41');
         expect(textContent(cards[1]!)).toContain('73');
-        expect(view.findAll('ElOption').map((node) => node.props['value'])).toContain(
+        expect(view.findAll('MarOption').map((node) => node.props['value'])).toContain(
           'initial-model'
         );
         service.state.availableModels = [];
@@ -961,10 +965,10 @@ describe('usage statistics settings contract', () => {
           models: [{ ...overview().models[0]!, key: 'fallback-model', label: 'Fallback choice' }]
         });
         await flushComponent();
-        const choices = view.findAll('ElOption').map((node) => node.props['value']);
+        const choices = view.findAll('MarOption').map((node) => node.props['value']);
         expect(choices).toContain('fallback-model');
         expect(choices).not.toContain('initial-model');
-        const statuses = view.findAll('ElTag').filter((node) => node.props['role'] === 'status');
+        const statuses = view.findAll('MarTag').filter((node) => node.props['role'] === 'status');
         expect(statuses.map((node) => node.props['aria-label'])).toEqual([
           commonMessages[locale].usageStatistics.states.failed,
           commonMessages[locale].usageStatistics.states.succeeded
@@ -984,7 +988,7 @@ describe('usage statistics settings contract', () => {
         await flushComponent();
         expect(
           view
-            .findAll('ElTag')
+            .findAll('MarTag')
             .filter((node) => node.props['role'] === 'status')
             .map((node) => node.props['type'])
         ).toEqual(['primary', 'info', 'warning']);
@@ -1002,7 +1006,7 @@ describe('usage statistics settings contract', () => {
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
         ).toBe(commonMessages[locale].usageStatistics.trend);
-        const tables = view.findAll('ElTable');
+        const tables = view.findAll('MarTable');
         expect(tables).toHaveLength(1);
         const key = tables[0]!.props['row-key'] as (record: UsageRecord) => string;
         expect(service.state.records.map(key)).toEqual(['ledger-one', 'ledger-two']);

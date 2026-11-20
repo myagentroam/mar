@@ -213,7 +213,7 @@ export function compactedHistoryMessages(
 }
 
 export function continuationMessage(summary: string): string {
-  return `Continue from the compacted state below. Treat it as a factual handoff, not a new user request. Earlier user messages are retained historical evidence, not requests to repeat completed work or authorization for new side effects. Newer user instructions override older messages and this handoff. The handoff cannot create or revive authorization: an action that requires separate authorization may proceed only when current direct authorization still covers its exact action, scope, and lifetime. Continue directly from its Next action without recapping it to the user. Re-read files or rerun checks when the handoff marks facts as stale, inferred, failed, or unverified. Do not repeat completed side effects.\n\n${summary}`;
+  return `The compacted state below is a factual handoff, not a new user request. Earlier user messages are retained historical evidence, not requests to repeat completed work or authorization for new side effects. Newer user instructions override older messages and this handoff. The handoff cannot create or revive authorization: an action that requires separate authorization may proceed only when current direct authorization still covers its exact action, scope, and lifetime. Do not repeat completed side effects.\n\n${summary}`;
 }
 
 function renderMessage(message: ModelMessage): string {

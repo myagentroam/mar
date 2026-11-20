@@ -190,31 +190,19 @@ test('Composer idle keyboard hint fits below the former width threshold', async 
   }
 });
 
-test('Element Plus tags do not zoom during entry or exit', async ({ page }) => {
+test('Status tags do not zoom during entry or exit', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?resource-details=1`);
-  const result = await page
-    .locator('.node-details-dialog .el-tag')
-    .first()
-    .evaluate((tag) => {
-      return ['enter', 'leave'].map((phase) => {
-        const probe = tag.cloneNode(true) as HTMLElement;
-        probe.classList.add(`el-zoom-in-center-${phase}-active`);
-        probe.classList.add(`el-zoom-in-center-${phase === 'enter' ? 'enter-from' : 'leave-to'}`);
-        document.body.append(probe);
-        const style = getComputedStyle(probe);
-        const values = {
-          transition: style.transitionDuration,
-          opacity: style.opacity,
-          transform: style.transform
-        };
-        probe.remove();
-        return values;
-      });
-    });
-  expect(result).toEqual([
-    { transition: '0s', opacity: '1', transform: 'none' },
-    { transition: '0s', opacity: '1', transform: 'none' }
-  ]);
+  const tag = page.locator('.node-details-dialog .mar-ui-tag').first();
+  await expect(tag).toBeVisible();
+  const result = await tag.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      transition: style.transitionDuration,
+      opacity: style.opacity,
+      transform: style.transform
+    };
+  });
+  expect(result).toEqual({ transition: '0s', opacity: '1', transform: 'none' });
   const otherTransition = await page.evaluate(() => {
     const probe = document.createElement('span');
     probe.className = 'el-zoom-in-center-enter-active';
@@ -268,7 +256,7 @@ test('Node detail actions stay above Close and capability refresh stays within i
     expect(action.y).toBeLessThan(section.y + 32);
     await refresh.click();
     await expect(page.getByTestId('capability-refresh-count')).toHaveText('1');
-    const footer = dialog.locator('.el-dialog__footer');
+    const footer = dialog.locator('.mar-ui-dialog__footer');
     const close = footer.getByRole('button', { name: 'Close', exact: true });
     const upgrade = footer.locator('.node-detail-actions button');
     await upgrade.click();
@@ -395,7 +383,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await setting.screenshot({
           path: test.info().outputPath(`computer-use-${theme}-${width}-${locale}.png`)
         });
-        await control.locator('.el-switch').click();
+        await toggle.click();
         await expect(toggle).not.toBeChecked();
         await expect(control).toHaveText(locale === 'en-US' ? 'Disabled' : '已关闭');
         await expect(hint).toBeVisible();
@@ -568,7 +556,9 @@ test('Shared tooltip preserves inline cancellation and native select Escape insi
   await expect(dialog).toBeVisible();
 
   const select = dialog.getByRole('combobox', { name: 'Escape select', exact: true });
+  await dialog.getByRole('button', { name: 'Close this dialog' }).focus();
   await select.focus();
+  await expect(hint).toHaveText('Select details');
   await select.press('Enter');
   await expect(page.getByRole('listbox')).toBeVisible();
   await expect(hint).toHaveText('Select details');
@@ -694,7 +684,7 @@ test('Markdown copy hints share the tooltip host across content replacement and 
   await expect(copy).not.toHaveAttribute('title');
   await copy.hover();
   await expect(hint).toHaveText('Copy code');
-  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  await expect(hint).toHaveAttribute('data-arrow');
   await copy.focus();
   await copy.press('Escape');
   await expect(hint).toHaveCount(0);
@@ -720,12 +710,12 @@ test('Table overflow hints share the theme without template-ref warnings', async
     if (message.type() === 'warning') warnings.push(message.text());
   });
   await page.goto(`${fixture.url}visual-alignment.html`);
-  await page.locator('.el-table__body .cell').hover();
-  await expect(page.locator('.mar-tooltip:visible')).toContainText(
+  await page.getByRole('cell', { name: /^A complete long table cell description/ }).hover();
+  await expect(page.locator('.mar-ui-table__hint:visible')).toContainText(
     'A complete long table cell description'
   );
-  const hint = page.locator('.mar-tooltip:visible');
-  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  const hint = page.locator('.mar-ui-table__hint:visible');
+  await expect(hint).toHaveAttribute('data-arrow', '');
   await expect(hint).toHaveCSS('pointer-events', 'auto');
   await hint.hover();
   await expect(hint).toBeVisible();
@@ -770,7 +760,7 @@ test('Unified hints preserve keyboard actions, details and disabled semantics', 
 
 test('Escape dismisses a focused hint before its containing dialog', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html`);
-  await page.getByRole('button', { name: 'Open hint dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'Open hint dialog', exact: true }).press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Hint dialog', exact: true });
   const action = dialog.getByRole('button', { name: 'Dialog action', exact: true });
   await action.focus();
@@ -894,7 +884,7 @@ for (const theme of ['daylight', 'dark']) {
   test(`Hosted model selector matches workspace selector states in ${theme}`, async ({ page }) => {
     await page.goto(`${fixture.url}visual-alignment.html?hosted=1&model-options=1&theme=${theme}`);
     const hosted = page.locator('.hosted-model-slot .hosted-model-trigger');
-    const workspace = page.locator('.composer-model-effort-select .el-select__wrapper');
+    const workspace = page.locator('.composer-model-effort-select .mar-ui-select__field');
     await expect(hosted).toBeEnabled();
     await expect(workspace).toBeVisible();
     await page.mouse.move(0, 0);
@@ -926,7 +916,7 @@ for (const theme of ['daylight', 'dark']) {
 
 test('Theme action hints do not replace dropdown semantics', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?menus=1`);
-  const trigger = page.locator('.theme-settings .el-dropdown button').first();
+  const trigger = page.locator('.theme-settings button[aria-haspopup="menu"]').first();
   await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await trigger.focus();
@@ -1193,10 +1183,84 @@ test('Performance hover displays the details panel without a second hint', async
   await page.clock.runFor(1000);
   const panel = page.locator('.web-performance-panel');
   await expect(panel).toBeVisible();
-  const popover = page.locator('.el-popover').filter({ has: panel });
+  const popover = page.locator('.mar-ui-popover').filter({ has: panel });
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
   await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+});
+
+test('Performance details stay open on keyboard focus after the pointer leaves', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  await page.clock.install();
+  const trigger = page.locator('.web-performance-indicator');
+  const panel = page.locator('.web-performance-panel');
+  await trigger.hover();
+  await trigger.focus();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+  const viewport = page.viewportSize()!;
+  await page.mouse.move(viewport.width - 2, viewport.height - 2);
+  await expect.poll(() => trigger.evaluate((element) => element.matches(':hover'))).toBe(false);
+  await expect(trigger).toBeFocused();
+  await page.clock.runFor(400);
+  await expect(
+    page.locator('.mar-ui-popover:not([data-closing])').filter({ has: panel })
+  ).toBeVisible();
+  await trigger.evaluate((element: HTMLElement) => element.blur());
+  await page.clock.runFor(400);
+  await expect(panel).toBeHidden();
+});
+
+test('Escape from the performance details returns focus without reopening the panel', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  await page.clock.install();
+  const trigger = page.locator('.web-performance-indicator');
+  const panel = page.locator('.web-performance-panel');
+  await trigger.focus();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+  await trigger.press('Tab');
+  await expect(panel.getByRole('button')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(400);
+  await expect(panel).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
+test('Escape dismisses hovered performance details without moving unrelated focus', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  await page.clock.install();
+  const trigger = page.locator('.web-performance-indicator');
+  const panel = page.locator('.web-performance-panel');
+  const unrelated = page.getByRole('button', { name: 'Open hint dialog', exact: true });
+  await unrelated.evaluate((button) => {
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && event.target === button && !event.defaultPrevented)
+        button.setAttribute('data-observed-escape', 'true');
+    });
+  });
+  await unrelated.focus();
+  await trigger.hover();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(400);
+  await expect(panel).toBeHidden();
+  await expect(unrelated).toBeFocused();
+  await expect(unrelated).toHaveAttribute('data-observed-escape', 'true');
+  await expect.poll(() => trigger.evaluate((element) => element.matches(':hover'))).toBe(true);
+
+  await unrelated.hover();
+  await trigger.hover();
+  await page.clock.runFor(300);
+  await expect(panel).toBeVisible();
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {

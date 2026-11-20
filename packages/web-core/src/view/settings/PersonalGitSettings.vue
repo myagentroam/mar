@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,8 +15,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   formatGitRemoteUrl,
   gitCredentialInputSchema,
@@ -217,10 +224,10 @@ async function saveCredential(): Promise<void> {
 }
 async function removeCredential(value: GitCredentialSummary): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       t('personalGit.removeConfirm', { name: value.name }),
       t('personalGit.remove'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -245,66 +252,65 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
           <h2>{{ t('personalGit.title') }}</h2>
         </div>
       </header>
-      <el-button v-if="failed" @click="load">{{ t('personalGit.reload') }}</el-button>
+      <MarButton v-if="failed" @click="load">{{ t('personalGit.reload') }}</MarButton>
       <template v-else>
         <p class="git-page-hint">{{ t('personalGit.summary') }}</p>
         <div class="mar-table-actions">
-          <el-button
+          <MarButton
             type="primary"
             :icon="marIcon('plus')"
             :disabled="loading || saving"
             @click="openCredential()"
-            :loading-icon="marIcon('loading-action')"
-            >{{ t('personalGit.add') }}</el-button
+            >{{ t('personalGit.add') }}</MarButton
           >
         </div>
         <!-- Personal Git identity and redacted credentials are returned as one complete document. -->
-        <el-table
+        <MarTable
           class="clickable-rows"
           :data="summary.credentials"
           :empty-text="t('personalGit.empty')"
           table-layout="auto"
           @row-click="openCredentialDetail"
         >
-          <el-table-column prop="name" :label="t('personalGit.name')" min-width="140" />
-          <el-table-column :label="t('personalGit.remote')" min-width="260"
+          <MarTableColumn prop="name" :label="t('personalGit.name')" min-width="140" />
+          <MarTableColumn :label="t('personalGit.remote')" min-width="260"
             ><template #default="{ row }"
               ><code class="git-scope">{{ formatGitRemoteUrl(row) }}</code></template
-            ></el-table-column
+            ></MarTableColumn
           >
-          <el-table-column prop="username" :label="t('personalGit.username')" min-width="140" />
-          <el-table-column :label="t('personalGit.identity')" min-width="220"
+          <MarTableColumn prop="username" :label="t('personalGit.username')" min-width="140" />
+          <MarTableColumn :label="t('personalGit.identity')" min-width="220"
             ><template #default="{ row }"
               ><template v-if="row.commitName"
                 >{{ row.commitName }} &lt;{{ row.commitEmail }}&gt;</template
               ><span v-else>{{ t('personalGit.identityEmpty') }}</span></template
-            ></el-table-column
+            ></MarTableColumn
           >
-          <el-table-column :label="t('personalGit.actions')" width="180"
+          <MarTableColumn :label="t('personalGit.actions')" width="180"
             ><template #default="{ row }"
               ><div class="mar-row-actions">
-                <el-button
+                <MarButton
                   link
                   :icon="marIcon('edit')"
                   :disabled="saving"
                   @click.stop="openCredential(row)"
-                  >{{ t('personalGit.edit') }}</el-button
+                  >{{ t('personalGit.edit') }}</MarButton
                 >
-                <el-button
+                <MarButton
                   link
                   type="danger"
                   :icon="marIcon('delete')"
                   :disabled="saving"
                   @click.stop="removeCredential(row)"
-                  >{{ t('personalGit.remove') }}</el-button
+                  >{{ t('personalGit.remove') }}</MarButton
                 >
               </div></template
-            ></el-table-column
+            ></MarTableColumn
           >
-        </el-table>
+        </MarTable>
       </template>
     </div>
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailOpen && detail"
@@ -313,50 +319,47 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       width="min(720px, calc(100vw - 32px))"
       append-to-body
       @closed="closeCredentialDetail"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions :column="1" border>
-        <el-descriptions-item :label="t('personalGit.credentialId')">{{
+      <MarDescriptions :column="1" border>
+        <MarDescriptionsItem :label="t('personalGit.credentialId')">{{
           detail.id
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="t('personalGit.name')">{{
-          detail.name
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="t('personalGit.remote')"
-          ><code class="git-scope">{{ formatGitRemoteUrl(detail) }}</code></el-descriptions-item
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="t('personalGit.name')">{{ detail.name }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="t('personalGit.remote')"
+          ><code class="git-scope">{{ formatGitRemoteUrl(detail) }}</code></MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="detail.protocol === 'HTTPS'"
           :label="t('personalGit.username')"
-          >{{ detail.username }}</el-descriptions-item
+          >{{ detail.username }}</MarDescriptionsItem
         >
-        <el-descriptions-item :label="t('personalGit.identity')"
+        <MarDescriptionsItem :label="t('personalGit.identity')"
           ><template v-if="detail.commitName"
             >{{ detail.commitName }} &lt;{{ detail.commitEmail }}&gt;</template
-          ><span v-else>{{ t('personalGit.identityEmpty') }}</span></el-descriptions-item
+          ><span v-else>{{ t('personalGit.identityEmpty') }}</span></MarDescriptionsItem
         >
-        <el-descriptions-item :label="t('personalGit.secretStatus')"
-          ><el-tag :type="detail.hasSecret ? 'success' : 'info'">{{
+        <MarDescriptionsItem :label="t('personalGit.secretStatus')"
+          ><MarTag :type="detail.hasSecret ? 'success' : 'info'">{{
             t(detail.hasSecret ? 'personalGit.configured' : 'personalGit.notConfigured')
-          }}</el-tag></el-descriptions-item
+          }}</MarTag></MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           v-if="detail.protocol === 'SSH'"
           :label="t('personalGit.passphraseStatus')"
-          ><el-tag :type="detail.hasPassphrase ? 'success' : 'info'">{{
+          ><MarTag :type="detail.hasPassphrase ? 'success' : 'info'">{{
             t(detail.hasPassphrase ? 'personalGit.configured' : 'personalGit.notConfigured')
-          }}</el-tag></el-descriptions-item
+          }}</MarTag></MarDescriptionsItem
         >
-      </el-descriptions>
+      </MarDescriptions>
       <template #footer>
         <div class="detail-close">
-          <el-button :disabled="saving" @click="closeCredentialDetail">{{
+          <MarButton :disabled="saving" @click="closeCredentialDetail">{{
             t('personalGit.close')
-          }}</el-button>
+          }}</MarButton>
         </div>
       </template>
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
@@ -368,9 +371,8 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
       :close-on-press-escape="!saving"
       :show-close="!saving"
       @closed="closeCredential"
-      :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="credentialForm"
         :model="draft"
         :rules="credentialRules"
@@ -378,49 +380,50 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
         :disabled="saving"
         @submit.prevent="saveCredential"
       >
-        <el-form-item prop="name" :label="t('personalGit.name')"
-          ><el-input v-model="draft.name" :placeholder="t('personalGit.nameHint')" :maxlength="320"
-        /></el-form-item>
-        <el-form-item prop="remoteUrl" :label="t('personalGit.remote')"
-          ><el-input
+        <MarFormItem prop="name" :label="t('personalGit.name')"
+          ><MarInput v-model="draft.name" :placeholder="t('personalGit.nameHint')" :maxlength="320"
+        /></MarFormItem>
+        <MarFormItem prop="remoteUrl" :label="t('personalGit.remote')"
+          ><MarInput
             v-model="draft.remoteUrl"
             :placeholder="t('personalGit.remoteHint')"
             :maxlength="2048"
+            :validate-event="false"
             @change="changeRemote"
-        /></el-form-item>
-        <el-form-item
+        /></MarFormItem>
+        <MarFormItem
           v-if="draftProtocol === 'HTTPS'"
           prop="username"
           :label="t('personalGit.username')"
-          ><el-input
+          ><MarInput
             v-model="draft.username"
             :placeholder="t('personalGit.usernameHint')"
             :maxlength="320"
             autocomplete="off"
-        /></el-form-item>
+        /></MarFormItem>
         <section class="git-identity-fields">
           <p class="git-form-group-title">{{ t('personalGit.identity') }}</p>
           <p class="git-hint">{{ t('personalGit.identityHint') }}</p>
           <div class="git-field-pair">
-            <el-form-item prop="commitName" :label="t('personalGit.commitName')"
-              ><el-input
+            <MarFormItem prop="commitName" :label="t('personalGit.commitName')"
+              ><MarInput
                 v-model="draft.commitName"
                 :placeholder="t('personalGit.namePlaceholder')"
                 :maxlength="320"
-            /></el-form-item>
-            <el-form-item prop="commitEmail" :label="t('personalGit.email')"
-              ><el-input
+            /></MarFormItem>
+            <MarFormItem prop="commitEmail" :label="t('personalGit.email')"
+              ><MarInput
                 v-model="draft.commitEmail"
                 :placeholder="t('personalGit.emailPlaceholder')"
                 :maxlength="320"
-            /></el-form-item>
+            /></MarFormItem>
           </div>
         </section>
-        <el-form-item
+        <MarFormItem
           prop="secret"
           :label="t(draftProtocol === 'SSH' ? 'personalGit.privateKey' : 'personalGit.password')"
         >
-          <el-input
+          <MarInput
             v-model="draft.secret"
             :type="draftProtocol === 'SSH' ? 'textarea' : 'password'"
             :rows="5"
@@ -436,10 +439,10 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
             autocomplete="new-password"
             :maxlength="32768"
           />
-        </el-form-item>
+        </MarFormItem>
         <template v-if="draftProtocol === 'SSH'">
-          <el-form-item prop="passphrase" :label="t('personalGit.passphrase')"
-            ><el-input
+          <MarFormItem prop="passphrase" :label="t('personalGit.passphrase')"
+            ><MarInput
               v-model="draft.passphrase"
               type="password"
               :disabled="draft.clearPassphrase"
@@ -452,27 +455,23 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
               "
               autocomplete="new-password"
               :maxlength="4096"
-          /></el-form-item>
-          <el-checkbox v-if="editing?.hasPassphrase" v-model="draft.clearPassphrase">{{
+          /></MarFormItem>
+          <MarCheckbox v-if="editing?.hasPassphrase" v-model="draft.clearPassphrase">{{
             t('personalGit.clearPassphrase')
-          }}</el-checkbox>
+          }}</MarCheckbox>
           <p class="git-hint">{{ t('personalGit.sshNotice') }}</p>
         </template>
         <p class="git-hint">{{ t('personalGit.secretNotice') }}</p>
-      </el-form>
+      </MarForm>
       <template #footer
-        ><el-button :disabled="saving" @click="closeCredential">{{
+        ><MarButton :disabled="saving" @click="closeCredential">{{
           t('personalGit.cancel')
-        }}</el-button
-        ><el-button
-          type="primary"
-          :loading="saving"
-          @click="saveCredential"
-          :loading-icon="marIcon('loading-action')"
-          >{{ t('personalGit.save') }}</el-button
-        ></template
+        }}</MarButton
+        ><MarButton type="primary" :loading="saving" @click="saveCredential">{{
+          t('personalGit.save')
+        }}</MarButton></template
       >
-    </el-dialog>
+    </MarDialog>
   </LoadingPanel>
 </template>
 
@@ -481,7 +480,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   padding: var(--mar-settings-page-padding, 0.875rem 1rem);
 }
 .git-hint {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   line-height: 1.6;
 }
 .git-page-hint {
@@ -490,12 +489,12 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .git-form-group-title {
   margin: 0 0 8px;
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
 }
@@ -519,7 +518,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   justify-content: flex-end;
 }
 small {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
 }
 @media (max-width: 600px) {
   .git-field-pair {

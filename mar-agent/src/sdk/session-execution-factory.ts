@@ -1106,12 +1106,12 @@ export function createSessionExecutionFactory(ports: {
             () => Promise<void>
           >();
           const prepareRound = createExecutionRoundPreparer<
-            ModelMessage,
             {
               candidateRequest: ModelRequest;
               request: ModelRequest;
               toolScope: RoundToolScope;
               discoveryRevision: number;
+              replacesSkillContext: boolean;
               acknowledgeSkillContext: (() => Promise<void>) | undefined;
             },
             PreparedExecutionRound<RoundToolScope>
@@ -1135,12 +1135,11 @@ export function createSessionExecutionFactory(ports: {
                   executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
                 }
               }),
-            buildCandidate: async (continuation) => {
+            buildCandidate: async () => {
               const skillLoads = sessionRuntime.pendingSkillContext();
               const capturedDiscoveryRevision = discoveryRevision;
               const candidate = await prepareExecutionRoundRequest({
                 messages,
-                continuation,
                 skillLoads,
                 model: selectedModel,
                 requestBase: {
@@ -1182,6 +1181,7 @@ export function createSessionExecutionFactory(ports: {
               request,
               toolScope,
               discoveryRevision: capturedDiscoveryRevision,
+              replacesSkillContext,
               acknowledgeSkillContext
             }) => {
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
@@ -1207,6 +1207,7 @@ export function createSessionExecutionFactory(ports: {
               controller.signal.throwIfAborted();
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
                 return { retry: true as const };
+              if (replacesSkillContext) selected.resetContinuation?.();
               if (acknowledgeSkillContext)
                 preparedSkillAcknowledgements.set(prepared.messages, acknowledgeSkillContext);
               return { round: { request: prepared, toolScope } };
@@ -1233,14 +1234,16 @@ export function createSessionExecutionFactory(ports: {
               }),
             prepareRound,
             runTools: executeRoundTools,
-            startModel: (request) => {
-              return modelLifecycle.start(request, async () => {
+            startModel: async function* (request) {
+              let skillAcknowledgementFailed = false;
+              yield* modelLifecycle.start(request, async () => {
                 const acknowledgeSkills = preparedSkillAcknowledgements.get(request.messages);
                 if (acknowledgeSkills) {
                   try {
                     await acknowledgeSkills();
                   } catch {
                     // Keep the accepted loads pending; a sidecar failure cannot undo model completion.
+                    skillAcknowledgementFailed = true;
                     coreExtensions.diagnose({
                       code: 'MAR_AGENT_SKILL_CONTEXT_ACK_PERSIST_FAILED',
                       sessionId
@@ -1256,6 +1259,9 @@ export function createSessionExecutionFactory(ports: {
                   })
                 );
               });
+              // A still-pending Skill may move on the next projection. Invalidate only after
+              // the adapter finishes the stream and publishes its new continuation baseline.
+              if (skillAcknowledgementFailed) selected.resetContinuation?.();
             },
             recoverySignal: () => controller.signal,
             compactContext,

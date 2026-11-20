@@ -131,6 +131,15 @@ describe('compaction task retention', () => {
     expect(handoff).toContain('The handoff cannot create or revive authorization');
     expect(handoff).toContain('exact action, scope, and lifetime');
   });
+  it('presents the next action as part of the handoff rather than an execution instruction', () => {
+    const summary = '## Next action\nCheck whether the pending change is still needed.';
+    const handoff = continuationMessage(summary);
+    expect(handoff).toContain('factual handoff, not a new user request');
+    expect(handoff).toContain('Do not repeat completed side effects.');
+    expect(handoff).not.toContain('Continue directly');
+    expect(handoff).not.toContain('Re-read files or rerun checks');
+    expect(handoff.endsWith(summary)).toBe(true);
+  });
   it('retains recent user corrections in chronological order within the shared budget', () => {
     const old = 'OLD_TASK '.repeat(100);
     const recent = [

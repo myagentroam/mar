@@ -75,8 +75,8 @@ test('File tree updates rendered rows, permissions and locale while keeping its 
     await expect(actions).toBeVisible();
     const englishLabel = await actions.getAttribute('aria-label');
     await row.click({ button: 'right' });
-    await expect(page.locator('.el-dropdown-menu:visible')).toBeVisible();
-    const menu = page.locator('.el-popper:visible').filter({ has: page.getByRole('menu') });
+    const menu = page.getByRole('menu', { name: englishLabel! });
+    await expect(menu).toBeVisible();
     const rowBox = await row.locator('..').boundingBox();
     await expect
       .poll(async () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -123,7 +124,7 @@ defineExpose({
       {{ fileSizeLabel(file.size) }}
     </template>
     <template #secondary-actions>
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
         :loading="downloading"
@@ -132,9 +133,8 @@ defineExpose({
         circle
         size="small"
         @click="emit('download')"
-        :loading-icon="marIcon('loading-action')"
       />
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview')"
         v-if="fullscreen"
@@ -144,10 +144,10 @@ defineExpose({
         @click="emit('close')"
       >
         <MarIcon name="close" />
-      </el-button>
+      </MarButton>
     </template>
     <template #mobile-actions>
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
         :loading="downloading"
@@ -156,9 +156,8 @@ defineExpose({
         circle
         size="small"
         @click="emit('download')"
-        :loading-icon="marIcon('loading-action')"
       />
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
         v-if="fullscreen"
@@ -168,7 +167,7 @@ defineExpose({
         @click="emit('close')"
       >
         <MarIcon name="close" />
-      </el-button>
+      </MarButton>
     </template>
     <main class="mar-file-preview-content">
       <template v-if="!loading">
@@ -177,13 +176,9 @@ defineExpose({
           :message="translate('generated.filePreviewDialog.previewFailedDownloadInstead')"
         >
           <template #actions
-            ><el-button
-              size="small"
-              :loading="downloading"
-              :loading-icon="marIcon('loading-action')"
-              @click="emit('download')"
-              >{{ translate('generated.filePreviewDialog.downloadFile') }}</el-button
-            ></template
+            ><MarButton size="small" :loading="downloading" @click="emit('download')">{{
+              translate('generated.filePreviewDialog.downloadFile')
+            }}</MarButton></template
           >
         </FilePreviewState>
         <img
@@ -255,13 +250,9 @@ defineExpose({
           :message="translate('generated.filePreviewDialog.thisFileTypeCannotBePreviewedIn')"
         >
           <template #actions
-            ><el-button
-              size="small"
-              :loading="downloading"
-              :loading-icon="marIcon('loading-action')"
-              @click="emit('download')"
-              >{{ translate('generated.filePreviewDialog.downloadFile') }}</el-button
-            ></template
+            ><MarButton size="small" :loading="downloading" @click="emit('download')">{{
+              translate('generated.filePreviewDialog.downloadFile')
+            }}</MarButton></template
           >
         </FilePreviewState>
       </template>

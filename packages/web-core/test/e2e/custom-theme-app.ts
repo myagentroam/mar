@@ -1,12 +1,17 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
-import { defineAsyncComponent, h, ref } from 'vue';
+import { computed, h, ref } from 'vue';
+import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
+import marEn from '@myagentroam/mar-ui/locale/en';
+import marZhCn from '@myagentroam/mar-ui/locale/zh-cn';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 // Preload styles needed by the lazy controls so Vite does not reload the settings page mid-action.
 import 'element-plus/es/components/tabs/style/css';
 import 'element-plus/es/components/tab-pane/style/css';
 import '../../src/styles.css';
+import '../support/element-plus-theme.css';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
+import ThemeControlsFixture from './theme-controls-fixture.vue';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { SettingsSection } from '../../src/model/settings.js';
 import {
@@ -14,10 +19,10 @@ import {
   PWA_APPLICATION_SERVICE_KEY
 } from '../../src/service/pwa-application-service.js';
 
-localePreferenceService().setLocale(
+const locale = localePreferenceService();
+locale.setLocale(
   new URLSearchParams(location.search).get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US'
 );
-const ThemeControlsFixture = defineAsyncComponent(() => import('./theme-controls-fixture.vue'));
 const section = ref<SettingsSection>('custom-themes');
 const pwaApplication = createPwaApplicationService(undefined, {
   version: 'fixture',
@@ -83,4 +88,9 @@ const app = createApp({
   }
 });
 app.provide(PWA_APPLICATION_SERVICE_KEY, pwaApplication);
+const marLocales = { 'en-US': marEn, 'zh-CN': marZhCn } as const;
+app.provide(
+  marUiLocaleKey,
+  computed(() => marLocales[locale.locale.value])
+);
 app.use(i18n).mount('#app');

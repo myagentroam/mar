@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarAlert } from '@myagentroam/mar-ui/alert';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import LoadingPanel from '@myagentroam/web-core/LoadingPanel.vue';
 
@@ -82,7 +83,7 @@ defineProps<{ page: CoreSurfaceProps['page'] }>();
       />
     </template>
     <template #management-notice>
-      <el-alert
+      <MarAlert
         v-if="page.identity.admin.licenseState === 'ENTERPRISE_FROZEN'"
         class="enterprise-frozen-banner"
         type="warning"
@@ -98,7 +99,7 @@ defineProps<{ page: CoreSurfaceProps['page'] }>();
               )
         "
         ><template #icon><MarIcon name="warning" /></template
-      ></el-alert>
+      ></MarAlert>
     </template>
   </CoreSurface>
 </template>

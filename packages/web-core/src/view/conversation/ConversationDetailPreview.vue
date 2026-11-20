@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -38,7 +39,7 @@ onBeforeUnmount(() => observer?.disconnect());
     >
       <div ref="content" class="detail-preview-content"><slot /></div>
     </div>
-    <el-button
+    <MarButton
       v-if="overflowing"
       link
       class="detail-preview-toggle"
@@ -55,7 +56,7 @@ onBeforeUnmount(() => observer?.disconnect());
         translate(
           expanded ? 'toolPresentation.detail.showLess' : 'toolPresentation.detail.showMore'
         )
-      }}</el-button
+      }}</MarButton
     >
   </div>
 </template>
@@ -71,8 +72,8 @@ onBeforeUnmount(() => observer?.disconnect());
   overflow: hidden;
 }
 .detail-preview-toggle {
-  --el-button-hover-link-text-color: var(--mar-text-primary);
-  --el-button-active-color: var(--mar-text-primary);
+  --mar-ui-button-hover-fg: var(--mar-text-primary);
+  --mar-ui-button-active-fg: var(--mar-text-primary);
   margin: 0.375rem 0 0;
   padding: 0;
   border: 0;

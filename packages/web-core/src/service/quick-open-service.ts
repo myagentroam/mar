@@ -256,12 +256,13 @@ export function createQuickOpenQueryService(options: QuickOpenQueryOptions) {
     }
   }
 
-  function cancel(): void {
+  function cancel({ preserveStatus = false } = {}): void {
     cancelQuery();
     workspaceController?.abort();
     workspaceController = undefined;
     if (workspaceDeadline !== undefined) clearTimeout(workspaceDeadline);
     workspaceDeadline = undefined;
+    if (preserveStatus) return;
     [workspaceStatus, fileStatus, symbolStatus, referenceStatus].forEach((source) => reset(source));
   }
 

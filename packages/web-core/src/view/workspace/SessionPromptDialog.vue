@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { createSessionPromptService } from '../../service/session-prompt-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -68,7 +71,7 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
@@ -82,47 +85,41 @@ async function save(): Promise<void> {
       }
     "
     @closed="emit('close')"
-    :close-icon="marIcon('close')"
   >
     <p class="session-prompt-description">{{ translate('generated.sessionPrompt.description') }}</p>
-    <el-form
+    <MarForm
       ref="formRef"
-      v-loading="loading"
+      v-mar-loading:region="loading"
       :model="form"
       :rules="rules"
       label-position="top"
       @submit.prevent="save"
     >
-      <el-form-item prop="prompt" :label="translate('generated.sessionPrompt.title')">
-        <el-input
+      <MarFormItem prop="prompt" :label="translate('generated.sessionPrompt.title')">
+        <MarInput
           v-model="form.prompt"
           type="textarea"
           :rows="10"
           :disabled="!ready || saving"
           :placeholder="translate('generated.sessionPrompt.placeholder')"
         />
-      </el-form-item>
-    </el-form>
+      </MarFormItem>
+    </MarForm>
     <template #footer>
-      <el-button :disabled="saving" @click="emit('close')">{{
+      <MarButton :disabled="saving" @click="emit('close')">{{
         translate('generated.sessionPrompt.cancel')
-      }}</el-button>
-      <el-button
-        type="primary"
-        :disabled="!ready"
-        :loading="saving"
-        @click="save"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.sessionPrompt.save') }}</el-button
-      >
+      }}</MarButton>
+      <MarButton type="primary" :disabled="!ready" :loading="saving" @click="save">{{
+        translate('generated.sessionPrompt.save')
+      }}</MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
 .session-prompt-description {
   margin: 0 0 1rem;
   line-height: 1.6;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
 }
 </style>

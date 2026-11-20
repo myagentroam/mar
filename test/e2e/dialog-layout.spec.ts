@@ -21,11 +21,10 @@ async function expectBounded(dialog: Locator): Promise<void> {
     .poll(() =>
       dialog.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
-        const overlay = element.closest('.el-overlay-dialog, .el-overlay-message-box')!;
+        const overlay = element.closest('.mar-ui-dialog-overlay[open]')!;
         const root = document.documentElement;
         const controls = element.querySelectorAll(
-          ':scope > .el-dialog__header, :scope > .el-dialog__footer, ' +
-            ':scope > .el-message-box__header, :scope > .el-message-box__btns'
+          ':scope > .mar-ui-dialog__header, :scope > .mar-ui-dialog__footer'
         );
         return {
           topInside: bounds.top >= -1,
@@ -54,12 +53,15 @@ async function expectBounded(dialog: Locator): Promise<void> {
     });
 }
 
-async function expectScrollableBody(dialog: Locator, selector = '.el-dialog__body'): Promise<void> {
+async function expectScrollableBody(
+  dialog: Locator,
+  selector = '.mar-ui-dialog__body'
+): Promise<void> {
   const body = dialog.locator(selector);
   await expect
     .poll(() => body.evaluate((element) => element.scrollHeight - element.clientHeight))
     .toBeGreaterThan(20);
-  const header = dialog.locator('.el-dialog__header, .el-message-box__header');
+  const header = dialog.locator('.mar-ui-dialog__header');
   const headerTop = (await header.boundingBox())!.y;
   await body.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -71,7 +73,7 @@ async function expectScrollableBody(dialog: Locator, selector = '.el-dialog__bod
 
 async function expectSingleScrollRegion(dialog: Locator): Promise<void> {
   const count = await dialog
-    .locator('.el-dialog__body')
+    .locator('.mar-ui-dialog__body')
     .evaluate(
       (body) =>
         [body, ...body.querySelectorAll('*')].filter(
@@ -152,7 +154,7 @@ test('Dialog and MessageBox titles use the panel title size', async ({ page }) =
     for (const kind of ['short', 'message']) {
       await visit(page, kind, theme);
       await page.getByRole('button', { name: 'Open content' }).click();
-      const title = page.locator('.el-dialog__title:visible, .el-message-box__title:visible');
+      const title = page.locator('.mar-ui-dialog__title:visible');
       await expect(title).toBeVisible();
       const sizes = await title.evaluate((element) => ({
         actual: getComputedStyle(element).fontSize,
@@ -210,7 +212,7 @@ for (const locale of ['en-US', 'zh-CN']) {
       );
       expect(new Set(boxes.map((box) => box.top)).size).toBe(viewport.width < 768 ? 2 : 1);
       expect(boxes.every((box) => box.overflow <= 1)).toBe(true);
-      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error')).toHaveCount(0);
       await expectBounded(dialog);
       await dialog
         .getByRole('button', { name: locale === 'en-US' ? 'Close' : '关闭', exact: true })
@@ -235,13 +237,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             exact: true
           })
           .click();
-        const dialog = page.locator('.el-dialog:visible');
+        const dialog = page.locator('.mar-ui-dialog:visible');
         const rows = dialog.locator('.effective-skill-row');
         await expect(rows).toHaveCount(60);
         if (resource === 'Skills') {
-          await expect(rows.nth(0).locator('.el-tag')).toHaveText(['Node HOME']);
-          await expect(rows.nth(1).locator('.el-tag')).toHaveText(['Workspace']);
-          await expect(rows.nth(2).locator('.el-tag')).toHaveText([
+          await expect(rows.nth(0).locator('.mar-ui-tag')).toHaveText(['Node HOME']);
+          await expect(rows.nth(1).locator('.mar-ui-tag')).toHaveText(['Workspace']);
+          await expect(rows.nth(2).locator('.mar-ui-tag')).toHaveText([
             'Incomplete installation',
             'Workspace'
           ]);
@@ -269,14 +271,14 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.setViewportSize(viewport);
         await visit(page, kind, theme);
         await page.getByRole('button', { name: 'Open content' }).click();
-        const dialog = page.locator('.el-dialog:visible');
+        const dialog = page.locator('.mar-ui-dialog:visible');
         await expectBounded(dialog);
         if (kind === 'form') {
           await dialog.getByRole('combobox', { name: 'First field' }).focus();
           await page.keyboard.press('ArrowDown');
           await page.getByRole('option', { name: 'Selected option' }).click();
         }
-        const footer = dialog.locator('.el-dialog__footer');
+        const footer = dialog.locator('.mar-ui-dialog__footer');
         const footerTop = (await footer.boundingBox())!.y;
         await expectScrollableBody(dialog);
         expect((await footer.boundingBox())!.y).toBeCloseTo(footerTop, 0);
@@ -298,17 +300,17 @@ for (const kind of ['details', 'mcp-details']) {
       await page.setViewportSize(viewport);
       await page.goto(`${fixture.url}dialog-layout.html?kind=${kind}&long-name=1`);
       await page.getByRole('button', { name: 'Open content' }).click();
-      const dialog = page.locator('.el-dialog:visible');
+      const dialog = page.locator('.mar-ui-dialog:visible');
       await expectBounded(dialog);
       const name = dialog
-        .locator('.el-dialog__body')
+        .locator('.mar-ui-dialog__body')
         .getByText((kind === 'details' ? 'w' : 'W').repeat(128), { exact: true });
       await expect(name).toBeVisible();
       await expect
-        .poll(() => dialog.locator('.el-dialog__body').evaluate((el) => el.clientHeight))
+        .poll(() => dialog.locator('.mar-ui-dialog__body').evaluate((el) => el.clientHeight))
         .toBeGreaterThan(60);
       await expectScrollableBody(dialog);
-      await dialog.locator('.el-dialog__footer').getByRole('button').click();
+      await dialog.locator('.mar-ui-dialog__footer').getByRole('button').click();
       await expect(dialog).toBeHidden();
     }
   });
@@ -320,27 +322,61 @@ test('Quick Open accepts typing during its enter animation without taking focus 
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await visit(page, 'quick');
   await page.addStyleTag({
-    content: '.el-overlay.dialog-fade-enter-active { animation-duration: 2s !important; }'
+    content:
+      '.mar-ui-dialog-overlay[open]:not([data-closing]) { animation-duration: 2s !important; }'
   });
   await page.getByRole('button', { name: 'Open content' }).click();
   const dialog = page.getByRole('dialog', { name: 'Quick Open' });
-  const entering = page.locator('.el-overlay.dialog-fade-enter-active');
+  const entering = page.locator('.mar-ui-dialog-overlay[open]:not([data-closing])');
+  const enteringAnimation = () =>
+    entering.evaluate((element) =>
+      element.getAnimations().some((animation) => animation.playState === 'running')
+    );
   const input = dialog.getByRole('textbox');
   const filter = dialog.getByRole('button', { name: 'Workspace', exact: true });
-  await expect(entering).toBeVisible();
+  await expect.poll(enteringAnimation).toBe(true);
   await expect(input).toBeFocused({ timeout: 1000 });
   await page.keyboard.type('readme');
   await expect(input).toHaveValue('readme');
-  await expect(entering).toBeVisible();
+  await expect.poll(enteringAnimation).toBe(true);
   await filter.focus();
   await expect(filter).toBeFocused();
-  await expect(entering).toHaveCount(0);
+  await expect.poll(enteringAnimation).toBe(false);
   await expect(filter).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await page.getByRole('button', { name: 'Open content' }).click();
   await expect(input).toBeFocused();
+});
+
+test('Quick Open keeps source feedback visible until its exit animation completes', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.route('**/api/workspaces?*', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: 'WORKSPACE_QUERY_FAILED', message: 'Workspace query failed' }
+    })
+  );
+  await visit(page, 'quick');
+  const leaveStyle = await page.addStyleTag({
+    content: '.mar-ui-dialog-overlay[data-closing] { animation-duration: 2s !important; }'
+  });
+  await page.getByRole('button', { name: 'Open content' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Quick Open' });
+  const retry = dialog.getByRole('button', { name: 'Retry', exact: true });
+  await expect(retry).toBeVisible();
+  await dialog.evaluate((element) =>
+    Promise.allSettled(element.getAnimations().map(({ finished }) => finished))
+  );
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.mar-ui-dialog-overlay[data-closing]')).toBeVisible();
+  await expect(retry).toBeVisible();
+  await leaveStyle.evaluate((style) => style.remove());
+  await expect(dialog).toHaveCount(0);
 });
 
 test('Quick Open keeps keyboard results visible when failed-source details expand', async ({
@@ -360,7 +396,7 @@ test('Quick Open keeps keyboard results visible when failed-source details expan
   });
   await visit(page, 'quick');
   await page.getByRole('button', { name: 'Open content' }).click();
-  const dialog = page.locator('.el-dialog:visible');
+  const dialog = page.locator('.mar-ui-dialog:visible');
   await dialog.locator('summary').click();
   await expectBounded(dialog);
   const results = dialog.locator('.quick-open-results');
@@ -373,7 +409,7 @@ test('Quick Open keeps keyboard results visible when failed-source details expan
   await expect(input).toBeInViewport();
   const retry = notices.getByRole('button', { name: 'Retry', exact: true });
   await retry.scrollIntoViewIfNeeded();
-  await expect(retry).toHaveClass(/is-link/);
+  await expect(retry).toHaveClass(/mar-ui-button--inline/);
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await retry.hover();
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -394,7 +430,7 @@ test('Quick Open keeps a single candidate compact alongside source errors', asyn
   });
   await visit(page, 'quick');
   await page.getByRole('button', { name: 'Open content' }).click();
-  const dialog = page.locator('.el-dialog:visible');
+  const dialog = page.locator('.mar-ui-dialog:visible');
   await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   await dialog.locator('.quick-open-input').fill('Skill 60');
   const results = dialog.locator('.quick-open-results');
@@ -438,7 +474,7 @@ for (const kind of ['tokens', 'mail', 'registration', 'upload', 'quick']) {
     } else {
       await page.getByRole('button').first().click();
     }
-    const dialog = page.locator('.el-dialog:visible');
+    const dialog = page.locator('.mar-ui-dialog:visible');
     if (kind === 'mail') await expect(dialog.locator('iframe')).toBeVisible();
     await expectBounded(dialog);
     if (kind === 'registration') {
@@ -521,7 +557,7 @@ test('Workspace registration cannot be dismissed while the request is pending', 
     await expect(cancel).toBeDisabled();
     await expect(registration.getByRole('button', { name: 'Close this dialog' })).toHaveCount(0);
     await page.keyboard.press('Escape');
-    await page.locator('.el-overlay-dialog').click({ position: { x: 2, y: 2 } });
+    await page.locator('.mar-ui-dialog-overlay[open]').click({ position: { x: 2, y: 2 } });
     await expect(registration).toBeVisible();
     finishRequest();
     await expect(register).toBeEnabled();
@@ -541,7 +577,7 @@ test.describe('Mobile dialog viewport', () => {
   test('A smaller viewport keeps the open dialog and close action reachable', async ({ page }) => {
     await visit(page, 'details', 'vscode-dark-2026');
     await page.getByRole('button', { name: 'Open content' }).tap();
-    const dialog = page.locator('.el-dialog:visible');
+    const dialog = page.locator('.mar-ui-dialog:visible');
     await expectBounded(dialog);
     await page.setViewportSize({ width: 390, height: 360 });
     await expectBounded(dialog);
@@ -558,11 +594,11 @@ test('Long MessageBox confirmation scrolls its content without moving the action
     await page.setViewportSize(viewport);
     await visit(page, 'message');
     await page.getByRole('button', { name: 'Open content' }).click();
-    const dialog = page.locator('.el-message-box');
+    const dialog = page.locator('.mar-message-box');
     await expectBounded(dialog);
-    const buttons = dialog.locator('.el-message-box__btns');
+    const buttons = dialog.locator('.mar-ui-dialog__footer');
     const top = (await buttons.boundingBox())!.y;
-    await expectScrollableBody(dialog, '.el-message-box__content');
+    await expectScrollableBody(dialog, '.mar-ui-dialog__body');
     expect((await buttons.boundingBox())!.y).toBeCloseTo(top, 0);
     await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
     await expect(dialog).toBeHidden();
@@ -575,7 +611,7 @@ for (const kind of ['short', 'centered', 'fullscreen', 'file', 'image']) {
       await page.setViewportSize(viewport);
       await visit(page, kind);
       await page.getByRole('button', { name: 'Open content' }).click();
-      const dialog = page.locator('.el-dialog:visible');
+      const dialog = page.locator('.mar-ui-dialog:visible');
       if (kind === 'image') await expect(dialog.locator('img')).toHaveJSProperty('complete', true);
       await expectBounded(dialog);
       const bounds = (await dialog.boundingBox())!;

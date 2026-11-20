@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed } from 'vue';
 import CorePage from '@myagentroam/web-core/McpSourceManagementPage.vue';
@@ -12,7 +15,7 @@ const props = defineProps<{
 }>();
 const ownership = createCatalogOwnershipService(props.request, () => props);
 const { sourceDraft, catalogDraft, organizationOptions, canUseOrganizationScope } = ownership;
-const ownershipRules = computed(() => ({
+const ownershipRules = computed<FormRules>(() => ({
   organizationId: [
     {
       required: true,
@@ -66,54 +69,54 @@ async function submitCatalog(input: {
     @open-catalog="ownership.resetCatalog"
   >
     <template #source-ownership>
-      <el-form-item :label="translate('generated.mcpSourceManagementPage.scope2')"
-        ><el-select
+      <MarFormItem :label="translate('generated.mcpSourceManagementPage.scope2')"
+        ><MarSelect
           v-model="sourceDraft.scope"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.mcpSourceManagementPage.personal2')"
-            value="PERSONAL" /><el-option
+            value="PERSONAL" /><MarOption
             v-if="canUseOrganizationScope"
             :label="translate('generated.mcpSourceManagementPage.organization2')"
-            value="ORGANIZATION" /></el-select></el-form-item
-      ><el-form-item
+            value="ORGANIZATION" /></MarSelect></MarFormItem
+      ><MarFormItem
         v-if="sourceDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.mcpSourceManagementPage.organization3')"
         prop="organizationId"
-        ><el-cascader
+        ><MarCascader
           v-model="sourceDraft.organizationId"
           style="width: 100%"
           filterable
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
-      /></el-form-item>
+      /></MarFormItem>
     </template>
     <template #catalog-ownership>
-      <el-form-item :label="translate('generated.mcpSourceManagementPage.scope3')"
-        ><el-select
+      <MarFormItem :label="translate('generated.mcpSourceManagementPage.scope3')"
+        ><MarSelect
           v-model="catalogDraft.scope"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.mcpSourceManagementPage.personal3')"
-            value="PERSONAL" /><el-option
+            value="PERSONAL" /><MarOption
             v-if="canUseOrganizationScope"
             :label="translate('generated.mcpSourceManagementPage.organization4')"
-            value="ORGANIZATION" /></el-select></el-form-item
-      ><el-form-item
+            value="ORGANIZATION" /></MarSelect></MarFormItem
+      ><MarFormItem
         v-if="catalogDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.mcpSourceManagementPage.organization5')"
         prop="organizationId"
-        ><el-cascader
+        ><MarCascader
           v-model="catalogDraft.organizationId"
           style="width: 100%"
           filterable
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
-      /></el-form-item>
+      /></MarFormItem>
     </template>
   </CorePage>
 </template>

@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { createUuid } from '../../util/uuid.js';
 import {
   mountMobileDialogReturn,
@@ -9,8 +19,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { onMounted, reactive, ref, computed } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
 import type { CodexCredentialSummary, ImageGenerationModel } from '@myagentroam/protocol';
 import { createCodexCredentialManagementService } from '../../service/codex-credential-management-service';
@@ -198,10 +207,10 @@ async function save() {
 }
 async function remove(model: ImageGenerationModel) {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('marAgentModels.imageGenerationRemoveConfirm', { name: model.name }),
       translate('marAgentModels.remove'),
-      { closeIcon: marIcon('close') }
+      {}
     );
   } catch {
     return;
@@ -215,60 +224,54 @@ onMounted(load);
 </script>
 
 <template>
-  <section
-    v-loading="busy && !ready"
-    element-loading-custom-class="mar-page-loading"
-    class="image-generation-management"
-  >
+  <section v-mar-loading:page="busy && !ready" class="image-generation-management">
     <p class="selection-rule">{{ translate('marAgentModels.imageGenerationPriorityHint') }}</p>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshing && ready"
         :disabled="busy || sorting"
         @click="load(true)"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('marAgentModels.refresh') }}</el-button
+        >{{ translate('marAgentModels.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && !sorting"
         :icon="marIcon('queue')"
         :disabled="busy || !ready"
         @click="startSorting"
-        >{{ translate('marAgentModels.adjustOrder') }}</el-button
+        >{{ translate('marAgentModels.adjustOrder') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && sorting"
         type="primary"
         :icon="marIcon('check')"
         :loading="busy"
         @click="saveOrder"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('marAgentModels.saveOrder') }}</el-button
+        >{{ translate('marAgentModels.saveOrder') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && sorting"
         :icon="marIcon('close')"
         :disabled="busy"
         @click="cancelSorting"
-        >{{ translate('marAgentModels.cancel') }}</el-button
+        >{{ translate('marAgentModels.cancel') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && !sorting"
         type="primary"
         :icon="marIcon('plus')"
         :disabled="busy || !ready"
         @click="edit()"
-        >{{ translate('marAgentModels.imageGenerationAdd') }}</el-button
+        >{{ translate('marAgentModels.imageGenerationAdd') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       :class="{ 'clickable-rows': !sorting }"
       :data="models"
       row-key="id"
       @row-click="openDetails"
     >
-      <el-table-column width="92" :label="translate('marAgentModels.imageGenerationPriority')">
+      <MarTableColumn width="92" :label="translate('marAgentModels.imageGenerationPriority')">
         <template #default="{ row, $index }">
           <div
             v-if="sorting"
@@ -290,23 +293,23 @@ onMounted(load);
           </div>
           <span v-else>{{ $index + 1 }}</span>
         </template>
-      </el-table-column>
-      <el-table-column prop="name" :label="translate('marAgentModels.name')" min-width="160" />
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn prop="name" :label="translate('marAgentModels.name')" min-width="160" />
+      <MarTableColumn
         prop="provider"
         :label="translate('marAgentModels.imageGenerationProvider')"
         min-width="130"
       >
         <template #default="{ row }">{{ providerLabel(row.provider) }}</template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         prop="config.modelId"
         :label="translate('marAgentModels.imageGenerationModel')"
         min-width="230"
       />
-      <el-table-column :label="translate('marAgentModels.enabled')" width="100">
+      <MarTableColumn :label="translate('marAgentModels.enabled')" width="100">
         <template #default="{ row }"
-          ><el-switch
+          ><MarSwitch
             :model-value="row.enabled"
             :disabled="!writable || busy || sorting"
             :aria-label="translate('marAgentModels.enabled')"
@@ -319,30 +322,30 @@ onMounted(load);
               )
             "
         /></template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         v-if="writable && !sorting"
         :label="translate('marAgentModels.actions')"
         width="200"
       >
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
-            <el-button link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
+            <MarButton link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
               translate('marAgentModels.edit')
-            }}</el-button>
-            <el-button
+            }}</MarButton>
+            <MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="busy"
               @click="remove(row)"
-              >{{ translate('marAgentModels.remove') }}</el-button
+              >{{ translate('marAgentModels.remove') }}</MarButton
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
-    <el-dialog
+      </MarTableColumn>
+    </MarTable>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialog"
@@ -350,136 +353,130 @@ onMounted(load);
       :title="translate('marAgentModels.imageGenerationEdit')"
       width="min(720px, calc(100vw - 32px))"
       @closed="draft.apiKey = ''"
-      :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="form"
         :model="draft"
         :rules="rules"
         label-position="top"
         :disabled="busy || !writable"
       >
-        <el-form-item prop="name" :label="translate('marAgentModels.name')"
-          ><el-input v-model="draft.name" maxlength="128"
-        /></el-form-item>
-        <el-form-item :label="translate('marAgentModels.imageGenerationProvider')">
-          <el-select
+        <MarFormItem prop="name" :label="translate('marAgentModels.name')"
+          ><MarInput v-model="draft.name" maxlength="128"
+        /></MarFormItem>
+        <MarFormItem :label="translate('marAgentModels.imageGenerationProvider')">
+          <MarSelect
             v-model="draft.provider"
             @change="providerChanged"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option value="CODEX" :label="providerLabel('CODEX')" />
-            <el-option value="BYTED_ARK" :label="providerLabel('BYTED_ARK')" />
-          </el-select>
-        </el-form-item>
-        <el-form-item
+            <MarOption value="CODEX" :label="providerLabel('CODEX')" />
+            <MarOption value="BYTED_ARK" :label="providerLabel('BYTED_ARK')" />
+          </MarSelect>
+        </MarFormItem>
+        <MarFormItem
           v-if="draft.provider === 'CODEX'"
           prop="credentialId"
           :label="translate('marAgentModels.imageGenerationCredential')"
         >
-          <el-select
+          <MarSelect
             v-model="draft.credentialId"
             filterable
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="credential in codexCredentials"
               :key="credential.id"
               :label="credential.name"
               :value="credential.id"
-          /></el-select>
-        </el-form-item>
-        <el-form-item
+          /></MarSelect>
+        </MarFormItem>
+        <MarFormItem
           v-else
           prop="apiKey"
           :label="translate('marAgentModels.imageGenerationApiKey')"
         >
-          <el-input
+          <MarInput
             v-model="draft.apiKey"
             type="password"
             autocomplete="new-password"
             maxlength="16384"
             :placeholder="draft.hasApiKey ? translate('marAgentModels.imageGenerationKeepKey') : ''"
           />
-        </el-form-item>
-        <el-form-item
+        </MarFormItem>
+        <MarFormItem
           v-if="draft.provider === 'BYTED_ARK'"
           prop="url"
           :label="translate('marAgentModels.imageGenerationUrl')"
           required
         >
-          <el-input v-model="draft.url" maxlength="2048" />
-        </el-form-item>
-        <el-form-item prop="modelId" :label="translate('marAgentModels.imageGenerationModel')"
-          ><el-input v-model="draft.modelId" maxlength="256"
-        /></el-form-item>
-      </el-form>
+          <MarInput v-model="draft.url" maxlength="2048" />
+        </MarFormItem>
+        <MarFormItem prop="modelId" :label="translate('marAgentModels.imageGenerationModel')"
+          ><MarInput v-model="draft.modelId" maxlength="256"
+        /></MarFormItem>
+      </MarForm>
       <template #footer
-        ><el-button
+        ><MarButton
           :disabled="busy"
           @click="
             dialog = false;
             draft.apiKey = '';
           "
-          >{{ translate('marAgentModels.cancel') }}</el-button
-        ><el-button
-          type="primary"
-          :loading="busy"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('marAgentModels.save') }}</el-button
-        ></template
+          >{{ translate('marAgentModels.cancel') }}</MarButton
+        ><MarButton type="primary" :loading="busy" @click="save">{{
+          translate('marAgentModels.save')
+        }}</MarButton></template
       >
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="detailOpen && selectedDetail"
       v-model="detailOpen"
       :title="translate('marAgentModels.details')"
       width="min(720px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('marAgentModels.imageGenerationConfigurationId')">
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationConfigurationId')">
           <code>{{ selectedDetail.id }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.name')">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.name')">{{
           selectedDetail.name
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.imageGenerationProvider')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationProvider')">{{
           providerLabel(selectedDetail.provider)
-        }}</el-descriptions-item>
-        <el-descriptions-item
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="selectedDetail.provider === 'CODEX'"
           :label="translate('marAgentModels.imageGenerationCredential')"
-          >{{ credentialName(selectedDetail.config.credentialId) }}</el-descriptions-item
+          >{{ credentialName(selectedDetail.config.credentialId) }}</MarDescriptionsItem
         >
-        <el-descriptions-item v-else :label="translate('marAgentModels.imageGenerationApiKey')">{{
+        <MarDescriptionsItem v-else :label="translate('marAgentModels.imageGenerationApiKey')">{{
           selectedDetail.config.hasApiKey
             ? translate('marAgentModels.imageGenerationApiKeyConfigured')
             : '—'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.imageGenerationModel')">
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.imageGenerationModel')">
           <code>{{ selectedDetail.config.modelId }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="selectedDetail.provider === 'BYTED_ARK'"
           :label="translate('marAgentModels.imageGenerationUrl')"
         >
           <code class="image-generation-detail-url">{{ selectedDetail.config.url ?? '—' }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('marAgentModels.enabled')">
-          <el-tag :type="selectedDetail.enabled ? 'success' : 'info'" effect="plain">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('marAgentModels.enabled')">
+          <MarTag :type="selectedDetail.enabled ? 'success' : 'info'" effect="plain">{{
             translate(selectedDetail.enabled ? 'marAgentModels.enabled' : 'marAgentModels.disabled')
-          }}</el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
+          }}</MarTag>
+        </MarDescriptionsItem>
+      </MarDescriptions>
       <template #footer>
-        <el-button @click="detailOpen = false">{{ translate('common.close') }}</el-button>
+        <MarButton @click="detailOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 <style scoped>
@@ -490,7 +487,7 @@ onMounted(load);
   gap: 8px;
   margin-bottom: 16px;
 }
-.mar-table-actions .el-button + .el-button {
+.mar-table-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
 .mar-row-actions {
@@ -518,14 +515,14 @@ onMounted(load);
   cursor: grabbing;
 }
 .selection-rule {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   margin: 0 0 12px;
 }
 .image-generation-management {
   min-width: 0;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .image-generation-detail-url {

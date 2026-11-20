@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import type { MessageType } from '../../model/message-feedback.js';
-import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import {
   computed,
@@ -498,23 +499,21 @@ defineExpose({ release, toggle: toggleTerminal });
       <div v-if="profiles.length > 1 || !mobileMode" class="admin-terminal-actions">
         <label v-if="profiles.length > 1" class="terminal-profile">
           {{ translate('generated.terminalDock.terminalProfile') }}
-          <el-select
+          <MarSelect
             v-model="selectedProfileId"
             :aria-label="translate('generated.terminalDock.terminalProfile2')"
             size="small"
             :disabled="!canUseTerminal || creating"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option
+            <MarOption
               v-for="profile in profiles"
               :key="profile.id"
               :value="profile.id"
               :label="profile.label"
             />
-          </el-select>
+          </MarSelect>
         </label>
-        <el-button
+        <MarButton
           v-tooltip="
             expanded
               ? translate('generated.terminalDock.collapseTerminal2')
@@ -534,7 +533,7 @@ defineExpose({ release, toggle: toggleTerminal });
               ? translate('generated.terminalDock.collapseTerminal3')
               : translate('generated.terminalDock.expandTerminal3')
           }}</span>
-        </el-button>
+        </MarButton>
       </div>
     </header>
     <div v-if="hasOpened" v-show="expanded" class="admin-terminal-content">
@@ -745,7 +744,7 @@ defineExpose({ release, toggle: toggleTerminal });
     white-space: nowrap;
   }
 
-  .terminal-profile .el-select {
+  .terminal-profile .mar-ui-select {
     width: 8rem;
   }
 

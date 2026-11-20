@@ -1098,6 +1098,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(latest).toBeVisible();
         await latest.scrollIntoViewIfNeeded();
         const tokens = await latest.evaluate((element) => {
+          const icon = element
+            .querySelector('[data-mar-icon="to-bottom"]')!
+            .getBoundingClientRect();
+          const label = element.querySelector('.mar-ui-button__label')!.getBoundingClientRect();
           const probe = document.createElement('span');
           element.append(probe);
           const color = (token: string) => {
@@ -1111,11 +1115,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             hover: color('--mar-fill-row-hover'),
             pressed: color('--mar-fill-selection'),
             border: color('--mar-border-default'),
-            focus: color('--mar-color-brand')
+            focus: color('--mar-color-brand'),
+            iconGap: label.left - icon.right
           };
           probe.remove();
           return result;
         });
+        expect(tokens.iconGap).toBeGreaterThanOrEqual(5);
         await page.mouse.move(0, 0);
         await expect(latest).toHaveCSS('color', tokens.text);
         await expect(latest).toHaveCSS('background-color', tokens.background);
@@ -1124,8 +1130,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           path: testInfo.outputPath(`latest-normal-${width}.png`)
         });
         await latest.hover();
-        await expect(latest).toHaveCSS('color', tokens.activeText);
-        await expect(latest).toHaveCSS('background-color', tokens.hover);
+        const canHover = await page.evaluate(() => matchMedia('(hover: hover)').matches);
+        await expect(latest).toHaveCSS('color', canHover ? tokens.activeText : tokens.text);
+        await expect(latest).toHaveCSS(
+          'background-color',
+          canHover ? tokens.hover : tokens.background
+        );
         await page.locator('.conversation-scroll-region').screenshot({
           path: testInfo.outputPath(`latest-hover-${width}.png`)
         });
@@ -1714,10 +1724,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(messageAction).toBeFocused();
       await expect(messageAction).not.toHaveCSS('outline-style', 'none');
       await expect(messageAction).toHaveCSS('background-color', tokens.utilityHover);
-      for (const control of [
-        page.getByTestId('native-utility'),
-        page.getByTestId('element-utility')
-      ]) {
+      for (const control of [page.getByTestId('native-utility'), page.getByTestId('mar-utility')]) {
         await control.hover();
         await expect(control).toHaveCSS('background-color', tokens.utilityHover);
         await expect(control).toHaveCSS('color', tokens.primary);
@@ -1746,7 +1753,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await notificationToggle.click();
       await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await page.getByRole('button', { name: 'Preview notification', exact: true }).click();
-      await expect(page.locator('.activity-preview')).toBeVisible();
+      await expect(page.locator('.activity-preview:visible')).toContainText('0.10.2');
       await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await notificationToggle.click();
       await expect(loads).toHaveText('2');

@@ -158,7 +158,7 @@ const emit = defineEmits<{
 
 .composer-attachment-preview:hover,
 .composer-attachment-preview:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 

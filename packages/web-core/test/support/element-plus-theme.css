@@ -1,31 +1,9 @@
-/* Element Plus theme bridge and bounded component adaptations. */
+/* Test-only theme bridge for side-by-side Element Plus reference controls. */
 :root,
 .mar-theme-preview {
   --el-component-size-small: 24px;
 }
 
-.el-popper.mar-tooltip {
-  max-width: min(28rem, calc(100vw - 2rem));
-  border: 1px solid var(--mar-border-default);
-  border-radius: var(--mar-radius-control);
-  background: var(--mar-control-bg-color-overlay);
-  color: var(--mar-text-primary);
-  box-shadow: 0 4px 12px var(--mar-shadow-medium);
-  font-family: var(--mar-font-sans);
-  font-size: var(--mar-font-size-meta);
-  line-height: 1.5;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-.el-popper.mar-tooltip .el-popper__arrow::before {
-  background: var(--mar-control-bg-color-overlay);
-  border-color: var(--mar-border-default);
-}
-
-.el-popper.mar-tooltip-passive {
-  pointer-events: none;
-}
 :root,
 html.console-ui,
 .mar-theme-preview {
@@ -172,98 +150,11 @@ html.console-ui,
   --el-box-shadow-dark: 0 1rem 3rem var(--mar-shadow-medium);
 }
 
-html.console-ui .el-dialog {
-  --el-dialog-border-radius: var(--mar-radius-surface);
-}
-html.console-ui
-  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog)) {
-  --mar-dialog-top-gap: max(16px, var(--el-dialog-margin-top, 15vh), env(safe-area-inset-top, 0px));
-  --mar-dialog-bottom-gap: max(16px, env(safe-area-inset-bottom, 0px));
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  max-height: calc(100dvh - var(--mar-dialog-top-gap) - var(--mar-dialog-bottom-gap));
-  max-width: calc(100vw - 32px);
-  margin-block: var(--mar-dialog-top-gap) var(--mar-dialog-bottom-gap);
-  overflow: hidden;
-}
-
-html.console-ui
-  .el-dialog.is-align-center:where(
-    :not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog)
-  ) {
-  --mar-dialog-top-gap: max(16px, env(safe-area-inset-top, 0px));
-  margin-block: auto;
-}
-
-html.console-ui
-  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog))
-  > :is(.el-dialog__header, .el-dialog__footer) {
-  flex: none;
-}
-
-html.console-ui
-  .el-dialog:where(:not(.is-fullscreen, .file-preview-surface, .attachment-preview-dialog))
-  > .el-dialog__body {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-html.console-ui .el-message-box {
-  --el-messagebox-font-size: var(--mar-font-size-title);
-  display: inline-flex;
-  flex-direction: column;
-  max-height: calc(
-    100dvh - max(16px, env(safe-area-inset-top, 0px)) - max(16px, env(safe-area-inset-bottom, 0px))
-  );
-}
-
-html.console-ui .el-dialog {
-  --el-dialog-title-font-size: var(--mar-font-size-title);
-}
-
-html.console-ui .el-message-box > :is(.el-message-box__header, .el-message-box__btns) {
-  flex: none;
-}
-
-html.console-ui .el-message-box > .el-message-box__content {
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-html.console-ui .el-popover {
-  --el-popover-border-radius: var(--mar-radius-surface);
-}
-
-html.console-ui
-  .el-popper:is(
-    .mar-content-popover,
-    .mar-compact-popover,
-    .el-dropdown__popper,
-    .el-select__popper,
-    .el-cascader__dropdown,
-    .el-picker__popper
-  ) {
+html.console-ui .el-popper:is(.el-select__popper, .el-cascader__dropdown, .el-picker__popper) {
   --el-bg-color-overlay: var(--mar-overlay-surface);
 }
 
-html.console-ui .el-popover.mar-content-popover {
-  --el-popover-border-color: var(--mar-overlay-border);
-  --el-border-color-light: var(--mar-overlay-border);
-  --el-box-shadow-light: 0 2px 6px var(--mar-shadow-soft), 0 10px 24px var(--mar-shadow-medium);
-}
-
-html.console-ui
-  .el-popper:is(
-    .el-dropdown__popper,
-    .el-select__popper,
-    .el-cascader__dropdown,
-    .el-picker__popper,
-    .mar-compact-popover
-  ) {
+html.console-ui .el-popper:is(.el-select__popper, .el-cascader__dropdown, .el-picker__popper) {
   --el-border-color-light: var(--mar-overlay-border);
   --el-box-shadow-light: var(--mar-compact-overlay-shadow);
 }
@@ -273,12 +164,6 @@ html.console-ui .el-picker__popper.el-popper {
   --el-datepicker-bg-color: var(--mar-overlay-surface);
 }
 
-html.console-ui .el-popover.mar-compact-popover {
-  --el-popover-border-color: var(--mar-overlay-border);
-  --el-popover-border-radius: var(--mar-radius-control);
-}
-
-html.console-ui .el-dropdown__popper .el-dropdown-menu__item--divided,
 html.console-ui .el-select__popper :is(.el-select-dropdown__header, .el-select-dropdown__footer),
 html.console-ui
   .el-cascader__dropdown
@@ -507,16 +392,6 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   outline-color: var(--mar-color-brand);
 }
 
-:is(html.console-ui, .mar-theme-preview) .el-dropdown-menu {
-  --el-dropdown-menuItem-hover-fill: var(--mar-fill-row-hover);
-  --el-dropdown-menuItem-hover-color: var(--mar-text-primary);
-}
-
-:is(html.console-ui, .mar-theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: -2px;
-}
-
 .el-select-dropdown__item {
   height: var(--mar-compact-control-size);
   padding-inline: var(--mar-compact-option-padding-inline);
@@ -553,85 +428,6 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   line-height: var(--mar-compact-control-size);
 }
 
-html.console-ui .el-message {
-  --el-message-bg-color: var(--mar-control-bg-color-overlay);
-  --el-message-border-color: var(--mar-border-default);
-  --el-message-text-color: var(--mar-text-primary);
-  --mar-message-first-line-height: calc(var(--mar-font-size-body) * 1.5);
-  max-width: min(
-    36rem,
-    calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))
-  );
-  align-items: flex-start;
-  padding: 10px 36px 10px 12px;
-  gap: 8px;
-  border-radius: var(--mar-radius-control);
-  background: var(--el-message-bg-color);
-  box-shadow: 0 4px 12px var(--mar-shadow-medium);
-  font-family: var(--mar-font-sans);
-  font-size: var(--mar-font-size-body);
-  margin-top: env(safe-area-inset-top);
-}
-
-html.console-ui .el-message__content {
-  min-width: 0;
-  color: var(--mar-text-primary);
-  font-size: inherit;
-}
-
-html.console-ui .mar-message-text {
-  display: block;
-  overflow-wrap: anywhere;
-  white-space: pre-line;
-  line-height: var(--mar-message-first-line-height);
-  max-height: min(20rem, 50dvh);
-  overflow-y: auto;
-  color: var(--mar-text-primary);
-  font-size: inherit;
-}
-
-html.console-ui .el-message__icon {
-  flex: 0 0 auto;
-  height: var(--mar-message-first-line-height);
-  margin: 0;
-}
-
-html.console-ui .el-message--info .el-message__icon {
-  color: var(--mar-text-secondary);
-}
-html.console-ui .el-message--success .el-message__icon {
-  color: var(--mar-control-color-success);
-}
-html.console-ui .el-message--warning .el-message__icon {
-  color: var(--mar-control-color-warning);
-}
-html.console-ui .el-message--error .el-message__icon {
-  color: var(--mar-control-color-danger);
-}
-
-html.console-ui .el-message__closeBtn {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  height: var(--mar-message-first-line-height);
-  transform: none;
-  color: var(--mar-text-secondary);
-}
-
-html.console-ui .el-message__closeBtn:hover {
-  color: var(--mar-text-primary);
-}
-
-html.console-ui .mar-message-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
 html.console-ui .el-empty {
   --el-empty-padding: 24px 0;
 }
@@ -640,14 +436,6 @@ html.console-ui .el-empty__image {
   width: 64px;
 }
 
-html.console-ui .el-table,
-.mar-theme-preview .el-table {
-  --el-table-header-bg-color: var(--mar-table-header-bg);
-  --el-table-row-hover-bg-color: var(--mar-table-row-hover-bg);
-}
-
-html.console-ui .el-dialog__headerbtn,
-html.console-ui .el-message-box__headerbtn,
 html.console-ui .el-drawer__close-btn {
   --mar-action-hover-bg: var(--mar-fill-row-hover);
   border-radius: var(--mar-radius-control);
@@ -655,8 +443,6 @@ html.console-ui .el-drawer__close-btn {
   color: var(--mar-text-secondary);
 }
 
-html.console-ui .el-dialog__headerbtn,
-html.console-ui .el-message-box__headerbtn,
 html.console-ui .el-drawer__close-btn {
   border: 0;
   cursor: pointer;
@@ -687,12 +473,7 @@ html.console-ui .el-drawer__close-btn {
   border-radius: var(--mar-radius-control);
 }
 
-html.console-ui
-  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):is(
-    :hover,
-    :active,
-    :focus-visible
-  ):not(:disabled) {
+html.console-ui .el-drawer__close-btn:is(:hover, :active, :focus-visible):not(:disabled) {
   background: var(--mar-action-hover-bg);
   color: var(--mar-action-hover-color, var(--mar-text-primary));
 }
@@ -707,22 +488,19 @@ html.console-ui
   background-color: var(--mar-action-hover-bg) !important;
 }
 
-html.console-ui .mar-message-close:focus-visible,
-html.console-ui
-  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):focus-visible {
+html.console-ui .el-drawer__close-btn:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
-:is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn) > .el-icon {
+.el-drawer__close-btn > .el-icon {
   color: inherit !important;
 }
-html.console-ui
-  :is(.el-dialog__headerbtn, .el-message-box__headerbtn, .el-drawer__close-btn):focus-visible {
+html.console-ui .el-drawer__close-btn:focus-visible {
   outline-offset: -2px;
 }
 
 @media (max-width: 767px) {
-  :where(button, [role='button'], a[href], .el-dropdown-menu__item) .el-icon:has(> .mar-icon) {
+  :where(button, [role='button'], a[href]) .el-icon:has(> .mar-icon) {
     font-size: var(--mar-action-icon-size, 18px);
   }
 }
@@ -738,33 +516,13 @@ html.console-ui
   margin-inline-start: 8px;
 }
 
-.el-dropdown-menu__item > .mar-icon {
-  margin-inline-end: 5px;
-}
-
-.mar-page-loading .el-loading-spinner::before {
-  content: '';
-}
-
-.mar-page-loading .el-loading-spinner {
-  margin-top: -0.625rem;
-  color: var(--mar-color-brand-text);
-  line-height: 0;
-}
-
-.mar-page-loading .el-loading-spinner .circular {
-  display: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   html.console-ui {
     --el-transition-duration: 0s;
     --el-transition-duration-fast: 0s;
   }
 
-  .console-ui .is-loading,
-  .console-ui .el-loading-spinner .circular,
-  .console-ui .el-loading-spinner .path {
+  .console-ui .is-loading {
     animation: none !important;
   }
 }

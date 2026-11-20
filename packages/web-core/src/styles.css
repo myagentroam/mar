@@ -1,5 +1,5 @@
 @import './styles/theme.css';
-@import './styles/element-plus-theme.css';
+@import './styles/mar-ui-theme.css';
 @import './styles/mar-controls.css';
 
 /* Global document foundations and cross-page layouts. */
@@ -206,21 +206,14 @@ pre {
   gap: 6px;
   white-space: nowrap;
 }
-.mar-management-page .mar-filter-field > span {
-  color: var(--el-text-color-regular);
+.mar-management-page .mar-filter-field > span:first-child {
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .mar-management-page .mar-filter-field > :last-child {
   width: 210px;
 }
-.mar-management-page .el-table__cell:last-child .cell {
-  justify-content: flex-start;
-  text-align: left;
-}
-.mar-management-page .el-table {
-  font-size: var(--mar-font-size-body);
-}
-.mar-management-page .el-table__cell {
+.mar-management-page .mar-ui-table__cell {
   padding-block: 8px;
 }
 .mar-management-page .mar-table-actions {
@@ -238,10 +231,10 @@ pre {
   gap: 10px;
   white-space: nowrap;
 }
-.mar-management-page .mar-row-actions .el-button + .el-button {
+.mar-management-page .mar-row-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
-.mar-management-page .mar-row-actions .el-button {
+.mar-management-page .mar-row-actions .mar-ui-button {
   min-height: var(--mar-compact-control-size);
   padding-inline: 2px;
   font-size: var(--mar-font-size-body);
@@ -257,7 +250,7 @@ pre {
     overflow-anchor: none;
   }
 
-  .mar-management-page .el-table {
+  .mar-management-page .mar-ui-table {
     flex-shrink: 0;
   }
 

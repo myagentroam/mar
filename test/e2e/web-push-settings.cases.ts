@@ -95,12 +95,13 @@ for (const device of ['desktop', 'mobile'] as const) {
         })
       ).toBeVisible();
       await expect(online.getByRole('status').first()).toHaveText(language.enabled);
-      await expect(online.getByRole('status').first().locator('.el-tag')).toHaveClass(
-        /el-tag--success/
+      await expect(online.getByRole('status').first().locator('.mar-ui-tag')).toHaveAttribute(
+        'data-type',
+        'success'
       );
       const action = online.getByRole('button').first();
       await expect(action).toHaveClass(/(?:^|\s)mar-text-action(?:\s|$)/);
-      await expect(action).toHaveClass(/(?:^|\s)is-link(?:\s|$)/);
+      await expect(action).toHaveClass(/(?:^|\s)mar-ui-button--inline(?:\s|$)/);
       await expect(action).toBeEnabled();
       await action.hover();
       await expect(online.getByRole('button').first()).toHaveCSS(

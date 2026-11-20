@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -9,8 +16,7 @@ import { marIcon } from '@myagentroam/web-core/icons';
 import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '@myagentroam/web-core/mobile-workbench';
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import type { FormInstance, FormRules } from 'element-plus';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   organizationPath,
   type OrganizationSummary
@@ -178,14 +184,13 @@ function requestOrganizationClose(done: () => void): void {
 }
 async function removeOrganization(organization: Organization): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.organizationUserManagementPage.deleteItsOrganizationResourcesWillBeTransferred',
         { value0: path(organization.id) }
       ),
       translate('generated.organizationUserManagementPage.deleteOrganization'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate(
@@ -209,14 +214,13 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
 
 <template>
   <section
-    v-loading="loading && !ready"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !ready"
     class="mar-management-page organization-management"
   >
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization') }}</span
-        ><el-input
+        ><MarInput
           v-model="keyword"
           clearable
           :placeholder="
@@ -226,16 +230,15 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       /></label>
     </div>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && ready"
         @click="load(true)"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.organizationUserManagementPage.refresh') }}</el-button
+        >{{ translate('generated.organizationUserManagementPage.refresh') }}</MarButton
       >
     </div>
-    <el-table
-      v-loading="loading && ready && !refreshLoading"
+    <MarTable
+      v-mar-loading:region="loading && ready && !refreshLoading"
       :aria-busy="loading"
       class="organization-tree-table clickable-rows"
       :data="organizationTree"
@@ -244,50 +247,50 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       :tree-props="{ children: 'children' }"
       @row-click="openOrganizationDetail"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         :label="translate('generated.organizationUserManagementPage.organizationName')"
         min-width="240"
       />
-      <el-table-column
+      <MarTableColumn
         prop="id"
         :label="translate('generated.organizationUserManagementPage.organizationID')"
         width="120"
       />
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.actions')"
         :width="mobileViewport ? undefined : 280"
         :min-width="mobileViewport ? 144 : undefined"
       >
         <template #default="{ row }">
           <div class="organization-actions mar-row-actions--wrap" @click.stop>
-            <el-button
+            <MarButton
               link
               :icon="marIcon('edit')"
               :disabled="!writable"
               @click="editOrganization(row)"
-              >{{ translate('generated.organizationUserManagementPage.edit') }}</el-button
+              >{{ translate('generated.organizationUserManagementPage.edit') }}</MarButton
             >
-            <el-button
+            <MarButton
               link
               :icon="marIcon('plus')"
               :disabled="!writable"
               @click="openOrganization(row)"
-              >{{ translate('generated.organizationUserManagementPage.addChild') }}</el-button
-            ><el-button
+              >{{ translate('generated.organizationUserManagementPage.addChild') }}</MarButton
+            ><MarButton
               v-if="row.id !== 1"
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable"
               @click="removeOrganization(row)"
-              >{{ translate('generated.organizationUserManagementPage.delete') }}</el-button
+              >{{ translate('generated.organizationUserManagementPage.delete') }}</MarButton
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
-    <el-dialog
+      </MarTableColumn>
+    </MarTable>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationOpen"
@@ -302,49 +305,47 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
           : translate('generated.organizationUserManagementPage.editOrganization')
       "
       width="min(440px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
-      ><el-form
+      ><MarForm
         ref="organizationFormRef"
         :model="organizationForm"
         :rules="organizationRules"
         :disabled="saving || !writable"
         label-position="top"
-        ><el-form-item
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.name')"
           prop="name"
-          ><el-input
+          ><MarInput
             v-model="organizationForm.name"
             :placeholder="
               translate('generated.organizationUserManagementPage.enterAnOrganizationName2')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           v-if="editingOrganizationId === undefined"
           :label="translate('generated.organizationUserManagementPage.parentOrganization')"
-          ><el-input
+          ><MarInput
             :model-value="path(organizationForm.parentOrganizationId)"
             disabled
             :placeholder="
               translate('generated.organizationUserManagementPage.parentOrganization2')
-            " /></el-form-item></el-form
+            " /></MarFormItem></MarForm
       ><template #footer
-        ><el-button :disabled="saving" @click="organizationOpen = false">{{
+        ><MarButton :disabled="saving" @click="organizationOpen = false">{{
           translate('generated.organizationUserManagementPage.cancel4')
-        }}</el-button
-        ><el-button
+        }}</MarButton
+        ><MarButton
           type="primary"
           :disabled="!writable"
           :loading="saving"
-          :loading-icon="marIcon('loading-action')"
           @click="saveOrganization"
           >{{
             editingOrganizationId === undefined
               ? translate('generated.organizationUserManagementPage.createOrganization2')
               : translate('generated.organizationUserManagementPage.save')
-          }}</el-button
+          }}</MarButton
         ></template
-      ></el-dialog
+      ></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="organizationDetail !== undefined"
@@ -352,33 +353,32 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       :title="translate('generated.organizationUserManagementPage.organizationDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="organizationDetail = undefined"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.organizationID')"
-          >{{ organizationDetail.id }}</el-descriptions-item
+          >{{ organizationDetail.id }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.organizationName')"
-          >{{ organizationDetail.name }}</el-descriptions-item
+          >{{ organizationDetail.name }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.parentOrganization2')"
           >{{
             organizationDetail.parentOrganizationId === null
               ? translate('generated.organizationUserManagementPage.rootOrganization')
               : path(organizationDetail.parentOrganizationId)
-          }}</el-descriptions-item
+          }}</MarDescriptionsItem
         >
-        <el-descriptions-item :label="translate('common.createdAt')">{{
+        <MarDescriptionsItem :label="translate('common.createdAt')">{{
           formatTime(organizationDetail.createdAt)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('common.updatedAt')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('common.updatedAt')">{{
           formatTime(organizationDetail.updatedAt)
-        }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
+        }}</MarDescriptionsItem>
+      </MarDescriptions>
+    </MarDialog>
   </section>
 </template>
 
@@ -389,10 +389,10 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
   gap: 10px;
   white-space: nowrap;
 }
-.organization-actions .el-button + .el-button {
+.organization-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 </style>

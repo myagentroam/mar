@@ -62,7 +62,7 @@ async function expectMessageThemeTokens(message: Locator, iconToken: string): Pr
     const root = getComputedStyle(document.documentElement);
     const surface = getComputedStyle(element);
     const content = element.querySelector('.mar-message-text');
-    const icon = element.querySelector('.el-message__icon');
+    const icon = element.querySelector('.mar-ui-message__icon');
     if (!content || !icon) throw new Error('Message content or icon is missing');
     const colorForToken = (token: string): string => {
       const probe = document.createElement('span');
@@ -100,7 +100,7 @@ async function expectMessageThemeTokens(message: Locator, iconToken: string): Pr
 async function expectMessageFirstLineAlignment(message: Locator): Promise<void> {
   const offsets = await message.evaluate((element) => {
     const content = element.querySelector('.mar-message-text');
-    const statusIcon = element.querySelector('.el-message__icon .mar-icon');
+    const statusIcon = element.querySelector('.mar-ui-message__icon');
     const closeIcon = element.querySelector('.mar-message-close .mar-icon');
     if (!content || !statusIcon || !closeIcon)
       throw new Error('Message feedback layout is missing');
@@ -127,6 +127,434 @@ test.afterAll(async () => {
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => console.error(error.message));
   await page.goto(`${fixture.url}custom-theme.html`);
+});
+
+test('MAR input matches EL input styling and keeps its label and MAR icons', async ({
+  page
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const sample = page.getByRole('region', { name: 'MAR field and menu states' });
+  const field = page.getByRole('textbox', { name: 'MAR sample', exact: true });
+  const reference = page.getByRole('textbox', { name: 'EL sample', exact: true });
+  const wrapper = (input: Locator) =>
+    input.locator(
+      'xpath=ancestor::*[contains(@class, "mar-ui-input") or contains(@class, "el-input__wrapper")][last()]'
+    );
+  const style = (input: Locator) =>
+    wrapper(input).evaluate((element) => {
+      const { height, backgroundColor, borderRadius, boxShadow } = getComputedStyle(element);
+      return { height, backgroundColor, borderRadius, boxShadow };
+    });
+  await expect(field).toHaveAttribute('autocomplete', 'off');
+  for (const name of ['search', 'lock'])
+    await expect(wrapper(field).locator(`[data-mar-icon="${name}"]`)).toBeVisible();
+  expect(await style(field)).toEqual(await style(reference));
+  await page.getByText('MAR sample', { exact: true }).click();
+  await expect(field).toBeFocused();
+  const focused = await style(field);
+  await field.fill('search value');
+  await expect(reference).toHaveValue('search value');
+  await reference.focus();
+  expect(await style(reference)).toEqual(focused);
+  await field.focus();
+  await sample.screenshot({ path: testInfo.outputPath('mar-input-dark-focus.png') });
+
+  await page
+    .locator('.theme-option')
+    .nth(1)
+    .getByRole('button', { name: 'Apply theme', exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await sample.getByRole('checkbox', { name: 'Disable sample inputs' }).check();
+  await expect(field).toBeDisabled();
+  expect(await style(field)).toEqual(await style(reference));
+  await sample.screenshot({ path: testInfo.outputPath('mar-input-light-mobile-disabled.png') });
+});
+
+test('MAR choice and command menus keep selection and actions separate', async ({
+  page
+}, testInfo) => {
+  const section = page.getByRole('region', { name: 'MAR field and menu states' });
+  const choice = section.getByRole('combobox', { name: 'MAR choice' });
+  const selected = section.getByRole('status', { name: 'Selected value' });
+  await expect(selected).toHaveText('false');
+  await choice.press('Enter');
+  await expect(section.getByRole('listbox', { name: 'MAR choice' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'First choice' })).toBeVisible();
+  await choice.press('ArrowDown');
+  const nextOption = page.getByRole('option', { name: 'Second choice' });
+  await expect(choice).toHaveAttribute(
+    'aria-activedescendant',
+    (await nextOption.getAttribute('id'))!
+  );
+  await choice.press('Escape');
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await expect(selected).toHaveText('false');
+  await choice.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await choice.press('ArrowDown');
+  await choice.press('Tab');
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await expect(selected).toHaveText('false');
+  const outside = section.getByRole('textbox', { name: 'MAR sample' });
+  await choice.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await choice.press('ArrowDown');
+  await outside.click();
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await expect(outside).toBeFocused();
+  await expect(selected).toHaveText('false');
+  await choice.click();
+  await page.getByRole('option', { name: 'Second choice' }).click();
+  await expect(selected).toHaveText('true');
+
+  const trigger = section.getByRole('button', { name: 'MAR commands' });
+  await expect(trigger).toHaveAttribute('id', 'mar-command-trigger');
+  const command = section.getByRole('status', { name: 'Last command' });
+  const menu = page.getByRole('menu', { name: 'MAR commands' });
+  const apply = menu.getByRole('menuitem', { name: 'Apply command' });
+  const disabled = menu.getByRole('menuitem', { name: 'Unavailable command' });
+  await trigger.press('Enter');
+  await expect(menu).toBeVisible();
+  await expect(disabled).toHaveAttribute('aria-disabled', 'true');
+  await expect(apply).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-controls', (await menu.getAttribute('id'))!);
+  await menu.screenshot({
+    path: testInfo.outputPath('mar-dropdown-dark.png'),
+    animations: 'disabled'
+  });
+  await disabled.dispatchEvent('click');
+  await expect(command).toBeEmpty();
+  const reset = menu.getByRole('menuitem', { name: 'Reset command' });
+  await page.keyboard.press('ArrowDown');
+  await expect(reset).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(apply).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.press('Space');
+  await expect(apply).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(command).toHaveText('apply');
+  await expect(menu).toBeHidden();
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  await trigger.click();
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.press('Enter');
+  await expect(menu).toBeVisible();
+  await outside.click();
+  await expect(menu).toBeHidden();
+  await expect(outside).toBeFocused();
+  const remove = section.getByRole('button', { name: 'Remove MAR menu' });
+  await trigger.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(menu).toBeHidden();
+  await expect(remove).toBeFocused();
+  await trigger.press('Enter');
+  await expect(apply).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.press('Enter');
+  await expect(menu).toBeVisible();
+  await remove.evaluate((button: HTMLButtonElement) => button.click());
+  await expect(trigger).toHaveCount(0);
+  await expect(menu).toHaveCount(0);
+});
+
+for (const motion of ['no-preference', 'reduce'] as const) {
+  test(`MAR anchored menus match EL arrow and entrance with motion ${motion}`, async ({
+    page
+  }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: motion });
+    const sample = page.getByRole('region', { name: 'MAR field and menu states' });
+    const elTrigger = sample.locator('.el-select__wrapper');
+    await elTrigger.click();
+    await expect(page.locator('.el-select__popper:visible .el-popper__arrow')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.el-select__popper:visible')).toHaveCount(0);
+    for (const [trigger, popup, name] of [
+      [sample.getByRole('combobox', { name: 'MAR choice' }), sample.getByRole('listbox'), 'select'],
+      [sample.getByRole('button', { name: 'MAR commands' }), sample.getByRole('menu'), 'dropdown']
+    ] as const) {
+      await trigger.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+      const entered = popup.and(page.locator('.mar-ui-popup'));
+      // Observe the actual CSS transition, even when Playwright waits for the popup to settle.
+      if (motion === 'no-preference') {
+        await page.evaluate(() => {
+          document.documentElement.removeAttribute('data-popup-entered');
+          document.addEventListener('transitionrun', function onEnter(event) {
+            if (event.propertyName !== 'opacity' || !(event.target instanceof HTMLElement)) return;
+            if (!event.target.matches('.mar-ui-popup')) return;
+            document.documentElement.setAttribute('data-popup-entered', '');
+            document.removeEventListener('transitionrun', onEnter);
+          });
+        });
+      }
+      await trigger.press('Enter');
+      await expect(entered).toBeVisible();
+      await expect(entered).toHaveAttribute('data-arrow', '');
+      await expect(entered).toHaveAttribute('data-side', 'bottom');
+      await expect(entered).toHaveCSS('overflow', 'visible');
+      const arrow = await entered.evaluate((el) => {
+        const style = getComputedStyle(el, '::before');
+        return {
+          top: style.top,
+          fill: style.backgroundColor,
+          surface: getComputedStyle(el).backgroundColor
+        };
+      });
+      expect(arrow.top).toBe('-5px');
+      expect(arrow.fill).toBe(arrow.surface);
+      if (motion === 'no-preference') {
+        await expect(page.locator('html')).toHaveAttribute('data-popup-entered', '');
+        await expect(entered).toHaveCSS('opacity', '1');
+        const bounds = (await entered.boundingBox())!;
+        await page.screenshot({
+          clip: { ...bounds, y: bounds.y - 16, height: bounds.height + 16 },
+          path: testInfo.outputPath(`${name}-arrow.png`)
+        });
+      } else {
+        await expect(entered).toHaveCSS('transition-duration', '0s');
+      }
+      await page.keyboard.press('Escape');
+      await expect(entered).toBeHidden();
+      await expect(trigger).toBeFocused();
+    }
+  });
+}
+
+test('MAR commands keep keyboard focus visible in a scrolling menu', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  const section = page.getByRole('region', { name: 'MAR scrolling commands' });
+  const trigger = section.getByRole('button', { name: 'Long command menu' });
+  const menu = section.getByRole('menu', { name: 'Long command menu' });
+  const first = menu.getByRole('menuitem', { name: 'Command 1', exact: true });
+  const last = menu.getByRole('menuitem', { name: 'Command 36', exact: true });
+  await trigger.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  await trigger.press('ArrowDown');
+  await expect(first).toBeFocused();
+  const anchorTop = (await trigger.boundingBox())!.y;
+
+  await page.keyboard.press('End');
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport({ ratio: 0.95 });
+  await menu.screenshot({ path: testInfo.outputPath('mar-menu-focused-item.png') });
+  await page.keyboard.press('Home');
+  await expect(first).toBeFocused();
+  await expect(first).toBeInViewport({ ratio: 0.95 });
+  expect((await trigger.boundingBox())!.y).toBeCloseTo(anchorTop, 0);
+
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.press('ArrowUp');
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport({ ratio: 0.95 });
+});
+
+test('MAR choice keeps the active row visible inside a scrolling list', async ({
+  page
+}, testInfo) => {
+  const section = page.getByRole('region', { name: 'MAR scrolling choices' });
+  const trigger = section.getByRole('combobox', { name: 'Long choice' });
+  const value = section.getByRole('status', { name: 'Confirmed choice' });
+  const list = section.getByRole('listbox');
+  await trigger.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  await trigger.press('Enter');
+  await expect(list).toBeVisible();
+  const anchorTop = (await trigger.boundingBox())!.y;
+  async function expectActiveRow(number: number) {
+    const option = list.getByRole('option', { name: `Choice ${number}`, exact: true });
+    await expect(trigger).toHaveAttribute(
+      'aria-activedescendant',
+      (await option.getAttribute('id'))!
+    );
+    await expect(option).toBeInViewport({ ratio: 0.95 });
+    await expect(option).toHaveCSS('outline-style', 'solid');
+  }
+  await expectActiveRow(36);
+  await expect(list).toHaveAccessibleName('Long choice');
+  await list.screenshot({ path: testInfo.outputPath('mar-select-active-row.png') });
+  await trigger.press('Home');
+  await expectActiveRow(1);
+  await trigger.press('End');
+  await expectActiveRow(36);
+  expect((await trigger.boundingBox())!.y).toBeCloseTo(anchorTop, 0);
+  await trigger.press('ArrowUp');
+  await expectActiveRow(35);
+  const selected = list.getByRole('option', { name: 'Choice 36', exact: true });
+  await expect(selected).toHaveAttribute('aria-selected', 'true');
+  await expect(selected).toHaveCSS('outline-style', 'none');
+  await expect(value).toHaveText('36');
+  await trigger.press('Enter');
+  await expect(value).toHaveText('35');
+  await expect(trigger).toBeFocused();
+  await trigger.press('Home');
+  await expectActiveRow(1);
+  await trigger.press('Escape');
+  await trigger.press('End');
+  await expectActiveRow(36);
+  await trigger.press('Escape');
+  await expect(value).toHaveText('35');
+});
+
+test.describe('MAR controls on a 390px touch viewport', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('MAR choice flips above its trigger and matches the EL surface in light mode', async ({
+    page
+  }, testInfo) => {
+    await page
+      .locator('.theme-option')
+      .nth(1)
+      .getByRole('button', { name: 'Apply theme', exact: true })
+      .tap();
+    const sample = page.getByRole('region', { name: 'MAR field and menu states' });
+    const choice = sample.getByRole('combobox', { name: 'MAR choice' });
+    const reference = sample.locator('.el-select__wrapper');
+    const list = page.getByRole('listbox');
+    const palette = (surface: Locator) =>
+      surface.evaluate((el) => {
+        const { backgroundColor, borderTopColor, color } = getComputedStyle(el);
+        return { backgroundColor, borderTopColor, color };
+      });
+    await reference.tap();
+    const elSurface = page.locator('.el-select__popper:visible');
+    await expect(elSurface).toBeVisible();
+    const expected = await palette(elSurface);
+    await page.keyboard.press('Escape');
+    await expect(elSurface).toHaveCount(0);
+    await choice.evaluate((element) => element.scrollIntoView({ block: 'end' }));
+    await choice.tap();
+    await expect(list).toBeVisible();
+    await expect(list).toHaveAttribute('data-arrow', '');
+    await expect(list).toHaveAttribute('data-side', 'top');
+    expect(await list.evaluate((el) => getComputedStyle(el, '::before').bottom)).toBe('-5px');
+    const bounds = (await list.boundingBox())!;
+    const anchor = (await choice.boundingBox())!;
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(anchor.y);
+    expect(bounds.x).toBeGreaterThanOrEqual(8);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(382);
+    const { backgroundColor, borderTopColor } = await palette(list);
+    expect({ backgroundColor, borderTopColor }).toEqual({
+      backgroundColor: expected.backgroundColor,
+      borderTopColor: expected.borderTopColor
+    });
+    await list.screenshot({ path: testInfo.outputPath('mar-select-light-mobile.png') });
+    const disabled = list.getByRole('option', { name: 'Unavailable choice' });
+    await expect(disabled).toHaveAttribute('aria-disabled', 'true');
+    await disabled.dispatchEvent('click');
+    await expect(sample.getByRole('status', { name: 'Selected value' })).toHaveText('false');
+    await list.getByRole('option', { name: 'Second choice' }).tap();
+    await expect(sample.getByRole('status', { name: 'Selected value' })).toHaveText('true');
+  });
+});
+
+test('MAR button preserves the icon and label positions during native submit loading', async ({
+  page
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const section = page.getByRole('region', { name: 'MAR button states' });
+  const submit = section.getByRole('button', { name: 'Submit action' });
+  const reference = section.getByRole('button', { name: 'EL reference action' });
+  const referenceText = section.getByRole('button', { name: 'EL reference text' });
+  const appearance = (button: Locator) =>
+    button.evaluate((element) => {
+      const { height, borderRadius, fontSize, fontWeight, color, backgroundColor, borderColor } =
+        getComputedStyle(element);
+      return { height, borderRadius, fontSize, fontWeight, color, backgroundColor, borderColor };
+    });
+  const text = section.getByRole('button', { name: 'Text action' });
+  const iconOnly = section.getByRole('button', { name: 'Refresh action' });
+  const finish = section.getByRole('button', { name: 'Finish action' });
+  const input = section.getByRole('textbox', { name: 'Action input' });
+  const count = section.getByRole('status', { name: 'Submission count' });
+  const layout = async (button: Locator) =>
+    (
+      await Promise.all([
+        button.boundingBox(),
+        button.locator('.mar-ui-button__label').boundingBox(),
+        button.locator('.mar-ui-button__icon').boundingBox()
+      ])
+    ).map((box) => {
+      if (!box) throw new Error('Button or content not visible');
+      return box;
+    });
+
+  await submit.scrollIntoViewIfNeeded();
+  const originalSubmitLayout = await layout(submit);
+  const originalTextLayout = await layout(text);
+  await expect(submit.locator('[data-mar-icon="check"]')).toBeVisible();
+  expect(await appearance(submit)).toEqual(await appearance(reference));
+  expect(await appearance(text)).toEqual(await appearance(referenceText));
+  await section.screenshot({ path: testInfo.outputPath('mar-button-ready.png') });
+  await text.click();
+  await expect(count).toHaveText('0');
+  await input.press('Enter');
+  await expect(count).toHaveText('1');
+
+  const busyIcon = submit.locator('[data-mar-icon="loading-action"]');
+  await expect(submit).toBeDisabled();
+  await expect(submit).toHaveAttribute('aria-busy', 'true');
+  await expect(busyIcon).toBeVisible();
+  await expect(busyIcon).toHaveCSS('animation-name', 'none');
+  await expect(iconOnly).toBeDisabled();
+  await expect(iconOnly.locator('[data-mar-icon="loading-action"]')).toBeVisible();
+  expect(await layout(submit)).toEqual(originalSubmitLayout);
+  expect(await layout(text)).toEqual(originalTextLayout);
+  await section.screenshot({ path: testInfo.outputPath('mar-button-loading.png') });
+  await submit.click({ force: true });
+  await input.press('Enter');
+  await expect(count).toHaveText('1');
+
+  const disabled = section.getByRole('checkbox', { name: 'Disable submit action' });
+  await disabled.check();
+  await finish.click();
+  await expect(submit).toBeDisabled();
+  await expect(submit).not.toHaveAttribute('aria-busy');
+  await expect(reference).toBeDisabled();
+  // Compare settled disabled styles, not each component's transition frame.
+  await expect(async () => {
+    expect(await appearance(submit)).toEqual(await appearance(reference));
+  }).toPass({ timeout: 2000 });
+  await expect(submit.locator('[data-mar-icon="check"]')).toBeVisible();
+  await disabled.uncheck();
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(count).toHaveText('2');
+});
+
+test('MAR button shaped links preserve navigation and suppress disabled activation', async ({
+  page
+}) => {
+  const section = page.getByRole('region', { name: 'MAR button states' });
+  const anchor = section.getByRole('link', { name: 'Open destination' });
+  const count = section.getByRole('status', { name: 'Link activation count' });
+  await anchor.focus();
+  await anchor.press('Enter');
+  await expect(page).toHaveURL(/#button-link-target$/u);
+  await expect(count).toHaveText('1');
+
+  await section.getByRole('checkbox', { name: 'Disable submit action' }).check();
+  await expect(anchor).toBeDisabled();
+  await expect(anchor).not.toHaveAttribute('href');
+  await anchor.dispatchEvent('click');
+  await expect(count).toHaveText('1');
+});
+
+test('MAR controls follow the provider locale for their built-in text', async ({ page }) => {
+  const section = page.getByRole('region', { name: 'MAR localized controls' });
+  const select = section.getByRole('combobox', { name: 'Empty choice' });
+  await select.press('Enter');
+  await expect(page.getByText('No data', { exact: true })).toBeVisible();
+  await select.press('Escape');
+  await section.getByRole('button', { name: 'Switch controls to Chinese' }).click();
+  await select.press('Enter');
+  await expect(page.getByText('无数据', { exact: true })).toBeVisible();
 });
 
 test('console bootstrap keeps the saved custom page color before and after theme initialization', async ({
@@ -255,8 +683,8 @@ test('Message, Dialog, MessageBox and Drawer close controls share the icon actio
   });
   for (const [trigger, selector] of [
     ['show-info-feedback', '.mar-message-close'],
-    ['open-feedback-dialog', '.el-dialog__headerbtn'],
-    ['open-close-confirmation', '.el-message-box__headerbtn'],
+    ['open-feedback-dialog', '.mar-ui-dialog__close'],
+    ['open-close-confirmation', '.mar-ui-dialog__close'],
     ['open-close-drawer', '.el-drawer__close-btn']
   ] as const) {
     await page.getByTestId(trigger).click();
@@ -269,8 +697,17 @@ test('Message, Dialog, MessageBox and Drawer close controls share the icon actio
     await expect(close).toHaveCSS('border-radius', '6px');
     await expect(close.locator('svg')).toHaveCSS('color', 'rgb(221, 238, 255)');
     await page.mouse.move(0, 0);
-    await page.keyboard.press('Tab');
-    await close.focus();
+    if (trigger === 'show-info-feedback') {
+      await page.keyboard.press('Tab');
+      await close.focus();
+    } else if (trigger === 'open-close-confirmation') {
+      // Confirmation opens on its primary action; move backwards past Cancel.
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Shift+Tab');
+    } else {
+      await page.keyboard.press('Tab');
+    }
+    await expect(close).toBeFocused();
     await expect(close).toHaveCSS('outline-style', 'solid');
     await expect(close).toHaveCSS('outline-width', '2px');
     await expect(close).toHaveCSS('outline-color', 'rgb(93, 151, 216)');
@@ -288,7 +725,7 @@ test('Message, Dialog, MessageBox and Drawer close controls share the icon actio
 test('lazy loading directive displays and removes its styled mask', async ({ page }) => {
   const sample = page.getByRole('region', { name: 'Loading directive sample' });
   const panel = sample.locator('.page-loading-panel');
-  const mask = panel.locator('.el-loading-mask');
+  const mask = panel.locator('.mar-ui-loading');
   await expect(panel).toHaveAttribute('aria-busy', 'true');
   await expect(mask).toBeVisible();
   await expect(mask).toHaveCSS('position', 'absolute');
@@ -488,6 +925,62 @@ for (const scheme of ['Light', 'Dark']) {
   });
 }
 
+test('Appearance choices keep file mode, icon theme and language independent on desktop and touch', async ({
+  browser
+}, testInfo) => {
+  for (const width of [1280, 390]) {
+    const page = await browser.newPage({
+      viewport: { width, height: 840 },
+      hasTouch: width === 390
+    });
+    try {
+      await page.goto(`${fixture.url}custom-theme.html?appearance-only`);
+      await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+      const mode = page.getByRole('combobox', { name: 'Default file mode', exact: true });
+      const modeChoices = page.getByRole('listbox', { name: 'Default file mode', exact: true });
+      const icon = page.getByRole('combobox', { name: 'Icon theme', exact: true });
+      const language = page.getByRole('combobox', { name: 'Language', exact: true });
+      await expect(mode).toHaveText('Edit');
+      if (width === 390) await mode.tap();
+      else await mode.press('Enter');
+      await expect(modeChoices.getByRole('option', { name: 'Edit' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      if (width === 390) {
+        await modeChoices.getByRole('option', { name: 'Read only' }).tap();
+      } else {
+        await mode.press('ArrowDown');
+        await expect(mode).toHaveText('Edit');
+        await mode.press('Enter');
+      }
+      await expect(modeChoices).toBeHidden();
+      await expect(mode).toHaveText('Read only');
+      await icon.click();
+      await expect(
+        page.getByRole('listbox', { name: 'Icon theme' }).getByRole('option')
+      ).toHaveCount(1);
+      await page.getByRole('option', { name: 'MAR File Icons' }).click();
+      await expect(icon).toHaveText('MAR File Icons');
+      expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
+      await language.click();
+      const languageChoices = page.getByRole('listbox', { name: 'Language' });
+      await expect(languageChoices).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`appearance-choices-${width}.png`) });
+      await languageChoices.getByRole('option', { name: '简体中文' }).click();
+      await expect(page.getByRole('heading', { name: '外观' })).toBeVisible();
+      await expect(page.getByRole('combobox', { name: '文件默认打开方式' })).toHaveText('只读');
+      await expect(page.getByRole('combobox', { name: '语言' })).toHaveText('简体中文');
+      expect(await page.evaluate(() => localStorage.getItem('mar.locale.v2'))).toBe('zh-CN');
+      expect(await page.evaluate(() => localStorage.getItem('mar.file-editor.default-mode'))).toBe(
+        'read-only'
+      );
+    } finally {
+      await page.close();
+    }
+  }
+});
+
 test('custom theme JSON flows through warnings, save, Appearance, reload, export, import and deletion', async ({
   page,
   context
@@ -500,7 +993,9 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
   await editor.fill('{');
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Invalid JSON' })).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Theme preview and validation' }).getByRole('alert')
+  ).toContainText('Invalid JSON');
   expect(await page.evaluate(() => localStorage.getItem('mar.customThemes'))).toBeNull();
   const source = JSON.stringify(
     {
@@ -522,8 +1017,9 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   await editor.fill(source);
   await editor.blur();
   await expect(page.locator('.validation')).toContainText('saving is allowed');
+  await expect(editor).not.toHaveAttribute('aria-invalid', 'true');
   await expect(
-    page.locator('.el-form-item').filter({ has: editor }).locator('.el-form-item__error')
+    page.locator('.mar-ui-form-item').filter({ has: editor }).locator('.mar-ui-form-item__error')
   ).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('theme-desktop.png'), fullPage: true });
   await expect(page.locator('.mar-theme-preview .preview-toolbar')).toHaveCSS(
@@ -589,12 +1085,13 @@ test('duplicate, draft protection and formatting work without changing the activ
   await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
   await editor.fill(JSON.stringify({ name: 'Original', version: 1, colors: {} }));
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Inspect Original', exact: true })).toBeVisible();
   await useThemeMenu(
     page,
     page.locator('.theme-option').filter({ hasText: 'Original' }),
     'Duplicate'
   );
-  expect(JSON.parse(await editor.inputValue()).name).toBe('Original (copy)');
+  await expect.poll(async () => JSON.parse(await editor.inputValue()).name).toBe('Original (copy)');
   await page
     .getByRole('button', { name: /^Inspect /u })
     .first()
@@ -1037,12 +1534,17 @@ for (const scheme of ['Light', 'Dark']) {
             hover: color('--mar-fill-row-hover'),
             pressed: color('--mar-fill-selection'),
             border: color('--mar-border-medium'),
+            disabledFill: color('--mar-control-fill-color-light'),
+            disabledBorder: color('--mar-border-subtle'),
             foreground: color('--mar-color-on-accent'),
             primaryHover: color('--mar-color-brand-hover')
           };
           probe.remove();
           return palette;
         });
+        const previewDisabled = preview.locator('.preview-button:disabled');
+        await expect(previewDisabled).toHaveCSS('background-color', previewColors.disabledFill);
+        await expect(previewDisabled).toHaveCSS('border-top-color', previewColors.disabledBorder);
         const previewSecondary = preview.locator('.preview-button.secondary');
         await previewSecondary.hover();
         await expect(previewSecondary).toHaveCSS('color', previewColors.text);
@@ -1614,7 +2116,7 @@ test('expanded and compact previews share the applied palette without changing g
   await expectPreviewText(expanded);
   await expect(expanded.locator('.file.selected')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
   await expect(expanded.locator('.tab.active')).toHaveCSS('background-color', 'rgb(56, 71, 90)');
-  const dialogPanel = dialog.locator('.el-dialog');
+  const dialogPanel = dialog.locator('.mar-ui-dialog');
   await expect(dialogPanel).toHaveCSS('border-radius', '12px');
   await dialogPanel.evaluate((element) => element.classList.add('is-fullscreen'));
   await expect(dialogPanel).toHaveCSS('border-radius', '0px');
@@ -1675,7 +2177,7 @@ for (const locale of ['en-US', 'zh-CN']) {
       .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    const dialogBounds = await dialog.locator('.el-dialog').boundingBox();
+    const dialogBounds = await dialog.locator('.mar-ui-dialog').boundingBox();
     expect(dialogBounds!.x).toBeGreaterThanOrEqual(16);
     expect(dialogBounds!.x + dialogBounds!.width).toBeLessThanOrEqual(374);
   });
@@ -1724,13 +2226,15 @@ for (const scheme of ['Light', 'Dark']) {
       expect(result.actual, result.alias).toBe(result.expected);
       expect(result.actual, result.alias).toBe(source.colors[result.target]);
     }
-    await expect(page.locator('.actions .el-button--primary')).toHaveCSS(
+    await expect(page.getByRole('button', { name: 'Save theme', exact: true })).toHaveCSS(
       'background-color',
       'rgb(101, 67, 33)'
     );
     await page.getByRole('button', { name: 'Theme color reference', exact: true }).click();
     await expect(
-      page.getByRole('dialog', { name: 'Theme color reference', exact: true }).locator('.el-dialog')
+      page
+        .getByRole('dialog', { name: 'Theme color reference', exact: true })
+        .locator('.mar-ui-dialog')
     ).toHaveCSS('background-color', 'rgb(18, 52, 86)');
     await page.keyboard.press('Escape');
     await page
@@ -1777,6 +2281,19 @@ for (const locale of ['en-US', 'zh-CN']) {
       await expect
         .poll(() => page.evaluate(() => navigator.clipboard.readText()))
         .toBe('--mar-bg-page');
+      const search = dialog.getByRole('textbox', { name: searchLabel });
+      await search.focus();
+      const clear = dialog.getByRole('button', {
+        name: locale === 'en-US' ? 'Clear' : '清空',
+        exact: true
+      });
+      await expect(clear).toBeVisible();
+      await expect(clear.locator('[data-mar-icon="clear-input"]')).toBeVisible();
+      await clear.click();
+      await expect(search).toBeEmpty();
+      await expect(dialog.locator('.token-row')).toHaveCount(CUSTOM_THEME_TOKENS.length);
+      await search.fill(locale === 'en-US' ? 'Page canvas' : '页面底层背景');
+      await expect(dialog.locator('.token-row')).toHaveCount(1);
       await page.evaluate(() => {
         Object.defineProperty(navigator.clipboard, 'writeText', {
           configurable: true,
@@ -1791,14 +2308,14 @@ for (const locale of ['en-US', 'zh-CN']) {
           exact: true
         })
         .click();
-      await expect(page.locator('.el-message--error')).toContainText(
+      await expect(page.locator('.mar-message--error')).toContainText(
         locale === 'en-US'
           ? 'Could not copy the variable name. Select and copy it manually.'
           : '无法复制变量名，请选中变量名手动复制。'
       );
       await page.setViewportSize({ width: 390, height: 844 });
       await dialog.getByRole('textbox', { name: searchLabel }).fill('');
-      const bounds = await dialog.locator('.el-dialog').boundingBox();
+      const bounds = await dialog.locator('.mar-ui-dialog').boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(15);
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
       expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
@@ -1862,7 +2379,7 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(selectLabel).toHaveText('One');
       await expect(selectLabel).toHaveCSS('color', conversationText);
       await expect(selectCaret).toHaveCSS('color', conversationSecondary);
-      await expect(controls.locator('.el-table')).toHaveCSS('background-color', panel);
+      await expect(controls.locator('.mar-ui-table')).toHaveCSS('background-color', panel);
       await expect(controls.getByRole('button', { name: 'Sample default', exact: true })).toHaveCSS(
         'background-color',
         panel
@@ -1894,12 +2411,12 @@ for (const scheme of ['Light', 'Dark']) {
             .evaluate((element) => getComputedStyle(element).color)
         )
       ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
-      await expect(controls.locator('.el-table th')).toHaveCSS(
+      await expect(controls.getByRole('columnheader')).toHaveCSS(
         'background-color',
         scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(237, 243, 250)'
       );
-      await controls.locator('.el-table__body tr').first().hover();
-      await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
+      await controls.locator('tbody tr').first().hover();
+      await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
         scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(229, 237, 246)'
       );
@@ -1937,7 +2454,7 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(neutral).not.toHaveCSS('outline-style', 'none');
       await controls.screenshot({ path: testInfo.outputPath('action-hierarchy.png') });
       const management = page.getByRole('region', { name: 'Real management actions' });
-      const edit = management.locator('.prompt-actions .el-button').first();
+      const edit = management.locator('.prompt-actions .mar-ui-button').first();
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         await page.mouse.move(0, 0);
@@ -1946,7 +2463,7 @@ for (const scheme of ['Light', 'Dark']) {
         await edit.click();
         const dialog = page.getByRole('dialog');
         await expect(dialog).toBeVisible();
-        await expect(dialog.locator('.el-button--primary')).toBeVisible();
+        await expect(dialog.locator('.mar-ui-button--primary')).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(dialog).toBeHidden();
         await management.screenshot({
@@ -1986,8 +2503,11 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(selectLabel).toHaveCSS('color', 'rgb(213, 196, 175)');
       await expect(selectCaret).toHaveCSS('color', conversationSecondary);
-      await expect(controls.locator('.el-table')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
-      await expect(controls.locator('.el-table th')).toHaveCSS(
+      await expect(controls.locator('.mar-ui-table')).toHaveCSS(
+        'background-color',
+        'rgb(18, 52, 86)'
+      );
+      await expect(controls.getByRole('columnheader')).toHaveCSS(
         'background-color',
         'rgb(35, 69, 103)'
       );
@@ -2030,8 +2550,8 @@ for (const scheme of ['Light', 'Dark']) {
         'color',
         'rgb(188, 222, 250)'
       );
-      await controls.locator('.el-table__body tr').first().hover();
-      await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
+      await controls.locator('tbody tr').first().hover();
+      await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
         'rgb(52, 86, 120)'
       );
@@ -2096,7 +2616,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
     await row.getByRole('button', { name: 'Apply theme', exact: true }).click();
     await page.getByTestId('show-info-feedback').click();
     const message = page
-      .locator('.el-message--info')
+      .locator('.mar-message--info')
       .filter({ hasText: 'Theme-aware info feedback' });
     await expect(message).toContainText('Theme-aware info feedback');
     await expectMessageThemeTokens(message, '--mar-text-secondary');
@@ -2136,7 +2656,7 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
   ] as const) {
     await page.getByTestId(testId).click();
     const message = page
-      .locator('.el-message--' + type)
+      .locator('.mar-message--' + type)
       .filter({ hasText: 'Theme-aware ' + type + ' feedback' });
     await expect(message).toBeVisible();
     await expectMessageThemeTokens(message, token);
@@ -2146,7 +2666,9 @@ test('real message feedback follows light, dark, and custom theme tokens and kee
   }
 
   await page.getByTestId('show-repeated-feedback').click();
-  const repeated = page.locator('.el-message--info').filter({ hasText: 'Repeated feedback event' });
+  const repeated = page
+    .locator('.mar-message--info')
+    .filter({ hasText: 'Repeated feedback event' });
   await expect(repeated).toHaveCount(2);
   await expect
     .poll(async () => {
@@ -2167,7 +2689,7 @@ test('short and diagnostic feedback automatically disappear while hover pauses d
   await page.clock.install();
   await page.mouse.move(0, 0);
   await page.getByTestId('show-info-feedback').click();
-  const info = page.locator('.el-message--info');
+  const info = page.locator('.mar-message--info');
   await expect(info).toBeVisible();
   await page.clock.runFor(2_000);
   await expect(info).toBeVisible();
@@ -2177,7 +2699,7 @@ test('short and diagnostic feedback automatically disappear while hover pauses d
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.getByTestId('show-long-feedback').click();
-    const error = page.locator('.el-message--error');
+    const error = page.locator('.mar-message--error');
     await expect(error).toBeVisible();
     await page.clock.runFor(5_000);
     await expect(error).toBeVisible();
@@ -2196,7 +2718,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId('show-plain-text-feedback').click();
   const plainTextMessage = page
-    .locator('.el-message--warning')
+    .locator('.mar-message--warning')
     .filter({ hasText: 'Plain text <img data-feedback-payload=unsafe src=x>' });
   await expect(plainTextMessage.locator('.mar-message-text')).toHaveText(
     'Plain text <img data-feedback-payload=unsafe src=x>'
@@ -2211,7 +2733,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
   await expect(dialog).toHaveAttribute('aria-modal', 'true');
   await page.getByTestId('show-dialog-feedback').click();
   const message = dialog
-    .locator('.el-message--error')
+    .locator('.mar-message--error')
     .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' });
   const content = message.locator('.mar-message-text');
   const close = message.locator('.mar-message-close');
@@ -2226,7 +2748,7 @@ test('mobile long feedback scrolls without trapping its accessible close control
 
   const layout = await message.evaluate((element) => {
     const content = element.querySelector('.mar-message-text')!;
-    const close = element.querySelector('.el-message__closeBtn')!;
+    const close = element.querySelector('.mar-ui-message__close')!;
     const rect = (target: Element) => {
       const { x, y, width, height } = target.getBoundingClientRect();
       return { x, y, width, height, right: x + width, bottom: y + height };
@@ -2268,11 +2790,12 @@ test('mobile long feedback scrolls without trapping its accessible close control
 test('dialog-attached feedback leaves no offset after the dialog closes', async ({ page }) => {
   await page.getByTestId('show-info-feedback').click();
   const baselineMessage = page
-    .locator('.el-message--info')
+    .locator('.mar-message--info')
     .filter({ hasText: 'Theme-aware info feedback' });
   await expect(baselineMessage).toBeVisible();
-  const baselineTop = await baselineMessage.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).top)
+  await expect(baselineMessage).toHaveCSS('opacity', '1');
+  const baselineTop = await baselineMessage.evaluate(
+    (element) => element.getBoundingClientRect().top
   );
   expect(Number.isFinite(baselineTop)).toBe(true);
   await baselineMessage.locator('.mar-message-close').click();
@@ -2283,26 +2806,25 @@ test('dialog-attached feedback leaves no offset after the dialog closes', async 
   await expect(dialog).toBeVisible();
   await page.getByTestId('show-dialog-feedback').click();
   const dialogMessage = dialog
-    .locator('.el-message--error')
+    .locator('.mar-message--error')
     .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' });
   await expect(dialogMessage).toBeVisible();
 
-  await dialog.locator('.el-dialog__headerbtn').click();
+  await dialog.locator('.mar-ui-dialog__close').click();
   await expect(dialog).toHaveCount(0);
   await expect(
     page
-      .locator('.el-message--error')
+      .locator('.mar-message--error')
       .filter({ hasText: 'Line 1: long feedback remains readable and can be dismissed.' })
   ).toHaveCount(0);
 
   await page.getByTestId('show-info-feedback').click();
   const nextMessage = page
-    .locator('.el-message--info')
+    .locator('.mar-message--info')
     .filter({ hasText: 'Theme-aware info feedback' });
   await expect(nextMessage).toBeVisible();
-  const nextTop = await nextMessage.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).top)
-  );
+  await expect(nextMessage).toHaveCSS('opacity', '1');
+  const nextTop = await nextMessage.evaluate((element) => element.getBoundingClientRect().top);
   expect(nextTop).toBeCloseTo(baselineTop, 1);
 
   await nextMessage.locator('.mar-message-close').click();
@@ -2317,7 +2839,9 @@ test('successful dialog saves keep their feedback after the dialog is destroyed'
   await expect(
     page.getByRole('dialog', { name: 'Message feedback dialog', exact: true })
   ).toHaveCount(0);
-  const message = page.locator('.el-message--success').filter({ hasText: 'Dialog settings saved' });
+  const message = page
+    .locator('.mar-message--success')
+    .filter({ hasText: 'Dialog settings saved' });
   await expect(message).toBeVisible();
   await expect(message).toHaveJSProperty('isConnected', true);
   await message.locator('.mar-message-close').click();

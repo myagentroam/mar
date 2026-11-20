@@ -6,7 +6,12 @@ import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plu
 import CompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue';
 import UnitCompactSettings from '../../src/view/settings/MarAgentCompactSettings.vue?unit-render';
 import { showMessage } from '../../src/service/message-feedback-service.js';
-import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
+import {
+  renderComponent,
+  flushComponent,
+  textContent,
+  trigger
+} from './support/component-renderer.js';
 import { createMarAgentCompactService } from '../../src/service/mar-agent-compact-service.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import { commonMessages } from '../../src/i18n/messages.js';
@@ -127,7 +132,7 @@ describe('MAR Agent compact settings form', () => {
       expect(html).toContain(commonMessages[locale].marAgentModels.compactSmartEnabled);
       expect(html).toContain(commonMessages[locale].marAgentModels.compactSmartHint);
       expect(html).toContain(commonMessages[locale].marAgentModels.compactSave);
-      expect(html).toContain('el-form');
+      expect(html).toContain('mar-ui-form');
     }
   });
 
@@ -158,17 +163,21 @@ describe('MAR Agent compact settings form', () => {
       });
       const view = renderComponent(UnitCompactSettings, { request, writable });
       try {
-        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(true);
+        expect(view.findAll('MarForm')[0]!.props.disabled).toBe(true);
         await flushComponent();
-        expect(view.findAll('ElForm')[0]!.props.disabled).toBe(!writable);
-        const smartCompactSwitch = view.findAll('ElSwitch')[0]!;
-        await trigger(smartCompactSwitch, 'onUpdate:modelValue', false);
-        expect(view.findAll('ElSwitch')[1]!.props.modelValue).toBe(true);
-        const model = view.findAll('ElSelect')[0]!;
+        expect(view.findAll('MarForm')[0]!.props.disabled).toBe(!writable);
+        const smartCompactSwitch = view
+          .findAll('input')
+          .filter((node) => node.props['role'] === 'switch')[0]!;
+        await trigger(smartCompactSwitch, 'onChange', { currentTarget: { checked: false } });
+        expect(
+          view.findAll('input').filter((node) => node.props['role'] === 'switch')[1]!.props.checked
+        ).toBe(true);
+        const model = view.findAll('MarSelect')[0]!;
         await trigger(model, 'onUpdate:modelValue', 'other-model');
         await trigger(model, 'onChange', 'other-model');
-        expect(view.findAll('ElSelect')[1]!.props.modelValue).toBe('medium');
-        const save = view.findAll('ElButton').find((button) => button.props.type === 'primary')!;
+        expect(view.findAll('MarSelect')[1]!.props.modelValue).toBe('medium');
+        const save = view.findAll('MarButton').find((button) => button.props.type === 'primary')!;
         await trigger(save, 'onClick');
         const writes = request.mock.calls.filter(([, init]) => init?.method === 'PUT');
         expect(writes).toHaveLength(writable ? 1 : 0);
@@ -198,21 +207,15 @@ describe('MAR Agent compact settings form', () => {
         }
       ]
     }));
-    const validate = vi.fn(async () => false);
-    const view = renderComponent(
-      UnitCompactSettings,
-      { request, writable: true },
-      {},
-      { validate }
-    );
+    const view = renderComponent(UnitCompactSettings, { request, writable: true });
     try {
       await flushComponent();
       await trigger(
-        view.findAll('ElSelect')[field === 'modelId' ? 0 : 1]!,
+        view.findAll('MarSelect')[field === 'modelId' ? 0 : 1]!,
         'onUpdate:modelValue',
         null
       );
-      const rules = view.findAll('ElForm')[0]!.props.rules as Record<
+      const rules = view.findAll('MarForm')[0]!.props.rules as Record<
         string,
         Array<{
           validator: (rule: unknown, value: unknown, done: (error?: Error) => void) => void;
@@ -230,10 +233,21 @@ describe('MAR Agent compact settings form', () => {
         )
       );
       await trigger(
-        view.findAll('ElButton').find((button) => button.props.type === 'primary')!,
+        view.findAll('MarButton').find((button) => button.props.type === 'primary')!,
         'onClick'
       );
-      expect(validate).toHaveBeenCalledOnce();
+      expect(
+        view
+          .findAll('div')
+          .filter((node) => node.props['role'] === 'alert')
+          .map(textContent)
+      ).toContain(
+        i18n.global.t(
+          field === 'modelId'
+            ? 'marAgentModels.compactModelRequired'
+            : 'marAgentModels.compactEffortRequired'
+        )
+      );
       expect(request.mock.calls.every(([, init]) => init?.method !== 'PUT')).toBe(true);
     } finally {
       view.unmount();
@@ -249,7 +263,7 @@ describe('MAR Agent compact settings form', () => {
     const view = renderComponent(UnitCompactSettings, { request, writable: true });
     const signal = request.mock.calls[0]![1]!.signal!;
     await trigger(
-      view.findAll('ElButton').find((button) => button.props.type === 'primary')!,
+      view.findAll('MarButton').find((button) => button.props.type === 'primary')!,
       'onClick'
     );
     expect(request).toHaveBeenCalledTimes(2);
@@ -286,13 +300,19 @@ describe('MAR Agent compact settings form', () => {
     );
     try {
       await flushComponent();
-      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
       await trigger(
-        view.findAll('ElButton').find((button) => button.props.type === 'primary')!,
+        view.findAll('input').filter((node) => node.props['role'] === 'switch')[0]!,
+        'onChange',
+        { currentTarget: { checked: false } }
+      );
+      await trigger(
+        view.findAll('MarButton').find((button) => button.props.type === 'primary')!,
         'onClick'
       );
       expect(request.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
-      expect(view.findAll('ElSwitch')[0]!.props.modelValue).toBe(false);
+      expect(
+        view.findAll('input').filter((node) => node.props['role'] === 'switch')[0]!.props.checked
+      ).toBe(false);
       expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'error', expect.any(Error));
       expect(showMessage).not.toHaveBeenCalledWith(
         commonMessages['zh-CN'].marAgentModels.compactSaved,

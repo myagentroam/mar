@@ -119,10 +119,13 @@ export function createConsoleKeyboardShortcutService(): ConsoleKeyboardShortcutS
         }
         return highest;
       };
-      const modal = dialogs.reduce<Element | undefined>(
-        (top, dialog) => (top === undefined || zIndex(dialog) >= zIndex(top) ? dialog : top),
-        undefined
-      );
+      const nativeModal = document.activeElement?.closest('dialog:modal');
+      const modal =
+        nativeModal ??
+        dialogs.reduce<Element | undefined>(
+          (top, dialog) => (top === undefined || zIndex(dialog) >= zIndex(top) ? dialog : top),
+          undefined
+        );
       if (modal !== undefined) {
         const owner = binding.modalOwner?.() ?? binding.owner?.();
         if (owner === undefined || !modal.contains(owner)) return 'IGNORED';

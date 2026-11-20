@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage, type MessageBoxData } from 'element-plus';
+import type { MessageBoxData } from 'element-plus';
+import { showMessage } from '../../src/service/message-feedback-service.js';
 import PersonalInstructionsSettings from '../../src/view/settings/PersonalInstructionsSettings.vue?unit-render';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { flushComponent, renderComponent, trigger } from './support/component-renderer.js';
+
+vi.mock('../../src/service/message-feedback-service.js', () => ({ showMessage: vi.fn() }));
 
 const initial = {
   common: 'Common saved',
@@ -27,14 +30,17 @@ function gate<T>() {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.mocked(showMessage).mockClear();
 });
 
 describe('Personal instruction draft ownership', () => {
   async function setup(validate?: () => Promise<boolean>) {
     vi.stubGlobal('Document', class {});
     vi.stubGlobal('ShadowRoot', class {});
-    const success = vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+    const feedback = (type: string) =>
+      vi.mocked(showMessage).mock.calls.filter((call) => call[1] === type);
+    const success = () => feedback('success');
+    const error = () => feedback('error');
     const response = gate<{ instructions: typeof initial }>();
     const request = vi
       .fn()
@@ -49,14 +55,15 @@ describe('Personal instruction draft ownership', () => {
     await flushComponent();
     const edit = (value: string) =>
       trigger(view.findAll('textarea')[0]!, 'onUpdate:modelValue', value);
-    const select = (index: number) => trigger(view.findAll('ElCheckTag')[index]!, 'onChange');
-    const save = () =>
-      trigger(
-        view.findAll('ElButton').find((node) => node.props['type'] === 'primary')!,
-        'onClick'
-      );
+    const select = (index: number) => trigger(view.findAll('MarCheckTag')[index]!, 'onChange');
+    const button = (variant: string) =>
+      view
+        .findAll('button')
+        .find((node) => String(node.props['class']).includes(`mar-ui-button--${variant}`))!;
+    const save = () => trigger(button('primary'), 'onClick');
+    const clear = () => trigger(button('default'), 'onClick');
     const value = () => (view.findAll('textarea')[0]! as unknown as { value: string }).value;
-    return { view, response, request, success, error, edit, select, save, value };
+    return { view, response, request, success, error, edit, select, save, clear, value };
   }
 
   it('merges only the submitted scope and retains active and inactive drafts after switching back', async () => {
@@ -84,7 +91,7 @@ describe('Personal instruction draft ownership', () => {
       expect(value()).toBe('Common authoritative');
       await select(1);
       expect(value()).toBe('MAR unsaved');
-      expect(fixture.success).toHaveBeenCalledOnce();
+      expect(fixture.success()).toHaveLength(1);
     } finally {
       view.unmount();
     }
@@ -125,8 +132,8 @@ describe('Personal instruction draft ownership', () => {
       await edit('MAR failure draft');
       response.reject(new Error('Save unavailable'));
       await pending;
-      expect(fixture.error).toHaveBeenCalledOnce();
-      expect(fixture.success).not.toHaveBeenCalled();
+      expect(fixture.error()).toHaveLength(1);
+      expect(fixture.success()).toHaveLength(0);
       expect(value()).toBe('MAR failure draft');
       await select(0);
       expect(value()).toBe('Common retry draft');
@@ -173,11 +180,11 @@ describe('Personal instruction draft ownership', () => {
 
   it('clears only the confirmed scope and retains other drafts while its response is pending', async () => {
     const confirmation = gate<MessageBoxData>();
-    vi.spyOn(ElMessageBox, 'confirm').mockReturnValue(confirmation.promise);
-    const { view, edit, select, response, request, value } = await setup();
+    vi.spyOn(MarMessageBox, 'confirm').mockReturnValue(confirmation.promise);
+    const { view, edit, select, response, request, value, clear } = await setup();
     try {
       await edit('Common clear draft');
-      const pending = trigger(view.findAll('ElButton')[0]!, 'onClick');
+      const pending = clear();
       await select(1);
       await edit('MAR clear draft');
       confirmation.resolve(confirmed);
@@ -198,23 +205,23 @@ describe('Personal instruction draft ownership', () => {
   });
 
   it('retains drafts on clear failure and does not write after canceling confirmation', async () => {
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(confirmed);
-    const { view, edit, select, response, request, value, error } = await setup();
+    const confirm = vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue(confirmed);
+    const { view, edit, select, response, request, value, error, clear } = await setup();
     try {
       await edit('Common clear retry');
-      const pending = trigger(view.findAll('ElButton')[0]!, 'onClick');
+      const pending = clear();
       await flushComponent();
       await select(1);
       await edit('MAR retained');
       response.reject(new Error('Clear unavailable'));
       await pending;
-      expect(error).toHaveBeenCalledOnce();
+      expect(error()).toHaveLength(1);
       await select(0);
       expect(value()).toBe('Common clear retry');
       confirm.mockRejectedValueOnce('cancel');
-      await trigger(view.findAll('ElButton')[0]!, 'onClick');
+      await clear();
       expect(request).toHaveBeenCalledTimes(2);
-      expect(error).toHaveBeenCalledOnce();
+      expect(error()).toHaveLength(1);
       await select(1);
       expect(value()).toBe('MAR retained');
     } finally {

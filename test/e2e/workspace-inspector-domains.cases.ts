@@ -153,7 +153,7 @@ for (const mobile of [false, true]) {
       expect(writes[2]!.expectedRevision).toBe('b'.repeat(64));
       await page.getByRole('button', { name: '关闭文件窗口', exact: true }).click();
       await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
-      await expect(page.locator('.el-message-box')).toHaveCount(0);
+      await expect(page.locator('.mar-message-box')).toHaveCount(0);
       const refreshFailure = page
         .locator('.workbench-aside')
         .getByRole('button', { name: '加载失败，点击重试', exact: true });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { translate } from '../../service/locale-preference-service.js';
 import BusyIndicator from '../common/BusyIndicator.vue';
 import {
@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
         >
           <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
         </div>
-        <el-button
+        <MarButton
           v-if="initialLoadFailed || reloading"
           class="conversation-load-older conversation-reload"
           v-tooltip="!loadingInitial && !reloading ? initialError : ''"
@@ -365,7 +365,7 @@ onBeforeUnmount(() => {
             class="history-busy-indicator mar-read-loading-indicator"
           />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-        </el-button>
+        </MarButton>
         <div
           v-if="!loadingInitial && !initialLoadFailed && !reloading && hasOlder && hasTurns"
           ref="historyMarker"
@@ -380,7 +380,7 @@ onBeforeUnmount(() => {
           >
             <BusyIndicator class="history-busy-indicator mar-read-loading-indicator" />
           </div>
-          <el-button
+          <MarButton
             v-if="olderAction === 'retry' || (olderError && !loadingOlder)"
             class="conversation-load-older conversation-history-error"
             v-tooltip="!loadingOlder && olderAction === undefined ? olderError : ''"
@@ -403,7 +403,7 @@ onBeforeUnmount(() => {
               class="history-busy-indicator mar-read-loading-indicator"
             />
             <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-          </el-button>
+          </MarButton>
         </div>
         <section v-if="showEmptyPrompt" class="conversation-empty">
           <h2>{{ translate(`conversationEmpty.${emptyPrompt}.title`) }}</h2>
@@ -413,17 +413,17 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <Transition name="conversation-latest">
-      <el-button
+      <MarButton
         v-if="!following && hasTurns"
         class="conversation-latest"
+        icon="to-bottom"
         size="small"
         round
         native-type="button"
         @click="emit('latest')"
       >
-        <MarIcon name="to-bottom" aria-hidden="true" />
         {{ translate('generated.conversationScroll.jumpToLatest') }}
-      </el-button>
+      </MarButton>
     </Transition>
     <div
       v-if="$slots.status"
@@ -568,16 +568,15 @@ onBeforeUnmount(() => {
 }
 
 .conversation-latest {
-  --el-button-text-color: var(--mar-text-secondary);
-  --el-button-bg-color: var(--mar-control-bg-color-overlay);
-  --el-button-border-color: var(--mar-border-default);
-  --el-button-hover-text-color: var(--mar-text-primary);
-  --el-button-hover-bg-color: var(--mar-fill-row-hover);
-  --el-button-hover-border-color: var(--mar-border-medium);
-  --el-button-active-text-color: var(--mar-text-primary);
-  --el-button-active-bg-color: var(--mar-fill-selection);
-  --el-button-active-border-color: var(--mar-border-medium);
-  --el-button-outline-color: var(--mar-color-brand);
+  --mar-ui-button-fg: var(--mar-text-secondary);
+  --mar-ui-button-bg: var(--mar-control-bg-color-overlay);
+  --mar-ui-button-border: var(--mar-border-default);
+  --mar-ui-button-hover-fg: var(--mar-text-primary);
+  --mar-ui-button-hover-bg: var(--mar-fill-row-hover);
+  --mar-ui-button-hover-border: var(--mar-border-medium);
+  --mar-ui-button-active-fg: var(--mar-text-primary);
+  --mar-ui-button-active-bg: var(--mar-fill-selection);
+  --mar-ui-button-active-border: var(--mar-border-medium);
   position: absolute;
   right: 1rem;
   bottom: 0.75rem;

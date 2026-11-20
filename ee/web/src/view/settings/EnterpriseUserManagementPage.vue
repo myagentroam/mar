@@ -1,4 +1,16 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -9,8 +21,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import type { ButtonInstance, FormInstance, FormRules } from 'element-plus';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import {
   organizationCascaderOptions,
   organizationPath,
@@ -57,7 +68,7 @@ const userOpen = ref(false);
 const editingUser = ref<EnterpriseUser>();
 const userDetail = ref<EnterpriseUser>();
 const userFormRef = ref<FormInstance>();
-const createUserTrigger = ref<ButtonInstance>();
+const createUserTrigger = ref<InstanceType<typeof MarButton>>();
 const creatingUser = ref(false);
 let userGeneration = 0;
 let disposed = false;
@@ -78,7 +89,7 @@ function restoreCreateFocus(): void {
   if (!returningFromCreation) return;
   void nextTick(() => {
     if (!disposed && !userOpen.value && credentials.value === undefined)
-      createUserTrigger.value?.ref?.focus();
+      createUserTrigger.value?.focus();
   });
 }
 const userForm = ref<{
@@ -342,14 +353,13 @@ async function saveUser(): Promise<void> {
 }
 async function resetPassword(user: EnterpriseUser): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.organizationUserManagementPage.resetThePasswordForExistingSessionsWill',
         { value0: user.username }
       ),
       translate('generated.organizationUserManagementPage.resetPassword'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.organizationUserManagementPage.resetPassword2'),
@@ -395,7 +405,7 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
     const { summary } = await props.request<{ summary: UserDeletionSummary }>(
       `/api/management/users/${user.id}/deletion-summary`
     );
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate(
         'generated.organizationUserManagementPage.deletingRemovesPersonalNodesPersonalWorkspacesSessions',
         {
@@ -409,7 +419,6 @@ async function removeUser(user: EnterpriseUser): Promise<void> {
       ),
       translate('generated.organizationUserManagementPage.deleteUser'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.organizationUserManagementPage.deleteUser2'),
@@ -435,14 +444,13 @@ onUnmounted(() => {
 
 <template>
   <section
-    v-loading="loading && !pageReady && !usersPage.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !pageReady && !usersPage.failure.value"
     class="mar-management-page"
   >
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.user') }}</span
-        ><el-input
+        ><MarInput
           v-model="keyword"
           clearable
           :placeholder="
@@ -452,22 +460,20 @@ onUnmounted(() => {
       /></label>
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.role') }}</span
-        ><el-select
+        ><MarSelect
           v-model="roleFilter"
           :placeholder="translate('generated.organizationUserManagementPage.selectARole2')"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.organizationUserManagementPage.allRoles')"
-            value="" /><el-option
+            value="" /><MarOption
             v-for="role in roles"
             :key="role"
             :label="roleLabel(role)"
-            :value="role" /></el-select
+            :value="role" /></MarSelect
       ></label>
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization2') }}</span
-        ><el-cascader
+        ><MarCascader
           v-model="organizationFilter"
           clearable
           filterable
@@ -478,38 +484,35 @@ onUnmounted(() => {
       /></label>
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.status') }}</span
-        ><el-select
+        ><MarSelect
           v-model="enabledFilter"
           clearable
           :placeholder="translate('generated.organizationUserManagementPage.selectAStatus')"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.organizationUserManagementPage.enabled')"
-            :value="true" /><el-option
+            :value="true" /><MarOption
             :label="translate('generated.organizationUserManagementPage.disabled')"
-            :value="false" /></el-select
+            :value="false" /></MarSelect
       ></label>
     </div>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.organizationUserManagementPage.refresh') }}</el-button
+        >{{ translate('generated.organizationUserManagementPage.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         type="primary"
         :icon="marIcon('plus')"
         ref="createUserTrigger"
         :disabled="!writable"
         @click="openCreateUser"
-        >{{ translate('generated.organizationUserManagementPage.createUser') }}</el-button
+        >{{ translate('generated.organizationUserManagementPage.createUser') }}</MarButton
       >
     </div>
-    <el-table
-      v-loading="
+    <MarTable
+      v-mar-loading:region="
         usersPage.loading.value &&
         pageReady &&
         !usersPage.loadingMore.value &&
@@ -522,75 +525,75 @@ onUnmounted(() => {
       @row-click="openUserDetail"
       @sort-change="changeSort"
     >
-      <el-table-column
+      <MarTableColumn
         prop="username"
         :label="translate('generated.organizationUserManagementPage.user2')"
         sortable="custom"
         min-width="120"
       />
-      <el-table-column
+      <MarTableColumn
         prop="email"
         :label="translate('generated.organizationUserManagementPage.email')"
         sortable="custom"
         min-width="160"
       />
-      <el-table-column
+      <MarTableColumn
         prop="nickname"
         :label="translate('generated.organizationUserManagementPage.displayName')"
         sortable="custom"
         min-width="140"
       />
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.role2')"
         width="190"
-        ><template #default="{ row }">{{ roleLabel(row.role) }}</template></el-table-column
+        ><template #default="{ row }">{{ roleLabel(row.role) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.organization3')"
         min-width="210"
-        ><template #default="{ row }">{{ path(row.organizationId) }}</template></el-table-column
+        ><template #default="{ row }">{{ path(row.organizationId) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.status2')"
         width="100"
         ><template #default="{ row }"
-          ><el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
+          ><MarTag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
             row.enabled
               ? translate('generated.organizationUserManagementPage.enabled2')
               : translate('generated.organizationUserManagementPage.disabled2')
-          }}</el-tag></template
-        ></el-table-column
+          }}</MarTag></template
+        ></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.actions2')"
         :width="usersPage.mobileViewport.value ? undefined : 320"
         :min-width="usersPage.mobileViewport.value ? 144 : undefined"
         ><template #default="{ row }"
           ><div class="mar-row-actions mar-row-actions--wrap" @click.stop>
-            <el-button
+            <MarButton
               link
               :icon="marIcon('edit')"
               :disabled="!writable"
               @click="openEditUser(row)"
-              >{{ translate('generated.organizationUserManagementPage.edit2') }}</el-button
-            ><el-button
+              >{{ translate('generated.organizationUserManagementPage.edit2') }}</MarButton
+            ><MarButton
               link
               :icon="marIcon('key')"
               :disabled="!writable || row.fixedAdmin"
               @click="resetPassword(row)"
-              >{{ translate('generated.organizationUserManagementPage.resetPassword3') }}</el-button
-            ><el-button
+              >{{ translate('generated.organizationUserManagementPage.resetPassword3') }}</MarButton
+            ><MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable || row.fixedAdmin"
               @click="removeUser(row)"
-              >{{ translate('generated.organizationUserManagementPage.delete2') }}</el-button
+              >{{ translate('generated.organizationUserManagementPage.delete2') }}</MarButton
             >
           </div></template
-        ></el-table-column
+        ></MarTableColumn
       >
-    </el-table>
+    </MarTable>
     <ManagementPagination
       :total="usersPage.total.value"
       :has-more="usersPage.hasMore.value"
@@ -607,7 +610,7 @@ onUnmounted(() => {
       @retry="usersPage.retry"
       @load-more="usersPage.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userOpen"
@@ -620,66 +623,70 @@ onUnmounted(() => {
           : translate('generated.organizationUserManagementPage.editUser')
       "
       width="min(480px, calc(100vw - 32px))"
-      :close-icon="marIcon('close')"
-      ><el-form ref="userFormRef" :model="userForm" :rules="userRules" label-position="top"
-        ><el-form-item
+      ><MarForm ref="userFormRef" :model="userForm" :rules="userRules" label-position="top"
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.username')"
           prop="username"
-          ><el-input
+          ><MarInput
             v-model="userForm.username"
             :placeholder="translate('generated.organizationUserManagementPage.enterAUsername2')"
-            :disabled="creatingUser || editingUser !== undefined" /></el-form-item
-        ><el-form-item
+            :disabled="creatingUser || editingUser !== undefined" /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.email2')"
           prop="email"
-          ><el-input
+          ><MarInput
             v-model="userForm.email"
             :disabled="creatingUser"
             :placeholder="
               translate('generated.organizationUserManagementPage.enterAnEmailAddressOptional')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.displayName2')"
           prop="nickname"
-          ><el-input
+          ><MarInput
             v-model="userForm.nickname"
             :disabled="creatingUser"
             :placeholder="
               translate('generated.organizationUserManagementPage.enterADisplayNameOptional')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.role3')"
           prop="role"
-          ><el-select
+          ><MarSelect
             v-model="userForm.role"
             :disabled="creatingUser || editingUser?.fixedAdmin"
             :placeholder="translate('generated.organizationUserManagementPage.selectARole3')"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="role in roles"
               :key="role"
               :label="roleLabel(role)"
-              :value="role" /></el-select></el-form-item
-        ><el-form-item
+              :value="role" /></MarSelect></MarFormItem
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.organization4')"
           prop="organizationId"
-          ><el-cascader
-            v-model="userForm.organizationId"
-            style="width: 100%"
-            :disabled="creatingUser || userForm.role === 'ADMIN'"
-            filterable
-            :placeholder="
-              translate('generated.organizationUserManagementPage.selectAnOrganization3')
-            "
-            :options="organizationOptions"
-            :props="{ checkStrictly: true, emitPath: false }"
-            :clear-icon="marIcon('clear-input')" /></el-form-item></el-form
+          ><label class="user-form-organization">
+            <span class="user-form-organization__name">{{
+              translate('generated.organizationUserManagementPage.organization4')
+            }}</span>
+            <MarCascader
+              v-model="userForm.organizationId"
+              style="width: 100%"
+              :disabled="creatingUser || userForm.role === 'ADMIN'"
+              filterable
+              :placeholder="
+                translate('generated.organizationUserManagementPage.selectAnOrganization3')
+              "
+              :options="organizationOptions"
+              :props="{ checkStrictly: true, emitPath: false }"
+              :clear-icon="marIcon('clear-input')"
+            /> </label></MarFormItem></MarForm
       ><template #footer
-        ><el-button @click="userOpen = false">{{
+        ><MarButton @click="userOpen = false">{{
           translate('generated.organizationUserManagementPage.cancel5')
-        }}</el-button
-        ><el-button
+        }}</MarButton
+        ><MarButton
           type="primary"
           :disabled="!writable"
           :loading="creatingUser"
@@ -688,11 +695,11 @@ onUnmounted(() => {
             editingUser === undefined
               ? translate('generated.organizationUserManagementPage.createUser3')
               : translate('generated.organizationUserManagementPage.save2')
-          }}</el-button
+          }}</MarButton
         ></template
-      ></el-dialog
+      ></MarDialog
     >
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="credentials !== undefined"
@@ -701,8 +708,7 @@ onUnmounted(() => {
       :title="translate(credentials.titleKey)"
       width="min(440px, calc(100vw - 32px))"
       @close="dismissCredentials"
-      :close-icon="marIcon('close')"
-      ><el-alert
+      ><MarAlert
         :title="
           translate(
             'generated.organizationUserManagementPage.temporaryCredentialsAreShownOnlyOnceThe'
@@ -712,32 +718,32 @@ onUnmounted(() => {
         :closable="false"
         show-icon
         ><template #icon><MarIcon name="warning" /></template
-      ></el-alert>
-      <el-descriptions
+      ></MarAlert>
+      <MarDescriptions
         v-if="credentials"
         class="credential-details mar-detail-descriptions"
         :column="1"
         border
       >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.username2')"
-          ><code>{{ credentials.username }}</code></el-descriptions-item
+          ><code>{{ credentials.username }}</code></MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.temporaryPassword')"
-          ><code>{{ credentials.password }}</code></el-descriptions-item
+          ><code>{{ credentials.password }}</code></MarDescriptionsItem
         >
-      </el-descriptions>
+      </MarDescriptions>
       <template #footer
-        ><el-button @click="copyCredentials">{{
+        ><MarButton @click="copyCredentials">{{
           translate('generated.organizationUserManagementPage.copyUsernameAndPassword')
-        }}</el-button
-        ><el-button type="primary" @click="dismissCredentials">{{
+        }}</MarButton
+        ><MarButton type="primary" @click="dismissCredentials">{{
           translate('generated.organizationUserManagementPage.done')
-        }}</el-button></template
+        }}</MarButton></template
       >
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="userDetail !== undefined"
@@ -745,45 +751,54 @@ onUnmounted(() => {
       :title="translate('generated.organizationUserManagementPage.userDetails')"
       width="min(720px, calc(100vw - 32px))"
       @update:model-value="userDetail = undefined"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions class="mar-detail-descriptions" :column="1" border>
-        <el-descriptions-item :label="translate('common.userId')">{{
+      <MarDescriptions class="mar-detail-descriptions" :column="1" border>
+        <MarDescriptionsItem :label="translate('common.userId')">{{
           userDetail.id
-        }}</el-descriptions-item>
-        <el-descriptions-item
-          :label="translate('generated.organizationUserManagementPage.user2')"
-          >{{ userDetail.username }}</el-descriptions-item
-        >
-        <el-descriptions-item
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.organizationUserManagementPage.user2')">{{
+          userDetail.username
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.email2')"
-          >{{ userDetail.email ?? '-' }}</el-descriptions-item
+          >{{ userDetail.email ?? '-' }}</MarDescriptionsItem
         >
-        <el-descriptions-item
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.displayName')"
-          >{{ userDetail.nickname ?? '-' }}</el-descriptions-item
+          >{{ userDetail.nickname ?? '-' }}</MarDescriptionsItem
         >
-        <el-descriptions-item
-          :label="translate('generated.organizationUserManagementPage.role2')"
-          >{{ roleLabel(userDetail.role) }}</el-descriptions-item
-        >
-        <el-descriptions-item
+        <MarDescriptionsItem :label="translate('generated.organizationUserManagementPage.role2')">{{
+          roleLabel(userDetail.role)
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem
           :label="translate('generated.organizationUserManagementPage.organization3')"
-          >{{ path(userDetail.organizationId) }}</el-descriptions-item
+          >{{ path(userDetail.organizationId) }}</MarDescriptionsItem
         >
-        <el-descriptions-item :label="translate('generated.organizationUserManagementPage.status2')"
-          ><el-tag :type="userDetail.enabled ? 'success' : 'info'" effect="plain">{{
+        <MarDescriptionsItem :label="translate('generated.organizationUserManagementPage.status2')"
+          ><MarTag :type="userDetail.enabled ? 'success' : 'info'" effect="plain">{{
             userDetail.enabled
               ? translate('generated.organizationUserManagementPage.enabled2')
               : translate('generated.organizationUserManagementPage.disabled2')
-          }}</el-tag></el-descriptions-item
+          }}</MarTag></MarDescriptionsItem
         >
-      </el-descriptions>
-    </el-dialog>
+      </MarDescriptions>
+    </MarDialog>
   </section>
 </template>
 
 <style scoped>
+.user-form-organization {
+  width: 100%;
+}
+
+.user-form-organization__name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .credential-details {
   margin-top: 12px;
 }
@@ -791,7 +806,7 @@ onUnmounted(() => {
   font-size: var(--mar-font-size-meta);
   overflow-wrap: anywhere;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 </style>

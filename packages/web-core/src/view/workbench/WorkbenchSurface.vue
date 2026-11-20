@@ -3,6 +3,7 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import { errorSummary } from '../../util/error-presentation.js';
 import { ApiError } from '../../util/api-error.js';
@@ -64,7 +65,7 @@ const props = defineProps<{
   page: WorkbenchSurfaceView<ManagementSection, RegistrationContext, NodeRegistrationContext>;
 }>();
 const workContent = ref<HTMLElement>();
-const startupRetry = ref<{ $el: HTMLButtonElement }>();
+const startupRetry = ref<InstanceType<typeof MarButton>>();
 const workStartupBlocked = computed(
   () =>
     props.page.selection.workspaceStartupStatus === 'loading' ||
@@ -87,7 +88,7 @@ watch(
       status === 'failed' &&
       document.activeElement === workContent.value
     )
-      startupRetry.value?.$el.focus({ preventScroll: true });
+      startupRetry.value?.focus({ preventScroll: true });
     restoreRetryFocus = false;
   },
   { flush: 'post' }
@@ -518,9 +519,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
           <p role="status">
             {{ translate('generated.workbenchSurface.nodeListUnavailable') }}
           </p>
-          <el-button ref="startupRetry" size="small" @click="retryWorkspaceStartup">
+          <MarButton ref="startupRetry" size="small" @click="retryWorkspaceStartup">
             {{ translate('common.retry') }}
-          </el-button>
+          </MarButton>
         </div>
       </section>
       <section
@@ -535,9 +536,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
         </p>
         <p class="workspace-selection-hint">
           {{ translate('generated.workbenchSurface.noNodeConnectedYetCreateARegistration') }}
-          <el-button link type="primary" @click="page.registration.openNodeRegistration">{{
+          <MarButton link type="primary" @click="page.registration.openNodeRegistration">{{
             translate('generated.workbenchSurface.openNodeManagement')
-          }}</el-button>
+          }}</MarButton>
         </p>
       </section>
       <template
@@ -606,9 +607,9 @@ onBeforeUnmount(mobileToolsFocus.dispose);
             <p role="status">
               {{ translate('generated.workbenchSurface.workspaceMetadataUnavailable') }}
             </p>
-            <el-button link size="small" @click="page.selection.retryWorkspaceSelection">
+            <MarButton link size="small" @click="page.selection.retryWorkspaceSelection">
               {{ translate('common.loadFailedRetry') }}
-            </el-button>
+            </MarButton>
           </div>
         </section>
         <div
@@ -1571,7 +1572,7 @@ onBeforeUnmount(mobileToolsFocus.dispose);
     opacity: 0;
   }
 }
-:global(.workspace-selection-hint .el-button) {
+:global(.workspace-selection-hint .mar-ui-button) {
   vertical-align: baseline;
 }
 </style>

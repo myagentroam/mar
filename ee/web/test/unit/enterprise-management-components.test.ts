@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../../../packages/web-core/src/service/message-box-service.js';
 import { createSSRApp, defineComponent, h, ref, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { createResourceHostingService } from '../../src/service/resource-hosting-service.js';
@@ -22,6 +22,11 @@ import {
   trigger
 } from '../../../../packages/web-core/test/unit/support/component-renderer.js';
 
+vi.mock(
+  '@myagentroam/mar-ui/select',
+  () => import('../../../../packages/web-core/test/unit/support/mar-select-stub.js')
+);
+
 const originalLocale = i18n.global.locale.value;
 const organizations = [
   { id: 1, name: 'Engineering', parentOrganizationId: null },
@@ -42,8 +47,6 @@ beforeEach(() => {
     history: { replaceState: vi.fn() },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   });
-  vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }) as never);
-  vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }) as never);
 });
 
 afterEach(() => {
@@ -53,7 +56,7 @@ afterEach(() => {
 });
 
 function button(view: ReturnType<typeof renderComponent>, label: string) {
-  const found = view.findAll('ElButton').find((node) => textContent(node).trim() === label);
+  const found = view.findAll('MarButton').find((node) => textContent(node).trim() === label);
   expect(found).toBeDefined();
   return found!;
 }
@@ -111,7 +114,7 @@ describe('Enterprise management components', () => {
           .filter((node) => node.props['class'] === 'mar-row-actions');
         expect(actionRows).toHaveLength(2);
         for (const [index, actionRow] of actionRows.entries()) {
-          const actions = actionRow.children.filter((node) => node.type === 'ElButton');
+          const actions = view.findAll('MarButton').filter((node) => node.parent === actionRow);
           expect(actions.map((node) => textContent(node).trim())).toEqual(
             index === 0 ? ['Edit', 'Grant', 'Delete'] : ['Edit', 'Delete']
           );
@@ -178,26 +181,35 @@ describe('Enterprise management components', () => {
         if (role === 'MEMBER') expect(request).not.toHaveBeenCalledWith('/api/organizations');
         else expect(request).toHaveBeenCalledWith('/api/organizations');
         const modelTable = view
-          .findAll('ElTable')
+          .findAll('MarTable')
           .find((node) => (node.props['data'] as unknown[])?.length === 1)!;
         await trigger(modelTable, 'onRowClick', (modelTable.props['data'] as unknown[])[0]);
-        expect(textContent(view.findAll('ElDialog')[0]!)).toContain(
+        expect(textContent(view.findAll('MarDialog')[0]!)).toContain(
           i18n.global.t('marAgentModels.codexCredentialScopeOrganization', {
             value0: role === 'MEMBER' ? '2' : 'Fixture organization'
           })
         );
-        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
-        const tabs = view.findAll('ElTabPane').map((node) => node.props['name']);
+        await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
+        const tabs = view.findAll('MarTabPane').map((node) => node.props['name']);
         expect(tabs).toEqual(
           expect.arrayContaining(['modelOrder', 'models', 'codexCredentials', 'imageGeneration'])
         );
         await trigger(button(view, i18n.global.t('marAgentModels.add')), 'onClick');
         const ownership = view
-          .findAll('ElFormItem')
-          .find((node) => node.props['label'] === i18n.global.t('marAgentModels.modelOwnership'))!;
-        const options = ownership.children
-          .flatMap((node) => node.children)
-          .filter((node) => node.type === 'ElOption');
+          .findAll('div')
+          .find((node) =>
+            node.children.some(
+              (child) =>
+                typeof child.props.class === 'string' &&
+                child.props.class.includes('mar-ui-form-item__label') &&
+                textContent(child).trim() === i18n.global.t('marAgentModels.modelOwnership')
+            )
+          )!;
+        const options = view.findAll('MarOption').filter((node) => {
+          for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent)
+            if (ancestor === ownership) return true;
+          return false;
+        });
         expect(options[0]?.props['label']).toBe(
           i18n.global.t('marAgentModels.codexCredentialScopePersonal')
         );
@@ -223,7 +235,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(request).toHaveBeenCalledWith('/api/organizations');
       const keyword = view
-        .findAll('ElInput')
+        .findAll('MarInput')
         .find((node) => node.props['modelValue'] === 'Research');
       expect(keyword).toBeDefined();
       await trigger(keyword!, 'onUpdate:modelValue', 'Platform');
@@ -250,17 +262,18 @@ describe('Enterprise management components', () => {
         return { users: [], page: 1, pageSize: 20, total: 0, hasMore: false };
       throw new Error(`Unexpected request: ${path}`);
     });
-    const view = renderComponent(EnterpriseUserManagementPage, {
-      request: request as never,
-      writable: true,
-      admin: true
-    });
+    const view = renderComponent(
+      EnterpriseUserManagementPage,
+      { request: request as never, writable: true, admin: true },
+      {},
+      { validate: async () => true }
+    );
     try {
       await flushComponent();
-      const filter = view.findAll('el-cascader')[0]!;
+      const filter = view.findAll('MarCascader')[0]!;
       expect(filter.props['modelValue']).toBe(9);
       expect(
-        view.findAll('ElInput').some((node) => node.props['modelValue'] === 'fixture-user')
+        view.findAll('MarInput').some((node) => node.props['modelValue'] === 'fixture-user')
       ).toBe(true);
       expect(filter.props).toHaveProperty('filterable');
       expect(filter.props['props']).toEqual({ checkStrictly: true, emitPath: false });
@@ -273,17 +286,17 @@ describe('Enterprise management components', () => {
       expect(updated.searchParams.get('organizations.keyword')).toBe('Research');
       expect(request.mock.calls.some(([path]) => path.includes('organizationId=3'))).toBe(true);
       const create = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => textContent(node).trim() === 'Create user')!;
       await trigger(create, 'onClick');
-      const formCascade = view.findAll('el-cascader').at(-1)!;
+      const formCascade = view.findAll('MarCascader').at(-1)!;
       await trigger(formCascade, 'onUpdate:modelValue', 2);
       const username = view
-        .findAll('ElInput')
+        .findAll('MarInput')
         .find((node) => String(node.props['placeholder']).toLowerCase().includes('username'))!;
       await trigger(username, 'onUpdate:modelValue', 'new-user');
       const save = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .filter((node) => textContent(node).trim() === 'Create user')
         .at(-1)!;
       await trigger(save, 'onClick');
@@ -314,7 +327,7 @@ describe('Enterprise management components', () => {
       'onUpdate:ownerOrganizationId': updates
     });
     try {
-      const organizationFilter = filters.findAll('el-cascader')[0]!;
+      const organizationFilter = filters.findAll('MarCascader')[0]!;
       expect(organizationFilter.props).toHaveProperty('filterable');
       expect(organizationFilter.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(organizationFilter, 'onUpdate:modelValue', 1);
@@ -341,7 +354,7 @@ describe('Enterprise management components', () => {
       supportsExistingConversations: true
     } as const;
     const request = vi.fn(async () => ({ capability: enabled }));
-    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirmed' as never);
+    const confirm = vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirmed' as never);
     const context = { role: 'ADMIN' as const, writable: true, edition: 'ENTERPRISE' as const };
     const service = createResourceHostingService(request as never, () => context);
     const organizationNode = {
@@ -503,7 +516,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research / Platform');
       expect(textContent(view.root)).toContain('88');
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props).toHaveProperty('filterable');
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 3);
@@ -549,7 +562,7 @@ describe('Enterprise management components', () => {
       await exposed.value!.open(model as never);
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research');
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 3);
       await trigger(button(view, 'Grant'), 'onClick');
@@ -597,7 +610,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(personalRequest).not.toHaveBeenCalled();
       expect(textContent(personalView.root)).toContain('Personal');
-      const form = personalView.findAll('ElForm')[0]!;
+      const form = personalView.findAll('MarForm')[0]!;
       await trigger(form, 'onSubmit', { preventDefault() {} });
       expect(personalRegister).toHaveBeenCalledOnce();
       expect(personalRegister).toHaveBeenCalledWith();
@@ -631,7 +644,7 @@ describe('Enterprise management components', () => {
     );
     try {
       await flushComponent();
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader?.props).toMatchObject({
         modelValue: 2,
         props: { checkStrictly: true, emitPath: false },
@@ -644,7 +657,7 @@ describe('Enterprise management components', () => {
         ]
       });
       await trigger(cascader, 'onUpdate:modelValue', 3);
-      await trigger(view.findAll('ElForm')[0]!, 'onSubmit', { preventDefault() {} });
+      await trigger(view.findAll('MarForm')[0]!, 'onSubmit', { preventDefault() {} });
       expect(register).toHaveBeenCalledWith({ ownerType: 'ORGANIZATION', ownerOrganizationId: 3 });
     } finally {
       view.unmount();
@@ -670,12 +683,17 @@ describe('Enterprise management components', () => {
         return { secrets: [existing], page: 1, pageSize: 20, total: 1, hasMore: false };
       throw new Error(`Unexpected request: ${path}`);
     });
-    const view = renderComponent(EnvironmentSecretManager, {
-      request: request as never,
-      scopes: ['PERSONAL', 'ORGANIZATION'],
-      writable: true,
-      organizations
-    });
+    const view = renderComponent(
+      EnvironmentSecretManager,
+      {
+        request: request as never,
+        scopes: ['PERSONAL', 'ORGANIZATION'],
+        writable: true,
+        organizations
+      },
+      {},
+      { validate: async () => true }
+    );
     try {
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research / Platform');
@@ -686,19 +704,21 @@ describe('Enterprise management components', () => {
       const stopSecretRowClick = vi.fn();
       await trigger(actionCell!, 'onClick', { stopPropagation: stopSecretRowClick });
       expect(stopSecretRowClick).toHaveBeenCalledOnce();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       await trigger(table, 'onRowClick', existing);
       expect(textContent(view.root)).toContain('DEPLOY_TOKEN');
-      expect(textContent(view.findAll('ElDescriptions')[0]!)).not.toContain('fixture-secret-value');
+      expect(textContent(view.findAll('MarDescriptions')[0]!)).not.toContain(
+        'fixture-secret-value'
+      );
       await trigger(button(view, 'Close'), 'onClick');
       await trigger(button(view, 'Add Environment Secret'), 'onClick');
-      const scope = view.findAll('ElSelect')[0]!;
+      const scope = view.findAll('MarSelect').find((node) => node.props.modelValue === 'PERSONAL')!;
       await trigger(scope, 'onUpdate:modelValue', 'ORGANIZATION');
       await flushComponent();
-      const cascader = view.findAll('el-cascader')[0]!;
+      const cascader = view.findAll('MarCascader')[0]!;
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 2);
-      const inputs = view.findAll('ElInput');
+      const inputs = view.findAll('MarInput');
       const nameInput = inputs.find((node) =>
         String(node.props['placeholder']).includes('environment variable name')
       )!;
@@ -745,7 +765,7 @@ describe('Enterprise management components', () => {
       if (path.endsWith('/enabled') && init?.method === 'POST') return {};
       throw new Error(`Unexpected request: ${path}`);
     });
-    const confirm = vi.spyOn(ElMessageBox, 'confirm');
+    const confirm = vi.spyOn(MarMessageBox, 'confirm');
     confirm.mockRejectedValueOnce('cancel').mockResolvedValue('confirmed' as never);
     const view = renderComponent(OAuthManagementPage, {
       request: request as never,
@@ -753,7 +773,7 @@ describe('Enterprise management components', () => {
     });
     try {
       await flushComponent();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const actionCell = view
         .findAll('div')
         .find((node) => node.props['class'] === 'mar-row-actions');
@@ -783,3 +803,14 @@ describe('Enterprise management components', () => {
     }
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../../../packages/web-core/src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

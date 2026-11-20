@@ -70,7 +70,7 @@ test('Personal instruction saves retain other scope drafts through success, fail
     complete!(200);
     await expect(save).toBeEnabled();
     await expect(editor).toHaveValue('MAR pending draft');
-    await expect(page.locator('.el-message--success')).toBeVisible();
+    await expect(page.locator('.mar-message--success')).toBeVisible();
     await common.click();
     await expect(editor).toHaveValue('Saved: Common submitted');
     await codex.click();
@@ -83,7 +83,7 @@ test('Personal instruction saves retain other scope drafts through success, fail
     await editor.fill('MAR failure draft');
     complete!(503);
     await expect(save).toBeEnabled();
-    await expect(page.locator('.el-message--error')).toBeVisible();
+    await expect(page.locator('.mar-message--error')).toBeVisible();
     await expect(editor).toHaveValue('MAR failure draft');
     await common.click();
     await expect(editor).toHaveValue('Common retry draft');
@@ -96,7 +96,7 @@ test('Personal instruction saves retain other scope drafts through success, fail
     await expect(editor).toHaveValue('MAR failure draft');
     await editor.fill('   ');
     await save.click();
-    await expect(panel.locator('.el-form-item__error')).toBeVisible();
+    await expect(panel.getByRole('alert')).toBeVisible();
     expect(writes).toHaveLength(3);
     await page.screenshot({ path: test.info().outputPath('retained-drafts.png') });
   } finally {

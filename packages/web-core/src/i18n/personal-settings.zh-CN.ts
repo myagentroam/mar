@@ -155,7 +155,7 @@ export const personalSettingsZhCN = {
       web: {
         title: 'Web 界面',
         components:
-          'Vue · Element Plus · Vue I18n · xterm.js · Vue Office · markdown-it · markdown-it-task-lists · highlight.js · CodeMirror · Lezer · Mermaid · PDF.js · DOMPurify · GitHub Markdown CSS'
+          'Vue · Vue I18n · xterm.js · Vue Office · markdown-it · markdown-it-task-lists · highlight.js · CodeMirror · Lezer · Mermaid · PDF.js · DOMPurify · GitHub Markdown CSS'
       },
       server: {
         title: 'Server 服务',

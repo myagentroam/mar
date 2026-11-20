@@ -1,7 +1,7 @@
 import type { MessageFeedback } from '../model/message-feedback.js';
 import { marIcon } from '../util/mar-icons.js';
 import type { WorkspaceTarget } from '../model/workbench.js';
-import { ElMessageBox } from './message-box-service.js';
+import { MarMessageBox } from './message-box-service.js';
 import { getCurrentScope, type ComputedRef, type Ref } from 'vue';
 import type { RunnerCommand, Session } from '../model/workbench.js';
 import { translate } from './locale-preference-service.js';
@@ -44,7 +44,7 @@ export function createWorkbenchContextCommandService(
       options.workspaceTarget.value?.workspaceId === workspace.workspaceId &&
       options.selectedSession.value?.id === session.id;
     try {
-      await ElMessageBox.confirm(
+      await MarMessageBox.confirm(
         [
           options.contextUsageLabel.value,
           translate('generated.workbenchContextCommandService.compactOlderContextToFreeWindowSpace')
@@ -53,7 +53,6 @@ export function createWorkbenchContextCommandService(
           .join('\n\n'),
         translate('generated.workbenchContextCommandService.compactContext'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           confirmButtonText: translate('generated.workbenchContextCommandService.compact'),
           cancelButtonText: translate('generated.workbenchContextCommandService.cancel'),

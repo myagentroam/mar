@@ -8,6 +8,7 @@ const dialogs = new WeakMap<
 
 /** Explicit component lifecycle hooks; close through Dialog's public handleClose. */
 export function mountMobileDialogReturn(vnode: VNode): void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
   const instance = vnode.component;
   if (instance === null || dialogs.has(instance)) return;
   const dialog = instance.exposed as { handleClose(): void } | null;

@@ -429,11 +429,11 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(historyRefreshButton).toHaveAttribute('type', 'button');
   await expect(historyRefreshButton).toHaveClass(/file-explorer-utility-button/u);
   await expect(historyRefreshButton).toHaveClass(/mar-icon-action/u);
-  await expect(historyRefreshButton).not.toHaveClass(/el-button/u);
+  await expect(historyRefreshButton).not.toHaveClass(/mar-ui-button/u);
   holdHistoryRefresh = false;
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await expect(page.getByText('aaaaaaaa')).toHaveCount(0);
-  await page.locator('.history-filter').nth(1).locator('.el-select__wrapper').click();
+  await page.locator('.history-filter').nth(1).getByRole('combobox').click();
   await page.getByRole('option', { name: 'main', exact: true }).click();
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await page.getByText('初始化 Git History').click();
@@ -442,7 +442,10 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(commitFilesLoading.locator('.mar-busy-indicator')).toHaveCount(0);
   releaseCommitFiles();
   await expect(page.getByRole('button', { name: /README\.md/ })).toBeVisible();
-  await expect(page.locator('.history-files .el-button').first()).toHaveCSS('border-radius', '6px');
+  await expect(page.locator('.history-files .mar-ui-button').first()).toHaveCSS(
+    'border-radius',
+    '6px'
+  );
   await expect(page.getByRole('button', { name: 'src', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /src\/history.ts/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'nested', exact: true })).toHaveCount(0);
@@ -1382,7 +1385,7 @@ test('Recent sessions show their own count, status tags and cumulative duration'
   const textGeometry = await task.evaluate((element) => {
     const row = element.getBoundingClientRect();
     const title = element.querySelector('.recent-session-title')!.getBoundingClientRect();
-    const status = element.querySelector('.el-tag')!.getBoundingClientRect();
+    const status = element.querySelector('.mar-ui-tag')!.getBoundingClientRect();
     const summary = element.querySelector('small')!.getBoundingClientRect();
     return {
       rowWidth: row.width,
@@ -1397,9 +1400,9 @@ test('Recent sessions show their own count, status tags and cumulative duration'
   expect(textGeometry.summaryWidth).toBeGreaterThan(textGeometry.rowWidth * 0.75);
   await task.locator('.recent-session-title').hover();
   await expect(page.getByRole('tooltip')).toHaveText('my-agent-roam: 状态展示与长标题可读性覆盖');
-  await expect(task.locator('.el-tag')).toHaveText('运行中');
-  await expect(task.locator('.el-tag')).toHaveClass(/el-tag--success/);
-  const runningColors = await task.locator('.el-tag').evaluate((element) => {
+  await expect(task.locator('.mar-ui-tag')).toHaveText('运行中');
+  await expect(task.locator('.mar-ui-tag')).toHaveAttribute('data-type', 'success');
+  const runningColors = await task.locator('.mar-ui-tag').evaluate((element) => {
     const reference = document.createElement('span');
     reference.style.color = 'var(--mar-color-success-text)';
     element.append(reference);
@@ -1482,8 +1485,8 @@ for (const mobile of [false, true]) {
       const panel = page.getByRole('region', { name: '最近会话', exact: true });
       const tasks = panel.locator('.recent-sessions-list > li');
       await expect(tasks).toHaveCount(30);
-      await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--success/);
-      await expect(tasks.nth(1).locator('.el-tag')).toHaveClass(/el-tag--info/);
+      await expect(tasks.first().locator('.mar-ui-tag')).toHaveAttribute('data-type', 'success');
+      await expect(tasks.nth(1).locator('.mar-ui-tag')).toHaveAttribute('data-type', 'info');
       if (mobile) await expect(page.locator('.workbench-activity-panel.mobile-mode')).toBeVisible();
       else
         await expect(page.locator('.workbench-activity-popover:visible')).toHaveCSS('opacity', '1');
@@ -1572,7 +1575,7 @@ for (const mobile of [false, true]) {
         activeStatus = status;
         await trigger.click();
         await expect(tasks).toHaveCount(1);
-        await expect(tasks.first().locator('.el-tag')).toHaveText(label);
+        await expect(tasks.first().locator('.mar-ui-tag')).toHaveText(label);
         const active = status === 'STARTING' || status === 'CANCELLING';
         await expect(trigger).toHaveAttribute(
           'aria-description',
@@ -1581,8 +1584,8 @@ for (const mobile of [false, true]) {
         await expect(trigger.locator('.activity-entry-running')).toHaveCount(active ? 1 : 0);
         await expect(trigger.locator('.activity-entry-count')).toHaveCount(0);
         if (status === 'SUCCEEDED') {
-          await expect(tasks.first().locator('.el-tag')).toHaveText('已完成');
-          await expect(tasks.first().locator('.el-tag')).toHaveClass(/el-tag--info/);
+          await expect(tasks.first().locator('.mar-ui-tag')).toHaveText('已完成');
+          await expect(tasks.first().locator('.mar-ui-tag')).toHaveAttribute('data-type', 'info');
         }
         await trigger.click();
         await expect(panel).toBeHidden();

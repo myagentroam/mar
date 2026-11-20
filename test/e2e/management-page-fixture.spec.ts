@@ -17,7 +17,7 @@ test('Audit initial failure reports an error and recovers through refresh on mob
   const section = page.locator('.audit-management');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, false));
-  await expect(page.locator('.el-message--error')).toContainText('List request failed');
+  await expect(page.locator('.mar-message--error')).toContainText('List request failed');
   await expect(section.locator('.management-mobile-status button')).toHaveCount(0);
   await section.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
@@ -31,26 +31,27 @@ test('Audit desktop page changes show one table loading indicator', async ({ pag
   const section = page.locator('.audit-management');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
-  await section.locator('.el-pager li.number').filter({ hasText: /^2$/ }).click();
+  await section.locator('.mar-ui-pagination__page').filter({ hasText: /^2$/ }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
-  await expect(section.locator('.el-table .el-loading-mask')).toBeVisible();
-  await expect(section.locator(':scope > .el-loading-mask')).toBeHidden();
-  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveClass(
-    /is-loading/
+  await expect(section.locator('.mar-ui-table .mar-ui-loading')).toBeVisible();
+  await expect(section.locator(':scope > .mar-ui-loading')).toBeHidden();
+  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveAttribute(
+    'aria-busy',
+    'true'
   );
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
-  await expect(section.locator('.el-table .el-loading-mask')).toBeHidden();
-  await expect(section.locator('.el-pager .is-active')).toHaveText('2');
-  await section.locator('.btn-prev').click();
+  await expect(section.locator('.mar-ui-table .mar-ui-loading')).toBeHidden();
+  await expect(section.locator('[aria-current="page"]')).toHaveText('2');
+  await section.locator('.mar-ui-pagination__previous').click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
   await page.evaluate(() => window.managementPageFixture.settle(2, false));
-  await expect(page.locator('.el-message--error')).toContainText('List request failed');
+  await expect(page.locator('.mar-message--error')).toContainText('List request failed');
   await expect(section.getByRole('button', { name: 'Failed to load. Retry' })).toHaveCount(0);
-  await expect(section.locator('.el-pager .is-active')).toHaveText('2');
+  await expect(section.locator('[aria-current="page"]')).toHaveText('2');
   await section.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(4);
   await page.evaluate(() => window.managementPageFixture.settle(3, true));
-  await expect(section.locator('.el-pager .is-active')).toHaveText('1');
+  await expect(section.locator('[aria-current="page"]')).toHaveText('1');
 });
 
 test('Usage details retain rows and retry a failed automatic page in place', async ({ page }) => {
@@ -65,7 +66,7 @@ test('Usage details retain rows and retry a failed automatic page in place', asy
       window.managementPageFixture.settle(1, true)
     ])
   );
-  const rows = panel.locator('.records tbody tr.el-table__row');
+  const rows = panel.locator('.records tbody tr.mar-ui-table__row');
   const boundary = panel.locator('.management-mobile-status');
   await expect(rows).toHaveCount(20);
   await boundary.scrollIntoViewIfNeeded();
@@ -73,7 +74,7 @@ test('Usage details retain rows and retry a failed automatic page in place', asy
   await page.evaluate(() => window.managementPageFixture.settle(2, false));
   const retry = boundary.locator('button');
   await expect(retry).toBeVisible();
-  await expect(retry).toHaveClass(/is-link/);
+  await expect(retry).toHaveClass(/mar-ui-button--inline/);
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await retry.hover();
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -104,7 +105,9 @@ test('Usage distribution radio labels preserve section typography in both states
       window.managementPageFixture.settle(1, true)
     ])
   );
-  const labels = page.getByTestId('usage-statistics').locator('.section-heading .el-radio-button');
+  const labels = page
+    .getByTestId('usage-statistics')
+    .locator('.section-heading .mar-ui-radio--button');
   await expect(labels).toHaveCount(2);
   await page.evaluate(() => {
     const sentinel = document.createElement('div');
@@ -125,16 +128,16 @@ test('Usage distribution radio labels preserve section typography in both states
       });
     expect(outside.slice(0, 2)).toEqual(outside.slice(2));
     for (const selected of [0, 1]) {
-      await labels.nth(selected).click();
-      await expect(labels.nth(selected)).toHaveClass(/is-active/);
+      await labels.nth(selected).locator('label').click();
+      await expect(labels.nth(selected).getByRole('radio')).toBeChecked();
       for (const label of await labels.all()) {
         await expect
           .poll(() =>
-            label.locator('.el-radio-button__inner').evaluate((span) => {
+            label.locator('label').evaluate((span) => {
               const style = getComputedStyle(span);
               const probe = document.createElement('span');
-              probe.style.color = span.closest('.el-radio-button.is-active')
-                ? 'var(--el-radio-button-checked-text-color, var(--el-color-white))'
+              probe.style.color = span.matches('input:checked + label')
+                ? 'var(--mar-text-primary)'
                 : 'var(--mar-text-secondary)';
               probe.style.fontSize = 'var(--mar-font-size-meta)';
               span.append(probe);
@@ -156,7 +159,7 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${fixture.url}management-page.html`);
   const section = page.locator('.resource-management-panel');
-  const rows = section.locator('tbody tr.el-table__row');
+  const rows = section.locator('tbody tr.mar-ui-table__row');
   const boundary = section.locator('.management-mobile-status');
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(1);
   await page.evaluate(() => window.managementPageFixture.settle(0, true));
@@ -169,10 +172,11 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   await section.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
   await expect(boundary.locator('button')).toHaveCount(0);
-  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).toHaveClass(
-    /is-loading/
+  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).toHaveAttribute(
+    'aria-busy',
+    'true'
   );
-  await expect(section.locator('.el-loading-mask')).toBeHidden();
+  await expect(section.locator('.mar-ui-loading')).toBeHidden();
   await page.evaluate(() => window.managementPageFixture.settle(2, true));
   await expect(rows).toHaveCount(20);
   const input = section.locator('.mar-resource-filters input').first();
@@ -194,7 +198,7 @@ test('Mobile tables preserve the reading position and append every page by conti
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${fixture.url}management-page.html?many=1`);
   const section = page.locator('.resource-management-panel');
-  const rows = section.locator('tbody tr.el-table__row');
+  const rows = section.locator('tbody tr.mar-ui-table__row');
   const boundary = section.locator('.management-mobile-status');
   const count = () => page.evaluate(() => window.managementPageFixture.calls().length);
   await expect.poll(count).toBe(1);
@@ -267,7 +271,7 @@ test('A continuously visible boundary loads only once per new query context', as
   await expect(boundary).toBeInViewport();
   await expect.poll(count).toBe(2);
   await settle(1);
-  await expect(section.locator('tbody tr.el-table__row')).toHaveCount(40);
+  await expect(section.locator('tbody tr.mar-ui-table__row')).toHaveCount(40);
   await expect(boundary).toBeInViewport();
   await drainObservers();
   expect(await count()).toBe(2);
@@ -280,7 +284,7 @@ test('A continuously visible boundary loads only once per new query context', as
   const calls = await page.evaluate(() => window.managementPageFixture.calls());
   expect(new URL(calls[3]!, 'http://fixture').searchParams.get('page')).toBe('2');
   await settle(3);
-  await expect(section.locator('tbody tr.el-table__row')).toHaveCount(40);
+  await expect(section.locator('tbody tr.mar-ui-table__row')).toHaveCount(40);
   await expect(boundary).toBeInViewport();
   await drainObservers();
   expect(await count()).toBe(4);

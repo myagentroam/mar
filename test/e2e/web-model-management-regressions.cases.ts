@@ -185,10 +185,10 @@ async function openModels(page: Page, strings: Locale): Promise<void> {
 }
 
 async function selectOrganization(page: Page, form: Locator, strings: Locale): Promise<void> {
-  const ownership = form.locator('.el-form-item').filter({ hasText: strings.modelOwnership });
-  await ownership.locator('.el-select__wrapper').click();
+  const ownership = form.locator('.mar-ui-form-item').filter({ hasText: strings.modelOwnership });
+  await ownership.getByRole('combobox').click();
   await page.getByRole('option', { name: strings.organizationScope, exact: true }).click();
-  const organization = form.locator('.el-cascader input');
+  const organization = form.locator('.mar-ui-cascader input');
   await organization.fill('Platform');
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
 }
@@ -199,8 +199,8 @@ async function selectModelProtocol(
   strings: Locale,
   label: string
 ): Promise<void> {
-  const protocol = form.locator('.el-form-item').filter({ hasText: strings.protocol });
-  await protocol.locator('.el-select__wrapper').click();
+  const protocol = form.locator('.mar-ui-form-item').filter({ hasText: strings.protocol });
+  await protocol.getByRole('combobox').click();
   await page.getByRole('option', { name: label, exact: true }).click();
 }
 
@@ -273,61 +273,61 @@ for (const english of [false, true]) {
 
     await openModels(page, strings);
     const modelPanel = page.getByRole('tabpanel', { name: strings.modelTab });
-    const modelRows = modelPanel.locator('.el-table__row');
+    const modelRows = modelPanel.locator('.mar-ui-table__row');
     await expect(modelRows).toHaveCount(21);
-    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
+    await expect(modelPanel.locator('.mar-ui-pagination')).toHaveCount(0);
     await expect(modelRows.last()).toContainText('Model 21');
     const actionsBounds = await modelPanel.locator('.mar-table-actions').boundingBox();
-    const tableBounds = await modelPanel.locator('.el-table').boundingBox();
+    const tableBounds = await modelPanel.locator('.mar-ui-table').boundingBox();
     expect(actionsBounds).not.toBeNull();
     expect(tableBounds).not.toBeNull();
     expect(tableBounds!.y - actionsBounds!.y - actionsBounds!.height).toBeGreaterThan(0);
 
-    const lastModel = page.locator('.el-table__row').filter({ hasText: 'Model 21' });
+    const lastModel = page.locator('.mar-ui-table__row').filter({ hasText: 'Model 21' });
     await lastModel.getByRole('button', { name: strings.edit, exact: true }).click();
     const editDialog = page.getByRole('dialog', { name: strings.edit, exact: true });
     await editDialog.getByRole('textbox', { name: strings.modelName }).fill('Edited Model 21');
     await editDialog.getByRole('button', { name: strings.save, exact: true }).click();
     await expect(
-      page.locator('.el-table__row').filter({ hasText: 'Edited Model 21' })
+      page.locator('.mar-ui-table__row').filter({ hasText: 'Edited Model 21' })
     ).toBeVisible();
     await expect(modelRows).toHaveCount(21);
-    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
+    await expect(modelPanel.locator('.mar-ui-pagination')).toHaveCount(0);
 
-    const editedRow = page.locator('.el-table__row').filter({ hasText: 'Edited Model 21' });
+    const editedRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Edited Model 21' });
     await editedRow.getByRole('button', { name: strings.test, exact: true }).click();
     const testDialog = page.getByRole('dialog', { name: strings.testTitle, exact: true });
     await testDialog.getByRole('combobox').click();
     await page.getByRole('option', { name: 'Runtime Node', exact: true }).click();
     await testDialog.getByRole('button', { name: strings.test, exact: true }).click();
-    await expect(testDialog.locator('.model-test-result .el-tag')).toHaveText(
+    await expect(testDialog.locator('.model-test-result .mar-ui-tag')).toHaveText(
       english ? 'Success' : '成功'
     );
     await testDialog.getByRole('button', { name: strings.cancel, exact: true }).click();
     await expect(testDialog).toHaveCount(0);
     await expect(modelRows).toHaveCount(21);
-    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
+    await expect(modelPanel.locator('.mar-ui-pagination')).toHaveCount(0);
 
     const readsBeforeRefresh = modelReads;
     await page.getByRole('button', { name: strings.refresh, exact: true }).click();
     await expect.poll(() => modelReads).toBe(readsBeforeRefresh + 1);
     await expect(modelRows).toHaveCount(21);
-    await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
+    await expect(modelPanel.locator('.mar-ui-pagination')).toHaveCount(0);
     expect(updates).toHaveLength(1);
     expect(updates[0]).toMatchObject({ name: 'Edited Model 21' });
     expect(modelTests).toHaveLength(1);
 
     for (const [index, name] of ['Edited Model 21', 'Model 20'].entries()) {
-      const row = page.locator('.el-table__row').filter({ hasText: name });
+      const row = page.locator('.mar-ui-table__row').filter({ hasText: name });
       await row.getByRole('button', { name: strings.remove, exact: true }).click();
-      const confirmation = page.locator('.el-message-box');
+      const confirmation = page.locator('.mar-message-box');
       await confirmation.getByRole('button', { name: strings.remove, exact: true }).click();
       await expect(row).toHaveCount(0);
       await expect(modelRows).toHaveCount(index === 0 ? 20 : 19);
-      await expect(modelPanel.locator('.el-pagination')).toHaveCount(0);
+      await expect(modelPanel.locator('.mar-ui-pagination')).toHaveCount(0);
     }
     await expect(
-      page.locator('.el-table__row').filter({ has: page.getByText('Model 1', { exact: true }) })
+      page.locator('.mar-ui-table__row').filter({ has: page.getByText('Model 1', { exact: true }) })
     ).toBeVisible();
   });
 
@@ -467,9 +467,9 @@ for (const english of [false, true]) {
     await page.route('**/api/resource-grants**', (route) => json(route, { grants: [] }));
 
     await openModels(page, strings);
-    const personalRow = page.locator('.el-table__row').filter({ hasText: 'Personal model' });
+    const personalRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Personal model' });
     const organizationRow = page
-      .locator('.el-table__row')
+      .locator('.mar-ui-table__row')
       .filter({ hasText: 'Organization model' });
     await expect(
       personalRow.getByRole('button', { name: english ? 'Grant' : '授权', exact: true })
@@ -486,13 +486,13 @@ for (const english of [false, true]) {
     await page.getByRole('button', { name: strings.add, exact: true }).click();
     const createDialog = page.getByRole('dialog', { name: strings.add, exact: true });
     const ownership = createDialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.modelOwnership });
     await expect(ownership).toBeVisible();
     const protocolSelect = createDialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.protocol })
-      .locator('.el-select__wrapper');
+      .getByRole('combobox');
     const protocolOptions = ['Codex (legacy)', 'ChatGPT', 'Anthropic Messages', 'OpenAI Responses'];
     for (const protocol of protocolOptions) {
       await protocolSelect.click();
@@ -505,9 +505,9 @@ for (const english of [false, true]) {
     await selectOrganization(page, createDialog, strings);
 
     const credentialSelect = createDialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.codexCredential })
-      .locator('.el-select__wrapper');
+      .getByRole('combobox');
     await credentialSelect.click();
     await expect(
       page.getByRole('option', { name: 'Enterprise ChatGPT', exact: true })
@@ -519,7 +519,7 @@ for (const english of [false, true]) {
     await createDialog.getByRole('textbox', { name: strings.modelId }).fill('gpt-chatgpt-org');
     await createDialog.getByRole('button', { name: strings.save, exact: true }).click();
     await expect(
-      page.locator('.el-table__row').filter({ hasText: 'Organization ChatGPT' })
+      page.locator('.mar-ui-table__row').filter({ hasText: 'Organization ChatGPT' })
     ).toBeVisible();
     expect(createBodies).toHaveLength(1);
     expect(createBodies[0]).toMatchObject({
@@ -530,14 +530,14 @@ for (const english of [false, true]) {
     });
 
     await page.getByRole('tab', { name: strings.credentialsTab, exact: true }).click();
-    await page.locator('.el-table__row').filter({ hasText: 'Enterprise ChatGPT' }).click();
+    await page.locator('.mar-ui-table__row').filter({ hasText: 'Enterprise ChatGPT' }).click();
     const chatgptDetails = page.getByRole('dialog');
     const usageLink = chatgptDetails.getByRole('link', {
       name: english ? 'Manage usage' : '管理用量',
       exact: true
     });
     await expect(usageLink).toBeVisible();
-    await expect(usageLink).not.toHaveClass(/el-button--primary/u);
+    await expect(usageLink).not.toHaveClass(/mar-ui-button--primary/u);
     await expect(usageLink).toHaveAttribute('href', 'https://chatgpt.com/settings/usage');
     await expect(usageLink).toHaveAttribute('target', '_blank');
     await expect(usageLink).toHaveAttribute('rel', 'noopener noreferrer');
@@ -548,7 +548,7 @@ for (const english of [false, true]) {
       })
     ).toHaveCount(0);
     await chatgptDetails.getByRole('button', { name: strings.close, exact: true }).click();
-    await page.locator('.el-table__row').filter({ hasText: 'Organization Codex' }).click();
+    await page.locator('.mar-ui-table__row').filter({ hasText: 'Organization Codex' }).click();
     const credentialDetails = page.getByRole('dialog');
     await expect(
       credentialDetails.getByRole('link', {
@@ -562,11 +562,11 @@ for (const english of [false, true]) {
     await expect(catalogDialog).toBeVisible();
     await expect(catalogDialog.getByRole('spinbutton')).toHaveValue('256000');
     await expect(
-      catalogDialog.locator('.el-table__row').filter({ hasText: 'Explicit catalog limits' })
+      catalogDialog.locator('.mar-ui-table__row').filter({ hasText: 'Explicit catalog limits' })
     ).toContainText('200000');
     await selectOrganization(page, catalogDialog, strings);
     await catalogDialog
-      .locator('.el-table__row')
+      .locator('.mar-ui-table__row')
       .filter({ hasText: 'Catalog model' })
       .locator('.el-checkbox__inner')
       .click();
@@ -608,7 +608,7 @@ for (const english of [false, true]) {
     await expect(added.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked();
     await added.getByRole('button', { name: strings.cancel, exact: true }).click();
 
-    const row = page.locator('.el-table__row').filter({ hasText: 'Compact opt-in model' });
+    const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Compact opt-in model' });
     async function edit(): Promise<Locator> {
       await row.getByRole('button', { name: strings.edit, exact: true }).click();
       return page.getByRole('dialog', { name: strings.edit, exact: true });
@@ -710,15 +710,15 @@ for (const english of [false, true]) {
     await openModels(page, strings);
 
     async function editModel(name: string): Promise<Locator> {
-      const row = page.locator('.el-table__row').filter({ hasText: name });
+      const row = page.locator('.mar-ui-table__row').filter({ hasText: name });
       await row.getByRole('button', { name: strings.edit, exact: true }).click();
       return page.getByRole('dialog', { name: strings.edit, exact: true });
     }
 
     async function assertSpeedOptions(dialog: Locator): Promise<void> {
-      const speedField = dialog.locator('.el-form-item').filter({ hasText: strings.speed });
+      const speedField = dialog.locator('.mar-ui-form-item').filter({ hasText: strings.speed });
       await expect(speedField).toBeVisible();
-      await speedField.locator('.el-select__wrapper').click();
+      await speedField.getByRole('combobox').click();
       for (const label of [strings.speedDefault, strings.speedFast, strings.speedUltrafast])
         await expect(page.getByRole('option', { name: label, exact: true })).toBeVisible();
       await page.keyboard.press('Escape');
@@ -726,14 +726,14 @@ for (const english of [false, true]) {
 
     async function saveSpeed(name: string, value: string, label: string): Promise<void> {
       const dialog = await editModel(name);
-      const speedField = dialog.locator('.el-form-item').filter({ hasText: strings.speed });
+      const speedField = dialog.locator('.mar-ui-form-item').filter({ hasText: strings.speed });
       await expect(speedField).toBeVisible();
-      await speedField.locator('.el-select__wrapper').click();
+      await speedField.getByRole('combobox').click();
       await page.getByRole('option', { name: label, exact: true }).click();
       await dialog.getByRole('button', { name: strings.save, exact: true }).click();
       await expect.poll(() => updates.at(-1)?.body.serviceTier).toBe(value);
       expect(updates.at(-1)?.body).not.toHaveProperty('highDensityCompaction');
-      const row = page.locator('.el-table__row').filter({ hasText: name });
+      const row = page.locator('.mar-ui-table__row').filter({ hasText: name });
       await row.locator('td').first().click();
       const details = page.getByRole('dialog', { name: strings.details, exact: true });
       const speedDetail = details
@@ -754,17 +754,17 @@ for (const english of [false, true]) {
     await legacyDialog.locator('label.el-checkbox').filter({ hasText: conversationLabel }).click();
     await expect(conversationCheckbox).not.toBeChecked();
     const legacySpeedField = legacyDialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.speed });
     await expect(legacySpeedField).toBeVisible();
-    await expect(legacySpeedField.locator('.el-select__wrapper')).toContainText(strings.speedFast);
+    await expect(legacySpeedField.getByRole('combobox')).toContainText(strings.speedFast);
     await assertSpeedOptions(legacyDialog);
-    await legacySpeedField.locator('.el-select__wrapper').click();
+    await legacySpeedField.getByRole('combobox').click();
     await page.getByRole('option', { name: strings.speedFast, exact: true }).click();
     await legacyDialog.getByRole('button', { name: strings.save, exact: true }).click();
     await expect.poll(() => updates.at(-1)?.body.serviceTier).toBe('priority');
     expect(updates.at(-1)?.body.conversationModel).toBe(false);
-    const legacyRow = page.locator('.el-table__row').filter({ hasText: 'Legacy speed model' });
+    const legacyRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Legacy speed model' });
     await legacyRow.locator('td').first().click();
     const legacyDetails = page.getByRole('dialog', { name: strings.details, exact: true });
     await expect(legacyDetails.getByText(/高密度压缩|High-density compaction/u)).toHaveCount(0);
@@ -793,9 +793,9 @@ for (const english of [false, true]) {
 
     for (const name of ['Inline Responses model', 'Anthropic model']) {
       const dialog = await editModel(name);
-      await expect(dialog.locator('.el-form-item').filter({ hasText: strings.speed })).toHaveCount(
-        0
-      );
+      await expect(
+        dialog.locator('.mar-ui-form-item').filter({ hasText: strings.speed })
+      ).toHaveCount(0);
       await dialog.getByRole('button', { name: strings.cancel, exact: true }).click();
     }
 
@@ -876,7 +876,7 @@ for (const english of [false, true]) {
     const copyName = english ? 'Shared source model (copy)' : 'Shared source model（副本）';
     const openCopy = async (): Promise<Locator> => {
       await page
-        .locator('.el-table__row')
+        .locator('.mar-ui-table__row')
         .filter({ hasText: 'Shared source model' })
         .first()
         .getByRole('button', { name: duplicateLabel, exact: true })
@@ -895,10 +895,10 @@ for (const english of [false, true]) {
       'source-model-id'
     );
     const contextField = firstCopy
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'Context tokens' : '上下文 Token' });
     const outputField = firstCopy
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'Maximum output tokens' : '最大输出 Token' });
     await expect(contextField.getByRole('spinbutton')).toHaveValue('262144');
     await expect(outputField.getByRole('spinbutton')).toHaveValue('32768');
@@ -907,12 +907,12 @@ for (const english of [false, true]) {
     ).toBeChecked();
     await expect(
       firstCopy
-        .locator('.el-form-item')
+        .locator('.mar-ui-form-item')
         .filter({ hasText: english ? 'Supported reasoning efforts' : '支持的思考强度' })
         .getByRole('checkbox', { name: 'high', exact: true })
     ).toBeChecked();
     const keyField = firstCopy
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'API key' : 'API Key' })
       .getByRole('textbox');
     await expect(keyField).toHaveValue('');
@@ -921,11 +921,9 @@ for (const english of [false, true]) {
       english ? 'Leave blank while editing to keep the current key.' : '编辑时留空可保留当前 Key。'
     );
     const ownership = firstCopy
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.modelOwnership });
-    await expect(ownership.locator('.el-select__wrapper')).toContainText(
-      english ? 'Personal' : '个人'
-    );
+    await expect(ownership.getByRole('combobox')).toContainText(english ? 'Personal' : '个人');
     await expect(duplicateBodies).toHaveLength(0);
     await firstCopy.getByRole('textbox', { name: strings.modelId }).fill('cancelled-copy-draft');
     await firstCopy.getByRole('button', { name: strings.cancel, exact: true }).click();
@@ -941,15 +939,15 @@ for (const english of [false, true]) {
     );
     await expect(
       reopenedCopy
-        .locator('.el-form-item')
+        .locator('.mar-ui-form-item')
         .filter({ hasText: strings.modelOwnership })
-        .locator('.el-select__wrapper')
+        .getByRole('combobox')
     ).toContainText(english ? 'Personal' : '个人');
     await selectOrganization(page, reopenedCopy, strings);
     await reopenedCopy.getByRole('button', { name: strings.save, exact: true }).click();
 
     await expect(
-      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.el-table__row').last()
+      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.mar-ui-table__row').last()
     ).toContainText(copyName);
     expect(duplicateBodies).toHaveLength(1);
     expect(duplicateBodies[0]).toMatchObject({
@@ -1007,7 +1005,7 @@ for (const english of [false, true]) {
     const dialog = page.getByRole('dialog', { name: strings.add, exact: true });
     const urlLabel = english ? 'Base URL' : '基础 URL';
     const urlField = dialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: urlLabel })
       .getByRole('textbox');
     await expect(urlField).toHaveValue('https://api.anthropic.com');
@@ -1024,30 +1022,30 @@ for (const english of [false, true]) {
     await dialog.getByRole('textbox', { name: strings.modelName }).fill('Protocol switch model');
     await dialog.getByRole('textbox', { name: strings.modelId }).fill('switch-model-id');
     const keyField = dialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'API key' : 'API Key' })
       .getByRole('textbox');
     await keyField.fill(apiKey);
     await dialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'Context tokens' : '上下文 Token' })
       .getByRole('spinbutton')
       .fill('262144');
     await dialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'Maximum output tokens' : '最大输出 Token' })
       .getByRole('spinbutton')
       .fill('32768');
     await dialog.getByText(english ? 'Image input' : '图片输入', { exact: true }).click();
     await dialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'Supported reasoning efforts' : '支持的思考强度' })
       .getByText('high', { exact: true })
       .click();
     const defaultReasoning = dialog
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: english ? 'Default reasoning effort' : '默认思考强度' });
-    await defaultReasoning.locator('.el-select__wrapper').click();
+    await defaultReasoning.getByRole('combobox').click();
     await page.getByRole('option', { name: 'high', exact: true }).click();
     await dialog
       .getByText(english ? 'Session title generation' : '会话标题命名', { exact: true })
@@ -1072,7 +1070,7 @@ for (const english of [false, true]) {
 
     await dialog.getByRole('button', { name: strings.save, exact: true }).click();
     await expect(
-      page.locator('.el-table__row').filter({ hasText: 'Protocol switch model' })
+      page.locator('.mar-ui-table__row').filter({ hasText: 'Protocol switch model' })
     ).toBeVisible();
     expect(createBodies).toHaveLength(1);
     expect(createBodies[0]).toMatchObject({
@@ -1160,7 +1158,7 @@ for (const english of [false, true]) {
     const duplicateLabel = english ? 'Duplicate' : '复制';
     const openCopy = async (): Promise<Locator> => {
       await page
-        .locator('.el-table__row')
+        .locator('.mar-ui-table__row')
         .filter({ hasText: 'Source Codex model' })
         .first()
         .getByRole('button', { name: duplicateLabel, exact: true })
@@ -1169,14 +1167,14 @@ for (const english of [false, true]) {
     };
     const sameProtocolCopy = await openCopy();
     const credentialField = sameProtocolCopy
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.codexCredential });
-    await expect(credentialField.locator('.el-select__wrapper')).toContainText(
+    await expect(credentialField.getByRole('combobox')).toContainText(
       english ? 'leave blank to keep the current reference' : '留空可保留当前引用'
     );
     await sameProtocolCopy.getByRole('button', { name: strings.save, exact: true }).click();
     await expect(
-      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.el-table__row').last()
+      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.mar-ui-table__row').last()
     ).toContainText(english ? 'Source Codex model (copy)' : 'Source Codex model（副本）');
     expect(duplicateBodies).toHaveLength(1);
     expect(duplicateBodies[0]).toMatchObject({
@@ -1188,14 +1186,14 @@ for (const english of [false, true]) {
     const changedProtocolCopy = await openCopy();
     await selectModelProtocol(page, changedProtocolCopy, strings, 'ChatGPT');
     const changedCredentialField = changedProtocolCopy
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({ hasText: strings.codexCredential });
     await changedProtocolCopy.getByRole('button', { name: strings.save, exact: true }).click();
-    await expect(changedCredentialField.locator('.el-form-item__error')).toHaveText(
+    await expect(changedCredentialField.locator('.mar-ui-form-item__error')).toHaveText(
       english ? 'Select an OAuth credential.' : '请选择 OAuth 凭据。'
     );
     expect(duplicateBodies).toHaveLength(1);
-    await changedCredentialField.locator('.el-select__wrapper').click();
+    await changedCredentialField.getByRole('combobox').click();
     await expect(
       page.getByRole('option', { name: 'Compatible ChatGPT credential', exact: true })
     ).toBeVisible();
@@ -1205,7 +1203,7 @@ for (const english of [false, true]) {
     await page.getByRole('option', { name: 'Compatible ChatGPT credential', exact: true }).click();
     await changedProtocolCopy.getByRole('button', { name: strings.save, exact: true }).click();
     await expect(
-      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.el-table__row').last()
+      page.getByRole('tabpanel', { name: strings.modelTab }).locator('.mar-ui-table__row').last()
     ).toContainText(english ? 'Source Codex model (copy)' : 'Source Codex model（副本）');
     expect(duplicateBodies).toHaveLength(2);
     expect(duplicateBodies[1]).toMatchObject({

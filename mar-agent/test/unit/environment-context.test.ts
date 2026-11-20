@@ -147,9 +147,9 @@ class RecordingAdapter implements ModelAdapter {
 
 describe('environment context persistence', () => {
   it.each([false, true])(
-    'uses Host MAR Home for worktree guidance without exposing mapped paths (mapped=%s)',
+    'reports the Host worktree root without exposing unmapped paths (mapped=%s)',
     async (mapped) => {
-      const home = await mkdtemp(join(tmpdir(), 'mar-worktree-guidance-'));
+      const home = await mkdtemp(join(tmpdir(), 'mar-worktree-environment-'));
       roots.push(home);
       const workspace = join(home, 'workspace');
       await mkdir(workspace);
@@ -166,7 +166,7 @@ describe('environment context persistence', () => {
         () => adapter
       );
       try {
-        const session = await agent.createSession({ workspace, title: 'Worktree guidance' });
+        const session = await agent.createSession({ workspace, title: 'Worktree environment' });
         expect((await session.run({ prompt: 'Inspect the project.' }).result()).status).toBe(
           'completed'
         );
@@ -175,12 +175,10 @@ describe('environment context persistence', () => {
         const instructions = effectiveInstructions(request);
         if (mapped) {
           expect(instructions).not.toContain(worktreeRoot);
-          expect(instructions).not.toContain('When creating a Git worktree');
+          expect(instructions).not.toContain('Worktree root:');
         } else {
-          expect(instructions).toContain(
-            `When creating a Git worktree, prefer a unique directory under the JSON-encoded path ${JSON.stringify(worktreeRoot)} unless the user specifies another location.`
-          );
-          expect(request.system).not.toContain(worktreeRoot);
+          expect(instructions).toContain(`Worktree root: ${JSON.stringify(worktreeRoot)}.`);
+          expect(request.system).not.toContain('Worktree root:');
         }
         await expect(access(worktreeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
       } finally {

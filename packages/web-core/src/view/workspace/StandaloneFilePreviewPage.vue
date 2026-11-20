@@ -4,7 +4,7 @@ import { marIcon } from '../../util/mar-icons.js';
 
 import githubMarkdownLightThemeUrl from 'github-markdown-css/github-markdown-light.css?url';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
 import type { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import { createSessionShareClientService } from '../../service/session-share-client-service.js';
@@ -295,10 +295,10 @@ async function canCloseUnmountedTab(id: number): Promise<boolean> {
   if (tab === undefined || !dirtyDrafts.value.some((draft) => draft.tabIdentity === tab.identity))
     return true;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('fileEditor.unsavedMessage'),
       translate('fileEditor.unsavedTitle'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
     return true;
   } catch {

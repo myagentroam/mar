@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
+import { MarLink } from '@myagentroam/mar-ui/link';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -8,8 +15,7 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import type { SessionShareTarget } from '@myagentroam/protocol';
 import { createSessionShareManagementService } from '../../service/session-share-management-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -57,10 +63,10 @@ async function create(): Promise<void> {
 }
 async function remove(id: string): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('sessionShare.deleteWarning'),
       translate('sessionShare.delete'),
-      { closeIcon: marIcon('close'), icon: marIcon('warning'), type: 'warning' }
+      { icon: marIcon('warning'), type: 'warning' }
     );
   } catch {
     return;
@@ -87,11 +93,10 @@ async function copyRecord(id: string): Promise<void> {
   try {
     let password = await service.copyPassword(id);
     if (password === null) {
-      const result = await ElMessageBox.prompt(
+      const result = await MarMessageBox.prompt(
         translate('sessionShare.restorePassword'),
         translate('sessionShare.password'),
         {
-          closeIcon: marIcon('close'),
           inputType: 'password',
           inputPattern: /^[0-9]{6}$/u,
           inputErrorMessage: translate('sessionShare.passwordFormat')
@@ -108,7 +113,7 @@ async function copyRecord(id: string): Promise<void> {
 </script>
 
 <template>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     :model-value="true"
@@ -116,18 +121,18 @@ async function copyRecord(id: string): Promise<void> {
     width="min(1000px, calc(100vw - 32px))"
     append-to-body
     @close="emit('close')"
-    :close-icon="marIcon('close')"
   >
-    <el-form
+    <MarForm
       ref="form"
       :model="values"
       :rules="rules"
       label-position="top"
       @submit.prevent="create"
     >
-      <el-form-item prop="expiresAt" :label="translate('sessionShare.expiresAt')">
-        <el-date-picker
+      <MarFormItem prop="expiresAt" :label="translate('sessionShare.expiresAt')">
+        <MarDatePicker
           v-model="values.expiresAt"
+          :aria-label="translate('sessionShare.expiresAt')"
           type="datetime"
           :placeholder="translate('sessionShare.permanent')"
           clearable
@@ -137,45 +142,37 @@ async function copyRecord(id: string): Promise<void> {
           ><template #next-month><MarIcon name="chevron-right" /></template
           ><template #prev-year><MarIcon name="chevrons-left" /></template
           ><template #next-year><MarIcon name="chevrons-right" /></template
-        ></el-date-picker>
-      </el-form-item>
-      <el-button
-        type="primary"
-        native-type="submit"
-        :loading="busy"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('sessionShare.create') }}</el-button
-      >
-    </el-form>
+        ></MarDatePicker>
+      </MarFormItem>
+      <MarButton type="primary" native-type="submit" :loading="busy">{{
+        translate('sessionShare.create')
+      }}</MarButton>
+    </MarForm>
     <section v-if="created" class="created-share" aria-live="polite">
       <p class="share-text">{{ shareText }}</p>
-      <el-button :icon="marIcon('copy')" @click="copy(shareText)">{{
+      <MarButton :icon="marIcon('copy')" @click="copy(shareText)">{{
         translate('sessionShare.copy')
-      }}</el-button>
+      }}</MarButton>
     </section>
     <h3>{{ translate('sessionShare.records') }}</h3>
-    <el-table :data="shares" :empty-text="translate('sessionShare.noRecords')">
-      <el-table-column
-        :label="translate('sessionShare.link')"
-        min-width="230"
-        show-overflow-tooltip
-      >
+    <MarTable :data="shares" :empty-text="translate('sessionShare.noRecords')">
+      <MarTableColumn :label="translate('sessionShare.link')" min-width="230" show-overflow-tooltip>
         <template #default="{ row }">
-          <el-link class="share-record-link" :href="link(row.id)" target="_blank" rel="noopener">
+          <MarLink class="share-record-link" :href="link(row.id)" target="_blank" rel="noopener">
             {{ link(row.id) }}
-          </el-link>
+          </MarLink>
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         :label="translate('sessionShare.createdAt')"
         prop="createdAt"
         sortable
         min-width="215"
         ><template #default="{ row }">{{
           managementDateTime(row.createdAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('sessionShare.expiresAt')"
         prop="expiresAt"
         sortable
@@ -184,11 +181,11 @@ async function copyRecord(id: string): Promise<void> {
           row.expiresAt === null
             ? translate('sessionShare.permanent')
             : managementDateTime(row.expiresAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column :label="translate('sessionShare.status')" min-width="100"
+      <MarTableColumn :label="translate('sessionShare.status')" min-width="100"
         ><template #default="{ row }"
-          ><el-tag
+          ><MarTag
             :type="row.expiresAt !== null && row.expiresAt <= Date.now() ? 'info' : 'success'"
             >{{
               translate(
@@ -196,35 +193,35 @@ async function copyRecord(id: string): Promise<void> {
                   ? 'sessionShare.expired'
                   : 'sessionShare.active'
               )
-            }}</el-tag
+            }}</MarTag
           ></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column :label="translate('sessionShare.actions')" min-width="180"
+      <MarTableColumn :label="translate('sessionShare.actions')" min-width="180"
         ><template #default="{ row }">
-          <el-button link :icon="marIcon('copy')" :disabled="busy" @click="copyRecord(row.id)">{{
+          <MarButton link :icon="marIcon('copy')" :disabled="busy" @click="copyRecord(row.id)">{{
             translate('sessionShare.copy')
-          }}</el-button>
-          <el-button
+          }}</MarButton>
+          <MarButton
             link
             type="danger"
             :icon="marIcon('delete')"
             :disabled="busy"
             @click="remove(row.id)"
-            >{{ translate('sessionShare.delete') }}</el-button
+            >{{ translate('sessionShare.delete') }}</MarButton
           >
-        </template></el-table-column
+        </template></MarTableColumn
       >
-    </el-table>
-  </el-dialog>
+    </MarTable>
+  </MarDialog>
 </template>
 
 <style scoped>
 .created-share {
   margin-top: 1rem;
   padding: 1rem;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-light);
+  background: var(--mar-control-fill-color-light);
+  border: 1px solid var(--mar-border-subtle);
   border-radius: 6px;
   overflow-wrap: anywhere;
 }
@@ -233,7 +230,7 @@ async function copyRecord(id: string): Promise<void> {
   white-space: pre-wrap;
 }
 .share-record-link,
-.share-record-link :deep(.el-link__inner) {
+.share-record-link :deep(.mar-ui-link__inner) {
   display: inline;
 }
 h3 {

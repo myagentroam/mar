@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 // Presents a bounded preview of the saved snapshot; it never changes it or reads its source.
 import { computed, ref } from 'vue';
 import type { ComposerReference } from '@myagentroam/protocol';
@@ -26,7 +27,7 @@ const long = computed(() => preview.value.length > 400 || preview.value.split('\
     <div class="quote-excerpt-text" :class="{ collapsed: collapsible && long && !expanded }">
       {{ preview }}
     </div>
-    <el-button
+    <MarButton
       v-if="collapsible && long"
       link
       size="small"
@@ -34,7 +35,7 @@ const long = computed(() => preview.value.length > 400 || preview.value.split('\
       @click="expanded = !expanded"
     >
       {{ translate(expanded ? 'composer.collapseQuote' : 'composer.expandQuote') }}
-    </el-button>
+    </MarButton>
   </blockquote>
 </template>
 

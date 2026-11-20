@@ -14,13 +14,29 @@ import {
   textContent,
   trigger
 } from './support/component-renderer.js';
+
 afterEach(() => vi.unstubAllGlobals());
+
+function resourcePage(nodes: readonly object[]) {
+  return {
+    nodes: nodes.map((node, index) => ({
+      id: `node-${index}`,
+      ownership: { ownerType: 'PERSONAL' },
+      ...node
+    })),
+    workspaces: [],
+    page: 1,
+    pageSize: 20,
+    total: nodes.length,
+    hasMore: false
+  };
+}
 describe('Public resource management', () => {
   it.each(['en-US', 'zh-CN'] as const)(
     'renders upgrade facts without claiming unconfirmed acceptance in %s',
     async (locale) => {
       vi.stubGlobal('window', {
-        matchMedia: () => ({ matches: false }),
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
         location: { search: '', href: 'http://localhost/console' }
       });
       i18n.global.locale.value = locale;
@@ -63,50 +79,26 @@ describe('Public resource management', () => {
           metadata: { upgrade: { state: 'WAITING_FOR_RUNS', activeRunCount: 456 } }
         }
       ];
-      const app = createSSRApp({
-        render: () =>
-          h(NodePage, {
-            request: async () => ({}),
-            writable: true,
-            nodeUpgradeProgress: { d: { ...base, state: 'SUCCEEDED', updatedAt: now + 1 }, e: null }
-          })
+      const view = renderComponent(NodePage, {
+        request: async <T>() =>
+          resourcePage(rows.map(({ nodeId, ...row }) => ({ id: nodeId, ...row }))) as T,
+        writable: true,
+        nodeUpgradeProgress: { d: { ...base, state: 'SUCCEEDED', updatedAt: now + 1 }, e: null }
       });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 944, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
-      app.component(
-        'el-table',
-        defineComponent({
-          setup:
-            (_, { slots }) =>
-            () =>
-              h('div', slots.default?.())
-        })
-      );
-      app.component(
-        'el-table-column',
-        defineComponent({
-          props: ['label'],
-          setup:
-            (props, { slots }) =>
-            () =>
-              h(
-                'section',
-                props.label === messages.upgradeStatus
-                  ? rows.map((row) => h('span', slots.default?.({ row })))
-                  : []
-              )
-        })
-      );
-      const html = await renderToString(app);
-      expect(html).toContain(messages.upgradePendingConfirmation);
-      expect(html).toContain(messages.upgradeInProgressOnline);
-      expect(html).not.toContain(messages.upgradeWaitingLong);
-      expect(html).toContain(messages.upgradeProgressInterrupted);
-      expect(html).toContain(messages.upgradeCompleted);
-      expect(html).toContain('1.2.3');
-      expect(html).not.toContain('123');
-      expect(html).toContain('456');
+      try {
+        await flushComponent();
+        const text = textContent(view.findAll('MarTable')[0]!);
+        expect(text).toContain(messages.upgradePendingConfirmation);
+        expect(text).toContain(messages.upgradeInProgressOnline);
+        expect(text).not.toContain(messages.upgradeWaitingLong);
+        expect(text).toContain(messages.upgradeProgressInterrupted);
+        expect(text).toContain(messages.upgradeCompleted);
+        expect(text).toContain('1.2.3');
+        expect(text).not.toContain('123');
+        expect(text).toContain('456');
+      } finally {
+        view.unmount();
+      }
     }
   );
   it('owns resource and hosting flows without enterprise ownership policy', () => {
@@ -146,16 +138,16 @@ describe('Public resource management', () => {
       );
       const buttons = (label: string) =>
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => textContent(node).trim().toLowerCase() === label.toLowerCase())!;
       try {
         await flushComponent();
         await trigger(buttons('Register Node'), 'onClick');
-        const form = view.findAll('ElForm')[0]!;
-        const input = view.findAll('ElInput').find((node) => node.props['maxlength'] === '128')!;
+        const form = view.findAll('MarForm')[0]!;
+        const input = view.findAll('MarInput').find((node) => node.props['maxlength'] === '128')!;
         await trigger(input, 'onUpdate:modelValue', '  Fixture Node  ');
-        expect(view.findAll('ElDialog')).toHaveLength(1);
-        expect(view.findAll('ElLink')).toHaveLength(0);
+        expect(view.findAll('MarDialog')).toHaveLength(1);
+        expect(view.findAll('MarLink')).toHaveLength(0);
         const submit = buttons('Create registration key');
         const saving = trigger(submit, 'onClick');
         await flushComponent();
@@ -167,18 +159,18 @@ describe('Public resource management', () => {
         });
         complete({ token: 'fixture-registration-key' });
         await saving;
-        expect(view.findAll('ElForm')).toHaveLength(0);
+        expect(view.findAll('MarForm')).toHaveLength(0);
         expect(textContent(view.root)).toContain('fixture-registration-key');
         expect(textContent(view.root)).toContain(
           commonMessages['en-US'].generated.resourceSharingPage.registrationTokenInstructions
         );
-        expect(view.findAll('ElLink')).toHaveLength(documentationAvailable ? 1 : 0);
+        expect(view.findAll('MarLink')).toHaveLength(documentationAvailable ? 1 : 0);
         if (documentationAvailable)
-          expect(view.findAll('ElLink')[0]?.props['href']).toContain(
+          expect(view.findAll('MarLink')[0]?.props['href']).toContain(
             '/deployment/node-installation'
           );
-        await trigger(view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
-        expect(view.findAll('ElDialog')).toHaveLength(0);
+        await trigger(view.findAll('MarDialog')[0]!, 'onUpdate:modelValue', false);
+        expect(view.findAll('MarDialog')).toHaveLength(0);
         expect(textContent(view.root)).not.toContain('fixture-registration-key');
       } finally {
         complete({ token: 'fixture-registration-key' });
@@ -203,7 +195,7 @@ describe('Public resource management', () => {
     'renders the current Node application version and unknown fallback only for Nodes in %s',
     async (locale) => {
       vi.stubGlobal('window', {
-        matchMedia: () => ({ matches: false }),
+        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
         location: { search: '', href: 'http://localhost/console' }
       });
       i18n.global.locale.value = locale;
@@ -213,50 +205,26 @@ describe('Public resource management', () => {
         { nodeVersion: 'v22.20.0' }
       ];
       for (const component of [NodePage, WorkspacePage]) {
-        const request = vi.fn(async <T>() => ({}) as T);
-        const app = createSSRApp({ render: () => h(component, { request, writable: true }) });
-        app.use(i18n).use(ElementPlus);
-        app.provide(ID_INJECTION_KEY, { prefix: 944, current: 0 });
-        app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
-        // Render column slots with representative rows without mounting a browser table.
-        app.component(
-          'el-table',
-          defineComponent({
-            setup:
-              (_, { slots }) =>
-              () =>
-                h('div', slots.default?.())
-          })
-        );
-        app.component(
-          'el-table-column',
-          defineComponent({
-            props: ['prop', 'label'],
-            setup:
-              (props, { slots }) =>
-              () =>
-                h('section', [
-                  h('h3', props.label),
-                  ...(props.prop === 'nodeAppVersion'
-                    ? rows.map((row) => h('span', slots.default?.({ row })))
-                    : [])
-                ])
-          })
-        );
-        const html = await renderToString(app);
-        if (component === NodePage) {
-          expect(html).toContain(messages.resourceSharingPage.currentVersion);
-          expect(html).toContain('0.10.24');
-          expect(html).toContain(messages.nodeDetailsDialogs.unknown);
-          expect(html.indexOf(messages.resourceSharingPage.currentVersion)).toBeLessThan(
-            html.indexOf(messages.resourceSharingPage.upgradeStatus)
-          );
-        } else {
-          expect(html).not.toContain(messages.resourceSharingPage.currentVersion);
-          expect(html).not.toContain('0.10.24');
+        const request = vi.fn(async <T>() => resourcePage(component === NodePage ? rows : []) as T);
+        const view = renderComponent(component, { request, writable: true });
+        try {
+          await flushComponent();
+          const text = textContent(view.findAll('MarTable')[0]!);
+          if (component === NodePage) {
+            expect(text).toContain(messages.resourceSharingPage.currentVersion);
+            expect(text).toContain('0.10.24');
+            expect(text).toContain(messages.nodeDetailsDialogs.unknown);
+            expect(text.indexOf(messages.resourceSharingPage.currentVersion)).toBeLessThan(
+              text.indexOf(messages.resourceSharingPage.upgradeStatus)
+            );
+          } else {
+            expect(text).not.toContain(messages.resourceSharingPage.currentVersion);
+            expect(text).not.toContain('0.10.24');
+          }
+          expect(text).not.toContain('v22.20.0');
+        } finally {
+          view.unmount();
         }
-        expect(html).not.toContain('v22.20.0');
-        expect(request).not.toHaveBeenCalled();
       }
     }
   );

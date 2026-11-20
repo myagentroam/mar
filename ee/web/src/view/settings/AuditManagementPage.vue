@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
+import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -8,7 +15,6 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import MarIcon from '@myagentroam/web-core/MarIcon.vue';
 import { marIcon } from '@myagentroam/web-core/icons';
-import type { TagProps } from 'element-plus';
 import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import {
@@ -363,14 +369,13 @@ onBeforeUnmount(closeDetail);
 
 <template>
   <section
-    v-loading="loading && !pageReady && !pagination.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !pageReady && !pagination.failure.value"
     class="mar-management-page audit-management"
   >
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.auditManagementPage.timeRange') }}</span
-        ><el-date-picker
+        ><MarDatePicker
           v-model="range"
           type="datetimerange"
           :clearable="false"
@@ -384,23 +389,22 @@ onBeforeUnmount(closeDetail);
           ><template #prev-month><MarIcon name="chevron-left" /></template
           ><template #next-month><MarIcon name="chevron-right" /></template
           ><template #prev-year><MarIcon name="chevrons-left" /></template
-          ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
+          ><template #next-year><MarIcon name="chevrons-right" /></template></MarDatePicker
       ></label>
     </div>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.auditManagementPage.refresh') }}</el-button
+        >{{ translate('generated.auditManagementPage.refresh') }}</MarButton
       >
-      <el-button tag="a" :icon="marIcon('download')" :href="exportUrl">{{
+      <MarButton tag="a" :icon="marIcon('download')" :href="exportUrl">{{
         translate('generated.auditManagementPage.exportCSV')
-      }}</el-button>
+      }}</MarButton>
     </div>
-    <el-table
-      v-loading="
+    <MarTable
+      v-mar-loading:region="
         loading &&
         pageReady &&
         !pagination.loadingMore.value &&
@@ -412,30 +416,30 @@ onBeforeUnmount(closeDetail);
       row-key="id"
       @row-click="openDetail"
     >
-      <el-table-column :label="translate('generated.auditManagementPage.time')" min-width="180"
+      <MarTableColumn :label="translate('generated.auditManagementPage.time')" min-width="180"
         ><template #default="{ row }">{{
           auditTimestamp(row.occurredAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column :label="translate('audit.target')" min-width="180">
+      <MarTableColumn :label="translate('audit.target')" min-width="180">
         <template #default="{ row }">{{ row.targetName || row.targetId || '—' }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('generated.auditManagementPage.event')" min-width="220"
-        ><template #default="{ row }">{{ operationLabel(row) }}</template></el-table-column
+      </MarTableColumn>
+      <MarTableColumn :label="translate('generated.auditManagementPage.event')" min-width="220"
+        ><template #default="{ row }">{{ operationLabel(row) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         prop="actorUsername"
         :label="translate('generated.auditManagementPage.actor')"
         min-width="130"
       />
-      <el-table-column :label="translate('generated.auditManagementPage.result')" width="100"
+      <MarTableColumn :label="translate('generated.auditManagementPage.result')" width="100"
         ><template #default="{ row }">
-          <el-tag :type="resultType(row.result)" effect="plain">{{
+          <MarTag :type="resultType(row.result)" effect="plain">{{
             resultLabel(row.result)
-          }}</el-tag>
-        </template></el-table-column
+          }}</MarTag>
+        </template></MarTableColumn
       >
-    </el-table>
+    </MarTable>
     <ManagementPagination
       :total="pagination.total.value"
       :page="pagination.page.value"
@@ -453,7 +457,7 @@ onBeforeUnmount(closeDetail);
       @page="pagination.setPage"
       @load-more="pagination.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="selected !== undefined"
@@ -462,71 +466,70 @@ onBeforeUnmount(closeDetail);
       width="min(720px, calc(100vw - 32px))"
       @close="closeDetail"
       @update:model-value="closeDetail"
-      :close-icon="marIcon('close')"
     >
-      <el-descriptions
+      <MarDescriptions
         v-if="selected"
-        v-loading="detailLoading"
+        v-mar-loading:region="detailLoading"
         class="mar-detail-descriptions"
         :column="1"
         border
       >
-        <el-descriptions-item :label="translate('generated.auditManagementPage.auditEventId')">
+        <MarDescriptionsItem :label="translate('generated.auditManagementPage.auditEventId')">
           <code>{{ selected.id }}</code>
-        </el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.auditManagementPage.event2')">{{
+        </MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.auditManagementPage.event2')">{{
           operationLabel(selected)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.auditManagementPage.time2')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.auditManagementPage.time2')">{{
           auditTimestamp(selected.occurredAt)
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.auditManagementPage.actor2')">{{
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.auditManagementPage.actor2')">{{
           namedAuditIdentifier(selected.actorUserId, selected.actorUsername) ?? '—'
-        }}</el-descriptions-item>
-        <el-descriptions-item :label="translate('generated.auditManagementPage.authentication2')"
+        }}</MarDescriptionsItem>
+        <MarDescriptionsItem :label="translate('generated.auditManagementPage.authentication2')"
           >{{ authenticationLabels[selected.authenticationMethod] ?? selected.authenticationMethod
-          }}{{ selected.providerId ? ` · ${selected.providerId}` : '' }}</el-descriptions-item
+          }}{{ selected.providerId ? ` · ${selected.providerId}` : '' }}</MarDescriptionsItem
         >
-        <el-descriptions-item :label="translate('generated.auditManagementPage.result2')">
-          <el-tag :type="resultType(selected.result)" effect="plain">{{
+        <MarDescriptionsItem :label="translate('generated.auditManagementPage.result2')">
+          <MarTag :type="resultType(selected.result)" effect="plain">{{
             resultLabel(selected.result)
-          }}</el-tag>
+          }}</MarTag>
           <template v-if="selected.result !== 'SUCCESS' && selected.errorCode">
             · {{ translate('generated.auditManagementPage.errorCode') }}:
             <code>{{ errorLabel(selected.errorCode) }}</code>
           </template>
-        </el-descriptions-item>
-        <el-descriptions-item
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="selected.conversationPayload"
           :label="translate('generated.auditManagementPage.userMessage')"
         >
           <pre>{{ selected.conversationPayload.userMessage }}</pre>
-        </el-descriptions-item>
+        </MarDescriptionsItem>
         <template v-for="field in detailFields" :key="field.key">
-          <el-descriptions-item
+          <MarDescriptionsItem
             v-if="detailValue(selected, field.key) !== undefined"
             :label="field.label"
-            >{{ detailValue(selected, field.key) }}</el-descriptions-item
+            >{{ detailValue(selected, field.key) }}</MarDescriptionsItem
           >
         </template>
-        <el-descriptions-item v-if="changes.length" :label="translate('audit.changes')">
-          <el-table :data="changes">
-            <el-table-column prop="field" :label="translate('audit.field')" />
-            <el-table-column prop="before" :label="translate('audit.before')" />
-            <el-table-column prop="after" :label="translate('audit.after')" />
-          </el-table>
-        </el-descriptions-item>
-        <el-descriptions-item
+        <MarDescriptionsItem v-if="changes.length" :label="translate('audit.changes')">
+          <MarTable :data="changes">
+            <MarTableColumn prop="field" :label="translate('audit.field')" />
+            <MarTableColumn prop="before" :label="translate('audit.before')" />
+            <MarTableColumn prop="after" :label="translate('audit.after')" />
+          </MarTable>
+        </MarDescriptionsItem>
+        <MarDescriptionsItem
           v-if="Object.keys(selected.metadata || {}).length > 0"
           :label="translate('common.metadata')"
         >
           <pre>{{ JSON.stringify(selected.metadata || {}, null, 2) }}</pre>
-        </el-descriptions-item>
-      </el-descriptions>
+        </MarDescriptionsItem>
+      </MarDescriptions>
       <template #footer>
-        <el-button @click="closeDetail">{{ translate('common.close') }}</el-button>
+        <MarButton @click="closeDetail">{{ translate('common.close') }}</MarButton>
       </template>
-    </el-dialog>
+    </MarDialog>
   </section>
 </template>
 
@@ -542,7 +545,7 @@ onBeforeUnmount(closeDetail);
 .mar-management-page .mar-filter-field > .audit-range-picker {
   width: min(430px, 100%);
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 pre {
@@ -550,8 +553,8 @@ pre {
   white-space: pre-wrap;
   font-size: var(--mar-font-size-meta);
 }
-:global(.audit-management .el-dialog .el-descriptions__label) {
-  width: 150px;
+:global(.audit-management .mar-ui-dialog .mar-ui-descriptions) {
+  --mar-ui-descriptions-label-width: 150px;
 }
 
 @media (max-width: 767px) {

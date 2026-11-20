@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarPopover } from '@myagentroam/mar-ui/popover';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { formatDateTime } from '../../util/time-presentation.js';
@@ -76,7 +78,7 @@ onBeforeUnmount(props.diagnostics.dispose);
 </script>
 
 <template>
-  <el-popover
+  <MarPopover
     placement="right-end"
     popper-class="mar-content-popover"
     :trigger="['hover', 'focus']"
@@ -98,7 +100,7 @@ onBeforeUnmount(props.diagnostics.dispose);
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
-          <el-button
+          <MarButton
             v-tooltip="t('performanceDiagnostics.copy')"
             class="mar-icon-action"
             text
@@ -106,7 +108,7 @@ onBeforeUnmount(props.diagnostics.dispose);
             @click="copyDiagnostics"
           >
             <MarIcon name="copy" />
-          </el-button>
+          </MarButton>
         </div>
       </header>
       <dl>
@@ -174,7 +176,7 @@ onBeforeUnmount(props.diagnostics.dispose);
       </dl>
       <p>{{ t('performanceDiagnostics.scopeHint') }}</p>
     </section>
-  </el-popover>
+  </MarPopover>
 </template>
 
 <style scoped>

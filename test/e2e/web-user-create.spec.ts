@@ -62,10 +62,10 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     );
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.goto(`${fixture.url}?locale=en-US&page=${view}`);
-    const row = page.locator('.el-table').getByRole('row').filter({ hasText: name });
+    const row = page.locator('.mar-ui-table').getByRole('row').filter({ hasText: name });
     const actionCell = row.getByRole('cell').last();
     const detail = page.getByRole('dialog', { name: title, exact: true });
-    await expect(actionCell).toHaveCSS('width', `${desktopWidth}px`);
+    await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect
@@ -88,7 +88,7 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     await expect(detail).toContainText(name);
 
     await page.setViewportSize({ width: 1280, height: 844 });
-    await expect(actionCell).toHaveCSS('width', `${desktopWidth}px`);
+    await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
   });
 }
 
@@ -169,18 +169,18 @@ for (const [locale, width] of [
       await expect(username).toHaveValue('');
       await expect(email).toHaveValue('');
       await expect(nickname).toHaveValue('');
-      await expect(ui.dialog.locator('.el-form-item__error')).toHaveCount(0);
+      await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveCount(0);
       await username.fill('discarded');
       await email.fill('invalid-email');
       await nickname.fill('Discarded nickname');
       await ui.dialog
         .getByRole('button', { name: locale === 'en-US' ? 'Create user' : '创建用户', exact: true })
         .click();
-      await expect(ui.dialog.locator('.el-form-item__error')).toHaveText([
+      await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText([
         locale === 'en-US' ? 'Enter a valid email address' : '请输入有效邮箱'
       ]);
       expect(ui.writes).toHaveLength(0);
-      expect((await ui.dialog.locator('.el-dialog').boundingBox())!.width).toBeLessThanOrEqual(
+      expect((await ui.dialog.locator('.mar-ui-dialog').boundingBox())!.width).toBeLessThanOrEqual(
         width - 32
       );
       if (close === 'cancel')
@@ -188,14 +188,14 @@ for (const [locale, width] of [
           .getByRole('button', { name: locale === 'en-US' ? 'Cancel' : '取消', exact: true })
           .click();
       else if (close === 'escape') await page.keyboard.press('Escape');
-      else if (close === 'icon') await ui.dialog.locator('.el-dialog__headerbtn').click();
+      else if (close === 'icon') await ui.dialog.locator('.mar-ui-dialog__close').click();
       else await page.mouse.click(4, 4);
       await expect(ui.dialog).toHaveCount(0);
       await expect(ui.create).toBeFocused();
       if (close === 'escape') await expect(ui.create).toHaveCSS('outline-style', 'none');
     }
     await ui.create.click();
-    await expect(ui.dialog.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveCount(0);
   });
 }
 
@@ -211,17 +211,17 @@ test('Registered users form retains its existing validation and optional role/or
   await expect(ui.dialog.getByRole('combobox', { name: 'Role' })).toBeVisible();
   await expect(ui.dialog.getByRole('textbox', { name: 'Organization' })).toHaveValue('Root');
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText(['Enter a username']);
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText(['Enter a username']);
   await username.fill('   ');
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText(['Enter a username']);
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText(['Enter a username']);
   await username.fill('u'.repeat(81));
   const boundaryEmail =
     'a'.repeat(64) + '@' + 'b'.repeat(63) + '.' + 'c'.repeat(63) + '.' + 'd'.repeat(61);
   await email.fill(boundaryEmail + 'd');
   await nickname.fill('n'.repeat(81));
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText([
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText([
     'The username cannot exceed 80 characters',
     'The email address cannot exceed 254 characters',
     'The display name cannot exceed 80 characters'
@@ -231,7 +231,7 @@ test('Registered users form retains its existing validation and optional role/or
   await email.fill('not-an-email');
   await nickname.fill('');
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText([
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText([
     'Enter a valid email address'
   ]);
   expect(ui.writes).toHaveLength(0);
@@ -284,7 +284,7 @@ test('Registered users form preserves failures for correction and delivers succe
   const username = ui.dialog.getByRole('textbox', { name: 'Username' });
   await username.fill('duplicate');
   await ui.dialog.getByRole('button', { name: 'Create user', exact: true }).click();
-  await expect(page.locator('.el-message--error')).toContainText('Username already exists');
+  await expect(page.locator('.mar-message--error')).toContainText('Username already exists');
   await expect(username).toHaveValue('duplicate');
   ui.respond(async () => ({
     status: 201,
@@ -296,7 +296,7 @@ test('Registered users form preserves failures for correction and delivers succe
   const receipt = page.getByRole('dialog', { name: 'User Created' });
   await expect(receipt).toContainText('returned-user');
   await expect(receipt).toContainText('corrected-user-password');
-  await expect(page.locator('.el-table')).toContainText('corrected');
+  await expect(page.locator('.mar-ui-table')).toContainText('corrected');
   expect(ui.writes).toHaveLength(2);
 });
 
@@ -322,7 +322,7 @@ for (const outcome of ['success', 'failure'] as const) {
     await ui.dialog.getByRole('textbox', { name: 'Username' }).fill('old-user');
     await ui.dialog.getByRole('button', { name: 'Create user', exact: true }).click();
     await expect.poll(() => ui.writes.length).toBe(1);
-    await ui.dialog.locator('.el-dialog__headerbtn').click();
+    await ui.dialog.locator('.mar-ui-dialog__close').click();
     await expect(ui.dialog).toHaveCount(0);
     await ui.create.click();
     const username = ui.dialog.getByRole('textbox', { name: 'Username' });
@@ -341,7 +341,7 @@ for (const outcome of ['success', 'failure'] as const) {
     }
     await expect(username).toHaveValue('next-user');
     await expect(ui.dialog.getByRole('button', { name: 'Create user', exact: true })).toBeEnabled();
-    await expect(page.locator('.el-message--error')).toHaveCount(0);
+    await expect(page.locator('.mar-message--error')).toHaveCount(0);
     expect(ui.writes).toHaveLength(1);
   });
 }
@@ -369,7 +369,7 @@ test('Registered users refreshes the saved row without closing the next edit dra
     await route.fulfill({ json: { user: users[0] } });
   });
   const row = (username: string) =>
-    page.locator('.el-table').getByRole('row').filter({ hasText: username });
+    page.locator('.mar-ui-table').getByRole('row').filter({ hasText: username });
   const dialog = page.getByRole('dialog', { name: 'Edit User', exact: true });
   const name = dialog.getByRole('textbox', { name: 'Display Name' });
   try {
@@ -380,7 +380,7 @@ test('Registered users refreshes the saved row without closing the next edit dra
     );
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await patch).postDataJSON()).toMatchObject({ nickname: 'Alice saved' });
-    await dialog.locator('.el-dialog__headerbtn').click();
+    await dialog.locator('.mar-ui-dialog__close').click();
     await expect(dialog).toHaveCount(0);
     await row('bob').getByRole('button', { name: 'Edit', exact: true }).click();
     await name.fill('Bob draft');
@@ -541,11 +541,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       const ui = await preparePersonalCredentials(page, locale, behavior);
       await ui.copy.click();
 
-      const errorMessage = page.locator('.el-message--error');
+      const errorMessage = page.locator('.mar-message--error');
       await expect(errorMessage).toHaveCount(1);
-      await expect(errorMessage.locator('.el-message__content')).toHaveText(
-        manualCopyMessage[locale]
-      );
+      await expect(errorMessage.locator('.mar-message-text')).toHaveText(manualCopyMessage[locale]);
       await expect(ui.credentials).toBeVisible();
       await expect(ui.credentials.locator('.credential-result dd')).toHaveText([
         'fixture-user',
@@ -585,6 +583,16 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     page
   }) => {
     const ui = await preparePersonalCredentials(page, locale, 'succeeds');
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-control-fill-color-light', '#dde9f6');
+      element.style.setProperty('--mar-border-default', '#a6b7cc');
+    });
+    const values = ui.credentials.locator('.credential-result dd');
+    await expect(values).toHaveText(['fixture-user', 'fixture-temporary-password']);
+    for (const value of await values.all()) {
+      await expect(value).toHaveCSS('background-color', 'rgb(221, 233, 246)');
+      await expect(value).toHaveCSS('border-top-color', 'rgb(166, 183, 204)');
+    }
     await ui.copy.click();
     const expectedPayload =
       locale === 'en-US'
@@ -595,11 +603,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(clipboard.copiedText).toBe(expectedPayload);
     expect(clipboard.unhandledRejections).toBe(0);
     expect(ui.pageErrors()).toBe(0);
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(page.locator('.mar-ui-message')).toHaveCount(0);
     await expect(ui.credentials).toBeVisible();
     expect(ui.writes).toHaveLength(1);
 
-    await ui.credentials.locator('.el-dialog__headerbtn').click();
+    await ui.credentials.locator('.mar-ui-dialog__close').click();
     await expect(ui.credentials).toHaveCount(0);
     await page
       .locator('.mar-table-actions')

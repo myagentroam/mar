@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { getCurrentInstance, onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
@@ -52,13 +55,13 @@ const releaseRunShortcuts = registerComposerShortcuts({
 onBeforeUnmount(releaseRunShortcuts);
 getCurrentInstance()!.appContext.app.mixin({
   created() {
-    if (this.$options.name === 'ElTooltip') {
+    if (this.$options.name === 'MarTooltip') {
       live.value++;
       created.value++;
     }
   },
   unmounted() {
-    if (this.$options.name === 'ElTooltip') live.value--;
+    if (this.$options.name === 'MarTooltip') live.value--;
   }
 });
 </script>
@@ -92,18 +95,18 @@ getCurrentInstance()!.appContext.app.mixin({
       Open mobile sidebar
     </button>
     <aside v-if="mobileSidebarOpen" ref="mobileSidebar" aria-label="Mobile sidebar" tabindex="-1">
-      <el-dropdown trigger="click" @command="menuActions++">
+      <MarDropdown trigger="click" @command="menuActions++">
         <button>Mobile sidebar menu</button>
         <template #dropdown>
           <div v-tooltip="'Mobile menu action details'">
-            <el-dropdown-menu>
-              <el-dropdown-item command="action">Mobile menu action</el-dropdown-item>
-            </el-dropdown-menu>
+            <MarDropdownMenu>
+              <MarDropdownItem command="action">Mobile menu action</MarDropdownItem>
+            </MarDropdownMenu>
           </div>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </aside>
-    <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Escape ownership">
+    <MarDialog v-if="dialogOpen" v-model="dialogOpen" title="Escape ownership">
       <input
         v-if="editing"
         v-tooltip="'Cancel editing with Escape'"
@@ -112,22 +115,22 @@ getCurrentInstance()!.appContext.app.mixin({
       />
       <output v-else data-testid="edit-cancelled">Edit cancelled</output>
       <div v-tooltip="'Select details'">
-        <el-select v-model="selection" aria-label="Escape select" filterable>
-          <el-option label="One" value="one" />
-          <el-option label="Two" value="two" />
-        </el-select>
+        <MarSelect v-model="selection" aria-label="Escape select" filterable>
+          <MarOption label="One" value="one" />
+          <MarOption label="Two" value="two" />
+        </MarSelect>
       </div>
-      <el-dropdown trigger="click" @command="menuActions++">
+      <MarDropdown trigger="click" @command="menuActions++">
         <button>Escape menu</button>
         <template #dropdown>
           <div v-tooltip="'Menu action details'">
-            <el-dropdown-menu>
-              <el-dropdown-item command="action">Menu action</el-dropdown-item>
-            </el-dropdown-menu>
+            <MarDropdownMenu>
+              <MarDropdownItem command="action">Menu action</MarDropdownItem>
+            </MarDropdownMenu>
           </div>
         </template>
-      </el-dropdown>
-    </el-dialog>
+      </MarDropdown>
+    </MarDialog>
     <div
       v-if="mounted"
       v-show="shown"

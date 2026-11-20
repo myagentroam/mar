@@ -15,7 +15,7 @@ export function createMobileSurfaceFocusService(options: {
   function hasModal(): boolean {
     return [
       ...document.querySelectorAll(
-        '.el-overlay-dialog, .el-overlay-message-box, .workspace-file-tabs, .workspace-file-page-frame.is-fullscreen'
+        '.mar-ui-dialog-overlay[open], .workspace-file-tabs, .workspace-file-page-frame.is-fullscreen'
       )
     ].some(
       (element) =>
@@ -86,9 +86,7 @@ export function createMobileSurfaceFocusService(options: {
       event
         .composedPath()
         .some(
-          (target) =>
-            target instanceof Element &&
-            target.matches('.el-overlay-dialog, .el-overlay-message-box')
+          (target) => target instanceof Element && target.matches('.mar-ui-dialog-overlay[open]')
         )
     )
       return;

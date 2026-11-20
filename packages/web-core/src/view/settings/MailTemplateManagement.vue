@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,7 +13,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/locale-preference-service';
 import {
   createMailTemplateManagementService,
@@ -109,10 +114,10 @@ async function sendTest(): Promise<void> {
 </script>
 
 <template>
-  <el-button :icon="marIcon('mail')" @click="openViewer">
+  <MarButton :icon="marIcon('mail')" @click="openViewer">
     {{ translate('generated.systemConfigurationPage.mailTemplateView') }}
-  </el-button>
-  <el-dialog
+  </MarButton>
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="viewerOpen"
@@ -120,9 +125,8 @@ async function sendTest(): Promise<void> {
     append-to-body
     :title="translate('generated.systemConfigurationPage.mailTemplates')"
     width="min(780px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
   >
-    <div v-loading="service.loading.value" class="template-viewer">
+    <div v-mar-loading:region="service.loading.value" class="template-viewer">
       <p class="template-description">
         {{ translate('generated.systemConfigurationPage.mailTemplateBuiltIn') }}
       </p>
@@ -156,7 +160,7 @@ async function sendTest(): Promise<void> {
             <span class="template-choice__subject">{{ template.subject }}</span>
           </button>
         </div>
-        <div v-if="selected" v-loading="previewing" class="template-preview">
+        <div v-if="selected" v-mar-loading:region="previewing" class="template-preview">
           <div class="template-preview__header">
             <span>{{ translate('generated.systemConfigurationPage.mailPreviewSample') }}</span>
             <span class="template-preview__locale">{{ selected.locale }}</span>
@@ -188,16 +192,16 @@ async function sendTest(): Promise<void> {
       </p>
     </div>
     <template #footer>
-      <el-button
+      <MarButton
         :disabled="!writable || testTemplates.length === 0 || service.busy.value"
         @click="openTest"
       >
         {{ translate('generated.systemConfigurationPage.mailTest') }}
-      </el-button>
-      <el-button @click="viewerOpen = false">{{ translate('common.close') }}</el-button>
+      </MarButton>
+      <MarButton @click="viewerOpen = false">{{ translate('common.close') }}</MarButton>
     </template>
-  </el-dialog>
-  <el-dialog
+  </MarDialog>
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="testOpen"
@@ -205,54 +209,45 @@ async function sendTest(): Promise<void> {
     append-to-body
     :title="translate('generated.systemConfigurationPage.mailTest')"
     width="min(480px, calc(100vw - 32px))"
-    :close-icon="marIcon('close')"
   >
-    <el-form ref="testForm" :model="testModel" :rules="testRules" label-position="top">
-      <el-form-item
-        :label="translate('generated.systemConfigurationPage.mailAddress')"
-        prop="email"
-      >
-        <el-input v-model="testAddress" type="email" />
-      </el-form-item>
-      <el-form-item
+    <MarForm ref="testForm" :model="testModel" :rules="testRules" label-position="top">
+      <MarFormItem :label="translate('generated.systemConfigurationPage.mailAddress')" prop="email">
+        <MarInput v-model="testAddress" type="email" />
+      </MarFormItem>
+      <MarFormItem
         :label="translate('generated.systemConfigurationPage.mailTemplate')"
         prop="templateId"
       >
-        <el-select
+        <MarSelect
           v-model="testTemplateId"
           class="template-test-select"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="template in testTemplates"
             :key="template.id"
             :value="template.id"
             :label="template.name"
           />
-        </el-select>
-      </el-form-item>
-    </el-form>
+        </MarSelect>
+      </MarFormItem>
+    </MarForm>
     <template #footer>
-      <el-button @click="testOpen = false">{{ translate('common.cancel') }}</el-button>
-      <el-button
-        type="primary"
-        :loading="service.busy.value"
-        @click="sendTest"
-        :loading-icon="marIcon('loading-action')"
-      >
+      <MarButton @click="testOpen = false">{{ translate('common.cancel') }}</MarButton>
+      <MarButton type="primary" :loading="service.busy.value" @click="sendTest">
         {{ translate('generated.systemConfigurationPage.mailTestSend') }}
-      </el-button>
+      </MarButton>
     </template>
-  </el-dialog>
+  </MarDialog>
 </template>
 
 <style scoped>
 .template-description {
   margin: 0 0 14px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   line-height: 1.55;
-  border-left: 2px solid var(--el-color-primary);
+  border-left: 2px solid var(--mar-color-brand);
   padding-left: 12px;
 }
 .template-layout {
@@ -271,10 +266,10 @@ async function sendTest(): Promise<void> {
   flex-direction: column;
   gap: 7px;
   width: 100%;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--mar-input-border);
   border-radius: var(--mar-radius-selection);
   padding: 13px 14px;
-  background: var(--el-fill-color-blank);
+  background: var(--mar-bg-panel);
   color: var(--mar-text-secondary);
   text-align: left;
   cursor: pointer;
@@ -294,7 +289,7 @@ async function sendTest(): Promise<void> {
   background: var(--mar-fill-selection);
 }
 .template-choice:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .template-choice__meta,
@@ -329,7 +324,7 @@ async function sendTest(): Promise<void> {
   align-items: center;
   justify-content: space-between;
   min-height: 25px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .template-preview__locale {
@@ -353,7 +348,7 @@ async function sendTest(): Promise<void> {
   overflow-wrap: anywhere;
 }
 .template-preview__fallback span {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .template-preview__fallback p {

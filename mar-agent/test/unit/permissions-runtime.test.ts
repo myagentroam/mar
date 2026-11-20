@@ -274,11 +274,11 @@ describe('Auto execution and ordinary-message continuation', () => {
             call(
               'start-child',
               {
-                prompt: 'Inspect shared target; the real user has not authorized writes.',
+                content: 'Inspect shared target; the real user has not authorized writes.',
                 title: 'Inspect target',
                 description: 'Inspect target',
                 modelId: 'test',
-                reasoningEffort: 'medium',
+                effort: 'medium',
                 role: 'general-purpose'
               },
               'agent_start'
@@ -320,8 +320,11 @@ describe('Auto execution and ordinary-message continuation', () => {
       throw new Error(
         `Missing child receipts: ${JSON.stringify(events.filter((event) => event.type === 'tool.failed'))}`
       );
-    expect(JSON.parse(wait.summary)).toMatchObject({ permissionStop: { action: 'ask' } });
     const childId = (JSON.parse(start.summary) as { agentId: string }).agentId;
+    expect(JSON.parse(wait.summary)).toMatchObject({
+      waitOutcome: 'completion',
+      agents: [{ agentId: childId, permissionStop: { action: 'ask' } }]
+    });
     const childHistory = await f.agent.sessionHistory(childId);
     expect(childHistory.entries).toEqual(
       expect.arrayContaining([

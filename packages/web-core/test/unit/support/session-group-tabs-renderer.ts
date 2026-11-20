@@ -100,7 +100,7 @@ export function mountSessionGroupTestComponent(
   app.use(i18n);
   app.provide(ssrContextKey, { modules: new Set<string>() });
   app.directive('tooltip', {});
-  for (const name of ['el-badge', 'el-tag'])
+  for (const name of ['el-badge'])
     app.component(
       name,
       defineComponent({

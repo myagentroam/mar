@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import Page from '../../src/view/settings/SystemConfigurationPage.vue?unit-render';
 import { createSystemConfigurationService } from '../../src/service/system-configuration-service.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -85,7 +85,7 @@ describe('Public system configuration page', () => {
         const content = textContent(view.root);
         expect(content).toContain(messages.disableSkillSourceTLSVerification);
         expect(content).toContain(messages.keepThisOffByDefaultUseIt);
-        expect(view.findAll('ElAlert')).toHaveLength(0);
+        expect(view.findAll('MarAlert')).toHaveLength(0);
         expect(request).toHaveBeenCalledExactlyOnceWith('/api/system-settings');
       } finally {
         view.unmount();
@@ -121,7 +121,7 @@ describe('Public system configuration page', () => {
     const view = renderComponent(Page, { request, writable: false, settings });
     try {
       await flushComponent();
-      const tableRows = view.findAll('ElTable')[0]?.props['data'] as { key: string }[];
+      const tableRows = view.findAll('MarTable')[0]?.props['data'] as { key: string }[];
       expect(tableRows.map(({ key }) => key)).toEqual([
         ...settings.map(({ key }) => key),
         'mar-agent-resource-input',
@@ -131,7 +131,7 @@ describe('Public system configuration page', () => {
         'skill-tls'
       ]);
       expect(textContent(view.root)).toContain('https://preview.example.com');
-      expect(view.findAll('ElPagination')).toHaveLength(0);
+      expect(view.findAll('MarPagination')).toHaveLength(0);
       expect(request).toHaveBeenCalledWith('/api/system-settings');
       expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
@@ -149,8 +149,8 @@ describe('Public system configuration page', () => {
     };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+
+    const error = feedback.error;
     let failSave = true;
     const snapshot = {
       smtpConfiguration: '{}',
@@ -179,29 +179,30 @@ describe('Public system configuration page', () => {
     ];
     const view = renderComponent(Page, { request, writable: true, settings });
     const button = (label: string) =>
-      view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+      view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
+    const toggle = () => view.findAll('input').find((node) => node.props['role'] === 'switch')!;
     try {
       await flushComponent();
       await trigger(button('Edit'), 'onClick');
-      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(toggle(), 'onChange', { currentTarget: { checked: false } });
       await trigger(button('Cancel'), 'onClick');
       expect(request).toHaveBeenCalledTimes(1);
-      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(true);
+      expect(toggle().props['checked']).toBe(true);
       await trigger(button('Edit'), 'onClick');
-      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(toggle(), 'onChange', { currentTarget: { checked: false } });
       await trigger(button('Save'), 'onClick');
       expect(error).toHaveBeenCalledOnce();
-      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      expect(toggle().props['checked']).toBe(false);
       failSave = false;
       await trigger(button('Save'), 'onClick');
       expect(request).toHaveBeenLastCalledWith('/api/system-settings/extension%2Fsetting', {
         method: 'PATCH',
         body: JSON.stringify({ value: false })
       });
-      expect(view.findAll('ElButton').some((node) => textContent(node).trim() === 'Save')).toBe(
+      expect(view.findAll('MarButton').some((node) => textContent(node).trim() === 'Save')).toBe(
         false
       );
-      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      expect(toggle().props['checked']).toBe(false);
       expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
@@ -210,3 +211,14 @@ describe('Public system configuration page', () => {
     }
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

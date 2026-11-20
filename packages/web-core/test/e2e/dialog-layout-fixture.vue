@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { h, onMounted, ref } from 'vue';
 import type { NodeSummary } from '../../src/model/node.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
@@ -15,7 +21,7 @@ import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vu
 import { createWorkspaceFilesController } from '../../src/service/workspace-files-controller.js';
 import { createWorkspaceFileOperationService } from '../../src/service/workspace-file-operation-service.js';
 import { createScopedHttpService } from '../../src/service/scoped-http-service.js';
-import { ElMessageBox } from '../../src/service/message-box-service.js';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 
 const kind = new URLSearchParams(location.search).get('kind') ?? 'workspace';
 const open = ref(false);
@@ -156,7 +162,7 @@ const sidebarProps = {
 };
 
 function showMessageBox(): void {
-  void ElMessageBox.confirm(
+  void MarMessageBox.confirm(
     h(
       'div',
       entries.map((entry) => h('p', entry.description))
@@ -284,7 +290,7 @@ function showMessageBox(): void {
     />
     <output aria-label="Registered path">{{ registeredPath }}</output>
   </template>
-  <el-dialog
+  <MarDialog
     v-if="
       open && ['table', 'form', 'short', 'fullscreen', 'centered', 'focus-return'].includes(kind)
     "
@@ -296,19 +302,19 @@ function showMessageBox(): void {
     append-to-body
     @close-auto-focus="focusDestination?.focus()"
   >
-    <el-table v-if="kind === 'table'" :data="entries">
-      <el-table-column prop="name" label="Name" />
-      <el-table-column prop="description" label="Description" />
-    </el-table>
-    <el-form v-else-if="kind === 'form'" label-position="top">
-      <el-form-item v-for="i in 18" :key="i" :label="`Field ${i}`">
-        <el-select v-if="i === 1" v-model="value" aria-label="First field">
-          <el-option label="Selected option" value="selected" />
-        </el-select>
-        <el-input v-else v-model="value" :aria-label="`Field ${i}`" />
-      </el-form-item>
-    </el-form>
+    <MarTable v-if="kind === 'table'" :data="entries">
+      <MarTableColumn prop="name" label="Name" />
+      <MarTableColumn prop="description" label="Description" />
+    </MarTable>
+    <MarForm v-else-if="kind === 'form'" label-position="top">
+      <MarFormItem v-for="i in 18" :key="i" :label="`Field ${i}`">
+        <MarSelect v-if="i === 1" v-model="value" aria-label="First field">
+          <MarOption label="Selected option" value="selected" />
+        </MarSelect>
+        <MarInput v-else v-model="value" :aria-label="`Field ${i}`" />
+      </MarFormItem>
+    </MarForm>
     <p v-else>Short dialog content</p>
-    <template #footer><el-button @click="open = false">Done</el-button></template>
-  </el-dialog>
+    <template #footer><MarButton @click="open = false">Done</MarButton></template>
+  </MarDialog>
 </template>

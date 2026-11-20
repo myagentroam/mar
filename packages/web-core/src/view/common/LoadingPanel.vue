@@ -1,13 +1,14 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
 defineProps<{ readonly loading: boolean; readonly variant: 'page' | 'region' }>();
 </script>
 
 <template>
   <section
-    v-loading="loading"
+    v-mar-loading:[variant]="loading"
     class="page-loading-panel"
-    :element-loading-custom-class="variant === 'page' ? 'mar-page-loading' : undefined"
     :aria-busy="loading"
+    :data-loading-variant="variant"
   >
     <div class="page-loading-content">
       <slot />

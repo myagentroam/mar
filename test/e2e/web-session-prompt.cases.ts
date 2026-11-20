@@ -150,7 +150,7 @@ for (const [locale, theme] of [
       await row
         .getByRole('button', { name: english ? /More session actions/ : /更多会话操作/ })
         .click();
-      const menu = page.locator('.el-dropdown__popper:visible');
+      const menu = page.getByRole('menu');
       const promptItem = menu.getByRole('menuitem', { name: title, exact: true });
       if (!checkedMenu) {
         const renameItem = menu.getByRole('menuitem', {
@@ -179,7 +179,7 @@ for (const [locale, theme] of [
           theme === 'daylight' ? /^(?!.*dark).*$/ : /dark/
         );
         await renameItem.click();
-        const renameDialog = page.locator('.el-message-box');
+        const renameDialog = page.locator('.mar-message-box');
         await expect(renameDialog).toBeVisible();
         await expect(renameDialog.locator('input')).toHaveValue('Prompt session');
         await renameDialog

@@ -1,20 +1,21 @@
 {
   "name": "@myagentroam-enterprise/web-implementation",
-  "version": "0.14.12",
+  "version": "0.14.13",
   "private": true,
   "type": "module",
   "scripts": {
     "typecheck": "vue-tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json"
   },
   "dependencies": {
+    "@myagentroam/mar-ui": "workspace:*",
     "@myagentroam/web-core": "workspace:*",
-    "@element-plus/icons-vue": "^2.3.2",
     "@myagentroam/protocol": "workspace:*",
-    "element-plus": "^2.14.4",
     "vue": "^3.5.41",
     "vue-i18n": "^11.4.8"
   },
   "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "element-plus": "^2.14.4",
     "vue-tsc": "^3.3.9"
   },
   "exports": {

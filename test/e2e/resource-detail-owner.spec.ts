@@ -13,7 +13,7 @@ async function settle(page: Page, path: string, value: unknown, fail = false) {
 }
 async function open(page: Page, label: string) {
   await page
-    .locator('.resource-management-panel .el-table__body')
+    .locator('.resource-management-panel tbody')
     .getByRole('cell', { name: label, exact: true })
     .click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -106,7 +106,7 @@ for (const outcome of ['success', 'failure'] as const) {
         outcome === 'failure'
       );
       await expect(page.getByRole('dialog')).toHaveCount(1);
-      await expect(page.locator('.el-message--error')).toHaveCount(0);
+      await expect(page.locator('.mar-message--error')).toHaveCount(0);
       await settle(page, '/api/runner-usage/status?nodeId=a', {
         statuses: [{ runner: 'codex', available: true }]
       });

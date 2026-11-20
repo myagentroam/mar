@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../../src/view/common/MarIcon.vue';
 import ConversationHeader from '../../src/view/conversation/ConversationHeader.vue';
 import SessionPerformanceInfo from '../../src/view/conversation/SessionPerformanceInfo.vue';
@@ -152,19 +153,17 @@ const request = async <T,>(): Promise<T> => ({}) as T;
       >
         <MarIcon name="copy" />
       </button>
-      <el-button class="mar-text-action" data-testid="element" link :disabled="disabled"
-        >Utility</el-button
+      <MarButton class="mar-text-action" data-testid="mar-text-action" link :disabled="disabled"
+        >Utility</MarButton
       >
-      <el-button
+      <MarButton
         class="mar-icon-action"
-        data-testid="element-icon"
+        data-testid="mar-icon-action"
         text
-        circle
         :disabled="disabled"
-        aria-label="Element icon action"
-      >
-        <MarIcon name="copy" />
-      </el-button>
+        aria-label="MAR icon action"
+        icon="copy"
+      />
       <button
         class="mar-icon-button mar-icon-action"
         data-testid="aria-disabled-icon"

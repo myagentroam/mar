@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,7 +13,7 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, ref, onBeforeUnmount } from 'vue';
-import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
+import { MarMessageBox } from '@myagentroam/web-core/MessageBoxService';
 import CorePage from '@myagentroam/web-core/ConversationTemplateManagementPage.vue';
 import type { NodeSummary } from '@/model/workbench';
 import {
@@ -131,10 +137,10 @@ async function removeGrant(grant: ConversationTemplateGrant): Promise<void> {
   const context = grantRequestContext;
   if (row === undefined || context.resourceId !== row.id) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('conversationTemplates.revokeConfirmation'),
       translate('conversationTemplates.revoke'),
-      { closeIcon: marIcon('close'), ...confirmationOptions('conversationTemplates.revoke') }
+      { ...confirmationOptions('conversationTemplates.revoke') }
     );
     if (
       disposed ||
@@ -241,16 +247,16 @@ onBeforeUnmount(() => {
     "
   >
     <template #row-actions="{ row }">
-      <el-button
+      <MarButton
         v-if="edition !== 'COMMUNITY'"
         link
         :icon="marIcon('share')"
         @click="openGrants(row)"
-        >{{ translate('common.grant') }}</el-button
+        >{{ translate('common.grant') }}</MarButton
       >
     </template>
   </CorePage>
-  <el-dialog
+  <MarDialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
     v-if="grantDialogOpen && selectedTemplate"
@@ -258,16 +264,15 @@ onBeforeUnmount(() => {
     :title="translate('conversationTemplates.accessDialogTitle', { name: selectedTemplate.name })"
     width="min(720px, calc(100vw - 32px))"
     @closed="closeGrantDialog"
-    :close-icon="marIcon('close')"
   >
-    <div v-loading="grantLoading" class="grant-dialog">
-      <el-alert
+    <div v-mar-loading:region="grantLoading" class="grant-dialog">
+      <MarAlert
         type="info"
         :closable="false"
         :title="translate('conversationTemplates.accessHint')"
       />
       <div v-if="writable" class="grant-form">
-        <el-cascader
+        <MarCascader
           v-model="targetOrganizationId"
           style="width: 100%"
           filterable
@@ -277,32 +282,28 @@ onBeforeUnmount(() => {
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
         />
-        <el-button
-          type="primary"
-          :loading="grantSaving"
-          @click="createGrant"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('common.grant') }}</el-button
-        >
+        <MarButton type="primary" :loading="grantSaving" @click="createGrant">{{
+          translate('common.grant')
+        }}</MarButton>
       </div>
-      <el-table :data="grants" empty-text="">
-        <el-table-column :label="translate('conversationTemplates.target')" min-width="220">
+      <MarTable :data="grants" empty-text="">
+        <MarTableColumn :label="translate('conversationTemplates.target')" min-width="220">
           <template #default="{ row }">{{ grantTargetLabel(row) }}</template>
-        </el-table-column>
-        <el-table-column
+        </MarTableColumn>
+        <MarTableColumn
           v-if="writable"
           :label="translate('conversationTemplates.actions')"
           width="100"
         >
           <template #default="{ row }">
-            <el-button link type="danger" @click="removeGrant(row)">{{
+            <MarButton link type="danger" @click="removeGrant(row)">{{
               translate('conversationTemplates.revoke')
-            }}</el-button>
+            }}</MarButton>
           </template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
     </div>
-  </el-dialog>
+  </MarDialog>
 </template>
 <style scoped>
 .grant-dialog,

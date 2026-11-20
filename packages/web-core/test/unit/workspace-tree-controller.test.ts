@@ -1,7 +1,7 @@
 import { workspaceTargetRef } from './support/workspace-fixture.js';
 import { ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import type {
   NodeSummary,
   Workspace,
@@ -14,7 +14,9 @@ import { createWorkspaceTabService } from '../../src/service/workspace-tab-servi
 import { createWorkspaceTreeService } from '../../src/service/workspace-tree-service.js';
 import { ApiError } from '../../src/util/api-error.js';
 
-vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn(), prompt: vi.fn() } }));
+vi.mock('../../src/service/message-box-service.js', () => ({
+  MarMessageBox: { confirm: vi.fn(), prompt: vi.fn() }
+}));
 
 function node(id: string, overrides?: Partial<NodeSummary>): NodeSummary {
   return {
@@ -158,8 +160,8 @@ function fixture() {
 }
 
 beforeEach(() => {
-  vi.mocked(ElMessageBox.confirm).mockReset();
-  vi.mocked(ElMessageBox.prompt).mockReset();
+  vi.mocked(MarMessageBox.confirm).mockReset();
+  vi.mocked(MarMessageBox.prompt).mockReset();
 });
 
 afterEach(() => {
@@ -1001,8 +1003,8 @@ describe('Public Workspace tree controller', () => {
       lastActiveAt: 1
     };
     f.tabs.restore([tab]);
-    vi.mocked(ElMessageBox.confirm).mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.mocked(MarMessageBox.confirm).mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
     const error = new Error('network unavailable');
     f.request.mockRejectedValue(error);
@@ -1170,14 +1172,14 @@ describe('Public Workspace tree controller', () => {
     f.nodes.value = [node('node-1', { workspaceCreatable: true, manageable: false })];
     f.workspaces.value = [value];
     f.tree.cacheWorkspaces('node-1', [value]);
-    vi.mocked(ElMessageBox.confirm).mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.mocked(MarMessageBox.confirm).mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
 
     await f.controller.removeWorkspace('node-1', value);
 
     expect(f.request).not.toHaveBeenCalled();
-    expect(ElMessageBox.confirm).not.toHaveBeenCalled();
+    expect(MarMessageBox.confirm).not.toHaveBeenCalled();
   });
 
   it('allows Workspace managers to remove without Node registration capability', async () => {
@@ -1186,8 +1188,8 @@ describe('Public Workspace tree controller', () => {
     f.nodes.value = [node('node-1', { workspaceCreatable: false, manageable: false })];
     f.workspaces.value = [value];
     f.tree.cacheWorkspaces('node-1', [value]);
-    vi.mocked(ElMessageBox.confirm).mockResolvedValue(
-      'confirm' as Awaited<ReturnType<typeof ElMessageBox.confirm>>
+    vi.mocked(MarMessageBox.confirm).mockResolvedValue(
+      'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>
     );
     await f.controller.removeWorkspace('node-1', value);
     expect(f.request).toHaveBeenCalledWith('/api/workspaces/workspace-1?nodeId=node-1', {

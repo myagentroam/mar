@@ -107,18 +107,15 @@ importers:
 
   ee/web:
     dependencies:
-      '@element-plus/icons-vue':
-        specifier: ^2.3.2
-        version: 2.3.2(vue@3.5.41(typescript@5.9.3))
+      '@myagentroam/mar-ui':
+        specifier: workspace:*
+        version: link:../../packages/mar-ui
       '@myagentroam/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
       '@myagentroam/web-core':
         specifier: workspace:*
         version: link:../../packages/web-core
-      element-plus:
-        specifier: ^2.14.4
-        version: 2.14.4(vue@3.5.41(typescript@5.9.3))
       vue:
         specifier: ^3.5.41
         version: 3.5.41(typescript@5.9.3)
@@ -126,6 +123,12 @@ importers:
         specifier: ^11.4.8
         version: 11.4.8(vue@3.5.41(typescript@5.9.3))
     devDependencies:
+      '@element-plus/icons-vue':
+        specifier: ^2.3.2
+        version: 2.3.2(vue@3.5.41(typescript@5.9.3))
+      element-plus:
+        specifier: ^2.14.4
+        version: 2.14.4(vue@3.5.41(typescript@5.9.3))
       vue-tsc:
         specifier: ^3.3.9
         version: 3.3.9(typescript@5.9.3)
@@ -274,9 +277,6 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
-      unplugin-vue-components:
-        specifier: ^32.1.0
-        version: 32.1.0(esbuild@0.28.2)(rollup@4.62.4)(vite@7.3.6(@types/node@24.13.3)(terser@5.51.2)(tsx@4.23.12))(vue@3.5.41(typescript@5.9.3))
       vue-tsc:
         specifier: ^3.3.9
         version: 3.3.9(typescript@5.9.3)
@@ -339,6 +339,15 @@ importers:
   packages/computer-runtime-win32-arm64: {}
 
   packages/computer-runtime-win32-x64: {}
+
+  packages/mar-ui:
+    dependencies:
+      async-validator:
+        specifier: 4.2.5
+        version: 4.2.5
+      vue:
+        specifier: ^3.5.41
+        version: 3.5.41(typescript@5.9.3)
 
   packages/protocol:
     dependencies:
@@ -412,15 +421,15 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.9
         version: 6.43.9
-      '@element-plus/icons-vue':
-        specifier: ^2.3.2
-        version: 2.3.2(vue@3.5.41(typescript@5.9.3))
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3
       '@myagentroam/code-navigation':
         specifier: workspace:*
         version: link:../code-navigation
+      '@myagentroam/mar-ui':
+        specifier: workspace:*
+        version: link:../mar-ui
       '@myagentroam/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -454,9 +463,6 @@ importers:
       dompurify:
         specifier: ^3.4.13
         version: 3.4.13
-      element-plus:
-        specifier: ^2.14.4
-        version: 2.14.4(vue@3.5.41(typescript@5.9.3))
       github-markdown-css:
         specifier: 5.9.0
         version: 5.9.0
@@ -485,12 +491,18 @@ importers:
         specifier: ^7.4.1
         version: 7.4.1
     devDependencies:
+      '@element-plus/icons-vue':
+        specifier: ^2.3.2
+        version: 2.3.2(vue@3.5.41(typescript@5.9.3))
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.1.2
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(vite@7.3.6(@types/node@24.13.3)(terser@5.51.2)(tsx@4.23.12))(vue@3.5.41(typescript@5.9.3))
+      element-plus:
+        specifier: ^2.14.4
+        version: 2.14.4(vue@3.5.41(typescript@5.9.3))
       unplugin-vue-components:
         specifier: ^32.1.0
         version: 32.1.0(esbuild@0.28.2)(rollup@4.62.4)(vite@7.3.6(@types/node@24.13.3)(terser@5.51.2)(tsx@4.23.12))(vue@3.5.41(typescript@5.9.3))

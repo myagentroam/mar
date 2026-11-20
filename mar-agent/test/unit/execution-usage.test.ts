@@ -269,7 +269,7 @@ class SubagentBudgetAdapter implements ModelAdapter {
         arguments:
           toolResults.length === 0
             ? { agentId: this.childSessionId, content: 'Inspect input.txt again' }
-            : { agentId: this.childSessionId, waitMs: 10_000 }
+            : { agentIds: [this.childSessionId], waitFor: 'completion', waitMs: 10_000 }
       };
       if (toolResults.length === 0) yield { type: 'usage', usage: { outputTokens: 80 } };
       yield { type: 'completed', reason: 'tool_use' };
@@ -294,7 +294,7 @@ class SubagentBudgetAdapter implements ModelAdapter {
       arguments: {
         title: 'Inspect input',
         description: 'Inspect input',
-        prompt: 'Inspect input.txt',
+        content: 'Inspect input.txt',
         role: this.role
       }
     };
@@ -367,7 +367,7 @@ class DetachedBackgroundSubagentBudgetAdapter implements ModelAdapter {
         arguments: {
           title: 'Inspect input in background',
           description: 'Inspect input in background',
-          prompt: 'Inspect input.txt after the parent completes.',
+          content: 'Inspect input.txt after the parent completes.',
           role: 'general-purpose'
         }
       };

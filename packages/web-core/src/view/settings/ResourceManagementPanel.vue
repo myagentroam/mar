@@ -1,4 +1,14 @@
 <script setup lang="ts" generic="Ownership = unknown">
+import { vMarLoading } from '@myagentroam/mar-ui/loading';
+import { MarDialog } from '@myagentroam/mar-ui/dialog';
+import { MarAlert } from '@myagentroam/mar-ui/alert';
+import { MarLink } from '@myagentroam/mar-ui/link';
+import { MarTag } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -12,8 +22,7 @@ import { managementDateTime } from '../../util/time-presentation.js';
 import { computed, h, onMounted, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
 import type { NodeSummary } from '../../model/node.js';
 import type { NodeUpgradeProgress } from '../../model/node-upgrade.js';
-import { ElMessageBox } from '../../service/message-box-service.js';
-import type { FormInstance, FormRules } from 'element-plus';
+import { MarMessageBox } from '../../service/message-box-service.js';
 import {
   managementUrlValues,
   replaceManagementUrlValues
@@ -483,13 +492,12 @@ async function pushAllUpgrades(): Promise<void> {
     return;
   }
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.resourceSharingPage.pushAllUpgradesImpact', {
         value0: candidates.length
       }),
       translate('generated.resourceSharingPage.confirmPushAllUpgrades'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.pushAllUpgrades'),
@@ -524,7 +532,7 @@ async function pushAllUpgrades(): Promise<void> {
         'success'
       );
     else if (failures.length > 0)
-      await ElMessageBox.alert(
+      await MarMessageBox.alert(
         h(
           'div',
           { class: 'bulk-upgrade-result-list' },
@@ -536,7 +544,6 @@ async function pushAllUpgrades(): Promise<void> {
         ),
         translate('generated.resourceSharingPage.pushAllUpgrades'),
         {
-          closeIcon: marIcon('close'),
           icon: marIcon('warning'),
           type: 'warning',
           customClass: 'bulk-upgrade-result',
@@ -557,13 +564,12 @@ async function pushAllUpgrades(): Promise<void> {
 async function pushUpgrade(row: Row): Promise<void> {
   if (!canUpgrade(row) || row.upgradeAvailability === undefined) return;
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       translate('generated.resourceSharingPage.upgradeToLimitedByTheLatestStable', {
         value0: row.upgradeAvailability.targetVersion
       }),
       translate('generated.resourceSharingPage.pushNodeUpgrade'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: translate('generated.resourceSharingPage.pushUpgrade'),
@@ -742,7 +748,7 @@ function openRegistration(): void {
 async function removeResource(row: Row): Promise<void> {
   const isNode = row.resourceType === 'NODE';
   try {
-    await ElMessageBox.confirm(
+    await MarMessageBox.confirm(
       isNode
         ? translate('generated.resourceSharingPage.deletingTheNodeRegistrationRequiresANew')
         : translate(
@@ -752,7 +758,6 @@ async function removeResource(row: Row): Promise<void> {
         ? translate('generated.resourceSharingPage.deleteNode')
         : translate('generated.resourceSharingPage.unregisterWorkspace'),
       {
-        closeIcon: marIcon('close'),
         icon: marIcon('warning'),
         type: 'warning',
         confirmButtonText: isNode
@@ -820,8 +825,7 @@ onUnmounted(() => {
 </script>
 <template>
   <section
-    v-loading="loading && !pageReady && !pagination.failure.value"
-    element-loading-custom-class="mar-page-loading"
+    v-mar-loading:page="loading && !pageReady && !pagination.failure.value"
     class="mar-management-page resource-management-panel"
   >
     <slot
@@ -838,33 +842,31 @@ onUnmounted(() => {
       />
     </slot>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.resourceSharingPage.refresh') }}</el-button
+        >{{ translate('generated.resourceSharingPage.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="resourceType === 'NODE'"
         type="primary"
         :icon="marIcon('plus')"
         :disabled="!writable"
         @click="openRegistration"
-        >{{ translate('generated.resourceSharingPage.registerNode') }}</el-button
+        >{{ translate('generated.resourceSharingPage.registerNode') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="resourceType === 'NODE'"
         :icon="marIcon('upload')"
         :loading="pushingAllUpgrades"
         :disabled="!writable"
         @click="pushAllUpgrades"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.resourceSharingPage.pushAllUpgrades') }}</el-button
+        >{{ translate('generated.resourceSharingPage.pushAllUpgrades') }}</MarButton
       >
     </div>
-    <el-table
-      v-loading="
+    <MarTable
+      v-mar-loading:region="
         pagination.loading.value &&
         pageReady &&
         !pagination.loadingMore.value &&
@@ -876,7 +878,7 @@ onUnmounted(() => {
       row-key="key"
       @row-click="openDetails"
       @sort-change="sortResources"
-      ><el-table-column
+      ><MarTableColumn
         prop="label"
         :label="
           resourceType === 'NODE'
@@ -886,77 +888,77 @@ onUnmounted(() => {
         sortable="custom"
         min-width="180"
       />
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'WORKSPACE'"
         :label="translate('generated.resourceSharingPage.node')"
         min-width="180"
-        ><template #default="{ row }">{{ row.nodeLabel }}</template></el-table-column
+        ><template #default="{ row }">{{ row.nodeLabel }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         :label="translate('generated.resourceSharingPage.status2')"
         width="110"
         ><template #default="{ row }"
-          ><el-tag
+          ><MarTag
             effect="light"
             :type="row.disabled ? 'danger' : row.connected ? 'success' : 'info'"
-            >{{ statusLabel(row) }}</el-tag
+            >{{ statusLabel(row) }}</MarTag
           ></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.resourceSharingPage.ownershipType')"
         min-width="120"
         ><template #default="{ row }"
-          ><el-tag :type="ownershipTypeTag(row)" effect="light">{{
+          ><MarTag :type="ownershipTypeTag(row)" effect="light">{{
             ownershipTypeLabel(row)
-          }}</el-tag></template
-        ></el-table-column
+          }}</MarTag></template
+        ></MarTableColumn
       >
-      <el-table-column :label="translate('generated.resourceSharingPage.owner')" min-width="160"
-        ><template #default="{ row }">{{ ownerLabel(row) }}</template></el-table-column
+      <MarTableColumn :label="translate('generated.resourceSharingPage.owner')" min-width="160"
+        ><template #default="{ row }">{{ ownerLabel(row) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         :label="translate('generated.resourceSharingPage.lastHeartbeat')"
         min-width="180"
         ><template #default="{ row }">{{
           timeLabel(row.lastHeartbeatAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         prop="nodeAppVersion"
         :label="translate('generated.resourceSharingPage.currentVersion')"
         min-width="150"
         ><template #default="{ row }">{{
           row.nodeAppVersion ?? translate('generated.nodeDetailsDialogs.unknown')
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         :label="translate('generated.resourceSharingPage.upgradeStatus')"
         min-width="210"
-        ><template #default="{ row }">{{ upgradeLabel(row) }}</template></el-table-column
+        ><template #default="{ row }">{{ upgradeLabel(row) }}</template></MarTableColumn
       >
-      <el-table-column :label="translate('generated.resourceSharingPage.actions')" :width="290"
+      <MarTableColumn :label="translate('generated.resourceSharingPage.actions')" :width="290"
         ><template #default="{ row }"
           ><div class="mar-row-actions" @click.stop>
-            <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
+            <MarButton link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
               translate('generated.resourceSharingPage.edit')
-            }}</el-button>
+            }}</MarButton>
             <slot name="resource-actions" :resource="row" />
-            <el-button
+            <MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable"
               @click="removeResource(row)"
-              >{{ translate('common.delete') }}</el-button
+              >{{ translate('common.delete') }}</MarButton
             >
           </div></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <ManagementPagination
       :total="pagination.total.value"
@@ -974,7 +976,7 @@ onUnmounted(() => {
       @retry="pagination.retry"
       @load-more="pagination.loadMore"
     />
-    <el-dialog
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="editing !== undefined"
@@ -986,41 +988,40 @@ onUnmounted(() => {
       "
       width="min(460px, calc(100vw - 32px))"
       @update:model-value="editing = undefined"
-      :close-icon="marIcon('close')"
-      ><el-form
+      ><MarForm
         v-if="editing"
         ref="editFormRef"
         :model="{ name: editName }"
         :rules="editRules"
         label-position="top"
-        ><el-form-item
+        ><MarFormItem
           prop="name"
           :label="
             editing.resourceType === 'NODE'
               ? translate('generated.resourceSharingPage.nodeName2')
               : translate('generated.resourceSharingPage.workspaceName2')
           "
-          ><el-input
+          ><MarInput
             v-model="editName"
             :placeholder="
               editing.resourceType === 'NODE'
                 ? translate('generated.resourceSharingPage.enterANodeName2')
                 : translate('generated.resourceSharingPage.enterAWorkspaceName')
             "
-            :maxlength="editing.resourceType === 'NODE' ? 128 : 255" /></el-form-item
+            :maxlength="editing.resourceType === 'NODE' ? 128 : 255" /></MarFormItem
         ><slot name="edit-owner" :resource="editing"
-          ><el-form-item :label="translate('generated.resourceSharingPage.owner2')"
-            ><el-input
+          ><MarFormItem :label="translate('generated.resourceSharingPage.owner2')"
+            ><MarInput
               :model-value="translate('generated.resourceSharingPage.personal3')"
-              disabled /></el-form-item></slot></el-form
+              disabled /></MarFormItem></slot></MarForm
       ><template #footer
-        ><el-button @click="editing = undefined">{{
+        ><MarButton @click="editing = undefined">{{
           translate('generated.resourceSharingPage.cancel4')
-        }}</el-button
-        ><el-button type="primary" :disabled="!writable" @click="saveEdit">{{
+        }}</MarButton
+        ><MarButton type="primary" :disabled="!writable" @click="saveEdit">{{
           translate('generated.resourceSharingPage.save')
-        }}</el-button></template
-      ></el-dialog
+        }}</MarButton></template
+      ></MarDialog
     ><component
       :is="detailsComponent ?? NodeDetailsDialogs"
       v-bind="detailsExtensionProps"
@@ -1052,7 +1053,7 @@ onUnmounted(() => {
       @usage="showUsage"
       @upgrade="details && pushUpgrade(details)"
       @cancel-upgrade="details && cancelUpgrade(details)"
-    /><el-dialog
+    /><MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="registrationOpen"
@@ -1062,44 +1063,42 @@ onUnmounted(() => {
       :show-close="!creatingRegistrationToken"
       :close-on-click-modal="!creatingRegistrationToken"
       :close-on-press-escape="!creatingRegistrationToken"
-      :close-icon="marIcon('close')"
-      ><el-form
+      ><MarForm
         ref="registrationFormRef"
         :model="{ name: registrationName }"
         :rules="registrationRules"
         :disabled="creatingRegistrationToken"
         label-position="top"
-        ><el-form-item :label="translate('generated.resourceSharingPage.nodeName4')" prop="name"
-          ><el-input
+        ><MarFormItem :label="translate('generated.resourceSharingPage.nodeName4')" prop="name"
+          ><MarInput
             v-model="registrationName"
             maxlength="128"
             :placeholder="
               translate('generated.resourceSharingPage.enterANodeName3')
-            " /></el-form-item
+            " /></MarFormItem
         ><slot name="registration-owner"
-          ><el-form-item :label="translate('generated.resourceSharingPage.owner4')"
-            ><el-input
+          ><MarFormItem :label="translate('generated.resourceSharingPage.owner4')"
+            ><MarInput
               :model-value="translate('generated.resourceSharingPage.personal4')"
-              disabled /></el-form-item></slot
-      ></el-form>
+              disabled /></MarFormItem></slot
+      ></MarForm>
       <template #footer>
-        <el-button :disabled="creatingRegistrationToken" @click="registrationOpen = false">{{
+        <MarButton :disabled="creatingRegistrationToken" @click="registrationOpen = false">{{
           translate('generated.resourceSharingPage.close2')
-        }}</el-button>
-        <el-button
+        }}</MarButton>
+        <MarButton
           type="primary"
           :disabled="!writable"
           :loading="creatingRegistrationToken"
           :icon="marIcon('plus')"
           @click="registerNode"
-          :loading-icon="marIcon('loading-action')"
           >{{
             translate('generated.resourceSharingPage.createOneTimeRegistrationToken')
-          }}</el-button
+          }}</MarButton
         >
       </template>
-    </el-dialog>
-    <el-dialog
+    </MarDialog>
+    <MarDialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="registrationToken"
@@ -1108,15 +1107,14 @@ onUnmounted(() => {
       width="min(460px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       @update:model-value="registrationToken = ''"
-      :close-icon="marIcon('close')"
     >
-      <el-alert
+      <MarAlert
         :title="translate('generated.resourceSharingPage.registrationTokenCreated')"
         type="success"
         show-icon
         :closable="false"
         ><template #icon><MarIcon name="success" /></template
-      ></el-alert>
+      ></MarAlert>
       <p class="registration-instructions">
         {{ translate('generated.resourceSharingPage.registrationTokenInstructions') }}
       </p>
@@ -1124,7 +1122,7 @@ onUnmounted(() => {
         {{ translate('generated.resourceSharingPage.registrationTokenLabel') }}
       </div>
       <code class="registration-token">{{ registrationToken }}</code>
-      <el-link
+      <MarLink
         v-if="documentationAvailable"
         class="registration-help-link"
         type="primary"
@@ -1135,19 +1133,19 @@ onUnmounted(() => {
         rel="noopener noreferrer"
         >{{
           translate('generated.resourceSharingPage.viewNodeDeploymentAndAutostartGuide')
-        }}</el-link
+        }}</MarLink
       >
       <template #footer
-        ><el-button @click="registrationToken = ''">{{
+        ><MarButton @click="registrationToken = ''">{{
           translate('generated.resourceSharingPage.close2')
-        }}</el-button></template
-      ></el-dialog
+        }}</MarButton></template
+      ></MarDialog
     >
     <slot name="extensions" />
   </section>
 </template>
 <style scoped>
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 
@@ -1178,10 +1176,10 @@ code.registration-token {
   margin-top: 2px;
   font-size: var(--mar-font-size-body);
 }
-:global(.resource-management-panel .el-dialog .el-descriptions__label) {
-  width: 140px;
+:global(.resource-management-panel .mar-ui-dialog .mar-ui-descriptions) {
+  --mar-ui-descriptions-label-width: 140px;
 }
-:global(.bulk-upgrade-result.el-message-box) {
+:global(.bulk-upgrade-result.mar-message-box) {
   width: min(520px, calc(100vw - 32px));
 }
 :global(.bulk-upgrade-result-list) {

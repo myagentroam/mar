@@ -231,7 +231,7 @@ it.each(['http', 'watch'] as const)(
     try {
       await nextTick();
       const retry = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))!;
       expect(retry.parent?.props.class).toBe('changes-read-state');
       await trigger(retry, 'onClick');
@@ -239,7 +239,7 @@ it.each(['http', 'watch'] as const)(
       if (source === 'http') service.changesRefreshing.value = true;
       else props.watchStatus = 'loading';
       await nextTick();
-      expect(view.findAll('ElButton').includes(retry)).toBe(true);
+      expect(view.findAll('MarButton').includes(retry)).toBe(true);
       expect(textContent(retry)).toContain(i18n.global.t('common.loadFailedRetry'));
       expect(retry.props['aria-busy']).toBe(true);
       expect(
@@ -250,17 +250,19 @@ it.each(['http', 'watch'] as const)(
       if (source === 'watch') {
         props.target = { nodeId: 'node', workspaceId: 'other-workspace' };
         await nextTick();
-        expect(view.findAll('ElButton').includes(retry)).toBe(false);
+        expect(view.findAll('MarButton').includes(retry)).toBe(false);
       }
       service.changesError.value = false;
       service.changesRefreshing.value = false;
       props.watchStatus = 'ready';
       await nextTick();
-      expect(view.findAll('ElButton').includes(retry)).toBe(false);
+      expect(view.findAll('MarButton').includes(retry)).toBe(false);
       service.changesRefreshing.value = true;
       await nextTick();
       expect(
-        view.findAll('ElButton').filter((node) => node.parent?.props.class === 'changes-read-state')
+        view
+          .findAll('MarButton')
+          .filter((node) => node.parent?.props.class === 'changes-read-state')
       ).toHaveLength(0);
     } finally {
       view.unmount();
@@ -287,7 +289,7 @@ it.each(['ready', 'failed'] as const)(
     try {
       await nextTick();
       const retry = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => textContent(node).includes(i18n.global.t('common.loadFailedRetry')))!;
       await trigger(retry, 'onClick');
       expect(props.onRetryWatch).toHaveBeenCalledOnce();
@@ -300,9 +302,9 @@ it.each(['ready', 'failed'] as const)(
       if (status === 'ready') service.changesError.value = false;
       await nextTick();
       if (status === 'ready') {
-        expect(view.findAll('ElButton').includes(retry)).toBe(false);
+        expect(view.findAll('MarButton').includes(retry)).toBe(false);
       } else {
-        expect(view.findAll('ElButton').includes(retry)).toBe(true);
+        expect(view.findAll('MarButton').includes(retry)).toBe(true);
         expect(retry.props['aria-busy']).toBeUndefined();
         expect(props.onRetryWatch).toHaveBeenCalledOnce();
         await trigger(retry, 'onClick');

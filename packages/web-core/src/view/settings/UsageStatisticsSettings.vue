@@ -1,15 +1,21 @@
 <script setup lang="ts">
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
+import { MarRadioButton, MarRadioGroup } from '@myagentroam/mar-ui/radio';
+import { MarTag, type TagProps } from '@myagentroam/mar-ui/tag';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import MarSegmented from '../common/MarSegmented.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import { tooltipOptions } from '../../util/tooltip.js';
-import type { TagProps } from 'element-plus';
+import { MarTooltip } from '@myagentroam/mar-ui/tooltip';
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { type FormInstance, type FormRules } from 'element-plus';
 import {
   personalUsageQuerySchema,
   type PersonalUsageQuery,
@@ -159,7 +165,11 @@ function sortChanged({ order }: { order: string | null }): void {
   recordsSorted = order !== null;
   service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
 }
-function expandChanged(_row: unknown, rows: { recordId: string; ledgerId?: string }[]): void {
+function expandChanged(
+  _row: unknown,
+  rows: boolean | { recordId: string; ledgerId?: string }[]
+): void {
+  if (!Array.isArray(rows)) return;
   expandedRecords.value = rows.map(recordKey);
   service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
 }
@@ -292,7 +302,7 @@ onUnmounted(() => {
           <span class="metadata" role="status">
             {{ state.refreshFailed ? t('usageStatistics.refreshDelayed') : '' }}
           </span>
-          <el-button
+          <MarButton
             v-tooltip="t('usageStatistics.refresh')"
             class="mar-icon-action"
             text
@@ -301,19 +311,17 @@ onUnmounted(() => {
             :icon="marIcon('refresh')"
             :loading="state.loading && !pageLoading"
             :disabled="pageLoading"
-            :loading-icon="marIcon('loading-action')"
             :aria-label="t('usageStatistics.refresh')"
             @click="refresh()"
           />
         </div>
       </header>
-      <el-select
+      <MarSelect
         v-if="pagination.mobileViewport.value"
         v-model="selectedPurpose"
         class="usage-purpose-select"
         :options="purposeOptions"
         :aria-label="t('usageStatistics.purpose')"
-        :suffix-icon="marIcon('chevron-down')"
         @change="refresh(true, selectedPurpose)"
       />
       <div v-else class="usage-purpose-scroll">
@@ -366,7 +374,7 @@ onUnmounted(() => {
           >
         </section>
       </div>
-      <el-form
+      <MarForm
         ref="form"
         :model="draft"
         :rules="rules"
@@ -374,21 +382,21 @@ onUnmounted(() => {
         label-position="top"
         @submit.prevent="refresh()"
       >
-        <el-form-item :label="t('usageStatistics.range')"
-          ><el-select
+        <MarFormItem :label="t('usageStatistics.range')"
+          ><MarSelect
             v-model="draft.period"
             :aria-label="t('usageStatistics.range')"
             @change="change"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option :label="t('usageStatistics.last24Hours')" value="24h" /><el-option
+            <MarOption :label="t('usageStatistics.last24Hours')" value="24h" /><MarOption
               :label="t('usageStatistics.last7Days')"
               value="7d"
-            /><el-option :label="t('usageStatistics.custom')" value="custom" /> </el-select
-        ></el-form-item>
-        <el-form-item :label="t('usageStatistics.runner')"
-          ><el-select
+            /><MarOption :label="t('usageStatistics.custom')" value="custom" /> </MarSelect
+        ></MarFormItem>
+        <MarFormItem :label="t('usageStatistics.runner')"
+          ><MarSelect
             v-model="draft.runner"
             clearable
             :placeholder="t('usageStatistics.all')"
@@ -399,14 +407,14 @@ onUnmounted(() => {
             "
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="runner in runners"
               :key="runner"
               :label="runnerName(runner)"
-              :value="runner" /></el-select
-        ></el-form-item>
-        <el-form-item :label="t('usageStatistics.model')"
-          ><el-select
+              :value="runner" /></MarSelect
+        ></MarFormItem>
+        <MarFormItem :label="t('usageStatistics.model')"
+          ><MarSelect
             v-model="draft.model"
             clearable
             :placeholder="t('usageStatistics.all')"
@@ -414,14 +422,14 @@ onUnmounted(() => {
             @change="change"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="model in modelOptions"
               :key="model.key"
               :label="model.label || t('usageStatistics.unknown')"
-              :value="model.key" /></el-select
-        ></el-form-item>
-        <el-form-item :label="t('usageStatistics.mode')"
-          ><el-select
+              :value="model.key" /></MarSelect
+        ></MarFormItem>
+        <MarFormItem :label="t('usageStatistics.mode')"
+          ><MarSelect
             v-model="draft.mode"
             clearable
             :placeholder="t('usageStatistics.all')"
@@ -429,18 +437,19 @@ onUnmounted(() => {
             @change="change"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="mode in ['work', 'conversation']"
               :key="mode"
               :label="t(`usageStatistics.modes.${mode}`)"
-              :value="mode" /></el-select
-        ></el-form-item>
-        <el-form-item
+              :value="mode" /></MarSelect
+        ></MarFormItem>
+        <MarFormItem
           v-if="draft.period === 'custom'"
           prop="range"
           :label="t('usageStatistics.custom')"
+          :validate-event="false"
           class="custom-range"
-          ><el-date-picker
+          ><MarDatePicker
             v-model="draft.range"
             type="datetimerange"
             single-panel
@@ -453,9 +462,9 @@ onUnmounted(() => {
             ><template #prev-month><MarIcon name="chevron-left" /></template
             ><template #next-month><MarIcon name="chevron-right" /></template
             ><template #prev-year><MarIcon name="chevrons-left" /></template
-            ><template #next-year><MarIcon name="chevrons-right" /></template></el-date-picker
-        ></el-form-item>
-      </el-form>
+            ><template #next-year><MarIcon name="chevrons-right" /></template></MarDatePicker
+        ></MarFormItem>
+      </MarForm>
       <template v-if="state.overview">
         <div class="section-heading">
           <h3>{{ t('usageStatistics.trend') }}</h3>
@@ -561,17 +570,19 @@ onUnmounted(() => {
               />
             </g>
           </svg>
-          <el-tooltip
-            v-bind="tooltipOptions"
-            virtual-triggering
-            :virtual-ref="bucketReference"
-            :visible="activeBucketDetails.length > 0"
-            :enterable="false"
+          <MarTooltip
+            v-if="activeBucketDetails.length"
+            :anchor="bucketReference"
+            placement="bottom"
           >
-            <template #content>
-              <div v-for="(detail, index) in activeBucketDetails" :key="index">{{ detail }}</div>
-            </template>
-          </el-tooltip>
+            <div
+              v-for="(detail, index) in activeBucketDetails"
+              :key="index"
+              class="usage-tooltip-detail"
+            >
+              {{ detail }}
+            </div>
+          </MarTooltip>
           <div :id="`${trendId}-range`" class="axis-labels">
             <span>{{ time(state.overview.buckets[0]?.from) }}</span
             ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
@@ -594,11 +605,11 @@ onUnmounted(() => {
         </div>
         <div class="section-heading">
           <h3>{{ t('usageStatistics.distribution') }}</h3>
-          <el-radio-group v-model="metric" :aria-label="t('usageStatistics.metric')"
-            ><el-radio-button value="totalTokens">{{ t('usageStatistics.tokens') }}</el-radio-button
-            ><el-radio-button value="requests">{{
+          <MarRadioGroup v-model="metric" :aria-label="t('usageStatistics.metric')"
+            ><MarRadioButton value="totalTokens">{{ t('usageStatistics.tokens') }}</MarRadioButton
+            ><MarRadioButton value="requests">{{
               t('usageStatistics.requests')
-            }}</el-radio-button></el-radio-group
+            }}</MarRadioButton></MarRadioGroup
           >
         </div>
         <div class="distributions">
@@ -660,11 +671,11 @@ onUnmounted(() => {
         </div>
         <div v-if="state.recordsStale" class="records-update">
           <span class="metadata">{{ t('usageStatistics.recordsSnapshot') }}</span>
-          <el-button link :disabled="state.loading" @click="refresh()">{{
+          <MarButton link :disabled="state.loading" @click="refresh()">{{
             t('usageStatistics.updateRecords')
-          }}</el-button>
+          }}</MarButton>
         </div>
-        <el-table
+        <MarTable
           :data="state.records"
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
@@ -674,7 +685,7 @@ onUnmounted(() => {
           @sort-change="sortChanged"
           @expand-change="expandChanged"
         >
-          <el-table-column type="expand"
+          <MarTableColumn type="expand"
             ><template #default="{ row }"
               ><dl class="record-detail">
                 <template
@@ -722,33 +733,29 @@ onUnmounted(() => {
                   {{ t(`usageStatistics.roles.${row.agentRole}`) }}
                 </dd>
               </dl></template
-            ></el-table-column
+            ></MarTableColumn
           >
-          <el-table-column
-            prop="endedAt"
-            :label="t('usageStatistics.time')"
-            sortable
-            min-width="180"
-            ><template #default="{ row }">{{ time(row.endedAt) }}</template></el-table-column
+          <MarTableColumn prop="endedAt" :label="t('usageStatistics.time')" sortable min-width="180"
+            ><template #default="{ row }">{{ time(row.endedAt) }}</template></MarTableColumn
           >
-          <el-table-column
+          <MarTableColumn
             prop="runner"
             :label="t('usageStatistics.runner')"
             sortable
             min-width="110"
-            ><template #default="{ row }">{{ runnerName(row.runner) }}</template></el-table-column
+            ><template #default="{ row }">{{ runnerName(row.runner) }}</template></MarTableColumn
           >
-          <el-table-column :label="t('usageStatistics.model')" min-width="160"
+          <MarTableColumn :label="t('usageStatistics.model')" min-width="160"
             ><template #default="{ row }">{{
               row.actualModel ?? row.requestedModel ?? t('usageStatistics.unknown')
-            }}</template></el-table-column
+            }}</template></MarTableColumn
           >
-          <el-table-column :label="t('usageStatistics.purpose')" min-width="100"
+          <MarTableColumn :label="t('usageStatistics.purpose')" min-width="100"
             ><template #default="{ row }">{{
               t(`usageStatistics.purposes.${row.purpose}`)
-            }}</template></el-table-column
+            }}</template></MarTableColumn
           >
-          <el-table-column
+          <MarTableColumn
             v-for="key in tokenColumns"
             :key="key"
             :prop="key"
@@ -781,19 +788,19 @@ onUnmounted(() => {
                 }}</span
               >
             </template>
-          </el-table-column>
-          <el-table-column :label="t('usageStatistics.state')" min-width="105"
+          </MarTableColumn>
+          <MarTableColumn :label="t('usageStatistics.state')" min-width="105"
             ><template #default="{ row }"
-              ><el-tag
+              ><MarTag
                 :type="usageStateTypes[row.state as keyof typeof usageStateTypes]"
                 effect="plain"
                 role="status"
                 :aria-label="t(`usageStatistics.states.${row.state}`)"
-                >{{ t(`usageStatistics.states.${row.state}`) }}</el-tag
+                >{{ t(`usageStatistics.states.${row.state}`) }}</MarTag
               ></template
-            ></el-table-column
+            ></MarTableColumn
           >
-        </el-table>
+        </MarTable>
         <ManagementPagination
           :page="state.page"
           :page-size="20"
@@ -819,7 +826,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-:where(.usage) :deep(.section-heading span) {
+:where(.usage) :deep(.section-heading > span) {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
@@ -918,11 +925,11 @@ p {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.75rem;
 }
-.filters :deep(.el-form-item) {
+.filters :deep(.mar-ui-form-item) {
   margin-bottom: 0.5rem;
   min-width: 0;
 }
-.filters :deep(.el-select) {
+.filters :deep(.mar-ui-select) {
   width: 100%;
 }
 .filters .custom-range {
@@ -930,14 +937,14 @@ p {
   width: 100%;
   max-width: 38rem;
 }
-.custom-range :deep(.el-form-item__content) {
+.custom-range :deep(.mar-ui-form-item__content) {
   display: block;
 }
-.custom-range :deep(.el-form-item__error) {
+.custom-range :deep(.mar-ui-form-item__error) {
   position: static;
   line-height: 1.5;
 }
-.custom-range :deep(.el-date-editor) {
+.custom-range :deep(.mar-ui-date-picker) {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -945,6 +952,13 @@ p {
 .section-heading > span {
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
+}
+.section-heading :deep(.mar-ui-radio--button label) {
+  color: var(--mar-text-secondary);
+  font-size: var(--mar-font-size-meta);
+}
+.section-heading :deep(.mar-ui-radio--button input:checked + label) {
+  color: var(--mar-text-primary);
 }
 .trend {
   padding: 0.5rem 0 1rem;
@@ -955,7 +969,7 @@ p {
 }
 .usage-count:focus-visible,
 .trend-inspector input:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .bucket-hit-area {
@@ -974,13 +988,13 @@ p {
   stroke: var(--mar-border-default);
 }
 .input-bar {
-  fill: var(--el-color-primary-light-5);
+  fill: var(--mar-control-color-primary-light-5);
 }
 .output-bar {
-  fill: var(--el-color-primary);
+  fill: var(--mar-color-brand);
 }
 .cache-bar {
-  fill: var(--el-color-success);
+  fill: var(--mar-control-color-success);
 }
 .legend {
   display: flex;
@@ -997,13 +1011,13 @@ p {
   margin-left: 0.6rem;
 }
 .input-key {
-  background: var(--el-color-primary-light-5);
+  background: var(--mar-control-color-primary-light-5);
 }
 .output-key {
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
 }
 .cache-key {
-  background: var(--el-color-success);
+  background: var(--mar-control-color-success);
 }
 .axis-labels {
   display: flex;
@@ -1023,7 +1037,7 @@ p {
 }
 .trend-inspector input {
   margin: 0;
-  accent-color: var(--el-color-primary);
+  accent-color: var(--mar-color-brand);
 }
 .distributions {
   display: grid;
@@ -1063,7 +1077,7 @@ li strong {
 .bar-track span {
   display: block;
   height: 100%;
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
 }
 .records {
   width: 100%;

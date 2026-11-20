@@ -268,9 +268,9 @@ for (const [width, theme, locale] of [
         'background-color',
         await unread.evaluate((e) => getComputedStyle(e).backgroundColor)
       );
-      const statuses = recent.locator('.recent-sessions-list .el-tag');
-      await expect(statuses.first()).toHaveClass(/el-tag--info/);
-      await expect(statuses.last()).toHaveClass(/el-tag--success/);
+      const statuses = recent.locator('.recent-sessions-list .mar-ui-tag');
+      await expect(statuses.first()).toHaveAttribute('data-type', 'info');
+      await expect(statuses.last()).toHaveAttribute('data-type', 'success');
       await recent.screenshot({
         path: testInfo.outputPath(`plain-groups-${width}-${theme}-${locale}.png`)
       });
@@ -331,12 +331,12 @@ for (const [width, theme, locale] of [
         .getByRole('tab', { name: locale === 'zh-CN' ? '最近会话' : 'Recent Sessions' })
         .click();
       const recent = page.locator('.recent-sessions-panel');
-      const statuses = recent.locator('.recent-sessions-list .el-tag');
+      const statuses = recent.locator('.recent-sessions-list .mar-ui-tag');
       await expect(statuses).toHaveText(
         locale === 'zh-CN' ? ['已取消', '已中断'] : ['Canceled', 'Interrupted']
       );
-      await expect(statuses.first()).toHaveClass(/el-tag--info/);
-      await expect(statuses.last()).toHaveClass(/el-tag--warning/);
+      await expect(statuses.first()).toHaveAttribute('data-type', 'info');
+      await expect(statuses.last()).toHaveAttribute('data-type', 'warning');
       const directory = resolve(process.env.MAR_TEST_RUN_DIR ?? 'test/runs');
       await mkdir(directory, { recursive: true });
       await recent.screenshot({

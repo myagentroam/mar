@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { marIcon } from '../util/mar-icons.js';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElButton, ElInput } from 'element-plus';
-import 'element-plus/es/components/button/style/css';
-import 'element-plus/es/components/input/style/css';
 import AuthEntryPanel from './common/AuthEntryPanel.vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarInput } from '@myagentroam/mar-ui/input';
 
-defineProps<{
+const props = defineProps<{
   readonly loading: boolean;
   readonly logoUrl: string;
 }>();
@@ -21,6 +19,7 @@ const password = ref('');
 const { t } = useI18n();
 
 function submit(): void {
+  if (props.loading) return;
   emit('login', { username: username.value, password: password.value });
   password.value = '';
 }
@@ -34,18 +33,14 @@ function submit(): void {
     :logo-url="logoUrl"
   >
     <form class="auth-form" @submit.prevent="submit">
-      <label>{{ t('auth.username') }}<el-input v-model="username" autocomplete="username" /></label>
+      <label>{{ t('auth.username') }}<MarInput v-model="username" autocomplete="username" /></label>
       <label
         >{{ t('auth.password')
-        }}<el-input v-model="password" type="password" autocomplete="current-password"
+        }}<MarInput v-model="password" type="password" autocomplete="current-password"
       /></label>
-      <el-button
-        :loading="loading"
-        native-type="submit"
-        type="primary"
-        :loading-icon="marIcon('loading-action')"
-        >{{ t('auth.login') }}</el-button
-      >
+      <MarButton type="primary" native-type="submit" :loading="loading">
+        {{ t('auth.login') }}
+      </MarButton>
     </form>
     <slot name="identity-extension" />
   </AuthEntryPanel>

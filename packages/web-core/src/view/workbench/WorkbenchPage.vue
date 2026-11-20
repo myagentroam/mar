@@ -3,6 +3,7 @@
   lang="ts"
   generic="ManagementSection extends string, RegistrationContext, NodeRegistrationContext"
 >
+import { MarButton } from '@myagentroam/mar-ui/button';
 import LoginPage from '../../view/LoginPage.vue';
 import AuthenticationUnavailable from '../../view/AuthenticationUnavailable.vue';
 import logoIcon from '../../assets/logo-icon.png';
@@ -222,9 +223,9 @@ function closeStandaloneFileWindow(): void {
       >
         <template v-if="page.files.standaloneFileError">
           <p>{{ t('generated.standaloneFilePreviewPage.unableToReadTheFileCheckYour') }}</p>
-          <el-button @click="closeStandaloneFileWindow">
+          <MarButton @click="closeStandaloneFileWindow">
             {{ t('generated.filePreviewDialog.closePreview') }}
-          </el-button>
+          </MarButton>
         </template>
         <FilePreviewLoading v-else variant="page" />
       </div>

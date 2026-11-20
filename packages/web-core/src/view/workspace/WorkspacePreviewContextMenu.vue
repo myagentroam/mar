@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import MarIcon from '../common/MarIcon.vue';
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type MarDropdownInstance
+} from '@myagentroam/mar-ui/dropdown';
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 
@@ -10,30 +15,29 @@ const props = defineProps<{
   readonly quoteEnabled?: boolean;
 }>();
 const emit = defineEmits<{ copy: []; paste: []; reload: []; selectAll: []; quote: [] }>();
-const trigger = ref<HTMLButtonElement>();
+const menu = ref<MarDropdownInstance>();
+const actions = ref<HTMLElement>();
 const visible = ref(false);
-const x = ref(0);
-const y = ref(0);
+const anchor = shallowRef<DOMRect>();
+const virtualReference = { getBoundingClientRect: () => anchor.value ?? new DOMRect() };
 
 async function open(event: MouseEvent): Promise<void> {
   event.preventDefault();
   event.stopPropagation();
-  visible.value = false;
-  x.value = Math.max(6, Math.min(event.clientX, window.innerWidth - 180));
-  y.value = Math.max(6, Math.min(event.clientY, window.innerHeight - 190));
-  await nextTick();
+  anchor.value = new DOMRect(event.clientX, event.clientY);
   visible.value = true;
   await nextTick();
-  trigger.value?.click();
+  menu.value?.handleOpen();
 }
 
-function command(value: 'copy' | 'paste' | 'reload' | 'selectAll' | 'quote'): void {
+type PreviewCommand = 'copy' | 'paste' | 'reload' | 'selectAll' | 'quote';
+
+function command(value: PreviewCommand): void {
   if (value === 'copy') emit('copy');
   else if (value === 'paste') emit('paste');
   else if (value === 'selectAll') emit('selectAll');
   else if (value === 'quote') emit('quote');
   else emit('reload');
-  visible.value = false;
 }
 
 let unregisterEscape: (() => void) | undefined;
@@ -42,12 +46,12 @@ onMounted(() => {
     command: 'filePreview.dismissMenu',
     priority: 150,
     scope: 'overlay',
-    modalOwner: () => trigger.value,
+    modalOwner: () => actions.value,
     allowedInBlockedScopes: ['file-preview'],
     keys: [{ key: 'Escape' }],
     when: () => visible.value,
     execute: () => {
-      visible.value = false;
+      menu.value?.handleClose();
       return 'HANDLED';
     }
   });
@@ -57,45 +61,43 @@ defineExpose({ open, close: () => (visible.value = false) });
 </script>
 
 <template>
-  <div v-if="visible" class="preview-context-anchor" :style="{ left: `${x}px`, top: `${y}px` }">
-    <el-dropdown trigger="click" placement="bottom-start" @command="command">
-      <button ref="trigger" class="preview-context-trigger" type="button" tabindex="-1" />
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="copy">
-            <MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}
-          </el-dropdown-item>
-          <el-dropdown-item command="paste" :disabled="!props.pasteEnabled">
-            <MarIcon name="paste" />{{ translate('filePreviewContext.paste') }}
-          </el-dropdown-item>
-          <el-dropdown-item command="selectAll" :disabled="!props.selectAllEnabled">
-            <MarIcon name="menu" />{{ translate('composer.selectAll') }}
-          </el-dropdown-item>
-          <el-dropdown-item command="quote" :disabled="!props.quoteEnabled">
-            <MarIcon name="quote" />{{ translate('composer.quote') }}
-          </el-dropdown-item>
-          <el-dropdown-item command="reload">
-            <MarIcon name="refresh" />{{ translate('filePreviewContext.reload') }}
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-  </div>
+  <!-- @vue-generic {PreviewCommand} -->
+  <MarDropdown
+    v-if="visible"
+    ref="menu"
+    trigger="contextmenu"
+    virtual-triggering
+    :virtual-ref="virtualReference"
+    placement="bottom-start"
+    @command="command"
+    @visible-change="!$event && (visible = false)"
+  >
+    <template #dropdown>
+      <div ref="actions" class="preview-context-actions" @pointerdown.stop.prevent>
+        <MarDropdownMenu>
+          <MarDropdownItem command="copy" icon="copy">{{
+            translate('filePreviewContext.copy')
+          }}</MarDropdownItem>
+          <MarDropdownItem command="paste" icon="paste" :disabled="!props.pasteEnabled">{{
+            translate('filePreviewContext.paste')
+          }}</MarDropdownItem>
+          <MarDropdownItem command="selectAll" icon="menu" :disabled="!props.selectAllEnabled">{{
+            translate('composer.selectAll')
+          }}</MarDropdownItem>
+          <MarDropdownItem command="quote" icon="quote" :disabled="!props.quoteEnabled">{{
+            translate('composer.quote')
+          }}</MarDropdownItem>
+          <MarDropdownItem command="reload" icon="refresh">{{
+            translate('filePreviewContext.reload')
+          }}</MarDropdownItem>
+        </MarDropdownMenu>
+      </div>
+    </template>
+  </MarDropdown>
 </template>
 
 <style scoped>
-.preview-context-anchor {
-  position: fixed;
-  z-index: 5000;
-  width: 1px;
-  height: 1px;
-}
-
-.preview-context-trigger {
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+.preview-context-actions {
+  display: contents;
 }
 </style>

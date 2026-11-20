@@ -88,7 +88,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.goto('/console');
     await page.getByRole('button', { name: text.admin, exact: true }).click();
     await page.getByRole('button', { name: text.users, exact: true }).click();
-    const row = page.locator('.el-table__row').filter({ hasText: 'admin' });
+    const row = page.locator('.mar-ui-table__row').filter({ hasText: 'admin' });
     await expect(row.getByRole('button', { name: text.edit, exact: true })).toBeEnabled();
     await expect(row.getByRole('button', { name: text.reset, exact: true })).toBeDisabled();
     await expect(row.getByRole('button', { name: text.remove, exact: true })).toBeDisabled();
@@ -99,7 +99,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await expect(dialog.getByLabel(text.organization, { exact: true })).toBeDisabled();
     await dialog.getByLabel(text.email, { exact: true }).fill('invalid-email');
     await dialog.getByRole('button', { name: text.save, exact: true }).click();
-    await expect(dialog.locator('.el-form-item__error')).toBeVisible();
+    await expect(dialog.locator('.mar-ui-form-item__error')).toBeVisible();
     expect(updates).toHaveLength(0);
     await dialog.getByLabel(text.email, { exact: true }).fill('admin@example.com');
     await dialog.getByLabel(text.nickname, { exact: true }).fill('恢复管理员');
@@ -246,11 +246,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     expect(writes).toHaveLength(0);
     await expect(form.getByRole('link', { name: text.help })).toHaveCount(0);
     await form.getByRole('button', { name: text.create, exact: true }).click();
-    await expect(form.locator('.el-form-item__error')).toHaveText(text.required);
+    await expect(form.locator('.mar-ui-form-item__error')).toHaveText(text.required);
     expect(writes).toHaveLength(0);
     await form.getByRole('textbox', { name: text.name }).fill('  test-node  ');
     await form.getByRole('button', { name: text.create, exact: true }).click();
-    await expect(page.locator('.el-message--error')).toContainText('REGISTRATION_UNAVAILABLE');
+    await expect(page.locator('.mar-message--error')).toContainText('REGISTRATION_UNAVAILABLE');
     await expect(form).toBeVisible();
     await expect(receipt).toHaveCount(0);
     await expect(form.getByRole('textbox', { name: text.name })).toHaveValue('  test-node  ');
@@ -428,7 +428,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('button', { name: '系统配置' }).click();
-  const row = page.locator('.el-table__row').filter({ hasText: '邮件SMTP配置' });
+  const row = page.locator('.mar-ui-table__row').filter({ hasText: '邮件SMTP配置' });
   await expect(row).toContainText('配置部署级 SMTP 发信服务。');
   await expect(row.locator('td').nth(2)).toHaveText('-');
   await row.getByRole('button', { name: '编辑' }).click();
@@ -456,8 +456,8 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
     viewer.frameLocator('iframe').getByText('Example notification message')
   ).toBeVisible();
   await viewer.getByRole('button', { name: '关闭', exact: true }).click();
-  await smtpDialog.locator('.smtp-toggle .el-switch').click();
-  await expect(smtpDialog.locator('.smtp-form__pair .el-input-number .el-input__inner')).toHaveCSS(
+  await smtpDialog.locator('.smtp-toggle').getByRole('switch').click();
+  await expect(smtpDialog.locator('.smtp-form__pair .mar-ui-input-number input')).toHaveCSS(
     'text-align',
     'left'
   );
@@ -500,7 +500,7 @@ test('Administrators configure SMTP, view built-in templates, and test email thr
   await expect(dialog).toHaveCount(0);
   expect(tests).toEqual([{ email: 'admin@example.test', templateId: 'test-en-US' }]);
   await reopenedViewer.getByRole('button', { name: '关闭', exact: true }).click();
-  await smtpDialog.locator('.smtp-toggle .el-switch').click();
+  await smtpDialog.locator('.smtp-toggle').getByRole('switch').click();
   await smtpDialog.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('停用后将删除已保存的 SMTP 配置与密码')).toBeVisible();
   await page.getByRole('button', { name: '取消' }).last().click();
@@ -679,7 +679,7 @@ test('Node and workspace management show resource names and use default controls
   await page.getByRole('button', { name: '工作区管理' }).click();
   await expect(page.getByRole('cell', { name: '研发节点', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '节点管理' }).click();
-  await page.locator('.resource-management-panel .el-table__body tbody tr').first().click();
+  await page.locator('.resource-management-panel .mar-ui-table__row').first().click();
 
   const details = page.getByRole('dialog', { name: '节点详情' });
   await expect(details).toContainText('node-1');
@@ -689,7 +689,7 @@ test('Node and workspace management show resource names and use default controls
     .getByRole('button', { name: '删除', exact: true });
   await expect(deleteButtons).not.toHaveCount(0);
   for (const button of await deleteButtons.all()) {
-    await expect(button).not.toHaveClass(/el-button--small/);
+    await expect(button).not.toHaveClass(/mar-ui-button--small/);
     await expect(button).toBeDisabled();
   }
   expect(deletes).toEqual([]);
@@ -960,7 +960,7 @@ test('ADMIN can inspect other users personal resources in management while busin
   await page.getByRole('button', { name: '工作区管理' }).click();
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('工作区管理');
   await expect(page.getByRole('cell', { name: '其他用户工作区', exact: true })).toBeVisible();
-  await page.locator('.resource-management-panel .el-table__body tbody tr').first().click();
+  await page.locator('.resource-management-panel .mar-ui-table__row').first().click();
   await expect(
     page.getByRole('dialog', { name: '工作区详情' }).getByRole('button', { name: '新增环境密钥' })
   ).toBeVisible();
@@ -1254,12 +1254,12 @@ test('ADMIN enables hosting only on organization Nodes and can disable existing 
   const details = page.getByRole('dialog', { name: '节点详情' });
   const enable = details.getByRole('button', { name: '启用托管对话', exact: true });
   await expect(enable).toBeEnabled();
-  await expect(enable).toHaveClass(/el-button--primary/);
+  await expect(enable).toHaveClass(/mar-ui-button--primary/);
   await expect(enable.locator('.el-icon')).toHaveCount(1);
   await expect(
     details.locator('.mar-detail-descriptions').getByRole('button', { name: '启用托管对话' })
   ).toHaveCount(1);
-  const computerUseSwitch = details.locator('.computer-use-control .el-switch');
+  const computerUseSwitch = details.getByRole('switch', { name: 'Computer Use', exact: true });
   await expect(computerUseSwitch).toHaveCount(1);
   await expect(details.getByText('GUI 支持未启用', { exact: true })).toBeVisible();
   await computerUseSwitch.click();
@@ -1289,17 +1289,17 @@ test('ADMIN enables hosting only on organization Nodes and can disable existing 
   await expect.poll(() => nodeDirectoryRequests).toBeGreaterThanOrEqual(2);
   const disable = details.getByRole('button', { name: '禁用托管对话', exact: true });
   await expect(disable).toBeEnabled();
-  await expect(disable).toHaveClass(/el-button--warning/);
+  await expect(disable).toHaveClass(/mar-ui-button--warning/);
   await expect(
     details.locator('.mar-detail-descriptions').getByRole('button', { name: '禁用托管对话' })
   ).toHaveCount(1);
-  await expect(disable).not.toHaveClass(/el-button--primary/);
-  await expect(disable.locator('.el-icon')).toHaveCount(1);
+  await expect(disable).not.toHaveClass(/mar-ui-button--primary/);
+  await expect(disable.locator('.mar-icon')).toHaveCount(1);
   await expect(page.getByText('托管对话已启用。', { exact: true })).toBeVisible();
   const maintenanceCard = details.locator('.hosting-maintenance-card');
   await expect(maintenanceCard.getByRole('heading', { name: '对话存储维护' })).toBeVisible();
   const baseRadius = await details.evaluate((element) =>
-    getComputedStyle(element).getPropertyValue('--el-border-radius-base').trim()
+    getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
   );
   expect(baseRadius).not.toBe('');
   await expect(maintenanceCard).toHaveCSS('border-radius', baseRadius);
@@ -1383,19 +1383,15 @@ test('Node environment secrets use default controls, compact layout, and plain-t
   expect(spacing).toBeLessThanOrEqual(16);
   const secretTable = details.locator('.secret-table');
   await expect(secretTable).toBeVisible();
-  await expect(secretTable).toHaveClass(/el-table/);
-  await expect(secretTable).not.toHaveClass(/el-table--small/);
-  await expect(secretTable.locator('.el-table__header-wrapper th')).toHaveText([
+  await expect(secretTable.getByRole('table')).toHaveCSS('font-size', '14px');
+  await expect(secretTable.locator('thead th')).toHaveText([
     '环境变量名',
     '密钥值',
     '范围',
     '操作'
   ]);
-  await expect(secretTable.locator('.caret-wrapper')).toHaveCount(3);
-  await secretTable
-    .locator('.el-table__header-wrapper th')
-    .filter({ hasText: '环境变量名' })
-    .click();
+  await expect(secretTable.locator('.mar-ui-table__sort')).toHaveCount(3);
+  await secretTable.getByRole('columnheader', { name: '环境变量名' }).getByRole('button').click();
   await expect(details).toContainText('visible-secret');
   await expect(details.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
   await expect(details.getByRole('button', { name: '更新' })).toBeDisabled();
@@ -1639,14 +1635,16 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.locator('.system-brand img')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'License 授权' })).toBeVisible();
   await expect(page.getByText('企业版', { exact: true })).toBeVisible();
-  await expect(page.locator('.license-version .el-tag')).toHaveText('过期');
+  await expect(page.locator('.license-version .mar-ui-tag')).toHaveText('过期');
   await expect(page.getByText('主机指纹')).toHaveCount(0);
   await expect(page.locator('.license-code-input input')).toHaveValue(
     'MAR1.random-license-request.checksum'
   );
   await expect(page.getByText('永久有效')).toBeVisible();
   await expect(page.getByRole('button', { name: '复制 License 申请码' })).toBeEnabled();
-  await expect(page.locator('.license-code-input')).toHaveClass(/el-input-group/);
+  await expect(
+    page.locator('.license-code-input .mar-ui-input__append').getByRole('button')
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: '组织管理' })).toBeVisible();
   await expect(page.getByRole('button', { name: '用户管理' })).toBeVisible();
   await expect(page.getByRole('button', { name: '节点管理' })).toBeVisible();
@@ -1676,15 +1674,16 @@ test('Enterprise management exposes role-based sections and disables writes when
   await page.getByRole('button', { name: '用户管理' }).click();
   await expect(page.getByRole('button', { name: '用户管理' })).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: '创建用户' })).toBeDisabled();
-  await expect(page.locator('.el-table').getByText('成员', { exact: true })).toBeVisible();
-  await expect(page.locator('.mar-management-page .el-table')).toHaveCSS('font-size', '14px');
-  await expect(page.locator('.mar-management-page .el-table')).not.toHaveClass(/el-table--small/);
+  await expect(page.locator('.mar-ui-table').getByText('成员', { exact: true })).toBeVisible();
+  await expect(page.locator('.mar-management-page .mar-ui-table')).toHaveCSS('font-size', '14px');
   await expect(page.locator('.mar-row-actions').first()).toHaveCSS('white-space', 'nowrap');
   await expect(page.getByRole('button', { name: '重置密码' })).toHaveCSS('font-size', '14px');
   await expect(page.getByRole('combobox')).toHaveCount(2);
-  await expect(page.getByPlaceholder('请输入用户、邮箱或显示名称')).not.toHaveClass(
-    /el-input--small/
-  );
+  await expect(
+    page
+      .locator('.mar-ui-input')
+      .filter({ has: page.getByPlaceholder('请输入用户、邮箱或显示名称') })
+  ).not.toHaveClass(/mar-ui-input--small/);
   await expect(page.getByPlaceholder('请选择组织')).toBeVisible();
   await expect(page.getByRole('button', { name: '重置密码' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
@@ -1704,10 +1703,10 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(page.getByText('POST /api/runner-commands', { exact: true })).toHaveCount(0);
   await expect(page.getByText('PATCH /api/future-domain/:id', { exact: true })).toHaveCount(0);
   await expect(page.getByText('已拒绝', { exact: true })).toBeVisible();
-  const auditTable = page.locator('.audit-management .el-table');
+  const auditTable = page.locator('.audit-management .mar-ui-table');
   await expect(auditTable.getByRole('columnheader', { name: '错误' })).toHaveCount(0);
   await expect(auditTable.getByRole('columnheader', { name: '操作', exact: true })).toHaveCount(0);
-  const auditRow = auditTable.locator('.el-table__row').filter({ hasText: '已拒绝' });
+  const auditRow = auditTable.locator('.mar-ui-table__row').filter({ hasText: '已拒绝' });
   await expect(auditRow.getByRole('button', { name: '查看', exact: true })).toHaveCount(0);
   await auditRow.click();
   const auditDetails = page.getByRole('dialog', { name: /^(审计详情|Audit Details)$/ });
@@ -1718,7 +1717,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(auditDetails).toBeHidden();
-  await auditTable.locator('.el-table__row').filter({ hasText: 'Membership change' }).click();
+  await auditTable.locator('.mar-ui-table__row').filter({ hasText: 'Membership change' }).click();
   await expect(auditDetails).toContainText('角色');
   await expect(auditDetails).toContainText('成员');
   await expect(auditDetails).toContainText('组织管理员');
@@ -1741,7 +1740,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await page.keyboard.press('Escape');
   await expect(auditDetails).toBeHidden();
 
-  await auditTable.locator('.el-table__row').filter({ hasText: 'Named audit session' }).click();
+  await auditTable.locator('.mar-ui-table__row').filter({ hasText: 'Named audit session' }).click();
   await expect(auditDetails).toContainText('Session: 发送消息');
   await expect(auditDetails).toContainText('19:41:04');
   for (const text of [
@@ -1769,10 +1768,10 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(auditDetails).toContainText('19:41:04');
   await expect(auditDetails).not.toContainText(/\b(?:AM|PM)\b/);
   await expect(
-    auditTable.locator('.el-table__row').filter({ hasText: 'Historical Node' })
+    auditTable.locator('.mar-ui-table__row').filter({ hasText: 'Historical Node' })
   ).toContainText('Node: Rename');
   await expect(
-    auditTable.locator('.el-table__row').filter({ hasText: 'Historical Node' })
+    auditTable.locator('.mar-ui-table__row').filter({ hasText: 'Historical Node' })
   ).toContainText('00:00:00');
   await page.keyboard.press('Escape');
   await page.evaluate(() =>
@@ -1862,11 +1861,11 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     await page.getByRole('button', { name: text.login }).click();
     await page.getByRole('button', { name: text.admin, exact: true }).click();
     await page.getByRole('button', { name: text.settings }).click();
-    await expect(page.locator('.el-table__row').filter({ hasText: text.smtp })).toBeVisible();
+    await expect(page.locator('.mar-ui-table__row').filter({ hasText: text.smtp })).toBeVisible();
     await expect(page.getByText(text.key, { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: text.refresh, exact: true }).click();
     await expect.poll(() => settingsRequests).toBe(2);
-    await expect(page.locator('.el-loading-mask')).toHaveCount(0);
+    await expect(page.locator('.mar-ui-loading')).toHaveCount(0);
     expect(retiredRequests).toEqual([]);
   });
 }
@@ -1920,10 +1919,12 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('button', { name: '系统配置' }).click();
 
-  const auditRow = page.locator('.el-table__row').filter({ hasText: '审计保留天数' });
-  const tlsRow = page.locator('.el-table__row').filter({ hasText: '关闭 Skill 回源 TLS 证书校验' });
+  const auditRow = page.locator('.mar-ui-table__row').filter({ hasText: '审计保留天数' });
+  const tlsRow = page
+    .locator('.mar-ui-table__row')
+    .filter({ hasText: '关闭 Skill 回源 TLS 证书校验' });
   // Deployment settings are a complete configuration catalog, not a paged query.
-  await expect(page.locator('.management-pagination .el-pagination')).toHaveCount(0);
+  await expect(page.locator('.management-pagination .mar-ui-pagination')).toHaveCount(0);
   await expect(auditRow.getByRole('spinbutton')).toHaveCount(0);
   await expect(tlsRow.getByRole('switch')).toBeDisabled();
 
@@ -1942,17 +1943,17 @@ test('System settings consistently edit before saving and reuse snapshot APIs an
 
   await tlsRow.getByRole('button', { name: '编辑' }).click();
   await expect(tlsRow.getByRole('switch')).toBeEnabled();
-  await tlsRow.locator('.el-switch').click();
+  await tlsRow.getByRole('switch').click();
   await tlsRow.getByRole('button', { name: '取消' }).click();
   await expect(tlsRow.getByRole('switch')).toBeDisabled();
-  await expect(tlsRow.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  await expect(tlsRow.getByRole('switch')).not.toBeChecked();
 
   await tlsRow.getByRole('button', { name: '编辑' }).click();
-  await tlsRow.locator('.el-switch').click();
+  await tlsRow.getByRole('switch').click();
   await tlsRow.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('系统配置已保存').last()).toBeVisible();
   await expect(tlsRow.getByRole('switch')).toBeDisabled();
-  await expect(tlsRow.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  await expect(tlsRow.getByRole('switch')).toBeChecked();
   await expect(tlsRow.getByText(/默认关闭此开关/u)).toBeVisible();
   await expect(page.getByRole('alert').filter({ hasText: 'Skill 回源 TLS' })).toHaveCount(0);
 
@@ -2004,7 +2005,7 @@ test('Node details enable Usage only for official OAuth Runners and show normali
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('button', { name: '节点管理' }).click();
-  await page.locator('.resource-management-panel .el-table__body tbody tr').first().click();
+  await page.locator('.resource-management-panel .mar-ui-table__row').first().click();
   const details = page.getByRole('dialog', { name: '节点详情' });
   const usageButtons = details.getByRole('button', { name: '用量' });
   await expect(usageButtons).toHaveCount(2);
@@ -2058,7 +2059,7 @@ test('Mobile detail lists use shared layout and constrain long content overflow'
   await page.getByRole('button', { name: '管理', exact: true }).click();
   await page.getByRole('button', { name: '节点管理' }).click({ force: true });
   await page.setViewportSize({ width: 390, height: 720 });
-  await page.locator('.resource-management-panel .el-table__body tbody tr').first().click();
+  await page.locator('.resource-management-panel .mar-ui-table__row').first().click();
 
   const details = page.getByRole('dialog', { name: '节点详情' });
   const descriptions = details.locator('.mar-detail-descriptions');
@@ -2169,10 +2170,11 @@ test('Resource filters align left on desktop and keep actions accessible after m
   expect(layout.filterRight).toBeLessThanOrEqual(layout.viewportWidth);
   expect(layout.filterScrollWidth).toBeLessThanOrEqual(layout.filterClientWidth);
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  await expect(page.locator('.mar-management-page .el-table__fixed-right')).toHaveCount(0);
-  const tableScroll = page.locator(
-    '.mar-management-page .el-table__body-wrapper .el-scrollbar__wrap'
+  await expect(page.getByRole('columnheader', { name: '操作', exact: true })).not.toHaveCSS(
+    'position',
+    'sticky'
   );
+  const tableScroll = page.locator('.mar-management-page .mar-ui-table__viewport');
   const tableLayout = await tableScroll.evaluate((element) => {
     element.scrollLeft = element.scrollWidth;
     return {
@@ -2187,7 +2189,7 @@ test('Resource filters align left on desktop and keep actions accessible after m
   const rowActions = page.locator('.mar-management-page .mar-row-actions').first();
   const actionLayout = await rowActions.evaluate((element) => {
     const actions = element.getBoundingClientRect();
-    const scrollViewport = element.closest('.el-scrollbar__wrap')?.getBoundingClientRect();
+    const scrollViewport = element.closest('.mar-ui-table__viewport')?.getBoundingClientRect();
     return {
       actionsLeft: actions.left,
       actionsRight: actions.right,
@@ -2327,12 +2329,12 @@ test('Reload restores CSRF and temporary directories and Workspaces are created 
   const upwardButton = selectionPanel.getByLabel('返回上一级');
   await expect(upwardButton).toBeVisible();
   await expect(upwardButton).toContainText('返回上一级');
-  await expect(upwardButton).toHaveClass(/is-text/);
+  await expect(upwardButton).toHaveClass(/mar-ui-button--ghost/);
   const createDirectoryButton = selectionPanel.getByRole('button', { name: '新建目录' });
   await expect(createDirectoryButton.locator('.el-icon')).toBeVisible();
   const selectCurrentButton = selectionPanel.getByRole('button', { name: '选择当前目录' });
-  await expect(selectCurrentButton).toHaveClass(/el-button/);
-  await expect(selectCurrentButton).not.toHaveClass(/is-text/);
+  await expect(selectCurrentButton).toHaveClass(/mar-ui-button/);
+  await expect(selectCurrentButton).not.toHaveClass(/mar-ui-button--ghost/);
   await expect(selectionPanel.getByText('从当前 节点的允许根目录开始')).toHaveCount(0);
   const directoryFilter = selectionPanel.getByRole('textbox', { name: '显示过滤' });
   await directoryFilter.fill('missing');

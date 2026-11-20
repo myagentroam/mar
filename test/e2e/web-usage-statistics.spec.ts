@@ -225,11 +225,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const panel = page.getByTestId('usage-statistics');
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
     await expect(panel).toHaveAttribute('aria-busy', 'true');
-    const loadingMask = panel.locator(':scope > .el-loading-mask');
+    const loadingMask = panel.locator(':scope > .mar-ui-loading');
     const expectLoadingInViewport = async () => {
       const area = await page.locator('.settings-content').boundingBox();
       const mask = await loadingMask.boundingBox();
-      const spinner = await loadingMask.locator('.el-loading-spinner').boundingBox();
+      const spinner = await loadingMask.locator('.mar-ui-loading__indicator').boundingBox();
       expect(area).not.toBeNull();
       expect(mask).not.toBeNull();
       expect(spinner).not.toBeNull();
@@ -273,7 +273,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const purposeSelectBox = panel.locator('.usage-purpose-select');
     const conversation = categories.getByRole('radio', { name: purposeNames[0], exact: true });
     const assertSelectedPurpose = async (label: string) => {
-      if (mobile) await expect(purposeSelectBox.getByText(label, { exact: true })).toBeVisible();
+      if (mobile) await expect(purposeSelectBox.getByRole('combobox')).toHaveText(label);
       else await expect(categories.getByRole('radio', { name: label, exact: true })).toBeChecked();
     };
     const clickPurpose = async (label: string) => {
@@ -286,8 +286,12 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(purposeSelect).toHaveCount(mobile ? 1 : 0);
     await assertSelectedPurpose(purposeNames[0]!);
     await expect(refreshButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    const refreshSize = await refreshButton.boundingBox();
-    expect(refreshSize!.width).toBe(refreshSize!.height);
+    await expect
+      .poll(async () => {
+        const size = await refreshButton.boundingBox();
+        return size && Math.abs(size.width - size.height);
+      })
+      .toBe(0);
     const selectionIndicator = categories.locator('.mar-segmented-indicator');
     for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
       await page.evaluate(
@@ -454,7 +458,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         `${labels.outputTokens}: ${displayCount(values.outputTokens)}`,
         `${labels.totalTokens}: ${displayCount(values.totalTokens)}`
       ];
-      const details = tooltip.locator(':scope > div');
+      const details = tooltip.locator('.usage-tooltip-detail');
       await expect(details).toHaveText(lines);
       hoverDetails.push((await details.allTextContents()).map((text) => text.trim()));
     }
@@ -483,7 +487,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(inspector).toHaveCSS('outline-style', 'solid');
     const expectPeriod = async (index: number) => {
       await expect(inspector).toBeFocused();
-      await expect(tooltip.locator(':scope > div')).toHaveText(hoverDetails[index]!);
+      await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[index]!);
       await expect(inspector).toHaveAttribute('aria-valuetext', hoverDetails[index]!.join(' · '));
     };
     await expectPeriod(0);
@@ -502,8 +506,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
 
     await expect(panel.getByText(labels.chart, { exact: true })).toHaveCount(0);
     await expect(panel.getByText(labels.notes, { exact: true })).toHaveCount(0);
-    await expect(panel.locator('.records .el-table__body-wrapper')).toContainText(labels.unknown);
-    const rows = panel.locator('.records .el-table__body-wrapper tr.el-table__row');
+    await expect(panel.locator('.records .mar-ui-table__viewport')).toContainText(labels.unknown);
+    const rows = panel.locator('.records .mar-ui-table__row');
     await expect(rows).toHaveCount(20);
     await expect(rows.first()).toContainText('2026-10-14 09:44:04');
     await expect(rows.first()).toContainText(`${compact('617283')} (50%)`);
@@ -524,14 +528,14 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.mouse.move(0, 0);
     await expect(tooltip).toHaveCount(0);
     const pager = panel.locator('.management-pagination');
-    await panel.locator('.records .el-table__expand-icon').first().click();
+    await panel.locator('.records .mar-ui-table__disclosure').first().click();
     const detail = panel.locator('.record-detail');
     await expect(detail.getByText('0', { exact: true }).first()).toBeVisible();
     await expect(detail).toContainText(`${compact('617283')} (50%)`);
     await expect(detail.getByText(compact('10000'), { exact: true })).toBeVisible();
     await expect(detail).toContainText(labels.unknown);
     if (mobile) {
-      await expect(pager.locator('.el-pagination')).toHaveCount(0);
+      await expect(pager.locator('.mar-ui-pagination')).toHaveCount(0);
       for (const expected of [40, 60]) {
         // Each automatic append requires a new intersection with the pagination boundary.
         await panel
@@ -566,10 +570,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(
         panel.getByRole('button', { name: labels.previous, exact: true })
       ).toBeDisabled();
-      await expect(pager.locator('.el-pagination__total')).toContainText('61');
-      await expect(pager.locator('.el-pager li.number')).toHaveCount(4);
+      await expect(pager.locator('.mar-ui-pagination__total')).toContainText('61');
+      await expect(pager.locator('.mar-ui-pagination__page')).toHaveCount(4);
       const refreshedStatus = await panel.locator('header').getByRole('status').innerText();
-      await pager.locator('.el-pager li.number').filter({ hasText: /^4$/u }).click();
+      await pager.locator('.mar-ui-pagination__page').filter({ hasText: /^4$/u }).click();
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await expect(loadingMask).toBeHidden();
       await expect(panel.locator('header').getByRole('status')).toHaveText(refreshedStatus);
@@ -580,10 +584,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await page.clock.runFor(500);
       await expect(loadingMask).toBeHidden();
-      await expect(pager.locator('.el-pager .is-active')).toContainText('4');
-      await expect(pager.locator('.el-pager li.number')).toHaveCount(4);
+      await expect(pager.locator('[aria-current="page"]')).toContainText('4');
+      await expect(pager.locator('.mar-ui-pagination__page')).toHaveCount(4);
       await expect(panel.getByRole('button', { name: labels.next, exact: true })).toBeDisabled();
-      await expect(pager.locator('.el-pagination')).toHaveClass(/is-background/u);
+      await expect(pager.locator('.mar-ui-pagination')).toHaveClass(/is-background/u);
     }
     await pager.scrollIntoViewIfNeeded();
     await pager.screenshot({
@@ -601,7 +605,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
     await page.clock.resume();
     if (!mobile) {
-      await pager.getByRole('listitem', { name: 'page 1', exact: true }).click();
+      await pager.getByRole('button', { name: 'Page 1', exact: true }).click();
       await expect(rows).toHaveCount(20);
       await panel.getByRole('button', { name: labels.next, exact: true }).click();
     }
@@ -625,7 +629,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );
-    if (!mobile) await expect(pager.locator('.el-pager .is-active')).toContainText('1');
+    if (!mobile) await expect(pager.locator('[aria-current="page"]')).toContainText('1');
     else await expect(rows).toHaveCount(20);
     failure = true;
     await refreshButton.focus();
@@ -646,9 +650,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await panel.getByRole('combobox', { name: labels.range, exact: true }).press('Enter');
     await page.getByRole('option', { name: labels.custom, exact: true }).click();
     await expect(panel.locator('.custom-range')).toBeVisible();
-    await expect(panel.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(panel.locator('.custom-range').getByRole('alert')).toHaveCount(0);
     const layout = await panel.locator('.filters').evaluate((element) => {
-      const items = Array.from(element.querySelectorAll('.el-form-item'));
+      const items = Array.from(element.querySelectorAll('.mar-ui-form-item'));
       const range = element.querySelector('.custom-range')!.getBoundingClientRect();
       const time = items[0]!.getBoundingClientRect();
       const runner = items[1]!.getBoundingClientRect();
@@ -670,8 +674,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       animations: 'disabled',
       path: testInfo.outputPath(`usage-custom-${locale}.png`)
     });
-    await panel.locator('.custom-range .el-range-input').first().click();
-    const picker = page.locator('.el-date-range-picker:visible');
+    await panel.locator('.custom-range .mar-ui-date-picker__input').first().click();
+    const picker = page.locator('.mar-ui-date-picker__popup:visible');
     await expect(picker).toBeVisible();
     await page.screenshot({
       animations: 'disabled',
@@ -683,7 +687,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
 
     const beforeInvalidCategory = requests.length;
     await clickPurpose(purposeNames[1]!);
-    await expect(panel.locator('.el-form-item__error')).toBeVisible();
+    await expect(panel.locator('.custom-range').getByRole('alert')).toBeVisible();
     await assertSelectedPurpose(purposeNames[0]!);
     expect(requests).toHaveLength(beforeInvalidCategory);
     const range = await page.evaluate((now) => {
@@ -694,11 +698,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       };
       return { from: format(now - 2 * 86400000), to: format(now - 86400000) };
     }, now);
-    const inputs = panel.locator('.custom-range .el-range-input');
+    const inputs = panel.locator('.custom-range .mar-ui-date-picker__input');
     await inputs.first().fill(range.from);
     await inputs.last().fill(range.to);
     await inputs.last().press('Enter');
-    await expect(panel.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(panel.locator('.custom-range').getByRole('alert')).toHaveCount(0);
     await expect
       .poll(() => {
         const selected = requests.filter((url) => url.pathname.endsWith('/overview')).at(-1)!;
@@ -711,7 +715,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     const reads = (kind: string) =>
       requests.filter((url) => url.pathname.endsWith(`/${kind}`)).length;
-    await panel.locator('.records .el-table__expand-icon').first().click();
+    await panel.locator('.records .mar-ui-table__disclosure').first().click();
     await expect(panel.locator('.record-detail')).toHaveCount(1);
     const beforeExpanded = { overview: reads('overview'), records: reads('records') };
     await page.clock.fastForward(60_000);
@@ -728,13 +732,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.runFor(500);
     await expect(panel.locator('.record-detail')).toHaveCount(0);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toHaveCount(0);
-    await panel.locator('.records th .caret-wrapper').first().press('Enter');
-    await expect(panel.locator('.records th.ascending')).toHaveCount(1);
+    await panel.locator('.records th .mar-ui-table__sort').first().press('Enter');
+    await expect(panel.locator('.records th[aria-sort="ascending"]')).toHaveCount(1);
     const beforeSorted = { overview: reads('overview'), records: reads('records') };
     await page.clock.fastForward(60_000);
     await expect.poll(() => reads('overview')).toBe(beforeSorted.overview + 1);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
-    await expect(panel.locator('.records th.ascending')).toHaveCount(1);
+    await expect(panel.locator('.records th[aria-sort="ascending"]')).toHaveCount(1);
     expect(reads('records')).toBe(beforeSorted.records);
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await page.clock.resume();
@@ -769,7 +773,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     // Exercise both locales on mobile, including the longer English labels at 320px.
     if (!mobile) await page.setViewportSize({ width: 320, height: 844 });
     await expect(categories).toHaveCount(0);
-    await expect(purposeSelectBox.getByText(purposeNames[4]!, { exact: true })).toBeVisible();
+    await expect(purposeSelectBox.getByRole('combobox')).toHaveText(purposeNames[4]!);
     await panel.locator('header').evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await purposeSelectBox.click();
     const options = page.getByRole('listbox').getByRole('option');

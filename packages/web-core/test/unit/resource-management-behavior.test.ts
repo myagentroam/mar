@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessageBox } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import NodePage from '../../src/view/settings/NodeManagementPage.vue?unit-render';
 import WorkspacePage from '../../src/view/settings/WorkspaceManagementPage.vue?unit-render';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -81,7 +81,7 @@ describe('Public resource operation behavior', () => {
         throw new Error(`Unexpected fixture request: ${path}`);
       });
       const confirmation = vi
-        .spyOn(ElMessageBox, 'confirm')
+        .spyOn(MarMessageBox, 'confirm')
         .mockRejectedValueOnce('cancel')
         .mockResolvedValue('confirm' as never);
       const validate = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
@@ -93,20 +93,21 @@ describe('Public resource operation behavior', () => {
         { validate }
       );
       const button = (label: string) =>
-        view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+        view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
       try {
         await flushComponent();
         const actionRow = view
           .findAll('div')
           .find((node) => node.props['class'] === 'mar-row-actions')!;
         expect(
-          actionRow.children
-            .filter((node) => node.type === 'ElButton')
+          view
+            .findAll('MarButton')
+            .filter((node) => node.parent === actionRow)
             .map((node) => textContent(node).trim())
         ).toEqual([messages.edit, common.delete]);
         await trigger(button(messages.edit), 'onClick');
         const name = view
-          .findAll('ElInput')
+          .findAll('MarInput')
           .find((node) => node.props['maxlength'] === (resourceType === 'NODE' ? 128 : 255))!;
         await trigger(name, 'onUpdate:modelValue', '  New client name  ');
         await trigger(button(common.save), 'onClick');
@@ -123,7 +124,7 @@ describe('Public resource operation behavior', () => {
         await trigger(button(common.delete), 'onClick');
         expect(confirmation).toHaveBeenCalledTimes(2);
         expect(request).toHaveBeenCalledWith(endpoint, { method: 'DELETE' });
-        expect(view.findAll('ElTable')[0]?.props['data']).toEqual([]);
+        expect(view.findAll('MarTable')[0]?.props['data']).toEqual([]);
         expect(changed).toHaveBeenCalledTimes(2);
       } finally {
         view.unmount();
@@ -168,20 +169,20 @@ describe('Public resource operation behavior', () => {
       throw new Error(`Unexpected fixture request: ${path}`);
     });
     const confirmation = vi
-      .spyOn(ElMessageBox, 'confirm')
+      .spyOn(MarMessageBox, 'confirm')
       .mockRejectedValueOnce('cancel')
       .mockResolvedValue('confirm' as never);
     const view = renderComponent(NodePage, { request, writable: true });
     const button = (label: string) =>
-      view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+      view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
     const refreshLabel = commonMessages['en-US'].generated.nodeDetailsDialogs.refreshCapabilities;
     try {
       await flushComponent();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const row = (table.props['data'] as object[])[0];
       await trigger(table, 'onRowClick', row);
       expect(request).toHaveBeenCalledWith('/api/nodes');
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.2');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('0.10.2');
       failRefresh = true;
       await trigger(button(refreshLabel), 'onClick');
       expect(showMessage).toHaveBeenCalledWith(
@@ -189,11 +190,11 @@ describe('Public resource operation behavior', () => {
         'error',
         expect.any(Error)
       );
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.2');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('0.10.2');
       failRefresh = false;
       version = '0.10.40';
       await trigger(button(refreshLabel), 'onClick');
-      expect(textContent(view.findAll('ElDialog')[0]!)).toContain('0.10.40');
+      expect(textContent(view.findAll('MarDialog')[0]!)).toContain('0.10.40');
       expect(button(messages.pushUpgrade2).props['icon']).toBeTruthy();
       expect(button(messages.pushUpgrade2).props['type']).not.toBe('primary');
       await trigger(button(messages.pushUpgrade2), 'onClick');

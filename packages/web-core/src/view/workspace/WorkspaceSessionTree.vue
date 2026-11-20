@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarDropdown } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type {
@@ -155,7 +157,7 @@ function openContext(event: MouseEvent): void {
     </div>
     <p v-if="status === 'failed' || (status === 'ready' && tree === null)" role="status">
       {{ translate('sessionGroups.treeUnavailable') }}
-      <el-button link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</el-button>
+      <MarButton link @click="emit('retry')">{{ translate('sessionGroups.retry') }}</MarButton>
     </p>
     <div
       v-if="tree?.parent"
@@ -201,7 +203,7 @@ function openContext(event: MouseEvent): void {
         <span v-else-if="asideSessionIds.includes(tree.parent.id)" class="session-tree-location">{{
           translate('sessionGroups.inAside')
         }}</span>
-        <el-dropdown
+        <MarDropdown
           v-if="actionsVisible(tree.parent.id)"
           ref="parentMenu"
           trigger="click"
@@ -225,7 +227,7 @@ function openContext(event: MouseEvent): void {
               @open="(id, destination) => emit('open', id, destination)"
             />
           </template>
-        </el-dropdown>
+        </MarDropdown>
       </div>
     </div>
     <p v-if="tree && rows.length === 0">{{ translate('sessionGroups.noDescendants') }}</p>
@@ -299,7 +301,7 @@ function openContext(event: MouseEvent): void {
               >{{ formatRelativeSessionActivity(row.node.lastActivityAt) }}</time
             >
           </button>
-          <el-dropdown
+          <MarDropdown
             v-if="actionsVisible(row.node.id)"
             ref="nodeMenus"
             trigger="click"
@@ -324,7 +326,7 @@ function openContext(event: MouseEvent): void {
                 @open="(id, destination) => emit('open', id, destination)"
               />
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </div>
       </li>
     </ul>
@@ -360,12 +362,12 @@ function openContext(event: MouseEvent): void {
 .session-tree-row > .session-tree-item {
   min-inline-size: min(12rem, 100%);
 }
-.session-tree-item > .el-dropdown {
+.session-tree-item > .mar-ui-dropdown {
   flex: none;
 }
 .session-tree-location {
   flex: none;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .session-tree-actions {
@@ -379,7 +381,7 @@ function openContext(event: MouseEvent): void {
   border-radius: var(--mar-radius-control);
 }
 .tree-sleeping i {
-  background: var(--el-color-warning);
+  background: var(--mar-control-color-warning);
 }
 .session-tree[aria-busy='true'] {
   min-height: 4rem;

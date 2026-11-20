@@ -1,12 +1,10 @@
 import { createRenderer, h, nextTick, reactive, ssrContextKey } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage } from 'element-plus';
 import SessionScheduleDialog from '../../src/view/workspace/SessionScheduleDialog.vue';
 import RenderedScheduleDialog from '../../src/view/workspace/SessionScheduleDialog.vue?unit-render';
 import { renderComponent, flushComponent, trigger } from './support/component-renderer.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 
-vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn(), success: vi.fn() } }));
 const originalLocale = localePreferenceService().locale.value;
 afterEach(() => {
   localePreferenceService().setLocale(originalLocale);
@@ -124,7 +122,7 @@ describe('scheduled session configuration status', () => {
       await settle();
       expect(view.state()['enabled']).toBe(false);
       expect(view.state()['statusLabel']).toBe('');
-      expect(ElMessage.error).toHaveBeenCalledOnce();
+      expect(feedback.error).toHaveBeenCalledOnce();
       (view.state()['form'] as { objective: string }).objective = 'New task';
       view.state()['formRef'] = { validate: vi.fn().mockResolvedValue(true) };
       await (view.state()['save'] as () => Promise<void>)();
@@ -222,7 +220,7 @@ describe('scheduled session history pagination', () => {
     });
     try {
       await flushComponent();
-      expect(view.findAll('ElPagination')[0]!.props).toMatchObject({
+      expect(view.findAll('MarPagination')[0]!.props).toMatchObject({
         'current-page': 1,
         'page-size': 10,
         total: 25,
@@ -235,12 +233,12 @@ describe('scheduled session history pagination', () => {
             release = resolve;
           })
       );
-      await trigger(view.findAll('ElPagination')[0]!, 'onCurrentChange', 2);
+      await trigger(view.findAll('MarPagination')[0]!, 'onCurrentChange', 2);
       expect(request.mock.calls.at(-1)?.[0]).toContain('occurrencePage=2');
-      expect(view.findAll('ElPagination')[0]!.props.disabled).toBe(true);
+      expect(view.findAll('MarPagination')[0]!.props.disabled).toBe(true);
       release(page(2));
       await flushComponent();
-      expect(view.findAll('ElPagination')[0]!.props).toMatchObject({
+      expect(view.findAll('MarPagination')[0]!.props).toMatchObject({
         'current-page': 2,
         disabled: false
       });
@@ -311,7 +309,7 @@ describe('scheduled session history pagination', () => {
       change(1);
       await settle();
       expect(view.state()['occurrencePage']).toBe(2);
-      expect(ElMessage.error).toHaveBeenCalledOnce();
+      expect(feedback.error).toHaveBeenCalledOnce();
       change(1);
       await settle();
       view.props.session = { id: 'two' } as never;
@@ -391,7 +389,7 @@ describe('scheduled session history pagination', () => {
         await settle();
         expect(view.state()['occurrencePage']).toBe(1);
         expect(view.state()['occurrenceTotal']).toBe(25);
-        expect(ElMessage.error).not.toHaveBeenCalled();
+        expect(feedback.error).not.toHaveBeenCalled();
         await (view.state()['load'] as () => Promise<void>)();
         expect(request).toHaveBeenCalledTimes(2);
       } finally {
@@ -414,3 +412,14 @@ describe('scheduled session history pagination', () => {
     }
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));

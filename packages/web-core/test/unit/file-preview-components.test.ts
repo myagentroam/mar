@@ -1,11 +1,7 @@
 import { createSSRApp, h, type Component, type Ref, type SetupContext } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, {
-  ElMessageBox,
-  ID_INJECTION_KEY,
-  ZINDEX_INJECTION_KEY,
-  type MessageBoxData
-} from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileSpecifierParser } from '@myagentroam/code-navigation';
 import { filePreviewEnUS, filePreviewZhCN } from '../../src/i18n/file-preview.js';
@@ -304,9 +300,9 @@ describe('standalone cached-draft close confirmation', () => {
   it('preserves inactive drafts on cancellation and clears them only after confirmed window close', async () => {
     const state = await setupStandaloneWithCachedDraft();
     const confirm = vi
-      .spyOn(ElMessageBox, 'confirm')
+      .spyOn(MarMessageBox, 'confirm')
       .mockRejectedValueOnce('cancel')
-      .mockResolvedValueOnce('confirm' as MessageBoxData);
+      .mockResolvedValueOnce('confirm');
     await expect(state.bindings.canCloseUnmountedTab(7)).resolves.toBe(false);
     expect(state.bindings.dirtyDrafts.value).toEqual([state.draft]);
     expect(state.storage.get('mar.standalone-file-drafts.v1')).toBe(JSON.stringify([state.draft]));
@@ -322,9 +318,7 @@ describe('standalone cached-draft close confirmation', () => {
 
   it('does not prompt for clean tabs and removes only the individually closed draft', async () => {
     const state = await setupStandaloneWithCachedDraft();
-    const confirm = vi
-      .spyOn(ElMessageBox, 'confirm')
-      .mockResolvedValueOnce('confirm' as MessageBoxData);
+    const confirm = vi.spyOn(MarMessageBox, 'confirm').mockResolvedValueOnce('confirm');
     const cleanId = state.bindings.standaloneTabs.value.find((tab) => tab.id !== 7)!.id;
     await expect(state.bindings.canCloseUnmountedTab(cleanId)).resolves.toBe(true);
     expect(confirm).not.toHaveBeenCalled();
@@ -637,8 +631,11 @@ describe.each(['zh-CN', 'en-US'] as const)('public file preview components (%s)'
     expectUnifiedButtonHints(html);
     expect(html).toContain(i18n.global.t('generated.filePreviewDialog.onlyTheFirst512KiBIsShown'));
     expect(html).not.toContain('code-file-editor');
-    // Decorative SVGs are hidden, but the preview and its controls must remain exposed.
-    expect(html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gu, '')).not.toContain('aria-hidden="true"');
+    // Decorative icons are hidden, but the preview and its controls must remain exposed.
+    const withoutDecorations = html
+      .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gu, '')
+      .replace(/<span class="mar-ui-button__icon"[^>]*><\/span>/gu, '');
+    expect(withoutDecorations).not.toContain('aria-hidden="true"');
     expect(html).not.toContain('inert');
     expect(html).not.toContain(i18n.global.t('fileEditor.editing'));
     expect(html).not.toMatch(/(?:fileEditor|filePreviewDialog|generated)\./u);

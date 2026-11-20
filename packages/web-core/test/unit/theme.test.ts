@@ -11,17 +11,12 @@ import {
 } from '../../src/service/theme-preference-service';
 
 function sharedStyles(): string {
-  return [
-    'styles.css',
-    'styles/theme.css',
-    'styles/element-plus-theme.css',
-    'styles/mar-controls.css'
-  ]
+  return ['styles.css', 'styles/theme.css', 'styles/mar-ui-theme.css', 'styles/mar-controls.css']
     .map((path) => readFileSync(new URL(`../../src/${path}`, import.meta.url), 'utf8'))
     .join('\n');
 }
 
-it('defines every shared font role and Element Plus status shade consumed by components', () => {
+it('defines every shared font role and MAR status token consumed by components', () => {
   const css = sharedStyles();
   const defined = new Set([...css.matchAll(/(--mar-font-[\w-]+)\s*:/gu)].map((match) => match[1]));
   const root = fileURLToPath(new URL('../../src/view/', import.meta.url));
@@ -36,9 +31,10 @@ it('defines every shared font role and Element Plus status shade consumed by com
       expect(defined.has(match[1]!), `${file}: ${match[1]}`).toBe(true);
     }
   }
-  for (const type of ['success', 'warning', 'danger', 'info']) {
-    for (const suffix of ['light-3', 'light-5', 'light-7', 'light-8', 'light-9', 'dark-2']) {
-      expect(css).toContain(`--el-color-${type}-${suffix}:`);
+  for (const type of ['success', 'warning', 'danger']) {
+    for (const suffix of ['text', 'bg']) {
+      expect(css).toContain(`--mar-color-${type}-${suffix}:`);
+      expect(css).toContain(`--mar-ui-color-${type}-${suffix}: var(--mar-color-${type}-${suffix})`);
     }
   }
 });
@@ -98,7 +94,13 @@ describe('Web theme preference', () => {
         ([, specifier]) => (specifier!.startsWith('.') ? new URL(specifier!, file).href : specifier)
       );
     };
-    expect(cssImports('../e2e/custom-theme-app.ts')).toEqual(cssImports('../../src/bootstrap.ts'));
+    const production = cssImports('../../src/bootstrap.ts');
+    expect(production).toEqual([new URL('../../src/styles.css', import.meta.url).href]);
+    expect(cssImports('../e2e/custom-theme-app.ts')).toEqual([
+      'element-plus/theme-chalk/dark/css-vars.css',
+      ...production,
+      new URL('../support/element-plus-theme.css', import.meta.url).href
+    ]);
   });
 
   it('keeps private headers and file actions in their owning components', () => {

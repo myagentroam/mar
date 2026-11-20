@@ -391,6 +391,6 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  background: var(--mar-bg-panel);
+  background: var(--mar-conversation-canvas);
 }
 </style>

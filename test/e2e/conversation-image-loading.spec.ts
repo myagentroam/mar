@@ -448,15 +448,17 @@ for (const width of [1440, 390]) {
     const original = dialog.getByRole('button', { name: '查看原图', exact: true });
     await expect(original.locator('[data-mar-icon="image"]')).toBeVisible();
     await expect(original).toHaveText('查看原图');
-    await expect(original).not.toHaveClass(/is-text|is-link|el-button--(?:primary|danger)/);
+    await expect(original).not.toHaveClass(
+      /mar-ui-button--ghost|mar-ui-button--inline|mar-ui-button--(?:primary|danger)/
+    );
     await expect(original).toHaveCSS('height', '32px');
     await expect(original).toHaveCSS('border-top-style', 'solid');
     await expect(original).toHaveCSS('border-top-width', '1px');
     await expect(original).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(original).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expect(dialog.locator('.el-dialog__header').getByRole('button')).toHaveCount(1);
+    await expect(dialog.locator('.mar-ui-dialog__header').getByRole('button')).toHaveCount(1);
     await expectOriginalActionPosition(original);
-    const close = dialog.locator('.el-dialog__headerbtn');
+    const close = dialog.locator('.mar-ui-dialog__close');
     await expect(close).toHaveCSS('width', '32px');
     await expect(close).toHaveCSS('height', '32px');
     await close.hover();

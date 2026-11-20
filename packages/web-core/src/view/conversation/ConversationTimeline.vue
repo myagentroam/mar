@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
+import { MarRadio, MarRadioGroup } from '@myagentroam/mar-ui/radio';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import './conversation-detail.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
-import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { toolPresentation, toolPresentationStatus } from '../../util/tool-presentation.js';
@@ -394,6 +397,11 @@ function userInputCheckboxAnswer(itemId: string, questionId: string): readonly s
   return Array.isArray(answer) ? answer : [];
 }
 
+function userInputTextAnswer(itemId: string, questionId: string): string {
+  const answer = props.userInputAnswer(itemId, questionId);
+  return typeof answer === 'string' ? answer : '';
+}
+
 const latestPlanItemId = computed(
   () =>
     props.turns
@@ -466,7 +474,7 @@ async function animateDisclosure(event: MouseEvent): Promise<void> {
     return;
   }
   const style = getComputedStyle(details);
-  const duration = style.getPropertyValue('--el-transition-duration-fast').trim();
+  const duration = style.getPropertyValue('--mar-motion-duration-fast').trim();
   const collapsedHeight =
     summary.getBoundingClientRect().bottom -
     details.getBoundingClientRect().top +
@@ -1238,7 +1246,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               class="user-input-question"
             >
               <span>{{ question.prompt }}</span>
-              <el-checkbox-group
+              <MarCheckboxGroup
                 v-if="question.input === 'MULTI_SELECT' && question.options.length"
                 :disabled="
                   loading ||
@@ -1255,14 +1263,14 @@ function stepDuration(item: ConversationItem): string | undefined {
                   )
                 "
               >
-                <el-checkbox
+                <MarCheckbox
                   v-for="option in question.options"
                   :key="option.value"
                   :value="option.value"
-                  >{{ option.label }}</el-checkbox
+                  >{{ option.label }}</MarCheckbox
                 >
-              </el-checkbox-group>
-              <el-radio-group
+              </MarCheckboxGroup>
+              <MarRadioGroup
                 v-else-if="question.options.length"
                 :disabled="
                   loading ||
@@ -1274,19 +1282,19 @@ function stepDuration(item: ConversationItem): string | undefined {
                   emit('setAnswer', displayItem.item.id, question.id, String($event))
                 "
               >
-                <el-radio
+                <MarRadio
                   v-for="option in question.options"
                   :key="option.value"
                   :value="option.value"
-                  >{{ option.label }}</el-radio
+                  >{{ option.label }}</MarRadio
                 >
-              </el-radio-group>
-              <el-input
+              </MarRadioGroup>
+              <MarInput
                 v-if="
                   question.options.length === 0 ||
                   (question.allowOther && question.input !== 'MULTI_SELECT')
                 "
-                :model-value="props.userInputAnswer(displayItem.item.id, question.id)"
+                :model-value="userInputTextAnswer(displayItem.item.id, question.id)"
                 :disabled="
                   loading ||
                   displayItem.item.status !== 'PENDING' ||
@@ -1300,10 +1308,10 @@ function stepDuration(item: ConversationItem): string | undefined {
                 size="small"
                 @update:model-value="emit('setAnswer', displayItem.item.id, question.id, $event)"
               />
-              <el-input
+              <MarInput
                 v-if="question.allowOther && question.input === 'MULTI_SELECT'"
                 :model-value="
-                  props.userInputAnswer(displayItem.item.id, userInputOtherAnswerId(question.id))
+                  userInputTextAnswer(displayItem.item.id, userInputOtherAnswerId(question.id))
                 "
                 :disabled="
                   loading ||
@@ -1323,7 +1331,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               />
             </div>
             <div class="conversation-card-actions">
-              <el-button
+              <MarButton
                 type="primary"
                 size="small"
                 :disabled="
@@ -1333,8 +1341,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                   props.userInputSubmitted(displayItem.item.id)
                 "
                 @click="emit('submitInput', turn, displayItem.item)"
-                :loading-icon="marIcon('loading-action')"
-                >{{ translate('generated.conversationTimeline.submitAnswers') }}</el-button
+                >{{ translate('generated.conversationTimeline.submitAnswers') }}</MarButton
               >
             </div>
           </section>
@@ -1514,12 +1521,12 @@ function stepDuration(item: ConversationItem): string | undefined {
                 v-if="displayItem.item.id === latestPlanItemId && planContinuation"
                 class="conversation-card-actions"
               >
-                <el-button
+                <MarButton
                   type="primary"
                   size="small"
                   :disabled="loading"
                   @click="emit('implementPlan', displayItem.item)"
-                  >{{ planContinuation.continuation?.label }}</el-button
+                  >{{ planContinuation.continuation?.label }}</MarButton
                 >
               </div>
             </div>
@@ -1792,8 +1799,12 @@ function stepDuration(item: ConversationItem): string | undefined {
 }
 
 .conversation-item.error {
-  border-left-color: var(--el-color-danger);
-  background: color-mix(in srgb, var(--el-color-danger) 6%, var(--mar-conversation-surface));
+  border-left-color: var(--mar-control-color-danger);
+  background: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 6%,
+    var(--mar-conversation-surface)
+  );
 }
 
 .conversation-item.is-pending-approval {
@@ -1895,11 +1906,11 @@ function stepDuration(item: ConversationItem): string | undefined {
 
 .conversation-error-http-status,
 .conversation-error-code {
-  border: 1px solid color-mix(in srgb, var(--el-color-danger) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mar-control-color-danger) 52%, transparent);
   border-radius: var(--mar-radius-marker);
-  background: color-mix(in srgb, var(--el-color-danger) 12%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-danger) 12%, transparent);
   padding: 0 0.3rem;
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
   line-height: 1.3;
@@ -2130,46 +2141,46 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-file-change-note {
   grid-column: 2 / -1;
   grid-row: 3;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: inherit;
 }
 
 .task-list-status.task-list-status--in-progress {
-  border-color: color-mix(in srgb, var(--el-color-warning) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-warning) 8%, transparent);
-  color: var(--el-color-warning);
+  border-color: color-mix(in srgb, var(--mar-control-color-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-warning) 8%, transparent);
+  color: var(--mar-control-color-warning);
 }
 
 .task-list-status.task-list-status--done {
-  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
-  color: var(--el-color-success);
+  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
+  color: var(--mar-control-color-success);
 }
 
 .conversation-file-change-status--added {
-  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
-  color: var(--el-color-success);
+  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
+  color: var(--mar-control-color-success);
 }
 
 .conversation-file-change-status--modified,
 .conversation-file-change-status--type_changed {
-  border-color: color-mix(in srgb, var(--el-color-warning) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-warning) 8%, transparent);
-  color: var(--el-color-warning);
+  border-color: color-mix(in srgb, var(--mar-control-color-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-warning) 8%, transparent);
+  color: var(--mar-control-color-warning);
 }
 
 .conversation-file-change-status--deleted {
-  border-color: color-mix(in srgb, var(--el-color-danger) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-danger) 8%, transparent);
-  color: var(--el-color-danger);
+  border-color: color-mix(in srgb, var(--mar-control-color-danger) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-danger) 8%, transparent);
+  color: var(--mar-control-color-danger);
 }
 
 .conversation-file-change-status--renamed,
 .conversation-file-change-status--copied {
-  border-color: color-mix(in srgb, var(--el-color-primary) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
-  color: var(--el-color-primary);
+  border-color: color-mix(in srgb, var(--mar-color-brand) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-color-brand) 8%, transparent);
+  color: var(--mar-color-brand);
 }
 
 .conversation-file-change-button {
@@ -2384,7 +2395,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item summary:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 
@@ -2453,13 +2464,13 @@ details.conversation-record-group[open] > details:last-child {
 </style>
 
 <style scoped>
-:global(.user-input-question .el-radio-group) {
+:global(.user-input-question .mar-ui-radio-group) {
   display: grid;
   gap: 0.25rem;
   align-items: start;
 }
 
-:global(.conversation-card-actions .el-button) {
+:global(.conversation-card-actions .mar-ui-button) {
   width: 100%;
   margin: 0;
 }

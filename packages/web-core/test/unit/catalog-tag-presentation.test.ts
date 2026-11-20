@@ -17,7 +17,7 @@ describe('catalog category presentation', () => {
         }
       });
       try {
-        const tags = view.findAll('ElTag');
+        const tags = view.findAll('MarTag');
         expect(tags.map((tag) => tag.props['type'])).toEqual(['warning', 'info', 'info']);
         expect(tags.slice(1).map(textContent)).toEqual(['tools', 'review']);
       } finally {

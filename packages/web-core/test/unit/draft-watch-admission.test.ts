@@ -11,7 +11,9 @@ import { createHostedConversationWorkspaceService } from '../../src/service/host
 import { createWorkbenchSessionWatchController } from '../../src/service/workbench-session-watch-controller.js';
 import { createWorkspaceWatchService } from '../../src/service/workspace-watch-service.js';
 
-vi.mock('element-plus', () => ({ ElMessageBox: { confirm: vi.fn() } }));
+vi.mock('../../src/service/message-box-service.js', () => ({
+  MarMessageBox: { confirm: vi.fn() }
+}));
 
 function fixture() {
   const scope = effectScope();

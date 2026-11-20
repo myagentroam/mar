@@ -42,7 +42,10 @@ describe('shared third-party notices generation', () => {
   it('retains all bundled icon license and notice texts without enterprise paths', async () => {
     const result = await notices();
     expect(result).toContain(
-      readFileSync(new URL('../../src/util/icon-shapes.NOTICE.txt', import.meta.url), 'utf8').trim()
+      readFileSync(
+        new URL(import.meta.resolve('@myagentroam/mar-ui/icon-shapes.NOTICE.txt')),
+        'utf8'
+      ).trim()
     );
     expect(result).not.toMatch(/Seti File Icon Theme|Material (?:Design Icons|Icon Theme)/u);
     expect(result).not.toContain('packages/enterprise-web');

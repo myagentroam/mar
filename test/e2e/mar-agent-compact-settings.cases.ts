@@ -242,16 +242,16 @@ async function openMarAgentManagement(page: Page, strings: Locale): Promise<void
 
 function compactFormItems(panel: Locator, page: Page, strings: Locale) {
   return {
-    smartEnabled: panel.locator('.el-form-item').filter({
+    smartEnabled: panel.locator('.mar-ui-form-item').filter({
       has: page.getByText(strings.compactSmartEnabled, { exact: true })
     }),
-    enabled: panel.locator('.el-form-item').filter({
+    enabled: panel.locator('.mar-ui-form-item').filter({
       has: page.getByText(strings.compactEnabled, { exact: true })
     }),
-    model: panel.locator('.el-form-item').filter({
+    model: panel.locator('.mar-ui-form-item').filter({
       has: page.getByText(strings.compactModel, { exact: true })
     }),
-    effort: panel.locator('.el-form-item').filter({
+    effort: panel.locator('.mar-ui-form-item').filter({
       has: page.getByText(strings.compactEffort, { exact: true })
     })
   };
@@ -271,14 +271,14 @@ async function openCompactTab(
     .first();
   const items = compactFormItems(panel, page, strings);
   if (writable)
-    await expect(items.model.locator('.el-select__wrapper')).not.toHaveClass(/is-disabled/u, {
+    await expect(items.model.getByRole('combobox')).toBeEnabled({
       timeout: 20_000
     });
   return { panel, items };
 }
 
 async function selectModel(page: Page, items: ReturnType<typeof compactFormItems>, name: string) {
-  await items.model.locator('.el-select__wrapper').click();
+  await items.model.getByRole('combobox').click();
   await page.getByRole('option', { name, exact: true }).click();
 }
 
@@ -314,16 +314,16 @@ for (const english of [false, true]) {
       .nth(1);
     const save = panel.getByRole('button', { name: english ? 'Save' : '保存', exact: true });
     const dedicatedSwitch = panel
-      .locator('.el-form-item')
+      .locator('.mar-ui-form-item')
       .filter({
         has: page.getByText(strings.compactEnabled, { exact: true })
       })
-      .locator('.el-switch');
-    await expect(dedicatedSwitch).toHaveClass(/is-checked/u);
+      .getByRole('switch');
+    await expect(dedicatedSwitch).toBeChecked();
     await save.click();
     await expect(panel.getByText(strings.compactModelRequired, { exact: true })).toBeVisible();
     expect(writes).toHaveLength(0);
-    await panel.locator('.el-select__wrapper').first().click();
+    await panel.getByRole('combobox').first().click();
     await page.getByRole('option', { name: 'luna', exact: true }).click();
     await save.click();
     await expect.poll(() => writes.length).toBe(1);
@@ -334,7 +334,7 @@ for (const english of [false, true]) {
     });
     expect(compact.writes()).toHaveLength(0);
     await panel.getByRole('button', { name: english ? 'Refresh' : '刷新', exact: true }).click();
-    await expect(panel.locator('.el-select__wrapper').first()).toContainText('luna');
+    await expect(panel.getByRole('combobox').first()).toContainText('luna');
   });
 
   test(`Work prompt prediction preference is browser-local in Appearance ${language}`, async ({
@@ -374,7 +374,7 @@ for (const english of [false, true]) {
     await expect(row.getByRole('button')).toHaveCount(0);
     await expect(page.getByRole('switch')).toHaveCount(0);
     await expect(prediction).toBeVisible();
-    await row.locator('.el-select').click();
+    await prediction.click();
     await expect(page.getByRole('option')).toHaveCount(2);
     await page.getByRole('option', { name: english ? 'Off' : '关闭', exact: true }).click();
     await expect(row).toContainText(english ? 'Off' : '关闭');
@@ -409,27 +409,27 @@ for (const english of [false, true]) {
     const { panel, items } = await openCompactTab(page, strings);
 
     await expect.poll(() => mock.reads()).toBe(1);
-    const modelSelect = items.model.locator('.el-select__wrapper');
-    const effortSelect = items.effort.locator('.el-select__wrapper');
+    const modelSelect = items.model.getByRole('combobox');
+    const effortSelect = items.effort.getByRole('combobox');
     const saveButton = panel.getByRole('button', { name: strings.compactSave, exact: true });
 
     // Compact owns four deployment-wide fields, with Smart Compact independent of the dedicated model.
-    await expect(panel.locator('.el-form-item')).toHaveCount(4);
-    await expect(panel.locator('.el-switch')).toHaveCount(2);
-    await expect(panel.locator('.el-select')).toHaveCount(2);
+    await expect(panel.locator('.mar-ui-form-item')).toHaveCount(4);
+    await expect(panel.getByRole('switch')).toHaveCount(2);
+    await expect(panel.getByRole('combobox')).toHaveCount(2);
     await expect(panel.locator('.el-checkbox')).toHaveCount(0);
     await expect(panel.locator('.el-radio')).toHaveCount(0);
     await expect(panel.getByText(/标准|高密度|Standard|High-density/u)).toHaveCount(0);
 
     // Initial authority: disabled configuration without model or effort.
-    await expect(items.smartEnabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
-    await expect(items.enabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
+    await expect(items.smartEnabled.getByRole('switch')).not.toBeChecked();
+    await expect(items.enabled.getByRole('switch')).not.toBeChecked();
     await expect(panel.getByText(strings.compactSmartHint, { exact: true })).toBeVisible();
     await expect(modelSelect).not.toContainText('coding');
-    await expect(effortSelect).toHaveClass(/is-disabled/u);
+    await expect(effortSelect).toBeDisabled();
 
     // Smart Compact is independent: it can be saved with no dedicated model selected.
-    await items.smartEnabled.locator('.el-switch').click();
+    await items.smartEnabled.getByRole('switch').click();
     await saveButton.click();
     await expect.poll(() => mock.writes().length).toBe(1);
     expect(mock.writes()[0]).toEqual({
@@ -438,11 +438,11 @@ for (const english of [false, true]) {
       modelId: null,
       reasoningEffort: null
     });
-    await expect(items.smartEnabled.locator('.el-switch')).toHaveClass(/is-checked/u);
+    await expect(items.smartEnabled.getByRole('switch')).toBeChecked();
 
     // Enabling without a model is blocked by the form rules before any request.
-    await items.enabled.locator('.el-switch').click();
-    await expect(items.enabled.locator('.el-switch')).toHaveClass(/is-checked/u);
+    await items.enabled.getByRole('switch').click();
+    await expect(items.enabled.getByRole('switch')).toBeChecked();
     await saveButton.click();
     await expect(page.getByText(strings.compactModelRequired, { exact: true })).toBeVisible();
     await expect(page.getByText(strings.compactEffortRequired, { exact: true })).toBeVisible();
@@ -451,12 +451,8 @@ for (const english of [false, true]) {
     // Candidates come from the managed model directory; the preferred organization model is
     // offered first and disabled models cannot be picked.
     await modelSelect.click();
-    await expect(
-      page.locator('.el-select-dropdown:visible .el-select-dropdown__item').first()
-    ).toContainText('coding');
-    await expect(page.getByRole('option', { name: 'retired', exact: true })).toHaveClass(
-      /is-disabled/u
-    );
+    await expect(page.getByRole('listbox').getByRole('option').first()).toContainText('coding');
+    await expect(page.getByRole('option', { name: 'retired', exact: true })).toBeDisabled();
     await page.keyboard.press('Escape');
 
     // Effort follows each model's public effort list and its declared default.
@@ -490,7 +486,7 @@ for (const english of [false, true]) {
       reasoningEffort: 'high'
     });
     await expect(page.getByText(strings.compactSaved, { exact: true }).last()).toBeVisible();
-    await expect(items.enabled.locator('.el-switch')).toHaveClass(/is-checked/u);
+    await expect(items.enabled.getByRole('switch')).toBeChecked();
     await expect(modelSelect).toContainText('coding');
     await expect(effortSelect).toContainText('high');
 
@@ -505,14 +501,14 @@ for (const english of [false, true]) {
     const readsAfterSave = mock.reads();
     await openCompactTab(page, strings);
     await expect.poll(() => mock.reads()).toBe(readsAfterSave + 1);
-    await expect(items.smartEnabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
-    await expect(items.enabled.locator('.el-switch')).toHaveClass(/is-checked/u);
+    await expect(items.smartEnabled.getByRole('switch')).not.toBeChecked();
+    await expect(items.enabled.getByRole('switch')).toBeChecked();
     await expect(modelSelect).toContainText('luna');
     await expect(effortSelect).toContainText('medium');
 
     // Disabling keeps the selected model but turns the dedicated model off.
-    await items.enabled.locator('.el-switch').click();
-    await expect(items.enabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
+    await items.enabled.getByRole('switch').click();
+    await expect(items.enabled.getByRole('switch')).not.toBeChecked();
     await saveButton.click();
     await expect.poll(() => mock.writes().length).toBe(3);
     expect(mock.writes()[2]).toEqual({
@@ -528,17 +524,17 @@ for (const english of [false, true]) {
     await page.getByRole('tab', { name: strings.modelTab, exact: true }).click();
     await openCompactTab(page, strings);
     await expect.poll(() => mock.reads()).toBe(readsBeforeTabSwitch + 1);
-    await expect(items.smartEnabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
-    await expect(items.enabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
+    await expect(items.smartEnabled.getByRole('switch')).not.toBeChecked();
+    await expect(items.enabled.getByRole('switch')).not.toBeChecked();
     await expect(modelSelect).toContainText('luna');
     await expect(effortSelect).toContainText('medium');
     expect(mock.writes()).toHaveLength(writesBeforeTabSwitch);
 
     // Navigating away cancels an unsaved Smart Compact draft and reloads server state.
-    await items.smartEnabled.locator('.el-switch').click();
+    await items.smartEnabled.getByRole('switch').click();
     await page.getByRole('tab', { name: strings.modelTab, exact: true }).click();
     await openCompactTab(page, strings);
-    await expect(items.smartEnabled.locator('.el-switch')).not.toHaveClass(/is-checked/u);
+    await expect(items.smartEnabled.getByRole('switch')).not.toBeChecked();
     expect(mock.writes()).toHaveLength(writesBeforeTabSwitch);
 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -573,7 +569,7 @@ for (const role of ['ORG_ADMIN', 'MEMBER'] as const) {
     const zhStrings = locale(false);
 
     await openMarAgentManagement(page, zhStrings);
-    await expect(page.locator('.el-table__row').filter({ hasText: 'coding' })).toBeVisible();
+    await expect(page.locator('.mar-ui-table__row').filter({ hasText: 'coding' })).toBeVisible();
 
     await expect(page.getByRole('tab', { name: '高级', exact: true })).toHaveCount(0);
     for (const tabName of [zhStrings.credentialsTab, zhStrings.personalOrderTab]) {
@@ -601,11 +597,11 @@ test('MAR Agent Compact settings stay read-only under a frozen license en-US', a
   const { panel, items } = await openCompactTab(page, enStrings, false);
 
   await expect.poll(() => mock.reads()).toBe(1);
-  await expect(panel.locator('.el-switch')).toHaveCount(2);
-  await expect(panel.locator('.el-switch').nth(0)).toHaveClass(/is-disabled/u);
-  await expect(panel.locator('.el-switch').nth(1)).toHaveClass(/is-disabled/u);
-  await expect(items.model.locator('.el-select__wrapper')).toHaveClass(/is-disabled/u);
-  await expect(items.effort.locator('.el-select__wrapper')).toHaveClass(/is-disabled/u);
+  await expect(panel.getByRole('switch')).toHaveCount(2);
+  await expect(panel.getByRole('switch').nth(0)).toBeDisabled();
+  await expect(panel.getByRole('switch').nth(1)).toBeDisabled();
+  await expect(items.model.getByRole('combobox')).toBeDisabled();
+  await expect(items.effort.getByRole('combobox')).toBeDisabled();
   await expect(
     panel.getByRole('button', { name: enStrings.compactSave, exact: true })
   ).toBeDisabled();
@@ -629,10 +625,10 @@ test('MAR Agent Compact settings fit a 320px viewport without horizontal overflo
   const zhStrings = locale(false);
 
   await openMarAgentManagement(page, zhStrings);
-  const { panel, items } = await openCompactTab(page, zhStrings);
+  const { items } = await openCompactTab(page, zhStrings);
   await expect.poll(() => mock.reads()).toBe(1);
-  await expect(items.enabled.locator('.el-switch')).toHaveClass(/is-checked/u);
-  await expect(items.model.locator('.el-select__wrapper')).toContainText('coding');
+  await expect(items.enabled.getByRole('switch')).toBeChecked();
+  await expect(items.model.getByRole('combobox')).toContainText('coding');
 
   const metrics = await page.evaluate(() => {
     const section = document.querySelector<HTMLElement>('.compact-settings');
@@ -663,8 +659,8 @@ test('MAR Agent Compact settings fit a 390px mobile viewport en-US', async ({ pa
   await openMarAgentManagement(page, enStrings);
   const { panel, items } = await openCompactTab(page, enStrings);
   await expect.poll(() => mock.reads()).toBe(1);
-  await expect(panel.locator('.el-form-item')).toHaveCount(4);
-  await expect(items.effort.locator('.el-select__wrapper')).toContainText('high');
+  await expect(panel.locator('.mar-ui-form-item')).toHaveCount(4);
+  await expect(items.effort.getByRole('combobox')).toContainText('high');
 
   const metrics = await page.evaluate(() => {
     const section = document.querySelector<HTMLElement>('.compact-settings');

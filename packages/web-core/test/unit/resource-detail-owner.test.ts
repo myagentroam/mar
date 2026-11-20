@@ -81,7 +81,7 @@ function fixture(kind: 'NODE' | 'WORKSPACE') {
     request,
     writable: false
   });
-  const table = () => view.findAll('ElTable')[0]!;
+  const table = () => view.findAll('MarTable')[0]!;
   async function open(id: string) {
     const row = (table().props['data'] as { nodeId: string; resourceType: string }[]).find(
       (row) => row.nodeId === id && row.resourceType === kind
@@ -89,10 +89,10 @@ function fixture(kind: 'NODE' | 'WORKSPACE') {
     void trigger(table(), 'onRowClick', row);
     await flushComponent();
   }
-  const dialog = () => view.findAll('ElDialog')[0]!;
+  const dialog = () => view.findAll('MarDialog')[0]!;
   const usageButton = () =>
     view
-      .findAll('ElButton')
+      .findAll('MarButton')
       .find((node) => String(node.props['class']).split(/\s+/u).includes('runner-usage-link'))!;
   return { ...view, request, paths, statuses, usages, refreshes, open, dialog, usageButton };
 }
@@ -110,7 +110,7 @@ describe('Resource detail request ownership', () => {
           view.paths[0]!.resolve({ workspaces: [{ id: 'work-a', path: '/late/a' }] });
         else view.paths[0]!.reject(new Error('Old path failure'));
         await flushComponent();
-        expect(view.findAll('ElDialog')).toHaveLength(0);
+        expect(view.findAll('MarDialog')).toHaveLength(0);
       } finally {
         view.unmount();
       }
@@ -239,7 +239,7 @@ describe('Resource detail request ownership', () => {
         );
         expect(vi.mocked(showMessage)).not.toHaveBeenCalled();
         const refresh = () =>
-          view.findAll('ElButton').find((node) => textContent(node) === 'Refresh capabilities')!;
+          view.findAll('MarButton').find((node) => textContent(node) === 'Refresh capabilities')!;
         expect(refresh().props['loading']).toBe(true);
         current.resolve({ nodes });
         await flushComponent();
@@ -271,7 +271,7 @@ describe('Resource detail request ownership', () => {
           view.usages[0]!.resolve({ usage: { runner: 'codex', windows: [], fetchedAt: 1 } });
         else view.usages[0]!.reject(new Error('Old usage detail failure'));
         await flushComponent();
-        expect(view.findAll('ElDialog')).toHaveLength(1);
+        expect(view.findAll('MarDialog')).toHaveLength(1);
         expect(view.usageButton().props['loading']).toBe(true);
         expect(vi.mocked(showMessage)).not.toHaveBeenCalled();
         view.usages[1]!.resolve({
@@ -285,7 +285,7 @@ describe('Resource detail request ownership', () => {
           }
         });
         await flushComponent();
-        expect(view.findAll('ElDialog')).toHaveLength(2);
+        expect(view.findAll('MarDialog')).toHaveLength(2);
         expect(view.usageButton().props['loading']).toBe(false);
         expect(textContent(view.root)).toContain('37%');
       } finally {
@@ -304,7 +304,7 @@ describe('Resource detail request ownership', () => {
       await trigger(view.usageButton(), 'onClick');
       view.usages[0]!.reject(new Error('Current usage failure'));
       await flushComponent();
-      expect(view.findAll('ElDialog')).toHaveLength(1);
+      expect(view.findAll('MarDialog')).toHaveLength(1);
       expect(view.usageButton().props['loading']).toBe(false);
       expect(vi.mocked(showMessage)).toHaveBeenCalledWith(
         'Current usage failure',

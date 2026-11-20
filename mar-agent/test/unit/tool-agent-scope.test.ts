@@ -124,7 +124,7 @@ describe('tool Agent scope', () => {
               arguments: {
                 description: 'Check child tools',
                 title: 'Child tool scope',
-                prompt: 'Inspect available tools.',
+                content: 'Inspect available tools.',
                 role: 'explore'
               }
             };
@@ -164,9 +164,12 @@ describe('tool Agent scope', () => {
       expect(parent).toBeDefined();
       expect(child).toBeDefined();
       expect(parent?.tools.map((tool) => tool.name)).toContain('mcp__root__action');
-      expect(effectiveInstructions(parent!)).toContain('root-workflow');
+      const skillCatalog = (request: ModelRequest) =>
+        request.messages.findLast((message) => message.contextualBlock?.id === 'runtime:skills')
+          ?.content ?? '';
+      expect(skillCatalog(parent!)).toContain('root-workflow');
       expect(child?.tools.map((tool) => tool.name)).not.toContain('mcp__root__action');
-      expect(effectiveInstructions(child!)).not.toContain('root-workflow');
+      expect(skillCatalog(child!)).not.toContain('root-workflow');
       expect(child?.tools.map((tool) => tool.name)).not.toContain('host_root_action');
       expect(invokeHidden).not.toHaveBeenCalled();
     } finally {

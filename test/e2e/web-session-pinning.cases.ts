@@ -105,7 +105,7 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
   }
   await openPlainSessionActions();
   await page
-    .locator('.el-dropdown__popper:visible')
+    .getByRole('menu')
     .getByRole('menuitem', { name: '置顶' })
     .evaluate((element: HTMLElement) => element.click());
   await expect(rows.filter({ hasText: '普通会话' })).toHaveClass(/pinned/);
@@ -113,7 +113,7 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
 
   await openPlainSessionActions();
   await page
-    .locator('.el-dropdown__popper:visible')
+    .getByRole('menu')
     .getByRole('menuitem', { name: '下移' })
     .evaluate((element: HTMLElement) => element.click());
   await expect(page.locator('.session-list .session-link strong').first()).toHaveText('会话一');
@@ -129,7 +129,7 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
 
   await openPlainSessionActions();
   await page
-    .locator('.el-dropdown__popper:visible')
+    .getByRole('menu')
     .getByRole('menuitem', { name: '取消置顶' })
     .evaluate((element: HTMLElement) => element.click());
   await expect(page.locator('.session-list .session-link strong').last()).toHaveText('普通会话');
@@ -246,42 +246,40 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   await expect(row.getByLabel('已置顶')).toHaveCount(0);
   await row.hover();
   await row.getByRole('button', { name: /更多会话操作/ }).click();
-  await expect(
-    page.locator('.el-dropdown__popper:visible').getByRole('menuitem', { name: '取消置顶' })
-  ).toHaveAttribute('aria-disabled', 'true');
-  await page
-    .locator('.el-dropdown__popper:visible')
-    .getByRole('menuitem', { name: '定时任务' })
-    .click();
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: '取消置顶' })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  );
+  await page.getByRole('menu').getByRole('menuitem', { name: '定时任务' }).click();
   const dialog = page.getByRole('dialog', { name: '定时任务' });
   const loadError = page.getByRole('alert').filter({ hasText: '无法加载定时任务。' });
   await expect(dialog.locator('textarea')).toHaveValue('Inspect status');
   const history = dialog.locator('.schedule-history');
-  const pager = history.locator('.el-pagination');
+  const pager = history.locator('.mar-ui-pagination');
   await expect(history.locator('p')).toHaveCount(10);
   await dialog.locator('textarea').fill('Unsaved draft');
-  await pager.locator('.btn-next').click();
-  await expect(pager.locator('.number.is-active')).toHaveText('2');
+  await pager.locator('.mar-ui-pagination__next').click();
+  await expect(pager.locator('[aria-current="page"]')).toHaveText('2');
   await expect(history.locator('p')).toHaveCount(10);
   await expect(dialog.locator('textarea')).toHaveValue('Unsaved draft');
-  await pager.locator('.btn-next').click();
-  await expect(pager.locator('.number.is-active')).toHaveText('3');
+  await pager.locator('.mar-ui-pagination__next').click();
+  await expect(pager.locator('[aria-current="page"]')).toHaveText('3');
   await expect(history.locator('p')).toHaveCount(5);
-  await expect(pager.locator('.btn-next')).toBeDisabled();
+  await expect(pager.locator('.mar-ui-pagination__next')).toBeDisabled();
   failHistoryPage = true;
-  await pager.locator('.btn-prev').click();
+  await pager.locator('.mar-ui-pagination__previous').click();
   await expect(loadError).toBeVisible();
   await expect(loadError).toContainText('REQUEST_FAILED_500');
-  await expect(pager.locator('.number.is-active')).toHaveText('3');
+  await expect(pager.locator('[aria-current="page"]')).toHaveText('3');
   await expect(history.locator('p')).toHaveCount(5);
   await loadError.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(loadError).toHaveCount(0);
   historyTotal = 12;
-  await pager.locator('.btn-prev').click();
-  await expect(pager.locator('.number.is-active')).toHaveText('2');
+  await pager.locator('.mar-ui-pagination__previous').click();
+  await expect(pager.locator('[aria-current="page"]')).toHaveText('2');
   await expect(history.locator('p')).toHaveCount(2);
-  await pager.locator('.btn-prev').click();
-  await expect(pager.locator('.number.is-active')).toHaveText('1');
+  await pager.locator('.mar-ui-pagination__previous').click();
+  await expect(pager.locator('[aria-current="page"]')).toHaveText('1');
   expect(historyPages.slice(0, 6)).toEqual([1, 2, 3, 2, 2, 1]);
   await dialog.locator('textarea').fill('Inspect status');
   await expect(dialog.getByText('按节点时区执行：Asia/Shanghai')).toBeVisible();
@@ -292,10 +290,10 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   await expect(dialog.getByText('通知人', { exact: true })).toBeVisible();
   await expect(dialog.getByText('张三', { exact: true })).toBeVisible();
   const contentLeft = await dialog
-    .locator('.el-form-item__content')
+    .locator('.mar-ui-form-item__content')
     .first()
     .evaluate((content) => content.getBoundingClientRect().left);
-  for (const content of await dialog.locator('.el-form-item__content').all())
+  for (const content of await dialog.locator('.mar-ui-form-item__content').all())
     expect(
       Math.abs(
         (await content.evaluate((element) => element.getBoundingClientRect().left)) - contentLeft
@@ -322,7 +320,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
     'aria-checked',
     'false'
   );
-  await expect(dialog.locator('.el-date-editor')).toBeVisible();
+  await expect(dialog.locator('.mar-ui-date-picker')).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: '时区' })).toHaveCount(0);
   await dialog.locator('textarea').fill('Review project');
   await dialog.getByRole('switch', { name: '任务通知' }).locator('..').click();
@@ -349,7 +347,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   });
   expect(JSON.parse(saved!.body)).not.toHaveProperty('timezone');
   await expect(dialog.getByText('李四', { exact: true })).toBeVisible();
-  await dialog.locator('.el-radio-button').filter({ hasText: 'Cron' }).click();
+  await dialog.locator('.mar-ui-radio-button').filter({ hasText: 'Cron' }).click();
   await dialog.getByRole('textbox', { name: 'Cron 表达式' }).fill('60 * * * *');
   await dialog.getByRole('button', { name: '保存' }).click();
   await expect(dialog.getByText('请输入有效的五字段 Cron 表达式。')).toBeVisible();
@@ -384,12 +382,12 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(dialog.getByText('任务提示词', { exact: true })).toBeVisible();
-  await expect(dialog.locator('.el-form-item__label').first()).toHaveCSS('width', /3\d\dpx/);
+  await expect(dialog.locator('.mar-ui-form-item__label').first()).toHaveCSS('width', /3\d\dpx/);
   expect(await pager.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(loadError).toHaveCount(0);
   holdHistoryPage = true;
-  await pager.locator('.btn-next').click();
+  await pager.locator('.mar-ui-pagination__next').click();
   await expect.poll(() => releaseHistoryPage !== undefined).toBe(true);
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -398,10 +396,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   historyTotal = 0;
   await row.hover();
   await row.getByRole('button', { name: /更多会话操作/ }).click();
-  await page
-    .locator('.el-dropdown__popper:visible')
-    .getByRole('menuitem', { name: '定时任务' })
-    .click();
+  await page.getByRole('menu').getByRole('menuitem', { name: '定时任务' }).click();
   await expect(dialog.getByText('李四', { exact: true })).toBeVisible();
   await expect(history).toHaveCount(0);
   await expect(loadError).toHaveCount(0);
@@ -476,7 +471,7 @@ for (const language of [
     await row.hover();
     await row.getByRole('button', { name: language.more }).click();
     await page
-      .locator('.el-dropdown__popper:visible')
+      .getByRole('menu')
       .getByRole('menuitem', { name: language.title, exact: true })
       .click();
     const dialog = page.getByRole('dialog', { name: language.title });

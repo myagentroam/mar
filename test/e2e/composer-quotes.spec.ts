@@ -70,7 +70,7 @@ test('desktop selection adds only a tag and quote-only history preserves its pub
   await selectReply(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
   const bubble = page.getByRole('group', { name: 'Quote', exact: true });
-  const popover = page.locator('.el-popover').filter({ has: bubble });
+  const popover = page.locator('.mar-ui-popover').filter({ has: bubble });
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('border-top-left-radius', '6px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 4px 12px 0px$/);
@@ -286,7 +286,8 @@ test('context menu replaces the bubble, keeps native link menus, and rejects a s
   await rightClickSelection(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Quote', exact: true })).toBeVisible();
-  const menu = page.locator('.el-dropdown-menu');
+  const menu = page.getByRole('menu', { name: 'Quote', exact: true });
+  await expect(menu).not.toHaveAttribute('data-arrow');
   const copyItem = menu.getByRole('menuitem', { name: 'Copy', exact: true });
   const quoteItem = menu.getByRole('menuitem', { name: 'Quote', exact: true });
   await quoteItem.hover();
@@ -329,7 +330,7 @@ for (const excluded of ['a', 'img']) {
     }) => {
       await addInlineQuoteImage(page);
       const bubble = page.getByRole('group', { name: 'Quote', exact: true });
-      const menu = page.locator('.el-dropdown-menu');
+      const menu = page.getByRole('menu', { name: 'Quote', exact: true });
       if (previous !== 'none') {
         await selectReply(page);
         await expect(bubble).toBeVisible();
@@ -434,7 +435,10 @@ for (const pointerType of ['touch', 'mouse']) {
     await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
     const bodyBounds = (await page.locator('[data-quote-message-id] p').first().boundingBox())!;
     await expect
-      .poll(async () => (await page.locator('.el-dropdown-menu').boundingBox())?.y ?? -1)
+      .poll(
+        async () =>
+          (await page.getByRole('menu', { name: 'Quote', exact: true }).boundingBox())?.y ?? -1
+      )
       .toBeGreaterThanOrEqual(bodyBounds.y + bodyBounds.height);
     await page.getByRole('menuitem', { name: 'Quote', exact: true }).click();
     expect(await result(page, 'references')).toMatchObject([
@@ -449,7 +453,7 @@ for (const nativeAction of ['link', 'noncancelable', 'outside', 'empty']) {
   }) => {
     await selectReply(page);
     await rightClickSelection(page);
-    const menu = page.locator('.el-dropdown-menu');
+    const menu = page.getByRole('menu', { name: 'Quote', exact: true });
     await expect(menu.getByRole('menuitem', { name: 'Quote', exact: true })).toBeVisible();
     const target = page.locator(
       nativeAction === 'link'
@@ -534,7 +538,7 @@ test('a long draft quote stays compact while preserving its full snapshot', asyn
   await tag.locator('.quote-tag-preview').click();
   const region = page.getByRole('region', { name: 'Quote', exact: true });
   await expect(region).toBeVisible();
-  await expect(page.locator('.el-popover').filter({ has: region })).toHaveCSS('opacity', '1');
+  await expect(page.locator('.mar-ui-popover').filter({ has: region })).toHaveCSS('opacity', '1');
   await region.hover();
   await expect(region).toContainText(text);
   expect(await result(page, 'references')).toMatchObject([{ text }]);
@@ -751,11 +755,11 @@ test('mobile uses the selection bubble and standard context menu without message
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await selectReply(page);
-  await expect(page.getByRole('group', { name: 'Quote', exact: true })).toBeVisible();
-  await expect(page.locator('.quote-actions .mar-icon + span')).toHaveCSS(
-    'margin-inline-start',
-    '4px'
-  );
+  const bubble = page.getByRole('group', { name: 'Quote', exact: true });
+  await expect(bubble).toBeVisible();
+  const iconBounds = (await bubble.locator('svg').boundingBox())!;
+  const labelBounds = (await bubble.locator('.mar-ui-button__label').boundingBox())!;
+  expect(labelBounds.x - iconBounds.x - iconBounds.width).toBeGreaterThanOrEqual(4);
   await expect(
     page
       .locator('.conversation-message-actions')
@@ -763,7 +767,7 @@ test('mobile uses the selection bubble and standard context menu without message
   ).toHaveCount(0);
   await rightClickSelection(page);
   await expect(page.getByRole('group', { name: 'Quote', exact: true })).toHaveCount(0);
-  const menu = page.locator('.el-dropdown-menu');
+  const menu = page.getByRole('menu', { name: 'Quote', exact: true });
   await expect(menu.getByRole('menuitem', { name: 'Copy', exact: true })).toBeVisible();
   await menu.getByRole('menuitem', { name: 'Quote', exact: true }).click();
   await expect(page.locator('.composer-file-reference-state')).toHaveCount(1);
@@ -805,12 +809,12 @@ test('mobile quotation remains available after a cancelled touch gesture', async
 test('the quote bubble fades out without leaving a clickable action', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.addStyleTag({
-    content: 'html.console-ui { --el-transition-fade-linear: opacity 0.6s linear; }'
+    content: 'html.console-ui { --mar-ui-popover-leave-duration: 600ms; }'
   });
   await selectReply(page);
   const actions = page.locator('.quote-actions');
   const leaving = await actions.evaluate(async (element) => {
-    const popper = element.closest('.el-popper')!;
+    const popper = element.closest('.mar-ui-popover')!;
     await Promise.allSettled(popper.getAnimations().map((animation) => animation.finished));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -1057,7 +1061,7 @@ test('draft quote previews on hover, keyboard focus and click without removing t
   const region = page.getByRole('region', { name: 'Quote', exact: true });
   await preview.hover();
   await expect(region).toContainText('Select this reply excerpt.');
-  const popover = page.locator('.el-popover').filter({ has: region });
+  const popover = page.locator('.mar-ui-popover').filter({ has: region });
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
   await page.locator('textarea.composer-input').click();

@@ -164,9 +164,9 @@ for (const language of [
       });
       await expect(settingsPanel.locator('p.account-summary')).toHaveText([language.summary]);
       await expect(settingsPanel.getByRole('status').first()).toHaveText(language.disabled);
-      await expect(settingsPanel.getByRole('status').first().locator('.el-tag')).toHaveClass(
-        /el-tag--info/
-      );
+      await expect(
+        settingsPanel.getByRole('status').first().locator('.mar-ui-tag')
+      ).toHaveAttribute('data-type', 'info');
       const enable = page.getByRole('button', { name: language.enable, exact: true });
       await enable.click();
       await expect(page.getByRole('button', { name: language.disable, exact: true })).toBeVisible();
@@ -661,7 +661,7 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   expect(badgePosition.verticalOverlap).toBeGreaterThanOrEqual(6);
   await expect(page.locator('html')).toHaveClass(/console-ui/);
   await expect(page.locator('html')).toHaveCSS('font-size', '17.6px');
-  await expect(page.locator('html')).toHaveCSS('--el-font-size-small', '14px');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-font-size-body', '14px');
   await expect(page.getByTestId('workbench-brand')).toHaveCSS('width', '61px');
   await expect(page.locator('.activity-rail')).toHaveCSS('width', '61px');
   const navigationBounds = await page
@@ -907,20 +907,19 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     '/favicon.ico?v=logo-20261011'
   );
   await expect(page.locator('html')).toHaveCSS('--mar-color-brand', '#0a6fd8');
-  await expect(page.locator('html')).toHaveCSS('--el-color-primary', '#0a6fd8');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-color-brand', '#0a6fd8');
   await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#dce3ea');
   await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#e7ecf2');
-  await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/el-button/);
+  await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/mar-ui-button/);
   await expect(page.getByRole('button', { name: '进入控制台' })).not.toHaveClass(
-    /el-button--small/
+    /mar-ui-button--small/
   );
-  await expect(page.locator('.auth-form .el-input').first()).not.toHaveClass(/el-input--small/);
+  await expect(page.locator('.auth-form .mar-ui-input').first()).not.toHaveClass(
+    /mar-ui-input--small/
+  );
   await expect(page.locator('.gate-panel')).toHaveCSS('border-radius', '8px');
   await expect(page.locator('.gate-panel')).toHaveCSS('box-shadow', 'none');
-  await expect(page.locator('.auth-form .el-input__wrapper').first()).toHaveCSS(
-    'min-height',
-    '34px'
-  );
+  await expect(page.locator('.auth-form .mar-ui-input').first()).toHaveCSS('min-height', '34px');
   await expect(page.getByRole('button', { name: '进入控制台' })).toHaveCSS('min-height', '34px');
   await page.getByRole('button', { name: '进入控制台' }).click();
   await page.getByRole('button', { name: '工作', exact: true }).click();
@@ -1050,7 +1049,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
   await expect(refreshFilesButton).toHaveAttribute('type', 'button');
   await expect(refreshFilesButton).toHaveClass(/file-explorer-utility-button/u);
   await expect(refreshFilesButton).toHaveClass(/mar-icon-action/u);
-  await expect(refreshFilesButton).not.toHaveClass(/el-button/u);
+  await expect(refreshFilesButton).not.toHaveClass(/mar-ui-button/u);
   await expect(page.getByRole('button', { name: '.. 返回上级目录' })).toHaveCount(0);
   await expect(page.getByRole('treeitem', { name: 'project' })).toHaveAttribute(
     'aria-expanded',

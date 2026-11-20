@@ -51,9 +51,7 @@ describe('shared loading presentation', () => {
         expect(html).toContain('value="Draft value"');
         expect(html).toContain('aria-label="Retained content"');
         expect(html).toContain(`aria-busy="${loading}"`);
-        expect(html.includes('element-loading-custom-class="mar-page-loading"')).toBe(
-          variant === 'page'
-        );
+        expect(html).toContain(`data-loading-variant="${variant}"`);
       }
     }
   );
@@ -91,10 +89,10 @@ describe('shared loading presentation', () => {
       hasMore: true
     });
     expect(html).not.toContain('mar-busy-indicator');
-    expect(html).toContain('el-pagination');
+    expect(html).toContain('mar-ui-pagination');
     const controls = html.match(/<button\b[^>]*>/gu) ?? [];
-    expect(controls).toHaveLength(2);
-    for (const control of controls) expect(control).toMatch(/\sdisabled(?:[=>\s])/u);
+    expect(controls).toHaveLength(5);
+    for (const control of controls) expect(control).toMatch(/\saria-disabled="true"/u);
   });
 
   it('does not duplicate mobile refresh feedback or expose a manual append action', async () => {
@@ -247,7 +245,7 @@ describe('shared loading presentation', () => {
         await flushComponent();
         expect(textContent(view.root)).toContain('Fixture MCP');
         const installButton = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((button) => textContent(button).trim() === 'Install')!;
         const click = installButton.props['onClick'];
         expect(click).toBeTypeOf('function');
@@ -276,7 +274,7 @@ describe('shared loading presentation', () => {
         expect(progress?.props).not.toHaveProperty('aria-valuemin');
         expect(progress?.props).not.toHaveProperty('aria-valuemax');
         expect(textContent(progress!)).not.toMatch(/\d+(?:\.\d+)?%/u);
-        expect(view.findAll('ElProgress')).toHaveLength(0);
+        expect(view.findAll('MarProgress')).toHaveLength(0);
 
         if (outcome === 'success')
           resolveInstall({ targetKind: 'NODE', installations: [installation] });
@@ -364,7 +362,7 @@ describe('shared loading presentation', () => {
         await flushComponent();
         expect(textContent(view.root)).toContain('fixture-skill');
         const installButton = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((button) => textContent(button).trim() === 'Install')!;
         const click = installButton.props['onClick'];
         expect(click).toBeTypeOf('function');
@@ -394,7 +392,7 @@ describe('shared loading presentation', () => {
         expect(progress?.props).not.toHaveProperty('aria-valuemin');
         expect(progress?.props).not.toHaveProperty('aria-valuemax');
         expect(textContent(progress!)).not.toMatch(/\d+(?:\.\d+)?%/u);
-        expect(view.findAll('ElProgress')).toHaveLength(0);
+        expect(view.findAll('MarProgress')).toHaveLength(0);
 
         resolveJob(
           outcome === 'success'

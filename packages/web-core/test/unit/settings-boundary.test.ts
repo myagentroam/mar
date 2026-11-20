@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ElMessage, ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
+import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue?unit-render';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue?unit-render';
 import PersonalInstructionsSettings from '../../src/view/settings/PersonalInstructionsSettings.vue?unit-render';
@@ -98,8 +98,8 @@ describe('Public personal settings ownership', () => {
     };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
-    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close() {} }));
+
+    const error = feedback.error;
     const instructions = {
       common: 'API-only private instructions',
       codex: 'Codex draft',
@@ -119,7 +119,9 @@ describe('Public personal settings ownership', () => {
       const editor = view.findAll('textarea')[0]!;
       expect(editor).toMatchObject({ value: instructions.common });
       await trigger(editor, 'onUpdate:modelValue', 'Changed API-only instructions');
-      const save = view.findAll('ElButton').find((node) => node.props['type'] === 'primary')!;
+      const save = view
+        .findAll('button')
+        .find((node) => String(node.props['class']).includes('mar-ui-button--primary'))!;
       await trigger(save, 'onClick');
       expect(error).toHaveBeenCalledOnce();
       expect(view.findAll('textarea')[0]).toMatchObject({ value: 'Changed API-only instructions' });
@@ -145,7 +147,7 @@ describe('Public personal settings ownership', () => {
     };
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('sessionStorage', storage);
-    vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
+
     const request = vi.fn().mockResolvedValue({});
     const refresh = vi.fn().mockResolvedValue(undefined);
     const view = renderComponent(QuickPromptSettings, {
@@ -157,18 +159,18 @@ describe('Public personal settings ownership', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElButton')[0]!, 'onClick');
-      const inputs = view.findAll('ElInput');
+      await trigger(view.findAll('MarButton')[0]!, 'onClick');
+      const inputs = view.findAll('MarInput');
       await trigger(inputs[0]!, 'onUpdate:modelValue', 'private-prompt');
       await trigger(inputs[1]!, 'onUpdate:modelValue', 'API-only quick prompt body');
-      const save = view.findAll('ElButton').find((node) => textContent(node).trim() === 'Save')!;
+      const save = view.findAll('MarButton').find((node) => textContent(node).trim() === 'Save')!;
       await trigger(save, 'onClick');
       expect(request).toHaveBeenCalledWith('/api/quick-prompts', {
         method: 'POST',
         body: JSON.stringify({ phrase: 'private-prompt', prompt: 'API-only quick prompt body' })
       });
       expect(refresh).toHaveBeenCalledTimes(2);
-      expect(view.findAll('ElDialog')).toHaveLength(0);
+      expect(view.findAll('MarDialog')).toHaveLength(0);
       expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
@@ -177,3 +179,14 @@ describe('Public personal settings ownership', () => {
     }
   });
 });
+
+const feedback = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn()
+}));
+vi.mock('../../src/service/mar-message-presenter.js', () => ({
+  presentMessage: (message: string, type: keyof typeof feedback) => feedback[type](message),
+  dismissMessages: vi.fn()
+}));
