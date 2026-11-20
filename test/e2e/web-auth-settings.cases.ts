@@ -1078,22 +1078,6 @@ test('Branding spans the two left columns while settings panels switch on the ri
   await page.getByRole('button', { name: '进入控制台' }).click();
   const brand = page.getByTestId('workbench-brand');
   await expect(brand).toBeVisible();
-  const performanceIndicator = page.getByRole('button', { name: 'Web 性能诊断' });
-  await expect(performanceIndicator).toBeVisible();
-  const [performanceBounds, railBounds] = await Promise.all([
-    performanceIndicator.boundingBox(),
-    page.locator('.activity-rail').boundingBox()
-  ]);
-  expect(performanceBounds?.x).toBeGreaterThanOrEqual(railBounds?.x ?? 0);
-  expect(performanceBounds?.y).toBeGreaterThan(
-    (railBounds?.y ?? 0) + (railBounds?.height ?? 0) / 2
-  );
-  await performanceIndicator.hover();
-  const performancePanel = page.getByLabel('Web 性能诊断').filter({ hasText: '实时连接' });
-  await expect(performancePanel).toContainText('消息吞吐');
-  await expect(performancePanel).toContainText('活动 Run 会话');
-  await expect(performancePanel).toContainText('JS Heap');
-  await expect(page.getByRole('button', { name: '复制详细诊断信息' })).toBeVisible();
   await expect(brand.getByRole('link', { name: '返回 MyAgentRoam 首页' })).toHaveAttribute(
     'href',
     '/'

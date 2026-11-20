@@ -71,6 +71,9 @@ test('The diagnostics footer leaves the settings button reachable in a short des
   const nav = rail.getByRole('navigation');
   await expect(diagnostics).toBeInViewport({ ratio: 1 });
   const footer = (await diagnostics.boundingBox())!;
+  const railBox = (await rail.boundingBox())!;
+  expect(footer.x).toBeGreaterThanOrEqual(railBox.x);
+  expect(footer.y).toBeGreaterThan(railBox.y + railBox.height / 2);
   await settings.scrollIntoViewIfNeeded();
   const settingsBox = (await settings.boundingBox())!;
   const navBox = (await nav.boundingBox())!;
@@ -79,9 +82,16 @@ test('The diagnostics footer leaves the settings button reachable in a short des
   expect(navBox.y + navBox.height).toBeLessThan(footer.y);
   expect(await diagnostics.boundingBox()).toEqual(footer);
 
-  await diagnostics.hover();
-  await expect(page.locator('.web-performance-panel')).toBeVisible();
+  const panel = page.getByRole('region', { name: 'Web performance diagnostics' });
+  await diagnostics.click();
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('Realtime connection');
+  await expect(panel).toContainText('Message throughput');
+  await expect(panel).toContainText('Active Run sessions');
+  await expect(panel).toContainText('JS heap');
+  await expect(panel.getByRole('button', { name: 'Copy detailed diagnostics' })).toBeVisible();
   await settings.click();
+  await expect(panel).toBeHidden();
   await expect(settings).toHaveAttribute('aria-current', 'page');
 });
 
@@ -207,6 +217,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await diagnostics.hover();
     await expect(diagnostics).toHaveCSS('background-color', hover.background);
     await expect(diagnostics).toHaveCSS('color', hover.color);
+    await diagnostics.click();
     await expect(page.locator('.web-performance-panel')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath(`diagnostics-rail-${theme}.png`),

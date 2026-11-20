@@ -4,7 +4,7 @@ import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { formatDateTime } from '../../util/time-presentation.js';
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 
 import { useI18n } from 'vue-i18n';
 import type { createWebPerformanceDiagnostics } from '../../service/web-performance-diagnostic-service.js';
@@ -15,6 +15,8 @@ const props = defineProps<{
 }>();
 const { t, locale } = useI18n();
 const snapshot = props.diagnostics.snapshot;
+const panelId = useId();
+const open = ref(false);
 
 const categoryOrder = [
   'run',
@@ -79,23 +81,30 @@ onBeforeUnmount(props.diagnostics.dispose);
 
 <template>
   <MarPopover
+    v-model:visible="open"
+    trigger="click"
     placement="right-end"
     popper-class="mar-content-popover"
-    :trigger="['hover', 'focus']"
     :width="320"
-    :show-after="180"
-    :hide-after="80"
+    :show-arrow="false"
   >
     <template #reference>
       <button
         class="web-performance-indicator nav-menu-button mar-icon-button mar-icon-action"
         type="button"
         :aria-label="t('performanceDiagnostics.title')"
+        :aria-expanded="open"
+        :aria-controls="open ? panelId : undefined"
+        @click="open = !open"
       >
         <MarIcon aria-hidden="true" name="info" />
       </button>
     </template>
-    <section class="web-performance-panel" :aria-label="t('performanceDiagnostics.title')">
+    <section
+      :id="panelId"
+      class="web-performance-panel"
+      :aria-label="t('performanceDiagnostics.title')"
+    >
       <header>
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
