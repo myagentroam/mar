@@ -296,9 +296,7 @@ describe('Computer Use core', () => {
     expect(computerUseToolDefinition.agentScope).toBe('ROOT_ONLY');
     expect(computerUseToolDefinition.name).toBe('mcp__mar_computer__exec');
     expect(computerUseToolDefinition.description).toContain('Combine deterministic operations');
-    expect(computerUseToolDefinition.description).toContain(
-      'do not split predictable keyboard steps'
-    );
+    expect(computerUseToolDefinition.description).toContain('depends on a new observation');
   });
 
   it('keeps a Run namespace, returns screenshots, and rejects stale observations', async () => {

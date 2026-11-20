@@ -10,7 +10,7 @@ export const questionToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct'],
   parallelSafety: 'safe',
   description:
-    'Pause for one to three tightly related user-owned decisions that materially change the result and cannot be inferred from the request, conversation, or relevant safe discovery. This is not a permission or approval tool.',
+    'Pause for tightly related user-owned decisions that materially change the result and cannot be inferred from the request, conversation, or relevant safe discovery. Users can choose an option or enter a free-text answer. This is not a permission or approval tool.',
   inputSchema: {
     type: 'object',
     properties: {

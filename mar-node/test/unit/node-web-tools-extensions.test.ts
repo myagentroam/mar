@@ -81,6 +81,15 @@ describe('Node execution web tools', () => {
       ctx.signal,
       'session'
     );
+    await extensions.executeTool!(
+      call('web_fetch', { action: 'open', ref: 'page-1', cursor: '0:1' }),
+      ctx
+    );
+    expect(webFetch).toHaveBeenLastCalledWith(
+      { action: 'open', ref: 'page-1', cursor: '0:1', maxTokens: 2000 },
+      ctx.signal,
+      'session'
+    );
     await extensions.executeTool!(call('web_search', { query: '  query  ' }), ctx);
     expect(webSearch).toHaveBeenCalledWith(
       { query: 'query', maxResults: 8, maxTokens: 2000 },

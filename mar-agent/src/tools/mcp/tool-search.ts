@@ -21,7 +21,7 @@ export const TOOL_SEARCH_LIMITS = Object.freeze({
 export const toolSearchToolDefinition: ClientToolDefinition = {
   name: 'tool_search',
   description:
-    'Search and load deferred MCP tools for the next model request. Use an exact tool name or keywords. Returns matching names, or an empty list; definitions are supplied separately. Does not execute the discovered tools.',
+    'Search and load deferred MCP tools for the next model request. Returns matching names, or an empty list; definitions are supplied separately. Does not execute the discovered tools.',
   inputSchema: {
     type: 'object',
     properties: {

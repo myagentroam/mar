@@ -481,12 +481,12 @@ describe('system prompt', () => {
     expect(readToolDefinition.description).toContain('nextOffset');
     expect(applyPatchToolDefinition.description).toContain('MAR_AGENT_PATCH_PARTIAL');
     expect(shortWaitToolFixture.description).toContain('values below 10 seconds');
-    expect(questionToolDefinition.description).toContain('one to three tightly related');
+    expect(questionToolDefinition.description).toContain('free-text answer');
     expect(prompt).not.toContain('nextOffset');
     expect(prompt).not.toContain('MAR_AGENT_PATCH_CONFLICT');
     expect(prompt).not.toContain('MAR_AGENT_PATCH_PARTIAL');
     expect(prompt).not.toContain(shortWaitToolFixture.description);
-    expect(prompt).not.toContain('one to three tightly related');
+    expect(prompt).not.toContain('free-text answer');
   });
 
   it('does not prescribe evidence reporting, commentary, or clarification timing', () => {

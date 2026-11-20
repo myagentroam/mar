@@ -454,7 +454,9 @@ describe('MAR Agent compact extension', () => {
     expect(prompt).toContain('tests=not run');
     expect(prompt).toContain('state=conflict');
     expect(prompt).toContain('pending, not run, unverified, and failed');
-    expect(prompt).toContain('selected Skill');
+    expect(prompt).toContain('Preserve the names of Skills still needed');
+    expect(prompt).toContain('Remove Runtime-owned contextual instruction blocks');
+    expect(prompt).toContain('loaded Skill instructions, and constraints derived only from them');
     expect(prompt).toContain('Todo/plan');
     expect(prompt).toContain('freshness=current|stale|superseded');
     expect(prompt).toContain('Without an invalidating event, a verified claim remains current');
