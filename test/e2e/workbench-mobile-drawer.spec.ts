@@ -762,6 +762,39 @@ test.describe('Touch resource tree', () => {
   }
 });
 
+for (const dismissal of ['Escape', 'the backdrop', 'browser Back'] as const) {
+  test(`Quick Open completes its exit animation when dismissed with ${dismissal}`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
+    const pause = await page.addStyleTag({
+      content: `.el-overlay.dialog-fade-leave-active {
+        animation-duration: 2s !important;
+        animation-play-state: paused !important;
+      }`
+    });
+    const trigger = page.getByRole('button', { name: 'Open quick open', exact: true });
+    const dialog = page.getByRole('dialog', { name: 'Quick Open' });
+    await trigger.click();
+    await expect(dialog.getByRole('textbox')).toBeFocused();
+    await expect(page.locator('.el-overlay.dialog-fade-enter-active')).toHaveCount(0);
+
+    if (dismissal === 'Escape') await page.keyboard.press('Escape');
+    else if (dismissal === 'browser Back') await page.goBack();
+    else await dialog.click({ position: { x: 4, y: 4 } });
+
+    const leaving = page.locator('.el-overlay.dialog-fade-leave-active');
+    await expect(leaving.getByRole('dialog', { name: 'Quick Open' })).toBeVisible();
+    await pause.evaluate((style) => style.remove());
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expect(dialog.getByRole('textbox')).toBeFocused();
+  });
+}
+
 test('Escape closes only the visible layer after Quick Open has been closed', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto(`${fixture.url}workbench-mobile-drawer.html`);

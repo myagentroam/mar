@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue';
+import { nextTick, onBeforeUnmount, ref } from 'vue';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -117,6 +117,17 @@ const uploads: WorkspaceUploadTask[] = params.has('uploads')
     }))
   : [];
 const quickOpen = ref(false);
+let quickOpenOrigin: HTMLElement | undefined;
+function showQuickOpen(): void {
+  quickOpenOrigin =
+    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  quickOpen.value = true;
+}
+function closeQuickOpen(selected = false): void {
+  quickOpen.value = false;
+  // Mirror the workbench's explicit focus return for pointer dismissal.
+  if (!selected) void nextTick(() => quickOpenOrigin?.focus());
+}
 const detailsOpen = ref(false);
 const imageOpen = ref(false);
 const draft = ref('Keep this draft');
@@ -319,7 +330,7 @@ onBeforeUnmount(() => {
       </template>
       <input aria-label="Background input" />
       <button type="button" @click="preview">Preview notification</button>
-      <button type="button" @click="quickOpen = true">Open quick open</button>
+      <button type="button" @click="showQuickOpen">Open quick open</button>
       <button type="button" @click="detailsOpen = true">Open guarded details</button>
       <button type="button" @click="imageOpen = true">Open image preview</button>
       <button type="button" @click="messageBox('alert')">Open alert</button>
@@ -357,7 +368,7 @@ onBeforeUnmount(() => {
       :open-session="async () => undefined"
       :open-workspace="async () => false"
       :workspace-tabs="[]"
-      @close="quickOpen = false"
+      @close="closeQuickOpen"
     />
   </main>
 </template>

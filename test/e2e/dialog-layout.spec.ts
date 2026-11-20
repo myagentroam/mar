@@ -343,6 +343,33 @@ test('Quick Open accepts typing during its enter animation without taking focus 
   await expect(input).toBeFocused();
 });
 
+test('Quick Open keeps source feedback visible until its exit animation completes', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.route('**/api/workspaces?*', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: 'WORKSPACE_QUERY_FAILED', message: 'Workspace query failed' }
+    })
+  );
+  await visit(page, 'quick');
+  const leaveStyle = await page.addStyleTag({
+    content: '.el-overlay.dialog-fade-leave-active { animation-duration: 2s !important; }'
+  });
+  await page.getByRole('button', { name: 'Open content' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Quick Open' });
+  const retry = dialog.getByRole('button', { name: 'Retry', exact: true });
+  await expect(retry).toBeVisible();
+  await expect(page.locator('.el-overlay.dialog-fade-enter-active')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.el-overlay.dialog-fade-leave-active')).toBeVisible();
+  await expect(retry).toBeVisible();
+  await leaveStyle.evaluate((style) => style.remove());
+  await expect(dialog).toHaveCount(0);
+});
+
 test('Quick Open keeps keyboard results visible when failed-source details expand', async ({
   page
 }) => {
