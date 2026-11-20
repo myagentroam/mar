@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, useId } from 'vue';
+import { MarIcon } from '../../icons/index.js';
 import { useMarFormControl } from '../form/form-context.js';
 import { checkboxGroupKey, type CheckboxValue } from './checkbox-context.js';
 
@@ -43,18 +44,21 @@ async function change(event: Event) {
 
 <template>
   <span class="mar-ui-checkbox" :data-size="size" :class="$attrs.class" :style="$attrs.style">
-    <input
-      v-bind="{ ...$attrs, class: undefined, style: undefined }"
-      :id="id"
-      type="checkbox"
-      :name="group?.id"
-      :checked="checked"
-      :disabled="disabled"
-      :aria-invalid="field?.ariaInvalid($attrs['aria-invalid'])"
-      :aria-describedby="field?.describedBy($attrs['aria-describedby'])"
-      @change="change"
-      @blur="field?.blur()"
-    />
+    <span class="mar-ui-checkbox__box">
+      <input
+        v-bind="{ ...$attrs, class: undefined, style: undefined }"
+        :id="id"
+        type="checkbox"
+        :name="group?.id"
+        :checked="checked"
+        :disabled="disabled"
+        :aria-invalid="field?.ariaInvalid($attrs['aria-invalid'])"
+        :aria-describedby="field?.describedBy($attrs['aria-describedby'])"
+        @change="change"
+        @blur="field?.blur()"
+      />
+      <MarIcon class="mar-ui-checkbox__check" name="check" :size="12" aria-hidden="true" />
+    </span>
     <label v-if="$slots.default || label !== undefined" :for="id"
       ><slot>{{ label }}</slot></label
     >
@@ -75,19 +79,35 @@ async function change(event: Event) {
   min-block-size: var(--mar-ui-compact-control-size);
   font-size: var(--mar-ui-font-size-meta);
 }
+.mar-ui-checkbox__box {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
 input {
+  grid-area: 1 / 1;
   inline-size: 14px;
   block-size: 14px;
   margin: 0;
-  flex: none;
-  accent-color: var(--mar-ui-color-brand);
+}
+.mar-ui-checkbox__check {
+  display: none;
+  grid-area: 1 / 1;
+  color: var(--mar-ui-color-on-accent);
+  pointer-events: none;
+}
+label {
+  display: block;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
 }
 label,
 input {
   cursor: pointer;
 }
 input:disabled,
-input:disabled + label {
+.mar-ui-checkbox:has(input:disabled) > label {
   color: var(--mar-ui-text-disabled);
   cursor: not-allowed;
 }
@@ -95,9 +115,30 @@ input:focus-visible {
   outline: 2px solid var(--mar-ui-color-brand);
   outline-offset: 2px;
 }
-@supports not (accent-color: auto) {
+@media (forced-colors: none) {
+  input {
+    appearance: none;
+    box-sizing: border-box;
+    border: 1px solid var(--mar-ui-input-border);
+    border-radius: min(3px, var(--mar-ui-radius-control));
+    background: var(--mar-ui-bg-panel);
+  }
+  .mar-ui-checkbox:hover input:enabled:not(:checked) {
+    border-color: var(--mar-ui-input-border-hover);
+  }
   input:checked {
-    outline: 1px solid var(--mar-ui-color-brand);
+    border-color: var(--mar-ui-color-brand);
+    background: var(--mar-ui-color-brand);
+  }
+  input:checked + .mar-ui-checkbox__check {
+    display: block;
+  }
+  input:disabled {
+    border-color: var(--mar-ui-border-subtle);
+    background: var(--mar-ui-fill-soft);
+  }
+  input:disabled + .mar-ui-checkbox__check {
+    color: var(--mar-ui-text-disabled);
   }
 }
 </style>

@@ -201,11 +201,6 @@ button.watch-status[aria-disabled='true'] {
   padding: 0.375rem 0.375rem 0;
 }
 
-.content-search-options :deep(.mar-ui-checkbox) {
-  height: 1.2rem;
-  font-size: var(--mar-font-size-meta);
-}
-
 .content-search-warning {
   margin: 0.35rem 0 0;
   color: var(--mar-color-warning-text);
