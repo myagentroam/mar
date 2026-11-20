@@ -43,6 +43,11 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
   const world = loads?.size
     ? updateLoadedSkillWorldState(promptWorld, skillAnchor, loads)
     : promptWorld;
+  // Append-only changes retain the existing entries by reference. A Skill replacement
+  // removes an earlier anchor and invalidates the provider's committed message count.
+  const replacesSkillContext =
+    world !== promptWorld &&
+    promptWorld.entries.some((entry, index) => entry !== world.entries[index]);
   const candidateRequest = prepareSessionModelRequest(
     {
       ...input.requestBase,
@@ -69,6 +74,7 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
     candidateRequest,
     request,
     toolScope,
+    replacesSkillContext,
     acknowledgeSkillContext: loads?.size
       ? async () => {
           const current = input.world();

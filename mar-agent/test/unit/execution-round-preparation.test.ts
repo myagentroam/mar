@@ -39,11 +39,19 @@ describe('execution round preparation', () => {
     );
     expect(world.entries.some((entry) => entry.block?.id === skillId)).toBe(false);
     const accepted = await prepare('Accepted guidance.');
+    expect(accepted.replacesSkillContext).toBe(false);
     expect(world.entries.some((entry) => entry.block?.id === skillId)).toBe(false);
     await accepted.acknowledgeSkillContext!();
     expect(
       world.entries.filter((entry) => entry.block?.id === skillId).map((entry) => entry.content)
     ).toEqual(['Accepted guidance.']);
+    const unchanged = await prepare('Accepted guidance.');
+    expect(unchanged.replacesSkillContext).toBe(false);
+    const replacement = await prepare('Replacement guidance.');
+    expect(replacement.replacesSkillContext).toBe(true);
+    expect(world.entries.find((entry) => entry.block?.id === skillId)?.content).toBe(
+      'Accepted guidance.'
+    );
   });
 
   it('rebuilds after late input and resource adoption without recollecting subagent updates', async () => {

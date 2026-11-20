@@ -1111,6 +1111,7 @@ export function createSessionExecutionFactory(ports: {
               request: ModelRequest;
               toolScope: RoundToolScope;
               discoveryRevision: number;
+              replacesSkillContext: boolean;
               acknowledgeSkillContext: (() => Promise<void>) | undefined;
             },
             PreparedExecutionRound<RoundToolScope>
@@ -1180,6 +1181,7 @@ export function createSessionExecutionFactory(ports: {
               request,
               toolScope,
               discoveryRevision: capturedDiscoveryRevision,
+              replacesSkillContext,
               acknowledgeSkillContext
             }) => {
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
@@ -1205,6 +1207,7 @@ export function createSessionExecutionFactory(ports: {
               controller.signal.throwIfAborted();
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
                 return { retry: true as const };
+              if (replacesSkillContext) selected.resetContinuation?.();
               if (acknowledgeSkillContext)
                 preparedSkillAcknowledgements.set(prepared.messages, acknowledgeSkillContext);
               return { round: { request: prepared, toolScope } };
