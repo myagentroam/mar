@@ -1234,14 +1234,16 @@ export function createSessionExecutionFactory(ports: {
               }),
             prepareRound,
             runTools: executeRoundTools,
-            startModel: (request) => {
-              return modelLifecycle.start(request, async () => {
+            startModel: async function* (request) {
+              let skillAcknowledgementFailed = false;
+              yield* modelLifecycle.start(request, async () => {
                 const acknowledgeSkills = preparedSkillAcknowledgements.get(request.messages);
                 if (acknowledgeSkills) {
                   try {
                     await acknowledgeSkills();
                   } catch {
                     // Keep the accepted loads pending; a sidecar failure cannot undo model completion.
+                    skillAcknowledgementFailed = true;
                     coreExtensions.diagnose({
                       code: 'MAR_AGENT_SKILL_CONTEXT_ACK_PERSIST_FAILED',
                       sessionId
@@ -1257,6 +1259,9 @@ export function createSessionExecutionFactory(ports: {
                   })
                 );
               });
+              // A still-pending Skill may move on the next projection. Invalidate only after
+              // the adapter finishes the stream and publishes its new continuation baseline.
+              if (skillAcknowledgementFailed) selected.resetContinuation?.();
             },
             recoverySignal: () => controller.signal,
             compactContext,

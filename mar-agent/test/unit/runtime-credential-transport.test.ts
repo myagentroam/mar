@@ -965,7 +965,10 @@ describe('MAR Agent runtime credentials', () => {
     }
   });
 
-  it('replays paired tool history when a loaded Skill is replaced, but not when appended or unchanged', async () => {
+  it.each([
+    { scenario: 'normal acknowledgement', failFirstAck: false },
+    { scenario: 'failed first acknowledgement', failFirstAck: true }
+  ])('keeps Skill tool results paired across rounds: $scenario', async ({ failFirstAck }) => {
     const loadSkill = vi
       .fn(async () => 'Updated workflow guidance.')
       .mockResolvedValueOnce('Original workflow guidance.')
@@ -995,9 +998,27 @@ describe('MAR Agent runtime credentials', () => {
       ],
       executeTool: async () => ({ content: 'Unexpected host tool invocation' })
     });
+    const store = await JsonlSessionStore.open(home);
+    let failedAck = false;
+    if (failFirstAck) {
+      const write = store.writeContextualWorldState.bind(store);
+      vi.spyOn(store, 'writeContextualWorldState').mockImplementation(async (sessionId, state) => {
+        const world = state as { pendingSkills?: unknown; entries: readonly { kind: string }[] };
+        if (
+          !failedAck &&
+          world.pendingSkills === undefined &&
+          world.entries.some((entry) => entry.kind === 'loaded-skill')
+        ) {
+          failedAck = true;
+          throw new Error('Skill acknowledgement sidecar write failed');
+        }
+        await write(sessionId, state);
+      });
+    }
     const agent = await createAgent({
       mode: 'normal',
       host,
+      sessionStore: store,
       models: [
         dynamicConfiguration(
           server.baseUrl,
@@ -1025,15 +1046,27 @@ describe('MAR Agent runtime credentials', () => {
         finalAnswer: 'Completed'
       });
       expect(loadSkill).toHaveBeenCalledTimes(4);
+      expect(failedAck).toBe(failFirstAck);
       expect(server.connections()).toBe(1);
       expect(server.requests).toHaveLength(5);
-      for (const index of [1, 2, 4])
+      for (const index of failFirstAck ? [1, 4] : [1, 2, 4])
         expect(server.requests[index]).toMatchObject({
           previous_response_id: `response-load-${index}`,
           input: expect.arrayContaining([
             expect.objectContaining({ type: 'function_call_output', call_id: `load-${index}` })
           ])
         });
+      if (failFirstAck) {
+        const retryDelivery = server.requests[2]!;
+        expect(retryDelivery.input).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'function_call', call_id: 'load-2' }),
+            expect.objectContaining({ type: 'function_call_output', call_id: 'load-2' })
+          ])
+        );
+        expect(retryDelivery).not.toHaveProperty('previous_response_id');
+        expect(JSON.stringify(retryDelivery.input)).toContain('Original workflow guidance.');
+      }
       const replay = server.requests[3]!;
       expect(replay).not.toHaveProperty('previous_response_id');
       expect(replay.input).toEqual(
@@ -1047,6 +1080,7 @@ describe('MAR Agent runtime credentials', () => {
       expect(replayedHistory).not.toContain('Original workflow guidance.');
     } finally {
       await agent.dispose();
+      await store.close();
     }
   });
 
