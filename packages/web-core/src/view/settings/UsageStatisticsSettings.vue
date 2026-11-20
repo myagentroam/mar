@@ -68,45 +68,40 @@ const usageStateTypes: Record<PersonalUsageRecords['records'][number]['state'], 
     cancelled: 'info',
     interrupted: 'warning'
   };
-// Pointer hover and the range input share one bucket detail and one virtual tooltip.
+// The chart is one tab stop; pointer and keyboard inspection share its tooltip.
 type UsageBucket = PersonalUsageOverview['buckets'][number];
-const hoveredBucket = shallowRef<{ bucket: UsageBucket; anchor: SVGElement }>();
-const inspector = ref<HTMLInputElement>();
-const inspectedIndex = ref(0);
-const showInspectedBucket = ref(false);
-const inspectedDetails = computed(() => {
-  const bucket = state.overview?.buckets[inspectedIndex.value];
+const activeBucket = shallowRef<{ index: number; anchor: SVGGElement }>();
+const focusedBucketIndex = ref(0);
+const activeBucketDetails = computed(() => {
+  const active = activeBucket.value;
+  const bucket = active && state.overview?.buckets[active.index];
   return bucket ? bucketDetails(bucket) : [];
 });
-const activeBucketDetails = computed(() =>
-  hoveredBucket.value
-    ? bucketDetails(hoveredBucket.value.bucket)
-    : showInspectedBucket.value
-      ? inspectedDetails.value
-      : []
-);
 const bucketReference = computed(() => {
-  const target = hoveredBucket.value?.anchor ?? inspector.value;
+  const target = activeBucket.value?.anchor;
   return target
     ? { contextElement: target, getBoundingClientRect: () => target.getBoundingClientRect() }
     : undefined;
 });
-function showBucket(bucket: UsageBucket, event: MouseEvent): void {
-  hoveredBucket.value = { bucket, anchor: event.currentTarget as SVGElement };
+function showBucket(index: number, event: Event): void {
+  activeBucket.value = { index, anchor: event.currentTarget as SVGGElement };
 }
-function openInspector(): void {
-  hoveredBucket.value = undefined;
-  showInspectedBucket.value = true;
+function hideBucket(event: Event): void {
+  if (activeBucket.value?.anchor === event.currentTarget) activeBucket.value = undefined;
 }
-function inspectBucket(event: Event): void {
-  inspectedIndex.value = (event.currentTarget as HTMLInputElement).valueAsNumber;
-  openInspector();
-}
-function dismissBucket(event: KeyboardEvent): void {
-  if (!activeBucketDetails.value.length) return;
-  event.stopPropagation();
-  hoveredBucket.value = undefined;
-  showInspectedBucket.value = false;
+function navigateBuckets(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && activeBucket.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    activeBucket.value = undefined;
+    return;
+  }
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  event.preventDefault();
+  const current = event.currentTarget as SVGGElement;
+  const target =
+    event.key === 'ArrowLeft' ? current.previousElementSibling : current.nextElementSibling;
+  if (target instanceof SVGElement && target.classList.contains('trend-bucket')) target.focus();
 }
 const modelOptions = computed(() =>
   state.availableModels.length > 0 ? state.availableModels : (state.overview?.models ?? [])
@@ -176,10 +171,16 @@ function expandChanged(
 watch(
   () => state.overview,
   (overview) => {
-    hoveredBucket.value = undefined;
+    const active = activeBucket.value;
     const length = overview?.buckets.length ?? 0;
-    inspectedIndex.value = Math.min(inspectedIndex.value, Math.max(0, length - 1));
-    if (!length || overview?.selected.requests === '0') showInspectedBucket.value = false;
+    if (
+      active &&
+      (active.anchor.ownerDocument.activeElement !== active.anchor ||
+        active.index >= length ||
+        overview?.selected.requests === '0')
+    )
+      activeBucket.value = undefined;
+    focusedBucketIndex.value = Math.min(focusedBucketIndex.value, Math.max(0, length - 1));
   }
 );
 watch(
@@ -518,7 +519,7 @@ onUnmounted(() => {
           <svg
             class="usage-trend-chart"
             viewBox="0 0 800 170"
-            role="img"
+            role="group"
             :aria-label="t('usageStatistics.trend')"
             :aria-describedby="`${trendId}-range ${trendId}-summary`"
             preserveAspectRatio="none"
@@ -526,12 +527,25 @@ onUnmounted(() => {
             <line x1="0" y1="155" x2="800" y2="155" class="axis" />
             <g
               v-for="(bucket, index) in state.overview.buckets"
-              :key="bucket.from"
+              :key="index"
               class="trend-bucket"
-              :aria-label="`${time(bucket.from)} – ${time(bucket.to)} · ${t('usageStatistics.inputTokens')}: ${countDetail(bucket.inputTokens)} · ${t('usageStatistics.cache')}: ${cacheLabel(bucket, true)} · ${t('usageStatistics.outputTokens')}: ${countDetail(bucket.outputTokens)} · ${t('usageStatistics.totalTokens')}: ${countDetail(bucket.totalTokens)}`"
+              role="img"
+              :aria-label="bucketDetails(bucket).join(' · ')"
+              :tabindex="index === focusedBucketIndex ? 0 : -1"
               :transform="`translate(${(index * 800) / state.overview.buckets.length},0)`"
-              @mouseenter="showBucket(bucket, $event)"
-              @mouseleave="hoveredBucket = undefined"
+              @pointerenter="$event.pointerType !== 'touch' && showBucket(index, $event)"
+              @pointerleave="
+                $event.pointerType !== 'touch' &&
+                !($event.currentTarget as SVGGElement).matches(':focus-visible') &&
+                hideBucket($event)
+              "
+              @click="showBucket(index, $event)"
+              @focus="
+                focusedBucketIndex = index;
+                showBucket(index, $event);
+              "
+              @blur="hideBucket"
+              @keydown="navigateBuckets"
             >
               <rect
                 class="input-bar"
@@ -561,9 +575,6 @@ onUnmounted(() => {
               />
               <rect
                 class="bucket-hit-area"
-                :class="{
-                  'is-inspected': showInspectedBucket && !hoveredBucket && index === inspectedIndex
-                }"
                 :width="800 / state.overview.buckets.length"
                 y="15"
                 height="140"
@@ -587,21 +598,6 @@ onUnmounted(() => {
             <span>{{ time(state.overview.buckets[0]?.from) }}</span
             ><span>{{ time(state.overview.buckets.at(-1)?.to) }}</span>
           </div>
-          <label v-if="state.overview.buckets.length" class="trend-inspector">
-            {{ t('usageStatistics.inspectPeriods') }}
-            <input
-              ref="inspector"
-              type="range"
-              min="0"
-              :max="state.overview.buckets.length - 1"
-              :value="inspectedIndex"
-              :aria-valuetext="inspectedDetails.join(' · ')"
-              @focus="openInspector"
-              @input="inspectBucket"
-              @keydown.esc="dismissBucket"
-              @blur="showInspectedBucket = false"
-            />
-          </label>
         </div>
         <div class="section-heading">
           <h3>{{ t('usageStatistics.distribution') }}</h3>
@@ -967,15 +963,14 @@ p {
 .trend-bucket {
   cursor: pointer;
 }
-.usage-count:focus-visible,
-.trend-inspector input:focus-visible {
+.usage-count:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .bucket-hit-area {
   fill: transparent;
 }
-.bucket-hit-area.is-inspected {
+.trend-bucket:focus-visible .bucket-hit-area {
   stroke: var(--mar-text-secondary);
   stroke-dasharray: 3 2;
   vector-effect: non-scaling-stroke;
@@ -1025,19 +1020,6 @@ p {
   gap: 1rem;
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
-}
-.trend-inspector {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  font-size: var(--mar-font-size-meta);
-  color: var(--mar-text-secondary);
-}
-.trend-inspector input {
-  margin: 0;
-  accent-color: var(--mar-color-brand);
 }
 .distributions {
   display: grid;
