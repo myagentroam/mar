@@ -315,7 +315,7 @@ function onFocusOut(event: FocusEvent) {
       </template>
       <button
         v-if="clearable !== false && !field.disabled.value && draft.some(Boolean)"
-        class="mar-ui-date-picker__action"
+        class="mar-ui-date-picker__action mar-ui-date-picker__clear"
         type="button"
         :aria-label="locale.clear"
         @pointerdown.prevent
@@ -339,6 +339,7 @@ function onFocusOut(event: FocusEvent) {
             v-for="index in twoMonths ? [0, 1] : [0]"
             :key="index"
             :month="dateAtMonth(month, index)"
+            :adjacent-month="twoMonths ? dateAtMonth(month, 1 - index) : undefined"
             :dates="dates"
             @move="month = dateAtMonth(month, $event)"
             @pick="pick"
@@ -393,6 +394,7 @@ function onFocusOut(event: FocusEvent) {
 }
 .mar-ui-date-picker:has([data-range='true']) {
   inline-size: min(29rem, 100%);
+  container: mar-date-range / inline-size;
 }
 .mar-ui-date-picker__field {
   display: flex;
@@ -445,6 +447,29 @@ function onFocusOut(event: FocusEvent) {
   padding-inline: 0.375rem;
   color: var(--mar-ui-text-secondary);
 }
+@container mar-date-range (inline-size < 20rem) {
+  .mar-ui-date-picker__field[data-range='true'] {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    grid-template-rows: repeat(2, minmax(30px, auto));
+  }
+  [data-range='true'] .mar-ui-date-picker__input {
+    inline-size: 100%;
+    text-align: start;
+  }
+  .mar-ui-date-picker__separator {
+    grid-area: 2 / 1;
+    padding-inline: 0;
+    text-align: center;
+  }
+  .mar-ui-date-picker__separator + .mar-ui-date-picker__input {
+    grid-area: 2 / 2;
+  }
+  .mar-ui-date-picker__clear {
+    grid-area: 1 / 3 / span 2;
+    inline-size: 26px;
+  }
+}
 .mar-ui-date-picker__popup {
   --mar-ui-popup-padding: 0.625rem;
   inline-size: min(18rem, calc(100vw - 16px));
@@ -452,16 +477,15 @@ function onFocusOut(event: FocusEvent) {
 .mar-ui-date-picker__popup--range {
   inline-size: min(34rem, calc(100vw - 16px));
 }
-.mar-ui-date-picker__months,
+.mar-ui-date-picker__months {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.5rem;
+}
 .mar-ui-date-picker__footer {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-.mar-ui-date-picker__months > * {
-  flex: 1 1 15rem;
-}
-.mar-ui-date-picker__footer {
   align-items: center;
   justify-content: flex-end;
   padding-block-start: 0.625rem;

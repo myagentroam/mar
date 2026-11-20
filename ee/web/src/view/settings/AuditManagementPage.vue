@@ -373,9 +373,13 @@ onBeforeUnmount(closeDetail);
     class="mar-management-page audit-management"
   >
     <div class="mar-filter-row">
-      <label class="mar-filter-field"
-        ><span>{{ translate('generated.auditManagementPage.timeRange') }}</span
-        ><MarDatePicker
+      <div
+        class="mar-filter-field audit-range-filter"
+        role="group"
+        :aria-label="translate('generated.auditManagementPage.timeRange')"
+      >
+        <span aria-hidden="true">{{ translate('generated.auditManagementPage.timeRange') }}</span>
+        <MarDatePicker
           v-model="range"
           type="datetimerange"
           :clearable="false"
@@ -389,8 +393,9 @@ onBeforeUnmount(closeDetail);
           ><template #prev-month><MarIcon name="chevron-left" /></template
           ><template #next-month><MarIcon name="chevron-right" /></template
           ><template #prev-year><MarIcon name="chevrons-left" /></template
-          ><template #next-year><MarIcon name="chevrons-right" /></template></MarDatePicker
-      ></label>
+          ><template #next-year><MarIcon name="chevrons-right" /></template
+        ></MarDatePicker>
+      </div>
     </div>
     <div class="mar-table-actions">
       <MarButton
@@ -542,8 +547,12 @@ onBeforeUnmount(closeDetail);
   padding: 8px 0;
   border-block: 1px solid var(--mar-border-subtle);
 }
-.mar-management-page .mar-filter-field > .audit-range-picker {
-  width: min(430px, 100%);
+.mar-management-page .audit-range-filter {
+  width: min(100%, 31rem);
+}
+.mar-management-page .audit-range-filter > .audit-range-picker {
+  flex: 1;
+  width: auto;
 }
 .clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
@@ -558,8 +567,9 @@ pre {
 }
 
 @media (max-width: 767px) {
-  .mar-management-page .mar-filter-field > .audit-range-picker {
-    width: 100%;
+  .mar-management-page .audit-range-filter {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>
