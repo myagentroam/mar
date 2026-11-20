@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="Name extends TabName">
-import { Fragment, isVNode, provide, useId, type VNode } from 'vue';
+import { Fragment, isVNode, nextTick, provide, useId, type VNode } from 'vue';
 import MarTabPane from './MarTabPane.vue';
 import { tabsKey, type TabName } from './tabs-context.js';
 
@@ -18,10 +18,13 @@ function panes(nodes: VNode[]): { name: Name; label: string }[] {
   });
 }
 
-function activate(name: Name) {
-  if (name === props.modelValue) return;
-  emit('update:modelValue', name);
-  emit('tab-change', name);
+function activate(name: Name, event: MouseEvent) {
+  const button = event.currentTarget as HTMLButtonElement;
+  if (name !== props.modelValue) {
+    emit('update:modelValue', name);
+    emit('tab-change', name);
+  }
+  void nextTick(() => button.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
 }
 
 function navigate(event: KeyboardEvent, index: number, count: number) {
@@ -41,7 +44,7 @@ function navigate(event: KeyboardEvent, index: number, count: number) {
   ];
   if (!button) return;
   event.preventDefault();
-  button.focus();
+  button.focus({ preventScroll: true });
   button.click();
 }
 </script>
@@ -68,7 +71,7 @@ function navigate(event: KeyboardEvent, index: number, count: number) {
             ? 0
             : -1
         "
-        @click="activate(pane.name)"
+        @click="activate(pane.name, $event)"
         @keydown="navigate($event, index, items.length)"
       >
         {{ pane.label }}
@@ -84,23 +87,25 @@ function navigate(event: KeyboardEvent, index: number, count: number) {
 }
 .mar-ui-tabs__header {
   display: flex;
-  gap: 0.25rem;
   margin-block-end: 0.875rem;
-  padding-block-end: 2px;
   overflow-x: auto;
-  border-block-end: 1px solid var(--mar-ui-border-default);
+  border-block-end: 1px solid var(--mar-ui-border-subtle);
 }
 button {
   flex: none;
   min-block-size: 36px;
   padding-inline: var(--mar-ui-compact-option-padding-inline);
-  border: 0;
+  border: 1px solid var(--mar-ui-border-default);
+  border-block-end: 0;
   border-radius: var(--mar-ui-radius-control) var(--mar-ui-radius-control) 0 0;
-  background: var(--mar-ui-bg-subtle);
+  background: var(--mar-ui-bg-tab-inactive, var(--mar-ui-bg-subtle));
   color: var(--mar-ui-text-secondary);
   font: inherit;
   font-size: var(--mar-ui-font-size-body);
   cursor: pointer;
+}
+button + button {
+  margin-inline-start: -1px;
 }
 button:hover {
   background: var(--mar-ui-fill-row-hover);

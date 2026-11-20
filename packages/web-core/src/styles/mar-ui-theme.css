@@ -10,6 +10,7 @@
   --mar-ui-scrollbar-thumb: var(--mar-scrollbar-thumb);
   --mar-ui-bg-panel: var(--mar-bg-panel);
   --mar-ui-bg-subtle: var(--mar-bg-subtle);
+  --mar-ui-bg-tab-inactive: var(--mar-bg-tab-inactive);
   --mar-ui-border-default: var(--mar-border-default);
   --mar-ui-border-medium: var(--mar-border-medium);
   --mar-ui-border-subtle: var(--mar-border-subtle);
