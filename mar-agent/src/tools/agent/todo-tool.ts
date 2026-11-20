@@ -10,7 +10,7 @@ export const todoToolDefinition: ClientToolDefinition = {
   allowedCallers: ['direct', 'programmatic'],
   parallelSafety: 'safe',
   description:
-    'Read or replace the session’s Todo list for coordination-heavy work. action=read returns revision and all items; omit items. action=write replaces the entire list with the supplied items array (empty clears it) and returns revision and count. No prior read or revision precondition is required. The list may contain at most one in_progress item.',
+    'Read or replace the session’s Todo list for coordination-heavy work. action=read returns revision and all items; omit items. action=write replaces the entire list with the supplied items array (empty clears it) and returns a text receipt with revision and count. In Code Mode, both actions return revision and items in data. No prior read or revision precondition is required. The list may contain at most one in_progress item.',
   inputSchema: {
     type: 'object',
     properties: {
