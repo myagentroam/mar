@@ -1041,6 +1041,37 @@ test('Workspace header tabs scroll horizontally without vertical overflow or cli
   }
 });
 
+test('Workspace Tab context menu fits its short commands without an anchor arrow', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.goto(
+    `${fixture.url}workspace-tabs.html?locale=zh-CN&placement=header&layout=dynamic&theme=vscode-dark-2026`
+  );
+  const tab = page.getByRole('tab', { name: 'Workspace one', exact: true });
+  await tab.click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: '取消固定' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: '关闭' })).toBeDisabled();
+  await expect(menu).not.toHaveAttribute('data-arrow');
+  const { width, rootFontSize, rowsFit } = await menu.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      width: bounds.width,
+      rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+      rowsFit: [...element.querySelectorAll('[role=menuitem]')].every((item) => {
+        const row = item.getBoundingClientRect();
+        return Math.abs(row.width - (bounds.width - 2)) < 0.5;
+      })
+    };
+  });
+  expect(width).toBeLessThan(10 * rootFontSize);
+  expect(rowsFit).toBe(true);
+  await menu.screenshot({ path: testInfo.outputPath('workspace-tab-context-menu.png') });
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Workspace pinned boundary masks scrolled tabs and preserves keyboard focus: ${theme}`, async ({
     page
