@@ -279,6 +279,35 @@ test('MAR time commits keyboard edits without needing to click the picker', asyn
   await expect(changes).toHaveText('2');
 });
 
+test('MAR time Escape restores the time from before opening without emitting change', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}mar-controls.html`);
+  const input = page.getByRole('textbox', { name: 'Time', exact: true });
+  const timePanel = page.getByRole('dialog', { name: 'Time' });
+  const value = page.getByLabel('Time value');
+  const changes = page.getByLabel('Time changes');
+
+  await input.fill('10:15');
+  await input.press('Enter');
+  await expect(value).toHaveText('10:15');
+  await expect(changes).toHaveText('1');
+
+  await input.press('ArrowDown');
+  const hours = timePanel.getByRole('group', { name: 'Hours' });
+  await expect(hours.getByRole('button', { name: '10', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(hours.getByRole('button', { name: '11', exact: true })).toBeFocused();
+  await expect(value).toHaveText('11:15');
+  await page.keyboard.press('Escape');
+
+  await expect(timePanel).toBeHidden();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('10:15');
+  await expect(value).toHaveText('10:15');
+  await expect(changes).toHaveText('1');
+});
+
 test('MAR date and time do not commit an IME confirmation key', async ({ page }) => {
   await page.goto(`${fixture.url}mar-controls.html`);
   const now = page.getByRole('textbox', { name: 'Time', exact: true });

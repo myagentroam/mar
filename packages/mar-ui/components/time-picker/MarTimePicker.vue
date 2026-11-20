@@ -173,8 +173,7 @@ function onFocusOut(event: FocusEvent) {
         if (!event.isComposing && popup.open.value) {
           event.stopPropagation();
           event.preventDefault();
-          close();
-          restoreFocus();
+          cancel();
         }
       }
     "
