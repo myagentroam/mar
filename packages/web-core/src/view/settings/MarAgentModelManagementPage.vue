@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
@@ -1553,12 +1554,12 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.add') }}</MarButton
           >
         </div>
-        <el-table
+        <MarTable
           :class="{ 'clickable-rows': !sorting }"
           :data="models"
           @row-click="openModelDetails"
         >
-          <el-table-column v-if="sorting" :label="translate('marAgentModels.order')" width="92">
+          <MarTableColumn v-if="sorting" :label="translate('marAgentModels.order')" width="92">
             <template #default="{ row, $index }">
               <div
                 class="order-handle"
@@ -1572,24 +1573,24 @@ onBeforeUnmount(() => {
                 <MarIcon name="queue" /><span>{{ $index + 1 }}</span>
               </div>
             </template>
-          </el-table-column>
-          <el-table-column prop="name" :label="translate('marAgentModels.name')" min-width="150" />
-          <el-table-column :label="translate('marAgentModels.protocol')" min-width="170">
+          </MarTableColumn>
+          <MarTableColumn prop="name" :label="translate('marAgentModels.name')" min-width="150" />
+          <MarTableColumn :label="translate('marAgentModels.protocol')" min-width="170">
             <template #default="{ row }">{{ protocolLabel(row) }}</template>
-          </el-table-column>
-          <el-table-column
+          </MarTableColumn>
+          <MarTableColumn
             prop="modelId"
             :label="translate('marAgentModels.model')"
             min-width="150"
           />
-          <el-table-column :label="translate('marAgentModels.availability')" width="110">
+          <MarTableColumn :label="translate('marAgentModels.availability')" width="110">
             <template #default="{ row }">
               <el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
                 translate(row.enabled ? 'marAgentModels.enabled' : 'marAgentModels.disabled')
               }}</el-tag>
             </template>
-          </el-table-column>
-          <el-table-column
+          </MarTableColumn>
+          <MarTableColumn
             prop="conversationModel"
             :label="translate('marAgentModels.conversationModel')"
             width="130"
@@ -1600,8 +1601,8 @@ onBeforeUnmount(() => {
                 row.conversationModel !== false ? 'marAgentModels.yes' : 'marAgentModels.no'
               )
             }}</template>
-          </el-table-column>
-          <el-table-column
+          </MarTableColumn>
+          <MarTableColumn
             prop="subagentModel"
             :label="translate('marAgentModels.subagentModel')"
             min-width="150"
@@ -1610,8 +1611,8 @@ onBeforeUnmount(() => {
             <template #default="{ row }">{{
               translate(row.subagentModel ? 'marAgentModels.yes' : 'marAgentModels.no')
             }}</template>
-          </el-table-column>
-          <el-table-column
+          </MarTableColumn>
+          <MarTableColumn
             prop="unifiedCompact"
             :label="translate('marAgentModels.unifiedCompact')"
             min-width="150"
@@ -1620,9 +1621,9 @@ onBeforeUnmount(() => {
             <template #default="{ row }">{{
               translate(row.unifiedCompact ? 'marAgentModels.yes' : 'marAgentModels.no')
             }}</template>
-          </el-table-column>
+          </MarTableColumn>
           <slot name="model-access-column" />
-          <el-table-column :label="translate('marAgentModels.status')" width="130">
+          <MarTableColumn :label="translate('marAgentModels.status')" width="130">
             <template #default="{ row }">
               <el-tag
                 :type="statusType(row.lastTestStatus)"
@@ -1631,8 +1632,8 @@ onBeforeUnmount(() => {
                 >{{ statusLabel(row.lastTestStatus) }}</el-tag
               >
             </template>
-          </el-table-column>
-          <el-table-column v-if="!sorting" :label="translate('marAgentModels.actions')" width="450">
+          </MarTableColumn>
+          <MarTableColumn v-if="!sorting" :label="translate('marAgentModels.actions')" width="450">
             <template #default="{ row }">
               <div class="mar-row-actions" @click.stop>
                 <MarButton v-if="writable" link :icon="marIcon('edit')" @click="openEdit(row)">{{
@@ -1664,8 +1665,8 @@ onBeforeUnmount(() => {
                 >
               </div>
             </template>
-          </el-table-column>
-        </el-table>
+          </MarTableColumn>
+        </MarTable>
       </el-tab-pane>
       <el-tab-pane :label="translate('marAgentModels.codexCredentialsTab')" name="codexCredentials">
         <div class="mar-table-actions">
@@ -1683,13 +1684,13 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.codexAddCredential') }}</MarButton
           >
         </div>
-        <el-table class="clickable-rows" :data="credentials" @row-click="openCredentialDetails">
-          <el-table-column
+        <MarTable class="clickable-rows" :data="credentials" @row-click="openCredentialDetails">
+          <MarTableColumn
             prop="name"
             :label="translate('marAgentModels.credentialName')"
             min-width="160"
           />
-          <el-table-column :label="translate('marAgentModels.credentialType')" min-width="160">
+          <MarTableColumn :label="translate('marAgentModels.credentialType')" min-width="160">
             <template #default="{ row }">{{
               translate(
                 row.type === 'CHATGPT_OAUTH'
@@ -1699,33 +1700,30 @@ onBeforeUnmount(() => {
                     : 'marAgentModels.codexLegacyCredential'
               )
             }}</template>
-          </el-table-column>
-          <el-table-column
-            :label="translate('marAgentModels.codexCredentialScope')"
-            min-width="180"
-          >
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.codexCredentialScope')" min-width="180">
             <template #default="{ row }">{{ credentialScopeLabel(row.ownership) }}</template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.status')" width="140">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.status')" width="140">
             <template #default="{ row }">
               <el-tag :type="credentialStatusType(row.status, row.authorization)" effect="plain">{{
                 credentialStatusLabel(row.status, row.authorization)
               }}</el-tag>
             </template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.codexAccount')" min-width="150">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.codexAccount')" min-width="150">
             <template #default="{ row }">{{ row.accountId }}</template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.codexTokenExpiry')" min-width="180">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.codexTokenExpiry')" min-width="180">
             <template #default="{ row }">{{ formatTimestamp(row.accessTokenExpiresAt) }}</template>
-          </el-table-column>
-          <el-table-column
+          </MarTableColumn>
+          <MarTableColumn
             :label="translate('marAgentModels.chatgptEarliestRefresh')"
             min-width="180"
           >
             <template #default="{ row }">{{ formatTimestamp(row.earliestRefreshAt) }}</template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.actions')" width="350">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.actions')" width="350">
             <template #default="{ row }">
               <div class="mar-row-actions" @click.stop>
                 <MarButton
@@ -1761,8 +1759,8 @@ onBeforeUnmount(() => {
                 </MarButton>
               </div>
             </template>
-          </el-table-column>
-        </el-table>
+          </MarTableColumn>
+        </MarTable>
       </el-tab-pane>
       <el-tab-pane
         v-if="canManageModels"
@@ -1828,8 +1826,8 @@ onBeforeUnmount(() => {
             >{{ translate('marAgentModels.cancel') }}</MarButton
           >
         </div>
-        <el-table :data="personalModels">
-          <el-table-column
+        <MarTable :data="personalModels">
+          <MarTableColumn
             v-if="personalSorting"
             :label="translate('marAgentModels.order')"
             width="92"
@@ -1847,17 +1845,17 @@ onBeforeUnmount(() => {
                 <MarIcon name="queue" /><span>{{ $index + 1 }}</span>
               </div>
             </template>
-          </el-table-column>
-          <el-table-column prop="name" :label="translate('marAgentModels.name')" min-width="150" />
-          <el-table-column :label="translate('marAgentModels.protocol')" min-width="170">
+          </MarTableColumn>
+          <MarTableColumn prop="name" :label="translate('marAgentModels.name')" min-width="150" />
+          <MarTableColumn :label="translate('marAgentModels.protocol')" min-width="170">
             <template #default="{ row }">{{ protocolLabel(row) }}</template>
-          </el-table-column>
-          <el-table-column
+          </MarTableColumn>
+          <MarTableColumn
             prop="modelId"
             :label="translate('marAgentModels.model')"
             min-width="150"
           />
-        </el-table>
+        </MarTable>
       </el-tab-pane>
     </el-tabs>
 
@@ -2720,11 +2718,11 @@ onBeforeUnmount(() => {
         <slot name="catalog-ownership" />
       </MarForm>
       <div v-loading="catalogLoading" class="catalog-table-wrap">
-        <el-table :data="catalogRows" row-key="upstreamModelId">
-          <el-table-column :label="translate('marAgentModels.select')" width="80">
+        <MarTable :data="catalogRows" row-key="upstreamModelId">
+          <MarTableColumn :label="translate('marAgentModels.select')" width="80">
             <template #default="{ row }"><el-checkbox v-model="row.selected" /></template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.model')" min-width="220">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.model')" min-width="220">
             <template #default="{ row }">
               <span class="catalog-model-name">{{ row.displayName }}</span>
               <code class="catalog-model-id">{{ row.upstreamModelId }}</code>
@@ -2753,13 +2751,13 @@ onBeforeUnmount(() => {
                 :closable="false"
               />
             </template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.name')" min-width="180">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.name')" min-width="180">
             <template #default="{ row }"
               ><MarInput v-model="row.name" :disabled="!row.selected"
             /></template>
-          </el-table-column>
-          <el-table-column :label="translate('marAgentModels.context')" min-width="150">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('marAgentModels.context')" min-width="150">
             <template #default="{ row }">
               <el-input-number
                 v-if="row.requiredInputs.includes('contextWindowTokens')"
@@ -2771,8 +2769,8 @@ onBeforeUnmount(() => {
               ></el-input-number>
               <span v-else>{{ row.contextWindowTokens }}</span>
             </template>
-          </el-table-column>
-        </el-table>
+          </MarTableColumn>
+        </MarTable>
       </div>
       <template #footer>
         <span class="dialog-footer-summary">{{
@@ -2800,21 +2798,21 @@ onBeforeUnmount(() => {
       width="min(640px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
     >
-      <el-table :data="importResult?.items ?? []">
-        <el-table-column
+      <MarTable :data="importResult?.items ?? []">
+        <MarTableColumn
           prop="upstreamModelId"
           :label="translate('marAgentModels.model')"
           min-width="220"
         />
-        <el-table-column :label="translate('marAgentModels.status')" width="140">
+        <MarTableColumn :label="translate('marAgentModels.status')" width="140">
           <template #default="{ row }">{{ importStatusLabel(row.status) }}</template>
-        </el-table-column>
-        <el-table-column
+        </MarTableColumn>
+        <MarTableColumn
           prop="code"
           :label="translate('marAgentModels.resultCode')"
           min-width="180"
         />
-      </el-table>
+      </MarTable>
       <template #footer>
         <MarButton @click="importResultDialog = false">{{
           translate('marAgentModels.close')
@@ -2838,7 +2836,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .model-detail-url {

@@ -161,7 +161,10 @@ describe('Model management component behavior', () => {
         expect(input.props['modelValue']).toBe(proxy);
         expect(input.props['type']).toBe('password');
         const rule = (
-          view.findAll('MarForm')[0]!.props['rules'] as Record<string, { validator: Function }[]>
+          view.findAll('MarForm')[0]!.props['rules'] as Record<
+            string,
+            { validator: (rule: object, value: string, done: (error?: Error) => void) => void }[]
+          >
         ).socks5Url![0]!;
         const validate = vi.fn();
         rule.validator({}, 'http://proxy.invalid:1080', validate);
@@ -460,8 +463,8 @@ describe('Model management component behavior', () => {
     });
     try {
       await flushComponent();
-      expect(view.findAll('ElTable')[0]?.props['data']).toEqual(models);
-      expect(view.findAll('ElPagination')).toHaveLength(0);
+      expect(view.findAll('MarTable')[0]?.props['data']).toEqual(models);
+      expect(view.findAll('MarPagination')).toHaveLength(0);
       expect(textContent(view.root)).toContain(messages.protocolOpenAI);
       expect(textContent(view.root)).toContain(messages.protocolAnthropic);
       await trigger(button(view, messages.refresh), 'onClick');
@@ -655,16 +658,15 @@ describe('Model management component behavior', () => {
       await flushComponent();
       await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
-        .findAll('ElTable')
+        .findAll('MarTable')
         .find(
           (node) =>
             Array.isArray(node.props['data']) &&
             (node.props['data'] as { id: string }[]).some((row) => row.id === 'credential-0')
         )!;
       expect(table.props['data']).toEqual(credentials);
-      expect(table.children.find((node) => node.props['prop'] === 'name')?.props['label']).toBe(
-        messages.credentialName
-      );
+      const headers = view.findAll('th');
+      expect(headers.map(textContent)).toContain(messages.credentialName);
       expect(textContent(table)).toContain(managementDateTime(credentials[1]!.earliestRefreshAt));
       for (const label of [
         messages.codexLegacyCredential,
@@ -706,7 +708,7 @@ describe('Model management component behavior', () => {
       await flushComponent();
       await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
-        .findAll('ElTable')
+        .findAll('MarTable')
         .find(
           (node) =>
             Array.isArray(node.props['data']) &&
@@ -846,7 +848,7 @@ describe('Model management component behavior', () => {
       try {
         await flushComponent();
         const table = view
-          .findAll('ElTable')
+          .findAll('MarTable')
           .find((node) => (node.props['data'] as unknown[])?.length === 2)!;
         if (personal) expect(textContent(table)).not.toContain(messages.status);
         await trigger(
@@ -997,7 +999,7 @@ describe('Model management component behavior', () => {
         await flushComponent();
         await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
         const table = view
-          .findAll('ElTable')
+          .findAll('MarTable')
           .find((node) =>
             (node.props['data'] as { id: string }[]).some((row) => row.id === credential.id)
           )!;
@@ -1070,7 +1072,7 @@ describe('Model management component behavior', () => {
       await flushComponent();
       await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
-        .findAll('ElTable')
+        .findAll('MarTable')
         .find((node) =>
           (node.props['data'] as { id: string }[]).some((row) => row.id === credentials[0]!.id)
         )!;
@@ -1141,7 +1143,7 @@ describe('Model management component behavior', () => {
         await flushComponent();
         await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
         const table = view
-          .findAll('ElTable')
+          .findAll('MarTable')
           .find((node) =>
             (node.props['data'] as { id: string }[]).some((row) => row.id === credentials[0]!.id)
           )!;
@@ -1254,7 +1256,7 @@ describe('Model management component behavior', () => {
       });
       expect(removed).toBe(true);
       expect(
-        view.findAll('ElTable').some((node) => (node.props['data'] as unknown[]).length > 0)
+        view.findAll('MarTable').some((node) => (node.props['data'] as unknown[]).length > 0)
       ).toBe(false);
     } finally {
       view.unmount();
@@ -1340,7 +1342,7 @@ describe('Model management component behavior', () => {
       await flushComponent();
       await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       const table = view
-        .findAll('ElTable')
+        .findAll('MarTable')
         .find(
           (node) =>
             Array.isArray(node.props['data']) &&

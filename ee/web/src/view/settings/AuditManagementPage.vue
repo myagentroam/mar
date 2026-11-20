@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
@@ -399,7 +400,7 @@ onBeforeUnmount(closeDetail);
         translate('generated.auditManagementPage.exportCSV')
       }}</MarButton>
     </div>
-    <el-table
+    <MarTable
       v-loading="
         loading &&
         pageReady &&
@@ -412,30 +413,30 @@ onBeforeUnmount(closeDetail);
       row-key="id"
       @row-click="openDetail"
     >
-      <el-table-column :label="translate('generated.auditManagementPage.time')" min-width="180"
+      <MarTableColumn :label="translate('generated.auditManagementPage.time')" min-width="180"
         ><template #default="{ row }">{{
           auditTimestamp(row.occurredAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column :label="translate('audit.target')" min-width="180">
+      <MarTableColumn :label="translate('audit.target')" min-width="180">
         <template #default="{ row }">{{ row.targetName || row.targetId || '—' }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('generated.auditManagementPage.event')" min-width="220"
-        ><template #default="{ row }">{{ operationLabel(row) }}</template></el-table-column
+      </MarTableColumn>
+      <MarTableColumn :label="translate('generated.auditManagementPage.event')" min-width="220"
+        ><template #default="{ row }">{{ operationLabel(row) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         prop="actorUsername"
         :label="translate('generated.auditManagementPage.actor')"
         min-width="130"
       />
-      <el-table-column :label="translate('generated.auditManagementPage.result')" width="100"
+      <MarTableColumn :label="translate('generated.auditManagementPage.result')" width="100"
         ><template #default="{ row }">
           <el-tag :type="resultType(row.result)" effect="plain">{{
             resultLabel(row.result)
           }}</el-tag>
-        </template></el-table-column
+        </template></MarTableColumn
       >
-    </el-table>
+    </MarTable>
     <ManagementPagination
       :total="pagination.total.value"
       :page="pagination.page.value"
@@ -510,11 +511,11 @@ onBeforeUnmount(closeDetail);
           >
         </template>
         <el-descriptions-item v-if="changes.length" :label="translate('audit.changes')">
-          <el-table :data="changes">
-            <el-table-column prop="field" :label="translate('audit.field')" />
-            <el-table-column prop="before" :label="translate('audit.before')" />
-            <el-table-column prop="after" :label="translate('audit.after')" />
-          </el-table>
+          <MarTable :data="changes">
+            <MarTableColumn prop="field" :label="translate('audit.field')" />
+            <MarTableColumn prop="before" :label="translate('audit.before')" />
+            <MarTableColumn prop="after" :label="translate('audit.after')" />
+          </MarTable>
         </el-descriptions-item>
         <el-descriptions-item
           v-if="Object.keys(selected.metadata || {}).length > 0"
@@ -542,7 +543,7 @@ onBeforeUnmount(closeDetail);
 .mar-management-page .mar-filter-field > .audit-range-picker {
   width: min(430px, 100%);
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 pre {

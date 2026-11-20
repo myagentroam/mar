@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
@@ -282,11 +283,11 @@ onBeforeUnmount(() => {
           translate('common.grant')
         }}</MarButton>
       </div>
-      <el-table :data="grants" empty-text="">
-        <el-table-column :label="translate('conversationTemplates.target')" min-width="220">
+      <MarTable :data="grants" empty-text="">
+        <MarTableColumn :label="translate('conversationTemplates.target')" min-width="220">
           <template #default="{ row }">{{ grantTargetLabel(row) }}</template>
-        </el-table-column>
-        <el-table-column
+        </MarTableColumn>
+        <MarTableColumn
           v-if="writable"
           :label="translate('conversationTemplates.actions')"
           width="100"
@@ -296,8 +297,8 @@ onBeforeUnmount(() => {
               translate('conversationTemplates.revoke')
             }}</MarButton>
           </template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
     </div>
   </el-dialog>
 </template>

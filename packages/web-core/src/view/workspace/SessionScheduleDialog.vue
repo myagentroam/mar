@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarPagination } from '@myagentroam/mar-ui/pagination';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -645,7 +646,7 @@ function occurrenceStatus(status: string): string {
           {{ localTime(occurrence.due_at) }} · {{ occurrenceStatus(occurrence.status)
           }}<span v-if="occurrence.code"> · {{ occurrence.code }}</span>
         </p>
-        <el-pagination
+        <MarPagination
           v-if="occurrenceTotal > 0"
           :current-page="occurrencePage"
           :page-size="10"
@@ -654,8 +655,6 @@ function occurrenceStatus(status: string): string {
           :pager-count="5"
           layout="prev, pager, next"
           @current-change="changeOccurrencePage"
-          :prev-icon="marIcon('chevron-left')"
-          :next-icon="marIcon('chevron-right')"
         />
       </div>
     </MarForm>

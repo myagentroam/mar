@@ -627,12 +627,6 @@ html.console-ui .el-empty__image {
   width: 64px;
 }
 
-html.console-ui .el-table,
-.mar-theme-preview .el-table {
-  --el-table-header-bg-color: var(--mar-table-header-bg);
-  --el-table-row-hover-bg-color: var(--mar-table-row-hover-bg);
-}
-
 html.console-ui .el-dialog__headerbtn,
 html.console-ui .el-message-box__headerbtn,
 html.console-ui .el-drawer__close-btn {

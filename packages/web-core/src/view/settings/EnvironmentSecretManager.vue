@@ -3,6 +3,7 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -361,7 +362,7 @@ function message(error: unknown): string {
         >{{ translate('generated.environmentSecretManager.addSecret') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       :data="displayedSecrets"
       class="clickable-rows secret-table"
       :aria-label="translate('generated.environmentSecretManager.environmentSecretList')"
@@ -369,7 +370,7 @@ function message(error: unknown): string {
       @row-click="openSecretDetails"
       @sort-change="sortSecrets"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         :label="translate('generated.environmentSecretManager.name')"
         :sortable="targetScoped ? true : 'custom'"
@@ -378,8 +379,8 @@ function message(error: unknown): string {
         <template #default="{ row }">
           <span v-tooltip="row.name">{{ row.name }}</span>
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         prop="value"
         :label="translate('generated.environmentSecretManager.value')"
         :sortable="targetScoped ? true : 'custom'"
@@ -388,16 +389,16 @@ function message(error: unknown): string {
         <template #default="{ row }">
           <code v-tooltip="row.value" class="secret-value">{{ row.value }}</code>
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         prop="scope"
         :label="translate('generated.environmentSecretManager.scope')"
         :sortable="targetScoped ? true : 'custom'"
         width="100"
       >
         <template #default="{ row }">{{ secretScopeLabel(row) }}</template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         v-if="showOwnership === true"
         :label="translate('generated.environmentSecretManager.owner')"
         min-width="150"
@@ -405,8 +406,8 @@ function message(error: unknown): string {
         <template #default="{ row }">
           {{ secretOwnerLabel(row) }}
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         v-if="showOwnership === true"
         :label="translate('generated.environmentSecretManager.visibility')"
         width="110"
@@ -414,11 +415,8 @@ function message(error: unknown): string {
         <template #default="{ row }">
           {{ secretVisibilityLabel(row) }}
         </template>
-      </el-table-column>
-      <el-table-column
-        :label="translate('generated.environmentSecretManager.actions')"
-        :width="180"
-      >
+      </MarTableColumn>
+      <MarTableColumn :label="translate('generated.environmentSecretManager.actions')" :width="180">
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
             <MarButton
@@ -438,8 +436,8 @@ function message(error: unknown): string {
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
     <ManagementPagination
       v-if="!targetScoped"
       :total="pagination.total.value"
@@ -599,7 +597,7 @@ function message(error: unknown): string {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .mar-row-actions {

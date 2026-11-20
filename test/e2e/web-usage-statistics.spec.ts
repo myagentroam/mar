@@ -502,8 +502,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
 
     await expect(panel.getByText(labels.chart, { exact: true })).toHaveCount(0);
     await expect(panel.getByText(labels.notes, { exact: true })).toHaveCount(0);
-    await expect(panel.locator('.records .el-table__body-wrapper')).toContainText(labels.unknown);
-    const rows = panel.locator('.records .el-table__body-wrapper tr.el-table__row');
+    await expect(panel.locator('.records .mar-ui-table__viewport')).toContainText(labels.unknown);
+    const rows = panel.locator('.records .mar-ui-table__row');
     await expect(rows).toHaveCount(20);
     await expect(rows.first()).toContainText('2026-10-14 09:44:04');
     await expect(rows.first()).toContainText(`${compact('617283')} (50%)`);
@@ -524,14 +524,14 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.mouse.move(0, 0);
     await expect(tooltip).toHaveCount(0);
     const pager = panel.locator('.management-pagination');
-    await panel.locator('.records .el-table__expand-icon').first().click();
+    await panel.locator('.records .mar-ui-table__disclosure').first().click();
     const detail = panel.locator('.record-detail');
     await expect(detail.getByText('0', { exact: true }).first()).toBeVisible();
     await expect(detail).toContainText(`${compact('617283')} (50%)`);
     await expect(detail.getByText(compact('10000'), { exact: true })).toBeVisible();
     await expect(detail).toContainText(labels.unknown);
     if (mobile) {
-      await expect(pager.locator('.el-pagination')).toHaveCount(0);
+      await expect(pager.locator('.mar-ui-pagination')).toHaveCount(0);
       for (const expected of [40, 60]) {
         // Each automatic append requires a new intersection with the pagination boundary.
         await panel
@@ -566,10 +566,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(
         panel.getByRole('button', { name: labels.previous, exact: true })
       ).toBeDisabled();
-      await expect(pager.locator('.el-pagination__total')).toContainText('61');
-      await expect(pager.locator('.el-pager li.number')).toHaveCount(4);
+      await expect(pager.locator('.mar-ui-pagination__total')).toContainText('61');
+      await expect(pager.locator('.mar-ui-pagination__page')).toHaveCount(4);
       const refreshedStatus = await panel.locator('header').getByRole('status').innerText();
-      await pager.locator('.el-pager li.number').filter({ hasText: /^4$/u }).click();
+      await pager.locator('.mar-ui-pagination__page').filter({ hasText: /^4$/u }).click();
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await expect(loadingMask).toBeHidden();
       await expect(panel.locator('header').getByRole('status')).toHaveText(refreshedStatus);
@@ -580,10 +580,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(panel).toHaveAttribute('aria-busy', 'false');
       await page.clock.runFor(500);
       await expect(loadingMask).toBeHidden();
-      await expect(pager.locator('.el-pager .is-active')).toContainText('4');
-      await expect(pager.locator('.el-pager li.number')).toHaveCount(4);
+      await expect(pager.locator('[aria-current="page"]')).toContainText('4');
+      await expect(pager.locator('.mar-ui-pagination__page')).toHaveCount(4);
       await expect(panel.getByRole('button', { name: labels.next, exact: true })).toBeDisabled();
-      await expect(pager.locator('.el-pagination')).toHaveClass(/is-background/u);
+      await expect(pager.locator('.mar-ui-pagination')).toHaveClass(/is-background/u);
     }
     await pager.scrollIntoViewIfNeeded();
     await pager.screenshot({
@@ -601,7 +601,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
     await page.clock.resume();
     if (!mobile) {
-      await pager.getByRole('listitem', { name: 'page 1', exact: true }).click();
+      await pager.getByRole('button', { name: 'Page 1', exact: true }).click();
       await expect(rows).toHaveCount(20);
       await panel.getByRole('button', { name: labels.next, exact: true }).click();
     }
@@ -625,7 +625,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );
-    if (!mobile) await expect(pager.locator('.el-pager .is-active')).toContainText('1');
+    if (!mobile) await expect(pager.locator('[aria-current="page"]')).toContainText('1');
     else await expect(rows).toHaveCount(20);
     failure = true;
     await refreshButton.focus();
@@ -711,7 +711,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     const reads = (kind: string) =>
       requests.filter((url) => url.pathname.endsWith(`/${kind}`)).length;
-    await panel.locator('.records .el-table__expand-icon').first().click();
+    await panel.locator('.records .mar-ui-table__disclosure').first().click();
     await expect(panel.locator('.record-detail')).toHaveCount(1);
     const beforeExpanded = { overview: reads('overview'), records: reads('records') };
     await page.clock.fastForward(60_000);
@@ -728,13 +728,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.clock.runFor(500);
     await expect(panel.locator('.record-detail')).toHaveCount(0);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toHaveCount(0);
-    await panel.locator('.records th .caret-wrapper').first().press('Enter');
-    await expect(panel.locator('.records th.ascending')).toHaveCount(1);
+    await panel.locator('.records th .mar-ui-table__sort').first().press('Enter');
+    await expect(panel.locator('.records th[aria-sort="ascending"]')).toHaveCount(1);
     const beforeSorted = { overview: reads('overview'), records: reads('records') };
     await page.clock.fastForward(60_000);
     await expect.poll(() => reads('overview')).toBe(beforeSorted.overview + 1);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
-    await expect(panel.locator('.records th.ascending')).toHaveCount(1);
+    await expect(panel.locator('.records th[aria-sort="ascending"]')).toHaveCount(1);
     expect(reads('records')).toBe(beforeSorted.records);
     await expect(panel.locator('header').getByRole('status')).toBeEmpty();
     await page.clock.resume();

@@ -121,7 +121,7 @@ describe('Public system configuration page', () => {
     const view = renderComponent(Page, { request, writable: false, settings });
     try {
       await flushComponent();
-      const tableRows = view.findAll('ElTable')[0]?.props['data'] as { key: string }[];
+      const tableRows = view.findAll('MarTable')[0]?.props['data'] as { key: string }[];
       expect(tableRows.map(({ key }) => key)).toEqual([
         ...settings.map(({ key }) => key),
         'mar-agent-resource-input',
@@ -131,7 +131,7 @@ describe('Public system configuration page', () => {
         'skill-tls'
       ]);
       expect(textContent(view.root)).toContain('https://preview.example.com');
-      expect(view.findAll('ElPagination')).toHaveLength(0);
+      expect(view.findAll('MarPagination')).toHaveLength(0);
       expect(request).toHaveBeenCalledWith('/api/system-settings');
       expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();

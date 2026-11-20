@@ -91,10 +91,10 @@ describe('shared loading presentation', () => {
       hasMore: true
     });
     expect(html).not.toContain('mar-busy-indicator');
-    expect(html).toContain('el-pagination');
+    expect(html).toContain('mar-ui-pagination');
     const controls = html.match(/<button\b[^>]*>/gu) ?? [];
-    expect(controls).toHaveLength(2);
-    for (const control of controls) expect(control).toMatch(/\sdisabled(?:[=>\s])/u);
+    expect(controls).toHaveLength(5);
+    for (const control of controls) expect(control).toMatch(/\saria-disabled="true"/u);
   });
 
   it('does not duplicate mobile refresh feedback or expose a manual append action', async () => {

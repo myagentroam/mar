@@ -1,5 +1,13 @@
 :root,
 .mar-theme-preview {
+  --mar-ui-fill-subtle: var(--mar-fill-subtle);
+  --mar-ui-color-success-text: var(--mar-color-success-text);
+  --mar-ui-color-success-bg: var(--mar-color-success-bg);
+  --mar-ui-color-warning-text: var(--mar-color-warning-text);
+  --mar-ui-color-warning-bg: var(--mar-color-warning-bg);
+  --mar-ui-color-danger-text: var(--mar-color-danger-text);
+  --mar-ui-color-danger-bg: var(--mar-color-danger-bg);
+  --mar-ui-scrollbar-thumb: var(--mar-scrollbar-thumb);
   --mar-ui-bg-panel: var(--mar-bg-panel);
   --mar-ui-bg-subtle: var(--mar-bg-subtle);
   --mar-ui-border-default: var(--mar-border-default);
@@ -30,6 +38,12 @@
   --mar-ui-overlay-border: var(--mar-overlay-border);
   --mar-ui-overlay-surface: var(--mar-overlay-surface);
   --mar-ui-overlay-shadow: var(--mar-compact-overlay-shadow);
+  --mar-ui-table-bg: var(--mar-bg-panel);
+  --mar-ui-table-header-bg: var(--mar-table-header-bg);
+  --mar-ui-table-row-hover-bg: var(--mar-table-row-hover-bg);
+  --mar-ui-tooltip-border: var(--mar-border-default);
+  --mar-ui-tooltip-surface: var(--mar-control-bg-color-overlay);
+  --mar-ui-tooltip-shadow: 0 4px 12px var(--mar-shadow-medium);
   --mar-ui-text-disabled: var(--mar-text-disabled);
   --mar-ui-text-primary: var(--mar-text-primary);
   --mar-ui-text-secondary: var(--mar-text-secondary);

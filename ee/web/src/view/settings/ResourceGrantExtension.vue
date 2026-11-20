@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormRules, type FormInstance } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -205,20 +206,20 @@ defineExpose({ open: openShare });
         /></MarSelect>
       </MarFormItem>
     </MarForm>
-    <el-table :data="grants" row-key="id"
-      ><el-table-column :label="translate('generated.resourceSharingPage.targetType2')"
+    <MarTable :data="grants" row-key="id"
+      ><MarTableColumn :label="translate('generated.resourceSharingPage.targetType2')"
         ><template #default="{ row }">{{
           row.targetType === 'USER'
             ? translate('generated.resourceSharingPage.user2')
             : translate('generated.resourceSharingPage.organization4')
-        }}</template></el-table-column
-      ><el-table-column :label="translate('generated.resourceSharingPage.target')"
+        }}</template></MarTableColumn
+      ><MarTableColumn :label="translate('generated.resourceSharingPage.target')"
         ><template #default="{ row }">{{
           row.targetType === 'USER'
             ? users.find((user) => user.id === row.targetUserId)?.username
             : path(row.targetOrganizationId)
-        }}</template></el-table-column
-      ><el-table-column :label="translate('generated.resourceSharingPage.actions2')" :width="180"
+        }}</template></MarTableColumn
+      ><MarTableColumn :label="translate('generated.resourceSharingPage.actions2')" :width="180"
         ><template #default="{ row }"
           ><MarButton
             link
@@ -228,8 +229,8 @@ defineExpose({ open: openShare });
             @click="removeGrant(row)"
             >{{ translate('generated.resourceSharingPage.revoke2') }}</MarButton
           ></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <template #footer>
       <MarButton @click="shareOpen = false">{{

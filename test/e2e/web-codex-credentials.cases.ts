@@ -237,7 +237,7 @@ async function chooseNamedCatalogModel(
   options: { fillContextWindow: boolean }
 ): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'OAuth 模型目录' });
-  const row = dialog.locator('.el-table__row').filter({ hasText: displayName });
+  const row = dialog.locator('.mar-ui-table__row').filter({ hasText: displayName });
   const selection = row.getByRole('checkbox');
   await row.locator('.el-checkbox__inner').click();
   await expect(selection).toBeChecked();
@@ -286,7 +286,7 @@ test('Enterprise members can manage their own models and Codex credentials', asy
     'aria-selected',
     'true'
   );
-  const row = page.locator('.el-table__row').filter({ hasText: 'Member Codex' });
+  const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Member Codex' });
   await expect(row).toContainText('个人');
 
   await page.getByRole('button', { name: '添加 OAuth 凭据', exact: true }).click();
@@ -478,7 +478,7 @@ test('Codex credentials appear only after device login and support refresh, test
   const succeededDialog = await startLogin(page, 'Team Codex');
   await expect(succeededDialog.getByText('OAuth 登录成功。', { exact: true })).toBeVisible();
   await succeededDialog.getByRole('button', { name: '关闭', exact: true }).click();
-  const row = page.locator('.el-table__row').filter({ hasText: 'Team Codex' });
+  const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Team Codex' });
   await expect(row).toBeVisible();
   await expect(row.getByText('account-secret', { exact: true })).toBeVisible();
   await expect(row.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
@@ -615,7 +615,7 @@ test('Codex credentials appear only after device login and support refresh, test
   );
   await addModel.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('模型配置已保存。', { exact: true })).toBeVisible();
-  const modelRow = page.locator('.el-table__row').filter({ hasText: 'Custom Codex' });
+  const modelRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Custom Codex' });
   await modelRow.getByRole('button', { name: '编辑', exact: true }).click();
   const editModel = page.getByRole('dialog', { name: '编辑' });
   await expect(editModel.getByRole('spinbutton', { name: '上下文 Token' })).toHaveValue('256000');
@@ -840,7 +840,7 @@ test('Grok subscription OAuth keeps provider-specific login, usage, proxy, and m
       socks5Url: 'socks5://grok-user:grok-password@proxy.example.test:1080'
     }
   ]);
-  const row = page.locator('.el-table__row').filter({ hasText: 'Grok subscription' });
+  const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Grok subscription' });
   await expect(row).toContainText('X订阅');
   await row.click();
   const details = page.getByRole('dialog', { name: 'OAuth 凭据详情' });
@@ -904,7 +904,7 @@ test('Grok subscription OAuth keeps provider-specific login, usage, proxy, and m
       hostedWebSearch: true
     })
   ]);
-  const modelRow = page.locator('.el-table__row').filter({ hasText: 'Grok model' });
+  const modelRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Grok model' });
   await modelRow.getByRole('button', { name: '编辑', exact: true }).click();
   const editModel = page.getByRole('dialog', { name: '编辑', exact: true });
   const hostedSearch = editModel.getByRole('checkbox', { name: '支持 Web 搜索', exact: true });
@@ -1218,7 +1218,7 @@ test('Grok subscription catalog and model tests use only compatible Nodes', asyn
 
   await openManagement(page);
   await page.getByRole('tab', { name: 'OAuth 凭据', exact: true }).click();
-  const credentialRow = page.locator('.el-table__row').filter({ hasText: 'Grok operation' });
+  const credentialRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Grok operation' });
   await credentialRow.click();
   await page
     .getByRole('dialog', { name: 'OAuth 凭据详情' })
@@ -1227,9 +1227,9 @@ test('Grok subscription catalog and model tests use only compatible Nodes', asyn
 
   const catalogDialog = page.getByRole('dialog', { name: 'OAuth 模型目录' });
   const reasoningRow = catalogDialog
-    .locator('.el-table__row')
+    .locator('.mar-ui-table__row')
     .filter({ hasText: 'Grok Reasoning' });
-  const basicRow = catalogDialog.locator('.el-table__row').filter({ hasText: 'Grok Basic' });
+  const basicRow = catalogDialog.locator('.mar-ui-table__row').filter({ hasText: 'Grok Basic' });
   await expect(reasoningRow).toContainText('low, high');
   await expect(reasoningRow).toContainText('high');
   await expect(basicRow).toContainText('—');
@@ -1241,7 +1241,7 @@ test('Grok subscription catalog and model tests use only compatible Nodes', asyn
   await importResult.getByRole('button', { name: '关闭', exact: true }).click();
 
   await page.getByRole('tab', { name: '模型', exact: true }).click();
-  const modelRow = page.locator('.el-table__row').filter({ hasText: 'Grok Reasoning' });
+  const modelRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Grok Reasoning' });
   await expect(modelRow).toContainText('X订阅');
   await modelRow.getByRole('button', { name: '测试', exact: true }).click();
   const modelTest = page.getByRole('dialog', { name: '测试模型传输' });
@@ -1274,7 +1274,7 @@ test('Grok subscription catalog and model tests use only compatible Nodes', asyn
   await expect.poll(() => modelTestBodies.length).toBe(3);
   await expect(modelTest.locator('.model-test-result')).toHaveCount(0);
   await modelTest.getByRole('button', { name: '取消', exact: true }).click();
-  const otherModelRow = page.locator('.el-table__row').filter({ hasText: 'Grok Basic' });
+  const otherModelRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Grok Basic' });
   await otherModelRow.getByRole('button', { name: '测试', exact: true }).click();
   const lateResponse = page.waitForResponse(/\/grok-reasoning-model\/test$/);
   finishLateModelTest();
@@ -1346,7 +1346,7 @@ test('Grok connection failures are shown as network errors instead of device aut
 
   await openManagement(page);
   await page.getByRole('tab', { name: 'OAuth 凭据', exact: true }).click();
-  await page.locator('.el-table__row').filter({ hasText: 'Grok network error' }).click();
+  await page.locator('.mar-ui-table__row').filter({ hasText: 'Grok network error' }).click();
   const details = page.getByRole('dialog', { name: 'OAuth 凭据详情' });
   await details.getByRole('button', { name: '查询用量', exact: true }).click();
   await expect(
@@ -1455,9 +1455,7 @@ for (const english of [false, true]) {
     await dialog.getByRole('button', { name: english ? 'Save' : '保存', exact: true }).click();
     await expect(dialog).not.toBeVisible();
     expect((writes[0]?.[1]?.config as { apiKey?: string })?.apiKey).toBe('fixture-ark-api-key');
-    const rows = page.locator(
-      '.image-generation-management .el-table__body-wrapper .el-table__row'
-    );
+    const rows = page.locator('.image-generation-management .mar-ui-table__row');
     await expect(rows.first().locator('td').nth(2)).toHaveText('Codex');
     await expect(rows.last().locator('td').nth(2)).toHaveText(
       english ? 'Volcengine Ark' : '火山方舟'
@@ -1591,7 +1589,7 @@ test('Model tabs support saving and cancelling drag ordering', async ({ page }) 
     return route.fulfill({ status: 204 });
   });
   await openManagement(page);
-  const rows = page.locator('.el-table__body-wrapper .el-table__row');
+  const rows = page.locator('.mar-ui-table__row');
   for (const save of [false, true]) {
     await page.getByRole('button', { name: '调整排序', exact: true }).click();
     await rows
@@ -1635,7 +1633,7 @@ for (const provider of ['CODEX_OAUTH', 'CHATGPT_OAUTH', 'XAI_OAUTH'] as const) {
       json(route, { credentials: [credential({ type: provider })] })
     );
     await openManagement(page);
-    const row = page.locator('.el-table__row').filter({ hasText: model.name });
+    const row = page.locator('.mar-ui-table__row').filter({ hasText: model.name });
     const dialog = page.getByRole('dialog', { name: '编辑', exact: true });
     const continuation = dialog.getByRole('checkbox', {
       name: 'Responses 服务端续接',
@@ -1701,7 +1699,7 @@ test('Standard OpenAI Responses edits retain transport and HTTP continuation', a
 
   await openManagement(page);
   await page
-    .locator('.el-table__row')
+    .locator('.mar-ui-table__row')
     .filter({ hasText: 'OpenAI Responses' })
     .getByRole('button', { name: '编辑', exact: true })
     .click();
@@ -1753,7 +1751,7 @@ for (const english of [false, true]) {
       ['Standard', 'Lite']
     ] as const) {
       await page
-        .locator('.el-table__row')
+        .locator('.mar-ui-table__row')
         .filter({ hasText: model.name })
         .getByRole('button', { name: english ? 'Edit' : '编辑', exact: true })
         .click();
@@ -1889,7 +1887,7 @@ test('Codex catalog conflicts require reconfirmation and model tests target comp
 
   await openManagement(page);
   await page.getByRole('tab', { name: 'OAuth 凭据', exact: true }).click();
-  const credentialRow = page.locator('.el-table__row').filter({ hasText: 'Team Codex' });
+  const credentialRow = page.locator('.mar-ui-table__row').filter({ hasText: 'Team Codex' });
   await credentialRow.click();
   await page
     .getByRole('dialog', { name: 'OAuth 凭据详情' })
@@ -1924,7 +1922,7 @@ test('Codex catalog conflicts require reconfirmation and model tests target comp
   await importResult.getByRole('button', { name: '关闭', exact: true }).click();
 
   await page.getByRole('tab', { name: '模型', exact: true }).click();
-  const modelRow = page.locator('.el-table__row').filter({ hasText: 'GPT Codex Catalog' });
+  const modelRow = page.locator('.mar-ui-table__row').filter({ hasText: 'GPT Codex Catalog' });
   await expect(modelRow).not.toContainText('Codex OAuth 凭据');
   await expect(modelRow).not.toContainText('WebSocket');
   await modelRow.getByRole('button', { name: '测试', exact: true }).click();
@@ -1950,7 +1948,7 @@ test('Codex catalog conflicts require reconfirmation and model tests target comp
   await successfulModelTest.getByRole('button', { name: '取消', exact: true }).click();
 
   await page.getByRole('tab', { name: 'OAuth 凭据', exact: true }).click();
-  await page.locator('.el-table__row').filter({ hasText: 'Team Codex' }).click();
+  await page.locator('.mar-ui-table__row').filter({ hasText: 'Team Codex' }).click();
   await page
     .getByRole('dialog', { name: 'OAuth 凭据详情' })
     .getByRole('button', { name: '加载模型目录', exact: true })
@@ -2044,13 +2042,13 @@ for (const english of [false, true]) {
     await openManagement(page, english);
     await expect(
       page
-        .locator('.el-table__row')
+        .locator('.mar-ui-table__row')
         .filter({ hasText: 'ChatGPT model' })
         .getByRole('cell', { name: 'ChatGPT', exact: true })
     ).toBeVisible();
     await expect(
       page
-        .locator('.el-table__row')
+        .locator('.mar-ui-table__row')
         .filter({ hasText: 'Legacy model' })
         .getByRole('cell', { name: 'Codex (legacy)', exact: true })
     ).toBeVisible();
@@ -2063,7 +2061,7 @@ for (const english of [false, true]) {
         exact: true
       })
     ).toBeVisible();
-    const row = page.locator('.el-table__row').filter({ hasText: 'New ChatGPT' });
+    const row = page.locator('.mar-ui-table__row').filter({ hasText: 'New ChatGPT' });
     await expect(
       page.getByRole('columnheader', {
         name: english ? 'Credential name' : '凭据名称',
@@ -2213,7 +2211,7 @@ test('English Codex credentials preserve keyboard tab semantics and stable reaut
   const credentialsTab = page.getByRole('tab', { name: 'OAuth credentials', exact: true });
   await expect(credentialsTab).toHaveAttribute('aria-selected', 'true');
 
-  const row = page.locator('.el-table__row').filter({ hasText: 'Team Codex' });
+  const row = page.locator('.mar-ui-table__row').filter({ hasText: 'Team Codex' });
   await row.getByRole('cell', { name: 'Team Codex', exact: true }).click();
   await page
     .getByRole('dialog', { name: 'OAuth credential details' })
@@ -2282,7 +2280,7 @@ test('Enterprise model grants and organization credential ownership reuse shared
     });
   });
   await openManagement(page);
-  const row = page.locator('.el-table__row').filter({ hasText: 'GPT Codex Catalog' });
+  const row = page.locator('.mar-ui-table__row').filter({ hasText: 'GPT Codex Catalog' });
   await row.getByRole('button', { name: '授权', exact: true }).click();
   const grantDialog = page.getByRole('dialog');
   await grantDialog.getByRole('combobox').first().click();

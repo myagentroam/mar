@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -266,21 +267,18 @@ onMounted(() => {
         translate('generated.systemConfigurationPage.refresh')
       }}</MarButton>
     </div>
-    <el-table :data="rows" row-key="key">
-      <el-table-column
+    <MarTable :data="rows" row-key="key">
+      <MarTableColumn
         prop="name"
         :label="translate('generated.systemConfigurationPage.setting')"
         min-width="180"
       />
-      <el-table-column
+      <MarTableColumn
         prop="description"
         :label="translate('generated.systemConfigurationPage.description')"
         min-width="320"
       />
-      <el-table-column
-        :label="translate('generated.systemConfigurationPage.value')"
-        min-width="180"
-      >
+      <MarTableColumn :label="translate('generated.systemConfigurationPage.value')" min-width="180">
         <template #default="{ row }">
           <el-input-number
             v-if="row.type === 'number' && editingKey === row.key"
@@ -323,8 +321,8 @@ onMounted(() => {
             @update:model-value="service.setDraft(row.key, $event)"
           />
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         :label="translate('generated.systemConfigurationPage.actions')"
         min-width="220"
       >
@@ -359,8 +357,8 @@ onMounted(() => {
             </MarButton>
           </template>
         </template>
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"

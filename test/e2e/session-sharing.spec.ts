@@ -148,7 +148,7 @@ test('Work session shares preserve the original conversation, readonly previews 
     await expect(managementDialog.locator('.share-text')).toContainText(
       new URL(`/share/${first.share.id}`, baseURL!).toString()
     );
-    await expect(managementDialog.locator('.el-table')).toContainText('Active');
+    await expect(managementDialog.locator('.mar-ui-table')).toContainText('Active');
     const secondCreation = consolePage.waitForResponse(
       (response) => response.url().endsWith('/shares') && response.request().method() === 'POST'
     );
@@ -156,7 +156,7 @@ test('Work session shares preserve the original conversation, readonly previews 
     const secondResponse = await secondCreation;
     expect(secondResponse.status()).toBe(201);
     const second = await secondResponse.json();
-    await expect(managementDialog.locator('.el-table__row')).toHaveCount(2);
+    await expect(managementDialog.locator('.mar-ui-table__row')).toHaveCount(2);
     expect(first.password).toMatch(/^[0-9]{6}$/u);
     const guest = await browser.newContext({ baseURL: baseURL!, locale: 'en-US' });
     contexts.push(guest);
@@ -282,7 +282,7 @@ test('Work session shares preserve the original conversation, readonly previews 
     await enter(other, second.share.id, second.password);
     await expect(other.locator('.conversation-scroll-region')).toContainText('hello from Alice');
     await managementDialog
-      .locator('.el-table__row')
+      .locator('.mar-ui-table__row')
       .filter({ hasText: first.share.id })
       .getByRole('button', { name: 'Delete', exact: true })
       .click();
@@ -294,7 +294,7 @@ test('Work session shares preserve the original conversation, readonly previews 
     await consolePage.locator('.el-message-box__btns .el-button--primary').click();
     expect((await removal).status()).toBe(204);
     await expect(
-      managementDialog.locator('.el-table__row').filter({ hasText: first.share.id })
+      managementDialog.locator('.mar-ui-table__row').filter({ hasText: first.share.id })
     ).toHaveCount(0);
     await expect(a.locator('.share-entry')).toContainText('no longer available');
     await expect(b.locator('.share-entry')).toContainText('no longer available');

@@ -146,7 +146,7 @@ test('Skill settings show the available internal catalog and remove Skill Center
   );
   await expect(page.getByRole('tab', { name: '当前目标中的技能' })).toBeVisible();
   const favorite = page
-    .locator('.available-skill-table .el-table__row')
+    .locator('.available-skill-table .mar-ui-table__row')
     .filter({ hasText: 'code-review' });
   await expect(page.locator('.available-skill-table')).toContainText('说明');
   await expect(favorite).not.toContainText('aaaaaaaaaaaa');
@@ -156,7 +156,7 @@ test('Skill settings show the available internal catalog and remove Skill Center
   await expect(favorite.getByRole('button', { name: '安装' })).toBeDisabled();
   await page.getByRole('button', { name: '代码质量', exact: true }).click();
   await expect(
-    page.locator('.available-skill-table .el-table__row').filter({ hasText: 'database-query' })
+    page.locator('.available-skill-table .mar-ui-table__row').filter({ hasText: 'database-query' })
   ).toHaveCount(0);
   await page.getByRole('button', { name: '全部', exact: true }).click();
   await favorite.click();
@@ -168,7 +168,7 @@ test('Skill settings show the available internal catalog and remove Skill Center
 
   await page.getByRole('tab', { name: 'MCP', exact: true }).click();
   const mcpRow = page
-    .locator('.mcp-config-table .el-table__row')
+    .locator('.mcp-config-table .mar-ui-table__row')
     .filter({ hasText: 'Playwright MCP' });
   await expect(page.locator('.mcp-config-table')).toContainText('说明');
   await expect(mcpRow).toContainText('Browser automation tools');
@@ -376,13 +376,13 @@ test('Skill installation runs asynchronously in the current Workspace and refres
   await expect(page.getByText('Git 本地排除规则已修复')).toBeVisible();
   expect(repairCalls).toBe(1);
   await page
-    .locator('.available-skill-table .el-table__row')
+    .locator('.available-skill-table .mar-ui-table__row')
     .filter({ hasText: 'code-review' })
     .getByRole('button', { name: '安装' })
     .click();
   await expect(page.getByText('技能内容无效，未修改目标目录。')).toBeVisible();
   await page
-    .locator('.available-skill-table .el-table__row')
+    .locator('.available-skill-table .mar-ui-table__row')
     .filter({ hasText: 'code-review' })
     .getByRole('button', { name: '安装' })
     .click();
@@ -392,7 +392,7 @@ test('Skill installation runs asynchronously in the current Workspace and refres
     'true'
   );
   const installedSkill = page
-    .locator('.installed-skill-table .el-table__row')
+    .locator('.installed-skill-table .mar-ui-table__row')
     .filter({ hasText: 'code-review' });
   await expect(installedSkill).toContainText('已是最新版本');
   await expect(installedSkill.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
@@ -644,7 +644,7 @@ test('Skill source management discovers external entries and adds them to the pe
     Math.abs(sourceSearchBounds.selectTop! - sourceSearchBounds.inputTop!)
   ).toBeLessThanOrEqual(1);
   const sourceRow = page
-    .locator('.skill-source-table .el-table__row')
+    .locator('.skill-source-table .mar-ui-table__row')
     .filter({ hasText: 'skills.sh' });
   await sourceRow.click();
   await expect(page.getByRole('dialog', { name: 'skills.sh' })).toBeVisible();
@@ -667,7 +667,7 @@ test('Skill source management discovers external entries and adds them to the pe
   await sourceSearchBar.getByRole('textbox').fill('code review');
   await sourceSearchBar.getByRole('button', { name: '搜索', exact: true }).click();
   const candidate = page
-    .locator('.source-skill-table .el-table__row')
+    .locator('.source-skill-table .mar-ui-table__row')
     .filter({ hasText: 'code-review' });
   await expect(page.locator('.source-skill-table')).toContainText('说明');
   await expect(candidate).toContainText('Review changes before merge');
@@ -706,7 +706,7 @@ test('Skill source management discovers external entries and adds them to the pe
   }));
   expect(catalogLayout.scrollWidth).toBeLessThanOrEqual(catalogLayout.clientWidth);
   const addedSkill = page
-    .locator('.catalog-skill-table .el-table__row')
+    .locator('.catalog-skill-table .mar-ui-table__row')
     .filter({ hasText: 'aaaaaaaa' });
   await expect(addedSkill).toContainText('更新于');
   const catalogFilter = page.locator('.catalog-filter-bar');
@@ -728,7 +728,7 @@ test('Skill source management discovers external entries and adds them to the pe
   expect(editedBody).toEqual({ featured: false, tags: ['Java', '后端'] });
   const checkUpdateButton = addedSkill.getByRole('button', { name: '检查更新' });
   const existingSkill = page
-    .locator('.catalog-skill-table .el-table__row')
+    .locator('.catalog-skill-table .mar-ui-table__row')
     .filter({ hasText: 'java-style' });
   const existingCheckUpdateButton = existingSkill.getByRole('button', { name: '检查更新' });
   await existingCheckUpdateButton.click();
@@ -738,7 +738,7 @@ test('Skill source management discovers external entries and adds them to the pe
   await checkRequested;
   await expect(existingCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
   await expect(checkUpdateButton).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.el-table .el-loading-mask')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-table .el-loading-mask')).toHaveCount(0);
   releaseExistingCheckUpdate();
   releaseCheckUpdate();
   await expect(addedSkill.getByRole('button', { name: '更新到 bbbbbbbb' })).toBeVisible();
@@ -851,7 +851,7 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
     await expect(page.locator('.mcp-source-table')).toContainText('Fixture registry');
     await page.getByRole('button', { name: '搜索', exact: true }).click();
     await page
-      .locator('.source-mcp-table .el-table__row')
+      .locator('.source-mcp-table .mar-ui-table__row')
       .filter({ hasText: 'Test MCP' })
       .getByRole('button', { name: '加入可用目录', exact: true })
       .click();
@@ -1000,7 +1000,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   ).toBeLessThanOrEqual(1);
 
   const sourceRow = page
-    .locator('.mcp-source-table .el-table__row')
+    .locator('.mcp-source-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Registry' });
   await sourceRow.click();
   await expect(page.getByRole('dialog', { name: 'Acme Registry' })).toBeVisible();
@@ -1021,7 +1021,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
 
   await page.getByRole('button', { name: '搜索', exact: true }).click();
   const candidateRow = page
-    .locator('.source-mcp-table .el-table__row')
+    .locator('.source-mcp-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Search' });
   await expect(page.locator('.source-mcp-table')).toContainText('说明');
   await expect(candidateRow).toContainText('Search MCP server');
@@ -1036,7 +1036,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
 
   await page.getByRole('tab', { name: '已加入的 MCP' }).click();
   const catalogRow = page
-    .locator('.catalog-mcp-table .el-table__row')
+    .locator('.catalog-mcp-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Existing' });
   await expect(catalogRow).toContainText('1.0.0');
   await expect(catalogRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
@@ -1045,7 +1045,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   ).toBeVisible();
   const firstCheckUpdateButton = catalogRow.getByRole('button', { name: '检查更新' });
   const secondCatalogRow = page
-    .locator('.catalog-mcp-table .el-table__row')
+    .locator('.catalog-mcp-table .mar-ui-table__row')
     .filter({ hasText: 'Acme Tools' });
   const secondCheckUpdateButton = secondCatalogRow.getByRole('button', { name: '检查更新' });
   await firstCheckUpdateButton.click();
@@ -1055,7 +1055,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await secondCheckRequested;
   await expect(firstCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
   await expect(secondCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.el-table .el-loading-mask')).toHaveCount(0);
+  await expect(page.locator('.mar-ui-table .el-loading-mask')).toHaveCount(0);
   releaseFirstCheckUpdate();
   releaseSecondCheckUpdate();
   await expect(catalogRow.getByRole('button', { name: '更新到 1.1.0' })).toBeVisible();

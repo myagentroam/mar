@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -260,28 +261,28 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
           >
         </div>
         <!-- Personal Git identity and redacted credentials are returned as one complete document. -->
-        <el-table
+        <MarTable
           class="clickable-rows"
           :data="summary.credentials"
           :empty-text="t('personalGit.empty')"
           table-layout="auto"
           @row-click="openCredentialDetail"
         >
-          <el-table-column prop="name" :label="t('personalGit.name')" min-width="140" />
-          <el-table-column :label="t('personalGit.remote')" min-width="260"
+          <MarTableColumn prop="name" :label="t('personalGit.name')" min-width="140" />
+          <MarTableColumn :label="t('personalGit.remote')" min-width="260"
             ><template #default="{ row }"
               ><code class="git-scope">{{ formatGitRemoteUrl(row) }}</code></template
-            ></el-table-column
+            ></MarTableColumn
           >
-          <el-table-column prop="username" :label="t('personalGit.username')" min-width="140" />
-          <el-table-column :label="t('personalGit.identity')" min-width="220"
+          <MarTableColumn prop="username" :label="t('personalGit.username')" min-width="140" />
+          <MarTableColumn :label="t('personalGit.identity')" min-width="220"
             ><template #default="{ row }"
               ><template v-if="row.commitName"
                 >{{ row.commitName }} &lt;{{ row.commitEmail }}&gt;</template
               ><span v-else>{{ t('personalGit.identityEmpty') }}</span></template
-            ></el-table-column
+            ></MarTableColumn
           >
-          <el-table-column :label="t('personalGit.actions')" width="180"
+          <MarTableColumn :label="t('personalGit.actions')" width="180"
             ><template #default="{ row }"
               ><div class="mar-row-actions">
                 <MarButton
@@ -300,9 +301,9 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
                   >{{ t('personalGit.remove') }}</MarButton
                 >
               </div></template
-            ></el-table-column
+            ></MarTableColumn
           >
-        </el-table>
+        </MarTable>
       </template>
     </div>
     <el-dialog
@@ -488,7 +489,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   font-size: var(--mar-font-size-body);
   line-height: 1.5;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .git-form-group-title {

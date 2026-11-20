@@ -222,7 +222,7 @@ describe('scheduled session history pagination', () => {
     });
     try {
       await flushComponent();
-      expect(view.findAll('ElPagination')[0]!.props).toMatchObject({
+      expect(view.findAll('MarPagination')[0]!.props).toMatchObject({
         'current-page': 1,
         'page-size': 10,
         total: 25,
@@ -235,12 +235,12 @@ describe('scheduled session history pagination', () => {
             release = resolve;
           })
       );
-      await trigger(view.findAll('ElPagination')[0]!, 'onCurrentChange', 2);
+      await trigger(view.findAll('MarPagination')[0]!, 'onCurrentChange', 2);
       expect(request.mock.calls.at(-1)?.[0]).toContain('occurrencePage=2');
-      expect(view.findAll('ElPagination')[0]!.props.disabled).toBe(true);
+      expect(view.findAll('MarPagination')[0]!.props.disabled).toBe(true);
       release(page(2));
       await flushComponent();
-      expect(view.findAll('ElPagination')[0]!.props).toMatchObject({
+      expect(view.findAll('MarPagination')[0]!.props).toMatchObject({
         'current-page': 2,
         disabled: false
       });

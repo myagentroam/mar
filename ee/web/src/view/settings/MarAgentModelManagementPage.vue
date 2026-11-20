@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -167,13 +168,13 @@ function accessLabel(access: MarAgentModelSummary['access']): string {
       </MarFormItem>
     </template>
     <template #model-access-column>
-      <el-table-column :label="translate('marAgentModels.access')" width="110">
+      <MarTableColumn :label="translate('marAgentModels.access')" width="110">
         <template #default="{ row }">
           <el-tag :type="row.access === 'PUBLIC' ? 'success' : 'warning'" effect="plain">{{
             accessLabel(row.access)
           }}</el-tag>
         </template>
-      </el-table-column>
+      </MarTableColumn>
     </template>
     <template #model-actions="{ model }"
       ><MarButton

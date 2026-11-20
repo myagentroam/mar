@@ -12,7 +12,7 @@ const vuePlugin = vue();
 const vueTransform = vuePlugin.transform;
 const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
 const marUiComponentEntry =
-  /^@myagentroam\/mar-ui\/(button|dropdown|form|icons|segmented|select|switch)$/u;
+  /^@myagentroam\/mar-ui\/(button|dropdown|form|icons|pagination|segmented|select|switch|table)$/u;
 const selectBusinessFixtures =
   /\/(EnterpriseUserManagementPage|MarAgentCompactSettings|MarAgentModelManagementPage|UsageStatisticsSettings)\.vue\?/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.

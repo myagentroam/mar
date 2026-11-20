@@ -78,22 +78,22 @@ test('Desktop management requests backend pages and push-all ignores the current
   page
 }) => {
   const queries = await setupNodes(page);
-  const table = page.locator('.resource-management-panel .el-table');
-  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(20);
+  const table = page.locator('.resource-management-panel .mar-ui-table');
+  await expect(table.locator('tbody tr.mar-ui-table__row')).toHaveCount(20);
   expect(
     queries
       .filter((query) => query.has('page'))
       .every((query) => query.get('limit') === '20' && query.get('resourceType') === 'NODE')
   ).toBe(true);
-  await page.locator('.el-pager li.number').filter({ hasText: /^2$/ }).click();
+  await page.locator('.mar-ui-pagination__page').filter({ hasText: /^2$/ }).click();
   await expect(table.getByText('Fixture Node 20', { exact: true })).toBeVisible();
   await expect(table.getByText('Fixture Node 00', { exact: true })).toHaveCount(0);
-  await table.locator('.sort-caret.descending').first().click();
+  await table.locator('thead [data-sort-order="descending"]').first().click();
   await expect(table.getByText('Fixture Node 44', { exact: true })).toBeVisible();
   expect(queries.at(-1)?.get('sortBy')).toBe('label');
   expect(queries.at(-1)?.get('sortOrder')).toBe('desc');
   await page.locator('.mar-resource-filters input').first().fill('Fixture Node 44');
-  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(1);
+  await expect(table.locator('tbody tr.mar-ui-table__row')).toHaveCount(1);
   const upgraded: string[] = [];
   await page.route('**/api/nodes/*/upgrade', (route) => {
     upgraded.push(new URL(route.request().url()).pathname.split('/')[3]!);
@@ -115,10 +115,10 @@ test('Mobile append pauses on a failed backend page and retries the same page ma
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const queries = await setupNodes(page, true);
-  const table = page.locator('.resource-management-panel .el-table');
-  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(20);
+  const table = page.locator('.resource-management-panel .mar-ui-table');
+  await expect(table.locator('tbody tr.mar-ui-table__row')).toHaveCount(20);
   const container = page.locator('.resource-management-panel');
-  const body = table.locator('.el-table__body-wrapper .el-scrollbar__wrap');
+  const body = table.locator('.mar-ui-table__viewport');
   const geometry = await container.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -142,7 +142,7 @@ test('Mobile append pauses on a failed backend page and retries the same page ma
   await retry.click();
   await expect.poll(() => queries.filter((query) => query.get('page') === '2').length).toBe(2);
   await expect(table.getByText('Fixture Node 20', { exact: true })).toBeVisible();
-  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(40);
+  await expect(table.locator('tbody tr.mar-ui-table__row')).toHaveCount(40);
   await page.waitForTimeout(300);
   expect(queries.filter((query) => query.get('page') === '3')).toHaveLength(0);
   await container.evaluate((element) => {
@@ -152,5 +152,5 @@ test('Mobile append pauses on a failed backend page and retries the same page ma
   await page.waitForTimeout(300);
   // A new boundary entry, not a retry or observer recreation, advances the page.
   await boundary.scrollIntoViewIfNeeded();
-  await expect(table.locator('tbody tr.el-table__row')).toHaveCount(45);
+  await expect(table.locator('tbody tr.mar-ui-table__row')).toHaveCount(45);
 });

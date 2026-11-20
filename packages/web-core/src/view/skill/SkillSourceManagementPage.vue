@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
@@ -468,19 +469,19 @@ function scopeLabel(scope: string): string {
         >{{ translate('generated.skillSourceManagementPage.addSkillSource') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       class="clickable-rows skill-source-table"
       :data="displayedSources"
       row-key="id"
       @row-click="showSourceDetails"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         :label="translate('generated.skillSourceManagementPage.name')"
         sortable
         min-width="180"
       />
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.skillSourceManagementPage.scope')"
         width="144"
         show-overflow-tooltip
@@ -489,26 +490,24 @@ function scopeLabel(scope: string): string {
           (a: SkillSourceCard, b: SkillSourceCard) =>
             scopeLabel(a.scope).localeCompare(scopeLabel(b.scope))
         "
-        ><template #default="{ row }">{{ scopeLabel(row.scope) }}</template></el-table-column
+        ><template #default="{ row }">{{ scopeLabel(row.scope) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         prop="locator"
         :label="translate('generated.skillSourceManagementPage.uRL')"
         min-width="280"
         show-overflow-tooltip
       />
-      <el-table-column :label="translate('generated.skillSourceManagementPage.status')" width="110"
+      <MarTableColumn :label="translate('generated.skillSourceManagementPage.status')" width="110"
         ><template #default="{ row }"
           ><el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
             row.enabled
               ? translate('generated.skillSourceManagementPage.enabled')
               : translate('generated.skillSourceManagementPage.disabled')
           }}</el-tag></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column
-        :label="translate('generated.skillSourceManagementPage.actions')"
-        :width="180"
+      <MarTableColumn :label="translate('generated.skillSourceManagementPage.actions')" :width="180"
         ><template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
             <MarButton
@@ -532,9 +531,9 @@ function scopeLabel(scope: string): string {
               >{{ translate('generated.skillSourceManagementPage.delete2') }}</MarButton
             >
           </div>
-        </template></el-table-column
+        </template></MarTableColumn
       >
-    </el-table>
+    </MarTable>
 
     <el-tabs v-model="activeSkillTab" class="skill-management-tabs">
       <el-tab-pane
@@ -580,26 +579,26 @@ function scopeLabel(scope: string): string {
           </div>
         </div>
         <div v-loading="sourceSkillsLoading && !initialLoading" class="skill-table-section">
-          <el-table
+          <MarTable
             v-if="service.candidates.value.length > 0"
             class="clickable-rows source-skill-table"
             :data="service.candidates.value"
             row-key="id"
             @row-click="showCandidateDetails"
           >
-            <el-table-column
+            <MarTableColumn
               prop="name"
               :label="translate('generated.skillSourceManagementPage.name')"
               sortable
               min-width="180"
             />
-            <el-table-column
+            <MarTableColumn
               prop="source"
               :label="translate('generated.skillDetailsDialog.source')"
               min-width="180"
               show-overflow-tooltip
             />
-            <el-table-column
+            <MarTableColumn
               prop="description"
               :label="translate('conversationTemplates.description')"
               min-width="280"
@@ -613,8 +612,8 @@ function scopeLabel(scope: string): string {
                   )
                 }}
               </template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               :label="translate('generated.skillSourceManagementPage.actions')"
               :width="180"
             >
@@ -629,8 +628,8 @@ function scopeLabel(scope: string): string {
                   >
                 </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </MarTableColumn>
+          </MarTable>
           <div v-else-if="!service.loading.value" class="skill-empty">
             {{
               selectedSource?.kind === 'SKILLS_SH'
@@ -685,7 +684,7 @@ function scopeLabel(scope: string): string {
           "
           class="skill-table-section"
         >
-          <el-table
+          <MarTable
             v-if="filteredFavorites.length > 0"
             class="clickable-rows catalog-skill-table"
             @sort-change="pagination.sort"
@@ -693,26 +692,26 @@ function scopeLabel(scope: string): string {
             row-key="id"
             @row-click="showFavoriteDetails"
           >
-            <el-table-column
+            <MarTableColumn
               prop="normalizedName"
               :label="translate('generated.skillSourceManagementPage.name')"
               sortable="custom"
               min-width="170"
             />
-            <el-table-column
+            <MarTableColumn
               prop="repositoryIdentity"
               :label="translate('generated.skillDetailsDialog.source')"
               min-width="180"
               show-overflow-tooltip
             />
-            <el-table-column
+            <MarTableColumn
               :label="translate('generated.skillSourceManagementPage.scope')"
               width="144"
               show-overflow-tooltip
             >
               <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               prop="description"
               :label="translate('conversationTemplates.description')"
               min-width="260"
@@ -726,8 +725,8 @@ function scopeLabel(scope: string): string {
                   )
                 }}
               </template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               :label="translate('generated.skillDetailsDialog.version')"
               min-width="170"
             >
@@ -738,11 +737,8 @@ function scopeLabel(scope: string): string {
                   {{ formatUpdatedAt(row.updatedAt) }}
                 </span>
               </template>
-            </el-table-column>
-            <el-table-column
-              :label="translate('generated.skillDetailsDialog.tags')"
-              min-width="150"
-            >
+            </MarTableColumn>
+            <MarTableColumn :label="translate('generated.skillDetailsDialog.tags')" min-width="150">
               <template #default="{ row }">
                 <div v-if="row.featured || row.tags.length > 0" class="skill-tags">
                   <el-tag v-if="row.featured" type="warning" effect="plain"
@@ -753,8 +749,8 @@ function scopeLabel(scope: string): string {
                   }}</el-tag>
                 </div>
               </template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               :label="translate('generated.skillSourceManagementPage.actions')"
               min-width="360"
             >
@@ -798,8 +794,8 @@ function scopeLabel(scope: string): string {
                   >
                 </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </MarTableColumn>
+          </MarTable>
 
           <div v-else-if="!service.loading.value" class="skill-empty">
             {{
@@ -1098,7 +1094,7 @@ function scopeLabel(scope: string): string {
   font-size: var(--mar-font-size-body);
   text-align: center;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .mar-row-actions {

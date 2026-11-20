@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 
@@ -162,7 +163,11 @@ function sortChanged({ order }: { order: string | null }): void {
   recordsSorted = order !== null;
   service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
 }
-function expandChanged(_row: unknown, rows: { recordId: string; ledgerId?: string }[]): void {
+function expandChanged(
+  _row: unknown,
+  rows: boolean | { recordId: string; ledgerId?: string }[]
+): void {
+  if (!Array.isArray(rows)) return;
   expandedRecords.value = rows.map(recordKey);
   service.setRecordsInteracting(recordsSorted || expandedRecords.value.length > 0);
 }
@@ -666,7 +671,7 @@ onUnmounted(() => {
             t('usageStatistics.updateRecords')
           }}</MarButton>
         </div>
-        <el-table
+        <MarTable
           :data="state.records"
           :row-key="recordKey"
           :expand-row-keys="expandedRecords"
@@ -676,7 +681,7 @@ onUnmounted(() => {
           @sort-change="sortChanged"
           @expand-change="expandChanged"
         >
-          <el-table-column type="expand"
+          <MarTableColumn type="expand"
             ><template #default="{ row }"
               ><dl class="record-detail">
                 <template
@@ -724,33 +729,29 @@ onUnmounted(() => {
                   {{ t(`usageStatistics.roles.${row.agentRole}`) }}
                 </dd>
               </dl></template
-            ></el-table-column
+            ></MarTableColumn
           >
-          <el-table-column
-            prop="endedAt"
-            :label="t('usageStatistics.time')"
-            sortable
-            min-width="180"
-            ><template #default="{ row }">{{ time(row.endedAt) }}</template></el-table-column
+          <MarTableColumn prop="endedAt" :label="t('usageStatistics.time')" sortable min-width="180"
+            ><template #default="{ row }">{{ time(row.endedAt) }}</template></MarTableColumn
           >
-          <el-table-column
+          <MarTableColumn
             prop="runner"
             :label="t('usageStatistics.runner')"
             sortable
             min-width="110"
-            ><template #default="{ row }">{{ runnerName(row.runner) }}</template></el-table-column
+            ><template #default="{ row }">{{ runnerName(row.runner) }}</template></MarTableColumn
           >
-          <el-table-column :label="t('usageStatistics.model')" min-width="160"
+          <MarTableColumn :label="t('usageStatistics.model')" min-width="160"
             ><template #default="{ row }">{{
               row.actualModel ?? row.requestedModel ?? t('usageStatistics.unknown')
-            }}</template></el-table-column
+            }}</template></MarTableColumn
           >
-          <el-table-column :label="t('usageStatistics.purpose')" min-width="100"
+          <MarTableColumn :label="t('usageStatistics.purpose')" min-width="100"
             ><template #default="{ row }">{{
               t(`usageStatistics.purposes.${row.purpose}`)
-            }}</template></el-table-column
+            }}</template></MarTableColumn
           >
-          <el-table-column
+          <MarTableColumn
             v-for="key in tokenColumns"
             :key="key"
             :prop="key"
@@ -783,8 +784,8 @@ onUnmounted(() => {
                 }}</span
               >
             </template>
-          </el-table-column>
-          <el-table-column :label="t('usageStatistics.state')" min-width="105"
+          </MarTableColumn>
+          <MarTableColumn :label="t('usageStatistics.state')" min-width="105"
             ><template #default="{ row }"
               ><el-tag
                 :type="usageStateTypes[row.state as keyof typeof usageStateTypes]"
@@ -793,9 +794,9 @@ onUnmounted(() => {
                 :aria-label="t(`usageStatistics.states.${row.state}`)"
                 >{{ t(`usageStatistics.states.${row.state}`) }}</el-tag
               ></template
-            ></el-table-column
+            ></MarTableColumn
           >
-        </el-table>
+        </MarTable>
         <ManagementPagination
           :page="state.page"
           :page-size="20"

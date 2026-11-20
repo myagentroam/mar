@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -345,12 +346,12 @@ defineExpose({ open: openGrants });
           </MarSelect>
         </MarFormItem>
       </MarForm>
-      <el-table
+      <MarTable
         :data="opening.grants"
         row-key="id"
         :empty-text="translate('marAgentModels.noGrants')"
       >
-        <el-table-column :label="translate('marAgentModels.targetType')" width="140">
+        <MarTableColumn :label="translate('marAgentModels.targetType')" width="140">
           <template #default="{ row }">
             {{
               row.targetType === 'USER'
@@ -358,11 +359,11 @@ defineExpose({ open: openGrants });
                 : translate('marAgentModels.organization')
             }}
           </template>
-        </el-table-column>
-        <el-table-column :label="translate('marAgentModels.target')" min-width="200">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('marAgentModels.target')" min-width="200">
           <template #default="{ row }">{{ grantTargetLabel(opening, row) }}</template>
-        </el-table-column>
-        <el-table-column :label="translate('marAgentModels.actions')" width="100">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('marAgentModels.actions')" width="100">
           <template #default="{ row }">
             <MarButton
               link
@@ -375,8 +376,8 @@ defineExpose({ open: openGrants });
               {{ translate('marAgentModels.revoke') }}
             </MarButton>
           </template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
     </div>
     <template #footer>
       <MarButton :onClick="opening.close">{{ translate('marAgentModels.close') }}</MarButton>

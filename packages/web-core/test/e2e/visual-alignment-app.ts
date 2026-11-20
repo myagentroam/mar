@@ -8,8 +8,8 @@ import {
   type createHostedConversationWorkspaceService
 } from '../../src/service/hosted-conversation-workspace-service.js';
 import { computed, h, ref, resolveDirective, withDirectives } from 'vue';
-import ElementPlus, { ElDialog, ElTable, ElTableColumn } from 'element-plus';
-import { tableTooltipOptions } from '../../src/util/tooltip.js';
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
+import ElementPlus, { ElDialog } from 'element-plus';
 import SharedTooltipFixture from './shared-tooltip-fixture.vue';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
@@ -402,13 +402,12 @@ const app = createApp({
         'Toggle availability'
       ),
       h(
-        ElTable,
+        MarTable,
         {
           data: [{ name: 'A complete long table cell description that must remain readable' }],
-          tooltipOptions: tableTooltipOptions,
           style: 'width: 180px'
         },
-        () => h(ElTableColumn, { prop: 'name', showOverflowTooltip: true })
+        () => h(MarTableColumn, { prop: 'name', showOverflowTooltip: true, label: 'Name' })
       ),
       h(MailTemplateManagement, {
         writable: true,

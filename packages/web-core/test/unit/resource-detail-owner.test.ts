@@ -81,7 +81,7 @@ function fixture(kind: 'NODE' | 'WORKSPACE') {
     request,
     writable: false
   });
-  const table = () => view.findAll('ElTable')[0]!;
+  const table = () => view.findAll('MarTable')[0]!;
   async function open(id: string) {
     const row = (table().props['data'] as { nodeId: string; resourceType: string }[]).find(
       (row) => row.nodeId === id && row.resourceType === kind

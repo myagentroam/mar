@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
@@ -473,42 +474,42 @@ function scopeLabel(scope: string): string {
         >{{ translate('generated.mcpSourceManagementPage.addMCPSource') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       class="clickable-rows mcp-source-table"
       :data="displayedSources"
       row-key="id"
       @row-click="showSourceDetails"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         :label="translate('generated.mcpSourceManagementPage.name')"
         min-width="180"
         sortable
-        ><template #default="{ row }">{{ displaySourceName(row) }}</template></el-table-column
+        ><template #default="{ row }">{{ displaySourceName(row) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.mcpSourceManagementPage.scope')"
         width="144"
         show-overflow-tooltip
         sortable
-        ><template #default="{ row }">{{ scopeLabel(row.scope) }}</template></el-table-column
+        ><template #default="{ row }">{{ scopeLabel(row.scope) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         prop="locator"
         :label="translate('generated.mcpSourceManagementPage.uRL')"
         min-width="300"
         show-overflow-tooltip
       />
-      <el-table-column :label="translate('generated.mcpSourceManagementPage.status')" width="110"
+      <MarTableColumn :label="translate('generated.mcpSourceManagementPage.status')" width="110"
         ><template #default="{ row }"
           ><el-tag :type="row.enabled ? 'success' : 'info'" effect="plain">{{
             row.enabled
               ? translate('generated.mcpSourceManagementPage.enabled')
               : translate('generated.mcpSourceManagementPage.disabled')
           }}</el-tag></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column :label="translate('generated.mcpSourceManagementPage.actions')" :width="180">
+      <MarTableColumn :label="translate('generated.mcpSourceManagementPage.actions')" :width="180">
         <template #default="{ row }"
           ><div class="mar-row-actions" @click.stop>
             <MarButton
@@ -531,8 +532,8 @@ function scopeLabel(scope: string): string {
             >
           </div></template
         >
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
 
     <el-tabs v-model="activeMcpTab" class="mcp-management-tabs">
       <el-tab-pane
@@ -572,26 +573,26 @@ function scopeLabel(scope: string): string {
           </div>
         </div>
         <div class="mcp-table-section">
-          <el-table
+          <MarTable
             v-if="candidates.length > 0"
             class="clickable-rows source-mcp-table"
             :data="candidates"
             row-key="id"
             @row-click="showDetails"
           >
-            <el-table-column
+            <MarTableColumn
               prop="displayName"
               :label="translate('generated.mcpSourceManagementPage.name')"
               sortable
               min-width="180"
             />
-            <el-table-column
+            <MarTableColumn
               prop="serverName"
               :label="translate('generated.mcpDetailsDialog.serverName')"
               min-width="180"
               show-overflow-tooltip
             />
-            <el-table-column
+            <MarTableColumn
               prop="description"
               :label="translate('conversationTemplates.description')"
               min-width="260"
@@ -605,16 +606,16 @@ function scopeLabel(scope: string): string {
                   )
                 }}
               </template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               prop="version"
               :label="translate('generated.mcpDetailsDialog.version')"
               width="120"
             />
-            <el-table-column :label="translate('generated.mcpDetailsDialog.transport')" width="120">
+            <MarTableColumn :label="translate('generated.mcpDetailsDialog.transport')" width="120">
               <template #default="{ row }">{{ row.runtime.transport }}</template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               :label="translate('generated.mcpSourceManagementPage.actions')"
               :width="180"
             >
@@ -633,8 +634,8 @@ function scopeLabel(scope: string): string {
                   >
                 </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </MarTableColumn>
+          </MarTable>
           <div v-else class="mcp-empty">
             {{
               sourceId
@@ -673,7 +674,7 @@ function scopeLabel(scope: string): string {
           "
           class="mcp-table-section"
         >
-          <el-table
+          <MarTable
             v-if="catalog.length > 0"
             class="clickable-rows catalog-mcp-table"
             @sort-change="pagination.sort"
@@ -681,26 +682,26 @@ function scopeLabel(scope: string): string {
             row-key="id"
             @row-click="showDetails"
           >
-            <el-table-column
+            <MarTableColumn
               prop="displayName"
               :label="translate('generated.mcpSourceManagementPage.name')"
               sortable="custom"
               min-width="170"
             />
-            <el-table-column
+            <MarTableColumn
               prop="serverName"
               :label="translate('generated.mcpDetailsDialog.serverName')"
               min-width="180"
               show-overflow-tooltip
             />
-            <el-table-column
+            <MarTableColumn
               :label="translate('generated.mcpSourceManagementPage.scope')"
               width="144"
               show-overflow-tooltip
             >
               <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               prop="description"
               :label="translate('conversationTemplates.description')"
               min-width="240"
@@ -712,13 +713,13 @@ function scopeLabel(scope: string): string {
                   translate('generated.mcpSourceManagementPage.noDescriptionIsAvailableForThisMCP')
                 }}
               </template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               prop="version"
               :label="translate('generated.mcpDetailsDialog.version')"
               width="120"
             />
-            <el-table-column :label="translate('generated.mcpDetailsDialog.tags')" min-width="150">
+            <MarTableColumn :label="translate('generated.mcpDetailsDialog.tags')" min-width="150">
               <template #default="{ row }">
                 <div v-if="row.featured || row.tags.length > 0" class="mcp-tags">
                   <el-tag v-if="row.featured" type="warning" effect="plain"
@@ -729,8 +730,8 @@ function scopeLabel(scope: string): string {
                   }}</el-tag>
                 </div>
               </template>
-            </el-table-column>
-            <el-table-column
+            </MarTableColumn>
+            <MarTableColumn
               :label="translate('generated.mcpSourceManagementPage.actions')"
               min-width="360"
             >
@@ -772,8 +773,8 @@ function scopeLabel(scope: string): string {
                   >
                 </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </MarTableColumn>
+          </MarTable>
 
           <div v-else class="mcp-empty">
             {{ translate('generated.mcpSourceManagementPage.noCatalogMCPServers') }}
@@ -979,7 +980,7 @@ p {
   min-height: 180px;
   min-width: 0;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .mar-row-actions {

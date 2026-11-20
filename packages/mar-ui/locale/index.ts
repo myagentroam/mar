@@ -6,6 +6,19 @@ export interface MarUiLocale {
   readonly noData: string;
   readonly select: string;
   readonly invalidField: string;
+  readonly table: {
+    readonly expand: string;
+    readonly collapse: string;
+  };
+  readonly pagination: {
+    readonly label: string;
+    readonly total: string;
+    readonly previous: string;
+    readonly next: string;
+    readonly page: string;
+    readonly back: string;
+    readonly forward: string;
+  };
 }
 
 export const marUiLocaleKey: InjectionKey<Readonly<Ref<MarUiLocale>>> = Symbol('mar-ui-locale');

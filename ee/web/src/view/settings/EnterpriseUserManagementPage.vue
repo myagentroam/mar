@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 
@@ -507,7 +508,7 @@ onUnmounted(() => {
         >{{ translate('generated.organizationUserManagementPage.createUser') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       v-loading="
         usersPage.loading.value &&
         pageReady &&
@@ -521,35 +522,35 @@ onUnmounted(() => {
       @row-click="openUserDetail"
       @sort-change="changeSort"
     >
-      <el-table-column
+      <MarTableColumn
         prop="username"
         :label="translate('generated.organizationUserManagementPage.user2')"
         sortable="custom"
         min-width="120"
       />
-      <el-table-column
+      <MarTableColumn
         prop="email"
         :label="translate('generated.organizationUserManagementPage.email')"
         sortable="custom"
         min-width="160"
       />
-      <el-table-column
+      <MarTableColumn
         prop="nickname"
         :label="translate('generated.organizationUserManagementPage.displayName')"
         sortable="custom"
         min-width="140"
       />
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.role2')"
         width="190"
-        ><template #default="{ row }">{{ roleLabel(row.role) }}</template></el-table-column
+        ><template #default="{ row }">{{ roleLabel(row.role) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.organization3')"
         min-width="210"
-        ><template #default="{ row }">{{ path(row.organizationId) }}</template></el-table-column
+        ><template #default="{ row }">{{ path(row.organizationId) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.status2')"
         width="100"
         ><template #default="{ row }"
@@ -558,9 +559,9 @@ onUnmounted(() => {
               ? translate('generated.organizationUserManagementPage.enabled2')
               : translate('generated.organizationUserManagementPage.disabled2')
           }}</el-tag></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.actions2')"
         :width="usersPage.mobileViewport.value ? undefined : 320"
         :min-width="usersPage.mobileViewport.value ? 144 : undefined"
@@ -587,9 +588,9 @@ onUnmounted(() => {
               >{{ translate('generated.organizationUserManagementPage.delete2') }}</MarButton
             >
           </div></template
-        ></el-table-column
+        ></MarTableColumn
       >
-    </el-table>
+    </MarTable>
     <ManagementPagination
       :total="usersPage.total.value"
       :has-more="usersPage.hasMore.value"
@@ -807,7 +808,7 @@ onUnmounted(() => {
   font-size: var(--mar-font-size-meta);
   overflow-wrap: anywhere;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 </style>

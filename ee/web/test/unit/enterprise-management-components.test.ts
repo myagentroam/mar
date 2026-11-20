@@ -183,7 +183,7 @@ describe('Enterprise management components', () => {
         if (role === 'MEMBER') expect(request).not.toHaveBeenCalledWith('/api/organizations');
         else expect(request).toHaveBeenCalledWith('/api/organizations');
         const modelTable = view
-          .findAll('ElTable')
+          .findAll('MarTable')
           .find((node) => (node.props['data'] as unknown[])?.length === 1)!;
         await trigger(modelTable, 'onRowClick', (modelTable.props['data'] as unknown[])[0]);
         expect(textContent(view.findAll('ElDialog')[0]!)).toContain(
@@ -706,7 +706,7 @@ describe('Enterprise management components', () => {
       const stopSecretRowClick = vi.fn();
       await trigger(actionCell!, 'onClick', { stopPropagation: stopSecretRowClick });
       expect(stopSecretRowClick).toHaveBeenCalledOnce();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       await trigger(table, 'onRowClick', existing);
       expect(textContent(view.root)).toContain('DEPLOY_TOKEN');
       expect(textContent(view.findAll('ElDescriptions')[0]!)).not.toContain('fixture-secret-value');
@@ -773,7 +773,7 @@ describe('Enterprise management components', () => {
     });
     try {
       await flushComponent();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const actionCell = view
         .findAll('div')
         .find((node) => node.props['class'] === 'mar-row-actions');

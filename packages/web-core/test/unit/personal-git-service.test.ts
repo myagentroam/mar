@@ -90,10 +90,10 @@ describe('Personal Git settings client', () => {
     try {
       await flushComponent();
       expect(request).toHaveBeenCalledWith('/api/personal-git', { cache: 'no-store' });
-      expect(view.findAll('ElTable')[0]?.props['data']).toEqual(credentials);
+      expect(view.findAll('MarTable')[0]?.props['data']).toEqual(credentials);
       for (const credential of credentials)
         expect(textContent(view.root)).toContain(credential.name);
-      expect(view.findAll('ElPagination')).toHaveLength(0);
+      expect(view.findAll('MarPagination')).toHaveLength(0);
     } finally {
       view.unmount();
     }

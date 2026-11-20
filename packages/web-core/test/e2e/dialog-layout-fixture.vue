@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { h, onMounted, ref } from 'vue';
 import type { NodeSummary } from '../../src/model/node.js';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
@@ -296,10 +297,10 @@ function showMessageBox(): void {
     append-to-body
     @close-auto-focus="focusDestination?.focus()"
   >
-    <el-table v-if="kind === 'table'" :data="entries">
-      <el-table-column prop="name" label="Name" />
-      <el-table-column prop="description" label="Description" />
-    </el-table>
+    <MarTable v-if="kind === 'table'" :data="entries">
+      <MarTableColumn prop="name" label="Name" />
+      <MarTableColumn prop="description" label="Description" />
+    </MarTable>
     <el-form v-else-if="kind === 'form'" label-position="top">
       <el-form-item v-for="i in 18" :key="i" :label="`Field ${i}`">
         <el-select v-if="i === 1" v-model="value" aria-label="First field">

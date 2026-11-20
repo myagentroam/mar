@@ -124,7 +124,7 @@ describe('Public resource operation behavior', () => {
         await trigger(button(common.delete), 'onClick');
         expect(confirmation).toHaveBeenCalledTimes(2);
         expect(request).toHaveBeenCalledWith(endpoint, { method: 'DELETE' });
-        expect(view.findAll('ElTable')[0]?.props['data']).toEqual([]);
+        expect(view.findAll('MarTable')[0]?.props['data']).toEqual([]);
         expect(changed).toHaveBeenCalledTimes(2);
       } finally {
         view.unmount();
@@ -178,7 +178,7 @@ describe('Public resource operation behavior', () => {
     const refreshLabel = commonMessages['en-US'].generated.nodeDetailsDialogs.refreshCapabilities;
     try {
       await flushComponent();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const row = (table.props['data'] as object[])[0];
       await trigger(table, 'onRowClick', row);
       expect(request).toHaveBeenCalledWith('/api/nodes');

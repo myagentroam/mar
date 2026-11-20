@@ -569,7 +569,7 @@ for (const role of ['ORG_ADMIN', 'MEMBER'] as const) {
     const zhStrings = locale(false);
 
     await openMarAgentManagement(page, zhStrings);
-    await expect(page.locator('.el-table__row').filter({ hasText: 'coding' })).toBeVisible();
+    await expect(page.locator('.mar-ui-table__row').filter({ hasText: 'coding' })).toBeVisible();
 
     await expect(page.getByRole('tab', { name: '高级', exact: true })).toHaveCount(0);
     for (const tabName of [zhStrings.credentialsTab, zhStrings.personalOrderTab]) {
@@ -625,7 +625,7 @@ test('MAR Agent Compact settings fit a 320px viewport without horizontal overflo
   const zhStrings = locale(false);
 
   await openMarAgentManagement(page, zhStrings);
-  const { panel, items } = await openCompactTab(page, zhStrings);
+  const { items } = await openCompactTab(page, zhStrings);
   await expect.poll(() => mock.reads()).toBe(1);
   await expect(items.enabled.getByRole('switch')).toBeChecked();
   await expect(items.model.getByRole('combobox')).toContainText('coding');

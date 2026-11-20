@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -264,13 +265,13 @@ onMounted(load);
         >{{ translate('marAgentModels.imageGenerationAdd') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       :class="{ 'clickable-rows': !sorting }"
       :data="models"
       row-key="id"
       @row-click="openDetails"
     >
-      <el-table-column width="92" :label="translate('marAgentModels.imageGenerationPriority')">
+      <MarTableColumn width="92" :label="translate('marAgentModels.imageGenerationPriority')">
         <template #default="{ row, $index }">
           <div
             v-if="sorting"
@@ -292,21 +293,21 @@ onMounted(load);
           </div>
           <span v-else>{{ $index + 1 }}</span>
         </template>
-      </el-table-column>
-      <el-table-column prop="name" :label="translate('marAgentModels.name')" min-width="160" />
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn prop="name" :label="translate('marAgentModels.name')" min-width="160" />
+      <MarTableColumn
         prop="provider"
         :label="translate('marAgentModels.imageGenerationProvider')"
         min-width="130"
       >
         <template #default="{ row }">{{ providerLabel(row.provider) }}</template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         prop="config.modelId"
         :label="translate('marAgentModels.imageGenerationModel')"
         min-width="230"
       />
-      <el-table-column :label="translate('marAgentModels.enabled')" width="100">
+      <MarTableColumn :label="translate('marAgentModels.enabled')" width="100">
         <template #default="{ row }"
           ><MarSwitch
             :model-value="row.enabled"
@@ -321,8 +322,8 @@ onMounted(load);
               )
             "
         /></template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         v-if="writable && !sorting"
         :label="translate('marAgentModels.actions')"
         width="200"
@@ -342,8 +343,8 @@ onMounted(load);
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
@@ -523,7 +524,7 @@ onMounted(load);
 .image-generation-management {
   min-width: 0;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .image-generation-detail-url {

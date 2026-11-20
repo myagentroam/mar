@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -405,38 +406,38 @@ onMounted(() => {
         translate('generated.oAuthManagementPage.addProvider')
       }}</MarButton>
     </div>
-    <el-table
+    <MarTable
       v-loading="loading && ready && !refreshLoading"
       :data="filteredProviders"
       class="clickable-rows oauth-provider-table"
       row-key="providerKey"
       @row-click="openProviderDetails"
-      ><el-table-column
+      ><MarTableColumn
         prop="name"
         :label="translate('generated.oAuthManagementPage.provider2')"
-      /><el-table-column
+      /><MarTableColumn
         prop="providerKey"
         :label="translate('generated.oAuthManagementPage.providerKey')"
         ><template #default="{ row }"
           ><code>{{ row.providerKey }}</code></template
-        ></el-table-column
-      ><el-table-column
+        ></MarTableColumn
+      ><MarTableColumn
         :label="translate('generated.oAuthManagementPage.autoProvisioning')"
         width="160"
         ><template #default="{ row }">{{
           row.autoProvisioningEnabled
             ? translate('generated.oAuthManagementPage.rootOrganizationMEMBER')
             : translate('generated.oAuthManagementPage.off')
-        }}</template></el-table-column
-      ><el-table-column :label="translate('generated.oAuthManagementPage.status')" width="110"
+        }}</template></MarTableColumn
+      ><MarTableColumn :label="translate('generated.oAuthManagementPage.status')" width="110"
         ><template #default="{ row }"
           ><el-tag
             :type="row.enabled ? 'success' : row.testedAt === null ? 'warning' : 'info'"
             effect="plain"
             >{{ providerStatusLabel(row) }}</el-tag
           ></template
-        ></el-table-column
-      ><el-table-column :label="translate('generated.oAuthManagementPage.actions')" :width="320"
+        ></MarTableColumn
+      ><MarTableColumn :label="translate('generated.oAuthManagementPage.actions')" :width="320"
         ><template #default="{ row }"
           ><div class="mar-row-actions" @click.stop>
             <MarButton link :icon="marIcon('edit')" :disabled="!writable" @click="edit(row)">{{
@@ -467,8 +468,8 @@ onMounted(() => {
               >{{ translate('generated.oAuthManagementPage.delete2') }}</MarButton
             >
           </div></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
@@ -687,7 +688,7 @@ code {
   font-size: var(--mar-font-size-meta);
   color: var(--mar-text-secondary);
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .mar-row-actions {

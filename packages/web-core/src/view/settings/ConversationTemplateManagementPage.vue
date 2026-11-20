@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
@@ -765,7 +766,7 @@ onMounted(() => {
       :title="translate('conversationTemplates.noEligibleNode')"
       ><template #icon><MarIcon name="warning" /></template
     ></el-alert>
-    <el-table
+    <MarTable
       v-loading="
         pagination.loading.value &&
         pageReady &&
@@ -779,36 +780,36 @@ onMounted(() => {
       @row-click="openDetail"
       @sort-change="sortTemplates"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         sortable="custom"
         :label="translate('conversationTemplates.name')"
         min-width="180"
       />
-      <el-table-column :label="translate('conversationTemplates.source')" min-width="180">
+      <MarTableColumn :label="translate('conversationTemplates.source')" min-width="180">
         <template #default="{ row }">{{ nodeLabel(row.nodeId) }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('conversationTemplates.version')" width="110">
+      </MarTableColumn>
+      <MarTableColumn :label="translate('conversationTemplates.version')" width="110">
         <template #default="{ row }">{{
           row.publishedVersion ?? translate('conversationTemplates.none')
         }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('conversationTemplates.status')" width="130">
+      </MarTableColumn>
+      <MarTableColumn :label="translate('conversationTemplates.status')" width="130">
         <template #default="{ row }">
           <el-tag :type="templateStatusType(row)" effect="plain">{{
             templateStatusLabel(row)
           }}</el-tag>
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         prop="updatedAt"
         sortable="custom"
         :label="translate('conversationTemplates.updatedAt')"
         width="190"
       >
         <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
-      </el-table-column>
-      <el-table-column :label="translate('conversationTemplates.actions')" width="490">
+      </MarTableColumn>
+      <MarTableColumn :label="translate('conversationTemplates.actions')" width="490">
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
             <MarButton
@@ -851,8 +852,8 @@ onMounted(() => {
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
     <ManagementPagination
       :total="pagination.total.value"
       :has-more="pagination.hasMore.value"
@@ -1084,24 +1085,24 @@ onMounted(() => {
         }}</el-descriptions-item>
       </el-descriptions>
       <h3>{{ translate('conversationTemplates.versions') }}</h3>
-      <el-table :data="detail.versions" max-height="240">
-        <el-table-column
+      <MarTable :data="detail.versions" max-height="240">
+        <MarTableColumn
           prop="version"
           :label="translate('conversationTemplates.version')"
           width="90"
         />
-        <el-table-column
+        <MarTableColumn
           prop="fileCount"
           :label="translate('conversationTemplates.fileCount')"
           width="100"
         />
-        <el-table-column :label="translate('conversationTemplates.totalBytes')" width="130">
+        <MarTableColumn :label="translate('conversationTemplates.totalBytes')" width="130">
           <template #default="{ row }">{{ fileSizeLabel(row.totalBytes) }}</template>
-        </el-table-column>
-        <el-table-column :label="translate('conversationTemplates.publishedAt')" min-width="180">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('conversationTemplates.publishedAt')" min-width="180">
           <template #default="{ row }">{{ formatDate(row.publishedAt) }}</template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
       <template #footer>
         <MarButton @click="detailDialogOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
@@ -1114,7 +1115,7 @@ onMounted(() => {
   overflow: auto;
 }
 
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 

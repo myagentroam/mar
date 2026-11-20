@@ -2,13 +2,10 @@ import {
   createRenderer,
   defineComponent,
   h,
-  inject,
   nextTick,
-  provide,
   ssrContextKey,
   type Component,
-  type ComponentInternalInstance,
-  type InjectionKey
+  type ComponentInternalInstance
 } from 'vue';
 import { i18n } from '../../../src/service/locale-preference-service.js';
 
@@ -112,12 +109,17 @@ export function renderComponent(
       const type = this.$.type;
       if (typeof type === 'function') return;
       const name = type.name ?? type.__name;
-      if (name === 'MarButton' || name === 'MarForm') boundaryView(this.$, name);
+      if (
+        name === 'MarButton' ||
+        name === 'MarForm' ||
+        name === 'MarTable' ||
+        name === 'MarPagination'
+      )
+        boundaryView(this.$, name);
       if (name === 'MarForm' && this.$.exposed && options.validate)
         this.$.exposed.validate = options.validate;
     }
   });
-  const rowsKey: InjectionKey<() => Record<string, unknown>[]> = Symbol('table rows');
   for (const name of [
     'ElIcon',
     'ElInput',
@@ -136,7 +138,6 @@ export function renderComponent(
     'ElDescriptionsItem',
     'ElTabs',
     'ElTabPane',
-    'ElPagination',
     'ElDatePicker',
     'ElAlert',
     'ElCheckbox',
@@ -146,8 +147,6 @@ export function renderComponent(
     'ElRadioButton',
     'ElRadio',
     'ElDivider',
-    'ElTable',
-    'ElTableColumn',
     'ElDialog',
     'ElForm',
     'ElPopover'
@@ -158,9 +157,6 @@ export function renderComponent(
         inheritAttrs: false,
         props: ['modelValue', 'data', 'prop'],
         setup(controlProps, { attrs, slots: controlSlots, expose }) {
-          if (name === 'ElTable')
-            provide(rowsKey, () => controlProps.data as Record<string, unknown>[]);
-          const rows = name === 'ElTableColumn' ? inject(rowsKey)! : undefined;
           if (name === 'ElForm')
             expose({
               validate: options.validate ?? (async () => true),
@@ -169,16 +165,11 @@ export function renderComponent(
             });
           return () => {
             if (name === 'ElDialog' && !controlProps.modelValue) return null;
-            const children = rows
-              ? rows().map(
-                  (row) =>
-                    controlSlots.default?.({ row }) ?? String(row[String(controlProps.prop)] ?? '')
-                )
-              : Object.entries(controlSlots).map(([slotName, slot]) =>
-                  name === 'ElInput' && slotName === 'password-icon'
-                    ? slot?.({ visible: false })
-                    : slot?.()
-                );
+            const children = Object.entries(controlSlots).map(([slotName, slot]) =>
+              name === 'ElInput' && slotName === 'password-icon'
+                ? slot?.({ visible: false })
+                : slot?.()
+            );
             return h(name, { ...attrs, ...controlProps }, children);
           };
         }

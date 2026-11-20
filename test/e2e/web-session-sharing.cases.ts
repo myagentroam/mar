@@ -480,9 +480,9 @@ for (const labels of [
         .slice(0, 19)
         .replace('T', ' ');
     }, shares[0]!.createdAt);
-    await expect(
-      dialog.locator('.el-table__body-wrapper tbody tr').first().locator('td').nth(1)
-    ).toHaveText(expectedCreated);
+    await expect(dialog.locator('.mar-ui-table__row').first().locator('td').nth(1)).toHaveText(
+      expectedCreated
+    );
     expect(expectedCreated).not.toMatch(/AM|PM/);
     await expect(dialog.getByRole('button', { name: labels.copy, exact: true })).toHaveCount(2);
     await expect(dialog).not.toContainText(/only once|仅显示一次/);

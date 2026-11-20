@@ -720,12 +720,12 @@ test('Table overflow hints share the theme without template-ref warnings', async
     if (message.type() === 'warning') warnings.push(message.text());
   });
   await page.goto(`${fixture.url}visual-alignment.html`);
-  await page.locator('.el-table__body .cell').hover();
-  await expect(page.locator('.mar-tooltip:visible')).toContainText(
+  await page.getByRole('cell', { name: /^A complete long table cell description/ }).hover();
+  await expect(page.locator('.mar-ui-table__hint:visible')).toContainText(
     'A complete long table cell description'
   );
-  const hint = page.locator('.mar-tooltip:visible');
-  await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+  const hint = page.locator('.mar-ui-table__hint:visible');
+  await expect(hint).toHaveAttribute('data-arrow', '');
   await expect(hint).toHaveCSS('pointer-events', 'auto');
   await hint.hover();
   await expect(hint).toBeVisible();

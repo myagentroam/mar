@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import {
@@ -152,28 +153,24 @@ async function copyRecord(id: string): Promise<void> {
       }}</MarButton>
     </section>
     <h3>{{ translate('sessionShare.records') }}</h3>
-    <el-table :data="shares" :empty-text="translate('sessionShare.noRecords')">
-      <el-table-column
-        :label="translate('sessionShare.link')"
-        min-width="230"
-        show-overflow-tooltip
-      >
+    <MarTable :data="shares" :empty-text="translate('sessionShare.noRecords')">
+      <MarTableColumn :label="translate('sessionShare.link')" min-width="230" show-overflow-tooltip>
         <template #default="{ row }">
           <el-link class="share-record-link" :href="link(row.id)" target="_blank" rel="noopener">
             {{ link(row.id) }}
           </el-link>
         </template>
-      </el-table-column>
-      <el-table-column
+      </MarTableColumn>
+      <MarTableColumn
         :label="translate('sessionShare.createdAt')"
         prop="createdAt"
         sortable
         min-width="215"
         ><template #default="{ row }">{{
           managementDateTime(row.createdAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('sessionShare.expiresAt')"
         prop="expiresAt"
         sortable
@@ -182,9 +179,9 @@ async function copyRecord(id: string): Promise<void> {
           row.expiresAt === null
             ? translate('sessionShare.permanent')
             : managementDateTime(row.expiresAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column :label="translate('sessionShare.status')" min-width="100"
+      <MarTableColumn :label="translate('sessionShare.status')" min-width="100"
         ><template #default="{ row }"
           ><el-tag
             :type="row.expiresAt !== null && row.expiresAt <= Date.now() ? 'info' : 'success'"
@@ -196,9 +193,9 @@ async function copyRecord(id: string): Promise<void> {
               )
             }}</el-tag
           ></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column :label="translate('sessionShare.actions')" min-width="180"
+      <MarTableColumn :label="translate('sessionShare.actions')" min-width="180"
         ><template #default="{ row }">
           <MarButton link :icon="marIcon('copy')" :disabled="busy" @click="copyRecord(row.id)">{{
             translate('sessionShare.copy')
@@ -211,9 +208,9 @@ async function copyRecord(id: string): Promise<void> {
             @click="remove(row.id)"
             >{{ translate('sessionShare.delete') }}</MarButton
           >
-        </template></el-table-column
+        </template></MarTableColumn
       >
-    </el-table>
+    </MarTable>
   </el-dialog>
 </template>
 

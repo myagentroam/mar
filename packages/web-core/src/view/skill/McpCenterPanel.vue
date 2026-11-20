@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -388,7 +389,7 @@ function mcpErrorMessage(error: unknown): string {
       "
       class="mcp-table-section"
     >
-      <el-table
+      <MarTable
         v-if="visibleEntries.length > 0"
         class="clickable-rows mcp-config-table"
         :data="displayedEntries"
@@ -396,22 +397,22 @@ function mcpErrorMessage(error: unknown): string {
         @row-click="showDetails"
         @sort-change="pagination.sort"
       >
-        <el-table-column
+        <MarTableColumn
           prop="displayName"
           :label="translate('generated.mcpSourceManagementPage.name')"
           min-width="180"
           :sortable="activeConfigTab === 'available' ? 'custom' : true"
         />
-        <el-table-column
+        <MarTableColumn
           prop="serverName"
           :label="translate('generated.mcpDetailsDialog.serverName')"
           min-width="180"
           show-overflow-tooltip
         />
-        <el-table-column :label="translate('generated.mcpSourceManagementPage.scope')" width="100">
+        <MarTableColumn :label="translate('generated.mcpSourceManagementPage.scope')" width="100">
           <template #default="{ row }">{{ scopeLabel(row.scope) }}</template>
-        </el-table-column>
-        <el-table-column
+        </MarTableColumn>
+        <MarTableColumn
           prop="description"
           :label="translate('conversationTemplates.description')"
           min-width="260"
@@ -421,13 +422,13 @@ function mcpErrorMessage(error: unknown): string {
             row.description ||
             translate('generated.mcpCenterPanel.noDescriptionIsAvailableForThisMCP')
           }}</template>
-        </el-table-column>
-        <el-table-column :label="translate('generated.mcpDetailsDialog.version')" width="120">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('generated.mcpDetailsDialog.version')" width="120">
           <template #default="{ row }">{{
             installedByName.get(row.serverName)?.version ?? row.version
           }}</template>
-        </el-table-column>
-        <el-table-column
+        </MarTableColumn>
+        <MarTableColumn
           v-if="activeConfigTab === 'installed'"
           :label="translate('generated.mcpDetailsDialog.status')"
           min-width="150"
@@ -447,8 +448,8 @@ function mcpErrorMessage(error: unknown): string {
                 : statusLabel(installedByName.get(row.serverName)?.status)
             }}</span>
           </template>
-        </el-table-column>
-        <el-table-column :label="translate('generated.mcpDetailsDialog.tags')" min-width="150">
+        </MarTableColumn>
+        <MarTableColumn :label="translate('generated.mcpDetailsDialog.tags')" min-width="150">
           <template #default="{ row }">
             <div v-if="row.featured || row.tags.length > 0" class="mcp-tags">
               <el-tag v-if="row.featured" type="warning" effect="plain"
@@ -459,8 +460,8 @@ function mcpErrorMessage(error: unknown): string {
               }}</el-tag>
             </div>
           </template>
-        </el-table-column>
-        <el-table-column
+        </MarTableColumn>
+        <MarTableColumn
           :label="translate('generated.mcpSourceManagementPage.actions')"
           min-width="300"
         >
@@ -532,8 +533,8 @@ function mcpErrorMessage(error: unknown): string {
               </div>
             </div>
           </template>
-        </el-table-column>
-      </el-table>
+        </MarTableColumn>
+      </MarTable>
       <el-empty
         v-else
         :description="
@@ -658,7 +659,7 @@ function mcpErrorMessage(error: unknown): string {
   min-width: 0;
   min-height: 180px;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 .row-actions {

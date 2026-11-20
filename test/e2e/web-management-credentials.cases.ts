@@ -72,7 +72,7 @@ test('Personal secret validation and CRUD reuse authoritative lists without subm
         body: { scope: 'PERSONAL', name: 'PERSONAL_KEY', value: 'personal-test-fixture' }
       }
     ]);
-  const row = page.locator('.secret-table .el-table__row').filter({ hasText: 'PERSONAL_KEY' });
+  const row = page.locator('.secret-table .mar-ui-table__row').filter({ hasText: 'PERSONAL_KEY' });
   await expect(row).toContainText('personal-test-fixture');
   await row.getByRole('button', { name: '更新', exact: true }).click();
   const replace = page.getByRole('dialog', { name: '更新密钥值' });
@@ -207,7 +207,9 @@ test('Secret and OAuth management show read-only row details and organization se
   await expect(managementMenu).toBeVisible();
   await managementMenu.getByRole('button', { name: '环境密钥管理', exact: true }).click();
 
-  const secretRow = page.locator('.secret-table .el-table__row').filter({ hasText: 'API_TOKEN' });
+  const secretRow = page
+    .locator('.secret-table .mar-ui-table__row')
+    .filter({ hasText: 'API_TOKEN' });
   await expect(page.locator('.secret-table')).toHaveClass(/clickable-rows/);
   await expect(secretRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(secretRow.locator('.mar-row-actions .el-icon').first()).toBeVisible();
@@ -241,7 +243,7 @@ test('Secret and OAuth management show read-only row details and organization se
 
   await managementMenu.getByRole('button', { name: 'OAuth 配置', exact: true }).click();
   const providerRow = page
-    .locator('.oauth-provider-table .el-table__row')
+    .locator('.oauth-provider-table .mar-ui-table__row')
     .filter({ hasText: '飞书' });
   await expect(page.locator('.oauth-provider-table')).toHaveClass(/clickable-rows/);
   await expect(providerRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
@@ -441,7 +443,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       }
     });
     const row = details
-      .locator('.secret-table .el-table__row')
+      .locator('.secret-table .mar-ui-table__row')
       .filter({ hasText: 'PROJECT_TOKEN' });
     await expect(row).toContainText(text.scope);
     await expect(row).toContainText('workspace-a-fixture');

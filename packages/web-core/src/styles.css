@@ -214,14 +214,7 @@ pre {
 .mar-management-page .mar-filter-field > :last-child {
   width: 210px;
 }
-.mar-management-page .el-table__cell:last-child .cell {
-  justify-content: flex-start;
-  text-align: left;
-}
-.mar-management-page .el-table {
-  font-size: var(--mar-font-size-body);
-}
-.mar-management-page .el-table__cell {
+.mar-management-page .mar-ui-table__cell {
   padding-block: 8px;
 }
 .mar-management-page .mar-table-actions {
@@ -258,7 +251,7 @@ pre {
     overflow-anchor: none;
   }
 
-  .mar-management-page .el-table {
+  .mar-management-page .mar-ui-table {
     flex-shrink: 0;
   }
 

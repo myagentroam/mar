@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
@@ -190,17 +191,17 @@ function createNodeToken(): void {
             @click="refreshOAuthBindings"
           />
         </div>
-        <el-table
+        <MarTable
           v-loading="oauthLoading && !oauthRefreshing"
           :aria-busy="oauthLoading"
           :data="oauthBindings"
           row-key="providerKey"
         >
-          <el-table-column
+          <MarTableColumn
             prop="name"
             :label="translate('generated.settingsContent.identityProvider')"
           />
-          <el-table-column :label="translate('generated.settingsContent.status')" width="110">
+          <MarTableColumn :label="translate('generated.settingsContent.status')" width="110">
             <template #default="{ row }">
               <el-tag :type="row.bound ? 'success' : 'info'" effect="light">
                 {{
@@ -210,8 +211,8 @@ function createNodeToken(): void {
                 }}
               </el-tag>
             </template>
-          </el-table-column>
-          <el-table-column :label="translate('generated.settingsContent.actions')" width="120">
+          </MarTableColumn>
+          <MarTableColumn :label="translate('generated.settingsContent.actions')" width="120">
             <template #default="{ row }">
               <MarButton
                 v-if="!row.bound"
@@ -231,8 +232,8 @@ function createNodeToken(): void {
                 >{{ translate('generated.settingsContent.unbind') }}</MarButton
               >
             </template>
-          </el-table-column>
-        </el-table>
+          </MarTableColumn>
+        </MarTable>
       </section>
     </template>
     <template #registration-owner>

@@ -76,7 +76,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             : '.skill-source-table, .mcp-source-table';
           const labels = page
             .locator(table)
-            .locator('.el-table__body-wrapper .cell')
+            .locator('.mar-ui-table__cell-inner')
             .filter({ hasText: /^(Enterprise|Organization|Personal)$/u });
           await expect(labels).toHaveCount(3);
           for (const label of await labels.all()) {
@@ -151,7 +151,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(apply).toHaveClass(/mar-ui-button--inline/);
       await expect(apply).not.toHaveClass(/mar-ui-button--primary/);
       await expect(apply).toHaveCSS('color', palette.secondary);
-      await expect(apply.locator('.el-icon')).toHaveCSS('color', palette.secondary);
+      await expect(apply.locator('.mar-ui-button__icon')).toHaveCSS('color', palette.secondary);
       await apply.focus();
       await page.keyboard.press('Enter');
       await expect(target).toHaveClass(/active/);
@@ -412,13 +412,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
       await page.goto(`${fixture.url}visual-alignment.html?list-hierarchy=models&theme=${theme}`);
       await page.getByRole('tab', { name: 'OAuth credentials', exact: true }).click();
-      await page.locator('.el-table__row').filter({ hasText: 'Catalog credential' }).click();
+      await page.locator('.mar-ui-table__row').filter({ hasText: 'Catalog credential' }).click();
       await page.getByRole('button', { name: 'Load model catalog', exact: true }).click();
       const name = page.locator('.catalog-model-name');
       await expect(name).toHaveText('Catalog model');
       await expect(name).toHaveCSS('font-weight', '400');
       await expect(name).toHaveCSS('color', (await colors(page)).primary);
-      await page.locator('.catalog-table-wrap .el-table__body .el-checkbox').click();
+      await page.locator('.catalog-table-wrap tbody .el-checkbox').click();
       await expect(name).toHaveCSS('font-weight', '400');
       await page.screenshot({
         path: testInfo.outputPath(`catalog-${width}.png`),

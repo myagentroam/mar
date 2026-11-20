@@ -889,9 +889,13 @@ describe('usage statistics settings contract', () => {
       app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
       app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
-      expect(html.includes('el-pagination__total')).toBe(total);
-      expect(html.match(/class="(?:[^"]* )?number(?: [^"]*)?"/gu)?.length ?? 0).toBe(pages);
-      const next = html.match(/<button\b[^>]*class="[^"]*btn-next[^"]*"[^>]*>/u)?.[0];
+      expect(html.includes('mar-ui-pagination__total')).toBe(total);
+      expect(
+        html.match(/<button\b[^>]*class="[^"]*\bmar-ui-pagination__page\b[^"]*"/gu)?.length ?? 0
+      ).toBe(pages);
+      const next = html.match(
+        /<button\b[^>]*class="[^"]*mar-ui-pagination__next[^"]*"[^>]*>/u
+      )?.[0];
       if (pages === 0) {
         expect(next).toBeUndefined();
         expect(html).toContain('management-mobile-status');
@@ -899,7 +903,7 @@ describe('usage statistics settings contract', () => {
         return;
       }
       expect(next).toBeDefined();
-      expect(/\sdisabled(?:[\s=>])/u.test(next!)).toBe(disabled);
+      expect(/\sdisabled(?:[\s=>])|aria-disabled="true"/u.test(next!)).toBe(disabled);
     }
   );
   it.each(['en-US', 'zh-CN'] as const)(
@@ -1002,7 +1006,7 @@ describe('usage statistics settings contract', () => {
         expect(
           view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
         ).toBe(commonMessages[locale].usageStatistics.trend);
-        const tables = view.findAll('ElTable');
+        const tables = view.findAll('MarTable');
         expect(tables).toHaveLength(1);
         const key = tables[0]!.props['row-key'] as (record: UsageRecord) => string;
         expect(service.state.records.map(key)).toEqual(['ledger-one', 'ledger-two']);

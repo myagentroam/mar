@@ -62,10 +62,10 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     );
     await page.setViewportSize({ width: 1280, height: 844 });
     await page.goto(`${fixture.url}?locale=en-US&page=${view}`);
-    const row = page.locator('.el-table').getByRole('row').filter({ hasText: name });
+    const row = page.locator('.mar-ui-table').getByRole('row').filter({ hasText: name });
     const actionCell = row.getByRole('cell').last();
     const detail = page.getByRole('dialog', { name: title, exact: true });
-    await expect(actionCell).toHaveCSS('width', `${desktopWidth}px`);
+    await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect
@@ -88,7 +88,7 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     await expect(detail).toContainText(name);
 
     await page.setViewportSize({ width: 1280, height: 844 });
-    await expect(actionCell).toHaveCSS('width', `${desktopWidth}px`);
+    await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
   });
 }
 
@@ -296,7 +296,7 @@ test('Registered users form preserves failures for correction and delivers succe
   const receipt = page.getByRole('dialog', { name: 'User Created' });
   await expect(receipt).toContainText('returned-user');
   await expect(receipt).toContainText('corrected-user-password');
-  await expect(page.locator('.el-table')).toContainText('corrected');
+  await expect(page.locator('.mar-ui-table')).toContainText('corrected');
   expect(ui.writes).toHaveLength(2);
 });
 
@@ -369,7 +369,7 @@ test('Registered users refreshes the saved row without closing the next edit dra
     await route.fulfill({ json: { user: users[0] } });
   });
   const row = (username: string) =>
-    page.locator('.el-table').getByRole('row').filter({ hasText: username });
+    page.locator('.mar-ui-table').getByRole('row').filter({ hasText: username });
   const dialog = page.getByRole('dialog', { name: 'Edit User', exact: true });
   const name = dialog.getByRole('textbox', { name: 'Display Name' });
   try {

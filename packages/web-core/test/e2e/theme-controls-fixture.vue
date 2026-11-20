@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
@@ -256,9 +257,9 @@ function saveFeedbackDialog(): void {
     </div>
     <ChatGPTManageUsageButton />
     <el-link type="primary">Sample anchor</el-link>
-    <el-table :data="[{ name: 'First' }, { name: 'Second' }]">
-      <el-table-column prop="name" label="Name" />
-    </el-table>
+    <MarTable :data="[{ name: 'First' }, { name: 'Second' }]">
+      <MarTableColumn prop="name" label="Name" />
+    </MarTable>
   </section>
   <section aria-label="Select state samples">
     <el-select v-model="selection" aria-label="Neutral select">

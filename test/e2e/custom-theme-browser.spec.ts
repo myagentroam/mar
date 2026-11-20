@@ -2363,7 +2363,7 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(selectLabel).toHaveText('One');
       await expect(selectLabel).toHaveCSS('color', conversationText);
       await expect(selectCaret).toHaveCSS('color', conversationSecondary);
-      await expect(controls.locator('.el-table')).toHaveCSS('background-color', panel);
+      await expect(controls.locator('.mar-ui-table')).toHaveCSS('background-color', panel);
       await expect(controls.getByRole('button', { name: 'Sample default', exact: true })).toHaveCSS(
         'background-color',
         panel
@@ -2395,12 +2395,12 @@ for (const scheme of ['Light', 'Dark']) {
             .evaluate((element) => getComputedStyle(element).color)
         )
       ).toBe(scheme === 'Dark' ? '#ffffff80' : '#ffffff');
-      await expect(controls.locator('.el-table th')).toHaveCSS(
+      await expect(controls.getByRole('columnheader')).toHaveCSS(
         'background-color',
         scheme === 'Dark' ? 'rgb(19, 25, 34)' : 'rgb(237, 243, 250)'
       );
-      await controls.locator('.el-table__body tr').first().hover();
-      await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
+      await controls.locator('tbody tr').first().hover();
+      await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
         scheme === 'Dark' ? 'rgb(32, 43, 58)' : 'rgb(229, 237, 246)'
       );
@@ -2487,8 +2487,11 @@ for (const scheme of ['Light', 'Dark']) {
       );
       await expect(selectLabel).toHaveCSS('color', 'rgb(213, 196, 175)');
       await expect(selectCaret).toHaveCSS('color', conversationSecondary);
-      await expect(controls.locator('.el-table')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
-      await expect(controls.locator('.el-table th')).toHaveCSS(
+      await expect(controls.locator('.mar-ui-table')).toHaveCSS(
+        'background-color',
+        'rgb(18, 52, 86)'
+      );
+      await expect(controls.getByRole('columnheader')).toHaveCSS(
         'background-color',
         'rgb(35, 69, 103)'
       );
@@ -2531,8 +2534,8 @@ for (const scheme of ['Light', 'Dark']) {
         'color',
         'rgb(188, 222, 250)'
       );
-      await controls.locator('.el-table__body tr').first().hover();
-      await expect(controls.locator('.el-table__body td').first()).toHaveCSS(
+      await controls.locator('tbody tr').first().hover();
+      await expect(controls.getByRole('cell').first()).toHaveCSS(
         'background-color',
         'rgb(52, 86, 120)'
       );

@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="Ownership = unknown">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -864,7 +865,7 @@ onUnmounted(() => {
         >{{ translate('generated.resourceSharingPage.pushAllUpgrades') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       v-loading="
         pagination.loading.value &&
         pageReady &&
@@ -877,7 +878,7 @@ onUnmounted(() => {
       row-key="key"
       @row-click="openDetails"
       @sort-change="sortResources"
-      ><el-table-column
+      ><MarTableColumn
         prop="label"
         :label="
           resourceType === 'NODE'
@@ -887,13 +888,13 @@ onUnmounted(() => {
         sortable="custom"
         min-width="180"
       />
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'WORKSPACE'"
         :label="translate('generated.resourceSharingPage.node')"
         min-width="180"
-        ><template #default="{ row }">{{ row.nodeLabel }}</template></el-table-column
+        ><template #default="{ row }">{{ row.nodeLabel }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         :label="translate('generated.resourceSharingPage.status2')"
         width="110"
@@ -903,44 +904,44 @@ onUnmounted(() => {
             :type="row.disabled ? 'danger' : row.connected ? 'success' : 'info'"
             >{{ statusLabel(row) }}</el-tag
           ></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.resourceSharingPage.ownershipType')"
         min-width="120"
         ><template #default="{ row }"
           ><el-tag :type="ownershipTypeTag(row)" effect="light">{{
             ownershipTypeLabel(row)
           }}</el-tag></template
-        ></el-table-column
+        ></MarTableColumn
       >
-      <el-table-column :label="translate('generated.resourceSharingPage.owner')" min-width="160"
-        ><template #default="{ row }">{{ ownerLabel(row) }}</template></el-table-column
+      <MarTableColumn :label="translate('generated.resourceSharingPage.owner')" min-width="160"
+        ><template #default="{ row }">{{ ownerLabel(row) }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         :label="translate('generated.resourceSharingPage.lastHeartbeat')"
         min-width="180"
         ><template #default="{ row }">{{
           timeLabel(row.lastHeartbeatAt)
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         prop="nodeAppVersion"
         :label="translate('generated.resourceSharingPage.currentVersion')"
         min-width="150"
         ><template #default="{ row }">{{
           row.nodeAppVersion ?? translate('generated.nodeDetailsDialogs.unknown')
-        }}</template></el-table-column
+        }}</template></MarTableColumn
       >
-      <el-table-column
+      <MarTableColumn
         v-if="resourceType === 'NODE'"
         :label="translate('generated.resourceSharingPage.upgradeStatus')"
         min-width="210"
-        ><template #default="{ row }">{{ upgradeLabel(row) }}</template></el-table-column
+        ><template #default="{ row }">{{ upgradeLabel(row) }}</template></MarTableColumn
       >
-      <el-table-column :label="translate('generated.resourceSharingPage.actions')" :width="290"
+      <MarTableColumn :label="translate('generated.resourceSharingPage.actions')" :width="290"
         ><template #default="{ row }"
           ><div class="mar-row-actions" @click.stop>
             <MarButton link :icon="marIcon('edit')" :disabled="!writable" @click="openEdit(row)">{{
@@ -956,8 +957,8 @@ onUnmounted(() => {
               >{{ translate('common.delete') }}</MarButton
             >
           </div></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <ManagementPagination
       :total="pagination.total.value"
@@ -1147,7 +1148,7 @@ onUnmounted(() => {
   </section>
 </template>
 <style scoped>
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 

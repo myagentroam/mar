@@ -177,7 +177,7 @@ describe('submission and authoritative reread loading', () => {
         .mockImplementationOnce(() => write.promise)
         .mockImplementationOnce(() => freshRead.promise);
       const view = renderComponent(OrganizationPage, { request, writable: true });
-      const table = () => view.findAll('ElTable')[0]!;
+      const table = () => view.findAll('MarTable')[0]!;
       const refreshLabel = translate('generated.organizationUserManagementPage.refresh');
       const readError = new Error('Current organization read failed');
       try {
@@ -447,7 +447,7 @@ describe('submission and authoritative reread loading', () => {
           false
         );
         expect(
-          view.findAll('ElTable').find((node) => node.props['row-key'] === 'providerKey')!.props
+          view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!.props
             .data
         ).toEqual(result.bindings);
         expect(
@@ -505,7 +505,7 @@ describe('submission and authoritative reread loading', () => {
         expect(request).toHaveBeenCalledTimes(4);
         expect(button(view, refreshLabel).props.loading).toBe(false);
         const table = () =>
-          view.findAll('ElTable').find((node) => node.props['row-key'] === 'providerKey')!;
+          view.findAll('MarTable').find((node) => node.props['row-key'] === 'providerKey')!;
         expect(table().props['aria-busy']).toBe(true);
         freshRead.resolve(updated);
         await unbind;

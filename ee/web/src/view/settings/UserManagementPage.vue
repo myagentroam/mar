@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -202,7 +203,7 @@ onUnmounted(() => usersPage.dispose());
         translate('generated.userManagementPage.createUser')
       }}</MarButton>
     </div>
-    <el-table
+    <MarTable
       v-loading="
         usersPage.loading.value &&
         pageReady &&
@@ -214,19 +215,19 @@ onUnmounted(() => usersPage.dispose());
       row-key="id"
       @row-click="openUserDetail"
       @sort-change="changeSort"
-      ><el-table-column
+      ><MarTableColumn
         prop="username"
         :label="translate('generated.userManagementPage.username')"
         sortable="custom"
-      /><el-table-column
+      /><MarTableColumn
         prop="email"
         :label="translate('generated.userManagementPage.email')"
         sortable="custom"
-      /><el-table-column
+      /><MarTableColumn
         prop="nickname"
         :label="translate('generated.userManagementPage.nickname')"
         sortable="custom"
-      /><el-table-column
+      /><MarTableColumn
         prop="role"
         :label="translate('generated.userManagementPage.role')"
         sortable="custom"
@@ -234,8 +235,8 @@ onUnmounted(() => usersPage.dispose());
           row.isAdmin
             ? translate('generated.userManagementPage.administrator')
             : translate('generated.userManagementPage.user')
-        }}</template></el-table-column
-      ><el-table-column
+        }}</template></MarTableColumn
+      ><MarTableColumn
         :label="translate('generated.userManagementPage.actions')"
         :width="usersPage.mobileViewport.value ? undefined : 180"
         :min-width="usersPage.mobileViewport.value ? 144 : undefined"
@@ -253,8 +254,8 @@ onUnmounted(() => usersPage.dispose());
               >{{ translate('generated.userManagementPage.delete') }}</MarButton
             >
           </div></template
-        ></el-table-column
-      ></el-table
+        ></MarTableColumn
+      ></MarTable
     >
     <ManagementPagination
       :total="usersPage.total.value"
@@ -371,7 +372,7 @@ onUnmounted(() => usersPage.dispose());
 </template>
 
 <style scoped>
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 

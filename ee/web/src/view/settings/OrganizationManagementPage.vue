@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { MarInput } from '@myagentroam/mar-ui/input';
 import { MarButton } from '@myagentroam/mar-ui/button';
@@ -235,7 +236,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
         >{{ translate('generated.organizationUserManagementPage.refresh') }}</MarButton
       >
     </div>
-    <el-table
+    <MarTable
       v-loading="loading && ready && !refreshLoading"
       :aria-busy="loading"
       class="organization-tree-table clickable-rows"
@@ -245,17 +246,17 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       :tree-props="{ children: 'children' }"
       @row-click="openOrganizationDetail"
     >
-      <el-table-column
+      <MarTableColumn
         prop="name"
         :label="translate('generated.organizationUserManagementPage.organizationName')"
         min-width="240"
       />
-      <el-table-column
+      <MarTableColumn
         prop="id"
         :label="translate('generated.organizationUserManagementPage.organizationID')"
         width="120"
       />
-      <el-table-column
+      <MarTableColumn
         :label="translate('generated.organizationUserManagementPage.actions')"
         :width="mobileViewport ? undefined : 280"
         :min-width="mobileViewport ? 144 : undefined"
@@ -286,8 +287,8 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
             >
           </div>
         </template>
-      </el-table-column>
-    </el-table>
+      </MarTableColumn>
+    </MarTable>
     <el-dialog
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
@@ -392,7 +393,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
 .organization-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
-.clickable-rows :deep(.el-table__row) {
+.clickable-rows :deep(.mar-ui-table__row) {
   cursor: pointer;
 }
 </style>

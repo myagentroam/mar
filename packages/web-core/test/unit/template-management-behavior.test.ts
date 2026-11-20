@@ -105,15 +105,15 @@ describe('Template management component behavior', () => {
     const view = renderComponent(Page, { request, writable: true, nodes: [] });
     try {
       await flushComponent();
-      const paging = view.findAll('ElPagination')[0]!;
+      const paging = view.findAll('MarPagination')[0]!;
       expect(paging.props.total).toBe(21);
       await trigger(paging, 'onCurrentChange', 2);
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const rows = table.props.data as Array<{ id: string }>;
       expect(rows.map((row) => row.id)).toEqual(['template-2']);
       await trigger(table, 'onRowClick', rows[0]);
       expect(view.findAll('ElDialog')[0]!.props.title).toBe('template-2');
-      expect(view.findAll('ElTable').at(-1)!.props.data).toEqual([
+      expect(view.findAll('MarTable').at(-1)!.props.data).toEqual([
         { ...version, templateId: 'template-2' }
       ]);
       await trigger(button(view, i18n.global.t('common.close')), 'onClick');
@@ -135,7 +135,7 @@ describe('Template management component behavior', () => {
     const view = renderComponent(Page, { request, writable: false, nodes: [] });
     try {
       await flushComponent();
-      const table = view.findAll('ElTable')[0]!;
+      const table = view.findAll('MarTable')[0]!;
       const first = trigger(table, 'onRowClick', template);
       await trigger(table, 'onRowClick', { ...template, id: 'template-2' });
       release(detail());

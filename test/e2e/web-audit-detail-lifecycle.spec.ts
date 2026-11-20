@@ -44,7 +44,7 @@ test('Audit detail keeps the current target and loading across out-of-order comp
   auditUrl
 }) => {
   await page.goto(auditUrl);
-  const rows = page.locator('.el-table__body-wrapper .el-table__row');
+  const rows = page.locator('.mar-ui-table__row');
   await expect(rows).toHaveCount(2);
   await rows.nth(0).click();
   const dialog = page.getByRole('dialog');
@@ -91,7 +91,7 @@ for (const close of ['footer', 'escape', 'icon', 'overlay'] as const) {
     auditUrl
   }) => {
     await page.goto(auditUrl);
-    const row = page.locator('.el-table__body-wrapper .el-table__row').first();
+    const row = page.locator('.mar-ui-table__row').first();
     await row.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
@@ -126,7 +126,7 @@ for (const close of ['footer', 'escape', 'icon', 'overlay'] as const) {
 
 test('Audit detail ignores success and failure after page unmount', async ({ page, auditUrl }) => {
   await page.goto(auditUrl);
-  const rows = page.locator('.el-table__body-wrapper .el-table__row');
+  const rows = page.locator('.mar-ui-table__row');
   await rows.first().click();
   await rows.nth(1).dispatchEvent('click');
   await page.evaluate(() => window.auditDetailFixture.unmount());
