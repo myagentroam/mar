@@ -1,0 +1,26 @@
+{
+  "name": "@myagentroam/mar-ui",
+  "private": true,
+  "type": "module",
+  "files": [
+    "components",
+    "icons",
+    "locale"
+  ],
+  "exports": {
+    "./button": "./components/button/index.ts",
+    "./input": "./components/input/index.ts",
+    "./select": "./components/select/index.ts",
+    "./dropdown": "./components/dropdown/index.ts",
+    "./segmented": "./components/segmented/index.ts",
+    "./icons": "./icons/index.ts",
+    "./icon-shapes": "./icons/icon-shapes.ts",
+    "./icon-shapes.NOTICE.txt": "./icons/icon-shapes.NOTICE.txt",
+    "./locale/en": "./locale/en.ts",
+    "./locale/zh-cn": "./locale/zh-cn.ts",
+    "./locale": "./locale/index.ts"
+  },
+  "dependencies": {
+    "vue": "^3.5.41"
+  }
+}

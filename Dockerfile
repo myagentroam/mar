@@ -15,6 +15,7 @@ COPY packages/protocol/package.json packages/protocol/package.json
 COPY packages/code-navigation/package.json packages/code-navigation/package.json
 COPY packages/server-core/package.json packages/server-core/package.json
 COPY packages/web-core/package.json packages/web-core/package.json
+COPY packages/mar-ui/package.json packages/mar-ui/package.json
 COPY mar-server/package.json mar-server/package.json
 COPY mar-web-console/package.json mar-web-console/package.json
 COPY ee/server/package.json ee/server/package.json
@@ -33,6 +34,7 @@ COPY scripts/clean-build-output.mjs scripts/clean-build-output.mjs
 
 COPY packages/code-navigation packages/code-navigation
 COPY packages/web-core packages/web-core
+COPY packages/mar-ui packages/mar-ui
 COPY ee/web ee/web
 COPY mar-web-console mar-web-console
 COPY docs/help docs/help

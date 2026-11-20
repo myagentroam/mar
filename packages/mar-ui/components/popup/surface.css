@@ -1,0 +1,26 @@
+.mar-ui-popup {
+  box-sizing: border-box;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 5px 0;
+  border: 1px solid var(--mar-ui-overlay-border);
+  border-radius: var(--mar-ui-radius-control);
+  background: var(--mar-ui-overlay-surface);
+  box-shadow: var(--mar-ui-overlay-shadow);
+  color: var(--mar-ui-text-primary);
+  font: inherit;
+  font-size: var(--mar-ui-font-size-body);
+}
+
+/* Retain the basic positioned surface on browsers without the top layer API. */
+@supports not selector(:popover-open) {
+  .mar-ui-popup {
+    z-index: var(--mar-ui-popup-z-index, 2100);
+  }
+  .mar-ui-popup:not([data-open]) {
+    display: none;
+  }
+}

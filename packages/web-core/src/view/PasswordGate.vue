@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { marIcon } from '../util/mar-icons.js';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElButton, ElInput } from 'element-plus';
-import 'element-plus/es/components/button/style/css';
-import 'element-plus/es/components/input/style/css';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarInput } from '@myagentroam/mar-ui/input';
 const props = defineProps<{
   readonly password: string;
   readonly validationError: string;
@@ -26,6 +24,7 @@ const currentPassword = ref('');
 const confirmation = ref('');
 const { t } = useI18n();
 function submit(): void {
+  if (props.loading) return;
   emit('submit', {
     currentPassword: currentPassword.value,
     password: props.password,
@@ -43,7 +42,7 @@ function submit(): void {
     <form class="auth-form" novalidate @submit.prevent="submit">
       <label
         >{{ t('passwordGate.current')
-        }}<el-input
+        }}<MarInput
           v-model="currentPassword"
           type="password"
           autocomplete="current-password"
@@ -51,7 +50,7 @@ function submit(): void {
       /></label>
       <label
         >{{ t('passwordGate.next')
-        }}<el-input
+        }}<MarInput
           :model-value="password"
           type="password"
           autocomplete="new-password"
@@ -60,7 +59,7 @@ function submit(): void {
       /></label>
       <label
         >{{ t('passwordGate.confirmation')
-        }}<el-input
+        }}<MarInput
           v-model="confirmation"
           type="password"
           autocomplete="new-password"
@@ -69,13 +68,12 @@ function submit(): void {
       <p v-if="validationError" class="password-form-error" role="alert">
         {{ validationError }}
       </p>
-      <el-button
+      <MarButton
         :disabled="password.length < 8 || currentPassword.length === 0 || confirmation.length === 0"
         :loading="loading"
-        native-type="submit"
         type="primary"
-        :loading-icon="marIcon('loading-action')"
-        >{{ t('passwordGate.submit') }}</el-button
+        native-type="submit"
+        >{{ t('passwordGate.submit') }}</MarButton
       >
     </form>
   </section>
@@ -128,11 +126,7 @@ function submit(): void {
   font-weight: 600;
 }
 
-.auth-form :deep(.el-input) {
-  width: 100%;
-}
-
-.auth-form :deep(.el-input__wrapper) {
+.auth-form :deep(.mar-ui-input) {
   min-height: 34px;
   border: 1px solid var(--mar-border-default);
   border-radius: 6px;
@@ -140,14 +134,13 @@ function submit(): void {
   box-shadow: none;
 }
 
-.auth-form :deep(.el-input__wrapper.is-focus),
-.auth-form :deep(.el-input__wrapper:focus-within) {
+.auth-form :deep(.mar-ui-input:focus-within) {
   background: var(--mar-bg-panel);
   border-color: var(--mar-color-brand-border);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mar-color-brand) 14%, transparent);
 }
 
-.auth-form :deep(.el-button) {
+.auth-form > button[type='submit'] {
   width: 100%;
   min-height: 34px;
   margin-top: 0.1rem;

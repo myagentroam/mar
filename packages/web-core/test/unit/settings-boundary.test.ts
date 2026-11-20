@@ -119,7 +119,9 @@ describe('Public personal settings ownership', () => {
       const editor = view.findAll('textarea')[0]!;
       expect(editor).toMatchObject({ value: instructions.common });
       await trigger(editor, 'onUpdate:modelValue', 'Changed API-only instructions');
-      const save = view.findAll('ElButton').find((node) => node.props['type'] === 'primary')!;
+      const save = view
+        .findAll('button')
+        .find((node) => String(node.props['class']).includes('mar-ui-button--primary'))!;
       await trigger(save, 'onClick');
       expect(error).toHaveBeenCalledOnce();
       expect(view.findAll('textarea')[0]).toMatchObject({ value: 'Changed API-only instructions' });

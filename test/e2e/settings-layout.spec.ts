@@ -85,7 +85,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               const text = (await label.boundingBox())!;
               expect(input.y).toBeGreaterThanOrEqual(text.y + text.height);
             }
-            for (const select of await content.locator('.theme-row .el-select').all()) {
+            for (const select of await content
+              .locator('.theme-row :is(.el-select, .mar-ui-select)')
+              .all()) {
               expect((await select.boundingBox())!.width).toBeCloseTo(input.width, 0);
             }
           }

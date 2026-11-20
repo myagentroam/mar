@@ -340,6 +340,12 @@ importers:
 
   packages/computer-runtime-win32-x64: {}
 
+  packages/mar-ui:
+    dependencies:
+      vue:
+        specifier: ^3.5.41
+        version: 3.5.41(typescript@5.9.3)
+
   packages/protocol:
     dependencies:
       zod:
@@ -421,6 +427,9 @@ importers:
       '@myagentroam/code-navigation':
         specifier: workspace:*
         version: link:../code-navigation
+      '@myagentroam/mar-ui':
+        specifier: workspace:*
+        version: link:../mar-ui
       '@myagentroam/protocol':
         specifier: workspace:*
         version: link:../protocol

@@ -12,6 +12,9 @@ import {
 import { DOCUMENTATION_AVAILABLE_KEY } from './service/documentation-availability.js';
 import en from 'element-plus/es/locale/lang/en';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
+import marEn from '@myagentroam/mar-ui/locale/en';
+import marZhCn from '@myagentroam/mar-ui/locale/zh-cn';
+import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import { localePreferenceService } from './service/locale-preference-service.js';
 import { consoleKeyboardShortcutService } from './service/console-keyboard-shortcut-service.js';
 import { tableTooltipOptions } from './util/tooltip.js';
@@ -45,6 +48,11 @@ themePreferenceService();
 const localeService = localePreferenceService();
 const elementLocales = { 'zh-CN': zhCn, 'en-US': en } as const;
 const elementLocale = computed(() => elementLocales[localeService.locale.value]);
+const marLocales = { 'zh-CN': marZhCn, 'en-US': marEn } as const;
+provide(
+  marUiLocaleKey,
+  computed(() => marLocales[localeService.locale.value])
+);
 
 function revealApplication(): void {
   document.getElementById('mar-bootstrap')?.remove();

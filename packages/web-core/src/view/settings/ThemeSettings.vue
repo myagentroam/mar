@@ -6,6 +6,8 @@ import {
 import { showMessage } from '../../service/message-feedback-service.js';
 import { PWA_APPLICATION_SERVICE_KEY } from '../../service/pwa-application-service.js';
 
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
@@ -291,30 +293,25 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
           >
             {{ t(service.theme.value === item.id ? 'customThemes.active' : 'customThemes.apply') }}
           </el-button>
-          <el-dropdown trigger="click" @command="themeAction(item, $event)">
-            <el-button
+          <MarDropdown trigger="click" @command="themeAction(item, $event)">
+            <MarButton
               v-tooltip="t('customThemes.moreActions', { name: item.name })"
               class="mar-icon-action"
               text
+              icon="more"
               :aria-label="t('customThemes.moreActions', { name: item.name })"
-            >
-              <MarIcon name="more" />
-            </el-button>
+            />
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="duplicate" :icon="marIcon('copy')">{{
+              <MarDropdownMenu>
+                <MarDropdownItem command="duplicate" icon="copy">{{
                   t('customThemes.duplicate')
-                }}</el-dropdown-item>
-                <el-dropdown-item
-                  v-if="!item.builtin"
-                  command="remove"
-                  :icon="marIcon('delete')"
-                  divided
-                  >{{ t('customThemes.remove') }}</el-dropdown-item
-                >
-              </el-dropdown-menu>
+                }}</MarDropdownItem>
+                <MarDropdownItem v-if="!item.builtin" command="remove" icon="delete" divided>{{
+                  t('customThemes.remove')
+                }}</MarDropdownItem>
+              </MarDropdownMenu>
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </div>
       </li>
     </ul>

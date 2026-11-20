@@ -293,7 +293,25 @@ test('Login shows multiple OAuth 2.0 SSO entries by provider identity', async ({
     })
   );
   await page.goto('/console');
-  await expect(page.locator('.auth-form .el-input input').first()).toHaveValue('');
+  await expect(page.locator('.auth-form input[autocomplete="username"]')).toHaveValue('');
+  const loginPanel = page.locator('.gate-panel');
+  await expect(loginPanel).toHaveCSS('border-radius', '8px');
+  await expect(loginPanel).toHaveCSS('box-shadow', 'none');
+  await expect(loginPanel.locator('.mar-ui-input').first()).toHaveCSS('min-height', '34px');
+  await expect(page.getByRole('button', { name: '进入控制台' })).toHaveCSS('min-height', '34px');
+  const gateLayout = await loginPanel.evaluate((panel) => {
+    const rect = panel.getBoundingClientRect();
+    return {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      documentHeight: document.documentElement.scrollHeight
+    };
+  });
+  expect(Math.abs(gateLayout.centerX - gateLayout.viewportWidth / 2)).toBeLessThanOrEqual(1);
+  expect(Math.abs(gateLayout.centerY - gateLayout.viewportHeight / 2)).toBeLessThanOrEqual(1);
+  expect(gateLayout.documentHeight).toBeLessThanOrEqual(gateLayout.viewportHeight);
   await expect(page.getByRole('link', { name: '使用 飞书企业 登录' })).toHaveAttribute(
     'href',
     '/api/oauth/feishu/login?locale=zh-CN'
@@ -1062,24 +1080,6 @@ test('Branding spans the two left columns while settings panels switch on the ri
   );
 
   await page.goto('/console');
-  const loginPanel = page.locator('.gate-panel');
-  await expect(loginPanel).toHaveCSS('border-radius', '8px');
-  await expect(loginPanel).toHaveCSS('box-shadow', 'none');
-  await expect(loginPanel.locator('.el-input__wrapper').first()).toHaveCSS('min-height', '34px');
-  await expect(page.getByRole('button', { name: '进入控制台' })).toHaveCSS('min-height', '34px');
-  const gateLayout = await loginPanel.evaluate((panel) => {
-    const rect = panel.getBoundingClientRect();
-    return {
-      centerX: rect.left + rect.width / 2,
-      centerY: rect.top + rect.height / 2,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      documentHeight: document.documentElement.scrollHeight
-    };
-  });
-  expect(Math.abs(gateLayout.centerX - gateLayout.viewportWidth / 2)).toBeLessThanOrEqual(1);
-  expect(Math.abs(gateLayout.centerY - gateLayout.viewportHeight / 2)).toBeLessThanOrEqual(1);
-  expect(gateLayout.documentHeight).toBeLessThanOrEqual(gateLayout.viewportHeight);
   await page.getByRole('button', { name: '进入控制台' }).click();
   const brand = page.getByTestId('workbench-brand');
   await expect(brand).toBeVisible();

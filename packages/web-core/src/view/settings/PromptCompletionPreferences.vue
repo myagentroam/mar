@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { showMessage } from '../../service/message-feedback-service.js';
 
-import { marIcon } from '../../util/mar-icons.js';
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
 
 import { promptCompletionPreferenceService } from '../../service/prompt-completion-preference-service';
 import { translate } from '../../service/locale-preference-service';
@@ -19,21 +19,23 @@ function setEnabled(value: boolean) {
 
 <template>
   <div class="theme-row completion-preferences">
-    <label for="appearance-prompt-completion" class="theme-label">
+    <label
+      id="appearance-prompt-completion-label"
+      for="appearance-prompt-completion"
+      class="theme-label"
+    >
       {{ translate('promptCompletion.work') }}
     </label>
-    <el-select
+    <MarSelect
       id="appearance-prompt-completion"
       :model-value="service.enabled.value"
       class="theme-select"
-      :aria-label="translate('promptCompletion.work')"
+      aria-labelledby="appearance-prompt-completion-label"
       @update:model-value="setEnabled"
-      :clear-icon="marIcon('clear-input')"
-      :suffix-icon="marIcon('chevron-down')"
     >
-      <el-option :label="translate('promptCompletion.off')" :value="false" />
-      <el-option :label="translate('promptCompletion.on')" :value="true" />
-    </el-select>
+      <MarOption :label="translate('promptCompletion.off')" :value="false" />
+      <MarOption :label="translate('promptCompletion.on')" :value="true" />
+    </MarSelect>
   </div>
 </template>
 

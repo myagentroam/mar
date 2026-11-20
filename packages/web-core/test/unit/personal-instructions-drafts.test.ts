@@ -50,13 +50,14 @@ describe('Personal instruction draft ownership', () => {
     const edit = (value: string) =>
       trigger(view.findAll('textarea')[0]!, 'onUpdate:modelValue', value);
     const select = (index: number) => trigger(view.findAll('ElCheckTag')[index]!, 'onChange');
-    const save = () =>
-      trigger(
-        view.findAll('ElButton').find((node) => node.props['type'] === 'primary')!,
-        'onClick'
-      );
+    const button = (variant: string) =>
+      view
+        .findAll('button')
+        .find((node) => String(node.props['class']).includes(`mar-ui-button--${variant}`))!;
+    const save = () => trigger(button('primary'), 'onClick');
+    const clear = () => trigger(button('default'), 'onClick');
     const value = () => (view.findAll('textarea')[0]! as unknown as { value: string }).value;
-    return { view, response, request, success, error, edit, select, save, value };
+    return { view, response, request, success, error, edit, select, save, clear, value };
   }
 
   it('merges only the submitted scope and retains active and inactive drafts after switching back', async () => {
@@ -174,10 +175,10 @@ describe('Personal instruction draft ownership', () => {
   it('clears only the confirmed scope and retains other drafts while its response is pending', async () => {
     const confirmation = gate<MessageBoxData>();
     vi.spyOn(ElMessageBox, 'confirm').mockReturnValue(confirmation.promise);
-    const { view, edit, select, response, request, value } = await setup();
+    const { view, edit, select, response, request, value, clear } = await setup();
     try {
       await edit('Common clear draft');
-      const pending = trigger(view.findAll('ElButton')[0]!, 'onClick');
+      const pending = clear();
       await select(1);
       await edit('MAR clear draft');
       confirmation.resolve(confirmed);
@@ -199,10 +200,10 @@ describe('Personal instruction draft ownership', () => {
 
   it('retains drafts on clear failure and does not write after canceling confirmation', async () => {
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(confirmed);
-    const { view, edit, select, response, request, value, error } = await setup();
+    const { view, edit, select, response, request, value, error, clear } = await setup();
     try {
       await edit('Common clear retry');
-      const pending = trigger(view.findAll('ElButton')[0]!, 'onClick');
+      const pending = clear();
       await flushComponent();
       await select(1);
       await edit('MAR retained');
@@ -212,7 +213,7 @@ describe('Personal instruction draft ownership', () => {
       await select(0);
       expect(value()).toBe('Common clear retry');
       confirm.mockRejectedValueOnce('cancel');
-      await trigger(view.findAll('ElButton')[0]!, 'onClick');
+      await clear();
       expect(request).toHaveBeenCalledTimes(2);
       expect(error).toHaveBeenCalledOnce();
       await select(1);

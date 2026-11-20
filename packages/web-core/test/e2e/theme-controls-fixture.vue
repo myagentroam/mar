@@ -2,7 +2,7 @@
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
-import { ref } from 'vue';
+import { provide, ref } from 'vue';
 import {
   ElCascader,
   ElDatePicker,
@@ -18,7 +18,14 @@ import 'element-plus/es/components/input-number/style/css';
 import 'element-plus/es/components/time-picker/style/css';
 import 'element-plus/es/components/time-select/style/css';
 import MarIcon from '../../src/view/common/MarIcon.vue';
-import { marIcon } from '../../src/util/mar-icons.js';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { marIcon } from '@myagentroam/mar-ui/icons';
+import en from '@myagentroam/mar-ui/locale/en';
+import zhCn from '@myagentroam/mar-ui/locale/zh-cn';
+import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import { showMessage } from '../../src/service/message-feedback-service.js';
@@ -28,6 +35,17 @@ const selection = ref('one');
 const selections = ref(['one', 'unavailable']);
 const menuAction = ref('');
 const sampleLoading = ref(true);
+const buttonLoading = ref(false);
+const buttonDisabled = ref(false);
+const buttonSubmissions = ref(0);
+const marInput = ref('');
+const marInputDisabled = ref(false);
+const marLocale = ref(en);
+provide(marUiLocaleKey, marLocale);
+const marChoice = ref(false);
+const longChoice = ref(36);
+const showMarCommands = ref(true);
+const marCommand = ref('');
 const activeTab = ref('settings');
 const configurationScope = ref('node');
 const scopeOptions = [
@@ -93,6 +111,96 @@ function saveFeedbackDialog(): void {
 </script>
 <template>
   <WorkspaceLabelsFixture />
+  <section class="mar-control-visual-sample" aria-label="MAR field and menu states">
+    <label for="mar-input-sample">MAR sample</label>
+    <MarInput
+      id="mar-input-sample"
+      v-model="marInput"
+      :prefix-icon="marIcon('search')"
+      :suffix-icon="marIcon('lock')"
+      autocomplete="off"
+      :disabled="marInputDisabled"
+    />
+    <label for="el-input-sample">EL sample</label>
+    <el-input
+      id="el-input-sample"
+      :model-value="marInput"
+      :prefix-icon="marIcon('search')"
+      :suffix-icon="marIcon('lock')"
+      :disabled="marInputDisabled"
+    />
+    <label class="mar-sample-checkbox"
+      ><input v-model="marInputDisabled" type="checkbox" /> Disable sample inputs</label
+    >
+    <MarSelect v-model="marChoice" aria-label="MAR choice">
+      <MarOption :value="false" label="First choice" />
+      <MarOption :value="'disabled'" label="Unavailable choice" disabled />
+      <MarOption :value="true" label="Second choice" />
+    </MarSelect>
+    <el-select :model-value="marChoice" aria-label="EL choice">
+      <el-option :value="false" label="First choice" />
+      <el-option :value="'disabled'" label="Unavailable choice" disabled />
+      <el-option :value="true" label="Second choice" />
+    </el-select>
+    <output aria-label="Selected value">{{ marChoice }}</output>
+    <MarDropdown v-if="showMarCommands" trigger="click" @command="marCommand = $event">
+      <MarButton id="mar-command-trigger" text icon="more" aria-label="MAR commands" />
+      <template #dropdown>
+        <MarDropdownMenu>
+          <MarDropdownItem command="apply">Apply command</MarDropdownItem>
+          <MarDropdownItem command="unavailable" disabled>Unavailable command</MarDropdownItem>
+          <MarDropdownItem command="reset" divided icon="undo">Reset command</MarDropdownItem>
+        </MarDropdownMenu>
+      </template>
+    </MarDropdown>
+    <MarButton @click="showMarCommands = false">Remove MAR menu</MarButton>
+    <output aria-label="Last command">{{ marCommand }}</output>
+  </section>
+  <section class="mar-control-visual-sample" aria-label="MAR localized controls">
+    <MarSelect aria-label="Empty choice" />
+    <MarButton @click="marLocale = zhCn">Switch controls to Chinese</MarButton>
+  </section>
+  <section class="mar-control-visual-sample" aria-label="MAR scrolling choices">
+    <label id="long-choice-label" for="long-choice">Long choice</label>
+    <MarSelect id="long-choice" v-model="longChoice" aria-labelledby="long-choice-label">
+      <MarOption v-for="number in 36" :key="number" :value="number" :label="`Choice ${number}`" />
+    </MarSelect>
+    <output aria-label="Confirmed choice">{{ longChoice }}</output>
+  </section>
+  <section class="mar-control-visual-sample" aria-label="MAR button states">
+    <form
+      @submit.prevent="
+        buttonSubmissions += 1;
+        buttonLoading = true;
+      "
+    >
+      <label>Action input <input /></label>
+      <MarButton
+        type="primary"
+        native-type="submit"
+        :icon="marIcon('check')"
+        :loading="buttonLoading"
+        :disabled="buttonDisabled"
+      >
+        Submit action
+      </MarButton>
+      <MarButton :loading="buttonLoading">Text action</MarButton>
+      <MarButton :icon="marIcon('refresh')" aria-label="Refresh action" :loading="buttonLoading" />
+      <MarButton @click="buttonLoading = false">Finish action</MarButton>
+      <label class="mar-sample-checkbox"
+        ><input v-model="buttonDisabled" type="checkbox" /> Disable submit action</label
+      >
+      <output aria-label="Submission count">{{ buttonSubmissions }}</output>
+    </form>
+    <el-button
+      type="primary"
+      :icon="marIcon('check')"
+      :disabled="buttonDisabled"
+      aria-label="EL reference action"
+      >Submit action</el-button
+    >
+    <el-button aria-label="EL reference text">Text action</el-button>
+  </section>
   <section aria-label="Real management actions">
     <QuickPromptSettings
       :prompts="[
@@ -318,6 +426,32 @@ function saveFeedbackDialog(): void {
 </template>
 
 <style scoped>
+.mar-control-visual-sample {
+  display: grid;
+  gap: 0.375rem;
+  inline-size: min(100%, 30rem);
+  padding: 0.75rem;
+  border: 1px solid var(--mar-border-default);
+  border-radius: var(--mar-radius-control);
+  background: var(--mar-bg-panel);
+}
+
+.mar-control-visual-sample form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.mar-control-visual-sample .mar-sample-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.mar-control-visual-sample > :is(.el-button, .mar-ui-button) {
+  justify-self: start;
+}
 .segmented-surface-fixture {
   background: var(--mar-bg-panel);
   padding: 0.75rem;

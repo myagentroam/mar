@@ -2,6 +2,7 @@
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
 import { type FormInstance, type FormRules } from 'element-plus';
@@ -287,21 +288,12 @@ async function clear(): Promise<void> {
         ></textarea>
       </el-form-item>
       <div class="instruction-actions">
-        <el-button
-          :icon="marIcon('delete')"
-          :loading="saving"
-          @click="clear"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('personalInstructions.clear') }}</el-button
-        >
-        <el-button
-          :icon="marIcon('check')"
-          type="primary"
-          :loading="saving"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('common.save') }}</el-button
-        >
+        <MarButton icon="delete" :disabled="loading" :loading="saving" @click="clear">
+          {{ translate('personalInstructions.clear') }}
+        </MarButton>
+        <MarButton icon="check" type="primary" :disabled="loading" :loading="saving" @click="save">
+          {{ translate('common.save') }}
+        </MarButton>
       </div>
     </el-form>
   </section>
@@ -423,8 +415,5 @@ h2 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.75rem;
-}
-.instruction-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
 }
 </style>

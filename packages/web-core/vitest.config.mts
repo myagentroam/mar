@@ -10,12 +10,17 @@ const runId = (process.env['MAR_TEST_RUN_ID'] ?? String(process.pid)).replace(
 const vuePlugin = vue();
 const vueTransform = vuePlugin.transform;
 const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
+const marUiComponentEntry = /^@myagentroam\/mar-ui\/(button|icons|segmented)$/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.
 // Existing SSR and setup-only fixtures keep their original compilation mode.
 const componentFixtures: Plugin = {
   name: 'component-fixture-templates',
   enforce: 'pre',
   async resolveId(source, importer) {
+    if (importer && componentFixtureQuery.test(importer) && marUiComponentEntry.test(source)) {
+      const entry = await this.resolve(source, importer, { skipSelf: true });
+      return entry && { ...entry, id: `${entry.id}?unit-render` };
+    }
     if (
       !importer ||
       !componentFixtureQuery.test(importer) ||

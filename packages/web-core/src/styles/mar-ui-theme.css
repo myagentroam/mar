@@ -1,0 +1,33 @@
+:root,
+.mar-theme-preview {
+  --mar-ui-bg-panel: var(--mar-bg-panel);
+  --mar-ui-bg-subtle: var(--mar-bg-subtle);
+  --mar-ui-border-default: var(--mar-border-default);
+  --mar-ui-border-medium: var(--mar-border-medium);
+  --mar-ui-border-subtle: var(--mar-border-subtle);
+  --mar-ui-color-brand: var(--mar-color-brand);
+  --mar-ui-color-brand-hover: var(--mar-color-brand-hover);
+  --mar-ui-color-on-accent: var(--mar-color-on-accent);
+  --mar-ui-compact-control-size: var(--mar-compact-control-size);
+  --mar-ui-compact-option-padding-inline: var(--mar-compact-option-padding-inline);
+  --mar-ui-control-color-danger: var(--mar-control-color-danger);
+  --mar-ui-control-color-primary-dark-2: var(--mar-control-color-primary-dark-2);
+  --mar-ui-control-color-primary-light-5: var(--mar-control-color-primary-light-5);
+  --mar-ui-control-disabled-on-accent: var(--mar-control-disabled-on-accent);
+  --mar-ui-control-link-text: var(--mar-control-link-text);
+  --mar-ui-fill-row-hover: var(--mar-fill-row-hover);
+  --mar-ui-fill-selection: var(--mar-fill-selection);
+  --mar-ui-fill-soft: var(--mar-fill-soft);
+  --mar-ui-font-size-body: var(--mar-font-size-body);
+  --mar-ui-font-size-input: var(--mar-font-size-input);
+  --mar-ui-font-size-meta: var(--mar-font-size-meta);
+  --mar-ui-radius-control: var(--mar-radius-control);
+  --mar-ui-input-border: var(--mar-input-border);
+  --mar-ui-input-border-hover: var(--mar-input-border-hover);
+  --mar-ui-overlay-border: var(--mar-overlay-border);
+  --mar-ui-overlay-surface: var(--mar-overlay-surface);
+  --mar-ui-overlay-shadow: var(--mar-compact-overlay-shadow);
+  --mar-ui-text-disabled: var(--mar-text-disabled);
+  --mar-ui-text-primary: var(--mar-text-primary);
+  --mar-ui-text-secondary: var(--mar-text-secondary);
+}

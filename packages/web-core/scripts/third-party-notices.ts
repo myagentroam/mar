@@ -143,7 +143,10 @@ export function createThirdPartyNotices(moduleIds: Iterable<string>): string {
       return `${header}\n${declaredLicenseText(packageInfo)}`;
     });
   notices.push(
-    readFileSync(resolve(import.meta.dirname, '../src/util/icon-shapes.NOTICE.txt'), 'utf8').trim()
+    readFileSync(
+      new URL(import.meta.resolve('@myagentroam/mar-ui/icon-shapes.NOTICE.txt')),
+      'utf8'
+    ).trim()
   );
   return `MyAgentRoam Third-Party Open Source Software Notices\n\n${notices.join('\n\n' + '='.repeat(80) + '\n\n')}\n`;
 }

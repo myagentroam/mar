@@ -262,6 +262,7 @@
   },
   "dependencies": {
     "@myagentroam/code-navigation": "workspace:*",
+    "@myagentroam/mar-ui": "workspace:*",
     "@myagentroam/protocol": "workspace:*",
     "@novnc/novnc": "1.7.0",
     "element-plus": "^2.14.4",

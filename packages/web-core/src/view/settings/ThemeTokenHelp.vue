@@ -4,6 +4,7 @@ import {
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
+import { MarInput } from '@myagentroam/mar-ui/input';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
@@ -64,13 +65,12 @@ async function copy(token: string): Promise<void> {
     :close-icon="marIcon('close')"
   >
     <p class="hint">{{ t('customThemes.tokenHint') }}</p>
-    <el-input
+    <MarInput
       v-model="search"
-      :prefix-icon="marIcon('search')"
+      prefix-icon="search"
       :placeholder="t('customThemes.tokenSearch')"
       :aria-label="t('customThemes.tokenSearch')"
       clearable
-      :clear-icon="marIcon('clear-input')"
     />
     <div class="reference-body">
       <section v-for="group in groups" :key="group.key">
