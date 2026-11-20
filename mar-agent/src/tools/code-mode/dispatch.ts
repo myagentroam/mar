@@ -90,7 +90,10 @@ export function createCodeToolDispatch(input: {
         );
         const bounded = boundedModelToolOutput(call.name, result.content, result.data);
         const data =
-          call.name === 'read' || call.name === 'web_search' || call.name === 'exec'
+          call.name === 'read' ||
+          call.name === 'web_search' ||
+          call.name === 'exec' ||
+          call.name === 'exec_wait'
             ? structuredToolEventData(call.name, result.eventData ?? result.data)
             : result.eventData === undefined
               ? structuredToolEventData(call.name, result.data)
@@ -118,7 +121,9 @@ export function createCodeToolDispatch(input: {
         const { eventData: _eventData, eventSummary: _eventSummary, ...guestResult } = result;
         return {
           ...guestResult,
-          ...(call.name === 'exec' && data !== undefined ? { eventData: { ...data } } : {}),
+          ...((call.name === 'exec' || call.name === 'exec_wait') && data !== undefined
+            ? { eventData: { ...data } }
+            : {}),
           content: bounded.content,
           truncated: result.truncated === true || bounded.truncated
         };

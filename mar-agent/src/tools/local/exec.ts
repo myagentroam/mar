@@ -47,7 +47,7 @@ export const execToolDefinition: ClientToolDefinition = {
   codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. Use direct exec_wait with processId to write stdin or cancel, or to poll after the initial exec call returns. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes completion from a wait timeout. A direct foreground call may return interrupted with reason=steer. Inside a cell, steer interrupts only the outer foreground wait, not the initial wait inside tools.exec. In either case the process keeps running.',
+    'Start a platform-native command, script, or program in workspace/default cwd. Returns a stable processId (p_ plus 12 lowercase hex characters), status, bounded stdout/stderr, cumulative byte counts, dropped-byte counts, exitCode and truncated. A completed status does not imply exitCode 0; inspect stderr/exitCode. For subsequent waiting, stdin writes or cancellation, use exec_wait with processId, not exec. Truncation does not stop the process. Cancelling the initial wait does not terminate the process. waitOutcome distinguishes completion from a wait timeout. A direct foreground call may return interrupted with reason=steer. For tools.exec, steer interrupts only the foreground cell wait, not the initial process wait. In either case the process keeps running.',
   outputSchema: {
     type: 'object',
     required: ['content', 'data'],
@@ -123,10 +123,11 @@ export const execToolDefinition: ClientToolDefinition = {
 
 export const execWaitToolDefinition: ClientToolDefinition = {
   name: 'exec_wait',
-  allowedCallers: ['direct'],
+  allowedCallers: ['direct', 'programmatic'],
+  codeModeExposure: 'both',
   parallelSafety: 'safe',
   description:
-    'Direct-only control of a Session-owned process by processId, including processes started with tools.exec. action defaults to poll: collect output until termination or the wait window ends. New output does not end the wait. Uncached results return and consume incremental stdout/stderr. write sends data to stdin; cancel terminates the process or removes its cached result. After the terminal result is collected, later polls can replay a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
+    'Wait for or control a managed process by processId. action defaults to poll: collect output until termination or the wait window ends. New output does not end the wait. Only the newest live output subscription receives new events; earlier waits are not cancelled. Uncached results return and consume incremental stdout/stderr from one process buffer shared by all calls, including overlapping polls. write sends data to stdin; cancel terminates the process or removes its cached result. After the terminal result is collected, later polls can replay a bounded snapshot marked cached for up to five minutes. Cancelling a wait does not terminate the process. Uses the same Session-owned processes as exec; cannot start a process or extend its timeout. Inspect stderr/exitCode; completed does not imply success. Poll results include waitOutcome; interrupted with reason=steer ends only a foreground wait, never the process.',
   outputSchema: execToolDefinition.outputSchema!,
   inputSchema: {
     type: 'object',

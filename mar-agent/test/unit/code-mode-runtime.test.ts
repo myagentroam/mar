@@ -207,9 +207,14 @@ describe('Code Mode SDK and protocol integration', () => {
     }
   );
 
-  it.each([{ protocol: 'OPENAI_RESPONSES' as const }, { protocol: 'ANTHROPIC_MESSAGES' as const }])(
-    'starts in a cell and only allows direct exec_wait for $protocol',
-    async (overrides) => {
+  it.each([
+    { protocol: 'OPENAI_RESPONSES' as const, caller: 'direct' },
+    { protocol: 'ANTHROPIC_MESSAGES' as const, caller: 'direct' },
+    { protocol: 'OPENAI_RESPONSES' as const, caller: 'programmatic' },
+    { protocol: 'ANTHROPIC_MESSAGES' as const, caller: 'programmatic' }
+  ])(
+    'starts in a cell and controls the process through $caller exec_wait for $protocol',
+    async ({ caller, ...overrides }) => {
       const { home, workspace } = await fixture();
       const configuration = {
         ...model,
@@ -234,37 +239,32 @@ describe('Code Mode SDK and protocol integration', () => {
               type: 'client_tool.call',
               name: 'code_exec',
               callId: 'start-cell',
-              arguments: encode(source)
+              arguments: overrides.protocol === 'ANTHROPIC_MESSAGES' ? { code: source } : source
             };
           } else if (requests.length === 2) {
             expect(result).toMatchObject({ status: 'running', processId });
             yield {
               type: 'client_tool.call',
-              name: 'code_exec',
-              callId: 'try-nested-wait',
-              arguments: encode(`
-                try {
-                  await tools.exec_wait({ processId: ${JSON.stringify(processId)} });
-                } catch (error) {
-                  if (error.code === 'MAR_AGENT_TOOL_NOT_AVAILABLE') observe.text({ waitUnavailable: true });
-                  else throw error;
-                }
-              `)
-            };
-          } else if (requests.length === 3) {
-            expect(result).toEqual({ waitUnavailable: true });
-            yield {
-              type: 'client_tool.call',
-              name: 'exec_wait',
+              name: caller === 'direct' ? 'exec_wait' : 'code_exec',
               callId: 'write-process',
-              arguments: { processId, action: 'write', data: 'DIRECT_WAIT_OK\n' }
+              arguments:
+                caller === 'direct'
+                  ? { processId, action: 'write', data: 'PROGRAMMATIC_WAIT_OK\n' }
+                  : encode(
+                      `observe.text((await tools.exec_wait(${JSON.stringify({ processId, action: 'write', data: 'PROGRAMMATIC_WAIT_OK\n' })})).data);`
+                    )
             };
           } else if (result?.status === 'running' && requests.length < 8) {
             yield {
               type: 'client_tool.call',
-              name: 'exec_wait',
+              name: caller === 'direct' ? 'exec_wait' : 'code_exec',
               callId: `wait-${requests.length}`,
-              arguments: { processId }
+              arguments:
+                caller === 'direct'
+                  ? { processId }
+                  : encode(
+                      `observe.text((await tools.exec_wait(${JSON.stringify({ processId })})).data);`
+                    )
             };
           } else {
             expect(result).toMatchObject({ status: 'completed', exitCode: 0 });
@@ -286,10 +286,10 @@ describe('Code Mode SDK and protocol integration', () => {
       try {
         const session = await agent.createSession({
           workspace,
-          title: 'Direct process control'
+          title: `${caller} process control`
         });
         const run = session.run({
-          prompt: 'Start a process through Code Mode, then write stdin and wait directly.'
+          prompt: `Start a process through Code Mode, then write stdin and wait through ${caller} calls.`
         });
         const events = [];
         for await (const event of run) events.push(event);
@@ -304,7 +304,7 @@ describe('Code Mode SDK and protocol integration', () => {
               waitOutcome: 'completion',
               exitCode: 0,
               processId,
-              stdout: expect.stringContaining('DIRECT_WAIT_OK')
+              stdout: expect.stringContaining('PROGRAMMATIC_WAIT_OK')
             })
           })
         );
@@ -312,14 +312,14 @@ describe('Code Mode SDK and protocol integration', () => {
           expect(request.tools.some((tool) => tool.name === 'exec_wait')).toBe(true);
           expect(request.tools.some((tool) => tool.name === 'exec')).toBe(true);
           const description = request.tools.find((tool) => tool.name === 'code_exec')!.description;
-          expect(description).not.toContain('"name":"exec_wait"');
+          expect(description).toContain('"name":"exec_wait"');
           expect(description).toContain('"name":"exec"');
-          expect(description).toContain('use direct exec_wait with the returned processId');
+          expect(description).toContain("follow exec_wait's calling guidance");
           expect(description).toContain('Omitted means no process timeout');
         }
         expect(
           events.filter((event) => event.type === 'tool.started' && event.toolName === 'code_exec')
-        ).toHaveLength(2);
+        ).toHaveLength(caller === 'direct' ? 1 : requests.length - 1);
       } finally {
         await agent.dispose();
       }

@@ -551,7 +551,7 @@ describe('QuickJS Code Mode', () => {
   });
 
   it('projects direct-only and dual-exposure tools with the full bounded programmatic input directory', () => {
-    const controls = new Set(['code_exec', 'code_exec_wait', 'exec_wait', 'question', 'sleep']);
+    const controls = new Set(['code_exec', 'code_exec_wait', 'question', 'sleep']);
     const legacyControls = new Set(['agent_start', 'agent_wait', 'agent_message', 'agent_cancel']);
     for (const tool of BUILTIN_TOOL_DEFINITIONS)
       expect(tool.allowedCallers, tool.name).toEqual(
@@ -1260,7 +1260,7 @@ describe('QuickJS Code Mode', () => {
           allowedCallers: ['direct'],
           inputSchema: { type: 'object' }
         },
-        ...['code_exec', 'code_exec_wait', 'exec_wait', 'question', 'sleep'].map((name) => ({
+        ...['code_exec', 'code_exec_wait', 'question', 'sleep'].map((name) => ({
           name,
           description: 'Control tools remain direct-only.',
           allowedCallers: ['direct', 'programmatic'] as const,

@@ -57,7 +57,10 @@ interface ManagedProcess {
   terminalResultReturned: boolean;
   terminate?: Promise<void>;
   waiters: Set<() => void>;
-  outputListeners: Set<(channel: 'stdout' | 'stderr', chunk: Buffer) => void>;
+  outputSubscription?: {
+    onChunk: (channel: 'stdout' | 'stderr', chunk: Buffer) => void;
+    stop: () => void;
+  };
 }
 
 interface StartingProcess {
@@ -282,8 +285,7 @@ export class ExecTool {
         ...(child.signalCode == null ? {} : { exitSignal: child.signalCode }),
         finalized: false,
         terminalResultReturned: false,
-        waiters: new Set(),
-        outputListeners: new Set()
+        waiters: new Set()
       };
       this.#processes.set(id, managed);
       if (native) {
@@ -302,7 +304,7 @@ export class ExecTool {
             if (managed.finalized) return;
             const decoded = Buffer.from(managed[name].decoder.write(chunk));
             appendDisplay(managed[name === 'stdout' ? 'stdoutDisplay' : 'stderrDisplay'], decoded);
-            for (const listener of managed.outputListeners) listener(name, decoded);
+            managed.outputSubscription?.onChunk(name, decoded);
             appendOutput(managed[name], decoded, this.maxOutputBytes, chunk.length);
             appendOutput(
               managed[name === 'stdout' ? 'stdoutHistory' : 'stderrHistory'],
@@ -348,7 +350,7 @@ export class ExecTool {
         } else {
           const message = Buffer.from(error.message);
           appendDisplay(managed.stderrDisplay, message);
-          for (const listener of managed.outputListeners) listener('stderr', message);
+          managed.outputSubscription?.onChunk('stderr', message);
           appendOutput(managed.stderr, message, this.maxOutputBytes);
           appendOutput(managed.stderrHistory, message, this.maxOutputBytes);
           notifyProcessChange(managed);
@@ -689,10 +691,8 @@ function finalizeManagedProcess(
   const stderrEnd = Buffer.from(managed.stderr.decoder.end());
   appendDisplay(managed.stdoutDisplay, stdoutEnd);
   appendDisplay(managed.stderrDisplay, stderrEnd);
-  for (const listener of managed.outputListeners) {
-    listener('stdout', stdoutEnd);
-    listener('stderr', stderrEnd);
-  }
+  managed.outputSubscription?.onChunk('stdout', stdoutEnd);
+  managed.outputSubscription?.onChunk('stderr', stderrEnd);
   appendOutput(managed.stdout, stdoutEnd, maximumOutputBytes);
   appendOutput(managed.stderr, stderrEnd, maximumOutputBytes);
   appendOutput(managed.stdoutHistory, stdoutEnd, maximumOutputBytes);
@@ -797,6 +797,10 @@ async function waitForProcessCompletion(
   interrupt?: ToolWaitInterrupt,
   onOutput?: (output: ExecOutputSnapshot) => Promise<void>
 ) {
+  // An immediately settled wait must not take over an active output subscription.
+  signal?.throwIfAborted();
+  if (managed.finalized) return 'ready';
+  if (interrupt?.pending()) return 'interrupted';
   const stopOutput = onOutput && watchProcessOutput(processId, managed, onOutput);
   try {
     return await waitForToolCondition({
@@ -816,7 +820,7 @@ async function waitForProcessCompletion(
   }
 }
 
-/** Coalesce decoded chunks into bounded per-call frames without blocking the process. */
+/** Replace the process's live subscriber and coalesce chunks without blocking the process. */
 function watchProcessOutput(
   processId: string,
   managed: ManagedProcess,
@@ -869,18 +873,22 @@ function watchProcessOutput(
     }, TOOL_EXECUTION_LIMITS.execProgressIntervalMs);
     timer.unref();
   };
-  const changed = (channel: 'stdout' | 'stderr', chunk: Buffer) => {
-    if (chunk.length === 0) return;
-    appendDisplay(channel === 'stdout' ? stdout : stderr, chunk);
-    schedule();
+  const subscription: NonNullable<ManagedProcess['outputSubscription']> = {
+    onChunk(channel, chunk) {
+      if (chunk.length === 0) return;
+      appendDisplay(channel === 'stdout' ? stdout : stderr, chunk);
+      schedule();
+    },
+    stop() {
+      stopped = true;
+      if (managed.outputSubscription === subscription) delete managed.outputSubscription;
+      if (timer) clearTimeout(timer);
+    }
   };
-  managed.outputListeners.add(changed);
+  managed.outputSubscription?.stop();
+  managed.outputSubscription = subscription;
   if (initialSnapshot) schedule();
-  return () => {
-    stopped = true;
-    managed.outputListeners.delete(changed);
-    if (timer) clearTimeout(timer);
-  };
+  return subscription.stop;
 }
 
 function executionAbortReason(signal?: AbortSignal): unknown {

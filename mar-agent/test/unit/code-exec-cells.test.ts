@@ -6,10 +6,9 @@ import { LocalAgentHost } from '../../src/host/local-agent-host.js';
 import { CodeCells } from '../../src/tools/code-mode/cells.js';
 import { structuredToolEventData } from '../../src/tools/output-projection.js';
 import { TOOL_EXECUTION_LIMITS as limits } from '../../src/tools/execution-limits.js';
-import { execToolDefinition } from '../../src/tools/local/exec.js';
+import { execToolDefinition, execWaitToolDefinition } from '../../src/tools/local/exec.js';
 import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
 import type { ToolExecutionContext, ToolExecutionResult } from '../../src/sdk/types.js';
-import type { ExecOutputSnapshot } from '../../src/tools/contracts.js';
 
 const hosts: LocalAgentHost[] = [];
 const roots: string[] = [];
@@ -38,49 +37,6 @@ async function fixture() {
 }
 
 describe('Code Exec retained cells', () => {
-  it('replaces overlapping process output without reporting a false HEAD', async () => {
-    const cells = new CodeCells();
-    const finish = Promise.withResolvers<ToolExecutionResult>();
-    const ctx = context();
-    let emit!: (output: ExecOutputSnapshot) => void;
-    ctx.codeMode!.subscribeToolOutput = (listener) => {
-      emit = listener;
-      return () => {};
-    };
-    try {
-      const started = await cells.start(
-        '// @options: {"yieldMs":0}\n1;',
-        ctx,
-        () => finish.promise
-      );
-      const delta = Promise.withResolvers<ExecOutputSnapshot>();
-      const snapshot = Promise.withResolvers<ExecOutputSnapshot>();
-      const waiting = cells.wait(
-        { cellId: data(started).cellId },
-        {
-          ...context(),
-          executionId: 'later',
-          onOutput: async (output) => {
-            (output.mode === 'delta' ? delta : snapshot).resolve(output);
-          }
-        }
-      );
-      const output = { processId: 'p_000000000001', stdout: 'a', stderr: '', truncated: false };
-      emit({ ...output, mode: 'delta' });
-      expect(await delta.promise).toMatchObject(output);
-      emit({ ...output, mode: 'snapshot' });
-      expect(await snapshot.promise).toMatchObject({
-        ...output,
-        displayOutput: { stdout: 'a', stdoutDroppedBytes: 0 }
-      });
-      finish.resolve({ content: '' });
-      await waiting;
-    } finally {
-      finish.resolve({ content: '' });
-      await cells.dispose();
-    }
-  });
-
   it('publishes a bounded source before retained waits and keeps it available after wait cancellation', async () => {
     const cells = new CodeCells();
     let finish!: () => void;
@@ -377,24 +333,39 @@ describe('Code Exec retained cells', () => {
     expect(terminal.data).toMatchObject({ stdoutBytes: 7, stderrBytes: 0, cached: true });
   });
 
-  it('keeps a cell and initial process wait active beyond the former wall deadline', async () => {
+  it('keeps a cell and real process wait active beyond the former wall deadline', async () => {
     const host = await fixture();
     const ctx = context();
-    const args = {
-      command: `${JSON.stringify(process.execPath)} -e "process.stdin.resume();process.stdin.once('data',()=>{process.stdout.write('finished');process.exit(0)});"`,
-      timeoutMs: 500_000,
-      yieldMs: 300_000
-    };
+    const processResult = await host.executeTool(
+      {
+        name: 'exec',
+        arguments: {
+          command: `${JSON.stringify(process.execPath)} -e "process.stdin.resume();process.stdin.once('data',()=>{process.stdout.write('finished');process.exit(0)});"`,
+          timeoutMs: 500_000,
+          yieldMs: 0
+        }
+      },
+      ctx
+    );
+    const processId = (processResult.data as { processId: string }).processId;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
     ctx.codeMode = {
-      tools: [execToolDefinition],
-      invoke: (call, signal) => host.executeTool(call, { ...ctx, signal })
+      tools: [execWaitToolDefinition],
+      invoke: (call, signal) => {
+        const result = host.executeTool(call, { ...ctx, signal });
+        entered();
+        return result;
+      }
     };
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const initial = host.executeTool(
         {
           name: 'code_exec',
-          arguments: `observe.result(await tools.exec(${JSON.stringify(args)}));`
+          arguments: `observe.result(await tools.exec_wait({processId:${JSON.stringify(processId)},yieldMs:300000}));`
         },
         ctx
       );
@@ -402,11 +373,7 @@ describe('Code Exec retained cells', () => {
         (result) => ({ result }),
         (error: unknown) => ({ error })
       );
-      let processId: string | undefined;
-      await vi.waitFor(async () => {
-        processId = (await host.listSessionResources(ctx.sessionId)).processes?.[0]?.processId;
-        expect(processId).toBeTruthy();
-      });
+      await ready;
       await vi.advanceTimersByTimeAsync(limits.codeTimeoutMs + 1);
       const started = await settled;
       expect(started).toMatchObject({ result: { data: { status: 'running' } } });
@@ -425,13 +392,13 @@ describe('Code Exec retained cells', () => {
         expect.objectContaining({
           type: 'tool_result',
           source: expect.objectContaining({
-            toolName: 'exec',
-            input: args
+            toolName: 'exec_wait',
+            input: { processId, yieldMs: 300000 }
           })
         })
       );
       const observation = final.observations?.find(
-        (value) => value.type === 'tool_result' && value.source.toolName === 'exec'
+        (value) => value.type === 'tool_result' && value.source.toolName === 'exec_wait'
       );
       if (observation?.type !== 'tool_result') throw new Error('Process wait was not observed.');
       expect(JSON.parse(observation.result.content)).toMatchObject({

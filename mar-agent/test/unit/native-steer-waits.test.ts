@@ -146,7 +146,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
       async (codeMode) => {
         const entered = Promise.withResolvers<void>();
         const events: AgentEvent[] = [];
-        const code = `observe.result(await tools.exec(${JSON.stringify({ command: childCommand, yieldMs: 300000 })}));`;
+        const code = `const process = await tools.exec(${JSON.stringify({ command: childCommand, yieldMs: 0 })}); observe.result(process); const final = await tools.exec_wait({ processId: process.data.processId, yieldMs: 300000 }); observe.result(final);`;
         const f = await fixture(
           [],
           (_request, index) =>
@@ -170,7 +170,11 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         const collecting = (async () => {
           for await (const event of execution) {
             events.push(event);
-            if (event.type === 'tool.started' && event.toolName === 'exec') entered.resolve();
+            if (
+              event.type === 'tool.started' &&
+              event.toolName === (codeMode ? 'exec_wait' : 'exec')
+            )
+              entered.resolve();
             if (event.type === 'tool.completed' && event.toolName === 'exec')
               processId = (event.data as { processId: string }).processId;
             if (event.type === 'tool.completed' && event.toolName === 'code_exec')
@@ -216,15 +220,10 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
         };
         if (codeMode) {
           expect(cellId).toBeTruthy();
-          await expect
-            .poll(async () => {
-              processId = (await f.host.listSessionResources(f.session.id)).processes?.[0]
-                ?.processId;
-              return processId;
-            })
-            .toBeTruthy();
           expect(
-            events.some((event) => event.type === 'tool.completed' && event.toolName === 'exec')
+            events.some(
+              (event) => event.type === 'tool.completed' && event.toolName === 'exec_wait'
+            )
           ).toBe(false);
         }
         expect(processId).toBeTruthy();
@@ -245,7 +244,7 @@ describe.each(['OPENAI_RESPONSES', 'ANTHROPIC_MESSAGES'] as const)(
           expect(final.data).toMatchObject({ status: 'completed', waitOutcome: 'completion' });
           expect(final.data).not.toHaveProperty('reason');
           const finalProcess = final.observations?.find(
-            (entry) => entry.type === 'tool_result' && entry.source.toolName === 'exec'
+            (entry) => entry.type === 'tool_result' && entry.source.toolName === 'exec_wait'
           );
           const processResult =
             finalProcess?.type === 'tool_result' && JSON.parse(finalProcess.result.content);

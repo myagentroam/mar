@@ -395,6 +395,78 @@ describe('exec_wait', () => {
     });
   });
 
+  it.each(['older', 'newest'] as const)(
+    'only publishes live output to the newest subscriber when the %s wait ends',
+    async (ending) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exitCode: null as number | null
+      });
+      const { call, startRunning } = await fixture({
+        async spawn() {
+          return child as unknown as ChildProcessWithoutNullStreams;
+        }
+      });
+      const { processId } = await startRunning('fixture');
+      vi.useFakeTimers();
+      const interval = TOOL_EXECUTION_LIMITS.execProgressIntervalMs;
+      const subscribe = () => {
+        const controller = new AbortController();
+        const onOutput = vi.fn(async () => {});
+        const result = call(
+          'exec_wait',
+          { processId },
+          {
+            ...context(),
+            signal: controller.signal,
+            onOutput
+          }
+        );
+        return { controller, onOutput, result };
+      };
+      const older = subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      const skippedOutput = vi.fn(async () => {});
+      await expect(
+        call('exec_wait', { processId }, { ...pendingSteer(), onOutput: skippedOutput })
+      ).resolves.toMatchObject({ status: 'running', waitOutcome: 'interrupted' });
+      child.stdout.write('before');
+      await vi.advanceTimersByTimeAsync(interval);
+      expect(skippedOutput).not.toHaveBeenCalled();
+      expect(older.onOutput).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ mode: 'delta', stdout: 'before' })
+      );
+      child.stdout.write('-queued');
+      const newest = subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      child.stdout.write('-new');
+      await vi.advanceTimersByTimeAsync(interval);
+      expect(older.onOutput).toHaveBeenCalledTimes(1);
+      expect(newest.onOutput).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ mode: 'snapshot', stdout: 'before-queued-new' })
+      );
+
+      const [stopped, remaining] = ending === 'older' ? [older, newest] : [newest, older];
+      const stoppedResult = expect(stopped.result).rejects.toThrow('stop wait');
+      stopped.controller.abort(new Error('stop wait'));
+      await stoppedResult;
+      child.stdout.write('-after');
+      await vi.advanceTimersByTimeAsync(interval);
+      expect(older.onOutput).toHaveBeenCalledTimes(1);
+      expect(newest.onOutput).toHaveBeenCalledTimes(ending === 'older' ? 2 : 1);
+
+      child.exitCode = 0;
+      child.emit('close', 0, null);
+      await expect(remaining.result).resolves.toMatchObject({
+        status: 'completed',
+        stdout: 'before-queued-new-after',
+        exitCode: 0
+      });
+    }
+  );
+
   it('resynchronizes after slow-consumer frame overflow with the contiguous display tail', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),
@@ -760,7 +832,7 @@ describe('exec_wait', () => {
       maximum: 300_000,
       description: expect.stringContaining('floor: 10000')
     });
-    expect(execWaitToolDefinition.allowedCallers).toEqual(['direct']);
+    expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
     expect(execWaitToolDefinition.inputSchema).toMatchObject({
       required: ['processId'],
       properties: {
