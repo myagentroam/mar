@@ -53,6 +53,7 @@ let disposed = false;
 const leaving = ref(false);
 const retained = ref(false);
 let motion = 0;
+let forcedClose: { owner: HTMLDialogElement; focused: Element | null } | undefined;
 
 function afterMotion(element: HTMLDialogElement, done: () => void) {
   const animations = element.getAnimations();
@@ -86,16 +87,16 @@ function restoreFocus(owner: HTMLDialogElement) {
   });
 }
 
-async function finish(fromUser: boolean) {
+async function finish(fromUser: boolean, alreadyClosed = false) {
   const owner = dialog.value;
-  if (!owner?.open || leaving.value) return;
+  if (!owner || (!owner.open && !alreadyClosed) || leaving.value) return;
   generation += 1;
   pending = false;
   const epoch = ++motion;
   leaving.value = true;
   emit('close');
   await nextTick();
-  await new Promise<void>((resolve) => afterMotion(owner, resolve));
+  if (owner.open) await new Promise<void>((resolve) => afterMotion(owner, resolve));
   if (disposed || epoch !== motion) return;
   owner.close();
   leaving.value = false;
@@ -140,7 +141,34 @@ function handleClose(): void {
 }
 
 function onCancel(event: Event) {
+  if (!event.cancelable) {
+    // Some platform close requests cannot be prevented. Wait for the native
+    // close before asking the owner, so a guard never runs on a closed dialog.
+    const owner = dialog.value;
+    if (owner) forcedClose = { owner, focused: owner.ownerDocument.activeElement };
+    return;
+  }
   event.preventDefault();
+  if (props.closeOnPressEscape) handleClose();
+}
+
+function onNativeClose(event: Event) {
+  const recovery = forcedClose;
+  if (!recovery || event.target !== recovery.owner) return;
+  forcedClose = undefined;
+  const { owner, focused } = recovery;
+  if (dialog.value !== owner) return;
+  if (disposed || owner.open || leaving.value) return;
+  if (!props.modelValue) {
+    void finish(false, true);
+    return;
+  }
+  // The model still owns the modal. Restore it before running its normal
+  // close policy, which may refuse or open an unsaved-changes confirmation.
+  owner.showModal();
+  if (focused instanceof HTMLElement && owner.contains(focused)) {
+    focused.focus({ preventScroll: true });
+  }
   if (props.closeOnPressEscape) handleClose();
 }
 
@@ -222,6 +250,7 @@ defineExpose({ handleClose, panel });
       :aria-labelledby="ariaLabel ? undefined : titleId"
       :aria-describedby="ariaDescribedby"
       @cancel="onCancel"
+      @close="onNativeClose"
       @mousedown="onMouseDown"
       @mouseup="onMouseUp"
       @click="onBackdrop"

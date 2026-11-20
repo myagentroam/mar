@@ -75,7 +75,7 @@ function createTabs(): WorkspaceFileTab[] {
   }));
 }
 
-const tabs = ref<WorkspaceFileTab[]>(createTabs());
+const tabs = ref<WorkspaceFileTab[]>(query.has('start-closed') ? [] : createTabs());
 const active = ref(1);
 const loading = ref(true);
 let filePage: WorkspaceFilePagePort | undefined;

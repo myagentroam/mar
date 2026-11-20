@@ -281,6 +281,14 @@ test('Dialog respects disabled Escape and backdrop and keeps actions visible on 
   await page.mouse.click(4, 4);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
+  const draft = dialog.getByRole('textbox', { name: 'Draft' });
+  await draft.fill('Keep this draft');
+  await dialog.evaluate((element: HTMLDialogElement) => {
+    if (element.dispatchEvent(new Event('cancel', { cancelable: false }))) element.close();
+  });
+  await expect(dialog).toBeVisible();
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue('Keep this draft');
   await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 });
