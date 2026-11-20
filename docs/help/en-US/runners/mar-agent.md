@@ -109,6 +109,8 @@ Disabling a model rejects subsequent new sessions, messages, and session command
 
 ## Sessions and permissions
 
+For tool-based work beyond a quick lookup, MAR Agent is guided to briefly explain its approach before starting. During longer tasks, it shares progress, findings, changes of direction, or blockers when useful to you. These updates appear in the conversation, not after every command or at fixed intervals. To redirect ongoing work, see [sending and steering messages](../workbench/composer.md).
+
 Nodes offer **Auto** and **Full access**. New ordinary work sessions default to Auto; existing sessions retain their saved setting. Entering a Goal never upgrades MAR Auto to Full access. The standalone SDK/CLI still defaults to Full access, and hosted conversations keep their existing isolation and permission policy.
 
 Auto uses the current model's judgment: routine engineering and explicitly authorized work continue automatically; material risk or unclear authorization produces ask. Deny is reserved for an effective explicit prohibition, higher-priority/Host prohibition, or known extreme danger whose impact cannot reasonably be bounded. Authorization is reused within the same task, target and impact, across tools, retries, turns and subagents; material expansion or withdrawal requires reassessment.

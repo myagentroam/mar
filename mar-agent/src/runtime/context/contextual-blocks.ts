@@ -42,6 +42,7 @@ const CORE_IDS = new Set(['core:identity', 'core:instruction-priority', 'core:sa
 const SDK_CONTEXTUAL_IDS = new Set([
   'core:environment-rules',
   'core:tools',
+  'core:interaction',
   'core:mode',
   'core:compaction',
   'core:subagent',
