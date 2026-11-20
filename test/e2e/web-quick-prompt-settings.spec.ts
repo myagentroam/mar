@@ -172,7 +172,7 @@ test('Quick prompt settings create, edit, and retain failed drafts for retry', a
   });
 });
 
-test('Quick prompt settings invalidate saving before the close animation finishes', async ({
+test('Quick prompt settings invalidate an in-flight save on close without reopening', async ({
   page
 }) => {
   await prepare(page);
@@ -200,7 +200,7 @@ test('Quick prompt settings invalidate saving before the close animation finishe
       content:
         'dialog.mar-ui-dialog-overlay[open][data-closing] { animation-play-state: paused !important; }'
     });
-    let dialog = await edit(page, 'first');
+    const dialog = await edit(page, 'first');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await started.promise;
     await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toHaveAttribute(
@@ -209,9 +209,8 @@ test('Quick prompt settings invalidate saving before the close animation finishe
     );
     await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click();
     // The editor must unmount even if a native dialog exit animation cannot finish.
-    await expect(dialog).toHaveCount(0);
-    await pause.evaluate((style) => style.remove());
-    dialog = await edit(page, 'second');
+    const dialogRoot = page.locator('dialog.mar-ui-dialog-overlay');
+    await expect(dialogRoot).toHaveCount(0);
     const response = page.waitForResponse((value) =>
       value.url().endsWith('/api/quick-prompts/first')
     );
@@ -223,15 +222,13 @@ test('Quick prompt settings invalidate saving before the close animation finishe
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         )
     );
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
-    await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
-    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveAttribute(
-      'aria-busy',
-      'true'
-    );
+    await expect(dialogRoot).toHaveCount(0);
     await expect(page.locator('.mar-ui-message')).toHaveCount(0);
     expect(reads).toBe(initialReads);
+    await pause.evaluate((style) => style.remove());
+    const nextDialog = await edit(page, 'second');
+    await expect(nextDialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
+    await expect(nextDialog.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   } finally {
     pending.release();
   }
