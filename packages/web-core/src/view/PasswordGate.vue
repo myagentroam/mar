@@ -150,7 +150,7 @@ function submit(): void {
 .password-form-error {
   grid-column: 1 / -1;
   margin: 0;
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
   font-size: var(--mar-font-size-meta);
   line-height: 1.4;
 }

@@ -471,6 +471,7 @@ onMounted(() => {
               :ref="setQueueEditor"
               :model-value="editingContent"
               type="textarea"
+              size="small"
               :autosize="{ minRows: 1, maxRows: 4 }"
               class="composer-queue-input"
               @update:model-value="emit('updateContent', $event)"

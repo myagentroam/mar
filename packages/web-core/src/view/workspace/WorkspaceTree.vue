@@ -1146,7 +1146,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 }
 
 .workspace-group-move-error {
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
 }
 
 .workspace-tree-filter {
@@ -1360,12 +1360,12 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
 
 .tree-node-row.drop-before,
 .workspace-branches > li.drop-before {
-  box-shadow: inset 0 2px var(--el-color-primary);
+  box-shadow: inset 0 2px var(--mar-color-brand);
 }
 
 .tree-node-row.drop-after,
 .workspace-branches > li.drop-after {
-  box-shadow: inset 0 -2px var(--el-color-primary);
+  box-shadow: inset 0 -2px var(--mar-color-brand);
 }
 
 .tree-node-row:hover {

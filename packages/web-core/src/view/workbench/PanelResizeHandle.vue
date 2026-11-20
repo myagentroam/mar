@@ -127,7 +127,7 @@ onBeforeUnmount(cancel);
 .panel-resize-handle:hover::before,
 .panel-resize-handle:focus-visible::before,
 .panel-resize-handle.dragging::before {
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
 }
 .panel-resize-handle.dragging::after {
   position: fixed;

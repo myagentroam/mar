@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import type { Plugin, ViteDevServer } from 'vite';
+import { resolve } from 'node:path';
+import type { ViteDevServer } from 'vite';
 
 const productRoot = resolve(import.meta.dirname, '../../..');
 const fixtureRoot = resolve(productRoot, 'test/e2e/support');
@@ -14,38 +14,15 @@ export async function startPromptCompletionViteFixture(): Promise<{
     import(webCoreRequire.resolve('vite')),
     import(webCoreRequire.resolve('@vitejs/plugin-vue'))
   ]);
-  const messageLibraryStub = '\0prompt-completion-element-plus-stub';
-  const elementPlusMessageStub: Plugin = {
-    name: 'prompt-completion-element-plus-stub',
-    enforce: 'pre',
-    resolveId(source) {
-      if (source === 'element-plus') return messageLibraryStub;
-      if (source.startsWith('element-plus/'))
-        return resolve(
-          dirname(webCoreRequire.resolve('element-plus/package.json')),
-          `${source.slice('element-plus/'.length)}${source.endsWith('/style/css') ? '.mjs' : ''}`
-        );
-      return undefined;
-    },
-    load(id) {
-      return id === messageLibraryStub
-        ? `export { default as ClickOutside } from 'element-plus/es/directives/click-outside/index.mjs';\nexport { ElButton } from 'element-plus/es/components/button/index.mjs';\nexport { ElTooltip } from 'element-plus/es/components/tooltip/index.mjs';\nexport { useZIndex } from 'element-plus/es/hooks/use-z-index/index.mjs';\nexport const ElMessage = { info() {}, error() {}, warning() {} };\nexport const ElMessageBox = { confirm: async () => undefined };`
-        : undefined;
-    }
-  };
   const server: ViteDevServer = await createServer({
     root: fixtureRoot,
     cacheDir: resolve(productRoot, `test/runs/prompt-vite-${process.pid}`),
     configFile: false,
-    plugins: [vuePlugin.default(), elementPlusMessageStub],
+    plugins: [vuePlugin.default()],
     optimizeDeps: { entries: ['index.html', 'composer-reference-browser.html'] },
     resolve: {
       alias: {
-        vue: webCoreRequire.resolve('vue/dist/vue.esm-bundler.js'),
-        '@element-plus/icons-vue': resolve(
-          dirname(webCoreRequire.resolve('@element-plus/icons-vue/package.json')),
-          'dist/index.js'
-        )
+        vue: webCoreRequire.resolve('vue/dist/vue.esm-bundler.js')
       }
     },
     server: {

@@ -539,8 +539,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100dvh;
   min-height: 0;
-  background: var(--el-bg-color-page);
-  color: var(--el-text-color-primary);
+  background: var(--mar-bg-page);
+  color: var(--mar-text-primary);
 }
 .remote-desktop-toolbar {
   display: flex;
@@ -549,8 +549,8 @@ onBeforeUnmount(() => {
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--el-border-color);
-  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--mar-input-border);
+  background: var(--mar-bg-panel);
 }
 .remote-desktop-statistics {
   display: flex;
@@ -558,9 +558,9 @@ onBeforeUnmount(() => {
   gap: 6px 20px;
   flex-shrink: 0;
   padding: 6px 16px;
-  border-top: 1px solid var(--el-border-color);
-  background: var(--el-bg-color);
-  color: var(--el-text-color-secondary);
+  border-top: 1px solid var(--mar-input-border);
+  background: var(--mar-bg-panel);
+  color: var(--mar-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -577,7 +577,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
 }
 .remote-desktop-actions {
   display: flex;
@@ -663,12 +663,12 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 24px;
   text-align: center;
-  background: var(--el-overlay-color-lighter);
+  background: var(--mar-overlay-scrim);
   color: #fff;
 }
 .remote-desktop-message {
   margin: 8px 16px;
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
 }
 @media (max-width: 600px) {
   .remote-desktop-toolbar {

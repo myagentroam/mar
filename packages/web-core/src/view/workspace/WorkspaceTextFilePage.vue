@@ -1303,7 +1303,7 @@ defineExpose({
   border: 1px solid var(--mar-border-medium);
   border-radius: 4px;
   background: var(--mar-bg-panel);
-  box-shadow: var(--el-box-shadow-light);
+  box-shadow: var(--mar-control-shadow-light);
 }
 
 .file-navigation-dropdown {

@@ -123,7 +123,7 @@ async function save(): Promise<void> {
 }
 .workspace-git-hint {
   margin: 8px 0 0;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   line-height: 1.6;
 }
 </style>

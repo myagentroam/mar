@@ -442,7 +442,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(0, 58rem) 14rem;
   justify-content: center;
-  background: var(--el-bg-color-page);
+  background: var(--mar-bg-page);
   padding: 0 1.5rem;
 }
 .share-chat {
@@ -450,12 +450,12 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  background: var(--el-bg-color);
-  border-inline: 1px solid var(--el-border-color-lighter);
+  background: var(--mar-bg-panel);
+  border-inline: 1px solid var(--mar-control-border-color-lighter);
 }
 .share-heading {
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-bottom: 1px solid var(--mar-control-border-color-lighter);
   display: flex;
   gap: 1rem;
   align-items: center;
@@ -463,7 +463,7 @@ onBeforeUnmount(() => {
 }
 .share-kicker {
   font-size: var(--mar-font-size-meta);
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
 }
 .share-heading > div {
   min-width: 0;
@@ -476,7 +476,7 @@ onBeforeUnmount(() => {
 }
 .share-workspace {
   font-size: var(--mar-font-size-body);
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   overflow-wrap: anywhere;
 }
 h1 {
@@ -496,7 +496,7 @@ h1 {
   justify-content: space-between;
 }
 .share-people h2 span {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 .share-person {
@@ -508,7 +508,7 @@ h1 {
   font-size: var(--mar-font-size-body);
 }
 .sharer {
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-bottom: 1px solid var(--mar-control-border-color-lighter);
   padding-bottom: 1rem;
   margin-bottom: 0.5rem;
 }
@@ -543,14 +543,14 @@ h1 {
 }
 .share-person small {
   display: block;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   margin-top: 0.2rem;
 }
 .presence {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--el-color-success);
+  background: var(--mar-control-color-success);
   flex-shrink: 0;
 }
 .share-chat :deep(.conversation-scroll-region) {
@@ -572,10 +572,10 @@ h1 {
     z-index: 20;
     width: min(17rem, calc(100vw - 1rem));
     max-height: 60dvh;
-    background: var(--el-bg-color);
-    border: 1px solid var(--el-border-color);
+    background: var(--mar-bg-panel);
+    border: 1px solid var(--mar-input-border);
     border-radius: 8px;
-    box-shadow: var(--el-box-shadow-light);
+    box-shadow: var(--mar-control-shadow-light);
   }
 }
 </style>

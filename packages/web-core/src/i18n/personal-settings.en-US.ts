@@ -158,7 +158,7 @@ export const personalSettingsEnUS = {
       web: {
         title: 'Web interface',
         components:
-          'Vue · Element Plus · Vue I18n · xterm.js · Vue Office · markdown-it · markdown-it-task-lists · highlight.js · CodeMirror · Lezer · Mermaid · PDF.js · DOMPurify · GitHub Markdown CSS'
+          'Vue · Vue I18n · xterm.js · Vue Office · markdown-it · markdown-it-task-lists · highlight.js · CodeMirror · Lezer · Mermaid · PDF.js · DOMPurify · GitHub Markdown CSS'
       },
       server: {
         title: 'Server',

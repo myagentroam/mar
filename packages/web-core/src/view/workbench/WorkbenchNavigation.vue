@@ -701,7 +701,7 @@ function runBlankMenuCommand(command: string): void {
   min-height: var(--mar-settings-row-height);
   width: 100%;
   border: 0;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: transparent;
   color: var(--mar-text-secondary);
   width: calc(100% - 12px);

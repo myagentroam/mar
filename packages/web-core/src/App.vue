@@ -11,8 +11,6 @@ import {
   type Component
 } from 'vue';
 import { DOCUMENTATION_AVAILABLE_KEY } from './service/documentation-availability.js';
-import en from 'element-plus/es/locale/lang/en';
-import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import marEn from '@myagentroam/mar-ui/locale/en';
 import marZhCn from '@myagentroam/mar-ui/locale/zh-cn';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
@@ -46,8 +44,6 @@ const standaloneFilePreview =
 document.documentElement.classList.toggle('console-ui', true);
 themePreferenceService();
 const localeService = localePreferenceService();
-const elementLocales = { 'zh-CN': zhCn, 'en-US': en } as const;
-const elementLocale = computed(() => elementLocales[localeService.locale.value]);
 const marLocales = { 'zh-CN': marZhCn, 'en-US': marEn } as const;
 provide(
   marUiLocaleKey,
@@ -96,13 +92,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <SharedTooltipHost />
   <Suspense @resolve="revealApplication">
-    <el-config-provider :locale="elementLocale">
-      <SharedTooltipHost />
-      <SessionSharePage v-if="shareId" :share-id="shareId" />
-      <RemoteDesktopPage v-else-if="standaloneDesktop" :node-id="remoteDesktopNode!" />
-      <component :is="filePreview" v-else-if="standaloneFilePreview" />
-      <component :is="workbench" v-else />
-    </el-config-provider>
+    <SessionSharePage v-if="shareId" :share-id="shareId" />
+    <RemoteDesktopPage v-else-if="standaloneDesktop" :node-id="remoteDesktopNode!" />
+    <component :is="filePreview" v-else-if="standaloneFilePreview" />
+    <component :is="workbench" v-else />
   </Suspense>
 </template>

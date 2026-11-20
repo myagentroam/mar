@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: var(--el-bg-color);
+  background: var(--mar-bg-panel);
   overflow: auto;
 }
 .share-preview.is-embedded {

@@ -64,14 +64,16 @@ for (const viewport of [
     await expect(rows).toHaveCount(2);
     const editAction = rows.first().getByRole('button', { name: 'Edit', exact: true });
     const deleteAction = rows.first().getByRole('button', { name: 'Delete', exact: true });
-    await expect(editAction).toHaveClass(/mar-ui-button--primary/);
+    await expect(editAction).toHaveClass(/mar-ui-button--default/);
+    await expect(editAction).toHaveClass(/mar-ui-button--inline/);
     await expect(deleteAction).toHaveClass(/mar-ui-button--danger/);
+    await expect(deleteAction).toHaveClass(/mar-ui-button--inline/);
     expect(
       await deleteAction.evaluate((button) => {
         const style = getComputedStyle(button);
         return (
           style.getPropertyValue('--mar-ui-button-fg').trim() ===
-          style.getPropertyValue('--el-color-danger').trim()
+          style.getPropertyValue('--mar-control-color-danger').trim()
         );
       })
     ).toBe(true);

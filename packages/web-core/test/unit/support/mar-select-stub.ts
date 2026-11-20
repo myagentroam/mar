@@ -5,10 +5,11 @@ import { defineComponent, h } from 'vue';
 export const MarSelect = defineComponent({
   name: 'MarSelect',
   inheritAttrs: false,
+  props: ['modelValue'],
   setup:
-    (_, { attrs, slots }) =>
+    (props, { attrs, slots }) =>
     () =>
-      h('MarSelect', attrs, slots.default?.())
+      h('MarSelect', { ...attrs, modelValue: props.modelValue }, slots.default?.())
 });
 
 export const MarOption = defineComponent({

@@ -4,9 +4,9 @@ import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
 // @test-covers packages/web-core/src/styles/theme.css
-// @test-covers packages/web-core/src/styles/element-plus-theme.css
+// @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchAside.vue
-// @test-covers packages/web-core/src/view/common/MarSegmented.vue
+// @test-covers packages/mar-ui/components/segmented/MarSegmented.vue
 
 function luminance(color: string): number {
   const hex = resolvedColorToHex(color);

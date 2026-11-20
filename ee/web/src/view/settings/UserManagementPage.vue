@@ -397,7 +397,7 @@ onUnmounted(() => usersPage.dispose());
 }
 
 .credential-result dt {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 600;
 }
@@ -405,17 +405,17 @@ onUnmounted(() => usersPage.dispose());
 .credential-result dd {
   margin: 0;
   overflow-wrap: anywhere;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--mar-input-border);
   border-radius: 6px;
-  background: var(--el-fill-color-light);
+  background: var(--mar-action-hover-bg);
   padding: 10px 12px;
-  color: var(--el-text-color-primary);
+  color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);
   line-height: 1.45;
 }
 
 .credential-result dd code {
-  font-family: var(--el-font-family);
+  font-family: var(--mar-font-sans);
   font-size: inherit;
 }
 
@@ -425,7 +425,7 @@ onUnmounted(() => usersPage.dispose());
 
 .credential-hint {
   margin: 14px 0 0;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
 }
 </style>

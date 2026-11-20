@@ -120,6 +120,6 @@ async function save(): Promise<void> {
 .session-prompt-description {
   margin: 0 0 1rem;
   line-height: 1.6;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
 }
 </style>

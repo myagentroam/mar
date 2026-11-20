@@ -480,7 +480,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   padding: var(--mar-settings-page-padding, 0.875rem 1rem);
 }
 .git-hint {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   line-height: 1.6;
 }
 .git-page-hint {
@@ -494,7 +494,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
 }
 .git-form-group-title {
   margin: 0 0 8px;
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   font-weight: 500;
 }
@@ -518,7 +518,7 @@ async function removeCredential(value: GitCredentialSummary): Promise<void> {
   justify-content: flex-end;
 }
 small {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
 }
 @media (max-width: 600px) {
   .git-field-pair {

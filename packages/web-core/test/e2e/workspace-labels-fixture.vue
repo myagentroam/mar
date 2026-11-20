@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { MarCheckbox } from '@myagentroam/mar-ui/checkbox';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import WorkspaceSessionList from '../../src/view/workspace/WorkspaceSessionList.vue';
 
 const branch = ref('develop');
@@ -41,8 +43,8 @@ const workspaceProps = {
 
 <template>
   <section aria-label="Real workspace labels">
-    <el-checkbox v-model="gitWorkspace">Git workspace</el-checkbox>
-    <el-input v-model="branch" aria-label="Workspace branch" />
+    <MarCheckbox v-model="gitWorkspace">Git workspace</MarCheckbox>
+    <MarInput v-model="branch" aria-label="Workspace branch" />
     <WorkspaceSessionList
       v-bind="workspaceProps"
       :workspace-kind="gitWorkspace ? 'GIT_WORKSPACE' : 'DIRECTORY'"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../../src/view/common/MarIcon.vue';
 import { unicodeLongFilePath } from '../support/unicode-layout-fixtures.js';
 import type { ConversationItem, ConversationTurn } from '../../src/model/workbench.js';
@@ -593,6 +594,18 @@ function finishPreview() {
     ]
   }));
 }
+
+function announceFixtureUpdate() {
+  notifications.notify({
+    // Each viewport represents a separate update; real updates deduplicate across reloads.
+    id: `preview-${window.innerWidth}`,
+    kind: 'web-update',
+    title: 'New version',
+    message: 'Update available',
+    version: '0.10.2',
+    action: 'RELOAD_PAGE'
+  });
+}
 </script>
 
 <template>
@@ -611,18 +624,7 @@ function finishPreview() {
       <WorkbenchActivityCenter :service="notifications" :uploads="[]" :status-label="String" />
       <ThemePreview name="Fixture preview" :colors="previewColors" />
       <output data-testid="notification-loads">{{ notificationLoads }}</output>
-      <button
-        @click="
-          notifications.notify({
-            id: 'preview',
-            kind: 'web-update',
-            title: 'New version',
-            message: 'Update available'
-          })
-        "
-      >
-        Preview notification
-      </button>
+      <button @click="announceFixtureUpdate">Preview notification</button>
     </section>
     <WorkbenchHeader
       :mobile-viewport="false"
@@ -643,15 +645,15 @@ function finishPreview() {
       >
         <MarIcon name="copy" />
       </button>
-      <el-button
+      <MarButton
         class="mar-icon-action"
-        data-testid="element-utility"
+        data-testid="mar-utility"
         text
-        aria-label="Element icon action"
-        ><MarIcon name="copy"
-      /></el-button>
-      <el-button class="mar-icon-action" disabled data-testid="disabled-utility"
-        >Disabled utility</el-button
+        aria-label="MAR icon action"
+        icon="copy"
+      />
+      <MarButton class="mar-icon-action" disabled text data-testid="disabled-utility"
+        >Disabled utility</MarButton
       >
     </section>
     <ConversationHeader

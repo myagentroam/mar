@@ -940,7 +940,7 @@ function scopeLabel(scope: string): string {
   font-weight: 400;
 }
 .skill-category-strip button:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 1px;
 }
 .skill-tags {
@@ -960,13 +960,13 @@ function scopeLabel(scope: string): string {
   overflow: hidden;
   block-size: 4px;
   border-radius: 2px;
-  background: var(--el-fill-color-light);
+  background: var(--mar-action-hover-bg);
 }
 .skill-install-progress__indicator::after {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
   content: '';
   animation: skill-install-progress 1.4s ease-in-out infinite;
 }
@@ -1039,7 +1039,7 @@ function scopeLabel(scope: string): string {
 .target-option-state {
   float: right;
   margin-left: 16px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .installed-heading {

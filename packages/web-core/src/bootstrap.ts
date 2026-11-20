@@ -1,5 +1,4 @@
 import { createApp, type Component } from 'vue';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import App from './App.vue';
 import { tooltipPlugin } from './directive/tooltip.js';
 import { i18n } from './service/locale-preference-service.js';

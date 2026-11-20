@@ -79,7 +79,7 @@
   cursor: not-allowed;
   border-color: var(--mar-border-default);
   background: var(--mar-fill-soft);
-  color: var(--el-text-color-disabled);
+  color: var(--mar-text-disabled);
 }
 
 .mar-composer-action[aria-busy='true'] {

@@ -661,7 +661,7 @@ test('Desktop Console uses 110% density and a continuous workspace layout', asyn
   expect(badgePosition.verticalOverlap).toBeGreaterThanOrEqual(6);
   await expect(page.locator('html')).toHaveClass(/console-ui/);
   await expect(page.locator('html')).toHaveCSS('font-size', '17.6px');
-  await expect(page.locator('html')).toHaveCSS('--el-font-size-small', '14px');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-font-size-body', '14px');
   await expect(page.getByTestId('workbench-brand')).toHaveCSS('width', '61px');
   await expect(page.locator('.activity-rail')).toHaveCSS('width', '61px');
   const navigationBounds = await page
@@ -907,7 +907,7 @@ test('Admin Console renders controlled Sessions, Runs, approvals, and text event
     '/favicon.ico?v=logo-20261011'
   );
   await expect(page.locator('html')).toHaveCSS('--mar-color-brand', '#0a6fd8');
-  await expect(page.locator('html')).toHaveCSS('--el-color-primary', '#0a6fd8');
+  await expect(page.locator('html')).toHaveCSS('--mar-ui-color-brand', '#0a6fd8');
   await expect(page.locator('html')).toHaveCSS('--mar-border-default', '#dce3ea');
   await expect(page.locator('html')).toHaveCSS('--mar-border-subtle', '#e7ecf2');
   await expect(page.getByRole('button', { name: '进入控制台' })).toHaveClass(/mar-ui-button/);

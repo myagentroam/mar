@@ -614,7 +614,7 @@ function mcpErrorMessage(error: unknown): string {
   font-weight: 400;
 }
 .mcp-category-strip button:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 1px;
 }
 .mcp-config-tabs {
@@ -648,7 +648,7 @@ function mcpErrorMessage(error: unknown): string {
 .target-option-state {
   float: right;
   margin-left: 16px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .mcp-tags {
@@ -680,13 +680,13 @@ function mcpErrorMessage(error: unknown): string {
   overflow: hidden;
   block-size: 4px;
   border-radius: 2px;
-  background: var(--el-fill-color-light);
+  background: var(--mar-action-hover-bg);
 }
 .mcp-install-progress__indicator::after {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: var(--el-color-primary);
+  background: var(--mar-color-brand);
   content: '';
   animation: mcp-install-progress 1.4s ease-in-out infinite;
 }

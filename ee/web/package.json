@@ -9,13 +9,13 @@
   "dependencies": {
     "@myagentroam/mar-ui": "workspace:*",
     "@myagentroam/web-core": "workspace:*",
-    "@element-plus/icons-vue": "^2.3.2",
     "@myagentroam/protocol": "workspace:*",
-    "element-plus": "^2.14.4",
     "vue": "^3.5.41",
     "vue-i18n": "^11.4.8"
   },
   "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "element-plus": "^2.14.4",
     "vue-tsc": "^3.3.9"
   },
   "exports": {

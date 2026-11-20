@@ -206,7 +206,7 @@ async function submit(): Promise<void> {
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--mar-border-subtle);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: var(--mar-bg-panel);
 }
 
@@ -249,7 +249,7 @@ async function submit(): Promise<void> {
 }
 
 .workspace-session-cleanup-statistics > .failed dd {
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
 }
 
 .workspace-session-cleanup-by-runner {

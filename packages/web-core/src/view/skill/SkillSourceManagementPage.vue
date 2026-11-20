@@ -1009,7 +1009,7 @@ function scopeLabel(scope: string): string {
 }
 .section-heading p {
   margin: 2px 0 0;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .source-search-bar {
@@ -1064,12 +1064,12 @@ function scopeLabel(scope: string): string {
   font-weight: 400;
 }
 .skill-category-strip button:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 1px;
 }
 .form-hint {
   margin: -8px 0 14px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   line-height: 1.5;
 }
@@ -1102,7 +1102,7 @@ function scopeLabel(scope: string): string {
 .table-meta {
   display: block;
   margin-top: 2px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 @media (max-width: 700px) {

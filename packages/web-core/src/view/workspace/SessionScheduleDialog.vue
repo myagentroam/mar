@@ -711,7 +711,6 @@ function occurrenceStatus(status: string): string {
 }
 .schedule-form :deep(.mar-ui-input--textarea),
 .schedule-form :deep(.mar-ui-select),
-.schedule-form :deep(.el-select),
 .schedule-form :deep(:is(.mar-ui-time-select, .mar-ui-time-picker)) {
   width: 100%;
 }

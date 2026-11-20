@@ -79,6 +79,17 @@
   --mar-action-hover-bg: transparent;
 }
 
+.mar-ui-button:is(.mar-icon-action, .mar-text-action):not(
+    :disabled,
+    .is-disabled,
+    [aria-disabled='true']
+  ) {
+  --mar-ui-button-hover-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-active-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-hover-fg: var(--mar-action-hover-color, var(--mar-text-primary));
+  --mar-ui-button-active-fg: var(--mar-ui-button-hover-fg);
+}
+
 .mar-icon-status-badge,
 .mar-session-activity i {
   width: var(--mar-icon-status-size, 6px);

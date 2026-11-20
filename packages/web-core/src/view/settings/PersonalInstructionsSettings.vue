@@ -390,10 +390,10 @@ h2 {
   width: 100%;
   min-height: 12rem;
   height: clamp(12rem, 40vh, 28rem);
-  border: 1px solid var(--el-border-color);
-  border-radius: var(--el-border-radius-base);
+  border: 1px solid var(--mar-input-border);
+  border-radius: var(--mar-radius-control);
   outline: none;
-  background: var(--el-fill-color-blank);
+  background: var(--mar-bg-panel);
   color: var(--mar-text-primary);
   padding: 0.5rem 0.7rem;
   font-family: inherit;
@@ -406,11 +406,11 @@ h2 {
   opacity: 1;
 }
 .personal-instructions textarea:focus {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px var(--el-color-primary-light-8);
+  border-color: var(--mar-color-brand);
+  box-shadow: 0 0 0 1px var(--mar-control-color-primary-light-8);
 }
 .personal-instructions :deep(.is-error) textarea {
-  border-color: var(--el-color-danger);
+  border-color: var(--mar-control-color-danger);
 }
 .instruction-state {
   flex: 1 1 auto;

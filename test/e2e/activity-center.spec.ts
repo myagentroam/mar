@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { resolvedColorToHex } from '../../packages/web-core/src/util/theme-palette.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
-// @test-covers packages/web-core/src/styles/element-plus-theme.css
+// @test-covers packages/web-core/src/styles/mar-ui-theme.css
 // @test-covers packages/web-core/src/view/workbench/WorkbenchActivityCenter.vue
 
 test.use({ hasTouch: true });
@@ -442,12 +442,12 @@ for (const width of [1280, 390]) {
         };
         const result = {
           unread: color('--mar-color-brand'),
-          running: color('--el-color-success'),
+          running: color('--mar-control-color-success'),
           page: color('--mar-bg-page'),
           chrome: color('--mar-bg-chrome'),
           divider: color('--mar-border-subtle'),
           runningText: color('--mar-color-success-text'),
-          completed: color('--el-color-info')
+          completed: color('--mar-text-secondary')
         };
         probe.remove();
         return result;
@@ -551,7 +551,8 @@ for (const width of [1280, 390]) {
       await input.focus();
       await announcePreview();
       const preview = page.locator('.activity-preview:visible');
-      await expect(preview).toContainText('New version');
+      await expect(preview).toContainText('Application update available');
+      await expect(preview).toContainText('0.10.2');
       await expect(input).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       const popover = page.locator('.workbench-activity-popover:visible');

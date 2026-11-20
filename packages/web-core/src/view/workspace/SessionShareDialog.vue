@@ -220,8 +220,8 @@ async function copyRecord(id: string): Promise<void> {
 .created-share {
   margin-top: 1rem;
   padding: 1rem;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-light);
+  background: var(--mar-action-hover-bg);
+  border: 1px solid var(--mar-overlay-border);
   border-radius: 6px;
   overflow-wrap: anywhere;
 }

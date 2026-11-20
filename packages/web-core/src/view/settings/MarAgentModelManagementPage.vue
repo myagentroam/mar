@@ -2823,7 +2823,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .mar-agent-model-management .selection-rule {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-body);
   margin: 0 0 12px;
 }

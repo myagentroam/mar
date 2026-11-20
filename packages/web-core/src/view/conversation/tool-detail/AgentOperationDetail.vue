@@ -106,9 +106,9 @@ const agentWaitText = computed(() => {
   margin-top: 0.5rem;
 }
 .agent-list-status--running {
-  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
-  color: var(--el-color-success);
+  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
+  color: var(--mar-control-color-success);
 }
 .agent-list-title {
   min-width: 0;

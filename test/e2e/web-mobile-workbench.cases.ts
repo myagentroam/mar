@@ -560,12 +560,19 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
       file: {
         path: new URL(route.request().url()).searchParams.get('path') ?? 'src/main.ts',
         encoding: 'utf-8',
+        size: Buffer.byteLength('# Agent constraints\n'),
         content: '# Agent constraints\n',
         truncated: false,
         nextOffset: null,
         revision: 'a'.repeat(64)
       }
     })
+  );
+  await page.route('**/api/workspaces/workspace-1/symbols/prepare?**', (route) =>
+    json(route, { preparation: { state: 'UNAVAILABLE' } })
+  );
+  await page.route(/\/api\/workspaces\/workspace-1\/git\/fetch(?:\?.*)?$/, (route) =>
+    json(route, { fetchFailed: false, updated: false })
   );
   await page.route(/\/api\/workspaces\/workspace-1\/changes(?:\?.*)?$/, (route) =>
     json(route, {
@@ -678,19 +685,19 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   });
   await expect(brand).toHaveCSS('border-top-width', '0px');
   await expect(brand).toHaveCSS('border-bottom-width', '1px');
-  await expect(brand).toHaveCSS('border-bottom-color', 'rgb(39, 49, 66)');
+  await expect(brand).toHaveCSS('border-bottom-color', 'rgb(55, 66, 85)');
   expect(
     await page
       .locator('html')
       .evaluate((element) =>
-        getComputedStyle(element).getPropertyValue('--el-component-size-small').trim()
+        getComputedStyle(element).getPropertyValue('--mar-compact-control-size').trim()
       )
   ).toBe('24px');
   expect(
     await page
       .locator('html')
       .evaluate((element) =>
-        getComputedStyle(element).getPropertyValue('--el-font-size-small').trim()
+        getComputedStyle(element).getPropertyValue('--mar-font-size-body').trim()
       )
   ).toBe('13px');
   await expect(brand.getByRole('link', { name: '返回 MyAgentRoam 首页' })).toHaveAttribute(
@@ -706,7 +713,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   const documentationLink = page.getByRole('link', { name: '帮助' });
   await expect(documentationLink).toHaveAttribute('href', '/docs/getting-started/overview');
   await expect(documentationLink).toHaveAttribute('target', '_blank');
-  await expect(documentationLink.locator('.rail-label')).toHaveText('帮助');
+  await expect(documentationLink).toHaveAccessibleName('帮助');
   await expect(documentationLink).toBeVisible();
   await expect(documentationLink.locator('svg')).toBeVisible();
   await expect(documentationLink.locator('.rail-label')).toBeHidden();
@@ -867,7 +874,9 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(page.getByRole('button', { name: '返回对话' })).toHaveCount(0);
   await closeMobileWorkspaceSurface();
   await expect(page.locator('.conversation-sidebar')).not.toBeVisible();
-  await expect(page.locator('.conversation-header').getByRole('heading')).toHaveText('新建会话');
+  await expect(
+    page.locator('.conversation-header').getByRole('heading').locator('.conversation-title-text')
+  ).toHaveText('新建会话');
 
   await page.getByRole('button', { name: '打开辅助工作面' }).click();
   await expect(page.locator('.workspace-aside')).toBeVisible();
@@ -884,8 +893,8 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await page.getByRole('button', { name: '刷新文件' }).click();
   await page.getByRole('treeitem', { name: 'AGENTS.md', exact: true }).click();
   const preview = page.getByRole('dialog', { name: 'AGENTS.md 文件预览' });
-  const previewSurface = preview;
-  await expect(page.locator('.el-overlay').filter({ has: preview })).toHaveCSS('position', 'fixed');
+  const previewSurface = preview.locator('[data-mar-dialog-panel]');
+  await expect(preview).toHaveCSS('position', 'fixed');
   await expect(preview).toBeVisible();
   await expect
     .poll(() =>
@@ -913,7 +922,7 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await expect(
     preview.locator('.mobile-preview-actions').getByRole('button', { name: '下载文件' })
   ).toBeVisible();
-  await expect(preview.getByText('只读文件', { exact: true })).toBeVisible();
+  await expect(preview.getByRole('button', { name: '只读文件', exact: true })).toBeVisible();
   await expect(
     preview.locator('.mobile-preview-actions').getByRole('button', { name: 'Markdown 预览设置' })
   ).toBeVisible();
@@ -961,8 +970,8 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
   await page.getByRole('tab', { name: 'Git 变更', exact: true }).click();
   await page.getByRole('button', { name: '查看 src/main.ts 的 Diff' }).click();
   const diff = page.getByRole('dialog', { name: 'src/main.ts Git 差异' });
-  const diffSurface = diff;
-  await expect(page.locator('.el-overlay').filter({ has: diff })).toHaveCSS('position', 'fixed');
+  const diffSurface = diff.locator('[data-mar-dialog-panel]');
+  await expect(diff).toHaveCSS('position', 'fixed');
   await expect(diff).toBeVisible();
   await expect
     .poll(() =>
@@ -1105,6 +1114,13 @@ test('Mobile Workbench keeps one conversation surface and opens sessions, files,
 
   const header = page.locator('.conversation-header');
   await expect(header.locator('.conversation-title-text')).toHaveCSS('white-space', 'nowrap');
+  await expect(header.locator('.conversation-title-button')).toBeVisible();
+  await page.getByRole('button', { name: '打开会话列表', exact: true }).click();
+  await page
+    .locator('.conversation-sidebar')
+    .getByRole('button', { name: '新建会话', exact: true })
+    .click();
+  await expect(header).toHaveClass(/conversation-header-draft/);
   await expect(header.locator('.conversation-title-button')).toHaveCount(0);
   expect(writes).toEqual([]);
   expect(pageErrors).toEqual([]);
@@ -1169,13 +1185,12 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
 
   await page.goto('/console');
   await page.getByRole('button', { name: '进入控制台' }).click();
-  await page.getByRole('button', { name: '工作', exact: true }).click();
-  await page
-    .locator('.workspace-tree')
-    .getByRole('button', { name: /node-1/ })
-    .click();
-  await page.getByRole('button', { name: '工作', exact: true }).click();
-  await page.locator('.workspace-tree').getByRole('button', { name: 'project' }).click();
+  const work = page.getByRole('button', { name: '工作', exact: true });
+  const tree = page.locator('.workspace-tree');
+  await work.click();
+  await tree.getByRole('button', { name: /node-1/ }).click();
+  await expect(work).toHaveAttribute('aria-expanded', 'true');
+  await tree.getByRole('button', { name: 'project' }).click();
   await page.getByRole('button', { name: '打开会话列表' }).click();
   await page.locator('.session-list button').first().click();
 
@@ -1445,7 +1460,7 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
     })
   );
   await pendingWork.locator('.goal-card').getByRole('button', { name: '移除' }).click();
-  await expect(page.locator('.el-message')).toContainText(
+  await expect(page.locator('.mar-ui-message')).toContainText(
     '已移除目标，当前执行未中断。累计耗时 12s，已开始 1 轮。'
   );
   expect(writes).toEqual(
@@ -1493,8 +1508,22 @@ test('Mobile messages entered during a Run can be sent to the queue', async ({ p
 });
 
 for (const labels of [
-  { locale: 'zh-CN', enter: '进入控制台', work: '工作', help: '帮助', theme: 'vscode-dark-2026' },
-  { locale: 'en-US', enter: 'Open console', work: 'Work', help: 'Help', theme: 'daylight' }
+  {
+    locale: 'zh-CN',
+    enter: '进入控制台',
+    work: '工作',
+    help: '帮助',
+    activity: '会话与通知',
+    theme: 'vscode-dark-2026'
+  },
+  {
+    locale: 'en-US',
+    enter: 'Open console',
+    work: 'Work',
+    help: 'Help',
+    activity: 'Sessions & notifications',
+    theme: 'daylight'
+  }
 ]) {
   test(`Mobile Help and notification icons align with navigation entries (${labels.locale})`, async ({
     page
@@ -1509,21 +1538,28 @@ for (const labels of [
     await page.getByRole('button', { name: labels.enter }).click();
     const help = page.getByRole('link', { name: labels.help, exact: true });
     const work = page.getByRole('button', { name: labels.work, exact: true });
-    const notification = page.locator('.workbench-notification-trigger');
+    const notification = page.getByRole('button', { name: labels.activity, exact: true });
     await work.click();
     for (const width of [320, 390, 767, 768, 1600]) {
       await page.setViewportSize({ width, height: 844 });
       await expect(help).toBeVisible();
       if (width >= 768) {
-        await expect(help.locator('.documentation-icon')).toBeHidden();
+        await expect(help.locator('.documentation-icon')).toBeVisible();
+        await expect(help.locator('.documentation-icon')).toHaveCSS('width', '16px');
+        const idleNavigation = page.locator('button.nav-menu-button:not(.active)').first();
+        await idleNavigation.hover();
+        const hoverBackground = await idleNavigation.evaluate(async (element) => {
+          await Promise.all(element.getAnimations().map((animation) => animation.finished));
+          return getComputedStyle(element).backgroundColor;
+        });
         await notification.hover();
-        await expect(notification).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(notification).toHaveCSS('background-color', hoverBackground);
         continue;
       }
       await expect(notification).toHaveCSS('width', '36px');
       await expect(notification).toHaveCSS('height', '36px');
-      await expect(notification.locator('.el-icon')).toHaveCSS('width', '18px');
-      await expect(notification.locator('.el-icon')).toHaveCSS('height', '18px');
+      await expect(notification.locator('svg.mar-icon')).toHaveCSS('width', '22px');
+      await expect(notification.locator('svg.mar-icon')).toHaveCSS('height', '22px');
       const [workBounds, notificationBounds] = await Promise.all([
         work.boundingBox(),
         notification.boundingBox()
@@ -1537,7 +1573,8 @@ for (const labels of [
         await idleNavigation.evaluate((element) => getComputedStyle(element).color)
       );
       await idleNavigation.hover();
-      const hoverStyle = await idleNavigation.evaluate((element) => {
+      const hoverStyle = await idleNavigation.evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished));
         const style = getComputedStyle(element);
         return {
           color: style.color,
@@ -1558,7 +1595,8 @@ for (const labels of [
       await expect(notification).toHaveCSS('outline-offset', '-2px');
       await notification.click();
       await expect(notification).toHaveAttribute('aria-expanded', 'true');
-      const activeStyle = await work.evaluate((element) => {
+      const activeStyle = await work.evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished));
         const style = getComputedStyle(element);
         return { color: style.color, background: style.backgroundColor };
       });
@@ -1572,14 +1610,13 @@ for (const labels of [
       const geometry = await Promise.all(
         [work, help].map((entry) =>
           entry.evaluate((element) => {
-            const svg = element.querySelector<SVGSVGElement>('.el-icon > svg')!;
+            const svg = element.querySelector<SVGSVGElement>('svg.mar-icon')!;
             const rect = svg.getBoundingClientRect();
             const shape = svg.getBBox();
-            const icon = svg.parentElement!.getBoundingClientRect();
             return {
               paintedWidth: (shape.width / svg.viewBox.baseVal.width) * rect.width,
               paintedHeight: (shape.height / svg.viewBox.baseVal.height) * rect.height,
-              iconCenterY: icon.top + icon.height / 2
+              iconCenterY: rect.top + rect.height / 2
             };
           })
         )

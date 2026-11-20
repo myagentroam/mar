@@ -2161,7 +2161,7 @@ test.describe('Independent tool presentation', () => {
           .toBe(0);
         await page.screenshot({ path: testInfo.outputPath('tools-desktop.png') });
         await page.evaluate(() =>
-          document.documentElement.style.setProperty('--el-transition-duration-fast', '1s')
+          document.documentElement.style.setProperty('--mar-motion-duration-fast', '1s')
         );
         await skill.locator('summary').evaluate((element: HTMLElement) => element.click());
         await expect(skill).toHaveAttribute('data-disclosure-closing', '');
@@ -2178,7 +2178,7 @@ test.describe('Independent tool presentation', () => {
         await expect(skill).not.toHaveAttribute('open');
         expect((await skillPreview.boundingBox())!.width).toBeCloseTo(closingWidth, 1);
         await page.evaluate(() =>
-          document.documentElement.style.removeProperty('--el-transition-duration-fast')
+          document.documentElement.style.removeProperty('--mar-motion-duration-fast')
         );
         await search.locator('summary').click();
         await expect(skill).not.toHaveAttribute('open');

@@ -474,7 +474,7 @@ async function animateDisclosure(event: MouseEvent): Promise<void> {
     return;
   }
   const style = getComputedStyle(details);
-  const duration = style.getPropertyValue('--el-transition-duration-fast').trim();
+  const duration = style.getPropertyValue('--mar-motion-duration-fast').trim();
   const collapsedHeight =
     summary.getBoundingClientRect().bottom -
     details.getBoundingClientRect().top +
@@ -1799,8 +1799,12 @@ function stepDuration(item: ConversationItem): string | undefined {
 }
 
 .conversation-item.error {
-  border-left-color: var(--el-color-danger);
-  background: color-mix(in srgb, var(--el-color-danger) 6%, var(--mar-conversation-surface));
+  border-left-color: var(--mar-control-color-danger);
+  background: color-mix(
+    in srgb,
+    var(--mar-control-color-danger) 6%,
+    var(--mar-conversation-surface)
+  );
 }
 
 .conversation-item.is-pending-approval {
@@ -1902,11 +1906,11 @@ function stepDuration(item: ConversationItem): string | undefined {
 
 .conversation-error-http-status,
 .conversation-error-code {
-  border: 1px solid color-mix(in srgb, var(--el-color-danger) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mar-control-color-danger) 52%, transparent);
   border-radius: var(--mar-radius-marker);
-  background: color-mix(in srgb, var(--el-color-danger) 12%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-danger) 12%, transparent);
   padding: 0 0.3rem;
-  color: var(--el-color-danger);
+  color: var(--mar-control-color-danger);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
   line-height: 1.3;
@@ -2137,46 +2141,46 @@ details.conversation-record-group[open] > details:last-child {
 .conversation-file-change-note {
   grid-column: 2 / -1;
   grid-row: 3;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: inherit;
 }
 
 .task-list-status.task-list-status--in-progress {
-  border-color: color-mix(in srgb, var(--el-color-warning) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-warning) 8%, transparent);
-  color: var(--el-color-warning);
+  border-color: color-mix(in srgb, var(--mar-control-color-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-warning) 8%, transparent);
+  color: var(--mar-control-color-warning);
 }
 
 .task-list-status.task-list-status--done {
-  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
-  color: var(--el-color-success);
+  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
+  color: var(--mar-control-color-success);
 }
 
 .conversation-file-change-status--added {
-  border-color: color-mix(in srgb, var(--el-color-success) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-success) 8%, transparent);
-  color: var(--el-color-success);
+  border-color: color-mix(in srgb, var(--mar-control-color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-success) 8%, transparent);
+  color: var(--mar-control-color-success);
 }
 
 .conversation-file-change-status--modified,
 .conversation-file-change-status--type_changed {
-  border-color: color-mix(in srgb, var(--el-color-warning) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-warning) 8%, transparent);
-  color: var(--el-color-warning);
+  border-color: color-mix(in srgb, var(--mar-control-color-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-warning) 8%, transparent);
+  color: var(--mar-control-color-warning);
 }
 
 .conversation-file-change-status--deleted {
-  border-color: color-mix(in srgb, var(--el-color-danger) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-danger) 8%, transparent);
-  color: var(--el-color-danger);
+  border-color: color-mix(in srgb, var(--mar-control-color-danger) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-control-color-danger) 8%, transparent);
+  color: var(--mar-control-color-danger);
 }
 
 .conversation-file-change-status--renamed,
 .conversation-file-change-status--copied {
-  border-color: color-mix(in srgb, var(--el-color-primary) 32%, transparent);
-  background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
-  color: var(--el-color-primary);
+  border-color: color-mix(in srgb, var(--mar-color-brand) 32%, transparent);
+  background: color-mix(in srgb, var(--mar-color-brand) 8%, transparent);
+  color: var(--mar-color-brand);
 }
 
 .conversation-file-change-button {
@@ -2391,7 +2395,7 @@ details.conversation-record-group[open] > details:last-child {
 }
 
 .conversation-item summary:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 
@@ -2460,7 +2464,7 @@ details.conversation-record-group[open] > details:last-child {
 </style>
 
 <style scoped>
-:global(.user-input-question .el-radio-group) {
+:global(.user-input-question .mar-ui-radio-group) {
   display: grid;
   gap: 0.25rem;
   align-items: start;

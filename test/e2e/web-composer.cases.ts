@@ -323,10 +323,7 @@ test('Dark theme uses consistent blue emphasis for new sessions and primary mana
   await expect(newSession).toHaveCSS('background-color', 'rgb(48, 147, 255)');
   await newSession.hover();
   await expect(newSession).toHaveCSS('background-color', 'rgb(74, 163, 255)');
-  await expect(page.locator('html')).toHaveCSS(
-    '--el-color-primary-light-9',
-    'rgb(48 147 255 / 0.14)'
-  );
+  await expect(page.locator('html')).toHaveCSS('--mar-control-color-primary-light-9', '#1f73cf24');
 });
 
 test('Composer Alt+M opens the model menu and delegates arrow keys to it', async ({ page }) => {

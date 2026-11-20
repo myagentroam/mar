@@ -776,7 +776,7 @@ onBeforeUnmount(() => {
   background: var(--mar-editor-background);
   border: 1px solid var(--mar-editor-border);
   border-radius: 3px;
-  box-shadow: var(--el-box-shadow-light);
+  box-shadow: var(--mar-control-shadow-light);
 }
 
 .code-file-editor :deep(.cm-tooltip-autocomplete > ul) {

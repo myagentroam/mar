@@ -133,13 +133,13 @@ function computerUseStatus(capability: ComputerUseCapability): string {
   min-width: 0;
   align-items: center;
   gap: 8px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 
 .runtime-command-row code {
   flex: 0 0 54px;
-  color: var(--el-text-color-primary);
+  color: var(--mar-text-primary);
 }
 
 .runtime-command-version {

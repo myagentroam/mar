@@ -536,7 +536,7 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   padding: 14px;
   border: 1px solid var(--mar-border-default);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: var(--mar-bg-panel);
 }
 .hosting-maintenance-header {
@@ -571,7 +571,7 @@ onBeforeUnmount(() => {
   gap: 7px;
   padding: 13px 14px;
   border: 1px solid var(--mar-border-subtle);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: var(--mar-fill-subtle);
 }
 .capacity-copy > div {
@@ -599,14 +599,14 @@ onBeforeUnmount(() => {
   inset: 0 auto 0 0;
   min-width: 2px;
   border-radius: inherit;
-  background: var(--el-color-success);
+  background: var(--mar-control-color-success);
   transition: width 220ms ease;
 }
 .capacity-readout[data-capacity='HIGH'] .capacity-fill {
-  background: var(--el-color-warning);
+  background: var(--mar-control-color-warning);
 }
 .capacity-readout[data-capacity='FULL'] .capacity-fill {
-  background: var(--el-color-danger);
+  background: var(--mar-control-color-danger);
 }
 .capacity-marker {
   position: absolute;
@@ -642,7 +642,7 @@ onBeforeUnmount(() => {
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--mar-border-subtle);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   background: var(--mar-border-subtle);
 }
 .storage-facts > div {
@@ -682,7 +682,7 @@ onBeforeUnmount(() => {
   align-items: baseline;
   gap: 6px 12px;
   padding: 10px 12px;
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--mar-radius-control);
   color: var(--mar-text-secondary);
   background: color-mix(in srgb, var(--mar-color-brand-text) 8%, var(--mar-bg-panel));
 }
@@ -694,7 +694,7 @@ onBeforeUnmount(() => {
   color: var(--mar-text-secondary);
 }
 .cleanup-complete {
-  background: color-mix(in srgb, var(--el-color-success) 9%, var(--mar-bg-panel));
+  background: color-mix(in srgb, var(--mar-control-color-success) 9%, var(--mar-bg-panel));
 }
 @media (prefers-reduced-motion: reduce) {
   .capacity-fill {

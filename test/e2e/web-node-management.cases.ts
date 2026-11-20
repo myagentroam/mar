@@ -1294,12 +1294,12 @@ test('ADMIN enables hosting only on organization Nodes and can disable existing 
     details.locator('.mar-detail-descriptions').getByRole('button', { name: '禁用托管对话' })
   ).toHaveCount(1);
   await expect(disable).not.toHaveClass(/mar-ui-button--primary/);
-  await expect(disable.locator('.el-icon')).toHaveCount(1);
+  await expect(disable.locator('.mar-icon')).toHaveCount(1);
   await expect(page.getByText('托管对话已启用。', { exact: true })).toBeVisible();
   const maintenanceCard = details.locator('.hosting-maintenance-card');
   await expect(maintenanceCard.getByRole('heading', { name: '对话存储维护' })).toBeVisible();
   const baseRadius = await details.evaluate((element) =>
-    getComputedStyle(element).getPropertyValue('--el-border-radius-base').trim()
+    getComputedStyle(element).getPropertyValue('--mar-radius-control').trim()
   );
   expect(baseRadius).not.toBe('');
   await expect(maintenanceCard).toHaveCSS('border-radius', baseRadius);

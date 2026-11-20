@@ -241,15 +241,15 @@ void load();
   font-size: var(--mar-font-size-meta);
 }
 .license-ledger code {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .license-ledger .empty-value {
-  color: var(--el-text-color-regular);
-  font-family: var(--el-font-family);
+  color: var(--mar-text-secondary);
+  font-family: var(--mar-font-sans);
   font-size: var(--mar-font-size-body);
   font-weight: 400;
 }
@@ -259,13 +259,13 @@ void load();
   gap: 6px;
 }
 .section-label {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
   font-weight: 600;
   line-height: 20px;
 }
 .license-code-input :deep(.mar-ui-input__field) {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-input);
   text-overflow: ellipsis;
@@ -284,7 +284,7 @@ void load();
 }
 .license-import :deep(textarea) {
   min-height: 92px !important;
-  font-family: var(--el-font-family);
+  font-family: var(--mar-font-sans);
   font-size: var(--mar-font-size-input);
   line-height: 18px;
 }

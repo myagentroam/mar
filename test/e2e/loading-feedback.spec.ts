@@ -32,7 +32,7 @@ async function expectReadIndicator(indicator: Locator, size: number) {
 async function expectNeutralRetry(button: Locator) {
   const color = await button.evaluate((element) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--el-text-color-regular)';
+    probe.style.color = 'var(--mar-text-secondary)';
     element.append(probe);
     const expected = getComputedStyle(probe).color;
     probe.remove();
@@ -49,12 +49,13 @@ test('Library loading has a single animated ring without mounting BusyIndicator'
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.url}library-loading.html`);
   await expect(page.locator('.mar-busy-indicator')).toHaveCount(0);
+  await expect(page.locator('#library-loading')).toHaveAttribute('aria-busy', 'true');
   const spinner = page.locator('#library-loading .mar-ui-loading__indicator');
+  await expect(spinner).toHaveCount(1);
   await expect(spinner).toBeVisible();
-  await expect(spinner.locator('.circular')).toBeHidden();
   const ring = async () =>
     spinner.evaluate((element) => {
-      const style = getComputedStyle(element, '::before');
+      const style = getComputedStyle(element);
       const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
       return {
         width: parseFloat(style.width) / rootSize,
@@ -67,7 +68,7 @@ test('Library loading has a single animated ring without mounting BusyIndicator'
     width: 1.25,
     height: 1.25,
     border: '2px',
-    animation: 'mar-busy-indicator-spin'
+    animation: 'mar-ui-loading-spin'
   });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect.poll(async () => (await ring()).animation).toBe('none');
@@ -146,7 +147,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         ).toHaveText(value);
       }
       await expect(dialog.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
-      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      await dialog.locator('footer').getByRole('button', { name: 'Close', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await controls.getByRole('button', { name: 'Open cleanup', exact: true }).click();
       await expect(days).toHaveValue('30');

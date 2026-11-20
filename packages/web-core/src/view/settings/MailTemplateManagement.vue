@@ -245,9 +245,9 @@ async function sendTest(): Promise<void> {
 <style scoped>
 .template-description {
   margin: 0 0 14px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   line-height: 1.55;
-  border-left: 2px solid var(--el-color-primary);
+  border-left: 2px solid var(--mar-color-brand);
   padding-left: 12px;
 }
 .template-layout {
@@ -266,10 +266,10 @@ async function sendTest(): Promise<void> {
   flex-direction: column;
   gap: 7px;
   width: 100%;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--mar-input-border);
   border-radius: var(--mar-radius-selection);
   padding: 13px 14px;
-  background: var(--el-fill-color-blank);
+  background: var(--mar-bg-panel);
   color: var(--mar-text-secondary);
   text-align: left;
   cursor: pointer;
@@ -289,7 +289,7 @@ async function sendTest(): Promise<void> {
   background: var(--mar-fill-selection);
 }
 .template-choice:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
 }
 .template-choice__meta,
@@ -324,7 +324,7 @@ async function sendTest(): Promise<void> {
   align-items: center;
   justify-content: space-between;
   min-height: 25px;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .template-preview__locale {
@@ -348,7 +348,7 @@ async function sendTest(): Promise<void> {
   overflow-wrap: anywhere;
 }
 .template-preview__fallback span {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .template-preview__fallback p {

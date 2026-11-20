@@ -186,7 +186,7 @@ defineExpose({ root });
 }
 
 .workspace-file-page-frame-title > small {
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-family: var(--mar-font-mono);
   font-size: var(--mar-font-size-meta);
 }

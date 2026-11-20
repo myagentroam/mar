@@ -686,7 +686,7 @@ button.history-refresh {
   border: 1px solid var(--mar-border-subtle);
   border-radius: 5px;
   background: var(--mar-bg-panel);
-  box-shadow: var(--el-box-shadow-light);
+  box-shadow: var(--mar-control-shadow-light);
   padding: 4px;
 }
 

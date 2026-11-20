@@ -605,7 +605,7 @@ test('Git Diff retry uses a neutral action in both themes and viewports', async 
       await expect(retry).toHaveCSS('border-top-style', 'solid');
       const color = await retry.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--el-text-color-regular)';
+        probe.style.color = 'var(--mar-text-secondary)';
         element.append(probe);
         const action = getComputedStyle(probe).color;
         probe.style.color = 'var(--mar-ui-button-bg)';

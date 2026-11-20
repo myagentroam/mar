@@ -544,7 +544,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.125rem 0.625rem;
   margin-top: 0;
-  padding: 0.1875rem 0.625rem;
+  padding: 0.125rem 0.625rem;
   border: 0;
   border-top: 1px solid var(--mar-border-subtle);
   border-radius: 0;

@@ -1724,10 +1724,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(messageAction).toBeFocused();
       await expect(messageAction).not.toHaveCSS('outline-style', 'none');
       await expect(messageAction).toHaveCSS('background-color', tokens.utilityHover);
-      for (const control of [
-        page.getByTestId('native-utility'),
-        page.getByTestId('element-utility')
-      ]) {
+      for (const control of [page.getByTestId('native-utility'), page.getByTestId('mar-utility')]) {
         await control.hover();
         await expect(control).toHaveCSS('background-color', tokens.utilityHover);
         await expect(control).toHaveCSS('color', tokens.primary);
@@ -1756,7 +1753,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await notificationToggle.click();
       await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await page.getByRole('button', { name: 'Preview notification', exact: true }).click();
-      await expect(page.locator('.activity-preview')).toBeVisible();
+      await expect(page.locator('.activity-preview:visible')).toContainText('0.10.2');
       await expect(notificationToggle).toHaveAttribute('aria-expanded', 'false');
       await notificationToggle.click();
       await expect(loads).toHaveText('2');

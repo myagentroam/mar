@@ -367,7 +367,7 @@ function openContext(event: MouseEvent): void {
 }
 .session-tree-location {
   flex: none;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .session-tree-actions {
@@ -381,7 +381,7 @@ function openContext(event: MouseEvent): void {
   border-radius: var(--mar-radius-control);
 }
 .tree-sleeping i {
-  background: var(--el-color-warning);
+  background: var(--mar-control-color-warning);
 }
 .session-tree[aria-busy='true'] {
   min-height: 4rem;

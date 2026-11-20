@@ -134,7 +134,7 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
         await expectNeutralAction(retry);
         await page.mouse.move(0, 0);
         await expect(page.locator('.cm-editor')).toHaveCount(0);
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-ui-message')).toHaveCount(0);
         expect(await page.locator('html').getAttribute('data-file-notice')).toBeNull();
         const layout = await failure.evaluate((element) => {
           const message = element.querySelector('p')!;
@@ -146,7 +146,7 @@ for (const theme of ['vscode-light-2026', 'vscode-dark-2026']) {
           probe.style.color = 'var(--mar-text-secondary)';
           element.appendChild(probe);
           const messageColor = getComputedStyle(probe).color;
-          probe.style.color = 'var(--el-text-color-regular)';
+          probe.style.color = 'var(--mar-text-secondary)';
           const actionColor = getComputedStyle(probe).color;
           probe.remove();
           return {

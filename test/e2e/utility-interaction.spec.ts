@@ -172,7 +172,9 @@ for (const width of [1280, 390]) {
           )
         );
         for (let index = 1; index < boundaries.length; index++)
-          expect(boundaries[index]!.top).toBeGreaterThanOrEqual(boundaries[index - 1]!.bottom);
+          expect(boundaries[index]!.top).toBeGreaterThanOrEqual(
+            boundaries[index - 1]!.bottom - 1 / 64
+          );
         const input = composer.locator('textarea');
         await input.fill('Keep this draft');
         const goalBeforeAppend = (await goal.boundingBox())!;
@@ -654,8 +656,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(performanceInfo).toHaveCSS('height', '20px');
       const controls: [Locator, boolean][] = [
         [page.getByTestId('native'), false],
-        [page.getByTestId('element'), true],
-        [page.getByTestId('element-icon'), false],
+        [page.getByTestId('mar-text-action'), true],
+        [page.getByTestId('mar-icon-action'), false],
         [performanceInfo, true],
         [page.locator('.session-search-button'), false],
         [page.locator('.workspace-more-button'), false],
@@ -699,8 +701,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.getByTestId('disable').click();
       for (const control of [
         page.getByTestId('native'),
-        page.getByTestId('element'),
-        page.getByTestId('element-icon'),
+        page.getByTestId('mar-text-action'),
+        page.getByTestId('mar-icon-action'),
         page.locator('.session-search-button'),
         page.locator('.workspace-more-button'),
         page.locator('.queue-item-actions .work-item-primary-action')

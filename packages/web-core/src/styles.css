@@ -1,5 +1,4 @@
 @import './styles/theme.css';
-@import './styles/element-plus-theme.css';
 @import './styles/mar-ui-theme.css';
 @import './styles/mar-controls.css';
 
@@ -208,7 +207,7 @@ pre {
   white-space: nowrap;
 }
 .mar-management-page .mar-filter-field > span:first-child {
-  color: var(--el-text-color-regular);
+  color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
 .mar-management-page .mar-filter-field > :last-child {

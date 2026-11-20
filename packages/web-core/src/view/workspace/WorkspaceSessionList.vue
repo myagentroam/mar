@@ -781,7 +781,7 @@ function submitSessionSearch(): void {
 }
 
 .watch-status.failed {
-  color: var(--el-color-warning);
+  color: var(--mar-control-color-warning);
 }
 
 .watch-status:not(.failed) {
@@ -1042,7 +1042,7 @@ function submitSessionSearch(): void {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-bottom: 1px solid var(--mar-control-border-color-lighter);
 }
 .effective-skill-row > div {
   min-width: 0;
@@ -1050,7 +1050,7 @@ function submitSessionSearch(): void {
 }
 .effective-skill-row p {
   margin: 4px 0 0;
-  color: var(--el-text-color-secondary);
+  color: var(--mar-text-secondary);
   overflow-wrap: anywhere;
 }
 .effective-skill-tags {

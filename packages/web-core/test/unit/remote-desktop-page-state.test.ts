@@ -82,18 +82,16 @@ describe('Remote Desktop first-frame state', () => {
       try {
         await flushComponent();
         const screen = view
-          .findAll('button')
+          .findAll('MarSelect')
           .find((node) => node.props['data-testid'] === 'desktop-screen');
         expect(screen).toBeDefined();
-        const list = view
-          .findAll('div')
-          .find((node) => node.props['id'] === screen!.props['aria-controls']);
-        const options = list!.children.filter((node) => node.props['role'] === 'option');
+        const options = screen!.children.filter((node) => node.type === 'MarOption');
         expect(options).toHaveLength(1);
         // Discovery selects the display by its ID; the option stays selected under a readable label.
-        expect(options[0]!.props['aria-selected']).toBe(true);
-        expect(textContent(options[0]!)).toContain(label);
-        expect(textContent(options[0]!)).not.toContain('\\\\.\\');
+        expect(screen!.props['modelValue']).toBe('primary-1');
+        expect(options[0]!.props['value']).toBe(screen!.props['modelValue']);
+        expect(options[0]!.props['label']).toContain(label);
+        expect(options[0]!.props['label']).not.toContain('\\\\.\\');
       } finally {
         view.unmount();
       }

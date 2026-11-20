@@ -8,6 +8,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css';
 import 'element-plus/es/components/tabs/style/css';
 import 'element-plus/es/components/tab-pane/style/css';
 import '../../src/styles.css';
+import '../support/element-plus-theme.css';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
 import ThemeControlsFixture from './theme-controls-fixture.vue';

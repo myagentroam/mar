@@ -318,7 +318,7 @@ const hasMarkableUnread = computed(() =>
   min-width: 0;
   align-items: baseline;
   gap: 6px;
-  color: var(--el-text-color-primary);
+  color: var(--mar-text-primary);
 }
 .workbench-notification-title strong {
   min-width: 0;

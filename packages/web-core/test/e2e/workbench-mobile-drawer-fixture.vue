@@ -227,6 +227,7 @@ function preview(): void {
     kind: 'web-update',
     title: 'New version',
     message: 'Reload to update',
+    version: '0.10.2',
     action: 'RELOAD_PAGE'
   });
 }
