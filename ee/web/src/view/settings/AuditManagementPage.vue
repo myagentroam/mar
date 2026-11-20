@@ -528,7 +528,7 @@ onBeforeUnmount(closeDetail);
           v-if="Object.keys(selected.metadata || {}).length > 0"
           :label="translate('common.metadata')"
         >
-          <pre>{{ JSON.stringify(selected.metadata || {}, null, 2) }}</pre>
+          <pre class="audit-metadata">{{ JSON.stringify(selected.metadata || {}, null, 2) }}</pre>
         </MarDescriptionsItem>
       </MarDescriptions>
       <template #footer>
@@ -561,6 +561,11 @@ pre {
   margin: 0;
   white-space: pre-wrap;
   font-size: var(--mar-font-size-meta);
+}
+.audit-metadata {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 :global(.audit-management .mar-ui-dialog .mar-ui-descriptions) {
   --mar-ui-descriptions-label-width: 150px;

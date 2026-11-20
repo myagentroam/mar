@@ -119,6 +119,42 @@ for (const width of [1280, 390, 320]) {
   });
 }
 
+for (const [width, theme] of [
+  [390, 'dark'],
+  [1280, 'light']
+] as const) {
+  test(`Audit detail renders metadata without a nested frame at ${width}px in ${theme} mode`, async ({
+    page,
+    auditUrl
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${auditUrl}?theme=${theme}`);
+    await page.locator('.mar-ui-table__row').first().click();
+    await expect.poll(() => page.evaluate(() => window.auditDetailFixture.count())).toBe(1);
+    await page.evaluate(() => window.auditDetailFixture.settle(0, true));
+
+    const dialog = page.getByRole('dialog');
+    const metadata = dialog.locator('pre').filter({ hasText: '"workspaceName"' });
+    await expect(metadata).toContainText(`FixtureWorkspace${'LongIdentifier'.repeat(6)}`);
+    await expect(metadata).toHaveCSS('border-top-width', '0px');
+    await expect(metadata).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(metadata).toHaveCSS('padding-inline-start', '0px');
+    expect(await metadata.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true
+    );
+    await expect(dialog.getByText('Metadata', { exact: true })).toHaveCSS(
+      'border-inline-end-width',
+      '1px'
+    );
+    await expect(dialog.getByText('Payload audit-A request 0')).toHaveCSS(
+      'border-top-width',
+      '1px'
+    );
+    await metadata.scrollIntoViewIfNeeded();
+    await dialog.screenshot({ path: testInfo.outputPath(`audit-metadata-${theme}.png`) });
+  });
+}
+
 test('Audit detail keeps the current target and loading across out-of-order completions', async ({
   page,
   auditUrl
