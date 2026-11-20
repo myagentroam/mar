@@ -27,7 +27,9 @@ test('File tree renders bundled MAR file and folder icons by default in both col
         ['dist', 'dir'],
         ['src', 'src'],
         ['test', 'tests'],
-        ['button.spec.ts', 'test']
+        ['button.spec.ts', 'test'],
+        ['.gitignore', 'git'],
+        ['.gitmodules', 'git']
       ]) {
         const symbol = tree.locator(`[data-file-path="${path}"] .mar-file-icon use`);
         await expect(symbol).toHaveAttribute('href', new RegExp(`#mar-file-${id}$`));

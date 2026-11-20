@@ -31,7 +31,11 @@ const root = reactive({
       name,
       kind: 'DIRECTORY' as const
     })),
-    { ...file, path: 'button.spec.ts', name: 'button.spec.ts' },
+    ...['button.spec.ts', '.gitignore', '.gitmodules'].map((name) => ({
+      ...file,
+      path: name,
+      name
+    })),
     ...Array.from({ length: 40 }, (_, index) => ({
       ...file,
       path: `generated-${index}`,
@@ -113,7 +117,7 @@ createTooltipApp({
         'Toggle directory'
       ),
       h('button', { onClick: () => localePreferenceService().setLocale('zh-CN') }, 'Change locale'),
-      h('section', { style: 'width:240px;height:194px;display:flex;margin-top:12px' }, [
+      h('section', { style: 'width:240px;height:250px;display:flex;margin-top:12px' }, [
         h(WorkspaceFileTree, { root, filter: '', ...state })
       ])
     ])
