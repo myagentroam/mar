@@ -225,7 +225,6 @@ const composer = ref<{
   restoreMessage(text: string): void;
   readonly quoteTarget: import('../../model/composer-quote.js').ComposerQuoteTarget;
 }>();
-const conversationScrollElement = ref<HTMLElement>();
 const expandedFileDirectories = ref<ReadonlySet<string>>(new Set());
 let directorySequence = 0;
 let filesDragDepth = 0;
@@ -383,7 +382,6 @@ function handleConversationScroll(): void {
 
 function setConversationScrollElement(element: HTMLElement | undefined): void {
   conversationResizeObserver?.disconnect();
-  conversationScrollElement.value = element;
   conversationScrollService.setElement(element);
   if (element === undefined) return;
   conversationResizeObserver = new ResizeObserver(() => conversationScrollService.handleResize());
@@ -393,18 +391,15 @@ function setConversationScrollElement(element: HTMLElement | undefined): void {
 }
 
 async function loadOlderConversationHistory(): Promise<void> {
-  const element = conversationScrollElement.value;
-  const previousHeight = element?.scrollHeight ?? 0;
+  const restoreAnchor = conversationScrollService.capturePrependAnchor();
   const target = selectedConversationKey.value;
   await props.workspace.loadOlderHistory();
   await nextTick();
   if (
     target === selectedConversationKey.value &&
-    element === conversationScrollElement.value &&
-    element !== undefined &&
     props.workspace.olderHistoryError.value === undefined
   )
-    element.scrollTop += element.scrollHeight - previousHeight;
+    restoreAnchor();
 }
 
 async function initialize(): Promise<void> {
@@ -1295,7 +1290,7 @@ onBeforeUnmount(() => {
           @scroll-intent="conversationScrollService.stopFollowing"
           @load-older="loadOlderConversationHistory"
           @reload="retryConversation"
-          @latest="conversationScrollService.scrollToLatest"
+          @latest="conversationScrollService.jumpToLatest"
         >
           <ConversationTimeline
             :quote-target="composer?.quoteTarget"

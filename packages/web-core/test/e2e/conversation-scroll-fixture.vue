@@ -366,7 +366,7 @@ onMounted(async () => {
         @scroll="scroll.handleScroll(requestOlder)"
         @scroll-intent="scroll.stopFollowing"
         @load-older="requestOlder"
-        @latest="scroll.scrollToLatest"
+        @latest="scroll.jumpToLatest"
         @reload="
           initialRequests++;
           initialPending = true;

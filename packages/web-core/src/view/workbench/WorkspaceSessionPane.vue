@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
         @scroll="interactions.onComposerScroll"
         @scroll-intent="state.scroll.stopFollowing"
         @load-older="controller.conversationWindow.paging.loadOlderConversationTurns"
-        @latest="interactions.scrollConversationToLatest"
+        @latest="state.scroll.jumpToLatest"
         @reload="emit('reload')"
       >
         <ConversationTimeline
