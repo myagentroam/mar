@@ -59,6 +59,7 @@
   --mar-ui-tooltip-surface: var(--mar-control-bg-color-overlay);
   --mar-ui-tooltip-shadow: 0 4px 12px var(--mar-shadow-medium);
   --mar-ui-text-disabled: var(--mar-text-disabled);
+  --mar-ui-text-muted: var(--mar-text-muted);
   --mar-ui-text-primary: var(--mar-text-primary);
   --mar-ui-text-secondary: var(--mar-text-secondary);
 }

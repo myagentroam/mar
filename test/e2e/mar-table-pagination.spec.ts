@@ -42,6 +42,56 @@ test('Table sorts stable rows locally, delegates custom sorting, and preserves s
   await expect(page.getByRole('status', { name: 'Click' })).toHaveText('Zulu');
 });
 
+test('Table uses solid neutral sort indicators and a low-contrast dark header surface', async ({
+  page
+}) => {
+  const table = page.getByRole('table', { name: 'Records' });
+  const name = table.getByRole('columnheader', { name: 'Name' });
+  const button = name.getByRole('button');
+  const ascending = button.locator('[data-sort-order="ascending"]');
+  const descending = button.locator('[data-sort-order="descending"]');
+  const [muted, primary] = await table.evaluate((element) => {
+    const probe = document.createElement('span');
+    element.before(probe);
+    const colors = ['--mar-text-muted', '--mar-text-primary'].map((token) => {
+      probe.style.color = `var(${token})`;
+      return getComputedStyle(probe).color;
+    });
+    probe.remove();
+    return colors;
+  });
+
+  await expect(name).toHaveCSS('background-color', 'rgb(37, 45, 56)');
+  await expect(ascending).toHaveCSS('color', muted!);
+  await expect(descending).toHaveCSS('color', muted!);
+  expect(
+    await ascending.evaluate((node) => getComputedStyle(node, '::before').borderBottomWidth)
+  ).toBe('5px');
+  expect(
+    await descending.evaluate((node) => getComputedStyle(node, '::before').borderTopWidth)
+  ).toBe('5px');
+
+  await button.press('Enter');
+  await expect(name).toHaveAttribute('aria-sort', 'ascending');
+  await expect(ascending).toHaveCSS('color', primary!);
+  await expect(descending).toHaveCSS('color', muted!);
+  await expect(button).toBeFocused();
+  await descending.click();
+  await expect(name).toHaveAttribute('aria-sort', 'descending');
+  await expect(ascending).toHaveCSS('color', muted!);
+  await expect(descending).toHaveCSS('color', primary!);
+  await descending.click();
+  await expect(name).not.toHaveAttribute('aria-sort');
+  await expect(descending).toHaveCSS('color', muted!);
+
+  await page.locator('html').evaluate((root) => root.removeAttribute('data-theme'));
+  await expect(name).toHaveCSS('background-color', 'rgb(237, 243, 250)');
+  await page.locator('html').evaluate((root) => {
+    root.style.setProperty('--mar-table-header-bg', '#324951');
+  });
+  await expect(name).toHaveCSS('background-color', 'rgb(50, 73, 81)');
+});
+
 test('Table expands controlled details and tree branches without opening row actions', async ({
   page
 }) => {

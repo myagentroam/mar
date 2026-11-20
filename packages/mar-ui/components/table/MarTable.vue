@@ -309,22 +309,13 @@ function header(column: TableColumn, index: number): VNode {
                 h('span', {}, label),
                 h('span', { class: 'mar-ui-table__sort-indicators', 'aria-hidden': 'true' }, [
                   ...(['ascending', 'descending'] as const).map((direction) =>
-                    h(
-                      'span',
-                      {
-                        'data-sort-order': direction,
-                        class: { 'is-active': order === direction },
-                        onClick: (event: MouseEvent) => {
-                          event.stopPropagation();
-                          changeSort(column, direction);
-                        }
-                      },
-                      [
-                        h(MarIcon, {
-                          name: direction === 'ascending' ? 'chevron-up' : 'chevron-down'
-                        })
-                      ]
-                    )
+                    h('span', {
+                      'data-sort-order': direction,
+                      onClick: (event: MouseEvent) => {
+                        event.stopPropagation();
+                        changeSort(column, direction);
+                      }
+                    })
                   )
                 ])
               ])
@@ -547,15 +538,29 @@ const ColumnView = () => renderTable();
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  color: var(--mar-ui-text-secondary);
+  color: var(--mar-ui-text-muted);
 }
-.mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators svg) {
-  display: block;
+.mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators > span) {
+  display: grid;
+  place-items: center;
   inline-size: 10px;
   block-size: 8px;
 }
-.mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators .is-active) {
-  color: var(--mar-ui-control-link-text);
+.mar-ui-table__viewport :deep(.mar-ui-table__sort-indicators > span::before) {
+  content: '';
+  border-inline: 5px solid transparent;
+}
+.mar-ui-table__viewport
+  :deep(.mar-ui-table__sort-indicators > [data-sort-order='ascending']::before) {
+  border-block-end: 5px solid currentColor;
+}
+.mar-ui-table__viewport
+  :deep(.mar-ui-table__sort-indicators > [data-sort-order='descending']::before) {
+  border-block-start: 5px solid currentColor;
+}
+.mar-ui-table__viewport :deep(th[aria-sort='ascending'] [data-sort-order='ascending']),
+.mar-ui-table__viewport :deep(th[aria-sort='descending'] [data-sort-order='descending']) {
+  color: var(--mar-ui-text-primary);
 }
 .mar-ui-table__viewport :deep(.mar-ui-table__indent) {
   display: inline-flex;
