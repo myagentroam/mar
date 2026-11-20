@@ -41,6 +41,8 @@ The **Sessions & notifications** icon after Chat opens one panel with separate r
 
 Click or tap the icon, or press `Ctrl/Cmd+Shift+E`, to open the custom Recent Sessions / Notifications panel. Click or tap the icon again, use the same shortcut, click outside, or press `Esc` to close. Hovering does not open or close it on desktop or mobile, and moving away leaves it open. Each opening starts on Notifications when unread notifications exist, or Recent Sessions otherwise; tab selection then stays under your control. No extra text tooltip covers the panel.
 
+On desktop, click the info icon at the bottom left to open or close this page’s Web performance diagnostics. Hovering does not open it. Click outside to dismiss it, or use the copy button in the panel to copy detailed diagnostics.
+
 ## Themes
 
 Themes stay only in this browser. They are not uploaded or synced with accounts or devices. Clearing browser data deletes custom themes; export JSON files for backup or manual transfer.

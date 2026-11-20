@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { MarTag } from '@myagentroam/mar-ui/tag';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -9,6 +8,7 @@ import { translate } from '../../service/locale-preference-service.js';
 const props = defineProps<{
   readonly service: WorkbenchNotificationService['systemNotifications'];
 }>();
+const hasStateTag = computed(() => ['enabled', 'disabled'].includes(props.service.status.value));
 const blocked = computed(
   () =>
     !props.service.enabled.value &&
@@ -22,38 +22,12 @@ const blocked = computed(
 <template>
   <div class="system-notification-control">
     <div class="notification-channel">
-      <div class="notification-channel-info">
-        <h3>
-          {{
-            translate(
-              service.mode === 'mobile-push'
-                ? 'workbenchNotificationCenter.webPush.title'
-                : 'workbenchNotificationCenter.systemNotifications.onlineTitle'
-            )
-          }}
-        </h3>
-        <p role="status">
-          <MarTag
-            v-if="service.status.value === 'enabled' || service.status.value === 'disabled'"
-            :type="service.status.value === 'enabled' ? 'success' : 'info'"
-            effect="plain"
-            >{{
-              translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
-            }}</MarTag
-          >
-          <template v-else>{{
-            translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
-          }}</template>
-        </p>
-        <p v-if="service.mode === 'mobile-push'" role="status">
-          {{ translate(`workbenchNotificationCenter.webPush.${service.pushStatus.value}`) }}
-        </p>
-      </div>
+      <h3 v-if="service.mode === 'mobile-push'">
+        {{ translate('workbenchNotificationCenter.webPush.title') }}
+      </h3>
       <div class="notification-channel-actions">
         <MarButton
-          class="mar-text-action"
-          link
-          :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
+          :icon="service.enabled.value ? 'power' : 'notification'"
           :loading="service.requesting.value"
           :disabled="blocked"
           @click="service.setEnabled(!service.enabled.value)"
@@ -70,64 +44,70 @@ const blocked = computed(
             )
           }}
         </MarButton>
+        <p role="status" :class="{ 'notification-channel-detail': !hasStateTag }">
+          <MarTag
+            v-if="hasStateTag"
+            :type="service.status.value === 'enabled' ? 'success' : 'info'"
+            effect="plain"
+            >{{
+              translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
+            }}</MarTag
+          >
+          <template v-else>{{
+            translate(`workbenchNotificationCenter.systemNotifications.${service.status.value}`)
+          }}</template>
+        </p>
         <MarButton
           v-if="
             service.mode === 'mobile-push' &&
             service.enabled.value &&
             ['actionRequired', 'unavailable'].includes(service.pushStatus.value)
           "
-          class="mar-text-action"
-          link
-          :icon="marIcon('notification')"
+          icon="notification"
           @click="service.enablePush()"
           >{{ translate('workbenchNotificationCenter.webPush.enable') }}</MarButton
         >
       </div>
+      <p v-if="service.mode === 'mobile-push'" class="notification-channel-detail" role="status">
+        {{ translate(`workbenchNotificationCenter.webPush.${service.pushStatus.value}`) }}
+      </p>
     </div>
   </div>
 </template>
 
 <style scoped>
 .system-notification-control {
-  display: grid;
-  max-inline-size: 34rem;
+  margin-block-start: 0.875rem;
   font-size: var(--mar-font-size-body);
 }
 .notification-channel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.75rem 1.25rem;
-  padding-block: 0.9rem;
+  gap: 0.5rem;
 }
-.notification-channel + .notification-channel {
-  border-top: 1px solid var(--mar-border-subtle);
-}
-.notification-channel-info {
-  display: grid;
-  min-inline-size: 0;
-  gap: 0.35rem;
-}
-.notification-channel-info h3 {
+.notification-channel h3 {
   margin: 0;
   font-size: inherit;
   font-weight: 600;
 }
-.notification-channel-info p {
+.notification-channel p {
   margin: 0;
+}
+.notification-channel-detail {
+  flex-basis: 100%;
+  min-inline-size: 0;
   color: var(--mar-text-secondary);
-  line-height: 1.55;
-  overflow-wrap: anywhere;
+  line-height: 1.5;
+  overflow-wrap: break-word;
 }
 .notification-channel-actions {
   display: flex;
   flex-wrap: wrap;
-  max-inline-size: 100%;
+  align-items: center;
   gap: 0.5rem;
 }
-@media (max-width: 767px) {
-  .notification-channel {
-    grid-template-columns: minmax(0, 1fr);
+@media (pointer: coarse) {
+  .notification-channel-actions > button {
+    min-block-size: 44px;
   }
 }
 </style>

@@ -93,7 +93,7 @@ function navigate(event: KeyboardEvent, index: number, count: number) {
 }
 button {
   flex: none;
-  min-block-size: 36px;
+  min-block-size: 28px;
   padding-inline: var(--mar-ui-compact-option-padding-inline);
   border: 1px solid var(--mar-ui-border-default);
   border-block-end: 0;

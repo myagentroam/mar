@@ -307,12 +307,13 @@ export class MarAgentConversationNormalizer {
         else this.#finishCodeModeOutputCall(event.callId, event.parentCallId);
         return [];
       }
-      // Public Agent calls, read/web calls and artifacts do not depend on model observations.
+      // Public Agent calls, read/web calls, skill loads and artifacts use native events.
       if (
         event.parentCallId !== undefined &&
         event.toolName !== 'read' &&
         event.toolName !== 'web_search' &&
         event.toolName !== 'web_fetch' &&
+        event.toolName !== 'skill_load' &&
         agentOperationAction(event.toolName) === undefined &&
         !isImageGenerationTool(event.toolName)
       ) {

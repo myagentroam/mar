@@ -8,7 +8,6 @@ for (const device of ['desktop', 'mobile'] as const) {
       open: '进入控制台',
       settings: '设置',
       notifications: '系统通知',
-      online: '系统通知',
       summary: '切换到其他页面或应用时，仍可收到通知。关闭工作台后不再提醒。',
       pushSummary: '所有设备上的工作台都离线时，向当前设备发送通知。实际送达受浏览器和系统限制。',
       push: '离线推送',
@@ -22,7 +21,6 @@ for (const device of ['desktop', 'mobile'] as const) {
       open: 'Open console',
       settings: 'Settings',
       notifications: 'System notifications',
-      online: 'System notifications',
       summary:
         'Receive notifications when you switch to another page or app. Notifications stop when you close the workbench.',
       pushSummary:
@@ -88,26 +86,15 @@ for (const device of ['desktop', 'mobile'] as const) {
       const online = panel.locator('.notification-channel').first();
       const push = online;
       await expect(panel.locator('.notification-channel')).toHaveCount(1);
-      await expect(
-        online.getByRole('heading', {
-          name: device === 'desktop' ? language.online : language.push,
-          exact: true
-        })
-      ).toBeVisible();
       await expect(online.getByRole('status').first()).toHaveText(language.enabled);
       await expect(online.getByRole('status').first().locator('.mar-ui-tag')).toHaveAttribute(
         'data-type',
         'success'
       );
       const action = online.getByRole('button').first();
-      await expect(action).toHaveClass(/(?:^|\s)mar-text-action(?:\s|$)/);
-      await expect(action).toHaveClass(/(?:^|\s)mar-ui-button--inline(?:\s|$)/);
       await expect(action).toBeEnabled();
-      await action.hover();
-      await expect(online.getByRole('button').first()).toHaveCSS(
-        'background-color',
-        'rgba(0, 0, 0, 0)'
-      );
+      await expect(action).toHaveCSS('border-top-width', '1px');
+      await expect(action).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
       if (device === 'desktop') {
         await expect(
           online.getByRole('button', { name: language.disable, exact: true })
@@ -116,20 +103,17 @@ for (const device of ['desktop', 'mobile'] as const) {
           0
         );
       } else {
+        await expect(push.getByRole('heading', { name: language.push, exact: true })).toBeVisible();
         await expect(push.getByRole('status').last()).toHaveText(language.serverUnavailable);
         expect(capabilityReads).toBeGreaterThan(0);
       }
       const assertLayout = async () => {
         const first = await online.boundingBox();
-        const rootFontSize = await page.evaluate(() =>
-          Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
-        );
-        expect(first!.width).toBeLessThanOrEqual(48 * rootFontSize + 1);
         expect(first!.x).toBeGreaterThanOrEqual(0);
         expect(first!.x + first!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
         expect(await panel.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
-        const button = await online.getByRole('button').boundingBox();
-        expect(button!.x).toBeGreaterThanOrEqual(first!.x - 1);
+        const button = await action.boundingBox();
+        expect(button!.x).toBeCloseTo(first!.x, 0);
         expect(button!.x + button!.width).toBeLessThanOrEqual(first!.x + first!.width + 1);
       };
       await assertLayout();
@@ -141,7 +125,7 @@ for (const device of ['desktop', 'mobile'] as const) {
       await assertLayout();
       await expect
         .poll(() =>
-          online.getByRole('heading').evaluate((node) => {
+          action.evaluate((node) => {
             const bounds = node.getBoundingClientRect();
             return node.contains(
               document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)

@@ -59,6 +59,49 @@ test('Skill and MCP configuration search fields are compact and fit narrow panel
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Skill and MCP source management search fields stay compact in ${theme}`, async ({
+    page
+  }, testInfo) => {
+    const locale = theme === 'vscode-dark-2026' ? 'zh-CN' : 'en-US';
+    for (const width of [1620, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const view of ['sources', 'mcp-sources']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?list-hierarchy=${view}&scope-columns&theme=${theme}&locale=${locale}`
+        );
+        const toolbar = page.locator('.source-search-bar');
+        const group = toolbar.locator('.mar-ui-input');
+        const source = toolbar.locator('.mar-ui-select');
+        const button = group.getByRole('button', { name: /^(Search|搜索)$/u });
+        await expect(button).toBeEnabled();
+        const frame = (await toolbar.boundingBox())!;
+        const search = (await group.boundingBox())!;
+        const select = (await source.boundingBox())!;
+        expect(search.x + search.width).toBeLessThanOrEqual(width);
+        if (width === 1620) {
+          expect(search.width).toBeCloseTo(360, 0);
+          expect(search.x - (select.x + select.width)).toBeCloseTo(12, 0);
+          expect(search.y + search.height / 2).toBeCloseTo(select.y + select.height / 2, 0);
+        } else {
+          expect(search.width).toBeCloseTo(frame.width, 0);
+          expect(search.x).toBeCloseTo(select.x, 0);
+          expect(search.y).toBeGreaterThan(select.y + select.height);
+        }
+        await toolbar.screenshot({ path: testInfo.outputPath(`${view}-search-${width}.png`) });
+
+        await page.getByRole('tab').last().click();
+        const filters = page.locator('.catalog-filter-bar, .mcp-toolbar');
+        const catalogSearch = filters.locator('.mar-ui-input');
+        await expect(catalogSearch.getByRole('textbox')).toBeVisible();
+        const filtersBounds = (await filters.boundingBox())!;
+        const field = (await catalogSearch.boundingBox())!;
+        expect(field.width).toBeCloseTo(width === 1620 ? 320 : filtersBounds.width, 0);
+        expect(field.x).toBeCloseTo(filtersBounds.x, 0);
+        expect(field.x + field.width, `${view} catalog at ${width}px`).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+
   test(`Source management only lays out the selected tab in ${theme}`, async ({ page }) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });

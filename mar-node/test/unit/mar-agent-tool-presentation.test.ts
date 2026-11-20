@@ -755,6 +755,33 @@ describe('MAR tool presentation projection', () => {
     }
   );
 
+  it('retains the failed skill request as a Skill item inside Code Mode', () => {
+    const normalizer = new MarAgentConversationNormalizer();
+    const call = { toolName: 'skill_load', callId: 'nested-skill', parentCallId: 'cell' };
+    const [started] = normalizer.normalize(
+      event({ type: 'tool.started', ...call, input: { name: 'missing-skill' } })
+    );
+    const [failed] = normalizer.normalize(
+      event({
+        type: 'tool.failed',
+        ...call,
+        code: 'MAR_AGENT_TOOL_INPUT_INVALID',
+        message: 'Skill is not available.'
+      })
+    );
+    expect(started).toMatchObject({ kind: 'tool_call', status: 'IN_PROGRESS' });
+    expect(failed).toMatchObject({
+      itemId: started?.itemId,
+      kind: 'tool_call',
+      status: 'FAILED',
+      payload: {
+        toolPresentation: { kind: 'SKILL', name: 'missing-skill' },
+        errorCode: 'MAR_AGENT_TOOL_INPUT_INVALID',
+        errorMessage: 'Skill is not available.'
+      }
+    });
+  });
+
   it('keeps unrelated tools generic and never derives sources from result text', () => {
     const normalizer = new MarAgentConversationNormalizer();
     const [generic] = normalizer.normalize(

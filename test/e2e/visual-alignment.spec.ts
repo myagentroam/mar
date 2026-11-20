@@ -1164,20 +1164,37 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
   });
 }
 
-test('Performance hover displays the details panel without a second hint', async ({ page }) => {
+test('Performance details toggle on click without a tooltip or arrow', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
   const trigger = page.locator('.web-performance-indicator');
-  await expect(trigger).toBeVisible();
-  const box = await trigger.boundingBox();
-  await page.clock.install();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await page.clock.runFor(1000);
   const panel = page.locator('.web-performance-panel');
-  await expect(panel).toBeVisible();
   const popover = page.locator('.mar-ui-popover').filter({ has: panel });
+  await page.clock.install();
+  await trigger.hover();
+  await trigger.focus();
+  await page.clock.runFor(1000);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger).not.toHaveAttribute('title', /.+/);
+  await expect(panel).toBeHidden();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-controls', (await panel.getAttribute('id'))!);
   await expect(popover).toHaveCSS('border-top-width', '1px');
   await expect(popover).toHaveCSS('box-shadow', / 0px 10px 24px 0px$/);
-  await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  expect(await popover.evaluate((element) => getComputedStyle(element, '::before').display)).toBe(
+    'none'
+  );
+
+  await page.mouse.move(1, 1);
+  await page.clock.runFor(400);
+  await expect(panel).toBeVisible();
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toBeHidden();
 });
 
 test('Performance diagnostics copy uses a compact independent hover surface', async ({
@@ -1205,7 +1222,7 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
     const panel = page.locator('.web-performance-panel');
     const copy = panel.getByRole('button', { name: copyName, exact: true });
     const icon = copy.locator('[data-mar-icon="copy"]');
-    await trigger.focus();
+    await trigger.click();
     await expect(copy).toBeVisible();
     const box = (await copy.boundingBox())!;
     const compactSize = await copy.evaluate((element) =>
@@ -1239,7 +1256,7 @@ test('Performance diagnostics copy uses a compact independent hover surface', as
   }
 });
 
-test('Performance popup arrow clears its larger surface corner near the viewport edge', async ({
+test('Performance popup stays beside the trigger near the viewport edge', async ({
   page
 }, testInfo) => {
   await page.setViewportSize({ width: 1000, height: 750 });
@@ -1252,107 +1269,51 @@ test('Performance popup arrow clears its larger surface corner near the viewport
   const popup = page
     .locator('.mar-ui-popover')
     .filter({ has: page.locator('.web-performance-panel') });
-  await trigger.hover();
+  await trigger.click();
   await expect(popup).toHaveAttribute('data-side', 'right');
-  const { center, clearance } = await popup.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    const arrow = getComputedStyle(element, '::before');
-    const width = parseFloat(arrow.width) + parseFloat(arrow.borderLeftWidth);
-    const height = parseFloat(arrow.height) + parseFloat(arrow.borderTopWidth);
-    const center = rect.top + parseFloat(style.borderTopWidth) + parseFloat(arrow.top) + height / 2;
-    return {
-      center,
-      clearance:
-        rect.bottom -
-        center -
-        Math.hypot(width, height) / 2 -
-        parseFloat(style.borderBottomLeftRadius)
-    };
-  });
-  expect(clearance).toBeGreaterThanOrEqual(1);
   const target = (await trigger.boundingBox())!;
-  expect(center).toBeGreaterThan(target.y);
-  expect(center).toBeLessThan(target.y + target.height);
   const panel = (await popup.boundingBox())!;
+  expect(panel.x).toBeGreaterThan(target.x + target.width);
+  expect(Math.abs(panel.y + panel.height - target.y - target.height)).toBeLessThan(1);
+  await expect(popup).toBeInViewport({ ratio: 1 });
   await page.screenshot({
     clip: { ...panel, x: panel.x - 12, width: panel.width + 12 },
     path: testInfo.outputPath('performance-popup-corner.png')
   });
 });
 
-test('Performance details stay open on keyboard focus after the pointer leaves', async ({
-  page
-}) => {
-  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
-  await page.clock.install();
-  const trigger = page.locator('.web-performance-indicator');
-  const panel = page.locator('.web-performance-panel');
-  await trigger.hover();
-  await trigger.focus();
-  await page.clock.runFor(300);
-  await expect(panel).toBeVisible();
-  const viewport = page.viewportSize()!;
-  await page.mouse.move(viewport.width - 2, viewport.height - 2);
-  await expect.poll(() => trigger.evaluate((element) => element.matches(':hover'))).toBe(false);
-  await expect(trigger).toBeFocused();
-  await page.clock.runFor(400);
-  await expect(
-    page.locator('.mar-ui-popover:not([data-closing])').filter({ has: panel })
-  ).toBeVisible();
-  await trigger.evaluate((element: HTMLElement) => element.blur());
-  await page.clock.runFor(400);
-  await expect(panel).toBeHidden();
-});
-
 test('Escape from the performance details returns focus without reopening the panel', async ({
   page
 }) => {
   await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
-  await page.clock.install();
   const trigger = page.locator('.web-performance-indicator');
   const panel = page.locator('.web-performance-panel');
-  await trigger.focus();
-  await page.clock.runFor(300);
+  await trigger.press('Enter');
   await expect(panel).toBeVisible();
   await trigger.press('Tab');
   await expect(panel.getByRole('button')).toBeFocused();
   await page.keyboard.press('Escape');
-  await page.clock.runFor(400);
   await expect(panel).toBeHidden();
   await expect(trigger).toBeFocused();
+  await trigger.press('Space');
+  await expect(panel).toBeVisible();
+  await trigger.press('Escape');
+  await expect(panel).toBeHidden();
 });
 
-test('Escape dismisses hovered performance details without moving unrelated focus', async ({
-  page
-}) => {
+test('An outside click dismisses performance details without stealing focus', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
-  await page.clock.install();
   const trigger = page.locator('.web-performance-indicator');
   const panel = page.locator('.web-performance-panel');
-  const unrelated = page.getByRole('button', { name: 'Open hint dialog', exact: true });
-  await unrelated.evaluate((button) => {
-    window.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && event.target === button && !event.defaultPrevented)
-        button.setAttribute('data-observed-escape', 'true');
-    });
-  });
-  await unrelated.focus();
-  await trigger.hover();
-  await page.clock.runFor(300);
+  const outside = page.locator('.activity-center-trigger');
+  await trigger.click();
   await expect(panel).toBeVisible();
-
-  await page.keyboard.press('Escape');
-  await page.clock.runFor(400);
+  await outside.focus();
+  await expect(panel).toBeVisible();
+  await outside.click();
   await expect(panel).toBeHidden();
-  await expect(unrelated).toBeFocused();
-  await expect(unrelated).toHaveAttribute('data-observed-escape', 'true');
-  await expect.poll(() => trigger.evaluate((element) => element.matches(':hover'))).toBe(true);
-
-  await unrelated.hover();
-  await trigger.hover();
-  await page.clock.runFor(300);
-  await expect(panel).toBeVisible();
+  await expect(outside).toHaveAttribute('aria-expanded', 'true');
+  await expect(outside).toBeFocused();
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {

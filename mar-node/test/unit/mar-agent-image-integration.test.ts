@@ -7,6 +7,7 @@ import { directLocalProcessExecutor } from '../../../mar-agent/dist/host/local-p
 import type { ModelEvent } from '../../../mar-agent/dist/model/contracts.js';
 import { marAgentRuntimeModelConfigurationSchema } from '@myagentroam/protocol';
 import type { NodeConversationTurn } from '../../src/runtime-model.js';
+import type { MarAgentNormalizedItem } from '../../src/runner/mar-agent/conversation-normalizer.js';
 import { MarAgentHostedConversationRuntime } from '../../src/runner/mar-agent/hosted-conversation-runtime.js';
 import { executeCodexImageGen } from '../../src/runner/mar-agent/image-generation.js';
 import { SecretValue } from '@myagentroam/agent';
@@ -121,6 +122,7 @@ it.each(
       }
     });
     const events: import('@myagentroam/agent').AgentEvent[] = [];
+    const liveSkills: MarAgentNormalizedItem[] = [];
     const resolveCredential = vi.fn(async () => ({
       nextTicket: ticket,
       credential: {
@@ -174,7 +176,11 @@ it.each(
                   type: 'client_tool.call',
                   callId: 'image-skill',
                   name: codeMode ? 'code_exec' : 'skill_load',
-                  arguments: codeMode ? `await tools.skill_load(${JSON.stringify(skill)});` : skill
+                  arguments: !codeMode
+                    ? skill
+                    : observeResults
+                      ? `observe.result(await tools.skill_load(${JSON.stringify(skill)}));`
+                      : `await tools.skill_load(${JSON.stringify(skill)});`
                 };
                 yield { type: 'completed', reason: 'tool_use' };
               } else if (round === 2) {
@@ -243,7 +249,13 @@ it.each(
         access: 'full-access',
         temporaryDirectory: join(root, 'tmp'),
         mcpServers: [],
-        webAccess: false
+        webAccess: false,
+        onEvent: (event) => {
+          if (event.kind !== 'ITEM') return;
+          const { item } = event.payload as { item: MarAgentNormalizedItem };
+          if (item.kind === 'tool_call' && item.payload.toolName === 'skill_load')
+            liveSkills.push(item);
+        }
       });
       const completion = await run.completion;
       expect(
@@ -296,6 +308,30 @@ it.each(
         conversationId: 'conversation',
         sessionId,
         homeDirectory: home
+      });
+      const skillName = provider === 'CODEX' ? 'codex-imagegen' : 'byted_ark-imagegen';
+      expect(liveSkills.map((item) => item.status)).toEqual(['IN_PROGRESS', 'COMPLETED']);
+      const [startedSkill, completedSkill] = liveSkills;
+      expect(completedSkill?.itemId).toBe(startedSkill?.itemId);
+      expect(startedSkill?.payload.toolPresentation).toMatchObject({
+        kind: 'SKILL',
+        name: skillName
+      });
+      expect(completedSkill?.payload.toolPresentation).toMatchObject({
+        kind: 'SKILL',
+        name: skillName,
+        description: expect.stringMatching(/\S/u)
+      });
+      const historySkills = (history.turns as readonly NodeConversationTurn[])
+        .flatMap((turn) => turn.items)
+        .filter(({ payload }) => (payload as { toolName?: string })?.toolName === 'skill_load');
+      expect(historySkills).toHaveLength(1);
+      expect(historySkills[0]).toMatchObject({
+        id: completedSkill?.itemId,
+        kind: 'tool_call',
+        status: 'COMPLETED',
+        parentItemId: null,
+        payload: { toolPresentation: completedSkill?.payload.toolPresentation }
       });
       expect(JSON.stringify(history)).toContain('IMAGE_GENERATION');
       expect(JSON.stringify(history)).not.toContain(image);

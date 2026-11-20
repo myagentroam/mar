@@ -36,7 +36,6 @@ export const notificationsEnUS = {
     },
     systemNotifications: {
       title: 'System notifications',
-      onlineTitle: 'System notifications',
       enable: 'Enable system notifications',
       disable: 'Disable system notifications',
       summary:

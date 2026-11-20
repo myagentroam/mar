@@ -32,7 +32,6 @@ export const notificationsZhCN = {
     },
     systemNotifications: {
       title: '系统通知',
-      onlineTitle: '系统通知',
       enable: '开启系统通知',
       disable: '关闭系统通知',
       summary: '切换到其他页面或应用时，仍可收到通知。关闭工作台后不再提醒。',

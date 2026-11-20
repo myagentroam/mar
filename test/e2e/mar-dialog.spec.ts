@@ -341,6 +341,30 @@ test('MessageBox keeps invalid input focused and resolves only the confirmed val
   await expect(trigger).toBeFocused();
 });
 
+test('MessageBox ignores Enter while an Escape dismissal is animating', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const holdExit = await page.addStyleTag({
+    content: `
+      .mar-ui-dialog-overlay[data-closing],
+      .mar-ui-dialog-overlay[data-closing]::backdrop {
+        animation-play-state: paused !important;
+      }
+    `
+  });
+  const trigger = page.getByRole('button', { name: 'Open prompt' });
+  await trigger.click();
+  const prompt = page.getByRole('dialog', { name: 'Rename record' });
+  await prompt.getByRole('textbox').fill('Unconfirmed name');
+  await page.keyboard.press('Escape');
+  await expect(prompt).toHaveAttribute('data-closing', 'true');
+  await page.keyboard.press('Enter');
+
+  await holdExit.evaluate((style) => style.remove());
+  await expect(prompt).toHaveCount(0);
+  await expect(page.getByLabel('Prompt result')).toHaveText('cancel');
+  await expect(trigger).toBeFocused();
+});
+
 test('Mobile Back rejects an input prompt inside a Dialog without committing its value or closing the parent', async ({
   page
 }) => {

@@ -72,10 +72,11 @@ for (const [width, theme] of [
       const expectTabStrip = async () => {
         const bounds = await list.getByRole('tab').evaluateAll((tabs) =>
           tabs.map((tab) => {
-            const { left, right, bottom } = tab.getBoundingClientRect();
-            return { left, right, bottom };
+            const { left, right, bottom, height } = tab.getBoundingClientRect();
+            return { left, right, bottom, height };
           })
         );
+        for (const tab of bounds) expect(tab.height).toBeCloseTo(28, 0);
         for (let index = 1; index < bounds.length; index += 1) {
           expect(bounds[index]!.left - bounds[index - 1]!.right).toBeCloseTo(-1, 0);
           expect(bounds[index]!.bottom).toBeCloseTo(bounds[0]!.bottom, 0);
@@ -107,6 +108,7 @@ for (const [width, theme] of [
         await mcpTabs.last().click();
         await expect(mcpTabs.last()).toHaveAttribute('aria-selected', 'true');
         await expect(mcpTabs.last()).toHaveCSS('border-top-style', 'solid');
+        expect((await mcpTabs.last().boundingBox())!.height).toBeCloseTo(28, 0);
         await expect(mcp.getByPlaceholder('Search MCP servers')).toBeVisible();
       } else {
         await expect(panel).toBeVisible();
