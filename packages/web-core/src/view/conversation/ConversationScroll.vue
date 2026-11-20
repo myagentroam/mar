@@ -337,6 +337,7 @@ onBeforeUnmount(() => {
         <div
           v-if="loadingInitial && !initialLoadFailed && !reloading"
           class="conversation-load-older conversation-loading-initial"
+          :class="{ 'is-centered': !hasTurns }"
           role="status"
           aria-live="polite"
           :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
@@ -561,10 +562,12 @@ onBeforeUnmount(() => {
   margin: 0 auto 0.8rem;
 }
 
-.conversation-loading-initial {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  text-align: center;
+.conversation-loading-initial.is-centered {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  margin: 0;
+  pointer-events: none;
 }
 
 .conversation-latest {

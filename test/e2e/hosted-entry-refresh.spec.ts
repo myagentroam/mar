@@ -392,7 +392,7 @@ for (const [width, theme, cached] of [
   [1280, 'daylight', false],
   [390, 'vscode-dark-2026', true]
 ] as const) {
-  test(`Hosted Watch failure stays inline and retries at ${width} in ${theme}`, async ({
+  test(`Hosted Watch centers the first load and retries inline at ${width} in ${theme}`, async ({
     page
   }) => {
     await page.setViewportSize({ width, height: 844 });
@@ -425,20 +425,65 @@ for (const [width, theme, cached] of [
       error: null,
       snapshotSequence: 1
     };
+    const message = 'The latest message remains visible';
+    const recovered = hostedConversationSnapshotSchema.parse({
+      ...snapshot,
+      historyNextCursor: 'older-page',
+      turns: [
+        {
+          id: 'turn-1',
+          sessionId: conversation.sessionId,
+          runId: null,
+          userItemId: 'user-1',
+          status: 'SUCCEEDED',
+          model: null,
+          effort: null,
+          access: null,
+          startedAt: 1,
+          completedAt: 1,
+          items: [
+            {
+              id: 'user-1',
+              sessionId: conversation.sessionId,
+              turnId: 'turn-1',
+              runId: null,
+              parentItemId: null,
+              sourceSequence: null,
+              revision: 1,
+              status: 'COMPLETED',
+              startedAt: 1,
+              completedAt: 1,
+              kind: 'user_message',
+              payload: { clientMessageId: null, text: message, delivery: 'ACCEPTED' }
+            }
+          ]
+        }
+      ]
+    });
     let initialRequests = 0;
+    let releaseInitial!: () => void;
+    const pendingInitial = new Promise<void>((resolve) => {
+      releaseInitial = resolve;
+    });
     let releaseRetry!: () => void;
     const retrying = new Promise<void>((resolve) => {
       releaseRetry = resolve;
     });
+    let releaseHistory!: () => void;
+    const pendingHistory = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
     await page.route('**/api/**', async (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === '/api/hosted-template-fixture/current') return route.fulfill({ json: snapshot });
+      if (path === '/api/hosted-template-fixture/current')
+        return route.fulfill({ json: initialRequests > 1 ? recovered : snapshot });
       if (path === '/api/hosted-conversations')
         return route.fulfill({ json: { items: [conversation], nextCursor: null } });
       if (path.endsWith('/watch')) {
         if (route.request().method() === 'DELETE') return route.fulfill({ json: {} });
         const body = route.request().postDataJSON();
-        if (body.mode === 'initial' && ++initialRequests === 1)
+        if (body.mode === 'initial' && ++initialRequests === 1) {
+          await pendingInitial;
           return route.fulfill({
             status: 503,
             json: {
@@ -450,6 +495,7 @@ for (const [width, theme, cached] of [
               }
             }
           });
+        }
         await retrying;
         return route.fulfill({
           json: {
@@ -460,25 +506,60 @@ for (const [width, theme, cached] of [
           }
         });
       }
+      if (path.endsWith('/history')) {
+        await pendingHistory;
+        return route.fulfill({ json: { turns: [], nextCursor: null } });
+      }
       return route.fulfill({ json: {} });
     });
-    await page.goto(
-      `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&watch-pending=1&theme=${theme}${cached ? '' : '&initial-empty=1'}`
-    );
+    const scroll = page.locator('.hosted-conversation-main .conversation-scroll');
+    try {
+      await page.goto(
+        `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&watch-pending=1&theme=${theme}${cached ? '' : '&initial-empty=1'}`
+      );
+      const loading = scroll.getByRole('status', { name: 'Loading conversation history…' });
+      const indicator = loading.locator('.mar-busy-indicator');
+      await expect(indicator).toBeVisible();
+      const viewport = (await scroll.boundingBox())!;
+      const spinner = (await indicator.boundingBox())!;
+      expect(
+        Math.abs(spinner.x + spinner.width / 2 - viewport.x - viewport.width / 2)
+      ).toBeLessThan(1);
+      expect(
+        Math.abs(spinner.y + spinner.height / 2 - viewport.y - viewport.height / 2)
+      ).toBeLessThan(1);
+    } finally {
+      releaseInitial();
+    }
     const retry = page.locator('.conversation-reload');
     await expect(retry).toHaveText('Failed to load. Retry');
     await expect(retry).toHaveAttribute('aria-description', /hosted-watch-request/);
-    await expect(page.locator('.el-message')).toHaveCount(0);
-    await retry.click();
-    await expect(retry).toHaveAttribute('aria-busy', 'true');
-    await expect(retry).toBeDisabled();
-    await expect(retry.locator('.mar-busy-indicator')).toHaveCount(1);
-    expect(initialRequests).toBe(2);
-    releaseRetry();
+    await expect(page.locator('.mar-message')).toHaveCount(0);
+    try {
+      await retry.click();
+      await expect(retry).toHaveAttribute('aria-busy', 'true');
+      await expect(retry).toBeDisabled();
+      await expect(retry.locator('.mar-busy-indicator')).toBeVisible();
+      expect(initialRequests).toBe(2);
+    } finally {
+      releaseRetry();
+    }
     await expect(retry).toHaveCount(0);
     await expect(page.locator('.composer-input')).not.toHaveAttribute('readonly', '');
-    await expect(page.locator('.el-message')).toHaveCount(0);
-    const scroll = page.locator('.hosted-conversation-main .conversation-scroll');
+    await expect(page.locator('.mar-message')).toHaveCount(0);
+    const earlier = scroll.getByRole('status', { name: 'Loading earlier messages…' });
+    try {
+      await expect(earlier).toBeVisible();
+      await expect(scroll.getByText(message)).toBeInViewport();
+      const topGap = await earlier.evaluate((row) => {
+        const content = row.closest('.conversation-scroll-content')!;
+        return row.getBoundingClientRect().top - content.getBoundingClientRect().top;
+      });
+      expect(topGap).toBeGreaterThanOrEqual(8);
+    } finally {
+      releaseHistory();
+    }
+    await expect(earlier).toHaveCount(0);
     const inset = await scroll.evaluate((element) => {
       const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
       const style = getComputedStyle(element);

@@ -1767,6 +1767,12 @@ onBeforeUnmount(() => {
   padding-block: 0;
 }
 
+.hosted-timeline-scroll :deep(.conversation-history-control),
+.hosted-timeline-scroll :deep(.conversation-reload),
+.hosted-timeline-scroll :deep(.conversation-loading-initial:not(.is-centered)) {
+  margin-block-start: 0.75rem;
+}
+
 .hosted-timeline-scroll :deep(.conversation-timeline) {
   max-width: 900px;
   margin: 0 auto;
