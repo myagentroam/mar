@@ -287,6 +287,7 @@ describe('QuickJS Code Mode', () => {
     expect(description).toContain('when exposed with a JSON input schema');
     expect(description).toContain('Do not add another JSON wrapper');
     expect(description).toContain('code field');
+    expect(description).not.toContain('String.raw');
     expect(description).toContain('restricted ECMAScript runtime');
     expect(description).toContain('not Node.js or a browser');
     expect(description).toContain('standard ECMAScript built-ins');
@@ -319,23 +320,21 @@ describe('QuickJS Code Mode', () => {
     expect(applyPatchToolDefinition.description).toContain('resolves on success');
   });
 
-  it('executes its documented examples unchanged and preserves embedded backslashes', async () => {
+  it('executes its documented examples unchanged', async () => {
     const examples = Array.from(
       codeModeToolDefinition.description.matchAll(/```js\n([\s\S]*?)\n```/gu),
       (match) => match[1]!
     );
-    expect(examples).toHaveLength(3);
+    expect(examples).toHaveLength(2);
     const { home, workspace } = await fixture();
     await writeFile(join(workspace, 'a.txt'), 'a-evidence\n');
     await writeFile(join(workspace, 'b.txt'), 'b-evidence\n');
     await writeFile(join(workspace, 'source.txt'), 'original=1\n');
     const host = new LocalAgentHost({ homeDirectory: home, workspace });
     const input = context();
-    const runExec = vi.fn(async (_call: { arguments: unknown }) => ({ content: 'exec evidence' }));
     input.codeMode = {
-      tools: [readToolDefinition, applyPatchToolDefinition, execToolDefinition],
-      invoke: (call, signal) =>
-        call.name === 'exec' ? runExec(call) : host.executeTool(call, { ...input, signal })
+      tools: [readToolDefinition, applyPatchToolDefinition],
+      invoke: (call, signal) => host.executeTool(call, { ...input, signal })
     };
     try {
       const parallel = await host.executeTool(
@@ -367,17 +366,7 @@ describe('QuickJS Code Mode', () => {
           result: { data: { totals: { files: 1 } } }
         }
       ]);
-      expect(await readFile(join(workspace, 'source.txt'), 'utf8')).toBe(
-        'original=1\nupdated=2\npattern=\\bword\\b\n'
-      );
-      const exec = await host.executeTool({ name: 'code_exec', arguments: examples[2]! }, input);
-      expectCellEnvelope(exec, 'completed');
-      expect(runExec).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          name: 'exec',
-          arguments: { command: "python3 - <<'PY'\nprint('a\\0b'.split('\\0'))\nPY" }
-        })
-      );
+      expect(await readFile(join(workspace, 'source.txt'), 'utf8')).toBe('original=1\nupdated=2\n');
     } finally {
       await host.dispose();
     }
@@ -635,12 +624,12 @@ describe('QuickJS Code Mode', () => {
     ).toEqual(['direct', 'programmatic']);
     expect(names).toContain('default_direct');
     expect(names).not.toContain('programmatic_only');
-    expect(names).not.toContain('exec');
     expect(names).not.toContain('read');
     expect(names).not.toContain('skill_load');
     expect(names).not.toContain('tool_search');
     expect(names).toContain('apply_patch');
     expect(names).toEqual([
+      'exec',
       'exec_wait',
       'code_exec',
       'code_exec_wait',
