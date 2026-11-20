@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
 import type { ConversationHostingCapability } from '@myagentroam/protocol';
@@ -56,28 +57,26 @@ const coreProps = computed(() => props);
       >
         <div class="hosting-enablement" :aria-busy="hosting.changing">
           <div class="hosting-enablement-actions">
-            <el-button
+            <MarButton
               v-if="!hosting.enabled"
               type="primary"
               :icon="marIcon('success')"
               :loading="hosting.changing"
               :disabled="!hosting.canEnable"
               @click="emit('enableHosting')"
-              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('conversationHostingEnablement.enable') }}
-            </el-button>
-            <el-button
+            </MarButton>
+            <MarButton
               v-else
               type="warning"
               :icon="marIcon('error')"
               :loading="hosting.changing"
               :disabled="!hosting.canDisable"
               @click="emit('disableHosting')"
-              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('conversationHostingEnablement.disable') }}
-            </el-button>
+            </MarButton>
           </div>
           <p class="hosting-enablement-hint">{{ hosting.hint }}</p>
         </div>

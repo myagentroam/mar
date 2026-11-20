@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -6,7 +10,6 @@ import {
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import FileTypeIcon from '../workspace/FileTypeIcon.vue';
-import type { FormInstance, FormRules } from 'element-plus';
 import { computed, reactive, ref, useId, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import { matchesWorkspaceDisplayFilter } from '../../service/workspace-file-tree-service.js';
@@ -181,7 +184,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
       <slot name="ownership" />
 
       <div v-if="directory !== undefined" class="workspace-picker-toolbar">
-        <el-button
+        <MarButton
           v-tooltip="translate('generated.workspaceRegistrationPicker.goToParentDirectory2')"
           :aria-label="translate('generated.workspaceRegistrationPicker.goToParentDirectory')"
           :icon="marIcon('chevron-left')"
@@ -191,32 +194,32 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           @click="emit('navigate', directory.parentPath ?? undefined)"
         >
           {{ translate('generated.workspaceRegistrationPicker.up') }}
-        </el-button>
-        <el-dropdown
+        </MarButton>
+        <MarDropdown
           v-if="directory.browseRoots.length > 1"
           :disabled="loadingDirectory"
           trigger="click"
           @command="emit('navigate', $event as string)"
         >
-          <el-button native-type="button" text>
+          <MarButton native-type="button" text>
             {{ translate('generated.workspaceRegistrationPicker.roots')
             }}<MarIcon name="chevron-down" class="mar-icon--right" />
-          </el-button>
+          </MarButton>
           <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-for="root in directory.browseRoots" :key="root" :command="root">
+            <MarDropdownMenu>
+              <MarDropdownItem v-for="root in directory.browseRoots" :key="root" :command="root">
                 {{ root }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
+              </MarDropdownItem>
+            </MarDropdownMenu>
           </template>
-        </el-dropdown>
+        </MarDropdown>
         <nav
           class="workspace-picker-breadcrumbs"
           :aria-label="translate('generated.workspaceRegistrationPicker.currentDirectory')"
         >
           <template v-for="(breadcrumb, index) in breadcrumbs" :key="breadcrumb.path">
             <span v-if="index > 0">/</span>
-            <el-button
+            <MarButton
               v-tooltip="breadcrumb.path"
               v-if="index < breadcrumbs.length - 1"
               :disabled="loadingDirectory"
@@ -224,33 +227,32 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
               @click="emit('navigate', breadcrumb.path)"
             >
               {{ breadcrumb.label }}
-            </el-button>
+            </MarButton>
             <strong v-tooltip="breadcrumb.path" v-else>{{ breadcrumb.label }}</strong>
           </template>
         </nav>
         <div class="workspace-picker-toolbar-actions">
-          <el-button
+          <MarButton
             v-tooltip="translate('generated.workspaceRegistrationPicker.refreshDirectory2')"
             class="mar-icon-action"
             :aria-label="translate('generated.workspaceRegistrationPicker.refreshDirectory')"
             :icon="marIcon('refresh')"
             :loading="loadingDirectory"
-            :loading-icon="marIcon('loading-action')"
             :aria-busy="loadingDirectory || undefined"
             :disabled="loadingDirectory"
             native-type="button"
             text
             @click="emit('navigate', directory.currentPath)"
           />
-          <el-button
+          <MarButton
             :icon="marIcon('folder-add')"
             :disabled="!canCreateDirectory || loadingDirectory"
             native-type="button"
             @click="openDirectoryDialog"
           >
             {{ translate('generated.workspaceRegistrationPicker.newDirectory') }}
-          </el-button>
-          <el-button
+          </MarButton>
+          <MarButton
             :class="{ selected: selectedPath === directory.currentPath }"
             :disabled="loadingDirectory || !directory.selectable"
             :icon="marIcon('check')"
@@ -258,11 +260,11 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
             @click="emit('select', directory.currentPath)"
           >
             {{ translate('generated.workspaceRegistrationPicker.selectCurrentDirectory') }}
-          </el-button>
+          </MarButton>
         </div>
       </div>
 
-      <el-input
+      <MarInput
         v-if="directory !== undefined"
         v-model="displayFilter"
         class="workspace-picker-filter"
@@ -273,7 +275,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         :clear-icon="marIcon('clear-input')"
       >
         <template #prefix><MarIcon name="search" /></template>
-      </el-input>
+      </MarInput>
 
       <ul v-if="directory !== undefined" class="workspace-directory-list">
         <li v-if="pendingDirectoryName" class="workspace-directory-row selected">
@@ -348,7 +350,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
       <p v-if="directory?.truncated" class="workspace-picker-empty">
         {{ translate('generated.workspaceRegistrationPicker.onlyTheFirst200ChildDirectoriesAre') }}
       </p>
-      <el-form
+      <MarForm
         :id="registrationFormId"
         ref="registrationForm"
         :model="registrationFormValue"
@@ -362,13 +364,13 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
           @update:model-value="emit('update:preserveGitConfig', $event === true)"
           >{{ translate('personalGit.preserve') }}</el-checkbox
         >
-        <el-form-item prop="path" class="workspace-picker-selection">
+        <MarFormItem prop="path" class="workspace-picker-selection">
           <code v-tooltip="selectedPath" v-if="selectedPath"
             >{{ translate('generated.workspaceRegistrationPicker.selected') }}
             {{ selectedPath }}</code
           >
-        </el-form-item>
-      </el-form>
+        </MarFormItem>
+      </MarForm>
     </div>
 
     <el-dialog
@@ -381,7 +383,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
       :close-icon="marIcon('close')"
       append-to-body
     >
-      <el-form
+      <MarForm
         :id="directoryFormId"
         ref="directoryForm"
         :model="directoryFormValue"
@@ -389,44 +391,43 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
         label-position="top"
         @submit.prevent="confirmDirectory"
       >
-        <el-form-item
+        <MarFormItem
           :label="translate('generated.workspaceRegistrationPicker.directoryName')"
           prop="name"
         >
-          <el-input
+          <MarInput
             v-model="directoryFormValue.name"
             maxlength="255"
             :placeholder="translate('generated.workspaceRegistrationPicker.enterADirectoryName2')"
           />
-        </el-form-item>
-      </el-form>
+        </MarFormItem>
+      </MarForm>
       <template #footer>
-        <el-button native-type="button" @click="directoryDialogOpen = false">{{
+        <MarButton native-type="button" @click="directoryDialogOpen = false">{{
           translate('generated.workspaceRegistrationPicker.cancel')
-        }}</el-button>
-        <el-button :form="directoryFormId" native-type="submit" type="primary">{{
+        }}</MarButton>
+        <MarButton :form="directoryFormId" native-type="submit" type="primary">{{
           translate('generated.workspaceRegistrationPicker.confirm')
-        }}</el-button>
+        }}</MarButton>
       </template>
     </el-dialog>
     <template #footer>
-      <el-button native-type="button" :disabled="loading" @click="closeRegistration">{{
+      <MarButton native-type="button" :disabled="loading" @click="closeRegistration">{{
         translate('generated.workspaceRegistrationPicker.cancel')
-      }}</el-button>
-      <el-button
+      }}</MarButton>
+      <MarButton
         :form="registrationFormId"
         :disabled="registrationUnavailable || !selectedPathValid"
         :loading="loading"
         native-type="submit"
         type="primary"
-        :loading-icon="marIcon('loading-action')"
       >
         {{
           pendingDirectoryName
             ? translate('generated.workspaceRegistrationPicker.createAndRegister')
             : translate('generated.workspaceRegistrationPicker.registerWorkspace')
         }}
-      </el-button>
+      </MarButton>
     </template>
   </el-dialog>
 </template>
@@ -473,7 +474,7 @@ function directoryBreadcrumbs(directory: DirectoryListing | undefined): readonly
   color: var(--mar-text-secondary);
 }
 
-.workspace-picker-breadcrumbs .el-button,
+.workspace-picker-breadcrumbs .mar-ui-button,
 .workspace-picker-breadcrumbs strong {
   min-width: 0;
   max-width: 220px;
@@ -606,7 +607,7 @@ button.workspace-directory-entry:disabled {
     gap: 0.35rem;
   }
 
-  .workspace-picker-toolbar-actions :deep(.el-button) {
+  .workspace-picker-toolbar-actions :deep(.mar-ui-button) {
     padding-inline: 0.65rem;
   }
 }

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -496,16 +500,15 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   </p>
   <template v-else-if="nodes.length">
     <div class="workspace-tree-filter">
-      <el-input
+      <MarInput
         v-model="filterQuery"
         clearable
         :aria-label="translate('generated.workspaceTree.filterNodeWorkspaces')"
         :placeholder="translate('generated.workspaceTree.filterNodeWorkspaces')"
         size="small"
+        prefix-icon="search"
         :clear-icon="marIcon('clear-input')"
-      >
-        <template #prefix><MarIcon name="search" /></template>
-      </el-input>
+      />
     </div>
     <ul v-if="filteredNodes.length" ref="nodeTreeElement" class="node-tree">
       <li v-for="(result, nodeIndex) in groupedNodes" :key="result.node.id">
@@ -571,7 +574,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
               <span>{{ nodeLabel(result.node) }}</span>
             </span>
           </button>
-          <el-dropdown
+          <MarDropdown
             v-if="nodeActionsVisible(result.node.id)"
             class="tree-row-menu node-tree-actions"
             trigger="click"
@@ -587,11 +590,11 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
               <MarIcon name="more" />
             </button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="details" :icon="marIcon('view')">{{
+              <MarDropdownMenu>
+                <MarDropdownItem command="details" :icon="marIcon('view')">{{
                   translate('generated.workspaceTree.nodeDetails')
-                }}</el-dropdown-item>
-                <el-dropdown-item
+                }}</MarDropdownItem>
+                <MarDropdownItem
                   v-if="result.node.usable && result.node.capabilities.remoteDesktop"
                   command="desktop"
                   :icon="marIcon('desktop')"
@@ -600,24 +603,24 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     result.node.disabled ||
                     !result.node.capabilities.remoteDesktop.available
                   "
-                  >{{ translate('remoteDesktop.title') }}</el-dropdown-item
+                  >{{ translate('remoteDesktop.title') }}</MarDropdownItem
                 >
-                <el-dropdown-item
+                <MarDropdownItem
                   command="up"
                   :icon="marIcon('chevron-up')"
                   :disabled="filterActive || nodeIndex === 0"
-                  >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
+                  >{{ translate('generated.workspaceTree.moveUp') }}</MarDropdownItem
                 >
-                <el-dropdown-item
+                <MarDropdownItem
                   command="down"
                   :icon="marIcon('chevron-down')"
                   :disabled="filterActive || nodeIndex === groupedNodes.length - 1"
-                  >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
+                  >{{ translate('generated.workspaceTree.moveDown') }}</MarDropdownItem
                 >
-                <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
+                <MarDropdownItem command="refresh" :icon="marIcon('refresh')">{{
                   translate('generated.workspaceTree.refreshWorkspaces')
-                }}</el-dropdown-item>
-                <el-dropdown-item
+                }}</MarDropdownItem>
+                <MarDropdownItem
                   command="add"
                   :icon="marIcon('folder-add')"
                   :disabled="
@@ -625,11 +628,11 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                     !result.node.connected ||
                     (result.node.workspaceCreatable ?? result.node.manageable) === false
                   "
-                  >{{ translate('generated.workspaceTree.addWorkspace') }}</el-dropdown-item
+                  >{{ translate('generated.workspaceTree.addWorkspace') }}</MarDropdownItem
                 >
-              </el-dropdown-menu>
+              </MarDropdownMenu>
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </div>
         <!-- Reset branch motion when entering or leaving filter mode. -->
         <Transition
@@ -695,7 +698,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                       <span>{{ workspaceLabel(workspace) }}</span>
                     </span>
                   </button>
-                  <el-dropdown
+                  <MarDropdown
                     v-if="workspaceActionsVisible(result.node.id, workspace.id)"
                     class="tree-row-menu workspace-row-actions"
                     trigger="click"
@@ -715,46 +718,46 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                       <MarIcon name="more" />
                     </button>
                     <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="details" :icon="marIcon('view')">{{
+                      <MarDropdownMenu>
+                        <MarDropdownItem command="details" :icon="marIcon('view')">{{
                           translate('generated.workspaceTree.workspaceDetails')
-                        }}</el-dropdown-item>
-                        <el-dropdown-item
+                        }}</MarDropdownItem>
+                        <MarDropdownItem
                           command="up"
                           :icon="marIcon('chevron-up')"
                           :disabled="filterActive || workspaceIndex === 0"
-                          >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
+                          >{{ translate('generated.workspaceTree.moveUp') }}</MarDropdownItem
                         >
-                        <el-dropdown-item
+                        <MarDropdownItem
                           command="down"
                           :icon="marIcon('chevron-down')"
                           :disabled="filterActive || workspaceIndex === group.workspaces.length - 1"
-                          >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
+                          >{{ translate('generated.workspaceTree.moveDown') }}</MarDropdownItem
                         >
-                        <el-dropdown-item
+                        <MarDropdownItem
                           command="rename"
                           :icon="marIcon('edit')"
                           :disabled="workspace.manageable === false"
-                          >{{ translate('generated.workspaceTree.rename') }}</el-dropdown-item
+                          >{{ translate('generated.workspaceTree.rename') }}</MarDropdownItem
                         >
-                        <el-dropdown-item
+                        <MarDropdownItem
                           command="move-group"
                           :icon="marIcon('folder-add')"
                           :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
                           >{{
                             translate('generated.workspaceTree.moveWorkspaceToGroup')
-                          }}</el-dropdown-item
+                          }}</MarDropdownItem
                         >
-                        <el-dropdown-item
+                        <MarDropdownItem
                           command="delete"
                           :icon="marIcon('delete')"
                           :disabled="loading || workspace.manageable !== true"
                           divided
-                          >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
+                          >{{ translate('generated.workspaceTree.delete') }}</MarDropdownItem
                         >
-                      </el-dropdown-menu>
+                      </MarDropdownMenu>
                     </template>
-                  </el-dropdown>
+                  </MarDropdown>
                 </li>
               </template>
               <li
@@ -866,7 +869,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                           <span>{{ workspaceLabel(workspace) }}</span>
                         </span>
                       </button>
-                      <el-dropdown
+                      <MarDropdown
                         v-if="workspaceActionsVisible(result.node.id, workspace.id)"
                         class="tree-row-menu workspace-row-actions"
                         trigger="click"
@@ -886,48 +889,48 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
                           <MarIcon name="more" />
                         </button>
                         <template #dropdown>
-                          <el-dropdown-menu>
-                            <el-dropdown-item command="details" :icon="marIcon('view')">{{
+                          <MarDropdownMenu>
+                            <MarDropdownItem command="details" :icon="marIcon('view')">{{
                               translate('generated.workspaceTree.workspaceDetails')
-                            }}</el-dropdown-item>
-                            <el-dropdown-item
+                            }}</MarDropdownItem>
+                            <MarDropdownItem
                               command="up"
                               :icon="marIcon('chevron-up')"
                               :disabled="filterActive || workspaceIndex === 0"
-                              >{{ translate('generated.workspaceTree.moveUp') }}</el-dropdown-item
+                              >{{ translate('generated.workspaceTree.moveUp') }}</MarDropdownItem
                             >
-                            <el-dropdown-item
+                            <MarDropdownItem
                               command="down"
                               :icon="marIcon('chevron-down')"
                               :disabled="
                                 filterActive || workspaceIndex === group.workspaces.length - 1
                               "
-                              >{{ translate('generated.workspaceTree.moveDown') }}</el-dropdown-item
+                              >{{ translate('generated.workspaceTree.moveDown') }}</MarDropdownItem
                             >
-                            <el-dropdown-item
+                            <MarDropdownItem
                               command="rename"
                               :icon="marIcon('edit')"
                               :disabled="workspace.manageable === false"
-                              >{{ translate('generated.workspaceTree.rename') }}</el-dropdown-item
+                              >{{ translate('generated.workspaceTree.rename') }}</MarDropdownItem
                             >
-                            <el-dropdown-item
+                            <MarDropdownItem
                               command="move-group"
                               :icon="marIcon('folder-add')"
                               :disabled="loading || !canOrganizeWorkspaceGroups(result.node)"
                               >{{
                                 translate('generated.workspaceTree.moveWorkspaceToGroup')
-                              }}</el-dropdown-item
+                              }}</MarDropdownItem
                             >
-                            <el-dropdown-item
+                            <MarDropdownItem
                               command="delete"
                               :icon="marIcon('delete')"
                               :disabled="loading || workspace.manageable !== true"
                               divided
-                              >{{ translate('generated.workspaceTree.delete') }}</el-dropdown-item
+                              >{{ translate('generated.workspaceTree.delete') }}</MarDropdownItem
                             >
-                          </el-dropdown-menu>
+                          </MarDropdownMenu>
                         </template>
-                      </el-dropdown>
+                      </MarDropdown>
                     </li>
                   </ul>
                 </Transition>
@@ -956,7 +959,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
     :close-icon="marIcon('close')"
   >
     <div class="workspace-group-move-control">
-      <el-select
+      <MarSelect
         v-model="workspaceGroupMoveName"
         allow-create
         clearable
@@ -964,16 +967,14 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
         filterable
         :aria-label="translate('generated.workspaceTree.workspaceGroupName')"
         :placeholder="translate('generated.workspaceTree.workspaceGroupMovePlaceholder')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option
+        <MarOption
           v-for="groupName in workspaceGroupMoveOptions"
           :key="groupName"
           :label="groupName"
           :value="groupName"
         />
-      </el-select>
+      </MarSelect>
     </div>
     <p class="workspace-group-move-hint">
       {{ translate('generated.workspaceTree.emptyWorkspaceGroupLeavesUngrouped') }}
@@ -982,14 +983,14 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
       {{ translate('generated.workspaceTree.workspaceGroupNameTooLong') }}
     </p>
     <template #footer>
-      <el-button @click="closeWorkspaceGroupMoveDialog">{{
+      <MarButton @click="closeWorkspaceGroupMoveDialog">{{
         translate('generated.workspaceTree.cancel')
-      }}</el-button>
-      <el-button
+      }}</MarButton>
+      <MarButton
         type="primary"
         :disabled="workspaceGroupMoveNameTooLong"
         @click="saveWorkspaceGroupMove"
-        >{{ translate('generated.workspaceTree.save') }}</el-button
+        >{{ translate('generated.workspaceTree.save') }}</MarButton
       >
     </template>
   </el-dialog>
@@ -1136,7 +1137,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   gap: 8px;
 }
 
-.workspace-group-move-control :deep(.el-select) {
+.workspace-group-move-control :deep(.mar-ui-select) {
   flex: 1 1 auto;
 }
 
@@ -1152,7 +1153,7 @@ function selectWorkspace(nodeId: string, workspaceId: string): void {
   padding: 8px 8px 0;
 }
 
-.workspace-tree-filter :deep(.el-input) {
+.workspace-tree-filter :deep(.mar-ui-input) {
   width: 100%;
 }
 

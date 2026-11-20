@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { createUuid } from '../../util/uuid.js';
 import {
   mountMobileDialogReturn,
@@ -16,7 +20,7 @@ import type {
   ConversationTemplateDraft,
   ConversationTemplatePublishJob
 } from '@myagentroam/protocol';
-import type { FormInstance, FormRules, TagProps } from 'element-plus';
+import type { TagProps } from 'element-plus';
 import type { NodeSummary, Workspace } from '../../model/workbench.js';
 import {
   conversationTemplateBytesToMiB,
@@ -738,20 +742,19 @@ onMounted(() => {
     :aria-busy="pagination.loading.value && !pageReady"
   >
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('conversationTemplates.refresh') }}</el-button
+        >{{ translate('conversationTemplates.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable"
         type="primary"
         :icon="marIcon('plus')"
         :disabled="eligibleNodes.length === 0"
         @click="openCreate"
-        >{{ translate('conversationTemplates.add') }}</el-button
+        >{{ translate('conversationTemplates.add') }}</MarButton
       >
     </div>
     <el-alert
@@ -808,44 +811,43 @@ onMounted(() => {
       <el-table-column :label="translate('conversationTemplates.actions')" width="490">
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
-            <el-button
+            <MarButton
               v-if="writable && row.status !== 'DELETED'"
               link
               :icon="marIcon('edit')"
               @click="openEdit(row)"
-              >{{ translate('conversationTemplates.edit') }}</el-button
+              >{{ translate('conversationTemplates.edit') }}</MarButton
             >
             <slot name="row-actions" :row="row" />
-            <el-button
+            <MarButton
               v-if="writable && row.status === 'ACTIVE'"
               link
               :icon="marIcon('upload')"
               :loading="publishingIds.has(row.id)"
               @click="publish(row)"
-              :loading-icon="marIcon('loading-action')"
-              >{{ translate('conversationTemplates.publish') }}</el-button
+              >{{ translate('conversationTemplates.publish') }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="writable && row.available"
               link
               :icon="marIcon('success')"
               @click="disable(row)"
-              >{{ translate('conversationTemplates.disable') }}</el-button
+              >{{ translate('conversationTemplates.disable') }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="writable && row.status === 'ACTIVE'"
               link
               :icon="marIcon('skill-source')"
               @click="archiveTemplate(row)"
-              >{{ translate('conversationTemplates.archive') }}</el-button
+              >{{ translate('conversationTemplates.archive') }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="writable && row.status !== 'DELETED'"
               link
               type="danger"
               :icon="marIcon('delete')"
               @click="remove(row)"
-              >{{ translate('conversationTemplates.remove') }}</el-button
+              >{{ translate('conversationTemplates.remove') }}</MarButton
             >
           </div>
         </template>
@@ -883,10 +885,10 @@ onMounted(() => {
       @closed="closeEditDialog"
       :close-icon="marIcon('close')"
     >
-      <el-form ref="formRef" :model="draft" :rules="rules" label-position="top">
+      <MarForm ref="formRef" :model="draft" :rules="rules" label-position="top">
         <div class="form-grid">
-          <el-form-item :label="translate('conversationTemplates.node')" prop="nodeId">
-            <el-select
+          <MarFormItem :label="translate('conversationTemplates.node')" prop="nodeId">
+            <MarSelect
               v-model="draft.nodeId"
               filterable
               :disabled="editingTemplateId !== undefined"
@@ -894,16 +896,16 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="node in eligibleNodes"
                 :key="node.id"
                 :label="nodeLabel(node.id)"
                 :value="node.id"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="translate('conversationTemplates.workspace')" prop="workspaceId">
-            <el-select
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem :label="translate('conversationTemplates.workspace')" prop="workspaceId">
+            <MarSelect
               v-model="draft.workspaceId"
               filterable
               :disabled="editingTemplateId !== undefined"
@@ -911,33 +913,33 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="workspace in workspaces"
                 :key="workspace.id"
                 :label="workspace.displayName || workspace.path"
                 :value="workspace.id"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="translate('conversationTemplates.name')" prop="name">
-            <el-input v-model="draft.name" maxlength="128" show-word-limit />
-          </el-form-item>
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem :label="translate('conversationTemplates.name')" prop="name">
+            <MarInput v-model="draft.name" maxlength="128" show-word-limit />
+          </MarFormItem>
         </div>
-        <el-form-item :label="translate('conversationTemplates.description')">
-          <el-input
+        <MarFormItem :label="translate('conversationTemplates.description')">
+          <MarInput
             v-model="draft.description"
             type="textarea"
             :rows="2"
             maxlength="2000"
             show-word-limit
           />
-        </el-form-item>
+        </MarFormItem>
         <div class="form-grid">
-          <el-form-item
+          <MarFormItem
             :label="translate('conversationTemplates.allowedModels')"
             prop="allowedModels"
           >
-            <el-select
+            <MarSelect
               v-model="draft.allowedModels"
               multiple
               filterable
@@ -946,24 +948,24 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="model in availableModels"
                 :key="model.modelId"
                 :label="model.name"
                 :value="model.modelId"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem
             :label="translate('conversationTemplates.defaultModel')"
             prop="defaultModelId"
           >
-            <el-select
+            <MarSelect
               v-model="draft.defaultModelId"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="model in availableModels.filter((item) =>
                   draft.allowedModels.includes(item.modelId)
                 )"
@@ -971,12 +973,12 @@ onMounted(() => {
                 :label="model.name"
                 :value="model.modelId"
               />
-            </el-select>
-          </el-form-item>
+            </MarSelect>
+          </MarFormItem>
         </div>
         <div class="form-grid">
-          <el-form-item :label="translate('conversationTemplates.mcpIds')">
-            <el-select
+          <MarFormItem :label="translate('conversationTemplates.mcpIds')">
+            <MarSelect
               v-model="draft.mcpIds"
               multiple
               filterable
@@ -985,68 +987,74 @@ onMounted(() => {
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="option in mcpOptions"
                 :key="option.catalogEntryId"
                 :label="mcpOptionLabel(option)"
                 :value="option.catalogEntryId"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="translate('conversationTemplates.networkMode')">
-            <el-select
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem :label="translate('conversationTemplates.networkMode')">
+            <MarSelect
               v-model="draft.networkMode"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option :label="translate('conversationTemplates.networkNone')" value="NONE" />
-              <el-option
+              <MarOption :label="translate('conversationTemplates.networkNone')" value="NONE" />
+              <MarOption
                 :label="translate('conversationTemplates.networkUnrestricted')"
                 value="UNRESTRICTED"
               />
-            </el-select>
-          </el-form-item>
+            </MarSelect>
+          </MarFormItem>
         </div>
         <div class="quota-grid">
-          <el-form-item
+          <MarFormItem
             :label="translate('conversationTemplates.maxStorageBytes')"
             prop="maxStorageMiB"
           >
-            <el-input-number v-model="draft.maxStorageMiB" :min="1" :step="1"
+            <el-input-number
+              v-model="draft.maxStorageMiB"
+              :aria-label="translate('conversationTemplates.maxStorageBytes')"
+              :min="1"
+              :step="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
             ></el-input-number>
-          </el-form-item>
-          <el-form-item
+          </MarFormItem>
+          <MarFormItem
             :label="translate('conversationTemplates.maxUploadBytes')"
             prop="maxUploadMiB"
           >
-            <el-input-number v-model="draft.maxUploadMiB" :min="1" :step="1"
+            <el-input-number
+              v-model="draft.maxUploadMiB"
+              :aria-label="translate('conversationTemplates.maxUploadBytes')"
+              :min="1"
+              :step="1"
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
             ></el-input-number>
-          </el-form-item>
+          </MarFormItem>
         </div>
-      </el-form>
+      </MarForm>
       <template #footer>
-        <el-button @click="editDialogOpen = false">{{
+        <MarButton @click="editDialogOpen = false">{{
           translate('conversationTemplates.cancel')
-        }}</el-button>
-        <el-button
+        }}</MarButton>
+        <MarButton
           v-if="editingTemplateId !== undefined"
           :loading="testing"
           :disabled="!writable || !modelSelectionAvailable"
           @click="testDraft"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('conversationTemplates.testDraft') }}</el-button
+          >{{ translate('conversationTemplates.testDraft') }}</MarButton
         >
-        <el-button
+        <MarButton
           type="primary"
           :loading="saving"
           :disabled="!writable || !modelSelectionAvailable"
           @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('conversationTemplates.save') }}</el-button
+          >{{ translate('conversationTemplates.save') }}</MarButton
         >
       </template>
     </el-dialog>
@@ -1095,7 +1103,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
       <template #footer>
-        <el-button @click="detailDialogOpen = false">{{ translate('common.close') }}</el-button>
+        <MarButton @click="detailDialogOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
     </el-dialog>
   </section>
@@ -1121,7 +1129,7 @@ onMounted(() => {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.form-grid :deep(.el-select),
+.form-grid :deep(.mar-ui-select),
 .quota-grid :deep(.el-input-number) {
   width: 100%;
 }

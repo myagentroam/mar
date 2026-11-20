@@ -1,7 +1,12 @@
 <script setup lang="ts" generic="ManagementSection extends string">
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type MarDropdownInstance
+} from '@myagentroam/mar-ui/dropdown';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import type { DropdownInstance } from 'element-plus';
 import { createMobileSurfaceFocusService } from '../../service/mobile-surface-focus-service.js';
 import logoIcon from '../../assets/logo-icon.png';
 import { useDocumentationAvailability } from '../../service/documentation-availability.js';
@@ -195,7 +200,7 @@ const forwardWorkspaceDetails = (nodeId: string, workspace: Workspace) =>
   emit('openWorkspaceDetails', nodeId, workspace);
 const forwardWorkspaceRename = (nodeId: string, workspace: Workspace) =>
   emit('renameWorkspace', nodeId, workspace);
-const blankMenu = ref<DropdownInstance>();
+const blankMenu = ref<MarDropdownInstance>();
 const blankMenuAnchor = shallowRef<DOMRect>();
 const blankMenuReference = { getBoundingClientRect: () => blankMenuAnchor.value ?? new DOMRect() };
 const blankMenuVisible = ref(false);
@@ -352,31 +357,28 @@ function runBlankMenuCommand(command: string): void {
         class="mobile-menu-content"
       />
       <template v-if="displayUtility === undefined && displayView === 'nodes'">
-        <el-dropdown
+        <MarDropdown
           v-if="!workspaceStartupBlocked && blankMenuAnchor && sidebarVisible"
           ref="blankMenu"
           virtual-triggering
           :virtual-ref="blankMenuReference"
           trigger="contextmenu"
           placement="bottom-start"
-          :show-arrow="false"
-          :popper-options="{ modifiers: [{ name: 'offset', options: { offset: [0, 2] } }] }"
-          :show-timeout="0"
-          :hide-timeout="0"
+          :offset="2"
           @visible-change="blankMenuVisible = $event"
           @command="runBlankMenuCommand"
         >
           <template #dropdown>
-            <el-dropdown-menu :aria-label="menuLabel" @keydown.capture.esc="handleBlankMenuEscape">
-              <el-dropdown-item v-if="canRegisterNode" command="register" :icon="marIcon('plus')">{{
+            <MarDropdownMenu :aria-label="menuLabel" @keydown.capture.esc="handleBlankMenuEscape">
+              <MarDropdownItem v-if="canRegisterNode" command="register" :icon="marIcon('plus')">{{
                 $t('generated.resourceSharingPage.registerNode')
-              }}</el-dropdown-item>
-              <el-dropdown-item command="refresh" :icon="marIcon('refresh')">{{
+              }}</MarDropdownItem>
+              <MarDropdownItem command="refresh" :icon="marIcon('refresh')">{{
                 $t('generated.workspaceTree.refreshWorkspaces')
-              }}</el-dropdown-item>
-            </el-dropdown-menu>
+              }}</MarDropdownItem>
+            </MarDropdownMenu>
           </template>
-        </el-dropdown>
+        </MarDropdown>
         <WorkspaceTree
           v-if="sidebarContentVisible || mobileViewport"
           :nodes="nodes"

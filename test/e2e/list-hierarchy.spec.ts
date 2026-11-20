@@ -32,6 +32,34 @@ async function colors(page: Page) {
 }
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Skills source search has one control frame in ${theme}`, async ({ page }, testInfo) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(
+        `${fixture.url}visual-alignment.html?list-hierarchy=sources&scope-columns&theme=${theme}`
+      );
+      const group = page.locator('.source-search-bar .mar-ui-input');
+      const search = group.getByRole('button', { name: 'Search', exact: true });
+      await expect(search).toBeEnabled();
+      const idleFrame = await group.evaluate((el) => getComputedStyle(el).boxShadow);
+      const idleBackground = await search.evaluate((el) => getComputedStyle(el).backgroundColor);
+      await search.hover();
+      await expect(search).not.toHaveCSS('background-color', idleBackground);
+      await expect(search).toHaveCSS('border-top-width', '0px');
+      await expect(group).toHaveCSS('box-shadow', idleFrame);
+      const bar = page.locator('.source-search-bar');
+      const unusedHeight = await bar.evaluate((el) => {
+        const frame = el.getBoundingClientRect();
+        const input = el.querySelector('.mar-ui-input')!.getBoundingClientRect();
+        return frame.bottom - input.bottom;
+      });
+      expect(unusedHeight).toBeLessThanOrEqual(4);
+      await bar.screenshot({
+        path: testInfo.outputPath(`source-search-hover-${width}.png`)
+      });
+    }
+  });
+
   test(`Source and catalog scope labels stay readable on one line in ${theme}`, async ({
     page
   }, testInfo) => {
@@ -120,8 +148,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(active).toHaveCSS('color', palette.success);
       const target = page.locator('.theme-option').nth(theme === 'daylight' ? 0 : 1);
       const apply = target.getByRole('button', { name: 'Apply theme', exact: true });
-      await expect(apply).toHaveClass(/is-link/);
-      await expect(apply).not.toHaveClass(/el-button--primary/);
+      await expect(apply).toHaveClass(/mar-ui-button--inline/);
+      await expect(apply).not.toHaveClass(/mar-ui-button--primary/);
       await expect(apply).toHaveCSS('color', palette.secondary);
       await expect(apply.locator('.el-icon')).toHaveCSS('color', palette.secondary);
       await apply.focus();
@@ -259,15 +287,17 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         for (const kind of ['runner', 'access', 'model-effort']) {
           const select = page.locator(`.composer-${kind}-select`);
           const input = select.getByRole('combobox');
-          const wrapper = select.locator('.el-select__wrapper');
+          const wrapper = select.locator('.mar-ui-select__field');
           await page.getByRole('button', { name: 'Open hint dialog', exact: true }).focus();
           await wrapper.hover();
           await expect(wrapper).toHaveCSS('box-shadow', `${borders.hover} 0px 0px 0px 1px inset`);
           await input.focus();
           await expect(wrapper).toHaveCSS('box-shadow', `${borders.focus} 0px 0px 0px 1px inset`);
           await input.press('ArrowDown');
-          const dropdown = page.locator(`.el-select-dropdown.composer-${kind}-popper:visible`);
-          const selected = dropdown.locator('.is-selected, .composer-model-effort-option-selected');
+          const dropdown = page.locator(`[role="listbox"].composer-${kind}-popper:visible`);
+          const selected = dropdown.locator(
+            '[role="option"][aria-selected="true"], .composer-model-effort-option-selected'
+          );
           await expect(selected).toHaveCount(kind === 'model-effort' ? 2 : 1);
           for (const option of await selected.all()) {
             await expect(option).toHaveCSS('color', palette.primary);
@@ -304,8 +334,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       probe.remove();
       return color;
     });
-    await expect(select.locator('.el-select__placeholder')).toHaveCSS('color', disabled);
-    await expect(select.locator('.el-select__caret')).toHaveCSS('color', disabled);
+    await expect(select.locator('.mar-ui-select__label')).toHaveCSS('color', disabled);
+    await expect(select.locator('[data-mar-icon="chevron-down"]')).toHaveCSS('color', disabled);
   });
 
   test(`Settings navigation and model choices keep regular selected text in ${theme}`, async ({
@@ -323,7 +353,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       );
       const select = page.locator('.composer-model-effort-select');
       await select.click();
-      const dropdown = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
+      const dropdown = page.locator('[role="listbox"].composer-model-effort-popper:visible');
       const selected = dropdown.locator('.composer-model-effort-option-selected');
       await expect(selected).toHaveCount(2);
       for (const option of await selected.all()) {
@@ -338,7 +368,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await select.click();
       await expect(selected.filter({ hasText: 'high' })).toHaveCount(1);
       await expect(selected.filter({ hasText: 'Model Two' })).toHaveCount(1);
-      await expect(dropdown.locator('.is-selected')).toHaveCSS('font-weight', '400');
+      await expect(selected.filter({ hasText: 'Model Two' })).toHaveCSS('font-weight', '400');
     }
   });
 

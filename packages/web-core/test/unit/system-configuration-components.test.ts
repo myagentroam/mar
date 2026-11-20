@@ -179,29 +179,30 @@ describe('Public system configuration page', () => {
     ];
     const view = renderComponent(Page, { request, writable: true, settings });
     const button = (label: string) =>
-      view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+      view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
+    const toggle = () => view.findAll('input').find((node) => node.props['role'] === 'switch')!;
     try {
       await flushComponent();
       await trigger(button('Edit'), 'onClick');
-      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(toggle(), 'onChange', { currentTarget: { checked: false } });
       await trigger(button('Cancel'), 'onClick');
       expect(request).toHaveBeenCalledTimes(1);
-      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(true);
+      expect(toggle().props['checked']).toBe(true);
       await trigger(button('Edit'), 'onClick');
-      await trigger(view.findAll('ElSwitch')[0]!, 'onUpdate:modelValue', false);
+      await trigger(toggle(), 'onChange', { currentTarget: { checked: false } });
       await trigger(button('Save'), 'onClick');
       expect(error).toHaveBeenCalledOnce();
-      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      expect(toggle().props['checked']).toBe(false);
       failSave = false;
       await trigger(button('Save'), 'onClick');
       expect(request).toHaveBeenLastCalledWith('/api/system-settings/extension%2Fsetting', {
         method: 'PATCH',
         body: JSON.stringify({ value: false })
       });
-      expect(view.findAll('ElButton').some((node) => textContent(node).trim() === 'Save')).toBe(
+      expect(view.findAll('MarButton').some((node) => textContent(node).trim() === 'Save')).toBe(
         false
       );
-      expect(view.findAll('ElSwitch')[0]?.props['modelValue']).toBe(false);
+      expect(toggle().props['checked']).toBe(false);
       expect(storage.getItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();

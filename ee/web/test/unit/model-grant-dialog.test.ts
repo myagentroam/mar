@@ -84,7 +84,7 @@ describe('Model grant dialog', () => {
   }
 
   function button(label: string) {
-    const buttons = view.findAll('ElButton').filter((node) => textContent(node).trim() === label);
+    const buttons = view.findAll('MarButton').filter((node) => textContent(node).trim() === label);
     expect(buttons, label).toHaveLength(1);
     return buttons[0]!;
   }
@@ -123,7 +123,7 @@ describe('Model grant dialog', () => {
     ]);
     expect(readGrants.mock.calls).toEqual([[modelA.id], [modelB.id], [modelB.id]]);
     expect(textContent(dialog())).toContain('Refreshed B');
-    expect(view.findAll('ElButton').map(textContent)).not.toContain('Revoke');
+    expect(view.findAll('MarButton').map(textContent)).not.toContain('Revoke');
   });
 
   it('ignores a closed A read failure without changing B loading or reporting a stale error', async () => {
@@ -136,7 +136,7 @@ describe('Model grant dialog', () => {
     const openingB = exposed.value!.open(modelB);
     await flushComponent();
     expect(button('Grant').props.disabled).toBe(true);
-    expect(view.findAll('ElButton').map(textContent)).not.toContain('Revoke');
+    expect(view.findAll('MarButton').map(textContent)).not.toContain('Revoke');
     readA.reject(new Error('Late A read failure'));
     await openingA;
     await flushComponent();
@@ -236,7 +236,7 @@ describe('Model grant dialog', () => {
     await revoking;
     expect(textContent(dialog())).toContain('Current A');
     expect(textContent(dialog())).not.toContain('Engineering');
-    expect(view.findAll('ElButton').map(textContent)).not.toContain('Revoke');
+    expect(view.findAll('MarButton').map(textContent)).not.toContain('Revoke');
     expect(refresh).toHaveBeenCalledOnce();
   });
 

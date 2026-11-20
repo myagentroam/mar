@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 // Owns Hosted workspace presentation, local upload batches and preview lifetimes.
 // Domain state, requests and Watch ownership stay with the workspace services.
 import { createUuid } from '../../util/uuid.js';
@@ -1006,7 +1009,7 @@ onBeforeUnmount(() => {
       </header>
       <div class="history-controls">
         <div class="history-search-row">
-          <el-input
+          <MarInput
             v-model="filter"
             clearable
             :prefix-icon="marIcon('search')"
@@ -1014,7 +1017,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('hostedConversations.searchHistory')"
             :clear-icon="marIcon('clear-input')"
           />
-          <el-button
+          <MarButton
             v-tooltip="translate('hostedConversations.refreshHistory')"
             class="history-refresh-button mar-icon-action"
             :aria-label="translate('hostedConversations.refreshHistory')"
@@ -1025,13 +1028,15 @@ onBeforeUnmount(() => {
             size="small"
             text
             @click="refreshDirectory"
-            :loading-icon="marIcon('loading-action')"
           />
         </div>
-        <el-button class="history-create-button mar-soft-button" @click="beginNewConversation">
-          <MarIcon name="session-add" />
-          <span>{{ translate('hostedConversations.create') }}</span>
-        </el-button>
+        <MarButton
+          class="history-create-button mar-soft-button"
+          icon="session-add"
+          @click="beginNewConversation"
+        >
+          {{ translate('hostedConversations.create') }}
+        </MarButton>
       </div>
       <div
         ref="historyList"
@@ -1109,7 +1114,7 @@ onBeforeUnmount(() => {
               }}
             </time>
           </button>
-          <el-dropdown
+          <MarDropdown
             v-if="conversationActionsVisible(conversationKey(conversation))"
             class="history-row-actions"
             placement="bottom-end"
@@ -1137,8 +1142,8 @@ onBeforeUnmount(() => {
               <MarIcon name="more" />
             </button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item
+              <MarDropdownMenu>
+                <MarDropdownItem
                   @click="setConversationPinned(conversation, conversation.pinnedAt === null)"
                 >
                   <MarIcon name="pin" />
@@ -1149,18 +1154,18 @@ onBeforeUnmount(() => {
                         : 'hostedConversations.unpin'
                     )
                   }}
-                </el-dropdown-item>
-                <el-dropdown-item @click="editConversationTitle(conversation)">
+                </MarDropdownItem>
+                <MarDropdownItem @click="editConversationTitle(conversation)">
                   <MarIcon name="edit" />
                   {{ translate('hostedConversations.editTitle') }}
-                </el-dropdown-item>
-                <el-dropdown-item divided @click="deleteConversation(conversation)">
+                </MarDropdownItem>
+                <MarDropdownItem divided @click="deleteConversation(conversation)">
                   <MarIcon name="delete" />
                   {{ translate('hostedConversations.delete') }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
+                </MarDropdownItem>
+              </MarDropdownMenu>
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </article>
         <p v-if="filter.trim()" class="history-filter-note">
           {{ translate('hostedConversations.filterLoadedOnly') }}
@@ -1177,7 +1182,7 @@ onBeforeUnmount(() => {
             :aria-label="translate('common.loading')"
             ><BusyIndicator class="mar-read-loading-indicator"
           /></span>
-          <el-button
+          <MarButton
             v-if="
               retryingDirectory ||
               (workspace.loadMoreConversationsError.value &&
@@ -1196,7 +1201,7 @@ onBeforeUnmount(() => {
               class="mar-read-loading-indicator"
             />
             <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-          </el-button>
+          </MarButton>
         </div>
       </div>
     </WorkbenchSidebarPanel>
@@ -1707,7 +1712,7 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
-:global(.session-action-menu .el-dropdown-menu__item) {
+:global(.session-action-menu .mar-ui-dropdown-item) {
   gap: 0.4rem;
 }
 

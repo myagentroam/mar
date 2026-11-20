@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -8,7 +13,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import type { Session } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -452,7 +456,7 @@ function occurrenceStatus(status: string): string {
     append-to-body
     :close-icon="marIcon('close')"
   >
-    <el-form
+    <MarForm
       ref="formRef"
       v-loading="loading"
       :aria-busy="loading"
@@ -463,8 +467,8 @@ function occurrenceStatus(status: string): string {
       label-position="left"
       label-width="116px"
     >
-      <el-form-item :label="translate('generated.scheduledSession.objective')" prop="objective">
-        <el-input
+      <MarFormItem :label="translate('generated.scheduledSession.objective')" prop="objective">
+        <MarInput
           v-model="form.objective"
           type="textarea"
           :rows="4"
@@ -472,10 +476,11 @@ function occurrenceStatus(status: string): string {
           :placeholder="translate('generated.scheduledSession.objective')"
           :aria-label="translate('generated.scheduledSession.objective')"
         />
-      </el-form-item>
-      <el-form-item :label="translate('generated.scheduledSession.mode')">
+      </MarFormItem>
+      <MarFormItem :label="translate('generated.scheduledSession.mode')">
         <el-radio-group
           v-model="scheduleMode"
+          :disabled="saving || loading || !taskLoaded"
           :aria-label="translate('generated.scheduledSession.mode')"
         >
           <el-radio-button value="SIMPLE">
@@ -485,46 +490,47 @@ function occurrenceStatus(status: string): string {
             {{ translate('generated.scheduledSession.cronMode') }}
           </el-radio-button>
         </el-radio-group>
-      </el-form-item>
+      </MarFormItem>
       <template v-if="scheduleMode === 'SIMPLE'">
-        <el-form-item :label="translate('generated.scheduledSession.repeat')">
-          <el-select
+        <MarFormItem :label="translate('generated.scheduledSession.repeat')">
+          <MarSelect
             v-model="cadence"
             :aria-label="translate('generated.scheduledSession.repeat')"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option value="HOURLY" :label="translate('generated.scheduledSession.hourly')" />
-            <el-option value="DAILY" :label="translate('generated.scheduledSession.daily')" />
-            <el-option value="WEEKLY" :label="translate('generated.scheduledSession.weekly')" />
-          </el-select>
-        </el-form-item>
+            <MarOption value="HOURLY" :label="translate('generated.scheduledSession.hourly')" />
+            <MarOption value="DAILY" :label="translate('generated.scheduledSession.daily')" />
+            <MarOption value="WEEKLY" :label="translate('generated.scheduledSession.weekly')" />
+          </MarSelect>
+        </MarFormItem>
         <div class="schedule-time-fields">
-          <el-form-item
+          <MarFormItem
             v-if="cadence === 'WEEKLY'"
             :label="translate('generated.scheduledSession.weekday')"
           >
-            <el-select
+            <MarSelect
               v-model="weekday"
               :aria-label="translate('generated.scheduledSession.weekday')"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option
+              <MarOption
                 v-for="index in 7"
                 :key="index"
                 :value="index - 1"
                 :label="translate(`generated.scheduledSession.weekday${index - 1}`)"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item
+            </MarSelect>
+          </MarFormItem>
+          <MarFormItem
             v-if="cadence === 'HOURLY'"
             :label="translate('generated.scheduledSession.minute')"
             prop="hourlyTime"
           >
             <el-time-select
               v-model="form.hourlyTime"
+              :disabled="saving || loading || !taskLoaded"
               start="00:00"
               step="00:01"
               end="00:59"
@@ -532,31 +538,32 @@ function occurrenceStatus(status: string): string {
               :prefix-icon="marIcon('clock')"
               :clear-icon="marIcon('clear-input')"
             />
-          </el-form-item>
-          <el-form-item v-else :label="translate('generated.scheduledSession.time')" prop="time">
+          </MarFormItem>
+          <MarFormItem v-else :label="translate('generated.scheduledSession.time')" prop="time">
             <el-time-picker
               v-model="form.time"
+              :disabled="saving || loading || !taskLoaded"
               format="HH:mm"
               value-format="HH:mm"
               :aria-label="translate('generated.scheduledSession.time')"
               :prefix-icon="marIcon('clock')"
               :clear-icon="marIcon('clear-input')"
             />
-          </el-form-item>
+          </MarFormItem>
         </div>
       </template>
       <template v-else>
-        <el-form-item
+        <MarFormItem
           :label="translate('generated.scheduledSession.cronExpression')"
           prop="cronExpression"
         >
-          <el-input
+          <MarInput
             v-model="form.cronExpression"
             maxlength="64"
             :placeholder="translate('generated.scheduledSession.cronPlaceholder')"
             :aria-label="translate('generated.scheduledSession.cronExpression')"
           />
-        </el-form-item>
+        </MarFormItem>
         <p class="schedule-timezone">
           {{ translate('generated.scheduledSession.cronHint') }}
         </p>
@@ -564,35 +571,35 @@ function occurrenceStatus(status: string): string {
       <p class="schedule-timezone">
         {{ translate('generated.scheduledSession.nodeTimezone', { timezone: nodeTimezone }) }}
       </p>
-      <el-form-item :label="translate('generated.scheduledSession.status')">
+      <MarFormItem :label="translate('generated.scheduledSession.status')">
         <div class="schedule-enabled">
-          <el-switch
+          <MarSwitch
             v-model="enabled"
             :disabled="!taskLoaded"
             :aria-label="translate('generated.scheduledSession.enabled')"
           />
           <span>{{ statusLabel }}</span>
         </div>
-      </el-form-item>
-      <el-form-item :label="translate('generated.scheduledSession.notifyUser')">
+      </MarFormItem>
+      <MarFormItem :label="translate('generated.scheduledSession.notifyUser')">
         <span>{{
           task === null
             ? currentUserName
             : (notifyUserName ?? translate('generated.scheduledSession.userUnavailable'))
         }}</span>
-      </el-form-item>
-      <el-form-item :label="translate('generated.scheduledSession.terminalNotifications')">
-        <el-switch
+      </MarFormItem>
+      <MarFormItem :label="translate('generated.scheduledSession.terminalNotifications')">
+        <MarSwitch
           v-model="notifyOnTerminal"
           :aria-label="translate('generated.scheduledSession.terminalNotifications')"
         />
-      </el-form-item>
+      </MarFormItem>
       <p class="schedule-timezone">
         {{ translate('generated.scheduledSession.notifyUserHint') }}
       </p>
-      <el-form-item v-if="task !== null" :label="translate('generated.scheduledSession.nextRun')">
+      <MarFormItem v-if="task !== null" :label="translate('generated.scheduledSession.nextRun')">
         <span>{{ localTime(task.nextRunAt) }}</span>
-      </el-form-item>
+      </MarFormItem>
       <div v-if="proposals.length > 0" class="schedule-history">
         <strong>{{ translate('generated.scheduledSession.proposals') }}</strong>
         <div v-for="proposal in proposals" :key="proposal.id" class="schedule-proposal">
@@ -614,22 +621,20 @@ function occurrenceStatus(status: string): string {
             {{ translate('generated.scheduledSession.timezone') }}：{{ proposal.timezone }}
           </p>
           <div v-if="canResolveProposals">
-            <el-button
+            <MarButton
               size="small"
               :disabled="saving"
               :loading="pendingAction === `reject:${proposal.id}`"
-              :loading-icon="marIcon('loading-action')"
               @click="resolveProposal(proposal.id, false)"
-              >{{ translate('generated.scheduledSession.reject') }}</el-button
+              >{{ translate('generated.scheduledSession.reject') }}</MarButton
             >
-            <el-button
+            <MarButton
               size="small"
               type="primary"
               :disabled="saving"
               :loading="pendingAction === `accept:${proposal.id}`"
-              :loading-icon="marIcon('loading-action')"
               @click="resolveProposal(proposal.id, true)"
-              >{{ translate('generated.scheduledSession.accept') }}</el-button
+              >{{ translate('generated.scheduledSession.accept') }}</MarButton
             >
           </div>
         </div>
@@ -653,27 +658,25 @@ function occurrenceStatus(status: string): string {
           :next-icon="marIcon('chevron-right')"
         />
       </div>
-    </el-form>
+    </MarForm>
     <template #footer>
-      <el-button
+      <MarButton
         v-if="task !== null"
         :disabled="saving || loading || !taskLoaded"
         :loading="pendingAction === 'remove'"
-        :loading-icon="marIcon('loading-action')"
         type="danger"
         @click="remove"
-        >{{ translate('generated.scheduledSession.remove') }}</el-button
+        >{{ translate('generated.scheduledSession.remove') }}</MarButton
       >
-      <el-button :disabled="saving" @click="open = false">{{
+      <MarButton :disabled="saving" @click="open = false">{{
         translate('common.close')
-      }}</el-button>
-      <el-button
+      }}</MarButton>
+      <MarButton
         type="primary"
         :loading="pendingAction === 'save'"
         :disabled="saving || loading || !taskLoaded"
         @click="save"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.scheduledSession.save') }}</el-button
+        >{{ translate('generated.scheduledSession.save') }}</MarButton
       >
     </template>
   </el-dialog>
@@ -684,22 +687,23 @@ function occurrenceStatus(status: string): string {
   display: grid;
   gap: 0.7rem;
 }
-.schedule-form :deep(.el-form-item) {
+.schedule-form :deep(.mar-ui-form-item) {
   margin-bottom: 0;
 }
-.schedule-form :deep(.el-form-item__label) {
+.schedule-form :deep(.mar-ui-form-item__label) {
   align-items: center;
   justify-content: flex-start;
   line-height: 1.35;
   white-space: normal;
 }
-.schedule-form :deep(.el-form-item),
-.schedule-form :deep(.el-form-item__content),
+.schedule-form :deep(.mar-ui-form-item),
+.schedule-form :deep(.mar-ui-form-item__content),
 .schedule-time-fields {
   min-width: 0;
   width: 100%;
 }
-.schedule-form :deep(.el-textarea),
+.schedule-form :deep(.mar-ui-input--textarea),
+.schedule-form :deep(.mar-ui-select),
 .schedule-form :deep(.el-select),
 .schedule-form :deep(.el-date-editor) {
   width: 100%;
@@ -718,15 +722,15 @@ function occurrenceStatus(status: string): string {
   color: var(--mar-text-secondary);
 }
 @media (max-width: 600px) {
-  .schedule-form :deep(.el-form-item) {
+  .schedule-form :deep(.mar-ui-form-item) {
     display: block;
   }
-  .schedule-form :deep(.el-form-item__label) {
+  .schedule-form :deep(.mar-ui-form-item__label) {
     width: 100% !important;
     justify-content: flex-start;
     padding: 0 0 0.35rem;
   }
-  .schedule-form :deep(.el-form-item__content) {
+  .schedule-form :deep(.mar-ui-form-item__content) {
     margin-left: 0 !important;
   }
   .schedule-timezone {

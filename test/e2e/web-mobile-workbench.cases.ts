@@ -209,7 +209,7 @@ for (const labels of [
           const bounds = element.getBoundingClientRect();
           const controls = Array.from(
             element.querySelectorAll<HTMLElement>(
-              '.composer-attachment-button, .el-select__wrapper, .composer-context-button, .composer-send-button, .composer-stop-button'
+              '.composer-attachment-button, .mar-ui-select__field, .composer-context-button, .composer-send-button, .composer-stop-button'
             )
           ).map((control) => {
             const rect = control.getBoundingClientRect();

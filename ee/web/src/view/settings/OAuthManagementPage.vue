@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -8,7 +12,6 @@ import { showMessage } from '@myagentroam/web-core/message-feedback';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import type { FormInstance, FormRules } from 'element-plus';
 import {
   newOAuthProviderDraft,
   oauthProviderInput,
@@ -387,7 +390,7 @@ onMounted(() => {
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.oAuthManagementPage.provider') }}</span
-        ><el-input
+        ><MarInput
           v-model="keyword"
           clearable
           :placeholder="translate('generated.oAuthManagementPage.enterAProviderNameOrKey')"
@@ -395,16 +398,12 @@ onMounted(() => {
       /></label>
     </div>
     <div class="mar-table-actions">
-      <el-button
-        :icon="marIcon('refresh')"
-        :loading="refreshLoading && ready"
-        @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.oAuthManagementPage.refresh') }}</el-button
-      >
-      <el-button type="primary" :icon="marIcon('plus')" :disabled="!writable" @click="create">{{
+      <MarButton :icon="marIcon('refresh')" :loading="refreshLoading && ready" @click="refresh">{{
+        translate('generated.oAuthManagementPage.refresh')
+      }}</MarButton>
+      <MarButton type="primary" :icon="marIcon('plus')" :disabled="!writable" @click="create">{{
         translate('generated.oAuthManagementPage.addProvider')
-      }}</el-button>
+      }}</MarButton>
     </div>
     <el-table
       v-loading="loading && ready && !refreshLoading"
@@ -440,16 +439,16 @@ onMounted(() => {
       ><el-table-column :label="translate('generated.oAuthManagementPage.actions')" :width="320"
         ><template #default="{ row }"
           ><div class="mar-row-actions" @click.stop>
-            <el-button link :icon="marIcon('edit')" :disabled="!writable" @click="edit(row)">{{
+            <MarButton link :icon="marIcon('edit')" :disabled="!writable" @click="edit(row)">{{
               translate('generated.oAuthManagementPage.edit')
-            }}</el-button
-            ><el-button
+            }}</MarButton
+            ><MarButton
               link
               :icon="marIcon('connection')"
               :disabled="!writable"
               @click="test(row)"
-              >{{ translate('generated.oAuthManagementPage.test') }}</el-button
-            ><el-button
+              >{{ translate('generated.oAuthManagementPage.test') }}</MarButton
+            ><MarButton
               link
               :icon="marIcon('power')"
               :disabled="!writable || (!row.enabled && row.testedAt === null)"
@@ -458,14 +457,14 @@ onMounted(() => {
                 row.enabled
                   ? translate('generated.oAuthManagementPage.disable')
                   : translate('generated.oAuthManagementPage.enable')
-              }}</el-button
-            ><el-button
+              }}</MarButton
+            ><MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable"
               @click="remove(row)"
-              >{{ translate('generated.oAuthManagementPage.delete2') }}</el-button
+              >{{ translate('generated.oAuthManagementPage.delete2') }}</MarButton
             >
           </div></template
         ></el-table-column
@@ -533,7 +532,7 @@ onMounted(() => {
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button @click="providerDetailsOpen = false">{{ translate('common.close') }}</el-button>
+        <MarButton @click="providerDetailsOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
     </el-dialog>
     <el-dialog
@@ -548,141 +547,137 @@ onMounted(() => {
       "
       width="min(680px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
-      ><el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="oauth-form"
-        ><el-form-item
+      ><MarForm ref="formRef" :model="form" :rules="rules" label-position="top" class="oauth-form"
+        ><MarFormItem
           :label="translate('generated.oAuthManagementPage.providerKey2')"
           prop="providerKey"
-          ><el-input
+          ><MarInput
             v-model="form.providerKey"
             :disabled="editing"
             :placeholder="
               translate('generated.oAuthManagementPage.forExampleFeishu')
-            " /></el-form-item
-        ><el-form-item :label="translate('generated.oAuthManagementPage.displayName')" prop="name"
-          ><el-input
+            " /></MarFormItem
+        ><MarFormItem :label="translate('generated.oAuthManagementPage.displayName')" prop="name"
+          ><MarInput
             v-model="form.name"
             :placeholder="
               translate('generated.oAuthManagementPage.enterADisplayName2')
-            " /></el-form-item
-        ><el-form-item class="wide" :label="translate('generated.oAuthManagementPage.callbackURL')"
-          ><el-input :model-value="callbackUri" readonly /></el-form-item
-        ><el-form-item :label="translate('common.clientId')" prop="clientId"
-          ><el-input
+            " /></MarFormItem
+        ><MarFormItem class="wide" :label="translate('generated.oAuthManagementPage.callbackURL')"
+          ><MarInput :model-value="callbackUri" readonly /></MarFormItem
+        ><MarFormItem :label="translate('common.clientId')" prop="clientId"
+          ><MarInput
             v-model="form.clientId"
             :placeholder="
               translate('generated.oAuthManagementPage.enterTheClientID2')
-            " /></el-form-item
-        ><el-form-item :label="translate('common.clientSecret')" prop="clientSecret"
-          ><el-input
+            " /></MarFormItem
+        ><MarFormItem :label="translate('common.clientSecret')" prop="clientSecret"
+          ><MarInput
             v-model="form.clientSecret"
             autocomplete="off"
             :placeholder="
               editing
                 ? translate('generated.oAuthManagementPage.leaveBlankToKeepTheCurrentValue')
                 : translate('generated.oAuthManagementPage.required')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           class="wide"
           :label="translate('generated.oAuthManagementPage.authorizationURL')"
           prop="authorizationEndpoint"
-          ><el-input
+          ><MarInput
             v-model="form.authorizationEndpoint"
             :placeholder="
               translate('generated.oAuthManagementPage.enterTheOAuthAuthorizationURL')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           class="wide"
           :label="translate('generated.oAuthManagementPage.tokenURL')"
           prop="tokenEndpoint"
-          ><el-input
+          ><MarInput
             v-model="form.tokenEndpoint"
             :placeholder="
               translate('generated.oAuthManagementPage.enterTheOAuthTokenURL')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           class="wide"
           :label="translate('generated.oAuthManagementPage.userInfoURL')"
           prop="userinfoEndpoint"
-          ><el-input
+          ><MarInput
             v-model="form.userinfoEndpoint"
             :placeholder="
               translate('generated.oAuthManagementPage.enterTheOAuthUserInfoURL')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.oAuthManagementPage.scopesOnePerLine')"
           prop="scopes"
-          ><el-input
+          ><MarInput
             :model-value="form.scopes.join('\n')"
             :placeholder="translate('generated.oAuthManagementPage.enterOneScopePerLine')"
             type="textarea"
             :rows="2"
-            @update:model-value="form.scopes = $event.split(/\s+/)" /></el-form-item
-        ><el-form-item
+            @update:model-value="form.scopes = $event.split(/\s+/)" /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.oAuthManagementPage.externalUserIDJSONPointer')"
           prop="mappings.externalUserId"
-          ><el-input
+          ><MarInput
             v-model="form.mappings.externalUserId"
-            :placeholder="translate('common.jsonPointerExample')" /></el-form-item
-        ><el-form-item
+            :placeholder="translate('common.jsonPointerExample')" /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.oAuthManagementPage.emailJSONPointerOptional')"
           prop="mappings.email"
-          ><el-input
+          ><MarInput
             v-model="form.mappings.email"
             :placeholder="
               translate('generated.oAuthManagementPage.leaveBlankToSkipExistingAccountMatching')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           :label="translate('generated.oAuthManagementPage.nameJSONPointerOptional')"
           prop="mappings.displayName"
-          ><el-input
+          ><MarInput
             v-model="form.mappings.displayName"
             :placeholder="
               translate('generated.oAuthManagementPage.forExampleDataName')
-            " /></el-form-item
-        ><el-form-item :label="translate('common.pkce')" prop="pkceMode"
-          ><el-select
+            " /></MarFormItem
+        ><MarFormItem :label="translate('common.pkce')" prop="pkceMode"
+          ><MarSelect
             v-model="form.pkceMode"
             :placeholder="translate('generated.oAuthManagementPage.selectAPKCEMode2')"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               :label="translate('generated.oAuthManagementPage.required2')"
-              value="REQUIRED" /><el-option
+              value="REQUIRED" /><MarOption
               :label="translate('generated.oAuthManagementPage.supported')"
-              value="SUPPORTED" /><el-option
+              value="SUPPORTED" /><MarOption
               :label="translate('generated.oAuthManagementPage.disabled2')"
-              value="DISABLED" /></el-select></el-form-item
-        ><el-form-item
+              value="DISABLED" /></MarSelect></MarFormItem
+        ><MarFormItem
           :label="translate('generated.oAuthManagementPage.clientSecretMethod')"
           prop="tokenAuthMethod"
-          ><el-select
+          ><MarSelect
             v-model="form.tokenAuthMethod"
             :placeholder="translate('generated.oAuthManagementPage.selectAMethod')"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               :label="translate('common.httpBasic')"
-              value="client_secret_basic" /><el-option
+              value="client_secret_basic" /><MarOption
               :label="translate('common.postBody')"
-              value="client_secret_post" /><el-option
+              value="client_secret_post" /><MarOption
               :label="translate('common.jsonBody')"
-              value="client_secret_json" /></el-select></el-form-item
-        ><el-form-item class="wide"
+              value="client_secret_json" /></MarSelect></MarFormItem
+        ><MarFormItem class="wide"
           ><el-checkbox v-model="form.autoProvisioningEnabled">{{
             translate('generated.oAuthManagementPage.allowAutoProvisioningNewUsersAreCreated')
-          }}</el-checkbox></el-form-item
-        ></el-form
+          }}</el-checkbox></MarFormItem
+        ></MarForm
       ><template #footer
-        ><el-button @click="open = false">{{
+        ><MarButton @click="open = false">{{
           translate('generated.oAuthManagementPage.cancel2')
-        }}</el-button
-        ><el-button
-          type="primary"
-          :loading="saving"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.oAuthManagementPage.saveAndDisable') }}</el-button
-        ></template
+        }}</MarButton
+        ><MarButton type="primary" :loading="saving" @click="save">{{
+          translate('generated.oAuthManagementPage.saveAndDisable')
+        }}</MarButton></template
       ></el-dialog
     >
   </section>

@@ -159,11 +159,11 @@ describe('Public personal settings ownership', () => {
     });
     try {
       await flushComponent();
-      await trigger(view.findAll('ElButton')[0]!, 'onClick');
-      const inputs = view.findAll('ElInput');
+      await trigger(view.findAll('MarButton')[0]!, 'onClick');
+      const inputs = view.findAll('MarInput');
       await trigger(inputs[0]!, 'onUpdate:modelValue', 'private-prompt');
       await trigger(inputs[1]!, 'onUpdate:modelValue', 'API-only quick prompt body');
-      const save = view.findAll('ElButton').find((node) => textContent(node).trim() === 'Save')!;
+      const save = view.findAll('MarButton').find((node) => textContent(node).trim() === 'Save')!;
       await trigger(save, 'onClick');
       expect(request).toHaveBeenCalledWith('/api/quick-prompts', {
         method: 'POST',

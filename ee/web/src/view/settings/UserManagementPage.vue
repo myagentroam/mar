@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -195,9 +198,9 @@ onUnmounted(() => usersPage.dispose());
     class="mar-management-page"
   >
     <div class="mar-table-actions">
-      <el-button type="primary" @click="createOpen = true">{{
+      <MarButton type="primary" @click="createOpen = true">{{
         translate('generated.userManagementPage.createUser')
-      }}</el-button>
+      }}</MarButton>
     </div>
     <el-table
       v-loading="
@@ -238,16 +241,16 @@ onUnmounted(() => usersPage.dispose());
         :min-width="usersPage.mobileViewport.value ? 144 : undefined"
         ><template #default="{ row }"
           ><div class="mar-row-actions mar-row-actions--wrap" @click.stop>
-            <el-button v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
+            <MarButton v-if="!row.isAdmin" link :icon="marIcon('key')" @click="confirmReset(row)">{{
               translate('generated.userManagementPage.resetPassword3')
-            }}</el-button
-            ><el-button
+            }}</MarButton
+            ><MarButton
               v-if="!row.isAdmin"
               link
               type="danger"
               :icon="marIcon('delete')"
               @click="confirmRemove(row)"
-              >{{ translate('generated.userManagementPage.delete') }}</el-button
+              >{{ translate('generated.userManagementPage.delete') }}</MarButton
             >
           </div></template
         ></el-table-column
@@ -276,20 +279,20 @@ onUnmounted(() => usersPage.dispose());
       :title="translate('generated.userManagementPage.createUser2')"
       width="420"
       :close-icon="marIcon('close')"
-      ><el-form label-position="top"
-        ><el-form-item :label="translate('generated.userManagementPage.username2')" required
-          ><el-input v-model="form.username" /></el-form-item
-        ><el-form-item :label="translate('generated.userManagementPage.email2')"
-          ><el-input v-model="form.email" /></el-form-item
-        ><el-form-item :label="translate('generated.userManagementPage.nickname2')"
-          ><el-input v-model="form.nickname" /></el-form-item></el-form
+      ><MarForm label-position="top"
+        ><MarFormItem :label="translate('generated.userManagementPage.username2')" required
+          ><MarInput v-model="form.username" /></MarFormItem
+        ><MarFormItem :label="translate('generated.userManagementPage.email2')"
+          ><MarInput v-model="form.email" /></MarFormItem
+        ><MarFormItem :label="translate('generated.userManagementPage.nickname2')"
+          ><MarInput v-model="form.nickname" /></MarFormItem></MarForm
       ><template #footer
-        ><el-button @click="createOpen = false">{{
+        ><MarButton @click="createOpen = false">{{
           translate('generated.userManagementPage.cancel3')
-        }}</el-button
-        ><el-button type="primary" :disabled="!canCreate()" @click="create">{{
+        }}</MarButton
+        ><MarButton type="primary" :disabled="!canCreate()" @click="create">{{
           translate('generated.userManagementPage.createUser3')
-        }}</el-button></template
+        }}</MarButton></template
       ></el-dialog
     >
     <el-dialog
@@ -324,9 +327,9 @@ onUnmounted(() => usersPage.dispose());
           </dd>
         </div>
       </dl>
-      <el-button class="credential-copy-button" type="primary" @click="copyCredentials">{{
+      <MarButton class="credential-copy-button" type="primary" @click="copyCredentials">{{
         translate('generated.userManagementPage.copyUsernameAndPassword')
-      }}</el-button>
+      }}</MarButton>
       <p class="credential-hint">
         {{ translate('generated.userManagementPage.theUserMustChangeThePasswordAfter') }}
       </p></el-dialog
@@ -379,7 +382,7 @@ onUnmounted(() => usersPage.dispose());
   white-space: nowrap;
 }
 
-.mar-row-actions .el-button + .el-button {
+.mar-row-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
 

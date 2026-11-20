@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -95,9 +96,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
       </el-descriptions>
     </div>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">{{
+      <MarButton @click="emit('update:modelValue', false)">{{
         translate('generated.skillDetailsDialog.close')
-      }}</el-button>
+      }}</MarButton>
     </template>
   </el-dialog>
 </template>

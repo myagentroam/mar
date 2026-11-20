@@ -96,7 +96,7 @@ test('Personal instruction saves retain other scope drafts through success, fail
     await expect(editor).toHaveValue('MAR failure draft');
     await editor.fill('   ');
     await save.click();
-    await expect(panel.locator('.el-form-item__error')).toBeVisible();
+    await expect(panel.getByRole('alert')).toBeVisible();
     expect(writes).toHaveLength(3);
     await page.screenshot({ path: test.info().outputPath('retained-drafts.png') });
   } finally {

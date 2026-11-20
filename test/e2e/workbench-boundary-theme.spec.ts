@@ -71,9 +71,9 @@ for (const theme of ['vscode-dark-2026', 'daylight'] as const) {
       .evaluate((element) => getComputedStyle(element).borderTopColor);
     const panel = await aside.evaluate((element) => getComputedStyle(element).backgroundColor);
     const inputWrappers = [
-      resources.locator('.workspace-tree-filter .el-input__wrapper'),
-      page.locator('.session-search .el-input__wrapper'),
-      aside.locator('.file-display-filter .el-input__wrapper')
+      resources.locator('.workspace-tree-filter .mar-ui-input'),
+      page.locator('.session-search .mar-ui-input'),
+      aside.locator('.file-display-filter.mar-ui-input')
     ];
     const readColor = (shadow: string) =>
       shadow.match(/(?:rgba?\(|color\(srgb )[^)]+\)/u)?.[0] ?? '';

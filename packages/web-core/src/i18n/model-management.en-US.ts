@@ -223,6 +223,7 @@ export const modelManagementEnUS = {
     modelProxyCredentialHint:
       'Uses the subscription credential’s proxy. Configure it under OAuth credentials.',
     codexProxyPlaceholder: 'socks5://host:port',
+    showPassword: 'Show password',
     codexProxyHint:
       'Optional. Credential exchange, catalog loading, and model requests use the same proxy configuration.',
     grokProxyHint:

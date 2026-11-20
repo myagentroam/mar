@@ -38,6 +38,7 @@ const sampleLoading = ref(true);
 const buttonLoading = ref(false);
 const buttonDisabled = ref(false);
 const buttonSubmissions = ref(0);
+const linkVisits = ref(0);
 const marInput = ref('');
 const marInputDisabled = ref(false);
 const marLocale = ref(en);
@@ -200,6 +201,15 @@ function saveFeedbackDialog(): void {
       >Submit action</el-button
     >
     <el-button aria-label="EL reference text">Text action</el-button>
+    <MarButton
+      tag="a"
+      :disabled="buttonDisabled"
+      href="#button-link-target"
+      @click="linkVisits += 1"
+    >
+      Open destination
+    </MarButton>
+    <output id="button-link-target" aria-label="Link activation count">{{ linkVisits }}</output>
   </section>
   <section aria-label="Real management actions">
     <QuickPromptSettings
@@ -315,19 +325,17 @@ function saveFeedbackDialog(): void {
     />
   </section>
   <section aria-label="Dropdown state samples">
-    <el-dropdown trigger="click" @command="menuAction = $event">
+    <MarDropdown trigger="click" @command="menuAction = $event">
       <button type="button" class="mar-icon-action">Sample menu</button>
       <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="rename"><MarIcon name="edit" />Rename</el-dropdown-item>
-          <el-dropdown-item command="copy"><MarIcon name="copy" />Copy</el-dropdown-item>
-          <el-dropdown-item command="unavailable" disabled>Unavailable</el-dropdown-item>
-          <el-dropdown-item command="delete" divided>
-            <MarIcon name="delete" />Delete
-          </el-dropdown-item>
-        </el-dropdown-menu>
+        <MarDropdownMenu>
+          <MarDropdownItem command="rename" icon="edit">Rename</MarDropdownItem>
+          <MarDropdownItem command="copy" icon="copy">Copy</MarDropdownItem>
+          <MarDropdownItem command="unavailable" disabled>Unavailable</MarDropdownItem>
+          <MarDropdownItem command="delete" icon="delete" divided>Delete</MarDropdownItem>
+        </MarDropdownMenu>
       </template>
-    </el-dropdown>
+    </MarDropdown>
     <output aria-label="Selected menu action">{{ menuAction }}</output>
   </section>
   <section class="conversation-typography-fixture" aria-label="Real conversation typography">

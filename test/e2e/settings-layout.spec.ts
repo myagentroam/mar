@@ -70,7 +70,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 
           if (section.id === 'appearance') {
             const row = content.locator('.theme-row').first();
-            const control = row.locator('.el-select');
+            await expect(row.getByRole('combobox')).toBeVisible();
+            const control = row.locator('.mar-ui-select');
             const label = row.locator('label');
             const bounds = (await row.boundingBox())!;
             const input = (await control.boundingBox())!;
@@ -85,9 +86,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
               const text = (await label.boundingBox())!;
               expect(input.y).toBeGreaterThanOrEqual(text.y + text.height);
             }
-            for (const select of await content
-              .locator('.theme-row :is(.el-select, .mar-ui-select)')
-              .all()) {
+            for (const select of await content.locator('.theme-row .mar-ui-select').all()) {
               expect((await select.boundingBox())!.width).toBeCloseTo(input.width, 0);
             }
           }

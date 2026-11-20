@@ -94,7 +94,7 @@ function fixture(http?: WorkbenchHttpService) {
     fetch.mock.calls.filter(([, init]) => init?.method === method);
   const expand = async () => {
     await flushComponent();
-    await trigger(view.findAll('ElButton')[0]!, 'onClick');
+    await trigger(view.findAll('MarButton')[0]!, 'onClick');
     expect(requests('POST')).toHaveLength(1);
   };
   return { view, props, opening, fetch, notice, requests, expand, handle: () => handle };

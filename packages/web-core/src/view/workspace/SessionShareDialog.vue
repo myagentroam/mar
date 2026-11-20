@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -9,7 +11,6 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, ref } from 'vue';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import type { SessionShareTarget } from '@myagentroam/protocol';
 import { createSessionShareManagementService } from '../../service/session-share-management-service.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -118,16 +119,17 @@ async function copyRecord(id: string): Promise<void> {
     @close="emit('close')"
     :close-icon="marIcon('close')"
   >
-    <el-form
+    <MarForm
       ref="form"
       :model="values"
       :rules="rules"
       label-position="top"
       @submit.prevent="create"
     >
-      <el-form-item prop="expiresAt" :label="translate('sessionShare.expiresAt')">
+      <MarFormItem prop="expiresAt" :label="translate('sessionShare.expiresAt')">
         <el-date-picker
           v-model="values.expiresAt"
+          :aria-label="translate('sessionShare.expiresAt')"
           type="datetime"
           :placeholder="translate('sessionShare.permanent')"
           clearable
@@ -138,20 +140,16 @@ async function copyRecord(id: string): Promise<void> {
           ><template #prev-year><MarIcon name="chevrons-left" /></template
           ><template #next-year><MarIcon name="chevrons-right" /></template
         ></el-date-picker>
-      </el-form-item>
-      <el-button
-        type="primary"
-        native-type="submit"
-        :loading="busy"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('sessionShare.create') }}</el-button
-      >
-    </el-form>
+      </MarFormItem>
+      <MarButton type="primary" native-type="submit" :loading="busy">{{
+        translate('sessionShare.create')
+      }}</MarButton>
+    </MarForm>
     <section v-if="created" class="created-share" aria-live="polite">
       <p class="share-text">{{ shareText }}</p>
-      <el-button :icon="marIcon('copy')" @click="copy(shareText)">{{
+      <MarButton :icon="marIcon('copy')" @click="copy(shareText)">{{
         translate('sessionShare.copy')
-      }}</el-button>
+      }}</MarButton>
     </section>
     <h3>{{ translate('sessionShare.records') }}</h3>
     <el-table :data="shares" :empty-text="translate('sessionShare.noRecords')">
@@ -202,16 +200,16 @@ async function copyRecord(id: string): Promise<void> {
       >
       <el-table-column :label="translate('sessionShare.actions')" min-width="180"
         ><template #default="{ row }">
-          <el-button link :icon="marIcon('copy')" :disabled="busy" @click="copyRecord(row.id)">{{
+          <MarButton link :icon="marIcon('copy')" :disabled="busy" @click="copyRecord(row.id)">{{
             translate('sessionShare.copy')
-          }}</el-button>
-          <el-button
+          }}</MarButton>
+          <MarButton
             link
             type="danger"
             :icon="marIcon('delete')"
             :disabled="busy"
             @click="remove(row.id)"
-            >{{ translate('sessionShare.delete') }}</el-button
+            >{{ translate('sessionShare.delete') }}</MarButton
           >
         </template></el-table-column
       >

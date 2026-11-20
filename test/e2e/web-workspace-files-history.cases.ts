@@ -429,11 +429,11 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(historyRefreshButton).toHaveAttribute('type', 'button');
   await expect(historyRefreshButton).toHaveClass(/file-explorer-utility-button/u);
   await expect(historyRefreshButton).toHaveClass(/mar-icon-action/u);
-  await expect(historyRefreshButton).not.toHaveClass(/el-button/u);
+  await expect(historyRefreshButton).not.toHaveClass(/mar-ui-button/u);
   holdHistoryRefresh = false;
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await expect(page.getByText('aaaaaaaa')).toHaveCount(0);
-  await page.locator('.history-filter').nth(1).locator('.el-select__wrapper').click();
+  await page.locator('.history-filter').nth(1).getByRole('combobox').click();
   await page.getByRole('option', { name: 'main', exact: true }).click();
   await expect(page.getByText('初始化 Git History')).toBeVisible();
   await page.getByText('初始化 Git History').click();
@@ -442,7 +442,10 @@ test('Git History filters all or selected branches, expands commit files, and op
   await expect(commitFilesLoading.locator('.mar-busy-indicator')).toHaveCount(0);
   releaseCommitFiles();
   await expect(page.getByRole('button', { name: /README\.md/ })).toBeVisible();
-  await expect(page.locator('.history-files .el-button').first()).toHaveCSS('border-radius', '6px');
+  await expect(page.locator('.history-files .mar-ui-button').first()).toHaveCSS(
+    'border-radius',
+    '6px'
+  );
   await expect(page.getByRole('button', { name: 'src', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /src\/history.ts/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'nested', exact: true })).toHaveCount(0);

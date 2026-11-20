@@ -242,7 +242,6 @@ html.console-ui
   .el-popper:is(
     .mar-content-popover,
     .mar-compact-popover,
-    .el-dropdown__popper,
     .el-select__popper,
     .el-cascader__dropdown,
     .el-picker__popper
@@ -258,7 +257,6 @@ html.console-ui .el-popover.mar-content-popover {
 
 html.console-ui
   .el-popper:is(
-    .el-dropdown__popper,
     .el-select__popper,
     .el-cascader__dropdown,
     .el-picker__popper,
@@ -278,7 +276,6 @@ html.console-ui .el-popover.mar-compact-popover {
   --el-popover-border-radius: var(--mar-radius-control);
 }
 
-html.console-ui .el-dropdown__popper .el-dropdown-menu__item--divided,
 html.console-ui .el-select__popper :is(.el-select-dropdown__header, .el-select-dropdown__footer),
 html.console-ui
   .el-cascader__dropdown
@@ -507,16 +504,6 @@ html.console-ui .el-button--primary:is(.is-link, .is-text).is-disabled {
   outline-color: var(--mar-color-brand);
 }
 
-:is(html.console-ui, .mar-theme-preview) .el-dropdown-menu {
-  --el-dropdown-menuItem-hover-fill: var(--mar-fill-row-hover);
-  --el-dropdown-menuItem-hover-color: var(--mar-text-primary);
-}
-
-:is(html.console-ui, .mar-theme-preview) .el-dropdown-menu__item:not(.is-disabled):focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: -2px;
-}
-
 .el-select-dropdown__item {
   height: var(--mar-compact-control-size);
   padding-inline: var(--mar-compact-option-padding-inline);
@@ -722,7 +709,7 @@ html.console-ui
 }
 
 @media (max-width: 767px) {
-  :where(button, [role='button'], a[href], .el-dropdown-menu__item) .el-icon:has(> .mar-icon) {
+  :where(button, [role='button'], a[href]) .el-icon:has(> .mar-icon) {
     font-size: var(--mar-action-icon-size, 18px);
   }
 }
@@ -736,10 +723,6 @@ html.console-ui
 
 .el-button--large .mar-icon + span {
   margin-inline-start: 8px;
-}
-
-.el-dropdown-menu__item > .mar-icon {
-  margin-inline-end: 5px;
 }
 
 .mar-page-loading .el-loading-spinner::before {

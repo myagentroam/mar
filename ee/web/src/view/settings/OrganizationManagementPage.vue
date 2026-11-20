@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -10,7 +13,6 @@ import { MOBILE_WORKBENCH_VIEWPORT_QUERY } from '@myagentroam/web-core/mobile-wo
 import { managementDateTime } from '@myagentroam/web-core/time-presentation';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessageBox } from '@myagentroam/web-core/MessageBoxService';
-import type { FormInstance, FormRules } from 'element-plus';
 import {
   organizationPath,
   type OrganizationSummary
@@ -216,7 +218,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
     <div class="mar-filter-row">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.organizationUserManagementPage.organization') }}</span
-        ><el-input
+        ><MarInput
           v-model="keyword"
           clearable
           :placeholder="
@@ -226,12 +228,11 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       /></label>
     </div>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && ready"
         @click="load(true)"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.organizationUserManagementPage.refresh') }}</el-button
+        >{{ translate('generated.organizationUserManagementPage.refresh') }}</MarButton
       >
     </div>
     <el-table
@@ -261,27 +262,27 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       >
         <template #default="{ row }">
           <div class="organization-actions mar-row-actions--wrap" @click.stop>
-            <el-button
+            <MarButton
               link
               :icon="marIcon('edit')"
               :disabled="!writable"
               @click="editOrganization(row)"
-              >{{ translate('generated.organizationUserManagementPage.edit') }}</el-button
+              >{{ translate('generated.organizationUserManagementPage.edit') }}</MarButton
             >
-            <el-button
+            <MarButton
               link
               :icon="marIcon('plus')"
               :disabled="!writable"
               @click="openOrganization(row)"
-              >{{ translate('generated.organizationUserManagementPage.addChild') }}</el-button
-            ><el-button
+              >{{ translate('generated.organizationUserManagementPage.addChild') }}</MarButton
+            ><MarButton
               v-if="row.id !== 1"
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable"
               @click="removeOrganization(row)"
-              >{{ translate('generated.organizationUserManagementPage.delete') }}</el-button
+              >{{ translate('generated.organizationUserManagementPage.delete') }}</MarButton
             >
           </div>
         </template>
@@ -303,44 +304,43 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
       "
       width="min(440px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
-      ><el-form
+      ><MarForm
         ref="organizationFormRef"
         :model="organizationForm"
         :rules="organizationRules"
         :disabled="saving || !writable"
         label-position="top"
-        ><el-form-item
+        ><MarFormItem
           :label="translate('generated.organizationUserManagementPage.name')"
           prop="name"
-          ><el-input
+          ><MarInput
             v-model="organizationForm.name"
             :placeholder="
               translate('generated.organizationUserManagementPage.enterAnOrganizationName2')
-            " /></el-form-item
-        ><el-form-item
+            " /></MarFormItem
+        ><MarFormItem
           v-if="editingOrganizationId === undefined"
           :label="translate('generated.organizationUserManagementPage.parentOrganization')"
-          ><el-input
+          ><MarInput
             :model-value="path(organizationForm.parentOrganizationId)"
             disabled
             :placeholder="
               translate('generated.organizationUserManagementPage.parentOrganization2')
-            " /></el-form-item></el-form
+            " /></MarFormItem></MarForm
       ><template #footer
-        ><el-button :disabled="saving" @click="organizationOpen = false">{{
+        ><MarButton :disabled="saving" @click="organizationOpen = false">{{
           translate('generated.organizationUserManagementPage.cancel4')
-        }}</el-button
-        ><el-button
+        }}</MarButton
+        ><MarButton
           type="primary"
           :disabled="!writable"
           :loading="saving"
-          :loading-icon="marIcon('loading-action')"
           @click="saveOrganization"
           >{{
             editingOrganizationId === undefined
               ? translate('generated.organizationUserManagementPage.createOrganization2')
               : translate('generated.organizationUserManagementPage.save')
-          }}</el-button
+          }}</MarButton
         ></template
       ></el-dialog
     >
@@ -389,7 +389,7 @@ onUnmounted(() => viewport.removeEventListener('change', updateMobileViewport));
   gap: 10px;
   white-space: nowrap;
 }
-.organization-actions .el-button + .el-button {
+.organization-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
 .clickable-rows :deep(.el-table__row) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, inject, onBeforeUnmount, shallowRef, watch } from 'vue';
 import { createHtmlPreviewService } from '../../service/html-preview-service.js';
 import { createScopedHttpService } from '../../service/scoped-http-service.js';
@@ -41,7 +42,7 @@ onBeforeUnmount(preview.release);
     <header>
       <span class="html-browser-file-name" v-tooltip="path">{{ path.split('/').at(-1) }}</span>
       <div class="html-browser-actions">
-        <el-button
+        <MarButton
           class="mar-icon-action"
           text
           circle
@@ -52,8 +53,8 @@ onBeforeUnmount(preview.release);
           :aria-busy="busy || undefined"
           @click="reload"
           ><MarIcon :name="busy ? 'loading-action' : 'refresh'"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="mar-icon-action"
           text
           circle
@@ -62,8 +63,8 @@ onBeforeUnmount(preview.release);
           :aria-label="translate('htmlPreview.source')"
           @click="emit('source', path)"
           ><MarIcon name="document"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="mar-icon-action"
           text
           circle
@@ -72,7 +73,7 @@ onBeforeUnmount(preview.release);
           :aria-label="translate('htmlPreview.external')"
           @click="emit('external', path)"
           ><MarIcon name="external-link"
-        /></el-button>
+        /></MarButton>
       </div>
     </header>
     <p v-if="state.error !== undefined" class="html-browser-error" role="alert">
@@ -116,7 +117,7 @@ header {
   align-items: center;
   gap: 0.25rem;
 }
-.html-browser-actions :deep(.el-button + .el-button) {
+.html-browser-actions :deep(.mar-ui-button + .mar-ui-button) {
   margin-left: 0;
 }
 .html-browser-error {

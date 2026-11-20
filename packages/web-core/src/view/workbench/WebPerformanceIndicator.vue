@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { formatDateTime } from '../../util/time-presentation.js';
@@ -98,7 +99,7 @@ onBeforeUnmount(props.diagnostics.dispose);
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
           <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
-          <el-button
+          <MarButton
             v-tooltip="t('performanceDiagnostics.copy')"
             class="mar-icon-action"
             text
@@ -106,7 +107,7 @@ onBeforeUnmount(props.diagnostics.dispose);
             @click="copyDiagnostics"
           >
             <MarIcon name="copy" />
-          </el-button>
+          </MarButton>
         </div>
       </header>
       <dl>

@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import Components from 'unplugin-vue-components/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import type { Plugin } from 'vite';
+import { fileURLToPath } from 'node:url';
 const runId = (process.env['MAR_TEST_RUN_ID'] ?? String(process.pid)).replace(
   /[^a-zA-Z0-9_-]/gu,
   '_'
@@ -10,13 +11,31 @@ const runId = (process.env['MAR_TEST_RUN_ID'] ?? String(process.pid)).replace(
 const vuePlugin = vue();
 const vueTransform = vuePlugin.transform;
 const componentFixtureQuery = /[?&]unit-render(?:&|$)/u;
-const marUiComponentEntry = /^@myagentroam\/mar-ui\/(button|icons|segmented)$/u;
+const marUiComponentEntry =
+  /^@myagentroam\/mar-ui\/(button|dropdown|form|icons|segmented|select|switch)$/u;
+const selectBusinessFixtures =
+  /\/(EnterpriseUserManagementPage|MarAgentCompactSettings|MarAgentModelManagementPage|UsageStatisticsSettings)\.vue\?/u;
 // Opt in only the component fixtures that drive the real template and lifecycle.
 // Existing SSR and setup-only fixtures keep their original compilation mode.
 const componentFixtures: Plugin = {
   name: 'component-fixture-templates',
   enforce: 'pre',
   async resolveId(source, importer) {
+    if (
+      importer &&
+      componentFixtureQuery.test(importer) &&
+      source === '@myagentroam/mar-ui/input'
+    ) {
+      return fileURLToPath(new URL('./test/unit/support/mar-input-stub.ts', import.meta.url));
+    }
+    if (
+      importer &&
+      componentFixtureQuery.test(importer) &&
+      selectBusinessFixtures.test(importer) &&
+      source === '@myagentroam/mar-ui/select'
+    ) {
+      return fileURLToPath(new URL('./test/unit/support/mar-select-stub.ts', import.meta.url));
+    }
     if (importer && componentFixtureQuery.test(importer) && marUiComponentEntry.test(source)) {
       const entry = await this.resolve(source, importer, { skipSelf: true });
       return entry && { ...entry, id: `${entry.id}?unit-render` };

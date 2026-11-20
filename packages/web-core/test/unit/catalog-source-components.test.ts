@@ -77,6 +77,8 @@ describe('Public source discovery and catalog management', () => {
       vi.stubGlobal('window', {
         matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
       });
+      vi.stubGlobal('Document', class {});
+      vi.stubGlobal('ShadowRoot', class {});
       i18n.global.locale.value = 'en-US';
       vi.spyOn(ElMessage, 'success').mockImplementation(() => ({ close() {} }));
       const confirm = vi
@@ -128,7 +130,7 @@ describe('Public source discovery and catalog management', () => {
       );
       const button = (label: string) =>
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => textContent(node).trim().toLowerCase() === label.toLowerCase())!;
       try {
         await flushComponent();
@@ -139,7 +141,7 @@ describe('Public source discovery and catalog management', () => {
         if (_name === 'MCP') await trigger(button('Search'), 'onClick');
         expect(textContent(view.root)).toContain('Visible candidate description');
         const add = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => /Add to (?:catalog|MCP)/iu.test(textContent(node)))!;
         await trigger(add, 'onClick');
         expect(textContent(view.root)).toContain('Host catalog ownership');

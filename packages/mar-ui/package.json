@@ -12,7 +12,9 @@
     "./input": "./components/input/index.ts",
     "./select": "./components/select/index.ts",
     "./dropdown": "./components/dropdown/index.ts",
+    "./form": "./components/form/index.ts",
     "./segmented": "./components/segmented/index.ts",
+    "./switch": "./components/switch/index.ts",
     "./icons": "./icons/index.ts",
     "./icon-shapes": "./icons/icon-shapes.ts",
     "./icon-shapes.NOTICE.txt": "./icons/icon-shapes.NOTICE.txt",
@@ -21,6 +23,7 @@
     "./locale": "./locale/index.ts"
   },
   "dependencies": {
+    "async-validator": "4.2.5",
     "vue": "^3.5.41"
   }
 }

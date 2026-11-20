@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -9,7 +14,6 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/locale-preference-service';
 import {
   createSystemConfigurationService,
@@ -258,13 +262,9 @@ onMounted(() => {
     class="mar-management-page"
   >
     <div class="mar-table-actions">
-      <el-button
-        :icon="marIcon('refresh')"
-        :loading="loading && initialized"
-        @click="load"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.systemConfigurationPage.refresh') }}</el-button
-      >
+      <MarButton :icon="marIcon('refresh')" :loading="loading && initialized" @click="load">{{
+        translate('generated.systemConfigurationPage.refresh')
+      }}</MarButton>
     </div>
     <el-table :data="rows" row-key="key">
       <el-table-column
@@ -296,27 +296,27 @@ onMounted(() => {
             ><template #increase-icon><MarIcon name="plus" /></template
           ></el-input-number>
           <span v-else-if="row.type === 'number'">{{ snapshot[row.field] }}</span>
-          <el-form
+          <MarForm
             v-else-if="row.type === 'origin' && editingKey === row.key"
             ref="originForm"
             :model="originModel"
             :rules="originRules"
           >
-            <el-form-item prop="origin" class="origin-setting-form">
-              <el-input
+            <MarFormItem prop="origin" class="origin-setting-form">
+              <MarInput
                 :model-value="originDraft(row.field)"
                 :placeholder="translate(row.placeholderKey)"
                 :disabled="savingKey !== null"
                 @update:model-value="service.setDraft(row.key, $event)"
               />
-            </el-form-item>
-          </el-form>
+            </MarFormItem>
+          </MarForm>
           <span v-else-if="row.type === 'origin'">{{
             snapshot[row.field] ||
             translate('generated.systemConfigurationPage.htmlPreviewCurrentOrigin')
           }}</span>
           <span v-else-if="row.type === 'json'">-</span>
-          <el-switch
+          <MarSwitch
             v-else
             :model-value="drafts[row.field] === true"
             :disabled="editingKey !== row.key || !writable || savingKey !== null"
@@ -329,7 +329,7 @@ onMounted(() => {
         min-width="220"
       >
         <template #default="{ row }">
-          <el-button
+          <MarButton
             v-if="editingKey !== row.key || row.type === 'json'"
             link
             :icon="marIcon('edit')"
@@ -337,27 +337,26 @@ onMounted(() => {
             @click="row.type === 'json' ? openSmtpDialog() : beginEdit(row.key)"
           >
             {{ translate('generated.systemConfigurationPage.edit') }}
-          </el-button>
+          </MarButton>
           <template v-else>
-            <el-button
+            <MarButton
               link
               type="primary"
               :icon="marIcon('check')"
               :loading="savingKey === row.key"
               :disabled="!writable || savingKey !== null"
               @click="save(row.key)"
-              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('generated.systemConfigurationPage.save') }}
-            </el-button>
-            <el-button
+            </MarButton>
+            <MarButton
               link
               :icon="marIcon('close')"
               :disabled="savingKey !== null"
               @click="cancelEdit(row.key)"
             >
               {{ translate('common.cancel') }}
-            </el-button>
+            </MarButton>
           </template>
         </template>
       </el-table-column>
@@ -377,13 +376,13 @@ onMounted(() => {
     >
       <div class="smtp-toggle">
         <span>{{ translate('generated.systemConfigurationPage.smtpEnable') }}</span>
-        <el-switch
+        <MarSwitch
           v-model="smtpEnabled"
           :disabled="savingKey !== null"
           :aria-label="translate('generated.systemConfigurationPage.smtpEnable')"
         />
       </div>
-      <el-form
+      <MarForm
         v-if="smtpEnabled"
         ref="smtpForm"
         :model="smtpModel"
@@ -397,74 +396,72 @@ onMounted(() => {
           type="error"
           :closable="false"
         />
-        <el-form-item :label="translate('generated.systemConfigurationPage.smtpHost')" prop="host">
-          <el-input
+        <MarFormItem :label="translate('generated.systemConfigurationPage.smtpHost')" prop="host">
+          <MarInput
             v-model="smtpModel.host"
             maxlength="253"
             autocomplete="off"
             :disabled="savingKey !== null"
           />
-        </el-form-item>
+        </MarFormItem>
         <div class="smtp-form__pair">
-          <el-form-item
-            :label="translate('generated.systemConfigurationPage.smtpPort')"
-            prop="port"
-          >
+          <MarFormItem :label="translate('generated.systemConfigurationPage.smtpPort')" prop="port">
             <el-input-number
               v-model="smtpModel.port"
+              :aria-label="translate('generated.systemConfigurationPage.smtpPort')"
               :min="1"
               :max="65535"
               :controls="false"
               :disabled="savingKey !== null"
             />
-          </el-form-item>
-          <el-form-item :label="translate('generated.systemConfigurationPage.smtpTls')" prop="tls">
-            <el-select
+          </MarFormItem>
+          <MarFormItem :label="translate('generated.systemConfigurationPage.smtpTls')" prop="tls">
+            <MarSelect
               v-model="smtpModel.tls"
               :disabled="savingKey !== null"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
             >
-              <el-option label="STARTTLS" value="STARTTLS" />
-              <el-option label="TLS" value="TLS" />
-            </el-select>
-          </el-form-item>
+              <MarOption label="STARTTLS" value="STARTTLS" />
+              <MarOption label="TLS" value="TLS" />
+            </MarSelect>
+          </MarFormItem>
         </div>
-        <el-form-item :label="translate('generated.systemConfigurationPage.smtpFrom')" prop="from">
-          <el-input
+        <MarFormItem :label="translate('generated.systemConfigurationPage.smtpFrom')" prop="from">
+          <MarInput
             v-model="smtpModel.from"
             maxlength="320"
             autocomplete="off"
             :disabled="savingKey !== null"
           />
-        </el-form-item>
-        <el-form-item
+        </MarFormItem>
+        <MarFormItem
           :label="translate('generated.systemConfigurationPage.smtpFromName')"
           prop="fromName"
         >
-          <el-input
+          <MarInput
             v-model="smtpModel.fromName"
             maxlength="128"
             autocomplete="off"
             :disabled="savingKey !== null"
           />
-        </el-form-item>
-        <el-form-item
+        </MarFormItem>
+        <MarFormItem
           :label="translate('generated.systemConfigurationPage.smtpUsername')"
           prop="username"
         >
-          <el-input
+          <MarInput
             v-model="smtpModel.username"
             maxlength="320"
             autocomplete="off"
             :disabled="savingKey !== null"
           />
-        </el-form-item>
-        <el-form-item
+        </MarFormItem>
+        <MarFormItem
           :label="translate('generated.systemConfigurationPage.smtpPassword')"
           prop="password"
         >
-          <el-input
+          <MarInput
             v-model="smtpModel.password"
             type="password"
             maxlength="1024"
@@ -476,8 +473,8 @@ onMounted(() => {
             "
             :disabled="savingKey !== null"
           />
-        </el-form-item>
-      </el-form>
+        </MarFormItem>
+      </MarForm>
       <div class="smtp-template-row">
         <MailTemplateManagement :request="request" :writable="writable" />
       </div>
@@ -486,17 +483,12 @@ onMounted(() => {
       </p>
       <template #footer>
         <div class="smtp-dialog-footer">
-          <el-button :disabled="savingKey !== null" @click="smtpDialogOpen = false">
+          <MarButton :disabled="savingKey !== null" @click="smtpDialogOpen = false">
             {{ translate('common.cancel') }}
-          </el-button>
-          <el-button
-            type="primary"
-            :loading="savingKey === 'mail-smtp'"
-            @click="save('mail-smtp')"
-            :loading-icon="marIcon('loading-action')"
-          >
+          </MarButton>
+          <MarButton type="primary" :loading="savingKey === 'mail-smtp'" @click="save('mail-smtp')">
             {{ translate('generated.systemConfigurationPage.save') }}
-          </el-button>
+          </MarButton>
         </div>
       </template>
     </el-dialog>
@@ -519,7 +511,7 @@ onMounted(() => {
   gap: 16px;
 }
 .smtp-form__pair :deep(.el-input-number),
-.smtp-form__pair :deep(.el-select) {
+.smtp-form__pair :deep(.mar-ui-select) {
   width: 100%;
 }
 .smtp-form__pair :deep(.el-input-number .el-input__inner) {

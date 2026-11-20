@@ -400,7 +400,7 @@ test('Quick Open keeps keyboard results visible when failed-source details expan
   await expect(input).toBeInViewport();
   const retry = notices.getByRole('button', { name: 'Retry', exact: true });
   await retry.scrollIntoViewIfNeeded();
-  await expect(retry).toHaveClass(/is-link/);
+  await expect(retry).toHaveClass(/mar-ui-button--inline/);
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await retry.hover();
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

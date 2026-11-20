@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
+
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -9,7 +15,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import McpDetailsDialog, { type McpDetails } from './McpDetailsDialog.vue';
 import { translate } from '../../service/locale-preference-service';
@@ -460,12 +465,12 @@ function scopeLabel(scope: string): string {
     class="mar-management-page mcp-source-page"
   >
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         type="primary"
         :icon="marIcon('plus')"
         :disabled="!writable"
         @click="openSourceDialog"
-        >{{ translate('generated.mcpSourceManagementPage.addMCPSource') }}</el-button
+        >{{ translate('generated.mcpSourceManagementPage.addMCPSource') }}</MarButton
       >
     </div>
     <el-table
@@ -506,7 +511,7 @@ function scopeLabel(scope: string): string {
       <el-table-column :label="translate('generated.mcpSourceManagementPage.actions')" :width="180">
         <template #default="{ row }"
           ><div class="mar-row-actions" @click.stop>
-            <el-button
+            <MarButton
               link
               :icon="marIcon('power')"
               :disabled="!row.manageable || !writable"
@@ -515,14 +520,14 @@ function scopeLabel(scope: string): string {
                 row.enabled
                   ? translate('generated.mcpSourceManagementPage.disable')
                   : translate('generated.mcpSourceManagementPage.enable')
-              }}</el-button
-            ><el-button
+              }}</MarButton
+            ><MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="row.builtIn || !row.manageable || !writable"
               @click="removeSource(row)"
-              >{{ translate('generated.mcpSourceManagementPage.delete2') }}</el-button
+              >{{ translate('generated.mcpSourceManagementPage.delete2') }}</MarButton
             >
           </div></template
         >
@@ -535,19 +540,18 @@ function scopeLabel(scope: string): string {
         name="source"
       >
         <div class="source-search-bar">
-          <el-select
+          <MarSelect
             v-model="sourceId"
+            :aria-label="translate('generated.mcpSourceManagementPage.selectAnEnabledMCPSource')"
             :placeholder="translate('generated.mcpSourceManagementPage.selectAnEnabledMCPSource')"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="source in sources.filter((item) => item.enabled)"
               :key="source.id"
               :label="displaySourceName(source)"
               :value="source.id"
-          /></el-select>
+          /></MarSelect>
           <div class="toolbar">
-            <el-input
+            <MarInput
               v-model="query"
               clearable
               :placeholder="
@@ -557,14 +561,14 @@ function scopeLabel(scope: string): string {
               :clear-icon="marIcon('clear-input')"
             >
               <template #append
-                ><el-button
+                ><MarButton
                   :icon="marIcon('search')"
                   :disabled="!sourceId || loading"
                   @click="discover"
-                  >{{ translate('generated.mcpSourceManagementPage.search') }}</el-button
+                  >{{ translate('generated.mcpSourceManagementPage.search') }}</MarButton
                 ></template
               >
-            </el-input>
+            </MarInput>
           </div>
         </div>
         <div class="mcp-table-section">
@@ -616,7 +620,7 @@ function scopeLabel(scope: string): string {
             >
               <template #default="{ row }">
                 <div class="mar-row-actions" @click.stop>
-                  <el-button
+                  <MarButton
                     link
                     :icon="marIcon('plus')"
                     :disabled="!writable || catalogServerNames.has(row.serverName)"
@@ -625,7 +629,7 @@ function scopeLabel(scope: string): string {
                       catalogServerNames.has(row.serverName)
                         ? translate('generated.mcpSourceManagementPage.added')
                         : translate('generated.mcpSourceManagementPage.addToCatalog')
-                    }}</el-button
+                    }}</MarButton
                   >
                 </div>
               </template>
@@ -645,21 +649,20 @@ function scopeLabel(scope: string): string {
         name="catalog"
       >
         <div class="mcp-toolbar">
-          <el-input
+          <MarInput
             v-model="pagination.keyword.value"
             clearable
             :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
             :clear-icon="marIcon('clear-input')"
           />
-          <el-select
+          <MarSelect
             v-model="pagination.category.value"
             clearable
+            :aria-label="translate('generated.mcpCenterPanel.mCPCategories')"
             :placeholder="translate('generated.mcpCenterPanel.mCPCategories')"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
-          </el-select>
+            <MarOption v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
+          </MarSelect>
         </div>
         <div
           v-loading="
@@ -733,41 +736,39 @@ function scopeLabel(scope: string): string {
             >
               <template #default="{ row }">
                 <div class="mar-row-actions" @click.stop>
-                  <el-button
+                  <MarButton
                     link
                     :icon="marIcon('edit')"
                     :disabled="!writable || !row.manageable || loading"
                     @click="openEdit(row)"
-                    >{{ translate('generated.mcpSourceManagementPage.edit') }}</el-button
+                    >{{ translate('generated.mcpSourceManagementPage.edit') }}</MarButton
                   >
-                  <el-button
+                  <MarButton
                     v-if="!updateChecks[row.id]?.updateAvailable"
                     link
                     :icon="marIcon('refresh')"
                     :loading="checkingEntryIds.has(row.id)"
                     :disabled="!writable || !row.manageable || loading"
                     @click="checkUpdate(row)"
-                    :loading-icon="marIcon('loading-action')"
-                    >{{ translate('generated.mcpSourceManagementPage.checkForUpdates') }}</el-button
+                    >{{ translate('generated.mcpSourceManagementPage.checkForUpdates') }}</MarButton
                   >
-                  <el-button
+                  <MarButton
                     v-else
                     link
                     :icon="marIcon('retry')"
                     :loading="upgradingEntryId === row.id"
                     :disabled="!writable || !row.manageable || loading"
                     @click="upgrade(row)"
-                    :loading-icon="marIcon('loading-action')"
                     >{{ translate('generated.mcpSourceManagementPage.updateTo') }}
-                    {{ updateChecks[row.id]!.latestVersion }}</el-button
+                    {{ updateChecks[row.id]!.latestVersion }}</MarButton
                   >
-                  <el-button
+                  <MarButton
                     link
                     type="danger"
                     :icon="marIcon('delete')"
                     :disabled="!writable || !row.manageable || loading"
                     @click="removeCatalog(row)"
-                    >{{ translate('generated.mcpSourceManagementPage.remove2') }}</el-button
+                    >{{ translate('generated.mcpSourceManagementPage.remove2') }}</MarButton
                   >
                 </div>
               </template>
@@ -806,35 +807,35 @@ function scopeLabel(scope: string): string {
     width="min(520px, calc(100vw - 32px))"
     destroy-on-close
     :close-icon="marIcon('close')"
-    ><el-form
+    ><MarForm
       ref="sourceForm"
       :model="{ ...sourceContext, ...sourceDraft }"
       :rules="{ ...ownershipRules, ...sourceRules }"
       label-width="90px"
-      ><el-form-item :label="translate('generated.mcpSourceManagementPage.name2')" prop="name"
-        ><el-input v-model="sourceDraft.name" /></el-form-item
-      ><el-form-item :label="translate('common.registry')" prop="locator"
-        ><el-input
+      ><MarFormItem :label="translate('generated.mcpSourceManagementPage.name2')" prop="name"
+        ><MarInput v-model="sourceDraft.name" /></MarFormItem
+      ><MarFormItem :label="translate('common.registry')" prop="locator"
+        ><MarInput
           v-model="sourceDraft.locator"
-          :placeholder="translate('common.registryUrlExample')" /></el-form-item
+          :placeholder="translate('common.registryUrlExample')" /></MarFormItem
       ><slot name="source-ownership">
-        <el-form-item :label="translate('generated.mcpSourceManagementPage.scope2')">
-          <el-select
+        <MarFormItem :label="translate('generated.mcpSourceManagementPage.scope2')">
+          <MarSelect
             model-value="PERSONAL"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               value="PERSONAL"
               :label="translate('generated.mcpSourceManagementPage.personal2')"
-          /></el-select>
-        </el-form-item> </slot></el-form
+          /></MarSelect>
+        </MarFormItem> </slot></MarForm
     ><template #footer
-      ><el-button @click="sourceDialog = false">{{
+      ><MarButton @click="sourceDialog = false">{{
         translate('generated.mcpSourceManagementPage.cancel3')
-      }}</el-button
-      ><el-button type="primary" @click="createSource">{{
+      }}</MarButton
+      ><MarButton type="primary" @click="createSource">{{
         translate('generated.mcpSourceManagementPage.confirm')
-      }}</el-button></template
+      }}</MarButton></template
     ></el-dialog
   >
   <el-dialog
@@ -846,26 +847,26 @@ function scopeLabel(scope: string): string {
     width="min(520px, calc(100vw - 32px))"
     destroy-on-close
     :close-icon="marIcon('close')"
-    ><el-form
+    ><MarForm
       ref="catalogForm"
       :model="{ ...catalogContext, ...catalogDraft }"
       :rules="{ ...ownershipRules, ...catalogRules }"
       label-width="90px"
-      ><el-form-item :label="translate('common.server')"
-        ><span>{{ candidate?.displayName }} {{ candidate?.version }}</span></el-form-item
+      ><MarFormItem :label="translate('common.server')"
+        ><span>{{ candidate?.displayName }} {{ candidate?.version }}</span></MarFormItem
       ><slot name="catalog-ownership">
-        <el-form-item :label="translate('generated.mcpSourceManagementPage.scope3')">
-          <el-select
+        <MarFormItem :label="translate('generated.mcpSourceManagementPage.scope3')">
+          <MarSelect
             model-value="PERSONAL"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               value="PERSONAL"
               :label="translate('generated.mcpSourceManagementPage.personal3')"
-          /></el-select>
-        </el-form-item> </slot
-      ><el-form-item :label="translate('generated.mcpSourceManagementPage.tags')" prop="tags"
-        ><el-select
+          /></MarSelect>
+        </MarFormItem> </slot
+      ><MarFormItem :label="translate('generated.mcpSourceManagementPage.tags')" prop="tags"
+        ><MarSelect
           v-model="catalogDraft.tags"
           multiple
           filterable
@@ -875,20 +876,20 @@ function scopeLabel(scope: string): string {
           :placeholder="translate('generated.mcpSourceManagementPage.selectAnExistingTagOrEnterA')"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             v-for="tag in catalogTags"
             :key="tag"
             :label="tag"
-            :value="tag" /></el-select></el-form-item
-      ><el-form-item :label="translate('generated.mcpSourceManagementPage.featured2')"
-        ><el-switch v-model="catalogDraft.featured" /></el-form-item></el-form
+            :value="tag" /></MarSelect></MarFormItem
+      ><MarFormItem :label="translate('generated.mcpSourceManagementPage.featured2')"
+        ><MarSwitch v-model="catalogDraft.featured" /></MarFormItem></MarForm
     ><template #footer
-      ><el-button @click="catalogDialog = false">{{
+      ><MarButton @click="catalogDialog = false">{{
         translate('generated.mcpSourceManagementPage.cancel4')
-      }}</el-button
-      ><el-button type="primary" @click="addCatalog">{{
+      }}</MarButton
+      ><MarButton type="primary" @click="addCatalog">{{
         translate('generated.mcpSourceManagementPage.confirm2')
-      }}</el-button></template
+      }}</MarButton></template
     ></el-dialog
   >
   <el-dialog
@@ -901,12 +902,12 @@ function scopeLabel(scope: string): string {
     destroy-on-close
     :close-icon="marIcon('close')"
   >
-    <el-form ref="editForm" :model="editDraft" :rules="catalogRules" label-position="top">
-      <el-form-item :label="translate('generated.mcpSourceManagementPage.featured3')"
-        ><el-switch v-model="editDraft.featured"
-      /></el-form-item>
-      <el-form-item :label="translate('generated.mcpSourceManagementPage.tags2')" prop="tags">
-        <el-select
+    <MarForm ref="editForm" :model="editDraft" :rules="catalogRules" label-position="top">
+      <MarFormItem :label="translate('generated.mcpSourceManagementPage.featured3')"
+        ><MarSwitch v-model="editDraft.featured"
+      /></MarFormItem>
+      <MarFormItem :label="translate('generated.mcpSourceManagementPage.tags2')" prop="tags">
+        <MarSelect
           v-model="editDraft.tags"
           multiple
           filterable
@@ -917,17 +918,17 @@ function scopeLabel(scope: string): string {
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
-        </el-select>
-      </el-form-item>
-    </el-form>
+          <MarOption v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
+        </MarSelect>
+      </MarFormItem>
+    </MarForm>
     <template #footer>
-      <el-button @click="editDialog = false">{{
+      <MarButton @click="editDialog = false">{{
         translate('generated.mcpSourceManagementPage.cancel5')
-      }}</el-button>
-      <el-button type="primary" @click="savePresentation">{{
+      }}</MarButton>
+      <MarButton type="primary" @click="savePresentation">{{
         translate('generated.mcpSourceManagementPage.save')
-      }}</el-button>
+      }}</MarButton>
     </template>
   </el-dialog>
   <McpDetailsDialog v-model="detailsOpen" :details="details" />
@@ -960,7 +961,7 @@ p {
   gap: 12px;
   min-width: 0;
 }
-.source-search-bar :deep(.el-select) {
+.source-search-bar :deep(.mar-ui-select) {
   width: min(320px, 100%);
   min-width: 200px;
 }
@@ -1000,10 +1001,13 @@ p {
     align-items: stretch;
     flex-direction: column;
   }
-  .source-search-bar :deep(.el-select) {
+  .source-search-bar :deep(.mar-ui-select) {
     width: 100%;
   }
-  .toolbar :deep(.el-button) {
+  .source-search-bar .toolbar {
+    flex-basis: auto;
+  }
+  .toolbar :deep(.mar-ui-button) {
     min-height: 36px;
   }
 }

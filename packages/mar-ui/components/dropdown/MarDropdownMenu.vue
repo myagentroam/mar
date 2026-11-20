@@ -14,10 +14,12 @@ const surface = dropdown?.surface ?? shallowRef(null);
     role="menu"
     tabindex="-1"
     class="mar-ui-popup mar-ui-dropdown__popup"
+    :class="dropdown?.popupClass.value"
+    :style="[dropdown?.popupStyle.value]"
     popover="manual"
-    :aria-labelledby="dropdown?.triggerId.value"
+    :aria-labelledby="$attrs['aria-label'] ? undefined : dropdown?.triggerId.value"
   >
-    <slot />
+    <div class="mar-ui-popup__content"><slot /></div>
   </div>
 </template>
 

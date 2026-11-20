@@ -169,14 +169,14 @@ for (const [locale, width] of [
       await expect(username).toHaveValue('');
       await expect(email).toHaveValue('');
       await expect(nickname).toHaveValue('');
-      await expect(ui.dialog.locator('.el-form-item__error')).toHaveCount(0);
+      await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveCount(0);
       await username.fill('discarded');
       await email.fill('invalid-email');
       await nickname.fill('Discarded nickname');
       await ui.dialog
         .getByRole('button', { name: locale === 'en-US' ? 'Create user' : '创建用户', exact: true })
         .click();
-      await expect(ui.dialog.locator('.el-form-item__error')).toHaveText([
+      await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText([
         locale === 'en-US' ? 'Enter a valid email address' : '请输入有效邮箱'
       ]);
       expect(ui.writes).toHaveLength(0);
@@ -195,7 +195,7 @@ for (const [locale, width] of [
       if (close === 'escape') await expect(ui.create).toHaveCSS('outline-style', 'none');
     }
     await ui.create.click();
-    await expect(ui.dialog.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveCount(0);
   });
 }
 
@@ -211,17 +211,17 @@ test('Registered users form retains its existing validation and optional role/or
   await expect(ui.dialog.getByRole('combobox', { name: 'Role' })).toBeVisible();
   await expect(ui.dialog.getByRole('textbox', { name: 'Organization' })).toHaveValue('Root');
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText(['Enter a username']);
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText(['Enter a username']);
   await username.fill('   ');
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText(['Enter a username']);
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText(['Enter a username']);
   await username.fill('u'.repeat(81));
   const boundaryEmail =
     'a'.repeat(64) + '@' + 'b'.repeat(63) + '.' + 'c'.repeat(63) + '.' + 'd'.repeat(61);
   await email.fill(boundaryEmail + 'd');
   await nickname.fill('n'.repeat(81));
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText([
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText([
     'The username cannot exceed 80 characters',
     'The email address cannot exceed 254 characters',
     'The display name cannot exceed 80 characters'
@@ -231,7 +231,7 @@ test('Registered users form retains its existing validation and optional role/or
   await email.fill('not-an-email');
   await nickname.fill('');
   await submit.click();
-  await expect(ui.dialog.locator('.el-form-item__error')).toHaveText([
+  await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText([
     'Enter a valid email address'
   ]);
   expect(ui.writes).toHaveLength(0);

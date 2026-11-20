@@ -207,7 +207,7 @@ pre {
   gap: 6px;
   white-space: nowrap;
 }
-.mar-management-page .mar-filter-field > span {
+.mar-management-page .mar-filter-field > span:first-child {
   color: var(--el-text-color-regular);
   font-size: var(--mar-font-size-meta);
 }
@@ -239,10 +239,10 @@ pre {
   gap: 10px;
   white-space: nowrap;
 }
-.mar-management-page .mar-row-actions .el-button + .el-button {
+.mar-management-page .mar-row-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
-.mar-management-page .mar-row-actions .el-button {
+.mar-management-page .mar-row-actions .mar-ui-button {
   min-height: var(--mar-compact-control-size);
   padding-inline: 2px;
   font-size: var(--mar-font-size-body);

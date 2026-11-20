@@ -2,7 +2,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 
 async function expectNeutralAction(action: Locator) {
-  await expect(action).not.toHaveClass(/is-link|el-button--(?:primary|danger)/);
+  await expect(action).not.toHaveClass(/mar-ui-button--inline|mar-ui-button--(?:primary|danger)/);
   await expect(action).toHaveCSS('border-top-style', 'solid');
   await expect(action).toHaveCSS('border-top-width', '1px');
   await expect(action).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

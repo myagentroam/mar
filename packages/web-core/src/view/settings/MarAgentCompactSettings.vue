@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { type FormInstance, type FormRules } from 'element-plus';
 import {
   resolveMarAgentDefaultReasoningEffort,
   type MarAgentCompactConfiguration,
@@ -130,27 +133,27 @@ onBeforeUnmount(() => lifetime.abort());
     class="compact-settings"
   >
     <p class="compact-hint">{{ translate('marAgentModels.compactHint') }}</p>
-    <el-form
+    <MarForm
       ref="form"
       :model="draft"
       :rules="rules"
       label-position="top"
       :disabled="!writable || busy || !ready"
     >
-      <el-form-item
+      <MarFormItem
         :label="translate('marAgentModels.compactSmartEnabled')"
         prop="smartCompactEnabled"
       >
         <div class="compact-smart-setting">
-          <el-switch v-model="draft.smartCompactEnabled" />
+          <MarSwitch v-model="draft.smartCompactEnabled" />
           <p class="compact-smart-hint">{{ translate('marAgentModels.compactSmartHint') }}</p>
         </div>
-      </el-form-item>
-      <el-form-item :label="translate('marAgentModels.compactEnabled')" prop="enabled">
-        <el-switch v-model="draft.enabled" />
-      </el-form-item>
-      <el-form-item :label="translate('marAgentModels.compactModel')" prop="modelId">
-        <el-select
+      </MarFormItem>
+      <MarFormItem :label="translate('marAgentModels.compactEnabled')" prop="enabled">
+        <MarSwitch v-model="draft.enabled" />
+      </MarFormItem>
+      <MarFormItem :label="translate('marAgentModels.compactModel')" prop="modelId">
+        <MarSelect
           v-model="draft.modelId"
           filterable
           clearable
@@ -159,48 +162,39 @@ onBeforeUnmount(() => lifetime.abort());
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="model in candidates"
             :key="model.id"
             :label="model.name"
             :value="model.id"
             :disabled="!model.enabled"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item :label="translate('marAgentModels.compactEffort')" prop="reasoningEffort">
-        <el-select
+        </MarSelect>
+      </MarFormItem>
+      <MarFormItem :label="translate('marAgentModels.compactEffort')" prop="reasoningEffort">
+        <MarSelect
           v-model="draft.reasoningEffort"
           :disabled="!selected"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="effort in efforts"
             :key="effort"
             :label="translate(`marAgentModels.compactEffortOptions.${effort}`)"
             :value="effort"
           />
-        </el-select>
-      </el-form-item>
+        </MarSelect>
+      </MarFormItem>
       <div class="compact-actions">
-        <el-button
-          type="primary"
-          :icon="marIcon('check')"
-          :loading="saving"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('marAgentModels.compactSave') }}</el-button
-        >
-        <el-button
-          :icon="marIcon('refresh')"
-          :loading="refreshing && ready"
-          @click="load(true)"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('marAgentModels.refresh') }}</el-button
-        >
+        <MarButton type="primary" :icon="marIcon('check')" :loading="saving" @click="save">{{
+          translate('marAgentModels.compactSave')
+        }}</MarButton>
+        <MarButton :icon="marIcon('refresh')" :loading="refreshing && ready" @click="load(true)">{{
+          translate('marAgentModels.refresh')
+        }}</MarButton>
       </div>
-    </el-form>
+    </MarForm>
   </section>
 </template>
 
@@ -214,7 +208,7 @@ onBeforeUnmount(() => lifetime.abort());
   line-height: 1.6;
   margin: 0 0 1rem;
 }
-.compact-settings :deep(.el-select) {
+.compact-settings :deep(.mar-ui-select) {
   width: 100%;
 }
 .compact-smart-setting {
@@ -232,7 +226,7 @@ onBeforeUnmount(() => lifetime.abort());
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.compact-actions :deep(.el-button + .el-button) {
+.compact-actions :deep(.mar-ui-button + .mar-ui-button) {
   margin-left: 0;
 }
 </style>

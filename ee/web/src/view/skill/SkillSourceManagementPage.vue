@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarFormItem, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
 import { marIcon } from '@myagentroam/web-core/icons';
 import { computed } from 'vue';
 import CorePage from '@myagentroam/web-core/SkillSourceManagementPage.vue';
@@ -13,7 +15,7 @@ const props = defineProps<{
 }>();
 const ownership = createCatalogOwnershipService(props.request, () => props);
 const { sourceDraft, catalogDraft, organizationOptions, canUseOrganizationScope } = ownership;
-const ownershipRules = computed(() => ({
+const ownershipRules = computed<FormRules>(() => ({
   organizationId: [
     {
       required: true,
@@ -50,19 +52,19 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
     @open-catalog="ownership.resetCatalog"
   >
     <template #source-ownership>
-      <el-form-item :label="translate('generated.skillSourceManagementPage.scope2')" prop="scope"
-        ><el-select
+      <MarFormItem :label="translate('generated.skillSourceManagementPage.scope2')" prop="scope"
+        ><MarSelect
           v-model="sourceDraft.scope"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.skillSourceManagementPage.personal2')"
-            value="PERSONAL" /><el-option
+            value="PERSONAL" /><MarOption
             v-if="canUseOrganizationScope"
             :label="translate('generated.skillSourceManagementPage.organization2')"
-            value="ORGANIZATION" /></el-select
-      ></el-form-item>
-      <el-form-item
+            value="ORGANIZATION" /></MarSelect
+      ></MarFormItem>
+      <MarFormItem
         v-if="sourceDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.skillSourceManagementPage.organization3')"
         prop="organizationId"
@@ -76,24 +78,24 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
-      /></el-form-item>
+      /></MarFormItem>
     </template>
     <template #catalog-ownership>
-      <el-form-item
+      <MarFormItem
         :label="translate('generated.skillSourceManagementPage.availability')"
         prop="scope"
-        ><el-select
+        ><MarSelect
           v-model="catalogDraft.scope"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
-          ><el-option
+          ><MarOption
             :label="translate('generated.skillSourceManagementPage.personal3')"
-            value="PERSONAL" /><el-option
+            value="PERSONAL" /><MarOption
             v-if="canUseOrganizationScope"
             :label="translate('generated.skillSourceManagementPage.organizationMembers')"
-            value="ORGANIZATION" /></el-select
-      ></el-form-item>
-      <el-form-item
+            value="ORGANIZATION" /></MarSelect
+      ></MarFormItem>
+      <MarFormItem
         v-if="catalogDraft.scope === 'ORGANIZATION'"
         :label="translate('generated.skillSourceManagementPage.organization4')"
         prop="organizationId"
@@ -107,7 +109,7 @@ const submitFavorite = (input: Parameters<typeof submissions.submitFavorite>[0])
           :options="organizationOptions"
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
-      /></el-form-item>
+      /></MarFormItem>
     </template>
   </CorePage>
 </template>

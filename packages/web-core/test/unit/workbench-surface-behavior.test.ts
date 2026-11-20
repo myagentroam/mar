@@ -873,11 +873,11 @@ describe('Workbench surface composition behavior', () => {
           translate('generated.workbenchSurface.workspaceMetadataUnavailable')
         );
         const button = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => textContent(node).includes(translate('common.loadFailedRetry')))!;
         await trigger(button, 'onClick');
         expect(retry).toHaveBeenCalledTimes(1);
-        expect(view.findAll('ElButton')).toHaveLength(0);
+        expect(view.findAll('MarButton')).toHaveLength(0);
         expect(view.findAll('div').some((node) => node.props['role'] === 'status')).toBe(true);
         expect(textContent(view.root)).not.toContain(
           translate('generated.workbenchSurface.workspaceMetadataUnavailable')

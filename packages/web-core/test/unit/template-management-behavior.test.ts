@@ -80,7 +80,7 @@ function fixture() {
   });
 }
 function button(view: ReturnType<typeof renderComponent>, label: string) {
-  return view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+  return view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
 }
 beforeEach(() => {
   i18n.global.locale.value = 'en-US';

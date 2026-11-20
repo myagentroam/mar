@@ -209,8 +209,8 @@ for (const theme of ['daylight', 'midnight']) {
         if (width >= 768) {
           const bounds = (await help.boundingBox())!;
           expect(bounds.width).toBe(bounds.height);
-          expect(width - bounds.x - bounds.width).toBeGreaterThanOrEqual(8);
-          expect(width - bounds.x - bounds.width).toBeLessThanOrEqual(12);
+          // Match the desktop shell inset; the mobile link stays in the rail flow.
+          expect(width - bounds.x - bounds.width).toBe(16);
         } else await expect(help).toHaveCSS('position', 'static');
         await help.screenshot({ path: testInfo.outputPath(`help-density-${width}.png`) });
         for (const custom of [false, true]) {

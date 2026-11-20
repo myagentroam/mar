@@ -22,6 +22,11 @@ import {
   trigger
 } from '../../../../packages/web-core/test/unit/support/component-renderer.js';
 
+vi.mock(
+  '@myagentroam/mar-ui/select',
+  () => import('../../../../packages/web-core/test/unit/support/mar-select-stub.js')
+);
+
 const originalLocale = i18n.global.locale.value;
 const organizations = [
   { id: 1, name: 'Engineering', parentOrganizationId: null },
@@ -53,7 +58,7 @@ afterEach(() => {
 });
 
 function button(view: ReturnType<typeof renderComponent>, label: string) {
-  const found = view.findAll('ElButton').find((node) => textContent(node).trim() === label);
+  const found = view.findAll('MarButton').find((node) => textContent(node).trim() === label);
   expect(found).toBeDefined();
   return found!;
 }
@@ -111,7 +116,7 @@ describe('Enterprise management components', () => {
           .filter((node) => node.props['class'] === 'mar-row-actions');
         expect(actionRows).toHaveLength(2);
         for (const [index, actionRow] of actionRows.entries()) {
-          const actions = actionRow.children.filter((node) => node.type === 'ElButton');
+          const actions = view.findAll('MarButton').filter((node) => node.parent === actionRow);
           expect(actions.map((node) => textContent(node).trim())).toEqual(
             index === 0 ? ['Edit', 'Grant', 'Delete'] : ['Edit', 'Delete']
           );
@@ -193,11 +198,20 @@ describe('Enterprise management components', () => {
         );
         await trigger(button(view, i18n.global.t('marAgentModels.add')), 'onClick');
         const ownership = view
-          .findAll('ElFormItem')
-          .find((node) => node.props['label'] === i18n.global.t('marAgentModels.modelOwnership'))!;
-        const options = ownership.children
-          .flatMap((node) => node.children)
-          .filter((node) => node.type === 'ElOption');
+          .findAll('div')
+          .find((node) =>
+            node.children.some(
+              (child) =>
+                typeof child.props.class === 'string' &&
+                child.props.class.includes('mar-ui-form-item__label') &&
+                textContent(child).trim() === i18n.global.t('marAgentModels.modelOwnership')
+            )
+          )!;
+        const options = view.findAll('MarOption').filter((node) => {
+          for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent)
+            if (ancestor === ownership) return true;
+          return false;
+        });
         expect(options[0]?.props['label']).toBe(
           i18n.global.t('marAgentModels.codexCredentialScopePersonal')
         );
@@ -223,7 +237,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(request).toHaveBeenCalledWith('/api/organizations');
       const keyword = view
-        .findAll('ElInput')
+        .findAll('MarInput')
         .find((node) => node.props['modelValue'] === 'Research');
       expect(keyword).toBeDefined();
       await trigger(keyword!, 'onUpdate:modelValue', 'Platform');
@@ -250,17 +264,18 @@ describe('Enterprise management components', () => {
         return { users: [], page: 1, pageSize: 20, total: 0, hasMore: false };
       throw new Error(`Unexpected request: ${path}`);
     });
-    const view = renderComponent(EnterpriseUserManagementPage, {
-      request: request as never,
-      writable: true,
-      admin: true
-    });
+    const view = renderComponent(
+      EnterpriseUserManagementPage,
+      { request: request as never, writable: true, admin: true },
+      {},
+      { validate: async () => true }
+    );
     try {
       await flushComponent();
       const filter = view.findAll('el-cascader')[0]!;
       expect(filter.props['modelValue']).toBe(9);
       expect(
-        view.findAll('ElInput').some((node) => node.props['modelValue'] === 'fixture-user')
+        view.findAll('MarInput').some((node) => node.props['modelValue'] === 'fixture-user')
       ).toBe(true);
       expect(filter.props).toHaveProperty('filterable');
       expect(filter.props['props']).toEqual({ checkStrictly: true, emitPath: false });
@@ -273,17 +288,17 @@ describe('Enterprise management components', () => {
       expect(updated.searchParams.get('organizations.keyword')).toBe('Research');
       expect(request.mock.calls.some(([path]) => path.includes('organizationId=3'))).toBe(true);
       const create = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => textContent(node).trim() === 'Create user')!;
       await trigger(create, 'onClick');
       const formCascade = view.findAll('el-cascader').at(-1)!;
       await trigger(formCascade, 'onUpdate:modelValue', 2);
       const username = view
-        .findAll('ElInput')
+        .findAll('MarInput')
         .find((node) => String(node.props['placeholder']).toLowerCase().includes('username'))!;
       await trigger(username, 'onUpdate:modelValue', 'new-user');
       const save = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .filter((node) => textContent(node).trim() === 'Create user')
         .at(-1)!;
       await trigger(save, 'onClick');
@@ -597,7 +612,7 @@ describe('Enterprise management components', () => {
       await flushComponent();
       expect(personalRequest).not.toHaveBeenCalled();
       expect(textContent(personalView.root)).toContain('Personal');
-      const form = personalView.findAll('ElForm')[0]!;
+      const form = personalView.findAll('MarForm')[0]!;
       await trigger(form, 'onSubmit', { preventDefault() {} });
       expect(personalRegister).toHaveBeenCalledOnce();
       expect(personalRegister).toHaveBeenCalledWith();
@@ -644,7 +659,7 @@ describe('Enterprise management components', () => {
         ]
       });
       await trigger(cascader, 'onUpdate:modelValue', 3);
-      await trigger(view.findAll('ElForm')[0]!, 'onSubmit', { preventDefault() {} });
+      await trigger(view.findAll('MarForm')[0]!, 'onSubmit', { preventDefault() {} });
       expect(register).toHaveBeenCalledWith({ ownerType: 'ORGANIZATION', ownerOrganizationId: 3 });
     } finally {
       view.unmount();
@@ -670,12 +685,17 @@ describe('Enterprise management components', () => {
         return { secrets: [existing], page: 1, pageSize: 20, total: 1, hasMore: false };
       throw new Error(`Unexpected request: ${path}`);
     });
-    const view = renderComponent(EnvironmentSecretManager, {
-      request: request as never,
-      scopes: ['PERSONAL', 'ORGANIZATION'],
-      writable: true,
-      organizations
-    });
+    const view = renderComponent(
+      EnvironmentSecretManager,
+      {
+        request: request as never,
+        scopes: ['PERSONAL', 'ORGANIZATION'],
+        writable: true,
+        organizations
+      },
+      {},
+      { validate: async () => true }
+    );
     try {
       await flushComponent();
       expect(textContent(view.root)).toContain('Engineering / Research / Platform');
@@ -692,13 +712,13 @@ describe('Enterprise management components', () => {
       expect(textContent(view.findAll('ElDescriptions')[0]!)).not.toContain('fixture-secret-value');
       await trigger(button(view, 'Close'), 'onClick');
       await trigger(button(view, 'Add Environment Secret'), 'onClick');
-      const scope = view.findAll('ElSelect')[0]!;
+      const scope = view.findAll('MarSelect').find((node) => node.props.modelValue === 'PERSONAL')!;
       await trigger(scope, 'onUpdate:modelValue', 'ORGANIZATION');
       await flushComponent();
       const cascader = view.findAll('el-cascader')[0]!;
       expect(cascader.props['props']).toEqual({ checkStrictly: true, emitPath: false });
       await trigger(cascader, 'onUpdate:modelValue', 2);
-      const inputs = view.findAll('ElInput');
+      const inputs = view.findAll('MarInput');
       const nameInput = inputs.find((node) =>
         String(node.props['placeholder']).includes('environment variable name')
       )!;

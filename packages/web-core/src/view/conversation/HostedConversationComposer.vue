@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { createUuid } from '../../util/uuid.js';
 // Owns the current hosted Composer draft; quote callbacks bind its watch and reuse the existing submission snapshot.
 import { parseComposerTags, type ComposerReference } from '@myagentroam/protocol';
@@ -795,7 +796,7 @@ onBeforeUnmount(() => {
         >
           <MarIcon name="attachment" />
         </button>
-        <el-dropdown
+        <MarDropdown
           v-if="!draft || !snapshot"
           class="hosted-template-menu hosted-model-menu"
           :disabled="templateSelectionDisabled"
@@ -816,14 +817,14 @@ onBeforeUnmount(() => {
             <MarIcon name="chevron-down" aria-hidden="true" />
           </button>
           <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-if="templatesLoading" disabled>
+            <MarDropdownMenu>
+              <MarDropdownItem v-if="templatesLoading" disabled>
                 {{ translate('common.loading') }}
-              </el-dropdown-item>
-              <el-dropdown-item v-else-if="templatesFailed" disabled>
+              </MarDropdownItem>
+              <MarDropdownItem v-else-if="templatesFailed" disabled>
                 {{ translate('hostedConversations.templateOptionsFailed') }}
-              </el-dropdown-item>
-              <el-dropdown-item
+              </MarDropdownItem>
+              <MarDropdownItem
                 v-for="template in templatesLoading || templatesFailed ? [] : menuTemplates"
                 :key="template.id"
                 :command="template.id"
@@ -831,8 +832,8 @@ onBeforeUnmount(() => {
                 :class="{ 'is-selected': template.id === menuTemplateId }"
               >
                 {{ template.name }}
-              </el-dropdown-item>
-              <el-dropdown-item
+              </MarDropdownItem>
+              <MarDropdownItem
                 v-if="!templatesLoading && !templatesFailed && menuTemplates.length === 0"
                 disabled
               >
@@ -843,10 +844,10 @@ onBeforeUnmount(() => {
                       : 'hostedConversations.noSameNodeTemplates'
                   )
                 }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
+              </MarDropdownItem>
+            </MarDropdownMenu>
           </template>
-        </el-dropdown>
+        </MarDropdown>
         <span
           v-tooltip="loadedTemplateLabel"
           v-else-if="templateName"
@@ -857,7 +858,7 @@ onBeforeUnmount(() => {
           <span>{{ templateName }}</span>
         </span>
         <div v-if="snapshot || (draft && draftTemplateId)" class="hosted-model-slot">
-          <el-dropdown
+          <MarDropdown
             class="hosted-model-menu"
             :disabled="modelSelectionDisabled"
             trigger="click"
@@ -874,18 +875,18 @@ onBeforeUnmount(() => {
               <MarIcon name="chevron-down" aria-hidden="true" />
             </button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item
+              <MarDropdownMenu>
+                <MarDropdownItem
                   v-for="model in models"
                   :key="model.id"
                   :command="model.id"
                   :class="{ 'is-selected': model.id === selectedModelId }"
                 >
                   {{ model.name }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
+                </MarDropdownItem>
+              </MarDropdownMenu>
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </div>
         <span v-if="modelUnavailable" class="hosted-model-unavailable" aria-live="polite">
           {{ translate('hostedConversations.modelUnavailable') }}

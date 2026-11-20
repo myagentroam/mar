@@ -79,7 +79,7 @@ it.each(['zh-CN', 'en-US'] as const)(
       });
       try {
         const button = failed
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => textContent(node).includes(translate('common.loadFailedRetry')));
         expect(button).toBeDefined();
         await trigger(button!, 'onClick');

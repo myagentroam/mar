@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -175,17 +177,14 @@ function usagePercentageLabel(value: number): string {
       >
         <div class="node-feature-setting">
           <div class="node-feature-control">
-            <el-switch
+            <MarSwitch
               :model-value="computerUseCapability.enabled"
               :loading="computerUseChanging"
               :aria-label="translate('generated.nodeDetailsDialogs.computerUse')"
               :disabled="
-                computerUseChanging ||
-                node.manageable !== true ||
-                node.connected !== true ||
-                node.disabled === true
+                node.manageable !== true || node.connected !== true || node.disabled === true
               "
-              @change="setComputerUse(Boolean($event))"
+              @change="setComputerUse"
             />
             <span>{{
               translate(
@@ -230,7 +229,7 @@ function usagePercentageLabel(value: number): string {
             <span v-tooltip="supportedAgentTitle(entry)" class="supported-agent-label">{{
               supportedAgentTitle(entry)
             }}</span>
-            <el-button
+            <MarButton
               v-tooltip="{
                 content: usageDisabledReason(entry.runner),
                 disabled: usageDisabledReason(entry.runner) === ''
@@ -242,10 +241,9 @@ function usagePercentageLabel(value: number): string {
               :loading="usageLoading === entry.runner"
               :disabled="usageDisabledReason(entry.runner) !== ''"
               @click="emit('usage', entry.runner)"
-              :loading-icon="marIcon('loading-action')"
             >
               {{ translate('common.usage') }}
-            </el-button>
+            </MarButton>
           </div>
         </div>
         <span v-else>{{ translate('generated.nodeDetailsDialogs.none') }}</span>
@@ -268,20 +266,20 @@ function usagePercentageLabel(value: number): string {
     </div>
     <template #footer>
       <div v-if="upgrade?.canUpgrade || upgrade?.waitingForRuns" class="node-detail-actions">
-        <el-button v-if="upgrade?.canUpgrade" :icon="marIcon('upload')" @click="emit('upgrade')">{{
+        <MarButton v-if="upgrade?.canUpgrade" :icon="marIcon('upload')" @click="emit('upgrade')">{{
           translate('generated.resourceSharingPage.pushUpgrade2')
-        }}</el-button>
-        <el-button
+        }}</MarButton>
+        <MarButton
           v-if="upgrade?.waitingForRuns"
           :icon="marIcon('close')"
           :disabled="!upgrade.canCancelUpgrade"
           @click="emit('cancelUpgrade')"
-          >{{ translate('generated.resourceSharingPage.cancelUpgrade') }}</el-button
+          >{{ translate('generated.resourceSharingPage.cancelUpgrade') }}</MarButton
         >
       </div>
-      <el-button @click="emit('update:nodeOpen', false)">{{
+      <MarButton @click="emit('update:nodeOpen', false)">{{
         translate('generated.nodeDetailsDialogs.close')
-      }}</el-button>
+      }}</MarButton>
     </template>
   </el-dialog>
   <el-dialog
@@ -371,9 +369,9 @@ function usagePercentageLabel(value: number): string {
       </div>
     </div>
     <template #footer>
-      <el-button @click="emit('update:workspaceOpen', false)">{{
+      <MarButton @click="emit('update:workspaceOpen', false)">{{
         translate('generated.nodeDetailsDialogs.close')
-      }}</el-button>
+      }}</MarButton>
     </template>
   </el-dialog>
   <el-dialog
@@ -417,9 +415,9 @@ function usagePercentageLabel(value: number): string {
       </el-descriptions-item>
     </el-descriptions>
     <template #footer>
-      <el-button @click="emit('update:usageOpen', false)">{{
+      <MarButton @click="emit('update:usageOpen', false)">{{
         translate('generated.nodeDetailsDialogs.close2')
-      }}</el-button>
+      }}</MarButton>
     </template>
   </el-dialog>
 </template>
@@ -510,7 +508,7 @@ function usagePercentageLabel(value: number): string {
   margin-bottom: 12px;
 }
 
-.node-detail-actions :deep(.el-button + .el-button) {
+.node-detail-actions :deep(.mar-ui-button + .mar-ui-button) {
   margin-left: 0;
 }
 

@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
 import { createUuid } from '../../util/uuid.js';
 import {
   mountMobileDialogReturn,
@@ -10,7 +15,6 @@ import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
 import { onMounted, reactive, ref, computed } from 'vue';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { imageGenerationUrlSchema } from '@myagentroam/protocol';
 import type { CodexCredentialSummary, ImageGenerationModel } from '@myagentroam/protocol';
 import { createCodexCredentialManagementService } from '../../service/codex-credential-management-service';
@@ -222,44 +226,42 @@ onMounted(load);
   >
     <p class="selection-rule">{{ translate('marAgentModels.imageGenerationPriorityHint') }}</p>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshing && ready"
         :disabled="busy || sorting"
         @click="load(true)"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('marAgentModels.refresh') }}</el-button
+        >{{ translate('marAgentModels.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && !sorting"
         :icon="marIcon('queue')"
         :disabled="busy || !ready"
         @click="startSorting"
-        >{{ translate('marAgentModels.adjustOrder') }}</el-button
+        >{{ translate('marAgentModels.adjustOrder') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && sorting"
         type="primary"
         :icon="marIcon('check')"
         :loading="busy"
         @click="saveOrder"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('marAgentModels.saveOrder') }}</el-button
+        >{{ translate('marAgentModels.saveOrder') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && sorting"
         :icon="marIcon('close')"
         :disabled="busy"
         @click="cancelSorting"
-        >{{ translate('marAgentModels.cancel') }}</el-button
+        >{{ translate('marAgentModels.cancel') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable && !sorting"
         type="primary"
         :icon="marIcon('plus')"
         :disabled="busy || !ready"
         @click="edit()"
-        >{{ translate('marAgentModels.imageGenerationAdd') }}</el-button
+        >{{ translate('marAgentModels.imageGenerationAdd') }}</MarButton
       >
     </div>
     <el-table
@@ -306,7 +308,7 @@ onMounted(load);
       />
       <el-table-column :label="translate('marAgentModels.enabled')" width="100">
         <template #default="{ row }"
-          ><el-switch
+          ><MarSwitch
             :model-value="row.enabled"
             :disabled="!writable || busy || sorting"
             :aria-label="translate('marAgentModels.enabled')"
@@ -327,16 +329,16 @@ onMounted(load);
       >
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
-            <el-button link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
+            <MarButton link :icon="marIcon('edit')" :disabled="busy" @click="edit(row)">{{
               translate('marAgentModels.edit')
-            }}</el-button>
-            <el-button
+            }}</MarButton>
+            <MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="busy"
               @click="remove(row)"
-              >{{ translate('marAgentModels.remove') }}</el-button
+              >{{ translate('marAgentModels.remove') }}</MarButton
             >
           </div>
         </template>
@@ -352,84 +354,80 @@ onMounted(load);
       @closed="draft.apiKey = ''"
       :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="form"
         :model="draft"
         :rules="rules"
         label-position="top"
         :disabled="busy || !writable"
       >
-        <el-form-item prop="name" :label="translate('marAgentModels.name')"
-          ><el-input v-model="draft.name" maxlength="128"
-        /></el-form-item>
-        <el-form-item :label="translate('marAgentModels.imageGenerationProvider')">
-          <el-select
+        <MarFormItem prop="name" :label="translate('marAgentModels.name')"
+          ><MarInput v-model="draft.name" maxlength="128"
+        /></MarFormItem>
+        <MarFormItem :label="translate('marAgentModels.imageGenerationProvider')">
+          <MarSelect
             v-model="draft.provider"
             @change="providerChanged"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option value="CODEX" :label="providerLabel('CODEX')" />
-            <el-option value="BYTED_ARK" :label="providerLabel('BYTED_ARK')" />
-          </el-select>
-        </el-form-item>
-        <el-form-item
+            <MarOption value="CODEX" :label="providerLabel('CODEX')" />
+            <MarOption value="BYTED_ARK" :label="providerLabel('BYTED_ARK')" />
+          </MarSelect>
+        </MarFormItem>
+        <MarFormItem
           v-if="draft.provider === 'CODEX'"
           prop="credentialId"
           :label="translate('marAgentModels.imageGenerationCredential')"
         >
-          <el-select
+          <MarSelect
             v-model="draft.credentialId"
             filterable
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option
+            ><MarOption
               v-for="credential in codexCredentials"
               :key="credential.id"
               :label="credential.name"
               :value="credential.id"
-          /></el-select>
-        </el-form-item>
-        <el-form-item
+          /></MarSelect>
+        </MarFormItem>
+        <MarFormItem
           v-else
           prop="apiKey"
           :label="translate('marAgentModels.imageGenerationApiKey')"
         >
-          <el-input
+          <MarInput
             v-model="draft.apiKey"
             type="password"
             autocomplete="new-password"
             maxlength="16384"
             :placeholder="draft.hasApiKey ? translate('marAgentModels.imageGenerationKeepKey') : ''"
           />
-        </el-form-item>
-        <el-form-item
+        </MarFormItem>
+        <MarFormItem
           v-if="draft.provider === 'BYTED_ARK'"
           prop="url"
           :label="translate('marAgentModels.imageGenerationUrl')"
           required
         >
-          <el-input v-model="draft.url" maxlength="2048" />
-        </el-form-item>
-        <el-form-item prop="modelId" :label="translate('marAgentModels.imageGenerationModel')"
-          ><el-input v-model="draft.modelId" maxlength="256"
-        /></el-form-item>
-      </el-form>
+          <MarInput v-model="draft.url" maxlength="2048" />
+        </MarFormItem>
+        <MarFormItem prop="modelId" :label="translate('marAgentModels.imageGenerationModel')"
+          ><MarInput v-model="draft.modelId" maxlength="256"
+        /></MarFormItem>
+      </MarForm>
       <template #footer
-        ><el-button
+        ><MarButton
           :disabled="busy"
           @click="
             dialog = false;
             draft.apiKey = '';
           "
-          >{{ translate('marAgentModels.cancel') }}</el-button
-        ><el-button
-          type="primary"
-          :loading="busy"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('marAgentModels.save') }}</el-button
-        ></template
+          >{{ translate('marAgentModels.cancel') }}</MarButton
+        ><MarButton type="primary" :loading="busy" @click="save">{{
+          translate('marAgentModels.save')
+        }}</MarButton></template
       >
     </el-dialog>
     <el-dialog
@@ -477,7 +475,7 @@ onMounted(load);
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button @click="detailOpen = false">{{ translate('common.close') }}</el-button>
+        <MarButton @click="detailOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
     </el-dialog>
   </section>
@@ -490,7 +488,7 @@ onMounted(load);
   gap: 8px;
   margin-bottom: 16px;
 }
-.mar-table-actions .el-button + .el-button {
+.mar-table-actions .mar-ui-button + .mar-ui-button {
   margin-left: 0;
 }
 .mar-row-actions {

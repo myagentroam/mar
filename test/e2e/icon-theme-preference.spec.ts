@@ -26,9 +26,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.reload();
     const openAppearance = () =>
       page.getByRole('button', { name: messages.settings.appearance, exact: true }).click();
-    const select = page
-      .locator('.el-select')
-      .filter({ has: page.locator('#appearance-icon-theme') });
+    const select = page.locator('#appearance-icon-theme');
     const preview = page.getByTestId('icon-theme-preview');
     await openAppearance();
     await expect(select).toContainText(messages.settings.iconThemeMar);

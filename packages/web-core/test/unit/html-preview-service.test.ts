@@ -48,7 +48,7 @@ describe('HTML preview grants', () => {
         expect(view.findAll('p').some((node) => node.props.role === 'alert')).toBe(true);
         expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({ 'x-csrf-token': 'owner-token' });
         expect(renewCsrfToken).not.toHaveBeenCalled();
-        await trigger(view.findAll('ElButton')[0]!, 'onClick');
+        await trigger(view.findAll('MarButton')[0]!, 'onClick');
         await flushComponent();
         expect(http.networkUnavailable.value).toBe(false);
         expect(view.findAll('p').some((node) => node.props.role === 'alert')).toBe(false);

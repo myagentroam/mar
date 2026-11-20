@@ -219,7 +219,7 @@ test('Secret and OAuth management show read-only row details and organization se
 
   await page.getByRole('button', { name: '新增环境密钥', exact: true }).click();
   const secretDialog = page.getByRole('dialog', { name: '新增环境密钥' });
-  await secretDialog.locator('.el-select').first().click();
+  await secretDialog.getByRole('combobox').first().click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
   await expect(secretDialog.locator('.el-cascader')).toBeVisible();
   await expect(secretDialog.getByRole('group', { name: '所属组织' })).toBeVisible();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { marIcon } from '../../util/mar-icons.js';
+import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
 import MarIcon from '../common/MarIcon.vue';
 import ComposerSendButton from './ComposerSendButton.vue';
 import './composer-toolbar.css';
@@ -9,8 +9,7 @@ import {
   composerStopKeys,
   shortcutKeyLabel
 } from '../../service/console-shortcut-keys.js';
-import type { SelectInstance } from 'element-plus';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, useTemplateRef } from 'vue';
 import type { AgentRun, RunnerProfile, Session } from '../../model/workbench.js';
 
 const props = defineProps<{
@@ -63,40 +62,6 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement>();
-const menuPopperOptions = {
-  modifiers: [
-    { name: 'preventOverflow', options: { padding: 12 } },
-    { name: 'flip', options: { padding: 12 } }
-  ]
-};
-const modelMenuPopperOptions: NonNullable<SelectInstance['$props']['popperOptions']> = {
-  modifiers: [
-    ...menuPopperOptions.modifiers,
-    {
-      name: 'composerModelMenuSize',
-      enabled: true,
-      phase: 'beforeRead',
-      effect({ instance }) {
-        const viewport = window.visualViewport;
-        viewport?.addEventListener('resize', instance.update);
-        return () => viewport?.removeEventListener('resize', instance.update);
-      },
-      fn({ state }) {
-        const reference = state.elements.reference.getBoundingClientRect();
-        const viewport = window.visualViewport;
-        const top = viewport?.offsetTop ?? 0;
-        const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
-        const title = state.elements.popper.querySelector<HTMLElement>('.el-select-group__title');
-        const available = Math.max(reference.top - top, bottom - reference.bottom);
-        // Keep the trigger gap, viewport gutter, border and fixed column titles outside the lists.
-        const height = Math.max(0, Math.floor(available - 24 - 3 - (title?.offsetHeight ?? 0)));
-        state.elements.popper.style.setProperty('--composer-model-list-height', `${height}px`);
-        // Read the resized menu before Popper chooses a side and calculates offsets.
-        state.rects.popper.height = state.elements.popper.offsetHeight;
-      }
-    }
-  ]
-};
 const hasModelAndEffort = computed(() => props.models.length > 0 && props.efforts.length > 0);
 const modelMenuValues = computed(() => [
   ...props.models.map((model) => `model:${model.id}`),
@@ -120,32 +85,10 @@ const contextHint = computed(() =>
   ].join('\n')
 );
 const contextPercentage = computed(() => props.contextUsage?.percentage ?? 0);
-const modelSelect = ref<SelectInstance>();
-
-function revealModelMenuOption(): void {
-  const select = modelSelect.value;
-  if (!select?.expanded) return;
-  const option = select.optionsArray[select.states.hoveringIndex]?.$el as HTMLElement | undefined;
-  const scroll = option?.closest<HTMLElement>('.el-scrollbar__wrap');
-  if (!option || !scroll) return;
-  // Layout offsets stay valid while Select's opening transition scales the menu from zero.
-  const top = option.offsetTop;
-  const bottom = top + option.offsetHeight;
-  if (top < scroll.scrollTop) scroll.scrollTop = top;
-  else if (bottom > scroll.scrollTop + scroll.clientHeight)
-    scroll.scrollTop = bottom - scroll.clientHeight;
-}
-
-watch(
-  () => [modelSelect.value?.expanded, modelSelect.value?.states.hoveringIndex],
-  () => {
-    void nextTick(revealModelMenuOption);
-  },
-  { flush: 'post' }
-);
+const modelSelect = useTemplateRef('modelSelect');
 
 function openModelMenu(): boolean {
-  if (props.configurationDisabled || modelSelect.value === undefined) return false;
+  if (props.configurationDisabled || !modelSelect.value) return false;
   modelSelect.value.focus();
   modelSelect.value.toggleMenu();
   return true;
@@ -155,9 +98,8 @@ function onModelMenuKeydown(event: KeyboardEvent): void {
   if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
   const select = modelSelect.value;
   if (!select?.expanded) return;
-  // A profile refresh can reorder rendered options without reordering Select's registry.
-  const hoveredValue = String(select.optionsArray[select.states.hoveringIndex]?.value);
-  const hovered = modelMenuValues.value.findIndex((value) => value === hoveredValue);
+  // Use stable option values; a profile refresh can reorder the rendered options.
+  const hovered = modelMenuValues.value.findIndex((value) => value === select.activeValue);
   const modelIndex = Math.max(
     0,
     props.models.findIndex((model) => model.id === props.selectedModel)
@@ -203,14 +145,11 @@ function onModelMenuKeydown(event: KeyboardEvent): void {
     default:
       return;
   }
-  const optionIndex = select.optionsArray.findIndex(
-    (option) => String(option.value) === modelMenuValues.value[target]
-  );
-  if (optionIndex < 0) return;
+  const value = modelMenuValues.value[target];
+  if (value === undefined) return;
   event.preventDefault();
   event.stopPropagation();
-  select.states.hoveringIndex = optionIndex;
-  void nextTick(revealModelMenuOption);
+  select.setActiveValue(value);
 }
 
 defineExpose({ openModelMenu });
@@ -255,27 +194,23 @@ function selectFiles(event: Event): void {
         class="composer-select-slot composer-runner-slot"
         :data-label="runnerLabel"
       >
-        <el-select
+        <MarSelect
           :model-value="runner"
           :aria-label="translate('common.runner')"
           class="composer-runner-select"
           popper-class="composer-mini-popper composer-runner-popper"
-          :popper-options="menuPopperOptions"
           size="small"
-          teleported
           :disabled="runnerLoading || runnerDisabled"
           :loading="runnerLoading"
-          @change="emit('updateRunner', $event as Session['runner'])"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
+          @change="emit('updateRunner', $event)"
         >
-          <el-option
+          <MarOption
             v-for="option in runnerOptions"
             :key="option.value"
             :value="option.value"
             :label="option.label"
           />
-        </el-select>
+        </MarSelect>
       </div>
       <div v-if="!hideModelSelection" class="composer-model-slot">
         <span
@@ -285,9 +220,8 @@ function selectFiles(event: Event): void {
           >{{ translate('common.fast') }}</span
         >
         <div class="composer-select-slot" :data-label="modelEffortLabel">
-          <el-select
+          <MarSelect
             ref="modelSelect"
-            :key="modelEffortLabel"
             :model-value="modelEffortSelection"
             :disabled="configurationDisabled"
             :placeholder="modelEffortLabel"
@@ -298,37 +232,35 @@ function selectFiles(event: Event): void {
                 ? 'composer-mini-popper composer-model-effort-popper'
                 : 'composer-mini-popper composer-model-effort-popper composer-model-menu-single-column'
             "
-            :popper-options="modelMenuPopperOptions"
             size="small"
-            teleported
             @change="emit('updateModelEffort', String($event))"
             @keydown.capture="onModelMenuKeydown"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option-group v-if="models.length" :label="translate('common.model')">
-              <el-scrollbar always max-height="var(--composer-model-list-height, 50dvh)">
-                <el-option
-                  v-for="model in models"
-                  :key="model.id"
-                  :class="{ 'composer-model-effort-option-selected': model.id === selectedModel }"
-                  :label="model.label"
-                  :value="`model:${model.id}`"
-                />
-              </el-scrollbar>
-            </el-option-group>
-            <el-option-group v-if="efforts.length" :label="translate('common.reasoning')">
-              <el-scrollbar always max-height="var(--composer-model-list-height, 50dvh)">
-                <el-option
-                  v-for="effort in efforts"
-                  :key="effort"
-                  :class="{ 'composer-model-effort-option-selected': effort === selectedEffort }"
-                  :label="props.effortLabel(effort)"
-                  :value="`effort:${effort}`"
-                />
-              </el-scrollbar>
-            </el-option-group>
-          </el-select>
+            <div class="composer-model-menu-columns">
+              <MarOptionGroup v-if="models.length" :label="translate('common.model')">
+                <el-scrollbar always max-height="var(--composer-model-list-height)">
+                  <MarOption
+                    v-for="model in models"
+                    :key="model.id"
+                    :class="{ 'composer-model-effort-option-selected': model.id === selectedModel }"
+                    :label="model.label"
+                    :value="`model:${model.id}`"
+                  />
+                </el-scrollbar>
+              </MarOptionGroup>
+              <MarOptionGroup v-if="efforts.length" :label="translate('common.reasoning')">
+                <el-scrollbar always max-height="var(--composer-model-list-height)">
+                  <MarOption
+                    v-for="effort in efforts"
+                    :key="effort"
+                    :class="{ 'composer-model-effort-option-selected': effort === selectedEffort }"
+                    :label="props.effortLabel(effort)"
+                    :value="`effort:${effort}`"
+                  />
+                </el-scrollbar>
+              </MarOptionGroup>
+            </div>
+          </MarSelect>
         </div>
       </div>
       <div
@@ -336,26 +268,22 @@ function selectFiles(event: Event): void {
         class="composer-select-slot composer-access-slot"
         :data-label="accessLabel"
       >
-        <el-select
+        <MarSelect
           :model-value="access"
           :disabled="accessDisabled"
           :aria-label="translate('generated.composerToolbar.access')"
           class="composer-access-select"
           popper-class="composer-mini-popper composer-access-popper"
-          :popper-options="menuPopperOptions"
           size="small"
-          teleported
           @change="emit('updateAccess', String($event))"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="option in accessOptions"
             :key="option.id"
             :label="option.label"
             :value="option.id"
           />
-        </el-select>
+        </MarSelect>
       </div>
     </div>
     <button
@@ -500,11 +428,6 @@ function selectFiles(event: Event): void {
   grid-area: 1 / 1;
   width: 100%;
   max-width: 100%;
-}
-
-.composer-mini-popper {
-  z-index: 2500 !important;
-  border-radius: 8px !important;
 }
 
 .composer-config,
@@ -742,116 +665,68 @@ function selectFiles(event: Event): void {
 </style>
 
 <style scoped>
-:global(.composer-runner-select .el-select__wrapper),
-:global(.composer-access-select .el-select__wrapper),
-:global(.composer-model-effort-select .el-select__wrapper) {
-  min-height: var(--mar-compact-control-size);
-  border-radius: 6px;
+:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+  :deep(.mar-ui-select__field) {
+  --mar-ui-select-padding: 0.35rem;
+  --mar-ui-select-height: var(--mar-compact-control-size);
   background: transparent;
   box-shadow: none;
-  padding: 1px 0.35rem;
 }
 
-:global(.composer-runner-select .el-select__wrapper:not(.is-disabled):hover),
-:global(.composer-access-select .el-select__wrapper:not(.is-disabled):hover),
-:global(.composer-model-effort-select .el-select__wrapper:not(.is-disabled):hover) {
+:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+  :deep(.mar-ui-select__field:not([data-disabled]):hover) {
   background: var(--mar-fill-soft);
   box-shadow: 0 0 0 1px var(--mar-border-medium) inset;
 }
 
-:global(.composer-runner-select .el-select__wrapper.is-focused:not(.is-disabled)),
-:global(.composer-access-select .el-select__wrapper.is-focused:not(.is-disabled)),
-:global(.composer-model-effort-select .el-select__wrapper.is-focused:not(.is-disabled)) {
+:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+  :deep(.mar-ui-select__field:not([data-disabled]):is(:focus-within, [data-expanded])) {
   background: var(--mar-fill-soft);
   box-shadow: 0 0 0 1px var(--mar-color-brand) inset;
 }
 
-:global(.composer-runner-select .el-select__selected-item),
-:global(.composer-access-select .el-select__selected-item),
-:global(.composer-model-effort-select .el-select__selected-item),
-:global(.composer-runner-select .el-select__placeholder),
-:global(.composer-access-select .el-select__placeholder),
-:global(.composer-model-effort-select .el-select__placeholder) {
+:is(.composer-runner-select, .composer-access-select, .composer-model-effort-select)
+  :deep(.mar-ui-select__field:not([data-disabled]) .mar-ui-select__label) {
   color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-meta);
-  opacity: 1;
-}
-
-:global(.composer-runner-select .el-select__placeholder),
-:global(.composer-access-select .el-select__placeholder),
-:global(.composer-model-effort-select .el-select__placeholder) {
-  position: static;
-  z-index: auto;
-  width: auto;
-  transform: none;
-}
-
-:global(.composer-mini-popper .el-select-dropdown__item),
-:global(.composer-model-effort-popper .el-select-dropdown__item) {
-  height: var(--mar-compact-control-size);
-  color: var(--mar-text-primary);
-  font-size: var(--mar-font-size-body);
-  line-height: var(--mar-compact-control-size);
 }
 
 :global(
   .composer-model-effort-popper
-    .el-select-dropdown__item.composer-model-effort-option-selected:not(.is-disabled)
-),
-:global(
-  .composer-model-effort-popper
-    .el-select-dropdown__item.composer-model-effort-option-selected.is-hovering:not(.is-disabled)
+    .mar-ui-option.composer-model-effort-option-selected:not([aria-disabled='true'])
 ) {
   background: var(--mar-fill-selection);
-  color: var(--mar-text-primary);
-  font-weight: 400;
 }
 
-:global(.composer-mini-popper) {
-  box-sizing: border-box;
-  max-width: calc(100vw - 24px);
-}
-
-:global(.composer-mini-popper .el-select-dropdown__wrap) {
-  /* Leave room for the trigger, offset and viewport gutters on either side. */
-  max-height: min(274px, calc(50dvh - 32px));
+:global(.composer-mini-popper:not(.composer-model-effort-popper)) {
+  --mar-ui-popup-height-cap: 274px;
 }
 
 :global(.composer-model-effort-popper) {
+  --composer-model-list-height: max(0px, calc(var(--mar-ui-popup-max-height, 100dvh) - 2rem - 2px));
+  --mar-ui-popup-content-overflow: clip;
+  --mar-ui-popup-padding: 0;
   width: max-content;
-  max-width: min(500px, calc(100vw - 24px));
+  max-width: min(500px, var(--mar-ui-popup-max-width, calc(100vw - 16px)));
 }
 
-:global(.composer-model-effort-popper .el-select-dropdown__wrap) {
-  max-height: none;
-  overflow: visible;
-}
-
-:global(.composer-model-effort-popper .el-select-dropdown__list) {
+.composer-model-menu-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 6.75rem;
-  padding: 0;
 }
 
-:global(.composer-model-effort-popper .el-select-group__wrap) {
+.composer-model-menu-columns :deep(.mar-ui-option-group) {
   min-width: 0;
   min-height: 0;
-  margin: 0;
-  padding: 0;
 }
 
-:global(.composer-model-effort-popper .el-select-group__wrap::after) {
-  display: none;
-}
-
-:global(.composer-model-effort-popper .el-select-group .el-scrollbar) {
+.composer-model-menu-columns :deep(.el-scrollbar) {
   --el-scrollbar-opacity: 1;
   --el-scrollbar-hover-opacity: 1;
   --el-scrollbar-bg-color: var(--mar-scrollbar-thumb);
   --el-scrollbar-hover-bg-color: var(--mar-scrollbar-thumb-hover);
 }
 
-:global(.composer-model-effort-popper .el-select-group__title) {
+.composer-model-menu-columns :deep(.mar-ui-option-group__label) {
   box-sizing: border-box;
   display: block;
   height: 2rem;
@@ -861,15 +736,11 @@ function selectFiles(event: Event): void {
   line-height: var(--mar-compact-control-size);
 }
 
-:global(.composer-model-effort-popper .el-select-group__wrap + .el-select-group__wrap) {
+.composer-model-menu-columns :deep(.mar-ui-option-group + .mar-ui-option-group) {
   border-left: 1px solid var(--mar-border-default);
 }
 
-:global(.composer-model-menu-single-column) {
-  width: auto;
-}
-
-:global(.composer-model-menu-single-column .el-select-dropdown__list) {
+:global(.composer-model-menu-single-column .composer-model-menu-columns) {
   grid-template-columns: minmax(0, 1fr);
 }
 </style>

@@ -48,7 +48,7 @@ describe('Long Task diagnostic indicator', () => {
       try {
         const copyLabel = i18n.global.t('performanceDiagnostics.copy');
         const copy = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => node.props['aria-label'] === copyLabel);
         expect(copy).toBeDefined();
         expect(copy?.props.title).toBeUndefined();

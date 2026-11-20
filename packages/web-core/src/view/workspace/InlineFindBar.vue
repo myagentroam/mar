@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import MarIcon from '../common/MarIcon.vue';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -70,7 +72,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" class="inline-find-row">
     <div class="inline-find-bar" role="search" :aria-label="translate('inlineFind.label')">
-      <el-input
+      <MarInput
         ref="input"
         :model-value="modelValue"
         :placeholder="translate('inlineFind.placeholder')"
@@ -79,11 +81,11 @@ onBeforeUnmount(() => {
         :clear-icon="marIcon('clear-input')"
       >
         <template #prefix><MarIcon name="search" /></template>
-      </el-input>
+      </MarInput>
       <span class="inline-find-count" aria-live="polite"
         >{{ current }} / {{ total }}{{ truncated ? '+' : '' }}</span
       >
-      <el-button
+      <MarButton
         class="mar-icon-action"
         v-tooltip="translate('inlineFind.previous')"
         text
@@ -91,8 +93,8 @@ onBeforeUnmount(() => {
         :aria-label="translate('inlineFind.previous')"
         @click="emit('previous')"
         ><MarIcon name="chevron-up"
-      /></el-button>
-      <el-button
+      /></MarButton>
+      <MarButton
         class="mar-icon-action"
         v-tooltip="translate('inlineFind.next')"
         text
@@ -100,15 +102,15 @@ onBeforeUnmount(() => {
         :aria-label="translate('inlineFind.next')"
         @click="emit('next')"
         ><MarIcon name="chevron-down"
-      /></el-button>
-      <el-button
+      /></MarButton>
+      <MarButton
         class="mar-icon-action"
         v-tooltip="translate('inlineFind.close')"
         text
         :aria-label="translate('inlineFind.close')"
         @click="emit('close')"
         ><MarIcon name="close"
-      /></el-button>
+      /></MarButton>
     </div>
   </div>
 </template>
@@ -127,10 +129,10 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.15rem;
 }
-.inline-find-bar :deep(.el-input) {
+.inline-find-bar :deep(.mar-ui-input) {
   flex: 1;
 }
-.inline-find-bar :deep(.el-button) {
+.inline-find-bar :deep(.mar-ui-button) {
   flex: none;
   margin-left: 0;
 }

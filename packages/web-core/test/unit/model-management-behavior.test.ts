@@ -79,12 +79,21 @@ const usage = {
 };
 type View = ReturnType<typeof renderComponent>;
 function button(view: View, label: string): TestElement {
-  return view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+  return view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
 }
 function control(view: View, label: string, type: string): TestElement {
   return view.findAll(type).find((node) => {
     for (let parent = node.parent; parent; parent = parent.parent)
-      if (parent.type === 'ElFormItem' && parent.props['label'] === label) return true;
+      if (
+        parent.children.some(
+          (child) =>
+            child.props['class'] === 'mar-ui-form-item__label' &&
+            textContent(child)
+              .trim()
+              .replace(/^\*\s*/u, '') === label
+        )
+      )
+        return true;
     return false;
   })!;
 }
@@ -148,11 +157,11 @@ describe('Model management component behavior', () => {
         expect(textContent(view.root)).not.toContain(proxy);
         expect(request.mock.calls.some(([path]) => path.endsWith('/connection'))).toBe(false);
         await trigger(button(view, labels.edit), 'onClick');
-        const input = control(view, labels.codexProxy, 'ElInput');
+        const input = control(view, labels.codexProxy, 'MarInput');
         expect(input.props['modelValue']).toBe(proxy);
         expect(input.props['type']).toBe('password');
         const rule = (
-          view.findAll('ElForm')[0]!.props['rules'] as Record<string, { validator: Function }[]>
+          view.findAll('MarForm')[0]!.props['rules'] as Record<string, { validator: Function }[]>
         ).socks5Url![0]!;
         const validate = vi.fn();
         rule.validator({}, 'http://proxy.invalid:1080', validate);
@@ -165,8 +174,8 @@ describe('Model management component behavior', () => {
         ).toMatchObject({ socks5Url: proxy });
         expect(view.findAll('ElDialog')).toHaveLength(0);
         await trigger(button(view, labels.duplicate), 'onClick');
-        expect(control(view, labels.codexProxy, 'ElInput').props['modelValue']).toBe(proxy);
-        await trigger(control(view, labels.codexProxy, 'ElInput'), 'onUpdate:modelValue', '');
+        expect(control(view, labels.codexProxy, 'MarInput').props['modelValue']).toBe(proxy);
+        await trigger(control(view, labels.codexProxy, 'MarInput'), 'onUpdate:modelValue', '');
         await trigger(button(view, labels.save), 'onClick');
         expect(
           JSON.parse(
@@ -174,8 +183,8 @@ describe('Model management component behavior', () => {
           )
         ).toMatchObject({ socks5Url: null });
         await trigger(button(view, labels.edit), 'onClick');
-        await trigger(control(view, labels.protocol, 'ElSelect'), 'onChange', 'CHATGPT');
-        expect(control(view, labels.codexProxy, 'ElInput')).toBeUndefined();
+        await trigger(control(view, labels.protocol, 'MarSelect'), 'onChange', 'CHATGPT');
+        expect(control(view, labels.codexProxy, 'MarInput')).toBeUndefined();
         expect(textContent(view.root)).toContain(labels.modelProxyCredentialHint);
       } finally {
         view.unmount();
@@ -202,7 +211,7 @@ describe('Model management component behavior', () => {
       await trigger(button(view, messages.add), 'onClick');
       pending.resolve({ details: { socks5Url: 'socks5://private:password@proxy.invalid:1080' } });
       await opening;
-      expect(control(view, messages.codexProxy, 'ElInput').props['modelValue']).toBe('');
+      expect(control(view, messages.codexProxy, 'MarInput').props['modelValue']).toBe('');
     } finally {
       view.unmount();
     }
@@ -241,7 +250,7 @@ describe('Model management component behavior', () => {
           expect(view.findAll('ElDialog')).toHaveLength(0);
         }
         await trigger(button(view, messages.add), 'onClick');
-        expect(control(view, messages.codexProxy, 'ElInput').props['modelValue']).toBe('');
+        expect(control(view, messages.codexProxy, 'MarInput').props['modelValue']).toBe('');
       } finally {
         view.unmount();
       }
@@ -389,11 +398,11 @@ describe('Model management component behavior', () => {
         const dialog = view.findAll('ElDialog').find((node) => node.props['modelValue'] === true)!;
         await trigger(dialog, 'onUpdate:modelValue', false);
         await trigger(button(view, messages.add), 'onClick');
-        await trigger(control(view, messages.name, 'ElInput'), 'onUpdate:modelValue', 'New draft');
+        await trigger(control(view, messages.name, 'MarInput'), 'onUpdate:modelValue', 'New draft');
         vi.mocked(showMessage).mockClear();
         gate.resolve();
         await pending;
-        expect(control(view, messages.name, 'ElInput').props['modelValue']).toBe('New draft');
+        expect(control(view, messages.name, 'MarInput').props['modelValue']).toBe('New draft');
         expect(showMessage).not.toHaveBeenCalled();
         expect(
           base.mock.calls.filter(([path]) => path === '/api/admin/mar-agent/models')
@@ -497,29 +506,39 @@ describe('Model management component behavior', () => {
       expect(prepareModel).toHaveBeenCalledOnce();
       expect(textContent(view.root)).toContain('Host ownership field');
       for (const field of ['responsesEncoding', 'highDensityCompaction'])
-        expect(view.findAll('ElForm')[0]?.props['model']).not.toHaveProperty(field);
+        expect(view.findAll('MarForm')[0]?.props['model']).not.toHaveProperty(field);
       expect(control(view, messages.context, 'ElInputNumber').props['modelValue']).toBe(256_000);
       expect(control(view, messages.output, 'ElInputNumber').props['modelValue']).toBe(32_000);
-      expect(control(view, messages.defaultReasoningEffort, 'ElSelect').props['modelValue']).toBe(
+      expect(control(view, messages.defaultReasoningEffort, 'MarSelect').props['modelValue']).toBe(
         'medium'
       );
       await trigger(
-        control(view, messages.name, 'ElInput'),
+        control(view, messages.name, 'MarInput'),
         'onUpdate:modelValue',
         '  Saved fixture  '
       );
       await trigger(
-        control(view, messages.model, 'ElInput'),
+        control(view, messages.model, 'MarInput'),
         'onUpdate:modelValue',
         'free/form-model:custom'
       );
-      await trigger(control(view, messages.protocol, 'ElSelect'), 'onChange', 'OPENAI_RESPONSES');
-      await trigger(control(view, messages.transport, 'ElSelect'), 'onUpdate:modelValue', 'HTTP_2');
-      await trigger(control(view, messages.protocol, 'ElSelect'), 'onChange', 'ANTHROPIC_MESSAGES');
-      expect(control(view, messages.transport, 'ElSelect')).toBeUndefined();
-      await trigger(control(view, messages.enabled, 'ElSwitch'), 'onUpdate:modelValue', false);
+      await trigger(control(view, messages.protocol, 'MarSelect'), 'onChange', 'OPENAI_RESPONSES');
       await trigger(
-        control(view, messages.defaultReasoningEffort, 'ElSelect'),
+        control(view, messages.transport, 'MarSelect'),
+        'onUpdate:modelValue',
+        'HTTP_2'
+      );
+      await trigger(
+        control(view, messages.protocol, 'MarSelect'),
+        'onChange',
+        'ANTHROPIC_MESSAGES'
+      );
+      expect(control(view, messages.transport, 'MarSelect')).toBeUndefined();
+      await trigger(control(view, messages.enabled, 'input'), 'onChange', {
+        currentTarget: { checked: false }
+      });
+      await trigger(
+        control(view, messages.defaultReasoningEffort, 'MarSelect'),
         'onUpdate:modelValue',
         'high'
       );
@@ -535,7 +554,7 @@ describe('Model management component behavior', () => {
       expect(vi.mocked(showMessage).mock.calls.filter(([, type]) => type === 'error')).toHaveLength(
         1
       );
-      expect(control(view, messages.model, 'ElInput').props['modelValue']).toBe(
+      expect(control(view, messages.model, 'MarInput').props['modelValue']).toBe(
         'free/form-model:custom'
       );
       failSave = false;
@@ -598,8 +617,14 @@ describe('Model management component behavior', () => {
           .find((node) => textContent(node).trim() === labels.useResourceUrl)!;
         expect(setting.props['modelValue']).toBe(true);
         const field = view
-          .findAll('ElFormItem')
-          .find((node) => node.props['label'] === labels.capabilities)!;
+          .findAll('div')
+          .find((node) =>
+            node.children.some(
+              (child) =>
+                String(child.props['class'] ?? '') === 'mar-ui-form-item__label' &&
+                textContent(child).trim() === labels.capabilities
+            )
+          )!;
         expect(textContent(field)).toContain(labels.useResourceUrl);
         const dialog = view
           .findAll('ElDialog')
@@ -651,7 +676,7 @@ describe('Model management component behavior', () => {
       const dialog = view.findAll('ElDialog')[0]!;
       expect(textContent(dialog)).toContain('Host ownership label');
       expect(textContent(dialog)).toContain(managementDateTime(credentials[1]!.earliestRefreshAt));
-      const link = view.findAll('ElButton').find((node) => node.props['href'])!;
+      const link = view.findAll('MarButton').find((node) => node.props['href'])!;
       expect(link.props).toMatchObject({
         href: 'https://chatgpt.com/settings/usage',
         target: '_blank',
@@ -726,41 +751,53 @@ describe('Model management component behavior', () => {
     try {
       await flushComponent();
       await trigger(button(view, messages.codexAddCredential), 'onClick');
-      expect(control(view, messages.credentialName, 'ElInput')).toBeDefined();
-      const rules = view.findAll('ElForm')[0]?.props['rules'] as { name: { message: string }[] };
-      expect(rules.name[0]?.message).toBe(messages.credentialNameRequired);
+      expect(control(view, messages.credentialName, 'MarInput')).toBeDefined();
       await trigger(
-        control(view, messages.credentialType, 'ElSelect'),
+        control(view, messages.credentialType, 'MarSelect'),
         'onUpdate:modelValue',
         'CHATGPT_OAUTH'
       );
-      const select = control(view, messages.chatgptLocalNode, 'ElSelect');
+      const select = control(view, messages.chatgptLocalNode, 'MarSelect');
       expect(
         select.children
-          .filter((node) => node.type === 'ElOption')
+          .filter((node) => node.type === 'MarOption')
           .map((node) => node.props['value'])
       ).toEqual(['ready']);
       await trigger(
-        control(view, messages.credentialType, 'ElSelect'),
+        control(view, messages.credentialType, 'MarSelect'),
         'onUpdate:modelValue',
         'XAI_OAUTH'
       );
-      expect(control(view, messages.chatgptLocalNode, 'ElSelect')).toBeUndefined();
+      expect(control(view, messages.chatgptLocalNode, 'MarSelect')).toBeUndefined();
       expect(textContent(view.findAll('ElDialog')[0]!)).toContain(messages.grokProxyHint);
       await trigger(
-        control(view, messages.credentialType, 'ElSelect'),
+        control(view, messages.credentialType, 'MarSelect'),
         'onUpdate:modelValue',
         'CHATGPT_OAUTH'
       );
       await trigger(
-        control(view, messages.credentialName, 'ElInput'),
+        control(view, messages.credentialName, 'MarInput'),
         'onUpdate:modelValue',
         'Fixture login'
       );
       await trigger(
-        control(view, messages.chatgptLocalNode, 'ElSelect'),
+        control(view, messages.chatgptLocalNode, 'MarSelect'),
         'onUpdate:modelValue',
         'ready'
+      );
+      await trigger(control(view, messages.credentialName, 'MarInput'), 'onUpdate:modelValue', '');
+      await trigger(button(view, messages.chatgptStartLogin), 'onClick');
+      expect(
+        view
+          .findAll('div')
+          .filter((node) => node.props['role'] === 'alert')
+          .map(textContent)
+      ).toContain(messages.credentialNameRequired);
+      expect(request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+      await trigger(
+        control(view, messages.credentialName, 'MarInput'),
+        'onUpdate:modelValue',
+        'Fixture login'
       );
       request.mockRejectedValueOnce(new Error('Fixture login unavailable'));
       await trigger(button(view, messages.chatgptStartLogin), 'onClick');
@@ -776,13 +813,13 @@ describe('Model management component behavior', () => {
       ).toContainEqual({ message: 'Fixture login unavailable', type: 'error' });
       await trigger(button(view, messages.cancel), 'onClick');
       await trigger(button(view, messages.add), 'onClick');
-      await trigger(control(view, messages.protocol, 'ElSelect'), 'onChange', 'GROK');
+      await trigger(control(view, messages.protocol, 'MarSelect'), 'onChange', 'GROK');
       expect(
-        control(view, messages.codexCredential, 'ElSelect')
-          .children.filter((node) => node.type === 'ElOption')
+        control(view, messages.codexCredential, 'MarSelect')
+          .children.filter((node) => node.type === 'MarOption')
           .map((node) => node.props['value'])
       ).toEqual(['credential-2']);
-      expect(control(view, messages.serviceTier, 'ElSelect')).toBeUndefined();
+      expect(control(view, messages.serviceTier, 'MarSelect')).toBeUndefined();
     } finally {
       view.unmount();
     }
@@ -857,8 +894,8 @@ describe('Model management component behavior', () => {
         if (modelSocks5Proxy === true) {
           expect(view.findAll('ElDialog')).toHaveLength(1);
           expect(
-            control(view, messages.modelTestNode, 'ElSelect')
-              .children.filter((node) => node.type === 'ElOption')
+            control(view, messages.modelTestNode, 'MarSelect')
+              .children.filter((node) => node.type === 'MarOption')
               .map((node) => node.props['value'])
           ).toEqual(['ready']);
           expect(showMessage).not.toHaveBeenCalled();
@@ -905,16 +942,16 @@ describe('Model management component behavior', () => {
     try {
       await flushComponent();
       await trigger(button(view, messages.test), 'onClick');
-      const select = control(view, messages.modelTestNode, 'ElSelect');
+      const select = control(view, messages.modelTestNode, 'MarSelect');
       expect(
         select.children
-          .filter((node) => node.type === 'ElOption')
+          .filter((node) => node.type === 'MarOption')
           .map((node) => node.props['value'])
       ).toEqual(['ready']);
       await trigger(select, 'onUpdate:modelValue', 'ready');
       await trigger(
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .filter((node) => textContent(node).trim() === messages.test)
           .at(-1)!,
         'onClick'
@@ -926,7 +963,7 @@ describe('Model management component behavior', () => {
       for (const value of [result.code, result.requestId, result.response.requestId, '429', '7'])
         expect(textContent(view.findAll('ElDialog')[0]!)).toContain(value);
       expect(
-        view.findAll('ElInput').find((node) => Object.hasOwn(node.props, 'readonly'))?.props[
+        view.findAll('MarInput').find((node) => Object.hasOwn(node.props, 'readonly'))?.props[
           'modelValue'
         ]
       ).toBe(result.response.body);
@@ -1111,18 +1148,18 @@ describe('Model management component behavior', () => {
         if (operation === 'edit') {
           const opening = trigger(
             view
-              .findAll('ElButton')
+              .findAll('MarButton')
               .filter((node) => textContent(node).trim() === messages.edit)[0]!,
             'onClick'
           );
           await flushComponent();
           await trigger(
             view
-              .findAll('ElButton')
+              .findAll('MarButton')
               .filter((node) => textContent(node).trim() === messages.edit)[1]!,
             'onClick'
           );
-          expect(control(view, messages.credentialName, 'ElInput').props['modelValue']).toBe(
+          expect(control(view, messages.credentialName, 'MarInput').props['modelValue']).toBe(
             credentials[1]!.name
           );
           late.resolve({
@@ -1142,7 +1179,7 @@ describe('Model management component behavior', () => {
         }
         await flushComponent();
         if (operation === 'edit')
-          expect(control(view, messages.credentialName, 'ElInput').props['modelValue']).toBe(
+          expect(control(view, messages.credentialName, 'MarInput').props['modelValue']).toBe(
             credentials[1]!.name
           );
         else {
@@ -1191,7 +1228,7 @@ describe('Model management component behavior', () => {
       await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       await trigger(button(view, messages.edit), 'onClick');
       await trigger(
-        control(view, messages.credentialName, 'ElInput'),
+        control(view, messages.credentialName, 'MarInput'),
         'onUpdate:modelValue',
         'Renamed fixture'
       );
@@ -1253,7 +1290,7 @@ describe('Model management component behavior', () => {
       await trigger(view.findAll('ElTabs')[0]!, 'onUpdate:modelValue', 'codexCredentials');
       await trigger(button(view, messages.codexAddCredential), 'onClick');
       await trigger(
-        control(view, messages.credentialName, 'ElInput'),
+        control(view, messages.credentialName, 'MarInput'),
         'onUpdate:modelValue',
         'Device fixture'
       );

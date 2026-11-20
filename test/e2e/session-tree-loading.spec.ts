@@ -117,12 +117,12 @@ test('the teleported tree follows a custom floating surface and outline', async 
   const row = tree.locator('.session-tree-row').filter({ hasText: 'Sleeping newer' });
   await row.hover();
   await row.locator('.session-tree-actions').click();
-  const menu = page.locator('.el-dropdown__popper.session-tree-menu:visible');
+  const menu = page.getByRole('menu').and(page.locator('.session-tree-menu'));
   await expect(menu).toBeVisible();
   expect(resolvedColorToHex(await background(menu))).toBe('#253649');
   await expect(menu).toHaveCSS('border-top-color', 'rgb(107, 129, 153)');
   await expect(menu).toHaveCSS('box-shadow', /0px 4px 12px/u);
-  await expect(menu.locator('.el-dropdown-menu__item--divided')).toHaveCSS(
+  await expect(menu.locator('.mar-ui-dropdown-item--divided')).toHaveCSS(
     'border-top-color',
     'rgb(47, 57, 73)'
   );
@@ -197,7 +197,7 @@ test('reveals row actions on hover, focus, and while its menu is open', async ({
   const action = row.getByRole('button', { name: 'Session actions' });
   await page.mouse.move(0, 0);
   await expect(tree.locator('.session-tree-actions')).toHaveCount(0);
-  await expect(row.locator('.el-dropdown')).toHaveCount(0);
+  await expect(row.getByRole('button', { name: /more actions/i })).toHaveCount(0);
   const restingWidth = await row.locator('.session-tree-node').evaluate((node) => node.clientWidth);
   await row.hover();
   await expect(action).toBeVisible();

@@ -1,6 +1,7 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { h, ref } from 'vue';
 import ElementPlus, { ElButton, ElDatePicker, ElInputNumber } from 'element-plus';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
@@ -257,11 +258,10 @@ const app = createApp({
         h('main', {}, [
           h('section', { 'data-testid': 'information-actions' }, [
             h(
-              ElButton,
+              MarButton,
               {
                 icon: marIcon('info'),
                 loading: queried.value,
-                loadingIcon: marIcon('loading-action'),
                 onClick: () => (queried.value = true)
               },
               () => 'Query usage'

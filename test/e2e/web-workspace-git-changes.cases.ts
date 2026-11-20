@@ -1201,7 +1201,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   }
   const [rootActionsBox, rootMenuBox] = await Promise.all([
     rootActions.boundingBox(),
-    page.locator('.el-dropdown__popper:visible').boundingBox()
+    page.getByRole('menu').boundingBox()
   ]);
   expect(rootActionsBox).not.toBeNull();
   expect(rootMenuBox).not.toBeNull();
@@ -1216,7 +1216,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
         const startedAt = performance.now();
         let flashed = false;
         const inspect = () => {
-          for (const popper of document.querySelectorAll<HTMLElement>('.el-dropdown__popper')) {
+          for (const popper of document.querySelectorAll<HTMLElement>('.mar-ui-dropdown__popup')) {
             const rect = popper.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0 && rect.x < 20 && rect.y < 20) flashed = true;
           }
@@ -1275,7 +1275,7 @@ test('Git Changes shows branches, file diffs, and confirmed restoration', async 
   await expect(refreshChangesButton).toHaveAttribute('type', 'button');
   await expect(refreshChangesButton).toHaveClass(/changes-refresh-button/u);
   await expect(refreshChangesButton).toHaveClass(/mar-icon-action/u);
-  await expect(refreshChangesButton).not.toHaveClass(/el-button/u);
+  await expect(refreshChangesButton).not.toHaveClass(/mar-ui-button/u);
   holdChangesRefresh = true;
   failChangesRefresh = true;
   const changeReadsBeforeRefresh = changeReads;

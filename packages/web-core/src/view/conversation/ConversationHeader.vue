@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDropdown } from '@myagentroam/mar-ui/dropdown';
 import { computed, ref } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import type { RunnerId, Session } from '../../model/workbench.js';
@@ -38,7 +39,7 @@ const asideLabel = computed(() =>
     :class="['conversation-header', { 'conversation-header-draft': sessionIsDraft(session) }]"
   >
     <div class="conversation-header-title" role="heading" aria-level="2">
-      <el-dropdown
+      <MarDropdown
         v-if="session && !sessionIsDraft(session)"
         :key="session.id"
         class="conversation-title-dropdown"
@@ -70,7 +71,7 @@ const asideLabel = computed(() =>
             <SessionNavigationMenu :session-id="session.id" :can-navigate="false" />
           </slot>
         </template>
-      </el-dropdown>
+      </MarDropdown>
       <span v-else class="conversation-title-row">
         <img
           :src="runnerIcon(session?.runner ?? runner)"

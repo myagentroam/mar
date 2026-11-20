@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -125,7 +127,7 @@ function isInteractivePointerTarget(event: Event): boolean {
   const target = event.target as Element | null;
   return (
     typeof target?.closest === 'function' &&
-    target.closest('button, textarea, .el-textarea, a, .el-input') !== null
+    target.closest('button, textarea, a, .mar-ui-input') !== null
   );
 }
 
@@ -375,7 +377,7 @@ onMounted(() => {
         </div>
       </div>
       <div v-if="goalEditing" ref="goalEditor" class="goal-editor">
-        <el-input
+        <MarInput
           v-model="goalObjective"
           class="goal-objective-input"
           type="textarea"
@@ -465,7 +467,7 @@ onMounted(() => {
               :aria-description="messageSource(item)?.title"
               >{{ messageSource(item)?.label }}</small
             >
-            <el-input
+            <MarInput
               v-if="editingQueueItemId === item.queueItemId"
               :ref="setQueueEditor"
               :model-value="editingContent"
@@ -541,7 +543,7 @@ onMounted(() => {
       class="queue-context-anchor"
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     >
-      <el-dropdown
+      <MarDropdown
         trigger="click"
         placement="bottom-start"
         @command="contextCommand"
@@ -554,19 +556,19 @@ onMounted(() => {
           tabindex="-1"
         />
         <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="up" :disabled="contextMenuIndex <= 0">
+          <MarDropdownMenu>
+            <MarDropdownItem command="up" :disabled="contextMenuIndex <= 0">
               <MarIcon name="chevron-up" />{{ translate('generated.composerQueue.moveUp') }}
-            </el-dropdown-item>
-            <el-dropdown-item
+            </MarDropdownItem>
+            <MarDropdownItem
               command="down"
               :disabled="contextMenuIndex < 0 || contextMenuIndex >= items.length - 1"
             >
               <MarIcon name="chevron-down" />{{ translate('generated.composerQueue.moveDown') }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
+            </MarDropdownItem>
+          </MarDropdownMenu>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </div>
   </section>
 </template>
@@ -582,7 +584,7 @@ onMounted(() => {
   padding: 4px 10px 0;
 }
 
-.composer-queue ~ :deep(.el-input .el-textarea__inner) {
+.composer-queue ~ :deep(.mar-ui-input--textarea) {
   border-radius: 0;
 }
 
@@ -685,22 +687,14 @@ onMounted(() => {
 
 .goal-objective-input {
   min-width: 0;
+  --mar-ui-input-border: var(--mar-border-medium);
 }
 
-.goal-objective-input :deep(.el-textarea__inner) {
-  border: 1px solid var(--mar-border-medium);
-  border-radius: 6px;
-  background: var(--mar-bg-panel);
-  box-shadow: none;
+.goal-objective-input :deep(textarea) {
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-meta);
   padding: 0.42rem 0.5rem;
   line-height: 1.55;
-}
-
-.goal-objective-input :deep(.el-textarea__inner:focus) {
-  border-color: var(--mar-color-brand);
-  box-shadow: 0 0 0 1px var(--mar-color-brand);
 }
 
 .goal-editor-actions {
@@ -847,7 +841,7 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.composer-queue-input :deep(.el-textarea__inner) {
+.composer-queue-input :deep(textarea) {
   min-height: 28px !important;
   resize: none;
   color: var(--mar-text-primary);
@@ -911,7 +905,7 @@ onMounted(() => {
     --composer-work-max-height: 120px;
   }
 
-  .composer-queue-input :deep(.el-textarea__inner) {
+  .composer-queue-input :deep(textarea) {
     padding-block: 2px;
   }
 

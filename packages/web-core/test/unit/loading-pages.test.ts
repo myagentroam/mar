@@ -247,7 +247,7 @@ describe('shared loading presentation', () => {
         await flushComponent();
         expect(textContent(view.root)).toContain('Fixture MCP');
         const installButton = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((button) => textContent(button).trim() === 'Install')!;
         const click = installButton.props['onClick'];
         expect(click).toBeTypeOf('function');
@@ -364,7 +364,7 @@ describe('shared loading presentation', () => {
         await flushComponent();
         expect(textContent(view.root)).toContain('fixture-skill');
         const installButton = view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((button) => textContent(button).trim() === 'Install')!;
         const click = installButton.props['onClick'];
         expect(click).toBeTypeOf('function');

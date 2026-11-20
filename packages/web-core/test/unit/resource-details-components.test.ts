@@ -97,7 +97,7 @@ describe('Public resource details', () => {
       });
       try {
         await flushComponent();
-        const controls = view.findAll('ElSwitch');
+        const controls = view.findAll('input').filter((input) => input.props['role'] === 'switch');
         expect(controls).toHaveLength(1);
         expect(view.findAll('ElDescriptionsItem').map((item) => item.props['label'])).toContain(
           commonMessages['en-US'].generated.nodeDetailsDialogs.computerUse
@@ -107,7 +107,7 @@ describe('Public resource details', () => {
           view.findAll('div').find((item) => item.props['class'] === 'node-feature-control')!;
         expect(textContent(control())).toBe('Disabled');
         expect(controls[0]!.props['aria-label']).toBe('Computer Use');
-        await trigger(controls[0]!, 'onChange', true);
+        await trigger(controls[0]!, 'onChange', { currentTarget: { checked: true } });
         await flushComponent();
         expect(textContent(control())).toBe('Enabled');
         expect(
@@ -190,7 +190,7 @@ describe('Public resource details', () => {
       expect(textContent(view.root)).toContain('/usr/bin/git');
       expect(request).toHaveBeenCalledWith('/api/environment-secrets?nodeId=node-1');
       const refresh = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((button) => textContent(button).trim() === 'Refresh capabilities')!;
       expect(refresh.props['loading']).toBe(true);
       await trigger(refresh, 'onClick');
@@ -215,7 +215,7 @@ describe('Public resource details', () => {
       const root = view.findAll('div')[0]!;
       expect(root.props['class']).toContain('runtime-environment--refreshable');
       const action = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((button) => textContent(button).trim() === 'Refresh capabilities')!;
       expect(action.props['loading']).toBe(true);
       await trigger(action, 'onClick');
@@ -272,7 +272,7 @@ describe('Public resource details', () => {
       await trigger(view.findAll('ElCheckbox')[0]!, 'onUpdate:modelValue', true);
       await trigger(view.findAll('ElCheckbox')[1]!, 'onUpdate:modelValue', false);
       const save = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((button) => textContent(button).trim() === commonMessages['en-US'].personalGit.save)!;
       await trigger(save, 'onClick');
       expect(request).toHaveBeenLastCalledWith(

@@ -6,15 +6,18 @@
   --mar-ui-border-medium: var(--mar-border-medium);
   --mar-ui-border-subtle: var(--mar-border-subtle);
   --mar-ui-color-brand: var(--mar-color-brand);
+  --mar-ui-color-brand-disabled: var(--mar-color-brand-disabled);
   --mar-ui-color-brand-hover: var(--mar-color-brand-hover);
   --mar-ui-color-on-accent: var(--mar-color-on-accent);
   --mar-ui-compact-control-size: var(--mar-compact-control-size);
   --mar-ui-compact-option-padding-inline: var(--mar-compact-option-padding-inline);
   --mar-ui-control-color-danger: var(--mar-control-color-danger);
+  --mar-ui-control-color-warning: var(--mar-control-color-warning);
   --mar-ui-control-color-primary-dark-2: var(--mar-control-color-primary-dark-2);
   --mar-ui-control-color-primary-light-5: var(--mar-control-color-primary-light-5);
   --mar-ui-control-disabled-on-accent: var(--mar-control-disabled-on-accent);
   --mar-ui-control-link-text: var(--mar-control-link-text);
+  --mar-ui-control-link-hover: var(--mar-control-link-hover);
   --mar-ui-fill-row-hover: var(--mar-fill-row-hover);
   --mar-ui-fill-selection: var(--mar-fill-selection);
   --mar-ui-fill-soft: var(--mar-fill-soft);
@@ -30,4 +33,53 @@
   --mar-ui-text-disabled: var(--mar-text-disabled);
   --mar-ui-text-primary: var(--mar-text-primary);
   --mar-ui-text-secondary: var(--mar-text-secondary);
+}
+
+.mar-ui-button:is(.mar-icon-action, .mar-text-action) {
+  --mar-ui-button-bg: transparent;
+  --mar-ui-button-border: transparent;
+  --mar-ui-button-hover-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-hover-border: transparent;
+  --mar-ui-button-active-bg: var(--mar-action-hover-bg);
+  --mar-ui-button-active-border: transparent;
+  --mar-ui-button-disabled-bg: transparent;
+  --mar-ui-button-disabled-border: transparent;
+  --mar-ui-button-fg: var(--mar-text-secondary);
+  --mar-ui-button-hover-fg: var(--mar-action-hover-color, var(--mar-text-primary));
+  border-radius: var(--mar-radius-control);
+}
+
+.mar-ui-button.mar-icon-action:is(
+    :focus-visible,
+    .is-active,
+    [aria-expanded='true']:not(:where(.mar-icon-action--panel-toggle))
+  ):not(:disabled, [aria-disabled='true']) {
+  background: var(--mar-action-hover-bg);
+  color: var(--mar-ui-button-hover-fg);
+}
+
+.mar-ui-button.mar-soft-button {
+  --mar-ui-button-fg: var(--mar-text-primary);
+  --mar-ui-button-bg: var(--mar-fill-row-hover);
+  --mar-ui-button-border: var(--mar-border-default);
+  --mar-ui-button-hover-bg: var(--mar-fill-selection);
+  --mar-ui-button-disabled-bg: var(--mar-fill-subtle);
+  justify-content: flex-start;
+  border-radius: var(--mar-radius-control);
+  padding-inline: var(--mar-compact-option-padding-inline);
+}
+
+html.console-ui[data-theme='vscode-dark-2026'] .mar-ui-button.mar-soft-button:not(:disabled) {
+  --mar-ui-button-bg: color-mix(in srgb, var(--mar-fill-row-hover) 44%, var(--mar-fill-selection));
+  --mar-ui-button-border: color-mix(
+    in srgb,
+    var(--mar-border-medium) 82%,
+    var(--mar-text-secondary)
+  );
+  --mar-ui-button-hover-border: color-mix(
+    in srgb,
+    var(--mar-border-medium) 72%,
+    var(--mar-text-secondary)
+  );
+  --mar-ui-button-active-border: var(--mar-ui-button-border);
 }

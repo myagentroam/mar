@@ -64,13 +64,13 @@ for (const viewport of [
     await expect(rows).toHaveCount(2);
     const editAction = rows.first().getByRole('button', { name: 'Edit', exact: true });
     const deleteAction = rows.first().getByRole('button', { name: 'Delete', exact: true });
-    await expect(editAction).toHaveClass(/el-button--primary/);
-    await expect(deleteAction).toHaveClass(/el-button--danger/);
+    await expect(editAction).toHaveClass(/mar-ui-button--primary/);
+    await expect(deleteAction).toHaveClass(/mar-ui-button--danger/);
     expect(
       await deleteAction.evaluate((button) => {
         const style = getComputedStyle(button);
         return (
-          style.getPropertyValue('--el-button-text-color').trim() ===
+          style.getPropertyValue('--mar-ui-button-fg').trim() ===
           style.getPropertyValue('--el-color-danger').trim()
         );
       })
@@ -218,8 +218,9 @@ test('Quick prompt settings invalidate saving before the close animation finishe
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
     await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
-    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveClass(
-      /is-loading/
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveAttribute(
+      'aria-busy',
+      'true'
     );
     await expect(page.locator('.el-message')).toHaveCount(0);
     expect(reads).toBe(initialReads);
@@ -270,10 +271,10 @@ for (const outcome of ['success', 'failure'] as const) {
         await expect(dialog).toHaveCount(0);
         dialog = await edit(page, 'second');
         const save = dialog.getByRole('button', { name: 'Save', exact: true });
-        await expect(save).not.toHaveClass(/is-loading/);
+        await expect(save).not.toHaveAttribute('aria-busy', 'true');
         await save.click();
         await currentStarted.promise;
-        await expect(save).toHaveClass(/is-loading/);
+        await expect(save).toHaveAttribute('aria-busy', 'true');
         const response = page.waitForResponse((value) =>
           value.url().endsWith('/api/quick-prompts/first')
         );
@@ -289,7 +290,7 @@ for (const outcome of ['success', 'failure'] as const) {
         await expect(dialog).toBeVisible();
         await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
         await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
-        await expect(save).toHaveClass(/is-loading/);
+        await expect(save).toHaveAttribute('aria-busy', 'true');
         await expect(page.locator('.el-message')).toHaveCount(0);
         expect(reads).toBe(initialReads);
         const saved = page.waitForRequest(
@@ -348,8 +349,9 @@ for (const outcome of ['success', 'failure'] as const) {
           await edit(page, 'first');
           await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('First body');
         }
-        await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveClass(
-          /is-loading/
+        await expect(dialog.getByRole('button', { name: 'Save', exact: true })).not.toHaveAttribute(
+          'aria-busy',
+          'true'
         );
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
       } finally {

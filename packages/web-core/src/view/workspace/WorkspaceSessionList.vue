@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -353,7 +356,7 @@ function submitSessionSearch(): void {
       role="search"
       @submit.prevent="submitSessionSearch"
     >
-      <el-input
+      <MarInput
         v-model="searchInput"
         :placeholder="translate('workspaceSessions.searchPlaceholder')"
         :aria-label="translate('workspaceSessions.searchLabel')"
@@ -388,16 +391,15 @@ function submitSessionSearch(): void {
       </button>
     </form>
     <div class="new-session-form">
-      <el-button
+      <MarButton
         class="new-session-button mar-soft-button"
+        icon="session-add"
         :disabled="!nodeReady"
         @click="emit('create')"
       >
-        <MarIcon name="session-add" /><span>{{
-          translate('generated.workspaceSessionList.newSession')
-        }}</span>
-      </el-button>
-      <el-dropdown trigger="click" popper-class="workspace-tool-menu">
+        {{ translate('generated.workspaceSessionList.newSession') }}
+      </MarButton>
+      <MarDropdown trigger="click" popper-class="workspace-tool-menu">
         <button
           class="workspace-more-button mar-icon-action"
           :aria-label="translate('generated.workspaceSessionList.moreWorkspaceActions')"
@@ -407,18 +409,18 @@ function submitSessionSearch(): void {
           <MarIcon name="more" />
         </button>
         <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item v-if="skillSupported" @click="openSkills">
+          <MarDropdownMenu>
+            <MarDropdownItem v-if="skillSupported" @click="openSkills">
               <MarIcon name="collection" /><span>{{
                 translate('generated.workspaceSessionList.loadedSkills')
               }}</span>
-            </el-dropdown-item>
-            <el-dropdown-item v-if="mcpSupported" @click="openMcps">
+            </MarDropdownItem>
+            <MarDropdownItem v-if="mcpSupported" @click="openMcps">
               <MarIcon name="connection" /><span>{{
                 translate('generated.workspaceSessionList.loadedMCP')
               }}</span>
-            </el-dropdown-item>
-            <el-dropdown-item
+            </MarDropdownItem>
+            <MarDropdownItem
               v-if="cleanupSessionsSupported"
               :disabled="loading || !nodeReady || !workspaceManageable"
               @click="emit('cleanupSessions')"
@@ -426,10 +428,10 @@ function submitSessionSearch(): void {
               <MarIcon name="delete" /><span>{{
                 translate('generated.workspaceSessionList.cleanupSessions')
               }}</span>
-            </el-dropdown-item>
-          </el-dropdown-menu>
+            </MarDropdownItem>
+          </MarDropdownMenu>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </div>
     <SessionGroupTabs
       v-if="sessionGroup"
@@ -543,7 +545,7 @@ function submitSessionSearch(): void {
               </span>
             </span>
           </button>
-          <el-dropdown
+          <MarDropdown
             v-if="sessionActionsVisible(session.id)"
             class="session-row-actions"
             placement="bottom-end"
@@ -585,7 +587,7 @@ function submitSessionSearch(): void {
                 @delete="emit('deleteSession', session)"
               />
             </template>
-          </el-dropdown>
+          </MarDropdown>
         </div>
       </li>
       <li
@@ -600,7 +602,7 @@ function submitSessionSearch(): void {
           :aria-label="translate('generated.workspaceSessionList.loading')"
           ><BusyIndicator class="mar-read-loading-indicator"
         /></span>
-        <el-button
+        <MarButton
           v-if="retryingAppend || (loadMoreError !== undefined && !loadingMore)"
           link
           :aria-disabled="loadingMore"
@@ -610,7 +612,7 @@ function submitSessionSearch(): void {
         >
           <BusyIndicator v-if="loadingMore" class="mar-read-loading-indicator" />
           <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-        </el-button>
+        </MarButton>
       </li>
     </ul>
     <p
@@ -844,7 +846,7 @@ function submitSessionSearch(): void {
   margin-bottom: 0.35rem;
 }
 
-.session-search .el-input {
+.session-search .mar-ui-input {
   min-width: 0;
 }
 
@@ -876,7 +878,7 @@ function submitSessionSearch(): void {
   opacity: 0.55;
 }
 
-:global(.workspace-tool-menu .el-dropdown-menu__item) {
+:global(.workspace-tool-menu .mar-ui-dropdown-item) {
   font-size: var(--mar-font-size-body);
 }
 

@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
+
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -9,7 +15,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { managementDateTime } from '../../util/time-presentation.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createSkillCenterService,
@@ -455,12 +460,12 @@ function scopeLabel(scope: string): string {
     class="mar-management-page"
   >
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         type="primary"
         :icon="marIcon('plus')"
         :disabled="!writable || service.loading.value"
         @click="openSourceDialog"
-        >{{ translate('generated.skillSourceManagementPage.addSkillSource') }}</el-button
+        >{{ translate('generated.skillSourceManagementPage.addSkillSource') }}</MarButton
       >
     </div>
     <el-table
@@ -506,7 +511,7 @@ function scopeLabel(scope: string): string {
         :width="180"
         ><template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
-            <el-button
+            <MarButton
               link
               :icon="marIcon('power')"
               :disabled="!writable || !row.manageable || service.loading.value"
@@ -515,16 +520,16 @@ function scopeLabel(scope: string): string {
                 row.enabled
                   ? translate('generated.skillSourceManagementPage.disable')
                   : translate('generated.skillSourceManagementPage.enable')
-              }}</el-button
+              }}</MarButton
             >
-            <el-button
+            <MarButton
               v-if="!row.builtIn"
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="!writable || !row.manageable || service.loading.value"
               @click="removeSource(row)"
-              >{{ translate('generated.skillSourceManagementPage.delete2') }}</el-button
+              >{{ translate('generated.skillSourceManagementPage.delete2') }}</MarButton
             >
           </div>
         </template></el-table-column
@@ -537,7 +542,7 @@ function scopeLabel(scope: string): string {
         name="source"
       >
         <div class="source-search-bar">
-          <el-select
+          <MarSelect
             :model-value="service.selectedSourceId.value"
             :aria-label="translate('generated.skillSourceManagementPage.selectASkillSource')"
             :placeholder="
@@ -545,18 +550,16 @@ function scopeLabel(scope: string): string {
             "
             :disabled="service.loading.value"
             @change="selectSource"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option
+            <MarOption
               v-for="source in service.sources.value.filter((item) => item.enabled)"
               :key="source.id"
               :label="source.name"
               :value="source.id"
             />
-          </el-select>
+          </MarSelect>
           <div class="toolbar">
-            <el-input
+            <MarInput
               v-model="service.query.value"
               clearable
               :placeholder="
@@ -566,14 +569,14 @@ function scopeLabel(scope: string): string {
               :clear-icon="marIcon('clear-input')"
             >
               <template #append>
-                <el-button
+                <MarButton
                   :icon="marIcon('search')"
                   :disabled="!selectedSource?.enabled || service.loading.value"
                   @click="run(searchSourceSkills)"
-                  >{{ translate('generated.skillSourceManagementPage.search') }}</el-button
+                  >{{ translate('generated.skillSourceManagementPage.search') }}</MarButton
                 >
               </template>
-            </el-input>
+            </MarInput>
           </div>
         </div>
         <div v-loading="sourceSkillsLoading && !initialLoading" class="skill-table-section">
@@ -617,12 +620,12 @@ function scopeLabel(scope: string): string {
             >
               <template #default="{ row }">
                 <div class="mar-row-actions" @click.stop>
-                  <el-button
+                  <MarButton
                     link
                     :icon="marIcon('plus')"
                     :disabled="!writable || service.loading.value"
                     @click="openCatalogDialog(row)"
-                    >{{ translate('generated.skillSourceManagementPage.addToCatalog') }}</el-button
+                    >{{ translate('generated.skillSourceManagementPage.addToCatalog') }}</MarButton
                   >
                 </div>
               </template>
@@ -645,7 +648,7 @@ function scopeLabel(scope: string): string {
         name="catalog"
       >
         <div class="catalog-filter-bar">
-          <el-input
+          <MarInput
             v-model="catalogQuery"
             clearable
             :placeholder="
@@ -757,43 +760,41 @@ function scopeLabel(scope: string): string {
             >
               <template #default="{ row }">
                 <div class="mar-row-actions" @click.stop>
-                  <el-button
+                  <MarButton
                     link
                     :icon="marIcon('edit')"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="openEditDialog(row)"
-                    >{{ translate('generated.skillSourceManagementPage.edit') }}</el-button
+                    >{{ translate('generated.skillSourceManagementPage.edit') }}</MarButton
                   >
-                  <el-button
+                  <MarButton
                     v-if="!updateChecks[row.id]?.updateAvailable"
                     link
                     :icon="marIcon('refresh')"
                     :loading="checkingSkillIds.has(row.id)"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="checkSkillUpdate(row)"
-                    :loading-icon="marIcon('loading-action')"
                     >{{
                       translate('generated.skillSourceManagementPage.checkForUpdates')
-                    }}</el-button
+                    }}</MarButton
                   >
-                  <el-button
+                  <MarButton
                     v-else
                     link
                     :icon="marIcon('retry')"
                     :loading="upgradingSkillId === row.id"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="upgradeSkill(row)"
-                    :loading-icon="marIcon('loading-action')"
                     >{{ translate('generated.skillSourceManagementPage.updateTo') }}
-                    {{ updateChecks[row.id]!.latestCommitSha.slice(0, 8) }}</el-button
+                    {{ updateChecks[row.id]!.latestCommitSha.slice(0, 8) }}</MarButton
                   >
-                  <el-button
+                  <MarButton
                     link
                     type="danger"
                     :icon="marIcon('delete')"
                     :disabled="!writable || !row.manageable || service.loading.value"
                     @click="removeSkill(row.id, row.normalizedName)"
-                    >{{ translate('generated.skillSourceManagementPage.remove2') }}</el-button
+                    >{{ translate('generated.skillSourceManagementPage.remove2') }}</MarButton
                   >
                 </div>
               </template>
@@ -836,53 +837,49 @@ function scopeLabel(scope: string): string {
       width="min(520px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="sourceForm"
         :model="{ ...sourceContext, ...sourceDraft }"
         :rules="{ ...ownershipRules, ...rules }"
         label-position="top"
       >
-        <el-form-item :label="translate('generated.skillSourceManagementPage.name2')" prop="name"
-          ><el-input v-model="sourceDraft.name" maxlength="128"
-        /></el-form-item>
-        <el-form-item
+        <MarFormItem :label="translate('generated.skillSourceManagementPage.name2')" prop="name"
+          ><MarInput v-model="sourceDraft.name" maxlength="128"
+        /></MarFormItem>
+        <MarFormItem
           :label="translate('generated.skillSourceManagementPage.repositoryURL')"
           prop="locator"
-          ><el-input
+          ><MarInput
             v-model="sourceDraft.locator"
             :placeholder="
               translate('generated.skillSourceManagementPage.httpsGithubComOrgRepoOrGit')
             "
-        /></el-form-item>
+        /></MarFormItem>
         <p class="form-hint">
           {{
             translate('generated.skillSourceManagementPage.gitRepositoriesUseTheServerProcessUser')
           }}
         </p>
         <slot name="source-ownership">
-          <el-form-item :label="translate('generated.skillSourceManagementPage.scope2')">
-            <el-select
+          <MarFormItem :label="translate('generated.skillSourceManagementPage.scope2')">
+            <MarSelect
               model-value="PERSONAL"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
-              ><el-option
+              ><MarOption
                 value="PERSONAL"
                 :label="translate('generated.skillSourceManagementPage.personal2')"
-            /></el-select>
-          </el-form-item>
+            /></MarSelect>
+          </MarFormItem>
         </slot>
-      </el-form>
+      </MarForm>
       <template #footer
-        ><el-button @click="sourceDialog = false">{{
+        ><MarButton @click="sourceDialog = false">{{
           translate('generated.skillSourceManagementPage.cancel3')
-        }}</el-button
-        ><el-button
-          type="primary"
-          :loading="service.loading.value"
-          @click="addSource"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.skillSourceManagementPage.add') }}</el-button
-        ></template
+        }}</MarButton
+        ><MarButton type="primary" :loading="service.loading.value" @click="addSource">{{
+          translate('generated.skillSourceManagementPage.add')
+        }}</MarButton></template
       >
     </el-dialog>
 
@@ -895,29 +892,29 @@ function scopeLabel(scope: string): string {
       width="min(460px, calc(100vw - 32px))"
       :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="catalogForm"
         :model="{ ...catalogContext, ...catalogDraft }"
         :rules="{ ...ownershipRules, ...rules }"
         label-position="top"
       >
         <slot name="catalog-ownership">
-          <el-form-item :label="translate('generated.skillSourceManagementPage.availability')">
-            <el-select
+          <MarFormItem :label="translate('generated.skillSourceManagementPage.availability')">
+            <MarSelect
               model-value="PERSONAL"
               :clear-icon="marIcon('clear-input')"
               :suffix-icon="marIcon('chevron-down')"
-              ><el-option
+              ><MarOption
                 value="PERSONAL"
                 :label="translate('generated.skillSourceManagementPage.personal3')"
-            /></el-select>
-          </el-form-item>
+            /></MarSelect>
+          </MarFormItem>
         </slot>
-        <el-form-item :label="translate('generated.skillSourceManagementPage.featured2')">
-          <el-switch v-model="catalogDraft.featured" />
-        </el-form-item>
-        <el-form-item :label="translate('generated.skillSourceManagementPage.tags')" prop="tags">
-          <el-select
+        <MarFormItem :label="translate('generated.skillSourceManagementPage.featured2')">
+          <MarSwitch v-model="catalogDraft.featured" />
+        </MarFormItem>
+        <MarFormItem :label="translate('generated.skillSourceManagementPage.tags')" prop="tags">
+          <MarSelect
             v-model="catalogDraft.tags"
             multiple
             filterable
@@ -928,21 +925,17 @@ function scopeLabel(scope: string): string {
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
-          </el-select>
-        </el-form-item>
-      </el-form>
+            <MarOption v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
+          </MarSelect>
+        </MarFormItem>
+      </MarForm>
       <template #footer
-        ><el-button @click="catalogDialog = false">{{
+        ><MarButton @click="catalogDialog = false">{{
           translate('generated.skillSourceManagementPage.cancel4')
-        }}</el-button
-        ><el-button
-          type="primary"
-          :loading="service.loading.value"
-          @click="addToCatalog"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.skillSourceManagementPage.add2') }}</el-button
-        ></template
+        }}</MarButton
+        ><MarButton type="primary" :loading="service.loading.value" @click="addToCatalog">{{
+          translate('generated.skillSourceManagementPage.add2')
+        }}</MarButton></template
       >
     </el-dialog>
 
@@ -956,12 +949,12 @@ function scopeLabel(scope: string): string {
       destroy-on-close
       :close-icon="marIcon('close')"
     >
-      <el-form ref="editForm" :model="editDraft" :rules="rules" label-position="top">
-        <el-form-item :label="translate('generated.skillSourceManagementPage.featured3')">
-          <el-switch v-model="editDraft.featured" />
-        </el-form-item>
-        <el-form-item :label="translate('generated.skillSourceManagementPage.tags2')" prop="tags">
-          <el-select
+      <MarForm ref="editForm" :model="editDraft" :rules="rules" label-position="top">
+        <MarFormItem :label="translate('generated.skillSourceManagementPage.featured3')">
+          <MarSwitch v-model="editDraft.featured" />
+        </MarFormItem>
+        <MarFormItem :label="translate('generated.skillSourceManagementPage.tags2')" prop="tags">
+          <MarSelect
             v-model="editDraft.tags"
             multiple
             filterable
@@ -974,21 +967,17 @@ function scopeLabel(scope: string): string {
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
-          </el-select>
-        </el-form-item>
-      </el-form>
+            <MarOption v-for="tag in catalogTags" :key="tag" :label="tag" :value="tag" />
+          </MarSelect>
+        </MarFormItem>
+      </MarForm>
       <template #footer>
-        <el-button @click="editDialog = false">{{
+        <MarButton @click="editDialog = false">{{
           translate('generated.skillSourceManagementPage.cancel5')
-        }}</el-button>
-        <el-button
-          type="primary"
-          :loading="service.loading.value"
-          @click="savePresentation"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.skillSourceManagementPage.save') }}</el-button
-        >
+        }}</MarButton>
+        <MarButton type="primary" :loading="service.loading.value" @click="savePresentation">{{
+          translate('generated.skillSourceManagementPage.save')
+        }}</MarButton>
       </template>
     </el-dialog>
     <SkillDetailsDialog v-model="detailsOpen" :details="skillDetails" />
@@ -1036,7 +1025,7 @@ function scopeLabel(scope: string): string {
   gap: 12px;
   min-width: 0;
 }
-.source-search-bar :deep(.el-select) {
+.source-search-bar :deep(.mar-ui-select) {
   width: min(320px, 100%);
   min-width: 200px;
 }
@@ -1049,7 +1038,7 @@ function scopeLabel(scope: string): string {
   display: grid;
   gap: 10px;
 }
-.catalog-filter-bar :deep(.el-input) {
+.catalog-filter-bar :deep(.mar-ui-input) {
   width: min(620px, 100%);
 }
 .skill-category-strip {
@@ -1128,11 +1117,14 @@ function scopeLabel(scope: string): string {
     align-items: stretch;
     flex-direction: column;
   }
-  .source-search-bar :deep(.el-select) {
+  .source-search-bar :deep(.mar-ui-select) {
     width: 100%;
   }
-  .toolbar :deep(.el-button),
-  .section-heading :deep(.el-button) {
+  .source-search-bar .toolbar {
+    flex-basis: auto;
+  }
+  .toolbar :deep(.mar-ui-button),
+  .section-heading :deep(.mar-ui-button) {
     min-height: 36px;
   }
 }

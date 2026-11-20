@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
 import { translate } from '../../service/locale-preference-service';
@@ -57,15 +58,9 @@ function computerUseStatus(capability: ComputerUseCapability): string {
 <template>
   <div class="runtime-environment" :class="{ 'runtime-environment--refreshable': refreshable }">
     <div v-if="refreshable" class="runtime-environment-actions">
-      <el-button
-        link
-        :icon="marIcon('refresh')"
-        :loading="refreshing"
-        @click="emit('refresh')"
-        :loading-icon="marIcon('loading-action')"
-      >
+      <MarButton link :icon="marIcon('refresh')" :loading="refreshing" @click="emit('refresh')">
         {{ translate('generated.nodeDetailsDialogs.refreshCapabilities') }}
-      </el-button>
+      </MarButton>
     </div>
     <div v-if="rows.length || computerUse !== undefined" class="runtime-command-list">
       <div v-if="computerUse !== undefined" class="runtime-command-row">

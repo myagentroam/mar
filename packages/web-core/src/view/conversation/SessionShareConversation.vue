@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ClickOutside as vClickOutside, type ButtonInstance } from 'element-plus';
+import { ClickOutside as vClickOutside } from 'element-plus';
 import { createSessionShareConversationService } from '../../service/session-share-conversation-service.js';
 import type { createSessionShareAccessService } from '../../service/session-share-access-service.js';
 import { createConversationImageService } from '../../service/conversation-image-service.js';
@@ -83,7 +84,7 @@ const images = createConversationImageService(ref(chat.target.nodeId), {
 const { previewOpen: imageOpen, preview: image } = images;
 const mobile = ref(window.matchMedia('(max-width: 767px)').matches);
 const showParticipants = ref(false);
-const participantsButton = ref<ButtonInstance>();
+const participantsButton = ref<InstanceType<typeof MarButton>>();
 const composer = ref<InstanceType<typeof ConversationComposer>>();
 const { interactions, fileReferences } = chat;
 const selectSkill = (skill: EffectiveWorkspaceSkill, cursor: number) => {
@@ -183,12 +184,12 @@ onBeforeUnmount(() => {
             }}</span>
           </div>
         </div>
-        <el-button
+        <MarButton
           v-if="mobile"
           ref="participantsButton"
           @click="showParticipants = !showParticipants"
           :aria-expanded="showParticipants"
-          >{{ translate('sessionShare.participants') }}</el-button
+          >{{ translate('sessionShare.participants') }}</MarButton
         >
       </header>
       <ConversationScroll
@@ -388,7 +389,7 @@ onBeforeUnmount(() => {
     </section>
     <aside
       v-if="!mobile || showParticipants"
-      v-click-outside:[participantsButton?.$el]="closeParticipants"
+      v-click-outside:[participantsButton?.ref]="closeParticipants"
       class="share-people"
       :aria-label="translate('sessionShare.participants')"
     >
@@ -406,7 +407,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-for="visitor in participants" :key="visitor.visitorId" class="share-person">
         <span class="presence" aria-hidden="true" /><span>{{ name(visitor) }}</span>
-        <el-button
+        <MarButton
           v-tooltip="translate('sessionShare.editName')"
           v-if="chat.canRename.value && visitor.visitorId === access.visitor.value.visitorId"
           class="share-edit-name mar-icon-action"

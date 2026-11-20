@@ -68,25 +68,52 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       const save = locale === 'zh-CN' ? '保存' : 'Save';
       await page.getByRole('button', { name: edit, exact: true }).click();
       const dialog = page.getByRole('dialog');
+      const reasoningEfforts = dialog.locator('.el-checkbox-group');
+      await expect(reasoningEfforts).toHaveAccessibleName(
+        locale === 'zh-CN' ? '支持的思考强度' : 'Supported reasoning efforts'
+      );
+      await expect(
+        reasoningEfforts.getByRole('checkbox', { name: 'medium', exact: true })
+      ).toBeChecked();
       const identityFields = dialog.locator('.model-grid').filter({
         hasText: locale === 'zh-CN' ? '协议' : 'Protocol'
       });
-      await expect(identityFields.getByRole('textbox')).toHaveValue(inlineModel.name);
-      const modelNameOutline = await identityFields
-        .locator('.el-input__wrapper')
-        .evaluate((element) => getComputedStyle(element).boxShadow);
-      await expect(identityFields.locator('.el-select__wrapper')).toHaveCSS(
-        'box-shadow',
-        modelNameOutline
-      );
-      const input = dialog.getByLabel(locale === 'zh-CN' ? 'SOCKS5 代理' : 'SOCKS5 proxy', {
+      const modelName = identityFields.getByRole('textbox');
+      await expect(modelName).toHaveValue(inlineModel.name);
+      const inputSurface = identityFields.locator('.mar-ui-input');
+      const selectSurface = identityFields.locator('.mar-ui-select__field');
+      await page.mouse.move(0, 0);
+      await expect
+        .poll(async () => {
+          const [inputShadow, selectShadow] = await Promise.all(
+            [inputSurface, selectSurface].map((surface) =>
+              surface.evaluate((element) => getComputedStyle(element).boxShadow)
+            )
+          );
+          return inputShadow !== 'none' && inputShadow === selectShadow;
+        })
+        .toBe(true);
+      const proxyLabel = locale === 'zh-CN' ? 'SOCKS5 代理' : 'SOCKS5 proxy';
+      const input = dialog.getByLabel(proxyLabel, { exact: true });
+      await expect(input).toHaveValue(proxy);
+      await expect(input).toHaveAttribute('type', 'password');
+      const proxyField = dialog.locator('.mar-ui-input').filter({
+        has: page.getByLabel(proxyLabel, { exact: true })
+      });
+      const toggle = proxyField.getByRole('button', {
+        name: locale === 'zh-CN' ? '显示密码' : 'Show password',
         exact: true
       });
-      await expect(input).toHaveValue(proxy);
+      await toggle.focus();
+      await toggle.press('Space');
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      await expect(input).toHaveAttribute('type', 'text');
+      await toggle.press('Space');
       await expect(input).toHaveAttribute('type', 'password');
       await input.fill('http://proxy.invalid:1080');
       await dialog.getByRole('button', { name: save, exact: true }).click();
-      await expect(dialog.locator('.el-form-item__error')).toBeVisible();
+      await expect(input).toHaveAttribute('aria-invalid', 'true');
+      await expect(dialog.getByRole('alert').filter({ hasText: /socks5/i })).toBeVisible();
       expect(writes).toEqual([]);
       await input.fill(proxy);
       await page.screenshot({ path: testInfo.outputPath('model-proxy.png'), fullPage: true });

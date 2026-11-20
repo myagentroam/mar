@@ -100,7 +100,7 @@ for (const device of ['desktop', 'mobile'] as const) {
       );
       const action = online.getByRole('button').first();
       await expect(action).toHaveClass(/(?:^|\s)mar-text-action(?:\s|$)/);
-      await expect(action).toHaveClass(/(?:^|\s)is-link(?:\s|$)/);
+      await expect(action).toHaveClass(/(?:^|\s)mar-ui-button--inline(?:\s|$)/);
       await expect(action).toBeEnabled();
       await action.hover();
       await expect(online.getByRole('button').first()).toHaveCSS(

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -241,12 +242,12 @@ onBeforeUnmount(() => {
     "
   >
     <template #row-actions="{ row }">
-      <el-button
+      <MarButton
         v-if="edition !== 'COMMUNITY'"
         link
         :icon="marIcon('share')"
         @click="openGrants(row)"
-        >{{ translate('common.grant') }}</el-button
+        >{{ translate('common.grant') }}</MarButton
       >
     </template>
   </CorePage>
@@ -277,13 +278,9 @@ onBeforeUnmount(() => {
           :props="{ checkStrictly: true, emitPath: false }"
           :clear-icon="marIcon('clear-input')"
         />
-        <el-button
-          type="primary"
-          :loading="grantSaving"
-          @click="createGrant"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('common.grant') }}</el-button
-        >
+        <MarButton type="primary" :loading="grantSaving" @click="createGrant">{{
+          translate('common.grant')
+        }}</MarButton>
       </div>
       <el-table :data="grants" empty-text="">
         <el-table-column :label="translate('conversationTemplates.target')" min-width="220">
@@ -295,9 +292,9 @@ onBeforeUnmount(() => {
           width="100"
         >
           <template #default="{ row }">
-            <el-button link type="danger" @click="removeGrant(row)">{{
+            <MarButton link type="danger" @click="removeGrant(row)">{{
               translate('conversationTemplates.revoke')
-            }}</el-button>
+            }}</MarButton>
           </template>
         </el-table-column>
       </el-table>

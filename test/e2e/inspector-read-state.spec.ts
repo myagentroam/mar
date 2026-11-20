@@ -196,7 +196,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const refresh = panel.locator(action.selector).first();
           await expect(refresh).toBeEnabled();
           if (action.panel === 'Search') {
-            await expect(panel.locator('.el-input__prefix [data-mar-icon="search"]')).toBeVisible();
+            await expect(panel.locator('.mar-ui-input [data-mar-icon="search"]')).toBeVisible();
             await panel.getByRole('textbox').fill('workspace');
           }
           for (failed of [false, true]) {
@@ -280,7 +280,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
             [page.getByTestId('Search'), '.content-search-toolbar']
           ] as const) {
             const toolbar = panel.locator(toolbarSelector);
-            const input = await toolbar.locator('.el-input__wrapper').boundingBox();
+            const input = await toolbar.locator('.mar-ui-input').boundingBox();
             const action = await toolbar.locator('button').last().boundingBox();
             const bounds = await toolbar.boundingBox();
             expect(input!.x - bounds!.x).toBeGreaterThanOrEqual(6);
@@ -293,7 +293,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
           const searchPanel = page.getByTestId('Search').locator('.content-search');
           const searchBounds = await searchPanel.boundingBox();
           const checkbox = await searchPanel.locator('.el-checkbox').boundingBox();
-          const searchInput = await searchPanel.locator('.el-input__wrapper').boundingBox();
+          const searchInput = await searchPanel.locator('.mar-ui-input').boundingBox();
           expect(checkbox!.x - searchBounds!.x).toBeGreaterThanOrEqual(6);
           expect(checkbox!.y - searchBounds!.y).toBeGreaterThanOrEqual(6);
           expect(Math.abs(checkbox!.x - searchInput!.x)).toBeLessThanOrEqual(1);

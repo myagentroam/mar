@@ -5,6 +5,7 @@ export interface MarUiLocale {
   readonly clear: string;
   readonly noData: string;
   readonly select: string;
+  readonly invalidField: string;
 }
 
 export const marUiLocaleKey: InjectionKey<Readonly<Ref<MarUiLocale>>> = Symbol('mar-ui-locale');

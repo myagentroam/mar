@@ -150,7 +150,7 @@ for (const [locale, theme] of [
       await row
         .getByRole('button', { name: english ? /More session actions/ : /更多会话操作/ })
         .click();
-      const menu = page.locator('.el-dropdown__popper:visible');
+      const menu = page.getByRole('menu');
       const promptItem = menu.getByRole('menuitem', { name: title, exact: true });
       if (!checkedMenu) {
         const renameItem = menu.getByRole('menuitem', {

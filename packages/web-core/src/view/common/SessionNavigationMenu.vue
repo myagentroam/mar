@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import { translate } from '../../service/locale-preference-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 import MarIcon from './MarIcon.vue';
@@ -21,25 +22,25 @@ async function copySessionId(): Promise<void> {
 </script>
 
 <template>
-  <el-dropdown-menu class="session-navigation-menu">
+  <MarDropdownMenu class="session-navigation-menu">
     <template v-if="canNavigate">
-      <el-dropdown-item :disabled="navigationDisabled" @click="emit('open', sessionId, 'aside')">
+      <MarDropdownItem :disabled="navigationDisabled" @click="emit('open', sessionId, 'aside')">
         <MarIcon name="split" />{{ translate('sessionGroups.openAside') }}
-      </el-dropdown-item>
-      <el-dropdown-item :disabled="navigationDisabled" @click="emit('open', sessionId, 'main')">
+      </MarDropdownItem>
+      <MarDropdownItem :disabled="navigationDisabled" @click="emit('open', sessionId, 'main')">
         <MarIcon name="conversation" />{{ translate('sessionGroups.openMain') }}
-      </el-dropdown-item>
+      </MarDropdownItem>
     </template>
     <slot name="actions" />
-    <el-dropdown-item :divided="canNavigate && !$slots.actions" @click="copySessionId">
+    <MarDropdownItem :divided="canNavigate && !$slots.actions" @click="copySessionId">
       <MarIcon name="copy" />{{ translate('generated.conversationHeader.copySessionId') }}
-    </el-dropdown-item>
+    </MarDropdownItem>
     <slot name="destructive" />
-  </el-dropdown-menu>
+  </MarDropdownMenu>
 </template>
 
 <style scoped>
-.session-navigation-menu :deep(.el-dropdown-menu__item) {
+.session-navigation-menu :deep(.mar-ui-dropdown-item) {
   gap: 0.4rem;
 }
 </style>

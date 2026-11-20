@@ -2256,7 +2256,7 @@ for (const language of [
       await page.setViewportSize({ width: 1024, height: 900 });
       await page.getByRole('button', { name: language.menu, exact: true }).click();
       const menuItem = page
-        .locator('.workspace-tab-menu-list .el-dropdown-menu__item')
+        .locator('.workspace-tab-menu-list [role="menuitem"]')
         .filter({ hasText: 'project-1' });
       await expect(menuItem.locator('.workspace-tab-unread')).toHaveText(language.unread);
       await expect(menuItem.locator('.workspace-tab-running')).toBeVisible();
@@ -2946,7 +2946,7 @@ test('Workspace group moves and drags use Workspace-registration permission', as
   await page.getByRole('menuitem', { name: '移动到分组' }).click();
   const moveGroupDialog = page.getByRole('dialog', { name: '移动到分组' });
   await moveGroupDialog.getByRole('combobox', { name: '工作区分组' }).click();
-  await page.locator('.el-select-dropdown:visible').getByText('已有分组', { exact: true }).click();
+  await page.getByRole('listbox').getByRole('option', { name: '已有分组', exact: true }).click();
   await moveGroupDialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect
     .poll(() => updates)
@@ -2978,9 +2978,9 @@ test('Workspace group moves and drags use Workspace-registration permission', as
   await existingWorkspaceRow.hover();
   await existingWorkspaceRow.getByRole('button', { name: '工作区操作' }).click();
   await page.getByRole('menuitem', { name: '移动到分组' }).click();
-  await expect(moveGroupDialog.getByRole('button', { name: '清空', exact: true })).toHaveCount(0);
-  await moveGroupDialog.getByRole('combobox', { name: '工作区分组' }).locator('..').hover();
-  await moveGroupDialog.locator('.el-select__clear').click();
+  const clearGroup = moveGroupDialog.getByRole('button', { name: '清空', exact: true });
+  await expect(clearGroup).toBeVisible();
+  await clearGroup.click();
   await moveGroupDialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect
     .poll(() => updates)

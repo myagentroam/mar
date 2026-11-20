@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import { marIcon } from '../../util/mar-icons.js';
 import { translate } from '../../service/locale-preference-service';
 
@@ -18,7 +20,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
           ? translate('generated.resourceSharingPage.node5')
           : translate('generated.resourceSharingPage.workspace4')
       }}</span>
-      <el-input
+      <MarInput
         v-model="keyword"
         :aria-label="translate('generated.resourceSharingPage.keyword')"
         clearable
@@ -28,18 +30,16 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
     </label>
     <label v-if="resourceType === 'NODE'" class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.status') }}</span>
-      <el-select
+      <MarSelect
         v-model="status"
         :aria-label="translate('generated.resourceSharingPage.status')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.selectAStatus')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option :label="translate('generated.resourceSharingPage.online2')" value="online" />
-        <el-option :label="translate('generated.resourceSharingPage.offline2')" value="offline" />
-        <el-option :label="translate('generated.resourceSharingPage.disabled2')" value="disabled" />
-      </el-select>
+        <MarOption :label="translate('generated.resourceSharingPage.online2')" value="online" />
+        <MarOption :label="translate('generated.resourceSharingPage.offline2')" value="offline" />
+        <MarOption :label="translate('generated.resourceSharingPage.disabled2')" value="disabled" />
+      </MarSelect>
     </label>
   </div>
 </template>

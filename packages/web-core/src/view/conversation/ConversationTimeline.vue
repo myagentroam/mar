@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import './conversation-detail.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import ConversationQuoteMenu from './ConversationQuoteMenu.vue';
@@ -392,6 +394,11 @@ onBeforeUnmount(() => {
 function userInputCheckboxAnswer(itemId: string, questionId: string): readonly string[] {
   const answer = props.userInputAnswer(itemId, questionId);
   return Array.isArray(answer) ? answer : [];
+}
+
+function userInputTextAnswer(itemId: string, questionId: string): string {
+  const answer = props.userInputAnswer(itemId, questionId);
+  return typeof answer === 'string' ? answer : '';
 }
 
 const latestPlanItemId = computed(
@@ -1281,12 +1288,12 @@ function stepDuration(item: ConversationItem): string | undefined {
                   >{{ option.label }}</el-radio
                 >
               </el-radio-group>
-              <el-input
+              <MarInput
                 v-if="
                   question.options.length === 0 ||
                   (question.allowOther && question.input !== 'MULTI_SELECT')
                 "
-                :model-value="props.userInputAnswer(displayItem.item.id, question.id)"
+                :model-value="userInputTextAnswer(displayItem.item.id, question.id)"
                 :disabled="
                   loading ||
                   displayItem.item.status !== 'PENDING' ||
@@ -1300,10 +1307,10 @@ function stepDuration(item: ConversationItem): string | undefined {
                 size="small"
                 @update:model-value="emit('setAnswer', displayItem.item.id, question.id, $event)"
               />
-              <el-input
+              <MarInput
                 v-if="question.allowOther && question.input === 'MULTI_SELECT'"
                 :model-value="
-                  props.userInputAnswer(displayItem.item.id, userInputOtherAnswerId(question.id))
+                  userInputTextAnswer(displayItem.item.id, userInputOtherAnswerId(question.id))
                 "
                 :disabled="
                   loading ||
@@ -1323,7 +1330,7 @@ function stepDuration(item: ConversationItem): string | undefined {
               />
             </div>
             <div class="conversation-card-actions">
-              <el-button
+              <MarButton
                 type="primary"
                 size="small"
                 :disabled="
@@ -1333,8 +1340,7 @@ function stepDuration(item: ConversationItem): string | undefined {
                   props.userInputSubmitted(displayItem.item.id)
                 "
                 @click="emit('submitInput', turn, displayItem.item)"
-                :loading-icon="marIcon('loading-action')"
-                >{{ translate('generated.conversationTimeline.submitAnswers') }}</el-button
+                >{{ translate('generated.conversationTimeline.submitAnswers') }}</MarButton
               >
             </div>
           </section>
@@ -1514,12 +1520,12 @@ function stepDuration(item: ConversationItem): string | undefined {
                 v-if="displayItem.item.id === latestPlanItemId && planContinuation"
                 class="conversation-card-actions"
               >
-                <el-button
+                <MarButton
                   type="primary"
                   size="small"
                   :disabled="loading"
                   @click="emit('implementPlan', displayItem.item)"
-                  >{{ planContinuation.continuation?.label }}</el-button
+                  >{{ planContinuation.continuation?.label }}</MarButton
                 >
               </div>
             </div>
@@ -2459,7 +2465,7 @@ details.conversation-record-group[open] > details:last-child {
   align-items: start;
 }
 
-:global(.conversation-card-actions .el-button) {
+:global(.conversation-card-actions .mar-ui-button) {
   width: 100%;
   margin: 0;
 }

@@ -146,13 +146,13 @@ describe('Public resource management', () => {
       );
       const buttons = (label: string) =>
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => textContent(node).trim().toLowerCase() === label.toLowerCase())!;
       try {
         await flushComponent();
         await trigger(buttons('Register Node'), 'onClick');
-        const form = view.findAll('ElForm')[0]!;
-        const input = view.findAll('ElInput').find((node) => node.props['maxlength'] === '128')!;
+        const form = view.findAll('MarForm')[0]!;
+        const input = view.findAll('MarInput').find((node) => node.props['maxlength'] === '128')!;
         await trigger(input, 'onUpdate:modelValue', '  Fixture Node  ');
         expect(view.findAll('ElDialog')).toHaveLength(1);
         expect(view.findAll('ElLink')).toHaveLength(0);
@@ -167,7 +167,7 @@ describe('Public resource management', () => {
         });
         complete({ token: 'fixture-registration-key' });
         await saving;
-        expect(view.findAll('ElForm')).toHaveLength(0);
+        expect(view.findAll('MarForm')).toHaveLength(0);
         expect(textContent(view.root)).toContain('fixture-registration-key');
         expect(textContent(view.root)).toContain(
           commonMessages['en-US'].generated.resourceSharingPage.registrationTokenInstructions

@@ -503,7 +503,7 @@ describe('public file navigation components', () => {
       expect(html).not.toContain('title="docs/guide.md"');
       expect(html).not.toContain('file-31.txt');
       expect(html).not.toMatch(/generated\.|workspaceFileTree\./u);
-      expect(html).not.toContain('el-dropdown');
+      expect(html).not.toContain('class="mar-ui-dropdown"');
       const empty = await render(WorkspaceFileTree, {
         root,
         filter: 'no-file-matches-this-query',

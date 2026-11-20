@@ -169,7 +169,7 @@ test('Personal Git settings persist commit identity in the unified Server, redac
   const sshRemote = credentialDialog.getByRole('textbox', { name: 'Git 远程地址' });
   await sshRemote.fill('git@');
   await sshRemote.blur();
-  await expect(credentialDialog.locator('.el-form-item__error')).toHaveCount(0);
+  await expect(credentialDialog.locator('.mar-ui-form-item__error')).toHaveCount(0);
   await sshRemote.fill(`git@${sshHost}`);
   await expect(credentialDialog.getByRole('textbox', { name: '认证用户名' })).toHaveCount(0);
   await credentialDialog.getByRole('textbox', { name: '凭据名称' }).fill(sshCredentialName);

@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue';
 import type { ComputedRef } from 'vue';
-import type { FormRules } from 'element-plus';
+import type { FormRules } from '@myagentroam/mar-ui/form';
 import type { CodexCredentialOwnership, ResourceOwnership } from '@myagentroam/protocol';
 import {
   organizationCascaderOptions,

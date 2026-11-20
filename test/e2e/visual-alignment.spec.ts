@@ -395,7 +395,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await setting.screenshot({
           path: test.info().outputPath(`computer-use-${theme}-${width}-${locale}.png`)
         });
-        await control.locator('.el-switch').click();
+        await toggle.click();
         await expect(toggle).not.toBeChecked();
         await expect(control).toHaveText(locale === 'en-US' ? 'Disabled' : '已关闭');
         await expect(hint).toBeVisible();
@@ -894,7 +894,7 @@ for (const theme of ['daylight', 'dark']) {
   test(`Hosted model selector matches workspace selector states in ${theme}`, async ({ page }) => {
     await page.goto(`${fixture.url}visual-alignment.html?hosted=1&model-options=1&theme=${theme}`);
     const hosted = page.locator('.hosted-model-slot .hosted-model-trigger');
-    const workspace = page.locator('.composer-model-effort-select .el-select__wrapper');
+    const workspace = page.locator('.composer-model-effort-select .mar-ui-select__field');
     await expect(hosted).toBeEnabled();
     await expect(workspace).toBeVisible();
     await page.mouse.move(0, 0);
@@ -926,7 +926,7 @@ for (const theme of ['daylight', 'dark']) {
 
 test('Theme action hints do not replace dropdown semantics', async ({ page }) => {
   await page.goto(`${fixture.url}visual-alignment.html?menus=1`);
-  const trigger = page.locator('.theme-settings .el-dropdown button').first();
+  const trigger = page.locator('.theme-settings button[aria-haspopup="menu"]').first();
   await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await trigger.focus();

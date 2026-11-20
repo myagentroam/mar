@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { nextTick, ref } from 'vue';
 import MarIcon from '../common/MarIcon.vue';
 import FileTypeIcon from './FileTypeIcon.vue';
@@ -68,7 +70,7 @@ defineExpose({
       }}</el-checkbox>
     </div>
     <form class="explorer-toolbar content-search-toolbar" @submit.prevent="searchContent">
-      <el-input
+      <MarInput
         ref="contentSearchInput"
         v-model="contentQuery"
         :aria-label="translate('generated.workspaceInspector.searchFileContents')"
@@ -88,7 +90,7 @@ defineExpose({
         <MarIcon :name="contentSearchLoading ? 'loading-action' : 'refresh'" />
       </button>
     </form>
-    <el-button
+    <MarButton
       v-if="contentSearchError !== undefined"
       v-tooltip="!contentSearchLoading ? errorMessage(contentSearchError) : ''"
       :aria-description="!contentSearchLoading ? errorMessage(contentSearchError) : undefined"
@@ -103,7 +105,7 @@ defineExpose({
         ><MarIcon name="loading-action" />
         {{ translate('generated.workspaceInspector.loading') }}</template
       ><template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </el-button>
+    </MarButton>
     <p v-else-if="contentSearchLoading" class="watch-status" role="status">
       <MarIcon name="loading-action" />
       {{ translate('generated.workspaceInspector.loading') }}

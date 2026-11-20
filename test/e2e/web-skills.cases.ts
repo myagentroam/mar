@@ -452,7 +452,7 @@ test('Enterprise administrators choose child organizations for skill sources and
   const dialog = page.getByRole('dialog', { name: '添加技能源' });
   await dialog.getByRole('textbox').nth(0).fill('平台技能');
   await dialog.getByRole('textbox').nth(1).fill('https://github.com/example/platform-skills.git');
-  await dialog.locator('.el-form-item').filter({ hasText: '范围' }).locator('.el-select').click();
+  await dialog.getByRole('combobox', { name: '范围' }).click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
   await expect(dialog.getByText('请选择组织', { exact: true })).toBeVisible();
@@ -634,10 +634,10 @@ test('Skill source management discovers external entries and adds them to the pe
   );
   await expect(page.getByRole('tab', { name: '已加入的技能' })).toBeVisible();
   const sourceSearchBar = page.locator('.source-search-bar');
-  await expect(sourceSearchBar.locator('.el-select')).toContainText('skills.sh');
+  await expect(sourceSearchBar.getByRole('combobox')).toContainText('skills.sh');
   const sourceSearchBounds = await sourceSearchBar.evaluate((element) => {
-    const select = element.querySelector('.el-select')?.getBoundingClientRect();
-    const input = element.querySelector('.el-input')?.getBoundingClientRect();
+    const select = element.querySelector('.mar-ui-select')?.getBoundingClientRect();
+    const input = element.querySelector('.mar-ui-input')?.getBoundingClientRect();
     return { selectTop: select?.top, inputTop: input?.top };
   });
   expect(
@@ -682,22 +682,14 @@ test('Skill source management discovers external entries and adds them to the pe
   await candidate.getByRole('button', { name: '加入可用目录' }).click();
   const dialog = page.getByRole('dialog', { name: '加入可用目录' });
   await expect(dialog.getByText('仅自己')).toBeVisible();
-  await dialog.locator('.el-switch').click();
+  await dialog.getByRole('switch').click();
   const tagInput = dialog.getByRole('combobox', { name: 'Tag 标签' });
-  await dialog
-    .locator('.el-form-item')
-    .filter({ hasText: 'Tag 标签' })
-    .locator('.el-select')
-    .click();
+  await tagInput.click();
   await page.getByRole('option', { name: 'Java', exact: true }).click();
-  await dialog
-    .locator('.el-form-item')
-    .filter({ hasText: 'Tag 标签' })
-    .locator('.el-select')
-    .click();
+  await tagInput.click();
   await tagInput.pressSequentially('后端');
   await tagInput.press('Enter');
-  await expect(dialog.locator('.el-tag').filter({ hasText: '后端' })).toBeVisible();
+  await expect(dialog.locator('.mar-ui-select__tag').filter({ hasText: '后端' })).toBeVisible();
   await tagInput.press('Escape');
   await dialog.getByRole('button', { name: '加入', exact: true }).click();
   await expect(page.getByText('技能已加入可用目录')).toBeVisible();
@@ -731,7 +723,7 @@ test('Skill source management discovers external entries and adds them to the pe
   await addedSkill.getByRole('button', { name: '编辑', exact: true }).click();
   const editDialog = page.getByRole('dialog', { name: '编辑技能信息' });
   await expect(editDialog.getByText('普通', { exact: true })).toHaveCount(0);
-  await editDialog.locator('.el-switch').click();
+  await editDialog.getByRole('switch').click();
   await editDialog.getByRole('button', { name: '保存', exact: true }).click();
   expect(editedBody).toEqual({ featured: false, tags: ['Java', '后端'] });
   const checkUpdateButton = addedSkill.getByRole('button', { name: '检查更新' });
@@ -744,8 +736,8 @@ test('Skill source management discovers external entries and adds them to the pe
   await expect(checkUpdateButton).toBeEnabled();
   await checkUpdateButton.click();
   await checkRequested;
-  await expect(existingCheckUpdateButton).toHaveClass(/is-loading/);
-  await expect(checkUpdateButton).toHaveClass(/is-loading/);
+  await expect(existingCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
+  await expect(checkUpdateButton).toHaveAttribute('aria-busy', 'true');
   await expect(page.locator('.el-table .el-loading-mask')).toHaveCount(0);
   releaseExistingCheckUpdate();
   releaseCheckUpdate();
@@ -836,7 +828,7 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
     await sourceDialog.getByRole('textbox').nth(0).fill('Fixture registry');
     await sourceDialog.getByRole('textbox').nth(1).fill('https://registry.example.test');
     if (scope === 'ORGANIZATION') {
-      await sourceDialog.locator('.el-select').click();
+      await sourceDialog.getByRole('combobox').click();
       await page.getByRole('option', { name: '组织', exact: true }).click();
       await sourceDialog.getByRole('button', { name: '确定', exact: true }).click();
       await expect(sourceDialog.getByText('请选择组织', { exact: true })).toBeVisible();
@@ -865,7 +857,7 @@ for (const scope of ['PERSONAL', 'ORGANIZATION'] as const) {
       .click();
     const catalogDialog = page.getByRole('dialog', { name: '加入 MCP 中心' });
     if (scope === 'ORGANIZATION') {
-      await catalogDialog.locator('.el-select').first().click();
+      await catalogDialog.getByRole('combobox').first().click();
       await page.getByRole('option', { name: '组织', exact: true }).click();
       await catalogDialog.locator('.el-cascader input').fill('平台组');
       await page.getByRole('listitem').filter({ hasText: '平台组' }).click();
@@ -999,8 +991,8 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await expect(page.locator('.workbench-header .breadcrumb strong')).toHaveText('MCP 源管理');
   const mcpSourceSearchBar = page.locator('.source-search-bar');
   const mcpSourceSearchBounds = await mcpSourceSearchBar.evaluate((element) => {
-    const select = element.querySelector('.el-select')?.getBoundingClientRect();
-    const input = element.querySelector('.el-input')?.getBoundingClientRect();
+    const select = element.querySelector('.mar-ui-select')?.getBoundingClientRect();
+    const input = element.querySelector('.mar-ui-input')?.getBoundingClientRect();
     return { selectTop: select?.top, inputTop: input?.top };
   });
   expect(
@@ -1061,8 +1053,8 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await expect(secondCheckUpdateButton).toBeEnabled();
   await secondCheckUpdateButton.click();
   await secondCheckRequested;
-  await expect(firstCheckUpdateButton).toHaveClass(/is-loading/);
-  await expect(secondCheckUpdateButton).toHaveClass(/is-loading/);
+  await expect(firstCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
+  await expect(secondCheckUpdateButton).toHaveAttribute('aria-busy', 'true');
   await expect(page.locator('.el-table .el-loading-mask')).toHaveCount(0);
   releaseFirstCheckUpdate();
   releaseSecondCheckUpdate();

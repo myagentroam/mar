@@ -18,7 +18,7 @@ for (const dpr of [1, 2, 3]) {
       }, testInfo) => {
         for (const width of [1280, 390]) {
           await page.setViewportSize({ width, height: 900 });
-          for (const consumer of ['composer', 'element-plus']) {
+          for (const consumer of ['composer', 'mar-button']) {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
             const composer = consumer === 'composer';
             await page.goto(
@@ -29,13 +29,12 @@ for (const dpr of [1, 2, 3]) {
               : page.getByRole('button', { name: 'Query usage', exact: true });
             await button.click();
             const graphic = button.locator('[data-mar-icon="loading-action"]');
-            const owner = composer ? graphic : button.locator('.el-icon.is-loading');
+            const owner = graphic;
             await expect(graphic).toBeVisible();
             await expect(button).toBeDisabled();
             await expect(owner).not.toHaveCSS('animation-name', 'none');
             await expect(owner).toHaveCSS('animation-timing-function', 'linear');
             await expect(owner).toHaveCSS('animation-duration', composer ? '1s' : '2s');
-            if (!composer) await expect(graphic).toHaveCSS('animation-name', 'none');
             const rotation = await owner.evaluate((element) => {
               const style = getComputedStyle(element);
               return {
@@ -120,7 +119,7 @@ test('Git changes append at the repository boundary and refresh in place', async
       const submoduleTag = emptyRepository.locator('.el-tag').filter({ hasText: /^Submodule$/ });
       await expect(submoduleTag).toHaveCSS(
         'border-top-color',
-        theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)'
+        theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)'
       );
       await expect(changes.locator('[data-repository-path="child"]')).toHaveCount(0);
       expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
@@ -259,8 +258,9 @@ for (const theme of ['dark', 'light']) {
       await refresh.click();
       await expect(refresh).toBeDisabled();
       await expect(refresh).toHaveAttribute('aria-busy', 'true');
-      await expect(glyph).toHaveCSS('width', '14px');
-      await expect(glyph).toHaveCSS('height', '14px');
+      const progress = refresh.locator('[data-mar-icon="loading-action"]');
+      await expect(progress).toHaveCSS('width', '14px');
+      await expect(progress).toHaveCSS('height', '14px');
     } finally {
       releaseHistory?.();
     }
@@ -294,10 +294,10 @@ for (const theme of ['dark', 'light']) {
       await page.setViewportSize({ width, height: 844 });
       await expect(glyph).toHaveCSS('width', '14px');
       await expect(glyph).toHaveCSS('height', '14px');
-      await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
+      await expect(restore.locator('[data-mar-icon="undo"]')).toHaveCSS('width', '14px');
       const refresh = page.getByRole('button', { name: 'Refresh Git changes', exact: true });
       const refreshGlyph = refresh.locator('[data-mar-icon="refresh"]');
-      const metadataBorder = theme === 'dark' ? 'rgb(49, 61, 80)' : 'rgb(203, 214, 228)';
+      const metadataBorder = theme === 'dark' ? 'rgb(65, 78, 98)' : 'rgb(203, 214, 228)';
       for (const label of [/^Root$/, /^Current$/]) {
         const tag = page.locator('.repository-tags-row .el-tag').filter({ hasText: label });
         await expect(tag).toHaveCSS('border-top-color', metadataBorder);
@@ -358,7 +358,7 @@ for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Show restore loading', exact: true }).click();
     await expect(restore).toBeDisabled();
     await expect(restore.locator('[data-mar-icon="loading-action"]')).toHaveCSS('width', '14px');
-    await expect(restore.locator('.el-icon')).toHaveCSS('width', '14px');
+    await expect(restore.locator('[data-mar-icon="undo"]')).toHaveCount(0);
     await expect(page.locator('.change-restore').nth(1)).toBeDisabled();
     await expect(page.locator('.change-restore').nth(1).locator('svg')).toHaveCSS('width', '14px');
     const loadingBounds = (await restore.locator('svg').boundingBox())!;
@@ -949,7 +949,7 @@ for (const theme of ['dark', 'light']) {
     expect(hintBounds.x).toBeGreaterThanOrEqual(nextBounds.x + nextBounds.width);
     await next.click();
     await expect(next).toBeFocused();
-    await expect(page.locator('.mar-tooltip:visible')).not.toHaveText('Work');
+    await expect(hint.filter({ hasText: /^Work$/u })).toHaveCount(0);
   });
 }
 
@@ -1353,38 +1353,47 @@ test('Conversation disclosure arrows share MAR geometry and retain nested keyboa
   expect(await icon.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
 });
 
-test('Usage and quick-open disclosures replace browser markers without losing keyboard access', async ({
+test('Usage records are directly accessible and can be sorted from the keyboard', async ({
   page
 }) => {
-  for (const mode of ['usage', 'quick-open']) {
-    if (mode === 'quick-open') {
-      await page.route('**/api/**', (route) =>
-        route.fulfill({
-          status: 503,
-          json: { code: 'FIXTURE_QUERY_FAILED', message: 'Fixture query unavailable' }
-        })
-      );
-    }
-    await page.goto(`${fixture.url}icon-system.html?${mode}=1`);
-    if (mode === 'quick-open')
-      await page.getByRole('textbox', { name: 'Quick Open', exact: true }).fill('missing');
-    const details = page.locator('details').first();
-    const summary = details.locator(':scope > summary');
-    const icon = summary.locator('svg[data-mar-icon="chevron-right"]');
-    await expect(icon).toBeVisible();
-    expect(await summary.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('none');
-    if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
-    await summary.focus();
-    await page.keyboard.press('Enter');
-    await expect(details).toHaveAttribute('open', '');
-    if (mode === 'usage') await expect(details.locator('.el-table')).toBeVisible();
-    await expect
-      .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
-      .toBe('matrix(0, 1, -1, 0, 0, 0)');
-    await page.keyboard.press('Space');
-    await expect(details).not.toHaveAttribute('open');
-    if (mode === 'usage') await expect(details.locator('.el-table')).toBeHidden();
-  }
+  await page.goto(`${fixture.url}icon-system.html?usage=1`);
+  await expect(page.getByRole('heading', { name: 'Usage records', exact: true })).toBeVisible();
+  const table = page.locator('.records');
+  await expect(table).toBeVisible();
+  const byTime = table.getByRole('button', { name: 'Sort by Time', exact: true });
+  await byTime.focus();
+  await expect(byTime).toBeFocused();
+  await page.keyboard.press('Enter');
+  const timeHeader = table.getByRole('columnheader').filter({
+    has: page.getByRole('button', { name: 'Sort by Time', exact: true })
+  });
+  await expect(timeHeader).toHaveAttribute('aria-sort', 'ascending');
+});
+
+test('Quick-open disclosures replace browser markers without losing keyboard access', async ({
+  page
+}) => {
+  await page.route('**/api/**', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { code: 'FIXTURE_QUERY_FAILED', message: 'Fixture query unavailable' }
+    })
+  );
+  await page.goto(`${fixture.url}icon-system.html?quick-open=1`);
+  await page.getByRole('textbox', { name: 'Quick Open', exact: true }).fill('missing');
+  const details = page.locator('details').first();
+  const summary = details.locator(':scope > summary');
+  const icon = summary.locator('svg[data-mar-icon="chevron-right"]');
+  await expect(icon).toBeVisible();
+  expect(await summary.evaluate((el) => getComputedStyle(el).listStyleType)).toBe('none');
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(details).toHaveAttribute('open', '');
+  await expect
+    .poll(() => icon.evaluate((el) => getComputedStyle(el).transform))
+    .toBe('matrix(0, 1, -1, 0, 0, 0)');
+  await page.keyboard.press('Space');
+  await expect(details).not.toHaveAttribute('open');
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {
@@ -1535,7 +1544,7 @@ test('Terminal headers keep multiple shell profiles reachable on narrow screens'
       await expect(profile).toBeVisible();
       const bounds = await page.locator('.admin-terminal-header').evaluate((header) => {
         const headerBox = header.getBoundingClientRect();
-        const selectBox = header.querySelector('.el-select')!.getBoundingClientRect();
+        const selectBox = header.querySelector('.mar-ui-select')!.getBoundingClientRect();
         const tabsBox = header.querySelector('.terminal-tabs')!.getBoundingClientRect();
         return {
           height: tabsBox.top - headerBox.top,
@@ -1548,7 +1557,7 @@ test('Terminal headers keep multiple shell profiles reachable on narrow screens'
       expect(bounds.left).toBeGreaterThanOrEqual(0);
       expect(bounds.right).toBeGreaterThanOrEqual(0);
       expect(bounds.tabsGap).toBeGreaterThanOrEqual(0);
-      await page.locator('.terminal-profile .el-select').click();
+      await profile.click();
       await page.getByRole('option', { name: 'Other shell', exact: true }).click();
       await page.getByRole('button', { name: 'New terminal', exact: true }).click();
       await expect(page.getByRole('tab', { name: 'Terminal 2', exact: true })).toBeVisible();
@@ -1621,12 +1630,7 @@ test('Usage chart dimensions do not leak into calendar icons', async ({ page }) 
   }));
   expect(chartSize.height).toBeCloseTo(chartSize.expected, 0);
   await expect(page.locator('.mar-page-loading')).toBeHidden();
-  await page
-    .locator('.el-select')
-    .filter({
-      has: page.getByRole('combobox', { name: 'Time range', exact: true })
-    })
-    .click();
+  await page.getByRole('combobox', { name: 'Time range', exact: true }).click();
   await page.getByRole('option', { name: 'Custom range', exact: true }).click();
   await page.getByPlaceholder('Start time', { exact: true }).click();
   const arrow = page
@@ -1661,7 +1665,7 @@ test('Session search clear and busy guards preserve their behavior', async ({ pa
   await expect(search).toHaveValue('');
   await expect(page.getByTestId('searched')).toHaveText('');
   await page.goto(`${fixture.url}icon-system.html?busy=1`);
-  await expect(page.locator('.session-search button')).toBeDisabled();
+  await expect(page.locator('.session-search button[type="submit"]')).toBeDisabled();
   await expect(page.locator('.session-search [data-mar-icon="loading-action"]')).toBeVisible();
   await search.fill('busy');
   await search.press('Enter');
@@ -1803,7 +1807,7 @@ for (const theme of ['dark', 'light'])
       const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(e.message));
       await page.setViewportSize({ width: mobile ? 390 : 1440, height: 1000 });
-      await page.goto(`${fixture.url}icon-system.html?theme=${theme}`);
+      await page.goto(`${fixture.url}icon-system.html?theme=${theme}&more-icons`);
       const tree = page.getByTestId('resource-tree');
       await expect(tree.locator('[data-mar-icon="node"]')).toBeVisible();
       await expect(tree.locator('[data-mar-icon="workspace"]')).toBeVisible();
@@ -1813,13 +1817,16 @@ for (const theme of ['dark', 'light'])
       await expect(folder.locator('[data-mar-icon="folder-open"]')).toBeVisible();
       const create = page.locator('.new-session-button');
       await expect(create.locator('[data-mar-icon="session-add"]')).toBeVisible();
-      const buttonGap = await create.evaluate((button) => {
-        const icon = button.querySelector('[data-mar-icon="session-add"]')!;
-        return (
-          icon.nextElementSibling!.getBoundingClientRect().left - icon.getBoundingClientRect().right
-        );
+      const { gap, centerOffset } = await create.evaluate((button) => {
+        const icon = button.querySelector('[data-mar-icon="session-add"]')!.getBoundingClientRect();
+        const label = button.querySelector('.mar-ui-button__label')!.getBoundingClientRect();
+        return {
+          gap: label.left - icon.right,
+          centerOffset: label.top + label.height / 2 - (icon.top + icon.height / 2)
+        };
       });
-      expect(buttonGap).toBeGreaterThanOrEqual(5);
+      expect(gap).toBeGreaterThanOrEqual(5);
+      expect(centerOffset).toBeCloseTo(0, 0);
       await expect(create).toHaveCSS('border-top-width', '1px');
       await expect(create).toHaveCSS('height', '32px');
       const layout = await create.evaluate((button) => {
@@ -1865,7 +1872,7 @@ for (const theme of ['dark', 'light'])
       }, theme === 'dark');
       await expect(create).toHaveCSS('background-color', fill);
       await expect(create).toHaveCSS('border-top-color', border);
-      await expect(page.locator('.session-search .el-input__wrapper')).not.toHaveCSS(
+      await expect(page.locator('.session-search .mar-ui-input')).not.toHaveCSS(
         'background-color',
         fill
       );
@@ -1895,6 +1902,31 @@ for (const theme of ['dark', 'light'])
       await expect(create).toHaveCSS('outline-style', 'solid');
       await create.press('Enter');
       await expect(page.getByTestId('created')).toHaveText('1');
+      const more = page.locator('.workspace-more-button');
+      await more.click();
+      const menu = page.locator('.workspace-tool-menu:visible');
+      await expect(menu.getByRole('menuitem', { name: 'Loaded skills' })).toBeVisible();
+      await expect(menu).toHaveAttribute('data-arrow', '');
+      await expect(menu).toHaveCSS('opacity', '1');
+      const menuBounds = (await menu.boundingBox())!;
+      const moreBounds = (await more.boundingBox())!;
+      const top = Math.min(menuBounds.y, moreBounds.y);
+      await page.screenshot({
+        path: testInfo.outputPath('session-more-arrow.png'),
+        animations: 'disabled',
+        clip: {
+          x: menuBounds.x,
+          y: top,
+          width: menuBounds.width,
+          height: Math.max(
+            menuBounds.y + menuBounds.height - top,
+            moreBounds.y + moreBounds.height - top
+          )
+        }
+      });
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      await expect(more).toBeFocused();
       const search = page.locator('.session-search input');
       await search.fill('review');
       await search.press('Enter');

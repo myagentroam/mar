@@ -106,12 +106,7 @@ test('Documentation language switching preserves deep links and browser preferen
   const otherPage = await context.newPage();
   await otherPage.goto('/');
   await expect(otherPage.locator('html')).toHaveAttribute('lang', 'en-US');
-  await otherPage
-    .getByRole('combobox', { name: 'Switch to Chinese' })
-    .locator(
-      'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " el-select ")][1]'
-    )
-    .click();
+  await otherPage.getByRole('combobox', { name: 'Switch to Chinese' }).click();
   await otherPage.getByRole('option', { name: '简体中文' }).click();
   await expect(page).toHaveURL(/\/docs\/getting-started\/overview$/u);
   await expect(page.getByRole('heading', { name: 'MyAgentRoam 是什么' })).toBeVisible();

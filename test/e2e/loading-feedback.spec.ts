@@ -96,7 +96,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(controls).toHaveAttribute('data-inactive-days', '45');
       await expect(dialog.getByText('Enter a whole number of days from 1 to 365.')).toBeHidden();
       await expect(submit).toHaveText('Clean up sessions');
-      await expect(submit).toHaveClass(/is-loading/);
+      await expect(submit).toHaveAttribute('aria-busy', 'true');
       await expect(submit.locator('[data-mar-icon="loading-action"]')).toBeVisible();
       await expect(dialog.locator('.el-loading-mask')).toHaveCount(0);
       await expect(dialog.locator('.workspace-session-cleanup-content')).toHaveAttribute(
@@ -119,7 +119,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         .getByRole('button', { name: 'Fail cleanup', exact: true })
         .dispatchEvent('click');
       await expect(page.locator('.el-message--error')).toContainText('Fixture cleanup failed');
-      await expect(submit).not.toHaveClass(/is-loading/);
+      await expect(submit).not.toHaveAttribute('aria-busy', 'true');
       await expect(days).toBeEnabled();
       await expect(days).toHaveValue('45');
       await expect(cancel).toBeEnabled();
@@ -165,13 +165,13 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(tree).toHaveAttribute('data-request-count', '1');
       const retry = tree.locator('.file-tree-load-more button');
       await expect(retry).toBeVisible();
-      await expect(retry).toHaveClass(/is-link/);
+      await expect(retry).toHaveClass(/mar-ui-button--inline/);
       await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await retry.hover();
       await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       const hoverColor = await retry.evaluate((element) => {
         const probe = document.createElement('span');
-        probe.style.color = 'var(--el-button-hover-link-text-color)';
+        probe.style.color = 'var(--mar-ui-button-hover-fg)';
         element.append(probe);
         const color = getComputedStyle(probe).color;
         probe.remove();

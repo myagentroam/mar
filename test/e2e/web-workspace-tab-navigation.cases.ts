@@ -322,7 +322,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         })
         .click();
       await page
-        .locator('.workspace-tab-menu-list .el-dropdown-menu__item')
+        .locator('.workspace-tab-menu-list [role="menuitem"]')
         .filter({ hasText: 'project-1' })
         .click();
       await expect(header).toContainText('Priority outside-2');

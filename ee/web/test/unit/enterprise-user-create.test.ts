@@ -71,7 +71,7 @@ function deferred<T>() {
 }
 function inForm(node: TestElement): boolean {
   for (let parent = node.parent; parent; parent = parent.parent)
-    if (parent.type === 'ElForm') return true;
+    if (parent.type === 'form') return true;
   return false;
 }
 async function mount(
@@ -123,18 +123,18 @@ async function mount(
   await vi.waitFor(
     () =>
       expect(
-        view.findAll('ElButton').some((item) => textContent(item).trim() === 'Create user')
+        view.findAll('MarButton').some((item) => textContent(item).trim() === 'Create user')
       ).toBe(true),
     { timeout: 5000 }
   );
   await flushComponent();
   const actions = (label: string) =>
-    view.findAll('ElButton').filter((item) => textContent(item).trim() === label);
+    view.findAll('MarButton').filter((item) => textContent(item).trim() === label);
   const action = (label: string) => {
     expect(actions(label).length).toBeGreaterThan(0);
     return actions(label).at(-1)!;
   };
-  const inputs = () => view.findAll('ElInput').filter(inForm);
+  const inputs = () => view.findAll('MarInput').filter(inForm);
   const open = () => trigger(actions('Create user')[0]!, 'onClick');
   const submit = () => trigger(action('Create user'), 'onClick');
   const input = (index: number, value: string) =>
@@ -175,7 +175,7 @@ describe('Registered enterprise users creation lifecycle', () => {
       await fixture.input(2, 'Discarded nickname');
       if (path === 'footer') await trigger(fixture.action('Cancel'), 'onClick');
       else await trigger(fixture.view.findAll('ElDialog')[0]!, 'onUpdate:modelValue', false);
-      expect(fixture.view.findAll('ElForm')).toHaveLength(0);
+      expect(fixture.view.findAll('MarForm')).toHaveLength(0);
       await fixture.open();
       expect(fixture.values()).toEqual(['', '', '']);
       expect(fixture.writes()).toHaveLength(0);
@@ -205,7 +205,7 @@ describe('Registered enterprise users creation lifecycle', () => {
     await fixture.input(0, 'requested-user');
     await fixture.input(2, 'Display name');
     await trigger(
-      fixture.view.findAll('ElSelect').filter(inForm)[0]!,
+      fixture.view.findAll('MarSelect').filter(inForm)[0]!,
       'onUpdate:modelValue',
       'ORG_ADMIN'
     );
@@ -217,7 +217,7 @@ describe('Registered enterprise users creation lifecycle', () => {
       role: 'ORG_ADMIN',
       organizationId: 2
     });
-    expect(fixture.view.findAll('ElForm')).toHaveLength(0);
+    expect(fixture.view.findAll('MarForm')).toHaveLength(0);
     expect(textContent(fixture.view.root)).toContain('returned-user');
     expect(textContent(fixture.view.root)).toContain('fixture-password');
     expect(fixture.reads()).toHaveLength(2);
@@ -425,7 +425,7 @@ describe('Registered enterprise users edit lifecycle', () => {
 
       await fixture.save();
       expect(fixture.patches()[1]?.[0]).toBe(`/api/enterprise/users/${users[index]!.id}`);
-      expect(fixture.view.findAll('ElForm')).toHaveLength(0);
+      expect(fixture.view.findAll('MarForm')).toHaveLength(0);
       expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'success');
       expect(fixture.reads()).toHaveLength(3);
     }

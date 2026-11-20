@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, watch, watchEffect } from 'vue';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -218,7 +219,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
 <template>
   <section class="current-changes">
     <div v-if="showRetryControl" class="changes-read-state">
-      <el-button
+      <MarButton
         v-tooltip="
           !changesLoading && service.changesError.value
             ? errorMessage(service.changesFailureCause.value)
@@ -236,7 +237,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
       >
         <MarIcon v-if="changesLoading" name="loading-action" />
         {{ translate('common.loadFailedRetry') }}
-      </el-button>
+      </MarButton>
     </div>
     <div v-else-if="changesLoading && !hasRefreshButton" class="changes-read-state" role="status">
       <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
@@ -448,7 +449,7 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             shortChange(entry.change)
           }}</span>
           <small v-tooltip="entry.state" class="change-status">{{ shortState(entry.state) }}</small>
-          <el-button
+          <MarButton
             v-tooltip="
               entry.state === 'UNTRACKED'
                 ? translate('generated.workspaceInspector.deleteUntrackedFile2')
@@ -457,7 +458,6 @@ async function restoreChange(entry: ChangeEntry): Promise<void> {
             class="change-restore mar-icon-action mar-icon-action--inline"
             text
             :icon="marIcon('undo')"
-            :loading-icon="marIcon('loading-action')"
             :loading="restoringPath === changeKey(entry)"
             :disabled="restoringPath !== undefined"
             :aria-label="
@@ -935,7 +935,7 @@ button.file-explorer-utility-button:disabled {
   font-size: var(--mar-action-icon-size);
 }
 
-:deep(.change-list .change-restore.el-button) {
+:deep(.change-list .change-restore.mar-ui-button) {
   min-height: 18px;
 }
 </style>

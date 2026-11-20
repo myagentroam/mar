@@ -273,7 +273,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const purposeSelectBox = panel.locator('.usage-purpose-select');
     const conversation = categories.getByRole('radio', { name: purposeNames[0], exact: true });
     const assertSelectedPurpose = async (label: string) => {
-      if (mobile) await expect(purposeSelectBox.getByText(label, { exact: true })).toBeVisible();
+      if (mobile) await expect(purposeSelectBox.getByRole('combobox')).toHaveText(label);
       else await expect(categories.getByRole('radio', { name: label, exact: true })).toBeChecked();
     };
     const clickPurpose = async (label: string) => {
@@ -646,9 +646,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await panel.getByRole('combobox', { name: labels.range, exact: true }).press('Enter');
     await page.getByRole('option', { name: labels.custom, exact: true }).click();
     await expect(panel.locator('.custom-range')).toBeVisible();
-    await expect(panel.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(panel.locator('.custom-range').getByRole('alert')).toHaveCount(0);
     const layout = await panel.locator('.filters').evaluate((element) => {
-      const items = Array.from(element.querySelectorAll('.el-form-item'));
+      const items = Array.from(element.querySelectorAll('.mar-ui-form-item'));
       const range = element.querySelector('.custom-range')!.getBoundingClientRect();
       const time = items[0]!.getBoundingClientRect();
       const runner = items[1]!.getBoundingClientRect();
@@ -683,7 +683,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
 
     const beforeInvalidCategory = requests.length;
     await clickPurpose(purposeNames[1]!);
-    await expect(panel.locator('.el-form-item__error')).toBeVisible();
+    await expect(panel.locator('.custom-range').getByRole('alert')).toBeVisible();
     await assertSelectedPurpose(purposeNames[0]!);
     expect(requests).toHaveLength(beforeInvalidCategory);
     const range = await page.evaluate((now) => {
@@ -698,7 +698,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await inputs.first().fill(range.from);
     await inputs.last().fill(range.to);
     await inputs.last().press('Enter');
-    await expect(panel.locator('.el-form-item__error')).toHaveCount(0);
+    await expect(panel.locator('.custom-range').getByRole('alert')).toHaveCount(0);
     await expect
       .poll(() => {
         const selected = requests.filter((url) => url.pathname.endsWith('/overview')).at(-1)!;
@@ -769,7 +769,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     // Exercise both locales on mobile, including the longer English labels at 320px.
     if (!mobile) await page.setViewportSize({ width: 320, height: 844 });
     await expect(categories).toHaveCount(0);
-    await expect(purposeSelectBox.getByText(purposeNames[4]!, { exact: true })).toBeVisible();
+    await expect(purposeSelectBox.getByRole('combobox')).toHaveText(purposeNames[4]!);
     await panel.locator('header').evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await purposeSelectBox.click();
     const options = page.getByRole('listbox').getByRole('option');

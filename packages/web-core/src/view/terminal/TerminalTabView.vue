@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type MarDropdownInstance
+} from '@myagentroam/mar-ui/dropdown';
 import type { MessageType } from '../../model/message-feedback.js';
 import MarIcon from '../common/MarIcon.vue';
 import { translate } from '../../service/locale-preference-service.js';
@@ -35,6 +41,10 @@ const emit = defineEmits<{
 const host = ref<HTMLElement>();
 const reconnectStatus = ref<string>();
 const contextMenu = ref<{ x: number; y: number; selection: string }>();
+const menu = ref<MarDropdownInstance>();
+const contextMenuAnchor = {
+  getBoundingClientRect: () => new DOMRect(contextMenu.value?.x, contextMenu.value?.y)
+};
 let unregisterContextMenuShortcut: (() => void) | undefined;
 let xterm: Terminal | undefined;
 let fitAddon: FitAddon | undefined;
@@ -98,13 +108,8 @@ function focus(): void {
 }
 function closeContextMenu(): void {
   contextMenu.value = undefined;
-  window.removeEventListener('pointerdown', closeContextMenuOnPointerDown);
   unregisterContextMenuShortcut?.();
   unregisterContextMenuShortcut = undefined;
-}
-function closeContextMenuOnPointerDown(event: PointerEvent): void {
-  if (event.target instanceof Element && event.target.closest('.terminal-context-menu')) return;
-  closeContextMenu();
 }
 function preventTerminalRightMouseDown(event: MouseEvent): void {
   if (event.button === 2) event.stopPropagation();
@@ -117,11 +122,16 @@ function openContextMenu(event: MouseEvent): void {
   if (xterm === undefined) return;
   closeContextMenu();
   contextMenu.value = {
-    x: Math.max(6, Math.min(event.clientX, window.innerWidth - 168 - 6)),
-    y: Math.max(6, Math.min(event.clientY, window.innerHeight - 132 - 6)),
+    x: event.clientX,
+    y: event.clientY,
     selection: xterm.getSelection()
   };
-  window.addEventListener('pointerdown', closeContextMenuOnPointerDown);
+  void nextTick(() => {
+    if (!menu.value) return;
+    // The right button may have moved DOM focus away from xterm before the virtual menu mounts.
+    xterm?.focus();
+    menu.value.handleOpen();
+  });
   unregisterContextMenuShortcut = consoleKeyboardShortcutService.register({
     command: 'terminal.dismissMenu',
     priority: 150,
@@ -269,38 +279,29 @@ onBeforeUnmount(() => {
     <div v-if="reconnectStatus" class="admin-terminal-status" role="status">
       {{ reconnectStatus }}
     </div>
-    <Teleport to="body">
-      <div
-        v-if="contextMenu !== undefined"
-        class="terminal-context-menu"
-        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-      >
-        <ul class="el-dropdown-menu" role="menu">
-          <li
-            class="el-dropdown-menu__item"
-            :class="{ 'is-disabled': !contextMenu.selection }"
-            role="menuitem"
-            :aria-disabled="!contextMenu.selection"
-            @click="contextMenu.selection && copySelection()"
-          >
-            <MarIcon name="copy" />
+    <MarDropdown
+      v-if="contextMenu !== undefined"
+      ref="menu"
+      virtual-triggering
+      :virtual-ref="contextMenuAnchor"
+      trigger="contextmenu"
+      placement="bottom-start"
+      @visible-change="!$event && closeContextMenu()"
+    >
+      <template #dropdown>
+        <MarDropdownMenu :aria-label="translate('generated.terminalTabView.terminalOutput')">
+          <MarDropdownItem :disabled="!contextMenu.selection" icon="copy" @click="copySelection">
             {{ translate('generated.terminalTabView.copy') }}
-          </li>
-          <li class="el-dropdown-menu__item" role="menuitem" @click="pasteFromClipboard">
-            <MarIcon name="paste" />
+          </MarDropdownItem>
+          <MarDropdownItem icon="paste" @click="pasteFromClipboard">
             {{ translate('generated.terminalTabView.paste') }}
-          </li>
-          <li
-            class="el-dropdown-menu__item el-dropdown-menu__item--divided"
-            role="menuitem"
-            @click="clearTerminal"
-          >
-            <MarIcon name="clear" />
+          </MarDropdownItem>
+          <MarDropdownItem divided icon="clear" @click="clearTerminal">
             {{ translate('generated.terminalTabView.clear') }}
-          </li>
-        </ul>
-      </div>
-    </Teleport>
+          </MarDropdownItem>
+        </MarDropdownMenu>
+      </template>
+    </MarDropdown>
   </div>
 </template>
 
@@ -348,16 +349,5 @@ onBeforeUnmount(() => {
 .xterm-host:focus-visible {
   outline: 2px solid var(--mar-color-brand);
   outline-offset: 2px;
-}
-
-.terminal-context-menu {
-  position: fixed;
-  z-index: 3000;
-  min-width: 168px;
-  filter: drop-shadow(0 8px 24px rgb(0 0 0 / 30%));
-}
-
-:global(.terminal-context-menu .el-dropdown-menu) {
-  min-width: 168px;
 }
 </style>

@@ -1,10 +1,9 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElButton, ElLink } from 'element-plus';
-import 'element-plus/es/components/button/style/css';
+import { ElLink } from 'element-plus';
 import 'element-plus/es/components/link/style/css';
-import { marIcon } from '../util/mar-icons.js';
 import { useDocumentationAvailability } from '../service/documentation-availability.js';
 import {
   DEFAULT_LOCALE,
@@ -29,13 +28,9 @@ const helpPath = computed(() =>
     <h1 id="auth-unavailable-title">{{ t('auth.unavailableTitle') }}</h1>
     <p>{{ t('auth.unavailableSummary') }}</p>
     <div class="actions">
-      <el-button
-        type="primary"
-        :loading="loading"
-        :loading-icon="marIcon('loading-action')"
-        @click="$emit('retry')"
-        >{{ t('auth.retry') }}</el-button
-      >
+      <MarButton type="primary" :loading="loading" @click="$emit('retry')">{{
+        t('auth.retry')
+      }}</MarButton>
       <el-link v-if="documentationAvailable" :href="helpPath">{{ t('auth.help') }}</el-link>
     </div>
   </section>

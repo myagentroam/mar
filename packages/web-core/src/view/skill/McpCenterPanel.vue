@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -306,13 +309,12 @@ function mcpErrorMessage(error: unknown): string {
           { label: translate('generated.mcpCenterPanel.workspace'), value: 'WORKSPACE' }
         ]"
       />
-      <el-select
+      <MarSelect
         v-model="targetNodeId"
+        :aria-label="translate('generated.mcpCenterPanel.node')"
         :placeholder="translate('generated.mcpCenterPanel.selectANode2')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option
+        <MarOption
           v-for="node in targetNodes"
           :key="node.id"
           :label="node.displayName || node.registeredAddress"
@@ -327,22 +329,21 @@ function mcpErrorMessage(error: unknown): string {
                 ? translate('generated.mcpCenterPanel.online')
                 : translate('generated.mcpCenterPanel.offline')
           }}</span>
-        </el-option>
-      </el-select>
-      <el-select
+        </MarOption>
+      </MarSelect>
+      <MarSelect
         v-if="targetKind === 'WORKSPACE'"
         v-model="targetWorkspaceId"
+        :aria-label="translate('generated.mcpCenterPanel.workspace')"
         :placeholder="translate('generated.mcpCenterPanel.selectAWorkspace2')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option
+        <MarOption
           v-for="workspace in workspaces"
           :key="workspace.workspaceId"
           :label="workspace.displayName"
           :value="workspace.workspaceId"
         />
-      </el-select>
+      </MarSelect>
     </section>
     <el-alert v-if="targetIssue" :title="targetIssue" type="info" :closable="false" />
     <el-tabs v-model="activeConfigTab" class="mcp-config-tabs">
@@ -356,7 +357,7 @@ function mcpErrorMessage(error: unknown): string {
       />
     </el-tabs>
     <div class="mcp-filter-bar">
-      <el-input
+      <MarInput
         v-model="query"
         clearable
         :placeholder="translate('generated.mcpCenterPanel.searchMCPServers')"
@@ -466,7 +467,7 @@ function mcpErrorMessage(error: unknown): string {
           <template #default="{ row }">
             <div class="row-actions" @click.stop>
               <template v-if="activeConfigTab === 'installed'">
-                <el-button
+                <MarButton
                   link
                   :icon="marIcon('power')"
                   :disabled="!targetReady || !row.catalogAvailable"
@@ -475,9 +476,9 @@ function mcpErrorMessage(error: unknown): string {
                     installedByName.get(row.serverName)?.enabled
                       ? translate('generated.mcpCenterPanel.disable')
                       : translate('generated.mcpCenterPanel.enable')
-                  }}</el-button
+                  }}</MarButton
                 >
-                <el-button
+                <MarButton
                   v-if="row.catalogAvailable"
                   link
                   :icon="marIcon('retry')"
@@ -487,20 +488,20 @@ function mcpErrorMessage(error: unknown): string {
                     hasTargetUpdate(row)
                       ? translate('generated.mcpCenterPanel.update')
                       : translate('generated.mcpCenterPanel.reinstall')
-                  }}</el-button
+                  }}</MarButton
                 >
-                <el-button
+                <MarButton
                   v-if="installedByName.get(row.serverName)?.origin === targetKind"
                   link
                   type="danger"
                   :icon="marIcon('delete')"
                   :disabled="!targetReady"
                   @click="remove(row.serverName)"
-                  >{{ translate('generated.mcpCenterPanel.delete') }}</el-button
+                  >{{ translate('generated.mcpCenterPanel.delete') }}</MarButton
                 >
               </template>
               <template v-else>
-                <el-button
+                <MarButton
                   link
                   :icon="marIcon('download')"
                   :disabled="!targetReady"
@@ -511,7 +512,7 @@ function mcpErrorMessage(error: unknown): string {
                         ? translate('generated.mcpCenterPanel.update2')
                         : translate('generated.mcpCenterPanel.reinstall2')
                       : translate('generated.mcpCenterPanel.install')
-                  }}</el-button
+                  }}</MarButton
                 >
               </template>
               <div
@@ -578,7 +579,7 @@ function mcpErrorMessage(error: unknown): string {
   display: grid;
   gap: 10px;
 }
-.mcp-filter-bar > :deep(.el-input) {
+.mcp-filter-bar > :deep(.mar-ui-input) {
   width: min(620px, 100%);
 }
 .mcp-category-strip {
@@ -639,7 +640,7 @@ function mcpErrorMessage(error: unknown): string {
   color: var(--mar-text-secondary);
   font-size: var(--mar-font-size-meta);
 }
-.mcp-target-panel .el-select {
+.mcp-target-panel .mar-ui-select {
   width: min(240px, 100%);
 }
 .target-option-state {
@@ -704,10 +705,10 @@ function mcpErrorMessage(error: unknown): string {
   }
 }
 @media (max-width: 720px) {
-  .mcp-target-panel .el-select {
+  .mcp-target-panel .mar-ui-select {
     width: 100%;
   }
-  .mcp-target-panel :deep(.el-button) {
+  .mcp-target-panel :deep(.mar-ui-button) {
     min-height: 36px;
   }
 }

@@ -201,7 +201,7 @@ for (const english of [false, true]) {
       .click();
     const ownership = page.locator('.workspace-picker-ownership');
     await expect(ownership.locator('strong')).toHaveText('Root / Platform');
-    await expect(ownership.locator('.el-select, .el-cascader')).toHaveCount(0);
+    await expect(ownership.locator('.mar-ui-select, .el-cascader')).toHaveCount(0);
   });
 }
 

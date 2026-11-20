@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarDropdown, MarDropdownMenu, MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../common/MarIcon.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import {
@@ -479,10 +481,11 @@ defineExpose({ reveal });
               <FileTypeIcon class="tree-kind" :name="row.node.name" :kind="row.node.kind" />
               <span class="tree-name">{{ row.node.name }}</span>
             </button>
-            <el-dropdown
+            <MarDropdown
               v-if="nodeActionsVisible(row.node.path)"
               trigger="click"
               placement="bottom-start"
+              :offset="12"
               :persistent="false"
               @command="action($event, row.node)"
               @visible-change="setActionMenuVisible($event, row.node.path)"
@@ -501,83 +504,81 @@ defineExpose({ reveal });
                 <MarIcon name="more" />
               </button>
               <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="row.node.kind === 'FILE'" command="OPEN"
+                <MarDropdownMenu>
+                  <MarDropdownItem v-if="row.node.kind === 'FILE'" command="OPEN"
                     ><MarIcon name="view" />{{
                       translate('generated.workspaceFileTree.open')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item v-if="row.node.kind === 'FILE'" command="OPEN_EXTERNAL"
+                  <MarDropdownItem v-if="row.node.kind === 'FILE'" command="OPEN_EXTERNAL"
                     ><MarIcon name="external-link" />{{
                       translate('generated.workspaceFileTree.openInNewWindow')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item
+                  <MarDropdownItem
                     v-if="row.node.kind === 'FILE' && isHtmlFile(row.node.path)"
                     command="PREVIEW_HTML"
-                    ><MarIcon name="view" />{{ translate('htmlPreview.preview') }}</el-dropdown-item
+                    ><MarIcon name="view" />{{ translate('htmlPreview.preview') }}</MarDropdownItem
                   >
-                  <el-dropdown-item v-if="row.node.kind === 'FILE'" command="DOWNLOAD"
+                  <MarDropdownItem v-if="row.node.kind === 'FILE'" command="DOWNLOAD"
                     ><MarIcon name="download" />{{
                       translate('generated.workspaceFileTree.download')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item
+                  <MarDropdownItem
                     v-if="mutationsEnabled && row.node.kind === 'DIRECTORY'"
                     command="CREATE_FILE"
                     ><MarIcon name="document-add" />{{
                       translate('generated.workspaceFileTree.newFile')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item
+                  <MarDropdownItem
                     v-if="mutationsEnabled && row.node.kind === 'DIRECTORY'"
                     command="CREATE_DIRECTORY"
                     ><MarIcon name="folder-add" />{{
                       translate('generated.workspaceFileTree.newFolder')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item v-if="row.node.kind === 'DIRECTORY'" command="UPLOAD"
+                  <MarDropdownItem v-if="row.node.kind === 'DIRECTORY'" command="UPLOAD"
                     ><MarIcon name="upload" />{{
                       translate('generated.workspaceFileTree.uploadFiles')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item command="COPY_PATH"
+                  <MarDropdownItem command="COPY_PATH"
                     ><MarIcon name="path-relative" />{{
                       translate('generated.workspaceFileTree.copyRelativePath')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item command="COPY_ABSOLUTE_PATH" :disabled="!rootPath"
+                  <MarDropdownItem command="COPY_ABSOLUTE_PATH" :disabled="!rootPath"
                     ><MarIcon name="path-absolute" />{{
                       translate('generated.workspaceFileTree.copyAbsolutePath')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item v-if="localFileManagerEnabled" command="REVEAL_LOCAL"
+                  <MarDropdownItem v-if="localFileManagerEnabled" command="REVEAL_LOCAL"
                     ><MarIcon name="folder-open" />{{
                       translate('generated.workspaceFileTree.openInLocalFileManager')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item
-                    v-if="mutationsEnabled && row.node.path !== '.'"
-                    command="RENAME"
+                  <MarDropdownItem v-if="mutationsEnabled && row.node.path !== '.'" command="RENAME"
                     ><MarIcon name="edit" />{{
                       translate('generated.workspaceFileTree.rename')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                  <el-dropdown-item
+                  <MarDropdownItem
                     v-if="mutationsEnabled && row.node.path !== '.'"
                     command="DELETE"
                     divided
                     ><MarIcon name="delete" />{{
                       translate('generated.workspaceFileTree.delete')
-                    }}</el-dropdown-item
+                    }}</MarDropdownItem
                   >
-                </el-dropdown-menu>
+                </MarDropdownMenu>
               </template>
-            </el-dropdown>
+            </MarDropdown>
             <span v-else class="file-tree-more" aria-hidden="true"></span>
           </div>
           <div v-else class="file-tree-load-more" :style="{ '--tree-depth': row.depth }">
-            <el-button
+            <MarButton
               v-if="row.node.failedAppend !== undefined"
               class="mar-text-action"
               link
@@ -592,7 +593,7 @@ defineExpose({ reveal });
                 {{ translate('generated.workspaceInspector.loading') }}</template
               >
               <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-            </el-button>
+            </MarButton>
             <span v-else-if="row.node.loading" role="status"
               ><MarIcon name="loading-action" />
               {{ translate('generated.workspaceInspector.loading') }}</span

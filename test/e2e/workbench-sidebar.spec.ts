@@ -458,7 +458,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       }, theme === 'vscode-dark-2026');
     await expect(create).toHaveCSS('background-color', createFill);
     await expect(create).toHaveCSS('border-top-color', createBorder);
-    const searchControl = history.locator('.history-search-row .el-input__wrapper');
+    const searchControl = history.locator('.history-search-row .mar-ui-input');
     await expect(searchControl).not.toHaveCSS('background-color', hoverFill);
     const upload = page.locator('.files-drop-target');
     await expect(upload).toBeVisible();

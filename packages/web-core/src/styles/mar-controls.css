@@ -353,7 +353,12 @@
 }
 
 @media (max-width: 767px) {
-  :where(button, [role='button'], a[href], .el-dropdown-menu__item) .mar-icon {
+  :where(button, [role='button'], a[href]) .mar-icon {
+    font-size: var(--mar-action-icon-size, 18px);
+  }
+
+  .mar-ui-button__icon,
+  .mar-ui-button--text-only::after {
     font-size: var(--mar-action-icon-size, 18px);
   }
 }

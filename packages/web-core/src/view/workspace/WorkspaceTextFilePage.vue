@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarSwitch } from '@myagentroam/mar-ui/switch';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import {
@@ -795,7 +799,7 @@ defineExpose({
       >
     </template>
     <template #primary-actions>
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"
@@ -805,9 +809,9 @@ defineExpose({
         @click="openFind"
       >
         <MarIcon name="search" />
-      </el-button>
+      </MarButton>
       <template v-if="codeEditorEnabled">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('fileEditor.symbols')"
           data-file-symbol-toggle
@@ -817,8 +821,8 @@ defineExpose({
           @click="symbolsOpen ? closeSymbols() : openSymbols()"
         >
           <MarIcon name="symbols" />
-        </el-button>
-        <el-button
+        </MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
           v-if="canWrite"
@@ -829,8 +833,8 @@ defineExpose({
         >
           <MarIcon name="lock" v-if="editing" />
           <MarIcon name="edit" v-else />
-        </el-button>
-        <el-button
+        </MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('common.save')"
           v-if="editing"
@@ -841,11 +845,10 @@ defineExpose({
           :icon="marIcon('document-save')"
           :aria-label="translate('common.save')"
           @click="save"
-          :loading-icon="marIcon('loading-action')"
         />
       </template>
       <template v-if="html">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
           circle
@@ -853,10 +856,10 @@ defineExpose({
           :aria-label="translate('htmlPreview.open')"
           @click="emit('open-html-preview')"
           ><MarIcon name="view"
-        /></el-button>
+        /></MarButton>
       </template>
       <template v-if="markdown && !renderMarkdown">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.open')"
           circle
@@ -864,8 +867,8 @@ defineExpose({
           :aria-label="translate('markdownPreview.open')"
           @click="emit('open-markdown-preview')"
           ><MarIcon name="view"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.settings')"
           circle
@@ -873,11 +876,11 @@ defineExpose({
           :aria-label="translate('markdownPreview.settings')"
           @click="openSettings"
           ><MarIcon name="settings"
-        /></el-button>
+        /></MarButton>
       </template>
     </template>
     <template #secondary-actions>
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile')"
         :loading="downloading"
@@ -886,9 +889,8 @@ defineExpose({
         circle
         size="small"
         @click="emit('download')"
-        :loading-icon="marIcon('loading-action')"
       />
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview')"
         v-if="fullscreen"
@@ -898,10 +900,10 @@ defineExpose({
         @click="requestClose"
       >
         <MarIcon name="close" />
-      </el-button>
+      </MarButton>
     </template>
     <template #mobile-actions>
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('inlineFind.label')"
         v-if="props.kind === 'text'"
@@ -911,8 +913,8 @@ defineExpose({
         :aria-label="translate('inlineFind.label')"
         @click="openFind"
         ><MarIcon name="search"
-      /></el-button>
-      <el-button
+      /></MarButton>
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('fileEditor.symbols')"
         v-if="codeEditorEnabled"
@@ -921,8 +923,8 @@ defineExpose({
         :aria-label="translate('fileEditor.symbols')"
         @click="symbolsOpen ? closeSymbols() : openSymbols()"
         ><MarIcon name="symbols"
-      /></el-button>
-      <el-button
+      /></MarButton>
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
         v-if="canWrite"
@@ -931,8 +933,8 @@ defineExpose({
         :aria-label="editing ? translate('fileEditor.readOnly') : translate('fileEditor.edit')"
         @click="editing = !editing"
         ><MarIcon name="lock" v-if="editing" /> <MarIcon name="edit" v-else
-      /></el-button>
-      <el-button
+      /></MarButton>
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('common.save')"
         v-if="editing"
@@ -943,10 +945,9 @@ defineExpose({
         :icon="marIcon('document-save')"
         :aria-label="translate('common.save')"
         @click="save"
-        :loading-icon="marIcon('loading-action')"
       />
       <template v-if="html">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate(dirty ? 'htmlPreview.savedVersion' : 'htmlPreview.open')"
           circle
@@ -954,10 +955,10 @@ defineExpose({
           :aria-label="translate('htmlPreview.open')"
           @click="emit('open-html-preview')"
           ><MarIcon name="view"
-        /></el-button>
+        /></MarButton>
       </template>
       <template v-if="markdown && !renderMarkdown">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.open')"
           circle
@@ -965,8 +966,8 @@ defineExpose({
           :aria-label="translate('markdownPreview.open')"
           @click="emit('open-markdown-preview')"
           ><MarIcon name="view"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('markdownPreview.settings')"
           circle
@@ -974,9 +975,9 @@ defineExpose({
           :aria-label="translate('markdownPreview.settings')"
           @click="openSettings"
           ><MarIcon name="settings"
-        /></el-button>
+        /></MarButton>
       </template>
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.downloadFile2')"
         :loading="downloading"
@@ -985,9 +986,8 @@ defineExpose({
         circle
         size="small"
         @click="emit('download')"
-        :loading-icon="marIcon('loading-action')"
       />
-      <el-button
+      <MarButton
         class="file-toolbar-control"
         v-tooltip="translate('generated.filePreviewDialog.closePreview2')"
         v-if="fullscreen"
@@ -997,7 +997,7 @@ defineExpose({
         @click="requestClose"
       >
         <MarIcon name="close" />
-      </el-button>
+      </MarButton>
     </template>
     <div
       v-if="symbolsOpen && codeEditorEnabled"
@@ -1005,7 +1005,7 @@ defineExpose({
       class="file-symbol-dropdown"
       @pointerdown.stop
     >
-      <el-input
+      <MarInput
         ref="symbolInput"
         v-model="symbolQuery"
         clearable
@@ -1223,7 +1223,7 @@ defineExpose({
       width="min(28rem, calc(100vw - 2rem))"
       :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="form"
         :model="watermarkForm"
         label-position="top"
@@ -1239,22 +1239,22 @@ defineExpose({
           ]
         }"
       >
-        <el-form-item :label="translate('markdownPreview.watermarkEnabled')"
-          ><el-switch v-model="watermarkForm.watermarkEnabled"
-        /></el-form-item>
-        <el-form-item :label="translate('markdownPreview.watermarkText')" prop="watermarkText"
-          ><el-input
+        <MarFormItem :label="translate('markdownPreview.watermarkEnabled')"
+          ><MarSwitch v-model="watermarkForm.watermarkEnabled"
+        /></MarFormItem>
+        <MarFormItem :label="translate('markdownPreview.watermarkText')" prop="watermarkText"
+          ><MarInput
             v-model="watermarkForm.watermarkText"
             :placeholder="translate('markdownPreview.watermarkPlaceholder')"
             maxlength="80"
             show-word-limit
-        /></el-form-item>
-      </el-form>
+        /></MarFormItem>
+      </MarForm>
       <template #footer
-        ><el-button @click="settingsOpen = false">{{ translate('common.cancel') }}</el-button
-        ><el-button type="primary" @click="saveSettings">{{
+        ><MarButton @click="settingsOpen = false">{{ translate('common.cancel') }}</MarButton
+        ><MarButton type="primary" @click="saveSettings">{{
           translate('common.save')
-        }}</el-button></template
+        }}</MarButton></template
       >
     </el-dialog>
   </WorkspaceFilePageFrame>

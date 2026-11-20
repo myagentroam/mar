@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import {
+  MarDropdown,
+  MarDropdownItem,
+  MarDropdownMenu,
+  type MarDropdownInstance
+} from '@myagentroam/mar-ui/dropdown';
+import { MarButton } from '@myagentroam/mar-ui/button';
 // Owns only this timeline's native selection and transient menus. Draft admission belongs to the supplied owner.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
-import type { DropdownInstance } from 'element-plus';
 import type { ComposerQuoteDraft } from '@myagentroam/protocol';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { translate } from '../../service/locale-preference-service.js';
@@ -23,7 +29,7 @@ const activeActions = computed(() =>
       ? menuActions.value
       : undefined
 );
-const menu = ref<DropdownInstance>();
+const menu = ref<MarDropdownInstance>();
 const bubbleAnchor = ref(new DOMRect());
 const bubbleReference = { getBoundingClientRect: () => bubbleAnchor.value };
 const anchor = ref(new DOMRect());
@@ -251,21 +257,19 @@ onBeforeUnmount(() => {
       :inert="mode !== 'bubble'"
       @pointerdown.prevent
     >
-      <el-button text size="small" @click="quote">
-        <MarIcon name="quote" /><span>{{ translate('composer.quote') }}</span>
-      </el-button>
+      <MarButton text size="small" icon="quote" @click="quote">
+        {{ translate('composer.quote') }}
+      </MarButton>
     </div>
   </el-popover>
-  <el-dropdown
+  <MarDropdown
     v-if="mode === 'menu'"
     ref="menu"
-    class="quote-context-menu"
     virtual-triggering
     :virtual-ref="virtualReference"
     trigger="contextmenu"
     placement="bottom-start"
-    :show-timeout="0"
-    :hide-timeout="0"
+    :offset="12"
     @command="(command: string) => (command === 'copy' ? copy() : quote())"
     @visible-change="
       (visible: boolean) => {
@@ -274,18 +278,18 @@ onBeforeUnmount(() => {
     "
   >
     <template #dropdown>
-      <div ref="menuActions" @pointerdown.prevent>
-        <el-dropdown-menu :aria-label="translate('composer.quote')">
-          <el-dropdown-item command="copy"
-            ><MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}</el-dropdown-item
+      <div ref="menuActions" class="quote-context-menu" @pointerdown.prevent>
+        <MarDropdownMenu :aria-label="translate('composer.quote')">
+          <MarDropdownItem command="copy"
+            ><MarIcon name="copy" />{{ translate('filePreviewContext.copy') }}</MarDropdownItem
           >
-          <el-dropdown-item command="quote"
-            ><MarIcon name="quote" />{{ translate('composer.quote') }}</el-dropdown-item
+          <MarDropdownItem command="quote"
+            ><MarIcon name="quote" />{{ translate('composer.quote') }}</MarDropdownItem
           >
-        </el-dropdown-menu>
+        </MarDropdownMenu>
       </div>
     </template>
-  </el-dropdown>
+  </MarDropdown>
 </template>
 
 <style scoped>
@@ -297,7 +301,8 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 0.25rem;
 }
-.quote-actions .el-button {
+.quote-actions .mar-ui-button {
+  --mar-action-icon-size: 1em;
   margin: 0;
   justify-content: flex-start;
   border-radius: var(--mar-radius-surface);

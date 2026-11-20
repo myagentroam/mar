@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDropdownItem } from '@myagentroam/mar-ui/dropdown';
 import type { Session } from '../../model/workbench.js';
 import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
@@ -39,69 +40,69 @@ function canMove(sessions: readonly Session[], direction: 'up' | 'down'): boolea
   >
     <template #actions>
       <template v-if="listContext">
-        <el-dropdown-item
+        <MarDropdownItem
           v-if="session.pinOrder == null"
           :disabled="mutating"
           @click="emit('pin', true)"
         >
           <MarIcon name="pin" />{{ translate('generated.workspaceSessionList.pin') }}
-        </el-dropdown-item>
+        </MarDropdownItem>
         <template v-else>
-          <el-dropdown-item
+          <MarDropdownItem
             :disabled="mutating || session.schedule?.enabled === true"
             @click="emit('pin', false)"
           >
             <MarIcon name="pin" />{{ translate('generated.workspaceSessionList.unpin') }}
-          </el-dropdown-item>
-          <el-dropdown-item
+          </MarDropdownItem>
+          <MarDropdownItem
             :disabled="mutating || !canMove(listContext.sessions, 'up')"
             @click="emit('movePin', 'up')"
           >
             <MarIcon name="chevron-up" />{{ translate('generated.workspaceSessionList.moveUp') }}
-          </el-dropdown-item>
-          <el-dropdown-item
+          </MarDropdownItem>
+          <MarDropdownItem
             :disabled="mutating || !canMove(listContext.sessions, 'down')"
             @click="emit('movePin', 'down')"
           >
             <MarIcon name="chevron-down" />{{
               translate('generated.workspaceSessionList.moveDown')
             }}
-          </el-dropdown-item>
+          </MarDropdownItem>
         </template>
       </template>
-      <el-dropdown-item :disabled="mutating" @click="emit('dialog', 'share')">
+      <MarDropdownItem :disabled="mutating" @click="emit('dialog', 'share')">
         <MarIcon name="share" />{{ translate('sessionShare.title') }}
-      </el-dropdown-item>
-      <el-dropdown-item :disabled="mutating" @click="emit('rename')">
+      </MarDropdownItem>
+      <MarDropdownItem :disabled="mutating" @click="emit('rename')">
         <MarIcon name="edit" />{{ translate('generated.workspaceSessionList.rename') }}
-      </el-dropdown-item>
-      <el-dropdown-item v-if="canNavigate" :disabled="navigationDisabled" command="tree">
+      </MarDropdownItem>
+      <MarDropdownItem v-if="canNavigate" :disabled="navigationDisabled" command="tree">
         <MarIcon name="session-tree" />{{ translate('sessionGroups.tree') }}
-      </el-dropdown-item>
-      <el-dropdown-item
+      </MarDropdownItem>
+      <MarDropdownItem
         v-if="session.runtime?.capabilities?.includes('session.prompt')"
         :disabled="mutating"
         @click="emit('dialog', 'prompt')"
       >
         <MarIcon name="document" />{{ translate('generated.sessionPrompt.title') }}
-      </el-dropdown-item>
-      <el-dropdown-item
+      </MarDropdownItem>
+      <MarDropdownItem
         v-if="session.runtime?.capabilities?.includes('session.schedule')"
         :disabled="mutating"
         @click="emit('dialog', 'schedule')"
       >
         <MarIcon name="clock" />{{ translate('generated.scheduledSession.title') }}
-      </el-dropdown-item>
+      </MarDropdownItem>
     </template>
     <template #destructive>
-      <el-dropdown-item
+      <MarDropdownItem
         v-if="listContext?.canDelete"
         :disabled="mutating"
         divided
         @click="emit('delete')"
       >
         <MarIcon name="delete" />{{ translate('generated.workspaceSessionList.delete') }}
-      </el-dropdown-item>
+      </MarDropdownItem>
     </template>
   </SessionNavigationMenu>
 </template>

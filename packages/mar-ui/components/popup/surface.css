@@ -1,11 +1,18 @@
 .mar-ui-popup {
+  --mar-ui-popup-height: min(
+    var(--mar-ui-popup-max-height, 100dvh),
+    var(--mar-ui-popup-height-cap, 100dvh)
+  );
   box-sizing: border-box;
   position: fixed;
   inset: auto;
+  top: var(--mar-ui-popup-top, auto);
+  left: var(--mar-ui-popup-left, auto);
+  width: var(--mar-ui-popup-width, auto);
+  max-width: var(--mar-ui-popup-max-width, none);
+  max-height: var(--mar-ui-popup-height);
   margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 5px 0;
+  overflow: visible;
   border: 1px solid var(--mar-ui-overlay-border);
   border-radius: var(--mar-ui-radius-control);
   background: var(--mar-ui-overlay-surface);
@@ -13,6 +20,58 @@
   color: var(--mar-ui-text-primary);
   font: inherit;
   font-size: var(--mar-ui-font-size-body);
+}
+
+.mar-ui-popup__content {
+  box-sizing: border-box;
+  max-height: max(0px, calc(var(--mar-ui-popup-height) - 2px));
+  overflow: var(--mar-ui-popup-content-overflow, auto);
+  overscroll-behavior: contain;
+  padding: var(--mar-ui-popup-padding, 5px 0);
+  border-radius: inherit;
+}
+
+.mar-ui-popup[data-arrow]::before {
+  position: absolute;
+  z-index: -1;
+  top: -5px;
+  left: calc(var(--mar-ui-popup-arrow-x) - 5px);
+  width: 8px;
+  height: 8px;
+  rotate: 45deg;
+  border: 1px solid var(--mar-ui-overlay-border);
+  border-right: 0;
+  border-bottom: 0;
+  background: var(--mar-ui-overlay-surface);
+  pointer-events: none;
+  content: '';
+}
+
+.mar-ui-popup[data-side='top']::before {
+  top: auto;
+  bottom: -5px;
+  rotate: 225deg;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mar-ui-popup:is(:popover-open, [data-open]) {
+    opacity: 1;
+    translate: 0 0;
+    transition:
+      opacity 130ms ease-out,
+      translate 130ms ease-out;
+  }
+
+  .mar-ui-popup[data-side='top'] {
+    --mar-ui-popup-entry-y: 4px;
+  }
+
+  @starting-style {
+    .mar-ui-popup:is(:popover-open, [data-open]) {
+      opacity: 0;
+      translate: 0 var(--mar-ui-popup-entry-y, -4px);
+    }
+  }
 }
 
 /* Retain the basic positioned surface on browsers without the top layer API. */

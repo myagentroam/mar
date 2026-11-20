@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed } from 'vue';
 import type { WorkbenchNotificationService } from '../../service/workbench-notification-service.js';
@@ -48,14 +49,13 @@ const blocked = computed(
         </p>
       </div>
       <div class="notification-channel-actions">
-        <el-button
+        <MarButton
           class="mar-text-action"
           link
           :icon="service.enabled.value ? marIcon('power') : marIcon('notification')"
           :loading="service.requesting.value"
           :disabled="blocked"
           @click="service.setEnabled(!service.enabled.value)"
-          :loading-icon="marIcon('loading-action')"
         >
           {{
             translate(
@@ -68,8 +68,8 @@ const blocked = computed(
                   : 'workbenchNotificationCenter.systemNotifications.enable'
             )
           }}
-        </el-button>
-        <el-button
+        </MarButton>
+        <MarButton
           v-if="
             service.mode === 'mobile-push' &&
             service.enabled.value &&
@@ -79,7 +79,7 @@ const blocked = computed(
           link
           :icon="marIcon('notification')"
           @click="service.enablePush()"
-          >{{ translate('workbenchNotificationCenter.webPush.enable') }}</el-button
+          >{{ translate('workbenchNotificationCenter.webPush.enable') }}</MarButton
         >
       </div>
     </div>

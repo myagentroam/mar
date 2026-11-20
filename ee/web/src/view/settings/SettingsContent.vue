@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '@myagentroam/web-core/message-feedback';
 
 import { marIcon } from '@myagentroam/web-core/icons';
@@ -177,12 +179,11 @@ function createNodeToken(): void {
       >
         <div class="admin-sessions-heading">
           <h3>{{ translate('generated.settingsContent.oAuthAccountBindings2') }}</h3>
-          <el-button
+          <MarButton
             v-tooltip="translate('generated.settingsContent.refresh')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
             :loading="oauthRefreshing"
-            :loading-icon="marIcon('loading-action')"
             :disabled="oauthLoading"
             :aria-label="translate('generated.settingsContent.refresh')"
             text
@@ -212,22 +213,22 @@ function createNodeToken(): void {
           </el-table-column>
           <el-table-column :label="translate('generated.settingsContent.actions')" width="120">
             <template #default="{ row }">
-              <el-button
+              <MarButton
                 v-if="!row.bound"
                 link
                 :icon="marIcon('link')"
                 :disabled="managementWritable !== true || oauthLoading"
                 @click="bindOAuth(row)"
-                >{{ translate('generated.settingsContent.bind') }}</el-button
+                >{{ translate('generated.settingsContent.bind') }}</MarButton
               >
-              <el-button
+              <MarButton
                 v-else
                 link
                 type="danger"
                 :icon="marIcon('unlock')"
                 :disabled="managementWritable !== true || oauthLoading"
                 @click="unbindOAuth(row)"
-                >{{ translate('generated.settingsContent.unbind') }}</el-button
+                >{{ translate('generated.settingsContent.unbind') }}</MarButton
               >
             </template>
           </el-table-column>
@@ -237,21 +238,21 @@ function createNodeToken(): void {
     <template #registration-owner>
       <label v-if="edition === 'ENTERPRISE'" class="registration-owner">
         <span>{{ translate('generated.settingsContent.nodeOwnership') }}</span>
-        <el-select
+        <MarSelect
           v-model="registrationOwner"
           :placeholder="translate('generated.settingsContent.selectOwnership')"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option :label="translate('generated.settingsContent.personal')" value="PERSONAL" />
-          <el-option
+          <MarOption :label="translate('generated.settingsContent.personal')" value="PERSONAL" />
+          <MarOption
             v-for="organization in organizations"
             :key="organization.id"
             :label="organizationPath(organizations, organization.id)"
             :value="organization.id"
             :disabled="role === 'MEMBER' || managementWritable !== true"
           />
-        </el-select>
+        </MarSelect>
       </label>
     </template>
   </SharedSettingsContent>
@@ -264,7 +265,7 @@ function createNodeToken(): void {
   font-size: var(--mar-font-size-meta);
 }
 
-.registration-owner .el-select {
+.registration-owner .mar-ui-select {
   width: min(280px, 70vw);
 }
 

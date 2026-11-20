@@ -173,13 +173,11 @@ for (const [width, height, theme, top] of [
     );
     for (const kind of ['runner', 'access', 'model-effort']) {
       await page.locator(`.composer-${kind}-select`).click();
-      const menu = page.locator(`.el-select-dropdown.composer-${kind}-popper:visible`);
+      const menu = page.locator(`[role="listbox"].composer-${kind}-popper:visible`);
       await expectMenuInsideViewport(menu);
       if (kind === 'model-effort') {
-        const modelGroup = menu.locator('.el-select-group__wrap').filter({ hasText: /^Model/ });
-        const effortGroup = menu
-          .locator('.el-select-group__wrap')
-          .filter({ hasText: /^Reasoning/ });
+        const modelGroup = menu.getByRole('group', { name: 'Model' });
+        const effortGroup = menu.getByRole('group', { name: 'Reasoning' });
         const modelBounds = (await modelGroup.boundingBox())!;
         const effortBounds = (await effortGroup.boundingBox())!;
         expect(modelBounds.x + modelBounds.width).toBeLessThanOrEqual(effortBounds.x + 1);
@@ -213,24 +211,24 @@ for (const [width, height, theme, top] of [
         await page.keyboard.press('ArrowDown');
         await expect(
           menu.getByRole('option').filter({ hasText: /^Engineering model 1 with/ })
-        ).toHaveClass(/is-hovering/);
+        ).toHaveClass(/mar-ui-option--active/);
         await page.keyboard.press('ArrowUp');
-        await expect(last).toHaveClass(/is-hovering/);
+        await expect(last).toHaveClass(/mar-ui-option--active/);
         await expect(last).toBeInViewport();
         await page.keyboard.press('ArrowRight');
         await expect(menu.getByRole('option', { name: 'medium', exact: true })).toHaveClass(
-          /is-hovering/
+          /mar-ui-option--active/
         );
         await page.keyboard.press('ArrowLeft');
-        await expect(last).toHaveClass(/is-hovering/);
+        await expect(last).toHaveClass(/mar-ui-option--active/);
         await page.keyboard.press('Tab');
         await expect(menu.getByRole('option', { name: 'medium', exact: true })).toBeInViewport();
         await page.keyboard.press('Tab');
         await expect(last).toBeInViewport();
         await page.keyboard.press('Home');
-        await expect(modelGroup.getByRole('option').first()).toHaveClass(/is-hovering/);
+        await expect(modelGroup.getByRole('option').first()).toHaveClass(/mar-ui-option--active/);
         await page.keyboard.press('End');
-        await expect(last).toHaveClass(/is-hovering/);
+        await expect(last).toHaveClass(/mar-ui-option--active/);
         await page.keyboard.press('Escape');
         await expect(menu).toBeHidden();
         expect(
@@ -260,20 +258,20 @@ for (const [width, theme] of [
       `${fixture.url}composer-options.html?compact-names&short&theme=${theme}${width < 768 ? '&mobile' : ''}`
     );
     await page.locator('.composer-model-effort-select').click();
-    const menu = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
+    const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');
     await expectMenuInsideViewport(menu);
-    const surface = page.locator('.el-select__popper:visible').filter({ has: menu });
+    const surface = menu;
     await expect(surface).toHaveCSS('border-top-width', '1px');
     await expect(surface).toHaveCSS(
       'border-top-color',
       theme === 'daylight' ? 'rgb(203, 214, 228)' : 'rgb(65, 78, 98)'
     );
     await expect(surface).toHaveCSS('box-shadow', /0px 4px 12px/u);
-    const models = menu.locator('.el-select-group__wrap').first();
+    const models = menu.getByRole('group', { name: 'Model' });
     const sizes = await models.evaluate((element) => {
-      const options = Array.from(element.querySelectorAll('.el-select-dropdown__item'));
+      const options = Array.from(element.querySelectorAll('[role="option"]'));
       const contentWidths = options.map((option) => {
-        const label = option.querySelector('span')!;
+        const label = option.querySelector('.mar-ui-option__content')!;
         const range = document.createRange();
         range.selectNodeContents(label);
         const style = getComputedStyle(option);
@@ -309,9 +307,9 @@ for (const kind of ['model', 'effort']) {
     await page.setViewportSize({ width: 390, height: 600 });
     await page.goto(`${fixture.url}composer-options.html?single=${kind}&mobile`);
     await page.locator('.composer-model-effort-select').click();
-    const menu = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
+    const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');
     await expectMenuInsideViewport(menu);
-    await expect(menu.locator('.el-select-group__wrap')).toHaveCount(1);
+    await expect(menu.getByRole('group')).toHaveCount(1);
     await page.keyboard.press('End');
     await expect(menu.getByRole('option').last()).toBeInViewport();
     await page.keyboard.press('Enter');
@@ -332,21 +330,21 @@ for (const open of [false, true]) {
     // The fixture button simulates a background profile refresh without moving input focus.
     await page.getByRole('button', { name: 'Reverse models' }).dispatchEvent('click');
     if (!open) await trigger.click();
-    const menu = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
-    const models = menu.locator('.el-select-group__wrap').filter({ hasText: /^Model/ });
+    const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');
+    const models = menu.getByRole('group', { name: 'Model' });
     await expect(models.getByRole('option').first()).toHaveText(
       'Engineering model 32 with a descriptive configuration name'
     );
     await page.keyboard.press('ArrowRight');
     await expect(menu.getByRole('option', { name: 'medium', exact: true })).toHaveClass(
-      /is-hovering/
+      /mar-ui-option--active/
     );
     await page.keyboard.press('ArrowLeft');
-    await expect(models.getByRole('option').last()).toHaveClass(/is-hovering/);
+    await expect(models.getByRole('option').last()).toHaveClass(/mar-ui-option--active/);
     await page.keyboard.press('Home');
-    await expect(models.getByRole('option').first()).toHaveClass(/is-hovering/);
+    await expect(models.getByRole('option').first()).toHaveClass(/mar-ui-option--active/);
     await page.keyboard.press('End');
-    await expect(models.getByRole('option').last()).toHaveClass(/is-hovering/);
+    await expect(models.getByRole('option').last()).toHaveClass(/mar-ui-option--active/);
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('selected-model')).toHaveText('model-0');
     await expect(page.getByTestId('selected-effort')).toHaveText('medium');
@@ -366,10 +364,10 @@ test('Touch selection keeps the other column value and short menus stay compact'
     await page.goto(`${fixture.url}composer-options.html?mobile&short&theme=vscode-dark-2026`);
     const trigger = page.locator('.composer-model-effort-select');
     await trigger.tap();
-    const menu = page.locator('.el-select-dropdown.composer-model-effort-popper:visible');
+    const menu = page.locator('[role="listbox"].composer-model-effort-popper:visible');
     await expectMenuInsideViewport(menu);
     expect((await menu.boundingBox())!.height).toBeLessThan(250);
-    const columns = menu.locator('.el-select-group .el-scrollbar__wrap');
+    const columns = menu.getByRole('group').locator('.el-scrollbar__wrap');
     for (const column of await columns.all())
       expect(await column.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
         true

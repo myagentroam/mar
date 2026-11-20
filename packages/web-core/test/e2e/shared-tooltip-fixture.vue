@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { getCurrentInstance, onBeforeUnmount, ref } from 'vue';
 import WorkspaceFileTree from '../../src/view/workspace/WorkspaceFileTree.vue';
 import AgentMarkdown from '../../src/view/common/AgentMarkdown.vue';
@@ -92,16 +93,16 @@ getCurrentInstance()!.appContext.app.mixin({
       Open mobile sidebar
     </button>
     <aside v-if="mobileSidebarOpen" ref="mobileSidebar" aria-label="Mobile sidebar" tabindex="-1">
-      <el-dropdown trigger="click" @command="menuActions++">
+      <MarDropdown trigger="click" @command="menuActions++">
         <button>Mobile sidebar menu</button>
         <template #dropdown>
           <div v-tooltip="'Mobile menu action details'">
-            <el-dropdown-menu>
-              <el-dropdown-item command="action">Mobile menu action</el-dropdown-item>
-            </el-dropdown-menu>
+            <MarDropdownMenu>
+              <MarDropdownItem command="action">Mobile menu action</MarDropdownItem>
+            </MarDropdownMenu>
           </div>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </aside>
     <el-dialog v-if="dialogOpen" v-model="dialogOpen" title="Escape ownership">
       <input
@@ -117,16 +118,16 @@ getCurrentInstance()!.appContext.app.mixin({
           <el-option label="Two" value="two" />
         </el-select>
       </div>
-      <el-dropdown trigger="click" @command="menuActions++">
+      <MarDropdown trigger="click" @command="menuActions++">
         <button>Escape menu</button>
         <template #dropdown>
           <div v-tooltip="'Menu action details'">
-            <el-dropdown-menu>
-              <el-dropdown-item command="action">Menu action</el-dropdown-item>
-            </el-dropdown-menu>
+            <MarDropdownMenu>
+              <MarDropdownItem command="action">Menu action</MarDropdownItem>
+            </MarDropdownMenu>
           </div>
         </template>
-      </el-dropdown>
+      </MarDropdown>
     </el-dialog>
     <div
       v-if="mounted"

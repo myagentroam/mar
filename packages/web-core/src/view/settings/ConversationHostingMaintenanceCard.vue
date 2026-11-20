@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
@@ -365,7 +366,7 @@ onBeforeUnmount(() => {
         <h3>{{ translate('conversationHostingMaintenance.title') }}</h3>
         <p>{{ translate('conversationHostingMaintenance.summary') }}</p>
       </div>
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         class="mar-icon-action"
         text
@@ -373,7 +374,6 @@ onBeforeUnmount(() => {
         :disabled="!available || previewing || executing"
         :aria-label="translate('conversationHostingMaintenance.refresh')"
         @click="loadStorage"
-        :loading-icon="marIcon('loading-action')"
       />
     </header>
 
@@ -476,22 +476,17 @@ onBeforeUnmount(() => {
         </div>
         <p class="cleanup-range">{{ translate('conversationHostingMaintenance.rangeHint') }}</p>
         <div class="cleanup-actions">
-          <el-button
-            :icon="marIcon('view')"
-            :loading="previewing"
-            @click="previewCleanup"
-            :loading-icon="marIcon('loading-action')"
-            >{{ translate('conversationHostingMaintenance.preview') }}</el-button
-          >
-          <el-button
+          <MarButton :icon="marIcon('view')" :loading="previewing" @click="previewCleanup">{{
+            translate('conversationHostingMaintenance.preview')
+          }}</MarButton>
+          <MarButton
             type="danger"
             plain
             :icon="marIcon('delete')"
             :loading="executing"
             :disabled="!canExecuteCleanup"
             @click="executeCleanup"
-            :loading-icon="marIcon('loading-action')"
-            >{{ translate('conversationHostingMaintenance.permanentCleanup') }}</el-button
+            >{{ translate('conversationHostingMaintenance.permanentCleanup') }}</MarButton
           >
         </div>
 

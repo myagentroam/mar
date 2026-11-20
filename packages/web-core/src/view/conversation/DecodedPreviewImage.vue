@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
 import FilePreviewLoading from '../workspace/FilePreviewLoading.vue';
@@ -126,7 +127,7 @@ async function loaded(event: Event): Promise<void> {
     </div>
     <div v-if="failed" class="image-preview-failure" role="alert">
       <span>{{ translate('generated.imagePreview.loadFailed') }}</span>
-      <el-button @click="reset">{{ translate('generated.imagePreview.retry') }}</el-button>
+      <MarButton @click="reset">{{ translate('generated.imagePreview.retry') }}</MarButton>
     </div>
   </div>
 </template>

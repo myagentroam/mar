@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -480,13 +481,13 @@ function onKeydown(event: KeyboardEvent): void {
           </summary>
           <pre>{{ errorMessage(notice.status.error) }}</pre>
         </details>
-        <el-button
+        <MarButton
           v-if="notice.status.phase === 'FAILED' || notice.status.phase === 'TIMED_OUT'"
           link
           @click="retrySource(notice.kind)"
         >
           {{ translate('generated.quickOpenDialog.retry') }}
-        </el-button>
+        </MarButton>
       </div>
     </div>
   </el-dialog>

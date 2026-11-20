@@ -92,7 +92,7 @@ function fixture(kind: 'NODE' | 'WORKSPACE') {
   const dialog = () => view.findAll('ElDialog')[0]!;
   const usageButton = () =>
     view
-      .findAll('ElButton')
+      .findAll('MarButton')
       .find((node) => String(node.props['class']).split(/\s+/u).includes('runner-usage-link'))!;
   return { ...view, request, paths, statuses, usages, refreshes, open, dialog, usageButton };
 }
@@ -239,7 +239,7 @@ describe('Resource detail request ownership', () => {
         );
         expect(vi.mocked(showMessage)).not.toHaveBeenCalled();
         const refresh = () =>
-          view.findAll('ElButton').find((node) => textContent(node) === 'Refresh capabilities')!;
+          view.findAll('MarButton').find((node) => textContent(node) === 'Refresh capabilities')!;
         expect(refresh().props['loading']).toBe(true);
         current.resolve({ nodes });
         await flushComponent();

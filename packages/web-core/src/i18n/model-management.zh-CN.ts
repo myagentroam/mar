@@ -208,6 +208,7 @@ export const modelManagementZhCN = {
       '可选，清空后直连。代理须从执行 Node 可达，localhost 指该 Node；代理失败不会回退直连。',
     modelProxyCredentialHint: '沿用订阅凭据的代理，请在 OAuth 凭据中配置。',
     codexProxyPlaceholder: 'socks5://主机:端口',
+    showPassword: '显示密码',
     codexProxyHint: '可选。凭据交换、目录加载和模型请求将使用同一代理配置。',
     grokProxyHint:
       '可选实验性设置。Server 和处理模型请求的 Node 都必须能访问此代理；浏览器授权使用浏览器自己的网络。实际账户资格由服务商决定。',

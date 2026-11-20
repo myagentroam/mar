@@ -4,6 +4,7 @@ import {
   unmountMobileDialogReturn
 } from '../../service/mobile-dialog-return-service.js';
 import { showMessage } from '../../service/message-feedback-service.js';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarInput } from '@myagentroam/mar-ui/input';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -45,11 +46,11 @@ async function copy(token: string): Promise<void> {
 </script>
 
 <template>
-  <el-button
+  <MarButton
     v-tooltip="t('customThemes.tokenHelp')"
     class="mar-icon-action"
     text
-    :icon="marIcon('help')"
+    icon="help"
     :aria-label="t('customThemes.tokenHelp')"
     @click="show"
   />
@@ -84,11 +85,11 @@ async function copy(token: string): Promise<void> {
                 aria-hidden="true"
               />
               <code>{{ item.token }}</code>
-              <el-button
+              <MarButton
                 v-tooltip="t('customThemes.tokenCopy', { token: item.token })"
                 class="mar-icon-action"
                 text
-                :icon="marIcon('copy')"
+                icon="copy"
                 :aria-label="t('customThemes.tokenCopy', { token: item.token })"
                 @click="copy(item.token)"
               />

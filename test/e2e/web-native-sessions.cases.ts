@@ -184,7 +184,7 @@ test('New MAR Agent first messages appear on the session home and clearing searc
   await expect(page.locator('.session-list .session-link').first()).toContainText('回显会话');
   expect(readsAfterCreation).toBe(0);
 
-  const search = page.locator('.session-search .el-input__inner');
+  const search = page.locator('.session-search input');
   await search.fill('没有匹配项');
   await search.press('Enter');
   await expect(page.locator('.session-list .session-link')).toHaveCount(0);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { translate } from '../../service/locale-preference-service.js';
@@ -100,7 +101,7 @@ onUnmounted(() => observer?.disconnect());
     />
     <div v-else class="management-mobile-status">
       <span ref="sentinel" aria-hidden="true" />
-      <el-button
+      <MarButton
         v-if="failed && incrementalFailed"
         link
         v-tooltip="!loading && error !== undefined ? errorMessage(error) : ''"
@@ -112,7 +113,7 @@ onUnmounted(() => observer?.disconnect());
       >
         <BusyIndicator v-if="loading" class="mar-read-loading-indicator" />
         <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-      </el-button>
+      </MarButton>
       <span
         v-else-if="loading && loadingMore"
         class="management-mobile-loading"

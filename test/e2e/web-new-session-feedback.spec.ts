@@ -154,13 +154,14 @@ for (const { width, theme, lateSuccess } of [
       await expect(send).toBeVisible();
       await expect(send).toBeDisabled();
       await expect(send).toHaveAttribute('aria-busy', 'true');
-      await expect(send.locator('.is-loading')).toBeVisible();
+      await expect(send.locator('[data-mar-icon="loading-action"]')).toBeVisible();
       if (width === 390)
-        await expect(send.locator('.is-loading')).toHaveCSS('animation-name', 'none');
+        await expect(send.locator('[data-mar-icon="loading-action"]')).toHaveCSS(
+          'animation-name',
+          'none'
+        );
       await expect(page.locator('.composer-runner-select')).toBeVisible();
-      await expect(page.locator('.composer-runner-select .el-select__wrapper')).toHaveClass(
-        /is-disabled/u
-      );
+      await expect(page.locator('.composer-runner-select').getByRole('combobox')).toBeDisabled();
       await expect(page.locator('.composer-working')).toHaveCount(0);
       await expect(page.locator('.conversation-message')).toHaveCount(0);
       await expect(shell).toHaveCSS('background-color', background);
@@ -184,9 +185,7 @@ for (const { width, theme, lateSuccess } of [
         });
         await expect(input).toBeEditable();
         await expect(send).toBeEnabled();
-        await expect(page.locator('.composer-runner-select .el-select__wrapper')).toHaveClass(
-          /is-disabled/u
-        );
+        await expect(page.locator('.composer-runner-select').getByRole('combobox')).toBeDisabled();
         await send.click();
         await expect.poll(() => requests.length).toBe(count + 2);
         expect(bodies[count + 1]).toEqual(bodies[count]);

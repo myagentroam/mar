@@ -136,7 +136,10 @@ test('MAR input matches EL input styling and keeps its label and MAR icons', asy
   const sample = page.getByRole('region', { name: 'MAR field and menu states' });
   const field = page.getByRole('textbox', { name: 'MAR sample', exact: true });
   const reference = page.getByRole('textbox', { name: 'EL sample', exact: true });
-  const wrapper = (input: Locator) => input.locator('..');
+  const wrapper = (input: Locator) =>
+    input.locator(
+      'xpath=ancestor::*[contains(@class, "mar-ui-input") or contains(@class, "el-input__wrapper")][last()]'
+    );
   const style = (input: Locator) =>
     wrapper(input).evaluate((element) => {
       const { height, backgroundColor, borderRadius, boxShadow } = getComputedStyle(element);
@@ -251,11 +254,78 @@ test('MAR choice and command menus keep selection and actions separate', async (
   await expect(menu).toBeHidden();
   await expect(remove).toBeFocused();
   await trigger.press('Enter');
+  await expect(apply).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.press('Enter');
   await expect(menu).toBeVisible();
   await remove.evaluate((button: HTMLButtonElement) => button.click());
   await expect(trigger).toHaveCount(0);
   await expect(menu).toHaveCount(0);
 });
+
+for (const motion of ['no-preference', 'reduce'] as const) {
+  test(`MAR anchored menus match EL arrow and entrance with motion ${motion}`, async ({
+    page
+  }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: motion });
+    const sample = page.getByRole('region', { name: 'MAR field and menu states' });
+    const elTrigger = sample.locator('.el-select__wrapper');
+    await elTrigger.click();
+    await expect(page.locator('.el-select__popper:visible .el-popper__arrow')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.el-select__popper:visible')).toHaveCount(0);
+    for (const [trigger, popup, name] of [
+      [sample.getByRole('combobox', { name: 'MAR choice' }), sample.getByRole('listbox'), 'select'],
+      [sample.getByRole('button', { name: 'MAR commands' }), sample.getByRole('menu'), 'dropdown']
+    ] as const) {
+      await trigger.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+      const entered = popup.and(page.locator('.mar-ui-popup'));
+      // Observe the actual CSS transition, even when Playwright waits for the popup to settle.
+      if (motion === 'no-preference') {
+        await page.evaluate(() => {
+          document.documentElement.removeAttribute('data-popup-entered');
+          document.addEventListener('transitionrun', function onEnter(event) {
+            if (event.propertyName !== 'opacity' || !(event.target instanceof HTMLElement)) return;
+            if (!event.target.matches('.mar-ui-popup')) return;
+            document.documentElement.setAttribute('data-popup-entered', '');
+            document.removeEventListener('transitionrun', onEnter);
+          });
+        });
+      }
+      await trigger.press('Enter');
+      await expect(entered).toBeVisible();
+      await expect(entered).toHaveAttribute('data-arrow', '');
+      await expect(entered).toHaveAttribute('data-side', 'bottom');
+      await expect(entered).toHaveCSS('overflow', 'visible');
+      const arrow = await entered.evaluate((el) => {
+        const style = getComputedStyle(el, '::before');
+        return {
+          top: style.top,
+          fill: style.backgroundColor,
+          surface: getComputedStyle(el).backgroundColor
+        };
+      });
+      expect(arrow.top).toBe('-5px');
+      expect(arrow.fill).toBe(arrow.surface);
+      if (motion === 'no-preference') {
+        await expect(page.locator('html')).toHaveAttribute('data-popup-entered', '');
+        await expect(entered).toHaveCSS('opacity', '1');
+        const bounds = (await entered.boundingBox())!;
+        await page.screenshot({
+          clip: { ...bounds, y: bounds.y - 16, height: bounds.height + 16 },
+          path: testInfo.outputPath(`${name}-arrow.png`)
+        });
+      } else {
+        await expect(entered).toHaveCSS('transition-duration', '0s');
+      }
+      await page.keyboard.press('Escape');
+      await expect(entered).toBeHidden();
+      await expect(trigger).toBeFocused();
+    }
+  });
+}
 
 test('MAR choice keeps the active row visible inside a scrolling list', async ({
   page
@@ -332,6 +402,9 @@ test.describe('MAR controls on a 390px touch viewport', () => {
     await choice.evaluate((element) => element.scrollIntoView({ block: 'end' }));
     await choice.tap();
     await expect(list).toBeVisible();
+    await expect(list).toHaveAttribute('data-arrow', '');
+    await expect(list).toHaveAttribute('data-side', 'top');
+    expect(await list.evaluate((el) => getComputedStyle(el, '::before').bottom)).toBe('-5px');
     const bounds = (await list.boundingBox())!;
     const anchor = (await choice.boundingBox())!;
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(anchor.y);
@@ -424,6 +497,24 @@ test('MAR button preserves the icon and label positions during native submit loa
   await expect(submit).toBeEnabled();
   await submit.click();
   await expect(count).toHaveText('2');
+});
+
+test('MAR button shaped links preserve navigation and suppress disabled activation', async ({
+  page
+}) => {
+  const section = page.getByRole('region', { name: 'MAR button states' });
+  const anchor = section.getByRole('link', { name: 'Open destination' });
+  const count = section.getByRole('status', { name: 'Link activation count' });
+  await anchor.focus();
+  await anchor.press('Enter');
+  await expect(page).toHaveURL(/#button-link-target$/u);
+  await expect(count).toHaveText('1');
+
+  await section.getByRole('checkbox', { name: 'Disable submit action' }).check();
+  await expect(anchor).toBeDisabled();
+  await expect(anchor).not.toHaveAttribute('href');
+  await anchor.dispatchEvent('click');
+  await expect(count).toHaveText('1');
 });
 
 test('MAR controls follow the provider locale for their built-in text', async ({ page }) => {
@@ -796,6 +887,62 @@ for (const scheme of ['Light', 'Dark']) {
   });
 }
 
+test('Appearance choices keep file mode, icon theme and language independent on desktop and touch', async ({
+  browser
+}, testInfo) => {
+  for (const width of [1280, 390]) {
+    const page = await browser.newPage({
+      viewport: { width, height: 840 },
+      hasTouch: width === 390
+    });
+    try {
+      await page.goto(`${fixture.url}custom-theme.html?appearance-only`);
+      await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+      const mode = page.getByRole('combobox', { name: 'Default file mode', exact: true });
+      const modeChoices = page.getByRole('listbox', { name: 'Default file mode', exact: true });
+      const icon = page.getByRole('combobox', { name: 'Icon theme', exact: true });
+      const language = page.getByRole('combobox', { name: 'Language', exact: true });
+      await expect(mode).toHaveText('Edit');
+      if (width === 390) await mode.tap();
+      else await mode.press('Enter');
+      await expect(modeChoices.getByRole('option', { name: 'Edit' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      if (width === 390) {
+        await modeChoices.getByRole('option', { name: 'Read only' }).tap();
+      } else {
+        await mode.press('ArrowDown');
+        await expect(mode).toHaveText('Edit');
+        await mode.press('Enter');
+      }
+      await expect(modeChoices).toBeHidden();
+      await expect(mode).toHaveText('Read only');
+      await icon.click();
+      await expect(
+        page.getByRole('listbox', { name: 'Icon theme' }).getByRole('option')
+      ).toHaveCount(1);
+      await page.getByRole('option', { name: 'MAR File Icons' }).click();
+      await expect(icon).toHaveText('MAR File Icons');
+      expect(await page.evaluate(() => localStorage.getItem('mar.icon-theme.v2'))).toBeNull();
+      await language.click();
+      const languageChoices = page.getByRole('listbox', { name: 'Language' });
+      await expect(languageChoices).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`appearance-choices-${width}.png`) });
+      await languageChoices.getByRole('option', { name: '简体中文' }).click();
+      await expect(page.getByRole('heading', { name: '外观' })).toBeVisible();
+      await expect(page.getByRole('combobox', { name: '文件默认打开方式' })).toHaveText('只读');
+      await expect(page.getByRole('combobox', { name: '语言' })).toHaveText('简体中文');
+      expect(await page.evaluate(() => localStorage.getItem('mar.locale.v2'))).toBe('zh-CN');
+      expect(await page.evaluate(() => localStorage.getItem('mar.file-editor.default-mode'))).toBe(
+        'read-only'
+      );
+    } finally {
+      await page.close();
+    }
+  }
+});
+
 test('custom theme JSON flows through warnings, save, Appearance, reload, export, import and deletion', async ({
   page,
   context
@@ -808,7 +955,9 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
   await editor.fill('{');
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Invalid JSON' })).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Theme preview and validation' }).getByRole('alert')
+  ).toContainText('Invalid JSON');
   expect(await page.evaluate(() => localStorage.getItem('mar.customThemes'))).toBeNull();
   const source = JSON.stringify(
     {
@@ -830,8 +979,9 @@ test('custom theme JSON flows through warnings, save, Appearance, reload, export
   await editor.fill(source);
   await editor.blur();
   await expect(page.locator('.validation')).toContainText('saving is allowed');
+  await expect(editor).not.toHaveAttribute('aria-invalid', 'true');
   await expect(
-    page.locator('.el-form-item').filter({ has: editor }).locator('.el-form-item__error')
+    page.locator('.mar-ui-form-item').filter({ has: editor }).locator('.mar-ui-form-item__error')
   ).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('theme-desktop.png'), fullPage: true });
   await expect(page.locator('.mar-theme-preview .preview-toolbar')).toHaveCSS(
@@ -897,12 +1047,13 @@ test('duplicate, draft protection and formatting work without changing the activ
   await useThemeMenu(page, page.locator('.theme-option').first(), 'Duplicate');
   await editor.fill(JSON.stringify({ name: 'Original', version: 1, colors: {} }));
   await page.getByRole('button', { name: 'Save theme', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Inspect Original', exact: true })).toBeVisible();
   await useThemeMenu(
     page,
     page.locator('.theme-option').filter({ hasText: 'Original' }),
     'Duplicate'
   );
-  expect(JSON.parse(await editor.inputValue()).name).toBe('Original (copy)');
+  await expect.poll(async () => JSON.parse(await editor.inputValue()).name).toBe('Original (copy)');
   await page
     .getByRole('button', { name: /^Inspect /u })
     .first()
@@ -2032,7 +2183,7 @@ for (const scheme of ['Light', 'Dark']) {
       expect(result.actual, result.alias).toBe(result.expected);
       expect(result.actual, result.alias).toBe(source.colors[result.target]);
     }
-    await expect(page.locator('.actions .el-button--primary')).toHaveCSS(
+    await expect(page.getByRole('button', { name: 'Save theme', exact: true })).toHaveCSS(
       'background-color',
       'rgb(101, 67, 33)'
     );
@@ -2258,7 +2409,7 @@ for (const scheme of ['Light', 'Dark']) {
       await expect(neutral).not.toHaveCSS('outline-style', 'none');
       await controls.screenshot({ path: testInfo.outputPath('action-hierarchy.png') });
       const management = page.getByRole('region', { name: 'Real management actions' });
-      const edit = management.locator('.prompt-actions .el-button').first();
+      const edit = management.locator('.prompt-actions .mar-ui-button').first();
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 900 });
         await page.mouse.move(0, 0);
@@ -2267,7 +2418,7 @@ for (const scheme of ['Light', 'Dark']) {
         await edit.click();
         const dialog = page.getByRole('dialog');
         await expect(dialog).toBeVisible();
-        await expect(dialog.locator('.el-button--primary')).toBeVisible();
+        await expect(dialog.locator('.mar-ui-button--primary')).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(dialog).toBeHidden();
         await management.screenshot({

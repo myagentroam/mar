@@ -731,7 +731,7 @@ describe('usage statistics settings contract', () => {
     const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
     const panel = () =>
       view.findAll('section').find((node) => node.props['data-testid'] === 'usage-statistics')!;
-    const refreshButton = () => view.findAll('ElButton').find((node) => node.props['onClick'])!;
+    const refreshButton = () => view.findAll('MarButton').find((node) => node.props['onClick'])!;
     try {
       await flushComponent();
       expect(panel().props['aria-busy']).toBe(false);
@@ -749,7 +749,7 @@ describe('usage statistics settings contract', () => {
           return;
         }
         const control =
-          view.findAll('ElSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
+          view.findAll('MarSelect')[['period', 'runner', 'model', 'mode'].indexOf(field)]!;
         (control.props['onUpdate:modelValue'] as (value: string) => void)(value);
         (control.props['onChange'] as () => void)();
       };
@@ -943,7 +943,7 @@ describe('usage statistics settings contract', () => {
       const view = renderComponent(InteractiveUsageStatisticsSettings, { request });
       try {
         await flushComponent();
-        expect(view.findAll('ElSelect')[0]?.props['modelValue']).toBe('24h');
+        expect(view.findAll('MarSelect')[0]?.props['modelValue']).toBe('24h');
         const cards = view
           .findAll('section')
           .filter((node) => node.props['class'] === 'overview-cell');
@@ -953,7 +953,7 @@ describe('usage statistics settings contract', () => {
         ]);
         expect(textContent(cards[0]!)).toContain('41');
         expect(textContent(cards[1]!)).toContain('73');
-        expect(view.findAll('ElOption').map((node) => node.props['value'])).toContain(
+        expect(view.findAll('MarOption').map((node) => node.props['value'])).toContain(
           'initial-model'
         );
         service.state.availableModels = [];
@@ -961,7 +961,7 @@ describe('usage statistics settings contract', () => {
           models: [{ ...overview().models[0]!, key: 'fallback-model', label: 'Fallback choice' }]
         });
         await flushComponent();
-        const choices = view.findAll('ElOption').map((node) => node.props['value']);
+        const choices = view.findAll('MarOption').map((node) => node.props['value']);
         expect(choices).toContain('fallback-model');
         expect(choices).not.toContain('initial-model');
         const statuses = view.findAll('ElTag').filter((node) => node.props['role'] === 'status');

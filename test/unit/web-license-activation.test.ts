@@ -27,8 +27,8 @@ describe('License activation availability', () => {
       await flushComponent();
       expect(request).toHaveBeenCalledTimes(1);
       expect(request).toHaveBeenCalledWith('/api/license');
-      expect(view.findAll('ElInput')).toHaveLength(0);
-      expect(view.findAll('ElButton')).toHaveLength(0);
+      expect(view.findAll('MarInput')).toHaveLength(0);
+      expect(view.findAll('MarButton')).toHaveLength(0);
     } finally {
       view.unmount();
     }
@@ -45,8 +45,8 @@ describe('License activation availability', () => {
       await flushComponent();
       expect(request).toHaveBeenCalledTimes(1);
       expect(request).toHaveBeenCalledWith('/api/license');
-      expect(view.findAll('ElInput')).toHaveLength(0);
-      expect(view.findAll('ElButton')).toHaveLength(0);
+      expect(view.findAll('MarInput')).toHaveLength(0);
+      expect(view.findAll('MarButton')).toHaveLength(0);
     } finally {
       view.unmount();
     }
@@ -62,8 +62,8 @@ describe('License activation availability', () => {
     try {
       await flushComponent();
       expect(request).toHaveBeenCalledWith('/api/license/request-code');
-      expect(view.findAll('ElInput')).toHaveLength(2);
-      expect(view.findAll('ElButton')).toHaveLength(2);
+      expect(view.findAll('MarInput')).toHaveLength(2);
+      expect(view.findAll('MarButton')).toHaveLength(2);
     } finally {
       view.unmount();
     }

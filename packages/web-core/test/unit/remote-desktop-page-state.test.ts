@@ -81,12 +81,19 @@ describe('Remote Desktop first-frame state', () => {
       const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
       try {
         await flushComponent();
-        const options = view
-          .findAll('ElOption')
-          .filter((node) => typeof node.props['value'] === 'string');
-        expect(options.map((node) => node.props['value'])).toEqual(['primary-1']);
-        expect(options[0]!.props['label']).toContain(label);
-        expect(options[0]!.props['label']).not.toContain('\\\\.\\');
+        const screen = view
+          .findAll('button')
+          .find((node) => node.props['data-testid'] === 'desktop-screen');
+        expect(screen).toBeDefined();
+        const list = view
+          .findAll('div')
+          .find((node) => node.props['id'] === screen!.props['aria-controls']);
+        const options = list!.children.filter((node) => node.props['role'] === 'option');
+        expect(options).toHaveLength(1);
+        // Discovery selects the display by its ID; the option stays selected under a readable label.
+        expect(options[0]!.props['aria-selected']).toBe(true);
+        expect(textContent(options[0]!)).toContain(label);
+        expect(textContent(options[0]!)).not.toContain('\\\\.\\');
       } finally {
         view.unmount();
       }
@@ -112,12 +119,12 @@ describe('Remote Desktop first-frame state', () => {
       await flushComponent();
       expect(ready).toHaveBeenCalledOnce();
       const control = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => node.props['data-testid'] === 'desktop-control')!;
       expect(control.props['disabled']).toBe(fails);
       expect(
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .some((node) => node.props['data-testid'] === 'desktop-control-prompt')
       ).toBe(!fails);
       expect(view.findAll('div').some((node) => node.props['role'] === 'status')).toBe(fails);
@@ -132,7 +139,7 @@ describe('Remote Desktop first-frame state', () => {
     const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
     const prompt = () =>
       view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => node.props['data-testid'] === 'desktop-control-prompt');
     try {
       await flushComponent();
@@ -149,7 +156,7 @@ describe('Remote Desktop first-frame state', () => {
       expect(mocks.clients[0]).toHaveProperty('viewOnly', false);
       expect(prompt()).toBeUndefined();
       const button = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => node.props['data-testid'] === 'desktop-view')!;
       await (button.props['onClick'] as () => void)();
       await flushComponent();
@@ -171,7 +178,7 @@ describe('Remote Desktop first-frame state', () => {
       mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
       await flushComponent();
       const control = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => node.props['data-testid'] === 'desktop-control-prompt')!;
       await (control.props['onClick'] as () => void)();
       window.dispatchEvent(new Event('blur'));
@@ -195,7 +202,7 @@ describe('Remote Desktop first-frame state', () => {
     const view = renderComponent(RemoteDesktopPage, { nodeId: 'node-a' });
     const click = (id: string) =>
       (
-        view.findAll('ElButton').find((node) => node.props['data-testid'] === id)!.props[
+        view.findAll('MarButton').find((node) => node.props['data-testid'] === id)!.props[
           'onClick'
         ] as () => Promise<void>
       )();
@@ -233,7 +240,7 @@ describe('Remote Desktop first-frame state', () => {
       mocks.clients[0]!.dispatchEvent(new Event('firstframe'));
       await flushComponent();
       const control = view
-        .findAll('ElButton')
+        .findAll('MarButton')
         .find((node) => node.props['data-testid'] === 'desktop-control-prompt')!;
       await (control.props['onClick'] as () => void)();
       if (reason === 'hidden') {
@@ -265,7 +272,7 @@ describe('Remote Desktop first-frame state', () => {
       await flushComponent();
       expect(
         view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .some((node) => node.props['data-testid'] === 'desktop-control-prompt')
       ).toBe(false);
     } finally {
@@ -359,7 +366,7 @@ describe('Remote Desktop error presentation', () => {
         expect(mocks.select).toHaveBeenCalledOnce();
         expect(
           view
-            .findAll('ElButton')
+            .findAll('MarButton')
             .some((node) =>
               textContent(node).includes(locale === 'zh-CN' ? '重新连接' : 'Reconnect')
             )

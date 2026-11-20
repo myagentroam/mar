@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
@@ -90,22 +91,21 @@ async function save(): Promise<void> {
           :disabled="!writable || saving"
           >{{ t('personalGit.includeParent') }}</el-checkbox
         >
-        <el-button
+        <MarButton
           v-if="writable"
           type="primary"
           :icon="marIcon('check')"
           :disabled="!loaded || loading || saving"
           :loading="saving"
           @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ t('personalGit.save') }}</el-button
+          >{{ t('personalGit.save') }}</MarButton
         >
       </div>
       <p class="workspace-git-hint">{{ t('personalGit.preserveHint') }}</p>
       <p v-if="includeParent !== undefined" class="workspace-git-hint">
         {{ t('personalGit.includeParentHint') }}
       </p>
-      <el-button v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</el-button>
+      <MarButton v-if="!loaded && !loading" @click="load">{{ t('personalGit.reload') }}</MarButton>
     </template>
   </section>
 </template>

@@ -35,8 +35,9 @@ test('Audit desktop page changes show one table loading indicator', async ({ pag
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(2);
   await expect(section.locator('.el-table .el-loading-mask')).toBeVisible();
   await expect(section.locator(':scope > .el-loading-mask')).toBeHidden();
-  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveClass(
-    /is-loading/
+  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).not.toHaveAttribute(
+    'aria-busy',
+    'true'
   );
   await page.evaluate(() => window.managementPageFixture.settle(1, true));
   await expect(section.locator('.el-table .el-loading-mask')).toBeHidden();
@@ -73,7 +74,7 @@ test('Usage details retain rows and retry a failed automatic page in place', asy
   await page.evaluate(() => window.managementPageFixture.settle(2, false));
   const retry = boundary.locator('button');
   await expect(retry).toBeVisible();
-  await expect(retry).toHaveClass(/is-link/);
+  await expect(retry).toHaveClass(/mar-ui-button--inline/);
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await retry.hover();
   await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -169,8 +170,9 @@ test('Resource append failure stops, refresh uses one indicator, and a new conte
   await section.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.managementPageFixture.calls().length)).toBe(3);
   await expect(boundary.locator('button')).toHaveCount(0);
-  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).toHaveClass(
-    /is-loading/
+  await expect(section.getByRole('button', { name: 'Refresh', exact: true })).toHaveAttribute(
+    'aria-busy',
+    'true'
   );
   await expect(section.locator('.el-loading-mask')).toBeHidden();
   await page.evaluate(() => window.managementPageFixture.settle(2, true));

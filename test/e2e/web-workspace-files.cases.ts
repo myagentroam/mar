@@ -225,13 +225,13 @@ test('samples first and warm mobile Files opening with a populated directory', a
     await more.click();
     await expect(copyPath).toBeVisible();
     const openedMenu = await copyPath.evaluateHandle((element) =>
-      element.closest('.el-dropdown__popper')
+      element.closest('.mar-ui-dropdown__popup')
     );
     await test.info().attach(`mobile-files-${phase}-menu-focus.json`, {
       body: JSON.stringify(
         await page.evaluate(() => ({
           active: document.activeElement?.outerHTML.slice(0, 500),
-          inDropdown: document.activeElement?.closest('.el-dropdown__popper') !== null
+          inDropdown: document.activeElement?.closest('.mar-ui-dropdown__popup') !== null
         }))
       ),
       contentType: 'application/json'
@@ -243,7 +243,7 @@ test('samples first and warm mobile Files opening with a populated directory', a
     await page.keyboard.press('Enter');
     await expect(copyPath).toBeVisible();
     await expect(
-      page.locator('.el-dropdown__popper :is([role="menu"], [role="menuitem"]):focus')
+      page.locator('.mar-ui-dropdown__popup:focus, .mar-ui-dropdown__popup [role="menuitem"]:focus')
     ).toBeVisible();
     await page.keyboard.press('ArrowDown');
     await test.info().attach(`mobile-files-${phase}-keyboard-focus.json`, {
@@ -252,7 +252,7 @@ test('samples first and warm mobile Files opening with a populated directory', a
       ),
       contentType: 'application/json'
     });
-    await expect(page.locator('.el-dropdown__popper [role="menuitem"]:focus')).toBeVisible();
+    await expect(page.locator('.mar-ui-dropdown__popup [role="menuitem"]:focus')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(copyPath).toBeHidden();
     await aside.getByRole('treeitem', { name: 'file-000.ts' }).click({ button: 'right' });
@@ -864,7 +864,9 @@ test('File navigation uses rounded selection and the editor fills its surface wi
         'height',
         '44px'
       );
-      const controls = preview.locator('.file-preview-desktop-actions .el-button.is-circle');
+      const controls = preview.locator(
+        '.file-preview-desktop-actions .mar-ui-button.mar-ui-button--circle'
+      );
       expect(await controls.count()).toBeGreaterThan(0);
       for (const button of await controls.all()) {
         const label = await button.getAttribute('aria-label');
@@ -1644,7 +1646,7 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   await expect(contentSearchButton).toHaveClass(/mar-icon-action/u);
   expect(
     await page
-      .locator('.content-search-toolbar .el-input__wrapper')
+      .locator('.content-search-toolbar .mar-ui-input')
       .evaluate((element) => Math.round(element.getBoundingClientRect().height))
   ).toBeLessThanOrEqual(28);
   const regex = page.getByRole('checkbox', { name: '使用正则表达式' });

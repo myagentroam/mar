@@ -93,20 +93,21 @@ describe('Public resource operation behavior', () => {
         { validate }
       );
       const button = (label: string) =>
-        view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+        view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
       try {
         await flushComponent();
         const actionRow = view
           .findAll('div')
           .find((node) => node.props['class'] === 'mar-row-actions')!;
         expect(
-          actionRow.children
-            .filter((node) => node.type === 'ElButton')
+          view
+            .findAll('MarButton')
+            .filter((node) => node.parent === actionRow)
             .map((node) => textContent(node).trim())
         ).toEqual([messages.edit, common.delete]);
         await trigger(button(messages.edit), 'onClick');
         const name = view
-          .findAll('ElInput')
+          .findAll('MarInput')
           .find((node) => node.props['maxlength'] === (resourceType === 'NODE' ? 128 : 255))!;
         await trigger(name, 'onUpdate:modelValue', '  New client name  ');
         await trigger(button(common.save), 'onClick');
@@ -173,7 +174,7 @@ describe('Public resource operation behavior', () => {
       .mockResolvedValue('confirm' as never);
     const view = renderComponent(NodePage, { request, writable: true });
     const button = (label: string) =>
-      view.findAll('ElButton').find((node) => textContent(node).trim() === label)!;
+      view.findAll('MarButton').find((node) => textContent(node).trim() === label)!;
     const refreshLabel = commonMessages['en-US'].generated.nodeDetailsDialogs.refreshCapabilities;
     try {
       await flushComponent();

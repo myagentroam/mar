@@ -1724,7 +1724,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     );
     expect(loadingOlder).toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
     expect(loadingOlder).toMatch(
-      /<button(?=[^>]*class="[^"]*\bel-button\b)(?=[^>]*class="[^"]*\bis-round\b)(?=[^>]*class="[^"]*\bconversation-latest\b)[^>]*>/u
+      /<button(?=[^>]*class="[^"]*\bmar-ui-button\b)(?=[^>]*class="[^"]*\bmar-ui-button--round\b)(?=[^>]*class="[^"]*\bconversation-latest\b)[^>]*>/u
     );
     expect(following).not.toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
     expect(following).not.toContain(i18n.global.t('conversationActivity.historyStart'));
@@ -1851,7 +1851,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     };
     const html = await render(ConversationScroll, props);
     expect(html).toMatch(
-      /<button(?=[^>]*class="[^"]*\bel-button\b)(?=[^>]*class="[^"]*\bis-link\b)(?=[^>]*class="[^"]*\bconversation-load-older\b)[^>]*>/u
+      /<button(?=[^>]*class="[^"]*\bmar-ui-button\b)(?=[^>]*class="[^"]*\bmar-ui-button--inline\b)(?=[^>]*class="[^"]*\bconversation-load-older\b)[^>]*>/u
     );
     for (const state of [{ hasOlder: false }, { hasTurns: false }]) {
       const hidden = await render(ConversationScroll, { ...props, ...state });
@@ -1930,7 +1930,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       });
       expect(html).toContain('upstream diagnostic');
       expect(html).not.toContain('href="https://chatgpt.com/settings/usage"');
-      expect(html).not.toContain('el-button--primary');
+      expect(html).not.toContain('mar-ui-button--primary');
       if (code === 'subscription_sharing_usage_limit_exceeded') {
         expect(html).toContain('https://chatgpt.com/settings/usage');
         expect(html).toContain(
@@ -2845,8 +2845,8 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(unavailable).not.toContain(i18n.global.t('generated.conversationApprovals.allow'));
     expect(ready).toContain(i18n.global.t('generated.conversationApprovals.allow'));
     expect(ready).toContain(i18n.global.t('generated.conversationApprovals.deny'));
-    expect(ready).toContain('el-button--primary');
-    expect(ready).not.toContain('el-button--danger');
+    expect(ready).toContain('mar-ui-button--primary');
+    expect(ready).not.toContain('mar-ui-button--danger');
     expect(ready).toContain(i18n.global.t('generated.conversationApprovals.expires'));
     for (const status of ['APPROVED', 'REJECTED', 'EXPIRED'] as const) {
       const settled = await render(ConversationTimeline, {

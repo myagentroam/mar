@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
 import { marIcon } from '@myagentroam/web-core/icons';
 import type { OrganizationCascaderOption } from '@/service/enterprise-management-service';
 import { translate } from '@/service/locale-preference-service';
@@ -24,7 +26,7 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
           ? translate('generated.resourceSharingPage.node5')
           : translate('generated.resourceSharingPage.workspace4')
       }}</span>
-      <el-input
+      <MarInput
         v-model="keyword"
         :aria-label="translate('generated.resourceSharingPage.keyword')"
         clearable
@@ -34,20 +36,18 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
     </label>
     <label class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.ownerType') }}</span>
-      <el-select
+      <MarSelect
         v-model="ownerType"
         :aria-label="translate('generated.resourceSharingPage.ownerType')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.selectAnOwnerType')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option :label="translate('generated.resourceSharingPage.personal2')" value="PERSONAL" />
-        <el-option
+        <MarOption :label="translate('generated.resourceSharingPage.personal2')" value="PERSONAL" />
+        <MarOption
           :label="translate('generated.resourceSharingPage.organization')"
           value="ORGANIZATION"
         />
-      </el-select>
+      </MarSelect>
     </label>
     <label v-if="ownerType === 'ORGANIZATION'" class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.organization2') }}</span>
@@ -64,37 +64,33 @@ const status = defineModel<'' | 'online' | 'offline' | 'disabled'>('status', { r
     </label>
     <label v-if="ownerType === 'PERSONAL'" class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.user') }}</span>
-      <el-select
+      <MarSelect
         v-model="ownerUserId"
         :aria-label="translate('generated.resourceSharingPage.user')"
         clearable
         filterable
         :placeholder="translate('generated.resourceSharingPage.selectAnOwner')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option
+        <MarOption
           v-for="user in userOptions"
           :key="user.value"
           :label="user.label"
           :value="user.value"
         />
-      </el-select>
+      </MarSelect>
     </label>
     <label v-if="resourceType === 'NODE'" class="mar-filter-field">
       <span>{{ translate('generated.resourceSharingPage.status') }}</span>
-      <el-select
+      <MarSelect
         v-model="status"
         :aria-label="translate('generated.resourceSharingPage.status')"
         clearable
         :placeholder="translate('generated.resourceSharingPage.selectAStatus')"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
       >
-        <el-option :label="translate('generated.resourceSharingPage.online2')" value="online" />
-        <el-option :label="translate('generated.resourceSharingPage.offline2')" value="offline" />
-        <el-option :label="translate('generated.resourceSharingPage.disabled2')" value="disabled" />
-      </el-select>
+        <MarOption :label="translate('generated.resourceSharingPage.online2')" value="online" />
+        <MarOption :label="translate('generated.resourceSharingPage.offline2')" value="offline" />
+        <MarOption :label="translate('generated.resourceSharingPage.disabled2')" value="disabled" />
+      </MarSelect>
     </label>
   </div>
 </template>

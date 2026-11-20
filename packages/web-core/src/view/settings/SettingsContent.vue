@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -243,12 +247,11 @@ async function confirmLogout(): Promise<void> {
               translate('generated.settingsContent.signInSessions5', { value0: sessions.length })
             }}
           </h3>
-          <el-button
+          <MarButton
             v-tooltip="translate('generated.settingsContent.refreshSignInSessions')"
             class="mar-icon-action"
             :icon="marIcon('refresh')"
             :loading="sessionsRefreshing"
-            :loading-icon="marIcon('loading-action')"
             :aria-busy="sessionsRefreshing || undefined"
             :aria-label="translate('generated.settingsContent.refreshSignInSessions')"
             text
@@ -272,30 +275,25 @@ async function confirmLogout(): Promise<void> {
               {{ translate('generated.settingsContent.expires') }}
               {{ formatSessionTime(session.expiresAt) }}
             </small>
-            <el-button
+            <MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               @click="confirmLogoutSession(session)"
             >
               {{ translate('generated.settingsContent.signOut') }}
-            </el-button>
+            </MarButton>
           </li>
         </ul>
       </section>
       <slot name="account-identity" />
       <div class="account-actions">
-        <el-button type="primary" :icon="marIcon('key')" @click="passwordDialogOpen = true">{{
+        <MarButton type="primary" :icon="marIcon('key')" @click="passwordDialogOpen = true">{{
           translate('generated.settingsContent.changePassword')
-        }}</el-button>
-        <el-button
-          :loading="loading"
-          plain
-          :icon="marIcon('power')"
-          @click="confirmLogout"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.settingsContent.signOut2') }}</el-button
-        >
+        }}</MarButton>
+        <MarButton :loading="loading" plain :icon="marIcon('power')" @click="confirmLogout">{{
+          translate('generated.settingsContent.signOut2')
+        }}</MarButton>
       </div>
       <el-dialog
         @vue:mounted="mountMobileDialogReturn"
@@ -306,48 +304,47 @@ async function confirmLogout(): Promise<void> {
         width="min(420px, calc(100vw - 32px))"
         :close-icon="marIcon('close')"
       >
-        <el-form label-position="top" @submit.prevent="submitPasswordChange">
-          <el-form-item :label="translate('generated.settingsContent.currentPassword')" required
-            ><el-input
+        <MarForm label-position="top" @submit.prevent="submitPasswordChange">
+          <MarFormItem :label="translate('generated.settingsContent.currentPassword')" required
+            ><MarInput
               v-model="currentPassword"
               :placeholder="translate('generated.settingsContent.enterCurrentPassword')"
               :aria-label="translate('generated.settingsContent.currentPassword2')"
               type="password"
               autocomplete="current-password"
               @input="emit('clearPasswordError')"
-          /></el-form-item>
-          <el-form-item :label="translate('generated.settingsContent.newPassword')" required
-            ><el-input
+          /></MarFormItem>
+          <MarFormItem :label="translate('generated.settingsContent.newPassword')" required
+            ><MarInput
               v-model="password"
               :placeholder="translate('generated.settingsContent.enterNewPassword')"
               :aria-label="translate('generated.settingsContent.newPassword2')"
               type="password"
               autocomplete="new-password"
               @input="emit('clearPasswordError')"
-          /></el-form-item>
-          <el-form-item :label="translate('generated.settingsContent.confirmNewPassword')" required
-            ><el-input
+          /></MarFormItem>
+          <MarFormItem :label="translate('generated.settingsContent.confirmNewPassword')" required
+            ><MarInput
               v-model="confirmation"
               :placeholder="translate('generated.settingsContent.enterTheNewPasswordAgain')"
               :aria-label="translate('generated.settingsContent.confirmNewPassword2')"
               type="password"
               autocomplete="new-password"
               @input="emit('clearPasswordError')"
-          /></el-form-item>
+          /></MarFormItem>
           <p v-if="passwordValidationError" class="password-form-error" role="alert">
             {{ passwordValidationError }}
           </p>
-        </el-form>
+        </MarForm>
         <template #footer
-          ><el-button @click="closePasswordDialog">{{
+          ><MarButton @click="closePasswordDialog">{{
             translate('generated.settingsContent.cancel')
-          }}</el-button
-          ><el-button
+          }}</MarButton
+          ><MarButton
             :loading="loading || passwordSubmitting"
             type="primary"
             @click="submitPasswordChange"
-            :loading-icon="marIcon('loading-action')"
-            >{{ translate('generated.settingsContent.confirmChange') }}</el-button
+            >{{ translate('generated.settingsContent.confirmChange') }}</MarButton
           ></template
         >
       </el-dialog>
@@ -370,14 +367,13 @@ async function confirmLogout(): Promise<void> {
       </p>
       <div class="registration-action">
         <slot name="registration-owner" />
-        <el-button
+        <MarButton
           :loading="registrationLoading"
           type="primary"
           @click="emit('createRegistrationToken')"
-          :loading-icon="marIcon('loading-action')"
         >
           {{ translate('generated.settingsContent.createOneTimeNodeRegistrationToken') }}
-        </el-button>
+        </MarButton>
       </div>
       <p v-if="registrationToken" class="token registration-token">
         <code>{{ registrationToken }}</code>
@@ -389,82 +385,81 @@ async function confirmLogout(): Promise<void> {
       <p class="account-summary">{{ t('settings.appearanceSummary') }}</p>
       <div class="appearance-options">
         <div class="theme-row">
-          <label class="theme-label" for="appearance-theme">{{ t('settings.theme') }}</label>
-          <el-select
+          <label id="appearance-theme-label" class="theme-label" for="appearance-theme">{{
+            t('settings.theme')
+          }}</label>
+          <MarSelect
             id="appearance-theme"
             :model-value="theme"
             class="theme-select"
-            :aria-label="t('settings.theme')"
+            aria-labelledby="appearance-theme-label"
             @update:model-value="setTheme($event as ThemePreference)"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option :label="t('settings.light')" value="daylight" />
-            <el-option :label="t('settings.dark')" value="vscode-dark-2026" />
-            <el-option
+            <MarOption :label="t('settings.light')" value="daylight" />
+            <MarOption :label="t('settings.dark')" value="vscode-dark-2026" />
+            <MarOption
               v-for="item in customThemes"
               :key="item.id"
               :label="item.name"
               :value="item.id"
             />
-          </el-select>
+          </MarSelect>
         </div>
         <div class="theme-row">
-          <label class="theme-label" for="appearance-file-editor">{{
-            t('settings.defaultFileMode')
-          }}</label>
-          <el-select
+          <label
+            id="appearance-file-editor-label"
+            class="theme-label"
+            for="appearance-file-editor"
+            >{{ t('settings.defaultFileMode') }}</label
+          >
+          <MarSelect
             id="appearance-file-editor"
             :model-value="fileEditorMode"
             class="theme-select"
-            :aria-label="t('settings.defaultFileMode')"
+            aria-labelledby="appearance-file-editor-label"
             @update:model-value="fileEditorService.setMode($event as FileEditorDefaultMode)"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option :label="t('settings.fileModeEdit')" value="edit" />
-            <el-option :label="t('settings.fileModeReadOnly')" value="read-only" />
-          </el-select>
+            <MarOption :label="t('settings.fileModeEdit')" value="edit" />
+            <MarOption :label="t('settings.fileModeReadOnly')" value="read-only" />
+          </MarSelect>
         </div>
         <div class="theme-row">
-          <label class="theme-label" for="appearance-icon-theme">{{
+          <label id="appearance-icon-theme-label" class="theme-label" for="appearance-icon-theme">{{
             t('settings.iconTheme')
           }}</label>
-          <el-select
+          <MarSelect
             id="appearance-icon-theme"
             :model-value="iconTheme"
             class="theme-select"
-            :aria-label="t('settings.iconTheme')"
+            aria-labelledby="appearance-icon-theme-label"
             @update:model-value="setIconTheme($event as IconThemeId)"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option
+            <MarOption
               v-for="option in iconThemes"
               :key="option.id"
               :label="t(option.labelKey)"
               :value="option.id"
             />
-          </el-select>
+          </MarSelect>
         </div>
         <div class="theme-row">
-          <label class="theme-label" for="appearance-language">{{ t('common.language') }}</label>
-          <el-select
+          <label id="appearance-language-label" class="theme-label" for="appearance-language">{{
+            t('common.language')
+          }}</label>
+          <MarSelect
             id="appearance-language"
             :model-value="locale"
             class="theme-select"
-            :aria-label="t('common.language')"
+            aria-labelledby="appearance-language-label"
             @update:model-value="updateLocale($event as AppLocale)"
-            :clear-icon="marIcon('clear-input')"
-            :suffix-icon="marIcon('chevron-down')"
           >
-            <el-option
+            <MarOption
               v-for="option in SUPPORTED_LOCALES"
               :key="option.value"
               :label="option.nativeLabel"
               :value="option.value"
             />
-          </el-select>
+          </MarSelect>
         </div>
         <PromptCompletionPreferences />
       </div>
@@ -777,19 +772,19 @@ async function confirmLogout(): Promise<void> {
           <dd>
             <span>{{ t(`webUpdate.offline.${pwaState.offline}`) }}</span>
             <div class="pwa-actions">
-              <el-button :loading="checkingForUpdates" @click="emit('checkForUpdates')">{{
+              <MarButton :loading="checkingForUpdates" @click="emit('checkForUpdates')">{{
                 t('webUpdate.check')
-              }}</el-button>
-              <el-button v-if="pwaState.update" type="primary" @click="emit('applyWebUpdate')">{{
+              }}</MarButton>
+              <MarButton v-if="pwaState.update" type="primary" @click="emit('applyWebUpdate')">{{
                 t('webUpdate.apply')
-              }}</el-button>
-              <el-button v-else-if="pwaState.reload" @click="emit('applyWebUpdate')">{{
+              }}</MarButton>
+              <MarButton v-else-if="pwaState.reload" @click="emit('applyWebUpdate')">{{
                 t(
                   pwaState.reload.action === 'activate'
                     ? 'webUpdate.usePrepared'
                     : 'webUpdate.reloadPrepared'
                 )
-              }}</el-button>
+              }}</MarButton>
             </div>
           </dd>
         </div>
@@ -1227,14 +1222,14 @@ async function confirmLogout(): Promise<void> {
 </style>
 
 <style scoped>
-:global(.admin-sessions li > .el-button) {
+:global(.admin-sessions li > .mar-ui-button) {
   grid-column: 3;
   grid-row: 1 / span 2;
   align-self: center;
 }
 
 @media (max-width: 520px) {
-  :global(.admin-sessions li > .el-button) {
+  :global(.admin-sessions li > .mar-ui-button) {
     grid-column: 2;
     grid-row: 1 / span 3;
   }

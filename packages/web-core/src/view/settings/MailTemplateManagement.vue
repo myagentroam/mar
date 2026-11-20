@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarSelect, MarOption } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -7,7 +11,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import { marIcon } from '../../util/mar-icons.js';
 import { computed, ref } from 'vue';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { translate } from '../../service/locale-preference-service';
 import {
   createMailTemplateManagementService,
@@ -109,9 +112,9 @@ async function sendTest(): Promise<void> {
 </script>
 
 <template>
-  <el-button :icon="marIcon('mail')" @click="openViewer">
+  <MarButton :icon="marIcon('mail')" @click="openViewer">
     {{ translate('generated.systemConfigurationPage.mailTemplateView') }}
-  </el-button>
+  </MarButton>
   <el-dialog
     @vue:mounted="mountMobileDialogReturn"
     @vue:before-unmount="unmountMobileDialogReturn"
@@ -188,13 +191,13 @@ async function sendTest(): Promise<void> {
       </p>
     </div>
     <template #footer>
-      <el-button
+      <MarButton
         :disabled="!writable || testTemplates.length === 0 || service.busy.value"
         @click="openTest"
       >
         {{ translate('generated.systemConfigurationPage.mailTest') }}
-      </el-button>
-      <el-button @click="viewerOpen = false">{{ translate('common.close') }}</el-button>
+      </MarButton>
+      <MarButton @click="viewerOpen = false">{{ translate('common.close') }}</MarButton>
     </template>
   </el-dialog>
   <el-dialog
@@ -207,42 +210,34 @@ async function sendTest(): Promise<void> {
     width="min(480px, calc(100vw - 32px))"
     :close-icon="marIcon('close')"
   >
-    <el-form ref="testForm" :model="testModel" :rules="testRules" label-position="top">
-      <el-form-item
-        :label="translate('generated.systemConfigurationPage.mailAddress')"
-        prop="email"
-      >
-        <el-input v-model="testAddress" type="email" />
-      </el-form-item>
-      <el-form-item
+    <MarForm ref="testForm" :model="testModel" :rules="testRules" label-position="top">
+      <MarFormItem :label="translate('generated.systemConfigurationPage.mailAddress')" prop="email">
+        <MarInput v-model="testAddress" type="email" />
+      </MarFormItem>
+      <MarFormItem
         :label="translate('generated.systemConfigurationPage.mailTemplate')"
         prop="templateId"
       >
-        <el-select
+        <MarSelect
           v-model="testTemplateId"
           class="template-test-select"
           :clear-icon="marIcon('clear-input')"
           :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="template in testTemplates"
             :key="template.id"
             :value="template.id"
             :label="template.name"
           />
-        </el-select>
-      </el-form-item>
-    </el-form>
+        </MarSelect>
+      </MarFormItem>
+    </MarForm>
     <template #footer>
-      <el-button @click="testOpen = false">{{ translate('common.cancel') }}</el-button>
-      <el-button
-        type="primary"
-        :loading="service.busy.value"
-        @click="sendTest"
-        :loading-icon="marIcon('loading-action')"
-      >
+      <MarButton @click="testOpen = false">{{ translate('common.cancel') }}</MarButton>
+      <MarButton type="primary" :loading="service.busy.value" @click="sendTest">
         {{ translate('generated.systemConfigurationPage.mailTestSend') }}
-      </el-button>
+      </MarButton>
     </template>
   </el-dialog>
 </template>

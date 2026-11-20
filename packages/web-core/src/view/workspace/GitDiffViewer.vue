@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import './file-preview.css';
 import type { ComposerQuoteTarget } from '../../model/composer-quote.js';
 import { selectedTextOffsets, unifiedDiffLines } from '../../util/quote-selection.js';
@@ -747,7 +748,7 @@ defineExpose({
     </template>
     <template #mobile-actions>
       <div class="diff-mobile-action-row diff-mobile-navigation">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousFile')"
           circle
@@ -756,8 +757,8 @@ defineExpose({
           :aria-label="translate('generated.gitDiffViewer.previousFile')"
           @click="emit('moveFile', -1)"
           ><MarIcon name="chevron-left"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousChange')"
           circle
@@ -766,8 +767,8 @@ defineExpose({
           :aria-label="translate('generated.gitDiffViewer.previousChange')"
           @click="moveDiff(-1)"
           ><MarIcon name="chevron-up"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextChange')"
           circle
@@ -776,8 +777,8 @@ defineExpose({
           :aria-label="translate('generated.gitDiffViewer.nextChange')"
           @click="moveDiff(1)"
           ><MarIcon name="chevron-down"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextFile')"
           circle
@@ -786,10 +787,10 @@ defineExpose({
           :aria-label="translate('generated.gitDiffViewer.nextFile')"
           @click="emit('moveFile', 1)"
           ><MarIcon name="chevron-right"
-        /></el-button>
+        /></MarButton>
       </div>
       <div class="diff-mobile-action-row diff-mobile-utilities">
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
@@ -797,8 +798,8 @@ defineExpose({
           :aria-label="translate('fileEditor.openSource')"
           @click="toggleEdit"
           ><MarIcon name="source-code"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('inlineFind.label')"
           v-if="findAvailable"
@@ -807,8 +808,8 @@ defineExpose({
           :aria-label="translate('inlineFind.label')"
           @click="openInternalFind"
           ><MarIcon name="search"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.downloadDiff')"
           :aria-label="translate('generated.gitDiffViewer.downloadDiff')"
@@ -817,8 +818,8 @@ defineExpose({
           @click="emit('download')"
         >
           <MarIcon name="download" />
-        </el-button>
-        <el-button
+        </MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview2')"
           v-if="!embedded"
@@ -828,7 +829,7 @@ defineExpose({
           @click="emit('close')"
         >
           <MarIcon name="close" />
-        </el-button>
+        </MarButton>
       </div>
     </template>
     <template #primary-actions>
@@ -836,7 +837,7 @@ defineExpose({
         class="mar-file-preview-actions diff-preview-toolbar"
         :aria-label="translate('generated.gitDiffViewer.diffToolbar')"
       >
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('fileEditor.openSourceShortcut')"
           circle
@@ -844,8 +845,8 @@ defineExpose({
           :aria-label="translate('fileEditor.openSource')"
           @click="toggleEdit"
           ><MarIcon name="source-code"
-        /></el-button>
-        <el-button
+        /></MarButton>
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousFile2')"
           :disabled="paths.length < 2 || loading"
@@ -855,14 +856,14 @@ defineExpose({
           @click="emit('moveFile', -1)"
         >
           <MarIcon name="chevron-left" />
-        </el-button>
+        </MarButton>
         <span
           v-tooltip="translate('generated.gitDiffViewer.filesAvailable', { value0: paths.length })"
           class="diff-toolbar-count"
         >
           {{ currentFileNumber }} / {{ paths.length }}
         </span>
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextFile2')"
           :disabled="paths.length < 2 || loading"
@@ -872,9 +873,9 @@ defineExpose({
           @click="emit('moveFile', 1)"
         >
           <MarIcon name="chevron-right" />
-        </el-button>
+        </MarButton>
         <span class="diff-toolbar-divider" aria-hidden="true" />
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.previousChange2')"
           :disabled="hunks.length === 0"
@@ -884,14 +885,14 @@ defineExpose({
           @click="moveDiff(-1)"
         >
           <MarIcon name="chevron-up" />
-        </el-button>
+        </MarButton>
         <span
           v-tooltip="translate('generated.gitDiffViewer.changes', { value0: hunks.length })"
           class="diff-toolbar-count"
         >
           {{ activeDiffNumber }} / {{ hunks.length }}
         </span>
-        <el-button
+        <MarButton
           class="file-toolbar-control"
           v-tooltip="translate('generated.gitDiffViewer.nextChange2')"
           :disabled="hunks.length === 0"
@@ -901,8 +902,8 @@ defineExpose({
           @click="moveDiff(1)"
         >
           <MarIcon name="chevron-down" />
-        </el-button>
-        <el-button
+        </MarButton>
+        <MarButton
           class="file-toolbar-control diff-close-button"
           v-tooltip="translate('generated.gitDiffViewer.closeDiffPreview')"
           v-if="!embedded"
@@ -912,7 +913,7 @@ defineExpose({
           @click="emit('close')"
         >
           <MarIcon name="close" />
-        </el-button>
+        </MarButton>
       </div>
     </template>
     <InlineFindBar
@@ -953,7 +954,7 @@ defineExpose({
                 disabled: previewEnabled
               }"
               class="mar-tooltip-control"
-              ><el-button
+              ><MarButton
                 size="small"
                 :disabled="!previewEnabled"
                 :aria-description="
@@ -964,7 +965,7 @@ defineExpose({
                 @click="emit('preview')"
               >
                 {{ translate('generated.gitDiffViewer.openFilePreview') }}
-              </el-button></span
+              </MarButton></span
             >
           </template>
         </FilePreviewState>
@@ -1001,9 +1002,9 @@ defineExpose({
           :message="translate('generated.gitDiffViewer.gitDiffHasNoDisplayableTextContent')"
         >
           <template v-if="previewEnabled" #actions
-            ><el-button size="small" @click="emit('preview')">{{
+            ><MarButton size="small" @click="emit('preview')">{{
               translate('generated.gitDiffViewer.openFilePreview')
-            }}</el-button></template
+            }}</MarButton></template
           >
         </FilePreviewState>
         <aside
@@ -1320,7 +1321,7 @@ defineExpose({
     border-top: 1px solid var(--mar-border-medium);
     padding-top: 0.25rem;
   }
-  .diff-mobile-action-row :deep(.el-button + .el-button) {
+  .diff-mobile-action-row :deep(.mar-ui-button + .mar-ui-button) {
     margin-left: 0;
   }
 }

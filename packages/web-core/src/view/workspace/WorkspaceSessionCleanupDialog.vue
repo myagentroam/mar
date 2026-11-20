@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -8,7 +10,6 @@ import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { marIcon } from '../../util/mar-icons.js';
-import type { FormInstance, FormRules } from 'element-plus';
 
 import { computed, reactive, ref } from 'vue';
 import type { WorkspaceSessionCleanupResult } from '@myagentroam/protocol';
@@ -119,13 +120,14 @@ async function submit(): Promise<void> {
         <p class="workspace-session-cleanup-description">
           {{ translate('generated.workspaceSessionCleanupDialog.description') }}
         </p>
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
-          <el-form-item
+        <MarForm ref="formRef" :model="form" :rules="rules" label-position="top">
+          <MarFormItem
             :label="translate('generated.workspaceSessionCleanupDialog.inactiveDays')"
             prop="inactiveDays"
           >
             <el-input-number
               v-model="form.inactiveDays"
+              :aria-label="translate('generated.workspaceSessionCleanupDialog.inactiveDays')"
               :disabled="loading"
               :max="365"
               :min="1"
@@ -134,8 +136,8 @@ async function submit(): Promise<void> {
               ><template #decrease-icon><MarIcon name="subtract" /></template
               ><template #increase-icon><MarIcon name="plus" /></template
             ></el-input-number>
-          </el-form-item>
-        </el-form>
+          </MarFormItem>
+        </MarForm>
       </template>
 
       <template v-else>
@@ -175,18 +177,14 @@ async function submit(): Promise<void> {
 
     <template #footer>
       <template v-if="result === undefined">
-        <el-button :disabled="loading" @click="close">{{
+        <MarButton :disabled="loading" @click="close">{{
           translate('generated.workspaceSessionCleanupDialog.cancel')
-        }}</el-button>
-        <el-button
-          type="danger"
-          :loading="loading"
-          :loading-icon="marIcon('loading-action')"
-          @click="submit"
-          >{{ translate('generated.workspaceSessionCleanupDialog.cleanup') }}</el-button
-        >
+        }}</MarButton>
+        <MarButton type="danger" :loading="loading" @click="submit">{{
+          translate('generated.workspaceSessionCleanupDialog.cleanup')
+        }}</MarButton>
       </template>
-      <el-button v-else @click="close">{{ translate('common.close') }}</el-button>
+      <MarButton v-else @click="close">{{ translate('common.close') }}</MarButton>
     </template>
   </el-dialog>
 </template>

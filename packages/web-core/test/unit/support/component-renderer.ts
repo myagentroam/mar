@@ -7,6 +7,7 @@ import {
   provide,
   ssrContextKey,
   type Component,
+  type ComponentInternalInstance,
   type InjectionKey
 } from 'vue';
 import { i18n } from '../../../src/service/locale-preference-service.js';
@@ -83,9 +84,41 @@ export function renderComponent(
   app.directive('loading', {});
   // Browser fixtures cover delegated tooltip events and real DOM positioning.
   app.directive('tooltip', {});
+  // Button business tests read live caller props and invoke the caller's handler, as with an EL
+  // dependency stub. The rendered button remains real; native activation is tested in Chromium.
+  const boundaries = new WeakMap<TestElement, TestElement>();
+  function boundaryView(instance: ComponentInternalInstance, name: string): void {
+    const host = instance.subTree.el as TestElement;
+    const view: TestElement = {
+      ...host,
+      type: name,
+      get parent() {
+        return host.parent;
+      },
+      get children() {
+        return name === 'MarButton'
+          ? (host.children.find((node) => node.props.class === 'mar-ui-button__label')?.children ??
+              [])
+          : host.children;
+      },
+      get props() {
+        return { ...instance.props, ...instance.vnode.props };
+      }
+    };
+    boundaries.set(host, view);
+  }
+  app.mixin({
+    mounted() {
+      const type = this.$.type;
+      if (typeof type === 'function') return;
+      const name = type.name ?? type.__name;
+      if (name === 'MarButton' || name === 'MarForm') boundaryView(this.$, name);
+      if (name === 'MarForm' && this.$.exposed && options.validate)
+        this.$.exposed.validate = options.validate;
+    }
+  });
   const rowsKey: InjectionKey<() => Record<string, unknown>[]> = Symbol('table rows');
   for (const name of [
-    'ElButton',
     'ElIcon',
     'ElInput',
     'ElInputNumber',
@@ -98,9 +131,6 @@ export function renderComponent(
     'ElCheckTag',
     'ElSwitch',
     'ElTooltip',
-    'ElDropdown',
-    'ElDropdownMenu',
-    'ElDropdownItem',
     'ElEmpty',
     'ElDescriptions',
     'ElDescriptionsItem',
@@ -158,10 +188,11 @@ export function renderComponent(
   const root = element('root');
   app.mount(root);
   function findAll(type: string): TestElement[] {
-    const visit = (node: TestElement): TestElement[] => [
-      ...(node.type === type ? [node] : []),
-      ...node.children.flatMap(visit)
-    ];
+    const visit = (node: TestElement): TestElement[] => {
+      const boundary = boundaries.get(node);
+      const match = boundary?.type === type ? boundary : node.type === type ? node : undefined;
+      return [...(match ? [match] : []), ...node.children.flatMap(visit)];
+    };
     return [...visit(root), ...visit(teleportRoot)];
   }
   return { root, findAll, unmount: () => app.unmount() };

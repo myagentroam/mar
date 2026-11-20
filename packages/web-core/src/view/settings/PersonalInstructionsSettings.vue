@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import MarIcon from '../common/MarIcon.vue';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import { type FormInstance, type FormRules } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import codexLogo from '../../assets/runner-codex.png';
 import claudeCodeLogo from '../../assets/runner-claude-code.png';
@@ -266,7 +266,7 @@ async function clear(): Promise<void> {
     >
       {{ translate('personalInstructions.loadFailed') }}
     </p>
-    <el-form
+    <MarForm
       v-else
       id="personal-instructions-panel"
       role="tabpanel"
@@ -277,8 +277,13 @@ async function clear(): Promise<void> {
       :disabled="loading"
       label-position="top"
     >
-      <el-form-item :label="translate('personalInstructions.prompt')" prop="content">
+      <MarFormItem
+        :label="translate('personalInstructions.prompt')"
+        prop="content"
+        for="personal-instructions-content"
+      >
         <textarea
+          id="personal-instructions-content"
           v-model="formState.content"
           :aria-label="translate('personalInstructions.prompt')"
           :disabled="loading"
@@ -286,7 +291,7 @@ async function clear(): Promise<void> {
           :placeholder="translate('personalInstructions.placeholder')"
           @blur="validateContent"
         ></textarea>
-      </el-form-item>
+      </MarFormItem>
       <div class="instruction-actions">
         <MarButton icon="delete" :disabled="loading" :loading="saving" @click="clear">
           {{ translate('personalInstructions.clear') }}
@@ -295,7 +300,7 @@ async function clear(): Promise<void> {
           {{ translate('common.save') }}
         </MarButton>
       </div>
-    </el-form>
+    </MarForm>
   </section>
 </template>
 
@@ -376,7 +381,7 @@ h2 {
   width: 100%;
   align-self: flex-start;
 }
-.personal-instructions :deep(.el-form-item) {
+.personal-instructions :deep(.mar-ui-form-item) {
   margin-bottom: 1.5rem;
 }
 .personal-instructions textarea {

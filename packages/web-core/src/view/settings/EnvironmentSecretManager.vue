@@ -3,6 +3,9 @@
   lang="ts"
   generic="Secret extends EnvironmentSecretSummary<string> = EnvironmentSecretSummary<string>"
 >
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarForm, MarFormItem, type FormInstance, type FormRules } from '@myagentroam/mar-ui/form';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -11,7 +14,6 @@ import { watchManagementPageFailure } from '../../service/management-page-feedba
 import { showMessage } from '../../service/message-feedback-service.js';
 import { marIcon } from '../../util/mar-icons.js';
 import { ElMessageBox } from '../../service/message-box-service.js';
-import type { FormInstance, FormRules } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import {
   createEnvironmentSecretService,
@@ -335,7 +337,7 @@ function message(error: unknown): string {
     <div class="secret-heading">
       <label class="mar-filter-field"
         ><span>{{ translate('generated.environmentSecretManager.secretName') }}</span
-        ><el-input
+        ><MarInput
           v-model="keyword"
           clearable
           :placeholder="translate('generated.environmentSecretManager.enterASecretName')"
@@ -343,21 +345,20 @@ function message(error: unknown): string {
       /></label>
     </div>
     <div class="secret-toolbar">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading"
         :disabled="loading"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.environmentSecretManager.refresh') }}</el-button
+        >{{ translate('generated.environmentSecretManager.refresh') }}</MarButton
       >
-      <el-button
+      <MarButton
         v-if="writable !== false"
         type="primary"
         :icon="marIcon('plus')"
         :disabled="loading"
         @click="openCreate"
-        >{{ translate('generated.environmentSecretManager.addSecret') }}</el-button
+        >{{ translate('generated.environmentSecretManager.addSecret') }}</MarButton
       >
     </div>
     <el-table
@@ -420,20 +421,20 @@ function message(error: unknown): string {
       >
         <template #default="{ row }">
           <div class="mar-row-actions" @click.stop>
-            <el-button
+            <MarButton
               link
               :icon="marIcon('edit')"
               :disabled="writable === false"
               @click="openReplace(row)"
-              >{{ translate('generated.environmentSecretManager.updateValue') }}</el-button
+              >{{ translate('generated.environmentSecretManager.updateValue') }}</MarButton
             >
-            <el-button
+            <MarButton
               link
               type="danger"
               :icon="marIcon('delete')"
               :disabled="writable === false"
               @click="remove(row)"
-              >{{ translate('generated.environmentSecretManager.delete') }}</el-button
+              >{{ translate('generated.environmentSecretManager.delete') }}</MarButton
             >
           </div>
         </template>
@@ -482,7 +483,7 @@ function message(error: unknown): string {
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button @click="secretDetailsOpen = false">{{ translate('common.close') }}</el-button>
+        <MarButton @click="secretDetailsOpen = false">{{ translate('common.close') }}</MarButton>
       </template>
     </el-dialog>
     <el-dialog
@@ -504,7 +505,7 @@ function message(error: unknown): string {
       @closed="clearForm"
       :close-icon="marIcon('close')"
     >
-      <el-form
+      <MarForm
         ref="formRef"
         :model="{ ...formContext, name, value }"
         :rules="rules"
@@ -512,54 +513,49 @@ function message(error: unknown): string {
         label-position="top"
         @submit.prevent="save"
       >
-        <el-form-item
+        <MarFormItem
           v-if="editing === undefined && scopes.length > 1"
           :label="translate('generated.environmentSecretManager.scope2')"
         >
-          <el-select
+          <MarSelect
             v-model="scope"
             :placeholder="translate('generated.environmentSecretManager.selectAScope')"
             :clear-icon="marIcon('clear-input')"
             :suffix-icon="marIcon('chevron-down')"
-            ><el-option v-for="item in scopes" :key="item" :value="item" :label="scopeLabel(item)"
-          /></el-select>
-        </el-form-item>
-        <slot v-if="editing === undefined" name="create-fields" :scope="scope" />
-        <el-form-item
+            ><MarOption v-for="item in scopes" :key="item" :value="item" :label="scopeLabel(item)"
+          /></MarSelect>
+        </MarFormItem>
+        <slot v-if="editing === undefined" name="create-fields" :scope="scope" :disabled="saving" />
+        <MarFormItem
           :label="translate('generated.environmentSecretManager.environmentVariableName')"
           prop="name"
-          ><el-input
+          ><MarInput
             v-model="name"
             :placeholder="
               translate('generated.environmentSecretManager.enterAnEnvironmentVariableName')
             "
             :disabled="editing !== undefined"
             autocomplete="off"
-        /></el-form-item>
-        <el-form-item
+        /></MarFormItem>
+        <MarFormItem
           :label="translate('generated.environmentSecretManager.secretValue')"
           prop="value"
-          ><el-input
+          ><MarInput
             v-model="value"
             :placeholder="translate('generated.environmentSecretManager.enterASecretValue')"
             type="text"
             name="environment-variable-value"
             autocomplete="off"
             :spellcheck="false"
-        /></el-form-item>
-      </el-form>
+        /></MarFormItem>
+      </MarForm>
       <template #footer
-        ><el-button :disabled="saving" @click="dialogOpen = false">{{
+        ><MarButton :disabled="saving" @click="dialogOpen = false">{{
           translate('generated.environmentSecretManager.cancel2')
-        }}</el-button
-        ><el-button
-          type="primary"
-          :loading="saving"
-          :disabled="writable === false"
-          @click="save"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.environmentSecretManager.save') }}</el-button
-        ></template
+        }}</MarButton
+        ><MarButton type="primary" :loading="saving" :disabled="writable === false" @click="save">{{
+          translate('generated.environmentSecretManager.save')
+        }}</MarButton></template
       >
     </el-dialog>
   </LoadingPanel>
@@ -573,7 +569,7 @@ function message(error: unknown): string {
   gap: 12px;
   padding: 10px 0 8px;
 }
-.secret-heading .el-input {
+.secret-heading .mar-ui-input {
   width: min(240px, 100%);
 }
 .secret-toolbar {

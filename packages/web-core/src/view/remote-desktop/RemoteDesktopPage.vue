@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import RFB from '@novnc/novnc';
 import { publicErrorMessage } from '@myagentroam/protocol';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
@@ -359,18 +362,18 @@ onBeforeUnmount(() => {
         >
       </div>
       <div class="remote-desktop-actions">
-        <el-select
+        <MarSelect
           v-model="quality"
           :aria-label="translate('remoteDesktop.quality')"
           class="remote-screen-select"
           data-testid="desktop-quality"
           @change="changeQuality"
         >
-          <el-option :value="3" :label="translate('remoteDesktop.qualityLow')" />
-          <el-option :value="6" :label="translate('remoteDesktop.qualityMedium')" />
-          <el-option :value="9" :label="translate('remoteDesktop.qualityHigh')" />
-        </el-select>
-        <el-select
+          <MarOption :value="3" :label="translate('remoteDesktop.qualityLow')" />
+          <MarOption :value="6" :label="translate('remoteDesktop.qualityMedium')" />
+          <MarOption :value="9" :label="translate('remoteDesktop.qualityHigh')" />
+        </MarSelect>
+        <MarSelect
           v-if="discovery"
           v-model="screenId"
           :aria-label="translate('remoteDesktop.screens')"
@@ -383,7 +386,7 @@ onBeforeUnmount(() => {
           "
           @change="changeScreen"
         >
-          <el-option
+          <MarOption
             v-for="display in displayOptions"
             :key="display.displayId"
             :value="display.displayId"
@@ -393,55 +396,55 @@ onBeforeUnmount(() => {
                 : displayName(display.name)
             "
           />
-        </el-select>
-        <el-button
+        </MarSelect>
+        <MarButton
           v-if="mode === 'CONTROL'"
           data-testid="desktop-view"
           @click="setInputMode('VIEW')"
-          >{{ translate('remoteDesktop.viewing') }}</el-button
+          >{{ translate('remoteDesktop.viewing') }}</MarButton
         >
-        <el-button
+        <MarButton
           v-else
           data-testid="desktop-control"
           :disabled="!discovery?.capability.supportsControl || state !== 'ready'"
           @click="setInputMode('CONTROL')"
-          >{{ translate('remoteDesktop.controlling') }}</el-button
+          >{{ translate('remoteDesktop.controlling') }}</MarButton
         >
-        <el-button
+        <MarButton
           v-if="mode === 'CONTROL'"
           :disabled="state !== 'ready'"
           :aria-expanded="softKeyboardOpen"
           data-testid="desktop-keyboard"
           @click="softKeyboardOpen = !softKeyboardOpen"
-          >{{ translate('remoteDesktop.keyboard') }}</el-button
+          >{{ translate('remoteDesktop.keyboard') }}</MarButton
         >
-        <el-button
+        <MarButton
           :disabled="
             mode !== 'CONTROL' || state !== 'ready' || !discovery?.capability.supportsUnicodePaste
           "
           data-testid="desktop-paste"
           @click="paste"
-          >{{ translate('remoteDesktop.paste') }}</el-button
+          >{{ translate('remoteDesktop.paste') }}</MarButton
         >
       </div>
     </header>
     <div v-if="softKeyboardOpen && mode === 'CONTROL'" class="remote-desktop-keyboard">
-      <el-input
+      <MarInput
         v-model="softText"
         :aria-label="translate('remoteDesktop.keyboardInput')"
         :placeholder="translate('remoteDesktop.keyboardInput')"
         maxlength="256"
         data-testid="desktop-soft-text"
       />
-      <el-button data-testid="desktop-send-text" :disabled="!softText" @click="sendSoftText">{{
+      <MarButton data-testid="desktop-send-text" :disabled="!softText" @click="sendSoftText">{{
         translate('remoteDesktop.sendText')
-      }}</el-button>
-      <el-button data-testid="desktop-enter" @click="sendSoftKey(0xff0d, 'Enter')">{{
+      }}</MarButton>
+      <MarButton data-testid="desktop-enter" @click="sendSoftKey(0xff0d, 'Enter')">{{
         translate('remoteDesktop.enter')
-      }}</el-button>
-      <el-button data-testid="desktop-backspace" @click="sendSoftKey(0xff08, 'Backspace')">{{
+      }}</MarButton>
+      <MarButton data-testid="desktop-backspace" @click="sendSoftKey(0xff08, 'Backspace')">{{
         translate('remoteDesktop.backspace')
-      }}</el-button>
+      }}</MarButton>
       <span v-if="textFailed" role="alert">{{ translate('remoteDesktop.textFailed') }}</span>
     </div>
     <div ref="stage" class="remote-desktop-stage">
@@ -468,9 +471,9 @@ onBeforeUnmount(() => {
         v-if="state === 'ready' && mode === 'VIEW' && discovery?.capability.supportsControl"
         class="remote-desktop-control-prompt"
       >
-        <el-button data-testid="desktop-control-prompt" @click="setInputMode('CONTROL')">{{
+        <MarButton data-testid="desktop-control-prompt" @click="setInputMode('CONTROL')">{{
           translate('remoteDesktop.controlling')
-        }}</el-button>
+        }}</MarButton>
       </div>
       <div v-if="state !== 'ready'" class="remote-desktop-overlay" role="status">
         <p class="remote-desktop-status-line">
@@ -483,12 +486,12 @@ onBeforeUnmount(() => {
                 : errorText
           }}</span>
         </p>
-        <el-button v-if="state === 'hidden' || state === 'error'" @click="discoverAndConnect()">{{
+        <MarButton v-if="state === 'hidden' || state === 'error'" @click="discoverAndConnect()">{{
           translate('remoteDesktop.retry')
-        }}</el-button>
-        <el-button v-if="errorCode === 'UNAUTHENTICATED'" tag="a" href="/console">{{
+        }}</MarButton>
+        <MarButton v-if="errorCode === 'UNAUTHENTICATED'" tag="a" href="/console">{{
           translate('remoteDesktop.openWorkbench')
-        }}</el-button>
+        }}</MarButton>
       </div>
     </div>
     <footer
@@ -582,7 +585,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
 }
-.remote-desktop-actions :deep(.el-button + .el-button) {
+.remote-desktop-actions :deep(.mar-ui-button + .mar-ui-button) {
   margin-left: 0;
 }
 .remote-desktop-keyboard {
@@ -592,10 +595,10 @@ onBeforeUnmount(() => {
   padding: 8px 16px;
   flex-wrap: wrap;
 }
-.remote-desktop-keyboard :deep(.el-input) {
+.remote-desktop-keyboard :deep(.mar-ui-input) {
   flex: 1 1 12rem;
 }
-.remote-desktop-keyboard :deep(.el-button + .el-button) {
+.remote-desktop-keyboard :deep(.mar-ui-button + .mar-ui-button) {
   margin-left: 0;
 }
 .remote-screen-select {
@@ -647,7 +650,7 @@ onBeforeUnmount(() => {
   place-items: center;
   pointer-events: none;
 }
-.remote-desktop-control-prompt :deep(.el-button) {
+.remote-desktop-control-prompt :deep(.mar-ui-button) {
   pointer-events: auto;
 }
 .remote-desktop-overlay {

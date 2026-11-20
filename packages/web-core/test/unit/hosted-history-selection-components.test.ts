@@ -149,7 +149,7 @@ async function fixture(hasUnread = false) {
       .findAll('div')
       .some((node) => String(node.props.class).includes('conversation-loading-initial')) ||
     view
-      .findAll('ElButton')
+      .findAll('MarButton')
       .some(
         (node) =>
           String(node.props.class).includes('conversation-reload') &&
@@ -216,7 +216,7 @@ describe('Hosted history selection during initial opening', () => {
     try {
       const refresh = () =>
         f.view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => String(node.props.class).includes('history-refresh-button'))!;
       expect(refresh().props.icon).toBe(marIcon('refresh'));
       expect(refresh().props.loading).toBe(false);
@@ -225,7 +225,15 @@ describe('Hosted history selection during initial opening', () => {
       await flushComponent();
       expect(refresh().props.loading).toBe(true);
       expect(refresh().props['aria-busy']).toBe(true);
-      expect(refresh().props['loading-icon']).toBe(marIcon('loading-action'));
+      expect(
+        f.view
+          .findAll('svg')
+          .some(
+            (icon) =>
+              icon.props['data-mar-icon'] === 'loading-action' &&
+              String(icon.parent?.parent?.props.class).includes('history-refresh-button')
+          )
+      ).toBe(true);
       expect(refresh().children).toHaveLength(0);
       f.workspace.loadingConversations.value = false;
       await flushComponent();
@@ -239,11 +247,10 @@ describe('Hosted history selection during initial opening', () => {
     const f = await fixture();
     try {
       await trigger(f.view.findAll('article')[0]!, 'onMouseenter');
-      const items = f.view.findAll('ElDropdownItem');
+      const items = f.view.findAll('button').filter((item) => item.props.role === 'menuitem');
       const deleteItem = items.find((item) => /delete|删除/iu.test(textContent(item)));
       expect(deleteItem).toBeDefined();
-      expect(deleteItem!.props.divided).toBe('');
-      expect(deleteItem!.props.class).toBeUndefined();
+      expect(deleteItem!.props.class).toBe('mar-ui-dropdown-item mar-ui-dropdown-item--divided');
       expect(deleteItem!.props.onClick).toBeTypeOf('function');
     } finally {
       f.view.unmount();
@@ -342,7 +349,7 @@ describe('Hosted history selection during initial opening', () => {
       expect(showMessage).not.toHaveBeenCalled();
       const retry = () =>
         f.view
-          .findAll('ElButton')
+          .findAll('MarButton')
           .find((node) => String(node.props.class).includes('conversation-reload'));
       expect(retry()?.props['aria-description']).toContain(error.message);
       expect(textContent(retry()!)).toContain(translate('common.loadFailedRetry'));

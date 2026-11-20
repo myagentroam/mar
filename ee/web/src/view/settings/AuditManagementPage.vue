@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -388,16 +389,15 @@ onBeforeUnmount(closeDetail);
       ></label>
     </div>
     <div class="mar-table-actions">
-      <el-button
+      <MarButton
         :icon="marIcon('refresh')"
         :loading="refreshLoading && pageReady"
         @click="refresh"
-        :loading-icon="marIcon('loading-action')"
-        >{{ translate('generated.auditManagementPage.refresh') }}</el-button
+        >{{ translate('generated.auditManagementPage.refresh') }}</MarButton
       >
-      <el-button tag="a" :icon="marIcon('download')" :href="exportUrl">{{
+      <MarButton tag="a" :icon="marIcon('download')" :href="exportUrl">{{
         translate('generated.auditManagementPage.exportCSV')
-      }}</el-button>
+      }}</MarButton>
     </div>
     <el-table
       v-loading="
@@ -524,7 +524,7 @@ onBeforeUnmount(closeDetail);
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button @click="closeDetail">{{ translate('common.close') }}</el-button>
+        <MarButton @click="closeDetail">{{ translate('common.close') }}</MarButton>
       </template>
     </el-dialog>
   </section>

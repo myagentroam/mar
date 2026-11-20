@@ -115,7 +115,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       releaseChanges?.();
       const changesRetry = inspector.locator('.changes-read-state button');
       await expect(changesRetry).toHaveText('Failed to load. Retry');
-      await expect(changesRetry).toHaveClass(/is-link/);
+      await expect(changesRetry).toHaveClass(/mar-ui-button--inline/);
       await expect(changesRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await changesRetry.hover();
       await expect(changesRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -134,7 +134,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       releaseHistory?.();
       const historyRetry = inspector.locator('button.history-load-more');
       await expect(historyRetry).toHaveText('Failed to load. Retry');
-      await expect(historyRetry).toHaveClass(/is-link/);
+      await expect(historyRetry).toHaveClass(/mar-ui-button--inline/);
       await expect(historyRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await historyRetry.hover();
       await expect(historyRetry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

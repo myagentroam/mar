@@ -217,7 +217,7 @@ describe('Conversation image loading', () => {
       expect(onError).toHaveBeenCalledExactlyOnceWith(source);
       expect(state.findAll('img')).toHaveLength(0);
       expect(state.findAll('div').some((node) => node.props.role === 'alert')).toBe(true);
-      await trigger(state.findAll('ElButton')[0]!, 'onClick');
+      await trigger(state.findAll('MarButton')[0]!, 'onClick');
       expect(state.findAll('img')[0]).not.toBe(image);
       expect(state.findAll('img')[0]!.style.display).toBe('none');
     } finally {

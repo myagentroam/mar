@@ -105,7 +105,7 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
   }
   await openPlainSessionActions();
   await page
-    .locator('.el-dropdown__popper:visible')
+    .getByRole('menu')
     .getByRole('menuitem', { name: '置顶' })
     .evaluate((element: HTMLElement) => element.click());
   await expect(rows.filter({ hasText: '普通会话' })).toHaveClass(/pinned/);
@@ -113,7 +113,7 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
 
   await openPlainSessionActions();
   await page
-    .locator('.el-dropdown__popper:visible')
+    .getByRole('menu')
     .getByRole('menuitem', { name: '下移' })
     .evaluate((element: HTMLElement) => element.click());
   await expect(page.locator('.session-list .session-link strong').first()).toHaveText('会话一');
@@ -129,7 +129,7 @@ test('Pinned sessions support menu movement and dragging across multiple rows', 
 
   await openPlainSessionActions();
   await page
-    .locator('.el-dropdown__popper:visible')
+    .getByRole('menu')
     .getByRole('menuitem', { name: '取消置顶' })
     .evaluate((element: HTMLElement) => element.click());
   await expect(page.locator('.session-list .session-link strong').last()).toHaveText('普通会话');
@@ -246,13 +246,11 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   await expect(row.getByLabel('已置顶')).toHaveCount(0);
   await row.hover();
   await row.getByRole('button', { name: /更多会话操作/ }).click();
-  await expect(
-    page.locator('.el-dropdown__popper:visible').getByRole('menuitem', { name: '取消置顶' })
-  ).toHaveAttribute('aria-disabled', 'true');
-  await page
-    .locator('.el-dropdown__popper:visible')
-    .getByRole('menuitem', { name: '定时任务' })
-    .click();
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: '取消置顶' })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  );
+  await page.getByRole('menu').getByRole('menuitem', { name: '定时任务' }).click();
   const dialog = page.getByRole('dialog', { name: '定时任务' });
   const loadError = page.getByRole('alert').filter({ hasText: '无法加载定时任务。' });
   await expect(dialog.locator('textarea')).toHaveValue('Inspect status');
@@ -292,10 +290,10 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   await expect(dialog.getByText('通知人', { exact: true })).toBeVisible();
   await expect(dialog.getByText('张三', { exact: true })).toBeVisible();
   const contentLeft = await dialog
-    .locator('.el-form-item__content')
+    .locator('.mar-ui-form-item__content')
     .first()
     .evaluate((content) => content.getBoundingClientRect().left);
-  for (const content of await dialog.locator('.el-form-item__content').all())
+  for (const content of await dialog.locator('.mar-ui-form-item__content').all())
     expect(
       Math.abs(
         (await content.evaluate((element) => element.getBoundingClientRect().left)) - contentLeft
@@ -384,7 +382,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(dialog.getByText('任务提示词', { exact: true })).toBeVisible();
-  await expect(dialog.locator('.el-form-item__label').first()).toHaveCSS('width', /3\d\dpx/);
+  await expect(dialog.locator('.mar-ui-form-item__label').first()).toHaveCSS('width', /3\d\dpx/);
   expect(await pager.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(loadError).toHaveCount(0);
@@ -398,10 +396,7 @@ test('Scheduled sessions show a clock and save versioned settings through a dial
   historyTotal = 0;
   await row.hover();
   await row.getByRole('button', { name: /更多会话操作/ }).click();
-  await page
-    .locator('.el-dropdown__popper:visible')
-    .getByRole('menuitem', { name: '定时任务' })
-    .click();
+  await page.getByRole('menu').getByRole('menuitem', { name: '定时任务' }).click();
   await expect(dialog.getByText('李四', { exact: true })).toBeVisible();
   await expect(history).toHaveCount(0);
   await expect(loadError).toHaveCount(0);
@@ -476,7 +471,7 @@ for (const language of [
     await row.hover();
     await row.getByRole('button', { name: language.more }).click();
     await page
-      .locator('.el-dropdown__popper:visible')
+      .getByRole('menu')
       .getByRole('menuitem', { name: language.title, exact: true })
       .click();
     const dialog = page.getByRole('dialog', { name: language.title });

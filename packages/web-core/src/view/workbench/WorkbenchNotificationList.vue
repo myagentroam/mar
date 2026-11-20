@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import MarIcon from '../common/MarIcon.vue';
 import { computed } from 'vue';
 import { formatDateTime as notificationTime } from '../../util/time-presentation.js';
@@ -64,14 +65,14 @@ const hasMarkableUnread = computed(() =>
       <span>{{
         translate('activityCenter.unreadCount', { count: service.unreadCount.value })
       }}</span>
-      <el-button
+      <MarButton
         v-if="hasMarkableUnread"
         class="workbench-notification-mark-all mar-text-action"
         link
         @click="service.markAllRead()"
       >
         {{ translate('generated.workbenchNotificationCenter.markAllRead') }}
-      </el-button>
+      </MarButton>
     </header>
     <div class="workbench-notification-section">
       <p
@@ -104,7 +105,7 @@ const hasMarkableUnread = computed(() =>
               <progress :value="task.receivedBytes" :max="Math.max(task.size, 1)" />
             </div>
             <div class="workbench-notification-upload-actions">
-              <el-button
+              <MarButton
                 v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                 class="mar-text-action"
                 link
@@ -115,7 +116,7 @@ const hasMarkableUnread = computed(() =>
                     ? translate('generated.workbenchNotificationCenter.resume')
                     : translate('generated.workbenchNotificationCenter.retry')
                 }}
-              </el-button>
+              </MarButton>
               <button
                 v-if="task.status === 'FAILED' || task.status === 'INTERRUPTED'"
                 type="button"
@@ -129,9 +130,9 @@ const hasMarkableUnread = computed(() =>
               >
                 <MarIcon name="delete" />
               </button>
-              <el-button v-else class="mar-text-action" link @click="emit('cancelUpload', task)">
+              <MarButton v-else class="mar-text-action" link @click="emit('cancelUpload', task)">
                 {{ translate('generated.workbenchNotificationCenter.cancel') }}
-              </el-button>
+              </MarButton>
             </div>
           </div>
         </section>
@@ -209,10 +210,10 @@ const hasMarkableUnread = computed(() =>
   flex: none;
   font-size: var(--mar-font-size-meta);
 }
-.workbench-notification-content button:not(.el-button) {
+.workbench-notification-content button:not(.mar-ui-button) {
   font: inherit;
 }
-.workbench-notification-content button:not(.mar-icon-button, .mar-icon-action, .el-button) {
+.workbench-notification-content button:not(.mar-icon-button, .mar-icon-action, .mar-ui-button) {
   border: 0;
   background: transparent;
   color: var(--mar-text-primary);

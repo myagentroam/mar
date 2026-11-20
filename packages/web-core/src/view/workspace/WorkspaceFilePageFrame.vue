@@ -200,25 +200,24 @@ defineExpose({ root });
   flex-direction: column;
 }
 
-.workspace-file-page-frame :deep(.mar-file-preview-actions .el-button.is-circle),
-.workspace-file-mobile-actions :deep(.el-button),
+.workspace-file-page-frame :deep(.mar-file-preview-actions .mar-ui-button.mar-ui-button--circle),
+.workspace-file-mobile-actions :deep(.mar-ui-button),
 .workspace-file-mobile-actions-toggle {
   border-radius: var(--mar-radius-control);
 }
 
 .workspace-file-page-frame :deep(.file-toolbar-control) {
-  --el-button-bg-color: var(--mar-bg-panel);
-  --el-button-border-color: var(--mar-border-default);
-  --el-button-text-color: var(--mar-text-secondary);
-  --el-button-hover-bg-color: var(--mar-fill-hover);
-  --el-button-hover-border-color: var(--mar-border-medium);
-  --el-button-hover-text-color: var(--mar-text-primary);
-  --el-button-active-bg-color: var(--mar-fill-selection);
-  --el-button-active-border-color: var(--mar-border-medium);
-  --el-button-active-text-color: var(--mar-text-primary);
-  --el-button-disabled-bg-color: var(--mar-bg-panel);
-  --el-button-disabled-border-color: var(--mar-border-subtle);
-  --el-button-outline-color: var(--mar-color-brand);
+  --mar-ui-button-bg: var(--mar-bg-panel);
+  --mar-ui-button-border: var(--mar-border-default);
+  --mar-ui-button-fg: var(--mar-text-secondary);
+  --mar-ui-button-hover-bg: var(--mar-fill-hover);
+  --mar-ui-button-hover-border: var(--mar-border-medium);
+  --mar-ui-button-hover-fg: var(--mar-text-primary);
+  --mar-ui-button-active-bg: var(--mar-fill-selection);
+  --mar-ui-button-active-border: var(--mar-border-medium);
+  --mar-ui-button-active-fg: var(--mar-text-primary);
+  --mar-ui-button-disabled-bg: var(--mar-bg-panel);
+  --mar-ui-button-disabled-border: var(--mar-border-subtle);
 }
 
 @media (min-width: 768px) {
@@ -235,11 +234,11 @@ defineExpose({ root });
     gap: 6px;
   }
 
-  .file-preview-desktop-actions :deep(.el-button + .el-button) {
+  .file-preview-desktop-actions :deep(.mar-ui-button + .mar-ui-button) {
     margin-left: 0;
   }
 
-  .file-preview-desktop-actions :deep(.el-button.is-circle) {
+  .file-preview-desktop-actions :deep(.mar-ui-button.mar-ui-button--circle) {
     width: var(--mar-compact-control-size);
     height: var(--mar-compact-control-size);
   }
@@ -263,7 +262,7 @@ defineExpose({ root });
     box-shadow: 0 4px 14px var(--mar-shadow-medium);
     padding: 0.25rem 0.2rem 0.25rem 0.25rem;
   }
-  .workspace-file-mobile-actions :deep(.el-button) {
+  .workspace-file-mobile-actions :deep(.mar-ui-button) {
     width: 36px;
     min-width: 36px;
     height: 36px;
@@ -310,7 +309,7 @@ defineExpose({ root });
     justify-content: center;
   }
 
-  .workspace-file-mobile-actions-body :deep(.el-button + .el-button) {
+  .workspace-file-mobile-actions-body :deep(.mar-ui-button + .mar-ui-button) {
     margin-left: 0;
   }
 

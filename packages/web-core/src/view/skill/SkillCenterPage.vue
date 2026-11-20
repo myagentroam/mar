@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { MarOption, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarInput } from '@myagentroam/mar-ui/input';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { watchManagementPageFailure } from '../../service/management-page-feedback.js';
 import { showMessage } from '../../service/message-feedback-service.js';
 
@@ -526,16 +529,14 @@ function scopeLabel(scope: string): string {
           ]"
           @change="selectTargetKind"
         />
-        <el-select
+        <MarSelect
           v-model="targetNodeId"
           class="target-select"
           :placeholder="translate('generated.skillCenterPage.selectANode')"
           :aria-label="translate('generated.skillCenterPage.skillNode')"
           @change="selectTargetNode"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="node in targetNodes"
             :key="node.id"
             :value="node.id"
@@ -550,38 +551,35 @@ function scopeLabel(scope: string): string {
                   ? translate('generated.skillCenterPage.online')
                   : translate('generated.skillCenterPage.offline')
             }}</span>
-          </el-option>
-        </el-select>
-        <el-select
+          </MarOption>
+        </MarSelect>
+        <MarSelect
           v-if="targetKind === 'WORKSPACE'"
           v-model="targetWorkspaceId"
           class="target-select"
           :placeholder="translate('generated.skillCenterPage.selectAWorkspace')"
           :aria-label="translate('generated.skillCenterPage.skillWorkspace')"
-          :clear-icon="marIcon('clear-input')"
-          :suffix-icon="marIcon('chevron-down')"
         >
-          <el-option
+          <MarOption
             v-for="workspace in targetWorkspaces"
             :key="workspace.workspaceId"
             :value="workspace.workspaceId"
             :label="workspace.displayName"
           />
-        </el-select>
-        <el-button
+        </MarSelect>
+        <MarButton
           :icon="marIcon('refresh')"
           :disabled="!targetReady || service.targetLoading.value"
           :loading="service.targetLoading.value && activeConfigTab !== 'installed'"
           @click="checkEnvironment"
-          :loading-icon="marIcon('loading-action')"
-          >{{ translate('generated.skillCenterPage.checkEnvironment') }}</el-button
+          >{{ translate('generated.skillCenterPage.checkEnvironment') }}</MarButton
         >
-        <el-button
+        <MarButton
           v-if="targetKind === 'WORKSPACE'"
           :icon="marIcon('tool')"
           :disabled="!targetReady || targetMutationPending"
           @click="repairGitExclude"
-          >{{ translate('generated.skillCenterPage.repairEnvironment') }}</el-button
+          >{{ translate('generated.skillCenterPage.repairEnvironment') }}</MarButton
         >
       </section>
       <el-alert
@@ -603,7 +601,7 @@ function scopeLabel(scope: string): string {
           name="available"
         >
           <div class="skill-filter-bar">
-            <el-input
+            <MarInput
               v-model="skillQuery"
               clearable
               :placeholder="translate('generated.skillCenterPage.searchSkillNamesOrDescriptions2')"
@@ -690,12 +688,12 @@ function scopeLabel(scope: string): string {
                 >
                   <template #default="{ row }">
                     <div class="row-actions" @click.stop>
-                      <el-button
+                      <MarButton
                         link
                         :icon="marIcon('download')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="install(row)"
-                        >{{ installLabel(row) }}</el-button
+                        >{{ installLabel(row) }}</MarButton
                       >
                       <div
                         v-if="installingFavoriteId === row.id && showInstallProgress"
@@ -805,7 +803,7 @@ function scopeLabel(scope: string): string {
                 >
                   <template #default="{ row }">
                     <div class="row-actions" @click.stop>
-                      <el-button
+                      <MarButton
                         v-if="matchingFavorite(row)"
                         link
                         :icon="marIcon('retry')"
@@ -815,15 +813,15 @@ function scopeLabel(scope: string): string {
                           matchingFavorite(row)?.commitSha !== row.install?.commitSha
                             ? translate('generated.skillCenterPage.update2')
                             : translate('generated.skillCenterPage.reinstall2')
-                        }}</el-button
+                        }}</MarButton
                       >
-                      <el-button
+                      <MarButton
                         link
                         type="danger"
                         :icon="marIcon('delete')"
                         :disabled="!targetReady || targetMutationPending"
                         @click="removeInstalled(row.name)"
-                        >{{ translate('generated.skillCenterPage.delete') }}</el-button
+                        >{{ translate('generated.skillCenterPage.delete') }}</MarButton
                       >
                       <div
                         v-if="
@@ -907,7 +905,7 @@ function scopeLabel(scope: string): string {
   display: grid;
   gap: 10px;
 }
-.skill-filter-bar > :deep(.el-input) {
+.skill-filter-bar > :deep(.mar-ui-input) {
   width: min(620px, 100%);
 }
 .skill-category-strip {
@@ -1063,7 +1061,7 @@ function scopeLabel(scope: string): string {
   .skill-filter-bar {
     grid-template-columns: 1fr;
   }
-  .target-panel :deep(.el-button) {
+  .target-panel :deep(.mar-ui-button) {
     min-height: 36px;
   }
 }

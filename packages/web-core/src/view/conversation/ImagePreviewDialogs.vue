@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import {
   mountMobileDialogReturn,
   unmountMobileDialogReturn
@@ -108,9 +109,9 @@ watch(
       @error="emit('conversationError', $event)"
     >
       <template v-if="resized && !original" #actions>
-        <el-button :icon="marIcon('image')" @click="original = true">
+        <MarButton :icon="marIcon('image')" @click="original = true">
           {{ translate('generated.imagePreview.viewOriginal') }}
-        </el-button>
+        </MarButton>
       </template>
     </DecodedPreviewImage>
   </el-dialog>

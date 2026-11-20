@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" class="console-ui" data-theme="daylight">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAR Select fixture</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, nextTick, ref } from 'vue';
+      import {
+        MarOption,
+        MarOptionGroup,
+        MarSelect
+      } from '/packages/mar-ui/components/select/index.ts';
+      import '/packages/web-core/src/styles.css';
+
+      const tags = ref(['pinned']);
+      const branches = ref(['main', 'release', 'topic']);
+      const state = ref(false);
+      const stateSelect = ref();
+      const loading = ref(true);
+      const events = ref([]);
+      const option = (label, value, disabled) => h(MarOption, { label, value, disabled });
+      const group = (label, options) => h(MarOptionGroup, { label }, () => options);
+      const output = (name, value) => h('output', { 'data-testid': name }, JSON.stringify(value));
+
+      createApp({
+        setup: () => () =>
+          h('main', { style: 'display:grid; gap: 12px; padding: 12px; max-width: 480px' }, [
+            h(
+              MarSelect,
+              {
+                'aria-label': 'Catalog tags',
+                modelValue: tags.value,
+                'onUpdate:modelValue': (value) => (tags.value = value),
+                multiple: true,
+                filterable: true,
+                allowCreate: true,
+                defaultFirstOption: true,
+                multipleLimit: 3,
+                clearable: true,
+                popperClass: 'test-tags-popup'
+              },
+              () => [
+                group('Pinned', [option('Pinned tag', 'pinned', true)]),
+                group('Available', [option('Alpha', 'alpha'), option('Bravo', 'bravo')])
+              ]
+            ),
+            output('tags', tags.value),
+            h(
+              MarSelect,
+              {
+                'aria-label': 'Git branches',
+                modelValue: branches.value,
+                'onUpdate:modelValue': (value) => (branches.value = value),
+                multiple: true,
+                collapseTags: true,
+                collapseTagsTooltip: true,
+                size: 'small'
+              },
+              () => [
+                group('Local', [option('Main', 'main'), option('Release', 'release')]),
+                group('Remote', [option('Topic', 'topic')])
+              ]
+            ),
+            output('branches', branches.value),
+            h(MarSelect, {
+              ref: stateSelect,
+              'aria-label': 'Record state',
+              modelValue: state.value,
+              clearable: true,
+              loading: loading.value,
+              options: [
+                { value: false, label: 'No' },
+                { value: 0, label: 0 }
+              ],
+              'onUpdate:modelValue': (value) => {
+                state.value = value;
+                events.value.push(`update:${value}`);
+              },
+              onChange: (value) => events.value.push(`change:${value}`),
+              onClear: () => events.value.push('clear')
+            }),
+            output('events', events.value),
+            h(
+              'button',
+              {
+                onClick: async () => {
+                  loading.value = false;
+                  await nextTick();
+                  stateSelect.value.focus();
+                  stateSelect.value.toggleMenu();
+                  stateSelect.value.setActiveValue(0);
+                }
+              },
+              'Open at zero'
+            )
+          ])
+      }).mount('#app');
+    </script>
+  </body>
+</html>

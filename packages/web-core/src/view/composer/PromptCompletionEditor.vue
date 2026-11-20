@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MarButton } from '@myagentroam/mar-ui/button';
 import { showMessage } from '../../service/message-feedback-service.js';
 
 import {
@@ -487,7 +488,7 @@ onBeforeUnmount(() => {
         )
       }}</span>
       <span class="completion-buttons">
-        <el-button
+        <MarButton
           data-completion-action
           class="mar-text-action"
           link
@@ -495,9 +496,9 @@ onBeforeUnmount(() => {
           :disabled="blocked"
           :aria-label="buttonLabel"
           @click="activate"
-          >{{ buttonLabel }}</el-button
+          >{{ buttonLabel }}</MarButton
         >
-        <el-button
+        <MarButton
           v-if="state.kind === 'ready'"
           data-completion-cancel
           class="mar-text-action"
@@ -507,7 +508,7 @@ onBeforeUnmount(() => {
           @click="activate"
         >
           {{ translate('promptCompletion.cancel') }}
-        </el-button>
+        </MarButton>
       </span>
     </div>
     <span class="completion-announcement" aria-live="polite">{{

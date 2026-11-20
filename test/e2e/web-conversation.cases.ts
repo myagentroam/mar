@@ -2878,9 +2878,9 @@ for (const runner of ['mar-agent', 'codex'] as const) {
       assistantMessage.getByRole('button', { name: '从此轮结束处创建会话分支' })
     ).toHaveCount(0);
     await expect(userMessage.getByRole('button', { name: /^复制.*消息$/u })).toBeVisible();
-    await expect(page.locator('.composer-model-effort-select .el-select__wrapper')).toHaveClass(
-      /is-disabled/u
-    );
+    await expect(
+      page.locator('.composer-model-effort-select').getByRole('combobox')
+    ).toBeDisabled();
     const sessionRow = page.locator('.session-row', { hasText: 'Rollback 会话' });
     await sessionRow.hover();
     await sessionRow.getByRole('button', { name: /更多会话操作/u }).click();

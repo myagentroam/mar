@@ -215,7 +215,7 @@ async function startGrokLogin(page: Page, name: string): Promise<ReturnType<Page
   await page.getByRole('option', { name: 'X订阅', exact: true }).click();
   await dialog.getByRole('textbox').first().fill(name);
   await dialog
-    .locator('.el-form-item')
+    .locator('.mar-ui-form-item')
     .filter({ hasText: 'SOCKS5 代理' })
     .getByRole('textbox')
     .fill('socks5://grok-user:grok-password@proxy.example.test:1080');
@@ -489,7 +489,7 @@ test('Codex credentials appear only after device login and support refresh, test
   await row.getByRole('button', { name: '编辑', exact: true }).click();
   const editCredential = page.getByRole('dialog', { name: '编辑 OAuth 凭据' });
   const proxyInput = editCredential
-    .locator('.el-form-item')
+    .locator('.mar-ui-form-item')
     .filter({ hasText: 'SOCKS5 代理' })
     .getByRole('textbox');
   const saveCredential = editCredential.getByRole('button', { name: '保存', exact: true });
@@ -515,9 +515,9 @@ test('Codex credentials appear only after device login and support refresh, test
   const testButton = row.getByRole('button', { name: '测试', exact: true });
   const removeButton = row.getByRole('button', { name: '删除', exact: true });
   await testButton.click();
-  await expect(testButton).toHaveClass(/is-loading/u);
-  await expect(editButton).not.toHaveClass(/is-loading/u);
-  await expect(removeButton).not.toHaveClass(/is-loading/u);
+  await expect(testButton).toHaveAttribute('aria-busy', 'true');
+  await expect(editButton).not.toHaveAttribute('aria-busy', 'true');
+  await expect(removeButton).not.toHaveAttribute('aria-busy', 'true');
   await expect(editButton).toBeDisabled();
   await expect(removeButton).toBeDisabled();
   finishCredentialTest();
@@ -578,18 +578,18 @@ test('Codex credentials appear only after device login and support refresh, test
   const protocolSelect = addModel.getByRole('combobox', { name: /协议/u });
   await protocolSelect.click({ force: true });
   await page.getByRole('option', { name: 'OpenAI Responses', exact: true }).click();
-  await expect(addModel.locator('.el-form-item').filter({ hasText: 'Responses 传输' })).toHaveCount(
-    0
-  );
+  await expect(
+    addModel.locator('.mar-ui-form-item').filter({ hasText: 'Responses 传输' })
+  ).toHaveCount(0);
   await protocolSelect.click({ force: true });
   await page.getByRole('option', { name: 'Codex (legacy)', exact: true }).click();
   await expect(contextTokens).toHaveValue('256000');
   await expect(maxOutputTokens).toHaveValue('32000');
   await expect(
-    addModel.locator('.el-form-item').filter({ hasText: 'Responses 传输' })
+    addModel.locator('.mar-ui-form-item').filter({ hasText: 'Responses 传输' })
   ).toBeVisible();
   await expect(
-    addModel.locator('.el-form-item').filter({ hasText: 'Responses 编码' })
+    addModel.locator('.mar-ui-form-item').filter({ hasText: 'Responses 编码' })
   ).toContainText('Standard');
   const credentialSelect = addModel.getByRole('combobox', {
     name: 'OAuth 凭据',
@@ -610,7 +610,9 @@ test('Codex credentials appear only after device login and support refresh, test
   await expect(enabledField.getByText('停用', { exact: true })).toHaveCount(0);
   await expect(enabledField.getByRole('switch')).toBeChecked();
   expect(catalogReads).toBe(0);
-  await expect(addModel.locator('.el-form-item').filter({ hasText: '基础 URL' })).toHaveCount(0);
+  await expect(addModel.locator('.mar-ui-form-item').filter({ hasText: '基础 URL' })).toHaveCount(
+    0
+  );
   await addModel.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('模型配置已保存。', { exact: true })).toBeVisible();
   const modelRow = page.locator('.el-table__row').filter({ hasText: 'Custom Codex' });
@@ -867,12 +869,12 @@ test('Grok subscription OAuth keeps provider-specific login, usage, proxy, and m
   const modelDialog = page.getByRole('dialog', { name: '添加模型' });
   await modelDialog.getByRole('combobox', { name: /协议$/u }).click({ force: true });
   await page.getByRole('option', { name: 'X订阅', exact: true }).click();
-  await expect(modelDialog.locator('.el-form-item').filter({ hasText: '速度' })).toHaveCount(0);
+  await expect(modelDialog.locator('.mar-ui-form-item').filter({ hasText: '速度' })).toHaveCount(0);
   await expect(
-    modelDialog.locator('.el-form-item').filter({ hasText: 'Responses 传输' })
+    modelDialog.locator('.mar-ui-form-item').filter({ hasText: 'Responses 传输' })
   ).toBeVisible();
   const transportSelect = modelDialog
-    .locator('.el-form-item')
+    .locator('.mar-ui-form-item')
     .filter({ hasText: 'Responses 传输' });
   await expect(transportSelect).toContainText('HTTP/1.1');
   await expect(
@@ -908,7 +910,7 @@ test('Grok subscription OAuth keeps provider-specific login, usage, proxy, and m
   const hostedSearch = editModel.getByRole('checkbox', { name: '支持 Web 搜索', exact: true });
   await expect(hostedSearch).toBeChecked();
   await editModel
-    .locator('.el-form-item')
+    .locator('.mar-ui-form-item')
     .filter({ hasText: 'Responses 传输' })
     .getByRole('combobox')
     .click({ force: true });
@@ -934,7 +936,7 @@ test('Grok subscription OAuth keeps provider-specific login, usage, proxy, and m
   await modelRow.getByRole('button', { name: '编辑', exact: true }).click();
   await expect(hostedSearch).not.toBeChecked();
   await expect(
-    editModel.locator('.el-form-item').filter({ hasText: 'Responses 传输' })
+    editModel.locator('.mar-ui-form-item').filter({ hasText: 'Responses 传输' })
   ).toContainText('WebSocket');
   await expect(continuation).toBeChecked();
   await editModel.getByText('Responses 服务端续接', { exact: true }).click();
@@ -949,7 +951,7 @@ test('Grok subscription OAuth keeps provider-specific login, usage, proxy, and m
   await expect(continuation).not.toBeChecked();
   await editModel.getByText('Responses 服务端续接', { exact: true }).click();
   await editModel
-    .locator('.el-form-item')
+    .locator('.mar-ui-form-item')
     .filter({ hasText: 'Responses 传输' })
     .getByRole('combobox')
     .click({ force: true });
@@ -1277,8 +1279,9 @@ test('Grok subscription catalog and model tests use only compatible Nodes', asyn
   const lateResponse = page.waitForResponse(/\/grok-reasoning-model\/test$/);
   finishLateModelTest();
   await lateResponse;
-  await expect(modelRow.getByRole('button', { name: '测试', exact: true })).not.toHaveClass(
-    /is-loading/
+  await expect(modelRow.getByRole('button', { name: '测试', exact: true })).not.toHaveAttribute(
+    'aria-busy',
+    'true'
   );
   await expect(modelTest.locator('.model-test-result')).toHaveCount(0);
   await modelTest.getByRole('button', { name: '取消', exact: true }).click();
@@ -1409,7 +1412,7 @@ for (const english of [false, true]) {
         ? ['Refresh', 'Adjust order', 'Add image model']
         : ['刷新', '调整排序', '添加图片模型']
     );
-    await expect(toolbar.getByRole('button').last()).toHaveClass(/el-button--primary/u);
+    await expect(toolbar.getByRole('button').last()).toHaveClass(/mar-ui-button--primary/u);
     await page
       .getByRole('button', { name: english ? 'Add image model' : '添加图片模型', exact: true })
       .click();
@@ -1446,7 +1449,7 @@ for (const english of [false, true]) {
     await expect(urlInput).toHaveValue('');
     await dialog.locator('input[type=password]').fill('fixture-ark-api-key');
     await dialog.getByRole('button', { name: english ? 'Save' : '保存', exact: true }).click();
-    await expect(dialog.locator('.el-form-item__error')).toBeVisible();
+    await expect(dialog.locator('.mar-ui-form-item__error')).toBeVisible();
     expect(writes).toHaveLength(0);
     await urlInput.fill('https://images.example.test/custom/generate');
     await dialog.getByRole('button', { name: english ? 'Save' : '保存', exact: true }).click();
@@ -1461,10 +1464,10 @@ for (const english of [false, true]) {
     );
     await expect(
       rows.first().getByRole('button', { name: english ? 'Edit' : '编辑', exact: true })
-    ).toHaveClass(/is-link/u);
+    ).toHaveClass(/mar-ui-button--inline/u);
     await expect(
       rows.first().getByRole('button', { name: english ? 'Remove' : '删除', exact: true })
-    ).toHaveClass(/el-button--danger/u);
+    ).toHaveClass(/mar-ui-button--danger/u);
     await rows.first().locator('td').nth(1).click();
     const details = page.getByRole('dialog', { name: english ? 'Details' : '详情', exact: true });
     await expect(details).toBeVisible();
@@ -1512,7 +1515,7 @@ for (const english of [false, true]) {
       modelId: 'explicit-image-model'
     });
     expect(writes.at(-1)?.[0]?.config).not.toHaveProperty('apiKey');
-    await rows.first().locator('.el-switch').click();
+    await rows.first().getByRole('switch').click();
     await expect(rows.first().getByRole('switch')).not.toBeChecked();
     await expect(details).toHaveCount(0);
     await rows
@@ -1638,7 +1641,7 @@ for (const provider of ['CODEX_OAUTH', 'CHATGPT_OAUTH', 'XAI_OAUTH'] as const) {
       name: 'Responses 服务端续接',
       exact: true
     });
-    const transport = dialog.locator('.el-form-item').filter({ hasText: 'Responses 传输' });
+    const transport = dialog.locator('.mar-ui-form-item').filter({ hasText: 'Responses 传输' });
     for (const version of provider === 'XAI_OAUTH' ? ['HTTP/1.1'] : ['HTTP/1.1', 'HTTP/2']) {
       await row.getByRole('button', { name: '编辑', exact: true }).click();
       await expect(continuation).toBeEnabled();
@@ -1704,7 +1707,7 @@ test('Standard OpenAI Responses edits retain transport and HTTP continuation', a
     .click();
   const editModel = page.getByRole('dialog', { name: '编辑' });
   await expect(
-    editModel.locator('.el-form-item').filter({ hasText: 'Responses 传输' })
+    editModel.locator('.mar-ui-form-item').filter({ hasText: 'Responses 传输' })
   ).toBeVisible();
   const continuation = editModel.getByRole('checkbox', {
     name: 'Responses 服务端续接',
@@ -1756,7 +1759,7 @@ for (const english of [false, true]) {
         .click();
       const dialog = page.getByRole('dialog', { name: english ? 'Edit' : '编辑', exact: true });
       const field = dialog
-        .locator('.el-form-item')
+        .locator('.mar-ui-form-item')
         .filter({ hasText: english ? 'Responses encoding' : 'Responses 编码' });
       await expect(field).toContainText(before);
       await field.getByRole('combobox').click({ force: true });
@@ -2126,7 +2129,7 @@ for (const english of [false, true]) {
       })
     ).toBeDisabled();
     await expect(
-      edit.locator('.el-form-item').filter({
+      edit.locator('.mar-ui-form-item').filter({
         hasText: english ? 'Credential type' : '凭据类型'
       })
     ).toContainText('ChatGPT');
@@ -2282,7 +2285,7 @@ test('Enterprise model grants and organization credential ownership reuse shared
   const row = page.locator('.el-table__row').filter({ hasText: 'GPT Codex Catalog' });
   await row.getByRole('button', { name: '授权', exact: true }).click();
   const grantDialog = page.getByRole('dialog');
-  await grantDialog.locator('.el-select__wrapper').first().click();
+  await grantDialog.getByRole('combobox').first().click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
   await grantDialog.locator('.el-cascader input').fill('Platform');
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();
@@ -2297,10 +2300,10 @@ test('Enterprise model grants and organization credential ownership reuse shared
   await page.getByRole('button', { name: '添加 OAuth 凭据', exact: true }).click();
   const credentialDialog = page.getByRole('dialog', { name: '添加 OAuth 凭据', exact: true });
   await credentialDialog.getByRole('button', { name: '开始设备登录', exact: true }).click();
-  await expect(credentialDialog.locator('.el-form-item__error')).toBeVisible();
+  await expect(credentialDialog.locator('.mar-ui-form-item__error')).toBeVisible();
   expect(loginWrites).toHaveLength(0);
   await credentialDialog.getByRole('textbox').first().fill('Organization Codex');
-  await credentialDialog.locator('.el-select__wrapper').click();
+  await credentialDialog.getByRole('combobox').click();
   await page.getByRole('option', { name: '组织', exact: true }).click();
   await credentialDialog.locator('.el-cascader input').fill('Platform');
   await page.getByRole('listitem').filter({ hasText: 'Platform' }).click();

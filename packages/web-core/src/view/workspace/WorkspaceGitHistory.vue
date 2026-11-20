@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { MarOption, MarOptionGroup, MarSelect } from '@myagentroam/mar-ui/select';
+import { MarButton } from '@myagentroam/mar-ui/button';
 import type { MessageType } from '../../model/message-feedback.js';
 import { errorMessage } from '../../util/error-presentation.js';
 import MarIcon from '../common/MarIcon.vue';
-import { marIcon } from '../../util/mar-icons.js';
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { consoleKeyboardShortcutService } from '../../service/console-keyboard-shortcut-service.js';
 import type { HistoryCommit, HistoryFile } from '../../model/workspace-git.js';
@@ -238,28 +239,24 @@ onBeforeUnmount(() => {
 <template>
   <section ref="historyContainer" class="git-history">
     <div class="history-toolbar">
-      <el-select
+      <MarSelect
         v-model="historyRepositorySelection"
         class="history-filter"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
         :aria-label="translate('generated.workspaceInspector.selectGitRepository')"
         :placeholder="translate('generated.workspaceInspector.selectAGitRepository')"
         size="small"
         @change="changeHistoryRepository"
       >
-        <el-option
+        <MarOption
           v-for="repository in historyRepositories"
           :key="repository.value"
           :label="repository.label"
           :value="repository.value"
         />
-      </el-select>
-      <el-select
+      </MarSelect>
+      <MarSelect
         v-model="selectedHistoryRefs"
         class="history-filter"
-        :clear-icon="marIcon('clear-input')"
-        :suffix-icon="marIcon('chevron-down')"
         :aria-label="translate('generated.workspaceInspector.selectGitBranch')"
         :placeholder="translate('generated.workspaceInspector.allBranches')"
         multiple
@@ -269,23 +266,23 @@ onBeforeUnmount(() => {
         size="small"
         @change="resetHistory"
       >
-        <el-option-group :label="translate('generated.workspaceInspector.localBranches')">
-          <el-option
+        <MarOptionGroup :label="translate('generated.workspaceInspector.localBranches')">
+          <MarOption
             v-for="item in historyRefs.filter((entry) => entry.kind === 'LOCAL')"
             :key="item.name"
             :label="item.displayName"
             :value="item.name"
           />
-        </el-option-group>
-        <el-option-group :label="translate('generated.workspaceInspector.remoteBranches')">
-          <el-option
+        </MarOptionGroup>
+        <MarOptionGroup :label="translate('generated.workspaceInspector.remoteBranches')">
+          <MarOption
             v-for="item in historyRefs.filter((entry) => entry.kind === 'REMOTE')"
             :key="item.name"
             :label="item.displayName"
             :value="item.name"
           />
-        </el-option-group>
-      </el-select>
+        </MarOptionGroup>
+      </MarSelect>
       <button
         v-tooltip="translate('generated.workspaceInspector.refreshGitHistory2')"
         class="history-refresh file-explorer-utility-button mar-icon-action"
@@ -387,7 +384,7 @@ onBeforeUnmount(() => {
               {{ translate('generated.workspaceInspector.loading') }}
             </li>
             <li v-if="historyFilesErrors.includes(commit.hash)" class="mar-empty">
-              <el-button
+              <MarButton
                 link
                 v-tooltip="
                   !historyFilesLoading.includes(commit.hash)
@@ -410,7 +407,7 @@ onBeforeUnmount(() => {
                   {{ translate('generated.workspaceInspector.loading') }}</template
                 >
                 <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-              </el-button>
+              </MarButton>
             </li>
             <li
               v-for="row in historyFileRows(
@@ -424,7 +421,7 @@ onBeforeUnmount(() => {
               "
             >
               <span v-tooltip="row.path" v-if="row.kind === 'DIRECTORY'" class="mar-tooltip-control"
-                ><el-button
+                ><MarButton
                   text
                   size="small"
                   class="history-directory"
@@ -444,9 +441,9 @@ onBeforeUnmount(() => {
                     }"
                   />
                   <FileTypeIcon :name="row.name" kind="DIRECTORY" />{{ row.name }}
-                </el-button></span
+                </MarButton></span
               >
-              <el-button
+              <MarButton
                 v-tooltip="
                   row.file.previousPath
                     ? `${row.file.previousPath} → ${row.file.path}`
@@ -461,7 +458,7 @@ onBeforeUnmount(() => {
                 <span class="history-file-status">{{ shortChange(row.file.change) }}</span>
                 <FileTypeIcon :name="row.name" />
                 <span class="history-file-path">{{ row.name }}</span>
-              </el-button>
+              </MarButton>
             </li>
           </ul>
         </div>
@@ -480,7 +477,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </Teleport>
-    <el-button
+    <MarButton
       v-if="historyError"
       link
       v-tooltip="!historyLoading ? errorMessage(service.historyFailureCause.value) : ''"
@@ -497,7 +494,7 @@ onBeforeUnmount(() => {
         {{ translate('generated.workspaceInspector.loading') }}</template
       >
       <template v-else>{{ translate('common.loadFailedRetry') }}</template>
-    </el-button>
+    </MarButton>
     <div v-else-if="historyLoading" class="history-load-more" role="status">
       <MarIcon name="loading-action" /> {{ translate('generated.workspaceInspector.loading') }}
     </div>
@@ -522,7 +519,7 @@ onBeforeUnmount(() => {
 }
 
 .history-commit-row,
-.history-files :deep(.el-button) {
+.history-files :deep(.mar-ui-button) {
   border-radius: var(--mar-radius-selection);
 }
 </style>
@@ -570,7 +567,7 @@ button.file-explorer-utility-button:disabled {
   min-width: 0;
 }
 
-.history-toolbar :deep(.el-select) {
+.history-toolbar :deep(.mar-ui-select) {
   min-width: 0;
 }
 
@@ -792,7 +789,7 @@ button.history-refresh {
   white-space: nowrap;
 }
 
-.history-files :deep(.history-directory.el-button) {
+.history-files :deep(.history-directory.mar-ui-button) {
   justify-content: flex-start;
 }
 
@@ -810,7 +807,7 @@ button.history-refresh {
   transform: rotate(90deg);
 }
 
-.history-files :deep(.el-button) {
+.history-files :deep(.mar-ui-button) {
   justify-content: flex-start;
   width: 100%;
   min-height: 20px;
@@ -820,7 +817,7 @@ button.history-refresh {
   line-height: 18px;
 }
 
-.history-files :deep(.el-button span) {
+.history-files :deep(.mar-ui-button__label) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
