@@ -9,6 +9,41 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const theme of ['vscode-dark-2026', 'daylight']) {
+  for (const width of [1280, 390]) {
+    test(`Main navigation keeps the current page highlighted on hover: ${theme}, ${width}px`, async ({
+      page
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(`${fixture.url}workbench-mobile-drawer.html?locale=en-US&theme=${theme}`);
+
+      const rail = page.locator('.activity-rail');
+      const work = rail.getByRole('button', { name: 'Work', exact: true });
+      const chat = rail.getByRole('button', { name: 'Chat', exact: true });
+      const colors = (button: Locator) =>
+        button.evaluate((element) => {
+          const { backgroundColor, color } = getComputedStyle(element);
+          return { backgroundColor, color };
+        });
+
+      await page.mouse.move(width - 10, 790);
+      await expect(work).toHaveAttribute('aria-current', 'page');
+      const selected = await colors(work);
+      const inactive = await colors(chat);
+
+      await work.hover();
+      expect(await colors(work)).toEqual(selected);
+
+      await chat.hover();
+      const hovered = await colors(chat);
+      expect(hovered.backgroundColor).not.toBe(inactive.backgroundColor);
+      expect(hovered.backgroundColor).not.toBe(selected.backgroundColor);
+      expect(await colors(work)).toEqual(selected);
+    });
+  }
+}
+
 async function sidebarGeometry(sidebar: Locator) {
   return sidebar.evaluate((element) => {
     const rect = element.getBoundingClientRect();

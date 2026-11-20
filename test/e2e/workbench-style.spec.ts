@@ -1,5 +1,6 @@
 import { grantClipboardPermissions } from './support/clipboard.js';
 import { expect, test, type Locator } from '@playwright/test';
+import { hostedConversationSnapshotSchema } from '../../packages/protocol/src/index.js';
 import { startCustomThemeFixture } from './support/custom-theme-vite.js';
 let fixture: Awaited<ReturnType<typeof startCustomThemeFixture>>;
 test.beforeAll(async () => {
@@ -9,10 +10,29 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+function sessionListColors(list: Locator) {
+  return list.evaluate((element) => {
+    const probe = document.createElement('span');
+    element.append(probe);
+    probe.style.fontSize = 'var(--mar-font-size-body)';
+    probe.style.color = 'var(--mar-text-secondary)';
+    const secondary = getComputedStyle(probe).color;
+    probe.style.color = 'var(--mar-text-muted)';
+    const meta = getComputedStyle(probe).color;
+    probe.style.color = 'var(--mar-text-primary)';
+    const { color: primary, fontSize } = getComputedStyle(probe);
+    probe.remove();
+    return { primary, secondary, meta, fontSize };
+  });
+}
+
 test('Workspace tree rows reserve their background for hover and selection', async ({ page }) => {
   await page.goto(`${fixture.url}workbench-style.html?list-state=unselected&locale=en-US`);
   const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
+  const { meta, secondary } = await sessionListColors(tree);
+  await expect(tree.locator('.tree-foot')).toHaveCSS('color', meta);
   const node = tree.getByRole('button', { name: 'Node', exact: true });
+  await expect(node.locator('.tree-type-icon')).toHaveCSS('color', secondary);
   const row = tree.locator('.tree-node-row');
   const idleColor = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
   await node.hover();
@@ -56,18 +76,10 @@ for (const { theme, width } of [
       'Paused, not pinned',
       'Normal'
     ]);
-    const { primary, secondary, fontSize } = await list.evaluate((element) => {
-      const probe = document.createElement('span');
-      probe.style.fontSize = 'var(--mar-font-size-body)';
-      element.append(probe);
-      probe.style.color = 'var(--mar-text-secondary)';
-      const secondary = getComputedStyle(probe).color;
-      probe.style.color = 'var(--mar-text-primary)';
-      const { color: primary, fontSize } = getComputedStyle(probe);
-      probe.remove();
-      return { primary, secondary, fontSize };
-    });
+    const { primary, secondary, meta, fontSize } = await sessionListColors(list);
+    expect(meta).toBe(theme === 'daylight' ? 'rgb(90, 104, 122)' : 'rgb(166, 174, 185)');
     expect(primary).not.toBe(secondary);
+    expect(secondary).not.toBe(meta);
     const tree = page.getByRole('region', { name: 'Workspace tree fixture' });
     const plain = tree.getByRole('button', { name: 'plain', exact: true });
     const group = tree.locator('.workspace-group-toggle').filter({ hasText: 'Team' });
@@ -76,6 +88,7 @@ for (const { theme, width } of [
       secondary
     );
     await expect(group).toHaveCSS('color', secondary);
+    await expect(group.locator('.tree-type-icon')).toHaveCSS('color', secondary);
     await expect(plain).toHaveCSS('color', primary);
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
     const grouped = tree.getByRole('button', { name: 'grouped', exact: true });
@@ -97,7 +110,7 @@ for (const { theme, width } of [
       await expect(row(title).locator('svg[data-mar-icon]')).toHaveCount(1);
       const marker = row(title).getByRole('img', { name, exact: true });
       await expect(marker).toHaveAttribute('data-mar-icon', icon);
-      await expect(marker).toHaveCSS('color', primary);
+      await expect(marker).toHaveCSS('color', secondary);
     }
     for (const entry of await list.locator('.session-link').all()) {
       const title = entry.locator('strong');
@@ -105,13 +118,13 @@ for (const { theme, width } of [
         'color',
         (await entry.getAttribute('aria-current')) === 'page' ? primary : secondary
       );
+      await expect(entry.locator('time')).toHaveCSS('color', meta);
+      await expect(entry.locator('time')).toHaveText('>1m');
       await expect(title).toHaveCSS('font-size', fontSize);
       await expect(title).toHaveCSS('font-weight', '400');
     }
     for (const title of ['Paused, not pinned', 'Normal']) {
-      await expect(
-        list.getByRole('button', { name: title, exact: true }).locator('svg[data-mar-icon]')
-      ).toHaveCount(0);
+      await expect(row(title).locator('svg[data-mar-icon]')).toHaveCount(0);
     }
     const scheduled = row('Scheduled');
     const pinned = row('Paused, still pinned');
@@ -124,7 +137,7 @@ for (const { theme, width } of [
       await page.mouse.move(0, 0);
       await expect(active).toHaveAttribute('aria-current', 'page');
       await expect(active.locator('strong')).toHaveCSS('color', primary);
-      await expect(active.locator('.session-relative-time')).toHaveCSS('color', secondary);
+      await expect(active.locator('.session-relative-time')).toHaveCSS('color', meta);
       await expect(active.locator('strong')).toHaveCSS('font-weight', '400');
       await expect(active.getByRole('img', { name: /Pinned|Scheduled task enabled/ })).toHaveCSS(
         'color',
@@ -135,9 +148,112 @@ for (const { theme, width } of [
     await expect(scheduled.locator('strong')).toHaveCSS('color', secondary);
     await expect(scheduled.getByRole('img', { name: 'Scheduled task enabled' })).toHaveCSS(
       'color',
-      primary
+      secondary
     );
+    if (width >= 768)
+      await tree.screenshot({ path: testInfo.outputPath('resource-tree-colors.png') });
     await list.screenshot({ path: testInfo.outputPath('session-list-markers.png') });
+  });
+}
+
+for (const [theme, width] of [
+  ['daylight', 1280],
+  ['vscode-dark-2026', 1280],
+  ['daylight', 390],
+  ['vscode-dark-2026', 390]
+] as const) {
+  test(`Hosted history follows session title, pin and time colors in ${theme} at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    const at = Date.now();
+    const conversation = {
+      id: 'current',
+      nodeId: 'node',
+      sessionId: 'session',
+      templateId: 'template',
+      templateName: 'General',
+      activeVersionId: 'version',
+      title: 'Current conversation',
+      titleSource: 'CUSTOM',
+      pinnedAt: at,
+      status: 'ACTIVE',
+      modelId: 'model',
+      createdAt: at,
+      updatedAt: at,
+      lastActivityAt: at
+    };
+    const snapshot = hostedConversationSnapshotSchema.parse({
+      conversation,
+      template: {
+        id: 'template',
+        nodeId: 'node',
+        name: 'General',
+        description: '',
+        status: 'ACTIVE',
+        currentVersionId: 'version',
+        available: true,
+        createdAt: at,
+        updatedAt: at
+      },
+      run: null,
+      turns: [],
+      historyNextCursor: null,
+      files: [],
+      models: [],
+      error: null,
+      snapshotSequence: 1
+    });
+    await page.route('**/api/hosted-template-fixture/current', (route) =>
+      route.fulfill({ json: snapshot })
+    );
+    await page.route('**/api/hosted-conversations?limit=*', (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            snapshot.conversation,
+            { ...snapshot.conversation, id: 'other', title: 'Other conversation' }
+          ],
+          nextCursor: null
+        }
+      })
+    );
+    await page.route('**/hosted-conversations/current/watch', (route) => {
+      if (route.request().method() === 'DELETE') return route.fulfill({ json: {} });
+      return route.fulfill({
+        json: {
+          accepted: true,
+          watchId: route.request().postDataJSON().watchId,
+          nodeGeneration: 'fixture-generation',
+          expiresAt: Date.now() + 30_000
+        }
+      });
+    });
+    await page.goto(
+      `${fixture.url}hosted-entry.html?existing=1&workspace-page=1&history-open=1&theme=${theme}`
+    );
+    const list = page.locator('.hosted-conversation-history .history-list');
+    const selected = list.locator('button[aria-current="page"]');
+    const idle = list.locator('.history-open:not([aria-current])');
+    await expect(selected.locator('strong')).toHaveText('Current conversation');
+    await expect(idle.locator('strong')).toHaveText('Other conversation');
+    const { primary, secondary, meta, fontSize } = await sessionListColors(list);
+    for (const [row, color] of [
+      [selected, primary],
+      [idle, secondary]
+    ] as const) {
+      await expect(row.locator('strong')).toHaveCSS('color', color);
+      await expect(row.locator('strong')).toHaveCSS('font-size', fontSize);
+      await expect(row.locator('strong')).toHaveCSS('font-weight', '400');
+      await expect(row.locator('svg[data-mar-icon="pin"]')).toHaveCSS('color', color);
+      await expect(row.locator('time')).toHaveCSS('color', meta);
+    }
+    if (width >= 768) {
+      await idle.hover();
+      await expect(idle.locator('svg[data-mar-icon="pin"]')).toHaveCSS('color', secondary);
+      await page.mouse.move(0, 0);
+    }
+    await list.screenshot({ path: testInfo.outputPath('hosted-history-colors.png') });
   });
 }
 

@@ -276,7 +276,7 @@ describe('Workbench system notifications', () => {
     const state = createWorkbenchNotificationService(ref('other'));
     disposers.push(state.dispose);
     expect(state.systemNotifications.status.value).toBe('unsupported');
-    state.notify({ id: 'local', kind: 'web-update', title: 'Update', message: 'Reload' });
+    state.notify({ id: 'local', kind: 'web-update', version: '0.9.5', action: 'RELOAD_PAGE' });
     expect(state.unreadCount.value).toBe(1);
   });
 
@@ -362,7 +362,7 @@ describe('Workbench system notifications', () => {
     f.browser.focused = false;
     f.server.entries = [notification('restored')];
     await f.state.load();
-    f.state.notify({ id: 'update', kind: 'web-update', title: 'Updated', message: 'Reload' });
+    f.state.notify({ id: 'update', kind: 'web-update', version: '0.9.5', action: 'RELOAD_PAGE' });
     f.state.projectServerMessage({
       type: 'notification.created',
       notification: notification('missing')

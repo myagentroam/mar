@@ -1847,6 +1847,7 @@ test('uses the bright daylight palette with accessible interactive and text colo
   expect(daylight['--mar-control-color-success']).toBe('#067551');
   expect(daylight['--mar-text-primary']).toBe('#172033');
   expect(daylight['--mar-text-secondary']).toBe('#52627a');
+  expect(daylight['--mar-text-muted']).toBe('#5a687a');
   expect(daylight['--mar-text-disabled']).toBe('#5f6f86');
 
   for (const state of [
@@ -1859,6 +1860,18 @@ test('uses the bright daylight palette with accessible interactive and text colo
   for (const role of ['primary', 'secondary']) {
     expect(
       contrast(daylight[`--mar-text-${role}`]!, daylight['--mar-bg-panel']!)
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+  for (const surface of [
+    '--mar-bg-panel',
+    '--mar-bg-chrome',
+    '--mar-bg-subtle',
+    '--mar-fill-row-hover',
+    '--mar-fill-selection'
+  ]) {
+    expect(
+      contrast(daylight['--mar-text-muted']!, daylight[surface]!),
+      surface
     ).toBeGreaterThanOrEqual(4.5);
   }
   for (const [foreground, background] of [
@@ -1901,7 +1914,8 @@ test('uses the dark palette with distinct surfaces and readable button text', as
   expect(dark['--mar-color-accent']).toBe('#5edcec');
   expect(dark['--mar-control-color-success']).toBe('#62d6a4');
   expect(dark['--mar-text-primary']).toBe('#e2e8f0');
-  expect(dark['--mar-text-secondary']).toBe('#a8b8cf');
+  expect(dark['--mar-text-secondary']).toBe('#c3cad4');
+  expect(dark['--mar-text-muted']).toBe('#a6aeb9');
   expect(dark['--mar-text-disabled']).toBe('#8799b1');
   for (const surface of [
     '--mar-bg-page',
@@ -1914,6 +1928,17 @@ test('uses the dark palette with distinct surfaces and readable button text', as
         4.5
       );
     }
+  }
+  for (const surface of [
+    '--mar-bg-panel',
+    '--mar-bg-chrome',
+    '--mar-bg-subtle',
+    '--mar-fill-row-hover',
+    '--mar-fill-selection'
+  ]) {
+    expect(contrast(dark['--mar-text-muted']!, dark[surface]!), surface).toBeGreaterThanOrEqual(
+      4.5
+    );
   }
   for (const brandState of [
     '--mar-color-brand',

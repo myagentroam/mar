@@ -18,7 +18,8 @@ const darkPalette = {
   '--mar-fill-selection': '#293545',
   '--mar-bg-chrome': '#18263b',
   '--mar-color-brand': '#3071d1',
-  '--mar-text-primary': '#e7eaf0'
+  '--mar-text-primary': '#e7eaf0',
+  '--mar-text-muted': '#a6aeb9'
 };
 const lightPalette = {
   '--mar-bg-page': '#f3f6f9',
@@ -112,7 +113,7 @@ describe('Custom theme validation', () => {
 
   it('warns about low-contrast selection titles and metadata without blocking save or apply', () => {
     const service = createThemePreferenceService();
-    for (const foreground of ['--mar-text-primary', '--mar-text-secondary']) {
+    for (const foreground of ['--mar-text-primary', '--mar-text-secondary', '--mar-text-muted']) {
       const input = source({ '--mar-fill-selection': '#777777', [foreground]: '#777777' });
       const result = analyzeCustomTheme(input);
       expect(result.validJson).toBe(true);
@@ -128,6 +129,16 @@ describe('Custom theme validation', () => {
     }
   });
 
+  it('falls back for omitted or invalid auxiliary text without overriding an explicit color', () => {
+    const service = createThemePreferenceService();
+    for (const colors of [{}, { '--mar-text-muted': 'invalid' }]) {
+      expect(service.resolveColors(source(colors))['--mar-text-muted']).toBe('#a6aeb9');
+    }
+    const colors = { '--mar-text-muted': '#abcdef' };
+    expect(analyzeCustomTheme(createThemeSource('Text palette', colors)).colors).toEqual(colors);
+    expect(service.resolveColors(source(colors))['--mar-text-muted']).toBe('#abcdef');
+  });
+
   it.each([
     ['--mar-color-success-text', '--mar-color-success-bg'],
     ['--mar-color-warning-text', '--mar-color-warning-bg'],
@@ -136,6 +147,10 @@ describe('Custom theme validation', () => {
     ['--mar-color-on-accent', '--mar-color-brand-hover'],
     ['--mar-text-primary', '--mar-fill-row-hover'],
     ['--mar-text-secondary', '--mar-fill-row-hover'],
+    ['--mar-text-muted', '--mar-fill-row-hover'],
+    ['--mar-text-muted', '--mar-bg-panel'],
+    ['--mar-text-muted', '--mar-bg-chrome'],
+    ['--mar-text-muted', '--mar-bg-subtle'],
     ['--mar-text-primary', '--mar-bg-page'],
     ['--mar-text-secondary', '--mar-bg-page'],
     ['--mar-text-primary', '--mar-conversation-code']

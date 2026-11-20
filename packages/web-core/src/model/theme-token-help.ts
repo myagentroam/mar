@@ -34,6 +34,7 @@ export const THEME_TOKEN_HELP = {
   '--mar-border-strong': { group: 'borders', description: 'border-strong' },
   '--mar-text-primary': { group: 'text', description: 'text-primary' },
   '--mar-text-secondary': { group: 'text', description: 'text-secondary' },
+  '--mar-text-muted': { group: 'text', description: 'text-muted' },
   '--mar-text-disabled': { group: 'text', description: 'text-disabled' },
   '--mar-conversation-canvas': { group: 'conversation', description: 'conversation-canvas' },
   '--mar-conversation-surface': { group: 'conversation', description: 'conversation-surface' },

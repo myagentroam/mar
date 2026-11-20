@@ -1098,7 +1098,10 @@ onBeforeUnmount(() => {
               >
               <strong>{{ hostedConversationTitle(conversation) }}</strong>
             </span>
-            <time :datetime="new Date(conversation.lastActivityAt).toISOString()">
+            <time
+              class="mar-session-list-meta"
+              :datetime="new Date(conversation.lastActivityAt).toISOString()"
+            >
               {{
                 translate('presentation.lastActivity', {
                   value: absoluteSessionTime(conversation.lastActivityAt)
@@ -1654,8 +1657,6 @@ onBeforeUnmount(() => {
 }
 
 .history-open time {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

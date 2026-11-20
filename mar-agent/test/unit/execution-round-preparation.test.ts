@@ -4,7 +4,7 @@ import { prepareExecutionRoundRequest } from '../../src/sdk/execution-round-requ
 import { resetContextualWorldState } from '../../src/runtime/context/world-state.js';
 
 describe('execution round preparation', () => {
-  it('does not persist Skill guidance from a discarded request candidate', async () => {
+  it('only anchors Skill guidance after the prepared request is acknowledged', async () => {
     const skillId = 'runtime:loaded-skill:workflow';
     let world = resetContextualWorldState(undefined, 0, {
       instructionSnapshot: undefined,
@@ -40,7 +40,8 @@ describe('execution round preparation', () => {
     );
     expect(world.entries.some((entry) => entry.block?.id === skillId)).toBe(false);
     const accepted = await prepare('Accepted guidance.');
-    await accepted.commitSkillContext();
+    expect(world.entries.some((entry) => entry.block?.id === skillId)).toBe(false);
+    await accepted.acknowledgeSkillContext!();
     expect(
       world.entries.filter((entry) => entry.block?.id === skillId).map((entry) => entry.content)
     ).toEqual(['Accepted guidance.']);

@@ -39,7 +39,7 @@ export async function executeSkill(arguments_: unknown, context: ToolRuntimeCont
   const content = await loadAgentSkill(skill);
   if (!content) throw new AgentError('MAR_AGENT_TOOL_INPUT_INVALID', 'Skill could not be loaded.');
   context.signal.throwIfAborted();
-  context.publishSkillContext(skill.name, content);
+  await context.publishSkillContext(skill.name, content, context.signal);
   const data = { success: true };
   return {
     content: JSON.stringify(data),

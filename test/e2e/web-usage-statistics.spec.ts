@@ -44,12 +44,16 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
             update: 'Update records',
             chart: 'View chart data',
             trend: 'Usage over time',
+            inspectPeriods: 'Inspect time periods',
+            mode: 'Mode',
+            metric: 'Metric',
             cache: 'Cache',
             input: 'Input',
             output: 'Output',
             inputTokens: 'Input tokens',
             outputTokens: 'Output tokens',
             totalTokens: 'Total tokens',
+            cacheRead: 'Cache read tokens',
             cacheWrite: 'Cache write tokens',
             unknown: 'Unknown',
             range: 'Time range',
@@ -66,12 +70,16 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
             update: '更新明细',
             chart: '查看图表数据',
             trend: '用量趋势',
+            inspectPeriods: '查看各时段',
+            mode: '模式',
+            metric: '统计指标',
             cache: '缓存',
             input: '输入',
             output: '输出',
             inputTokens: '输入 Token',
             outputTokens: '输出 Token',
             totalTokens: '总 Token',
+            cacheRead: '缓存读取 Token',
             cacheWrite: '缓存写入 Token',
             unknown: '未知',
             range: '时间范围',
@@ -97,15 +105,41 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     };
     const totals = {
       inputTokens: '12345678901234567890',
-      outputTokens: '20',
+      outputTokens: '1200000000000000000',
       cacheReadTokens: '3086419725308641972',
       cacheWriteTokens: '1000',
-      totalTokens: '12345678901234567910',
+      totalTokens: '13545678901234567890',
       requests: '2',
       completeRequests: '1',
       partialRequests: '1',
       unknownRequests: '0'
     };
+    const buckets = [
+      {
+        ...totals,
+        from: now - 7_200_000,
+        to: now - 3_600_000,
+        inputTokens: '10000000000000000000',
+        cacheReadTokens: '2500000000000000000',
+        cacheWriteTokens: '991',
+        outputTokens: '1000000000000000000',
+        totalTokens: '11000000000000000000',
+        requests: '1',
+        partialRequests: '0'
+      },
+      {
+        ...totals,
+        from: now - 3_600_000,
+        to: now,
+        inputTokens: '2345678901234567890',
+        cacheReadTokens: '586419725308641972',
+        cacheWriteTokens: '9',
+        outputTokens: '200000000000000000',
+        totalTokens: '2545678901234567890',
+        requests: '1',
+        completeRequests: '0'
+      }
+    ];
     const record = (id: string) => ({
       schemaVersion: 1,
       recordId: id,
@@ -176,7 +210,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         last7Days: categoryTotals,
         selected: categoryTotals,
         coverage: 'observed-only',
-        buckets: [{ ...totals, from: now - 3600000, to: now }],
+        buckets,
         runners: [{ ...totals, key: 'mar-agent', label: 'mar-agent' }],
         models: [{ ...totals, key: 'fixture-model', label: 'Fixture model' }]
       });
@@ -345,10 +379,10 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const trend = panel.getByRole('img', { name: labels.trend });
     await expect(trend).toBeVisible();
     await expect(trend).toHaveAccessibleDescription(
-      new RegExp(`2026-10-14 08:44:05.*2026-10-14 09:44:05.*${labels.totalTokens}`)
+      new RegExp(`2026-10-14 07:44:05.*2026-10-14 09:44:05.*${labels.totalTokens}`)
     );
     await expect(panel.locator('.axis-labels')).toHaveText(
-      '2026-10-14 08:44:052026-10-14 09:44:05'
+      '2026-10-14 07:44:052026-10-14 09:44:05'
     );
     await panel
       .locator('.trend')
@@ -391,23 +425,44 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     };
     await hoverForTooltip(total);
     await expect(tooltip).toHaveText(exact(totals.totalTokens));
-    const bucket = panel.locator('.trend-bucket').first();
+    const bars = trend.locator('.trend-bucket');
+    await expect(bars).toHaveCount(2);
+    const bucket = bars.first();
     await expect(bucket).toHaveCSS('cursor', 'pointer');
     await expect(bucket).toHaveAccessibleName(
-      new RegExp(`2026-10-14 08:44:05.*${locale === 'en-US' ? 'Input tokens' : '输入 Token'}`)
+      new RegExp(`2026-10-14 07:44:05.*${labels.inputTokens}`)
     );
+    const ranges = [
+      '2026-10-14 07:44:05 – 2026-10-14 08:44:05',
+      '2026-10-14 08:44:05 – 2026-10-14 09:44:05'
+    ];
+    const displayCount = (value: string) => {
+      const formatted = exact(value);
+      const abbreviated = compact(value);
+      return abbreviated === formatted ? formatted : `${abbreviated} (${formatted})`;
+    };
+    const hoverDetails: string[][] = [];
+    for (const [index, values] of buckets.entries()) {
+      const bar = bars.nth(index);
+      await expect(bar).not.toHaveAttribute('tabindex', /^(0|[1-9]\d*)$/);
+      await hoverForTooltip(bar);
+      const lines = [
+        ranges[index]!,
+        `${labels.inputTokens}: ${displayCount(values.inputTokens)}`,
+        `${labels.cache}: ${compact(values.cacheReadTokens)} (25%)`,
+        `${labels.cacheRead}: ${exact(values.cacheReadTokens)} (25%) · ${labels.cacheWrite}: ${exact(values.cacheWriteTokens)}`,
+        `${labels.outputTokens}: ${displayCount(values.outputTokens)}`,
+        `${labels.totalTokens}: ${displayCount(values.totalTokens)}`
+      ];
+      const details = tooltip.locator(':scope > div');
+      await expect(details).toHaveText(lines);
+      hoverDetails.push((await details.allTextContents()).map((text) => text.trim()));
+    }
     await hoverForTooltip(bucket);
-    await expect(tooltip).toContainText('2026-10-14 08:44:05 – 2026-10-14 09:44:05');
-    await expect(tooltip).toContainText(
-      `${compact(totals.inputTokens)} (${exact(totals.inputTokens)})`
-    );
-    await expect(tooltip).toContainText(cacheSummary);
-    await expect(tooltip).toContainText(`${exact(totals.cacheReadTokens)} (25%)`);
-    await expectMetricOrder(tooltip, numericHeaders);
     await bucket.click();
     await expect(bucket).not.toBeFocused();
     await expect(bucket).toHaveCSS('outline-style', 'none');
-    await expect(tooltip).toContainText(exact(totals.inputTokens));
+    await expect(tooltip).toContainText(exact(buckets[0]!.inputTokens));
     await expect(bucket).toHaveAccessibleName(
       new RegExp(
         `${labels.inputTokens}.*${labels.cache}.*${labels.outputTokens}.*${labels.totalTokens}`
@@ -415,6 +470,36 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     );
     await page.mouse.move(0, 0);
     await expect(tooltip).toHaveCount(0);
+
+    // Start at the preceding filter, then navigate the chart without pointer or scripted focus.
+    await panel.getByRole('combobox', { name: labels.mode, exact: true }).focus();
+    await page.keyboard.press('Tab');
+    await expect(panel.locator('.section-heading .usage-count').first()).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(panel.locator('.legend').getByText(labels.cache, { exact: true })).toBeFocused();
+    const inspector = panel.getByRole('slider', { name: labels.inspectPeriods, exact: true });
+    await page.keyboard.press('Tab');
+    await expect(inspector).toBeFocused();
+    await expect(inspector).toHaveCSS('outline-style', 'solid');
+    const expectPeriod = async (index: number) => {
+      await expect(inspector).toBeFocused();
+      await expect(tooltip.locator(':scope > div')).toHaveText(hoverDetails[index]!);
+      await expect(inspector).toHaveAttribute('aria-valuetext', hoverDetails[index]!.join(' · '));
+    };
+    await expectPeriod(0);
+    await page.keyboard.press('ArrowRight');
+    await expectPeriod(1);
+    await page.keyboard.press('Escape');
+    await expect(inspector).toBeFocused();
+    await expect(tooltip).toHaveCount(0);
+    await page.keyboard.press('ArrowLeft');
+    await expectPeriod(0);
+    await page.keyboard.press('Tab');
+    await expect(
+      panel.getByRole('radiogroup', { name: labels.metric, exact: true }).getByRole('radio').first()
+    ).toBeFocused();
+    await expect(tooltip).toHaveCount(0);
+
     await expect(panel.getByText(labels.chart, { exact: true })).toHaveCount(0);
     await expect(panel.getByText(labels.notes, { exact: true })).toHaveCount(0);
     await expect(panel.locator('.records .el-table__body-wrapper')).toContainText(labels.unknown);

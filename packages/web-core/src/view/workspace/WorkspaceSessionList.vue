@@ -536,7 +536,7 @@ function submitSessionSearch(): void {
                 /></span>
                 <time
                   v-tooltip="activityTitle(session)"
-                  class="session-relative-time"
+                  class="session-relative-time mar-session-list-meta"
                   :datetime="activityDateTime(session)"
                   >{{ relativeActivity(session) }}</time
                 >
@@ -977,8 +977,6 @@ function submitSessionSearch(): void {
 
 .session-relative-time {
   flex: none;
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;

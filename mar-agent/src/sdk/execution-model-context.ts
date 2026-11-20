@@ -3,7 +3,6 @@ import { restoreMessages } from '../runtime/context/restore.js';
 import {
   contextualInstructionInsertIndex,
   latestContextualWorldStateGeneration,
-  persistContextualWorldState,
   resetContextualWorldState,
   updateContextualWorldState,
   updatePromptWorldState,
@@ -25,8 +24,7 @@ import type { ResourceInputProjection } from './resource-input.js';
 interface ExecutionModelContextPorts {
   readonly restored: Awaited<ReturnType<typeof restoreMessages>>;
   readonly initialContextualWorldState: ContextualWorldState;
-  readonly store: Parameters<typeof restoreMessages>[0] &
-    Pick<SessionStore, 'append' | 'writeContextualWorldState'>;
+  readonly store: Parameters<typeof restoreMessages>[0] & Pick<SessionStore, 'append'>;
   readonly sessionId: string;
   readonly executionId: string;
   readonly turnId: string;
@@ -35,7 +33,10 @@ interface ExecutionModelContextPorts {
   readonly contextualWorldStateGeneration: string | undefined;
   readonly compactMayContainAgentInstructions: boolean;
   readonly messageSources: WeakMap<ModelMessage, SessionRecord>;
-  updateWorldState(state: ContextualWorldState): void;
+  persistWorldState(
+    state: ContextualWorldState,
+    options?: { readonly deliveredSkills?: ReadonlyMap<string, string>; readonly checkpoint?: true }
+  ): Promise<void>;
   environment(): EnvironmentContextState;
   instructionSnapshot(): string | undefined;
   renderInstructions(previous: boolean): string | undefined;
@@ -74,10 +75,12 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
   let recordedEnvironment = restored.environmentState;
   let instructionInsertIndex = 0;
   let worldState = initialContextualWorldState;
-  const commitWorldState = async (next: ContextualWorldState) => {
-    await persistContextualWorldState(store, sessionId, next);
+  const commitWorldState = async (
+    next: ContextualWorldState,
+    deliveredSkills?: ReadonlyMap<string, string>
+  ) => {
+    await ports.persistWorldState(next, deliveredSkills ? { deliveredSkills } : undefined);
     worldState = next;
-    ports.updateWorldState(next);
   };
   const resetCompactWorldState = async (
     generation: string,
@@ -93,9 +96,8 @@ export function createExecutionModelContext(ports: ExecutionModelContextPorts) {
     else {
       // The checkpoint is authoritative; its sidecar is recoverable on restart.
       worldState = next;
-      ports.updateWorldState(next);
       try {
-        await persistContextualWorldState(store, sessionId, next);
+        await ports.persistWorldState(next, { checkpoint: true });
       } catch {
         ports.reportSidecarFailure();
       }

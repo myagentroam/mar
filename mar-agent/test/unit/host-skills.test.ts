@@ -637,7 +637,8 @@ describe('Host-provided skills', () => {
     expect(result.content).toBe('{"success":true}');
     expect(publishSkillContext).toHaveBeenCalledExactlyOnceWith(
       'host-workflow',
-      expect.stringContaining('## Host workflow')
+      expect.stringContaining('## Host workflow'),
+      context.signal
     );
     await expect(
       executeRegisteredTool('host_action', { prompt: 'A tree' }, 'after', context)

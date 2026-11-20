@@ -24,8 +24,6 @@ export type { NotificationTarget } from '@myagentroam/protocol';
 
 interface LocalNotificationRecord {
   readonly id: string;
-  readonly title: string;
-  readonly message: string;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly expiresAt: number;
@@ -36,10 +34,17 @@ export type LocalNotification = LocalNotificationRecord &
   (
     | {
         readonly kind: 'upload';
+        readonly title: string;
+        readonly message: string;
         readonly target?: LocalWorkspaceNotificationTarget;
         readonly action?: never;
       }
-    | { readonly kind: 'web-update'; readonly action?: 'RELOAD_PAGE'; readonly target?: never }
+    | {
+        readonly kind: 'web-update';
+        readonly version: string;
+        readonly action?: 'RELOAD_PAGE';
+        readonly target?: never;
+      }
   );
 export type WorkbenchNotification =
   (ServerNotification & { readonly source: 'server'; readonly action?: never }) | LocalNotification;
@@ -113,6 +118,8 @@ export interface WorkbenchNotificationService {
   readonly unreadCount: Readonly<Ref<number>>;
   readonly previewNotificationId: Readonly<Ref<string | undefined>>;
   readonly notificationRevision: Readonly<Ref<number>>;
+  readonly webUpdatePreviewId: Readonly<Ref<string | undefined>>;
+  takeWebUpdatePreview(id: string): boolean;
   readonly systemNotifications: ReturnType<typeof createWorkbenchSystemNotificationService>;
   readonly recentRuns: Readonly<Ref<RecentRun[]>>;
   hasActiveWorkspaceRun(nodeId: string, workspaceId: string): boolean;
@@ -146,6 +153,8 @@ export type WorkbenchNotificationView = Pick<
   | 'unreadCount'
   | 'previewNotificationId'
   | 'notificationRevision'
+  | 'webUpdatePreviewId'
+  | 'takeWebUpdatePreview'
   | 'recentRuns'
   | 'hasUnreadSession'
   | 'load'
@@ -211,6 +220,8 @@ export function createWorkbenchNotificationService(
   const handledCreatedNotificationIds = new Map<string, number>();
   const notificationRevision = ref(0);
   const previewNotificationId = ref<string>();
+  const webUpdatePreviewId = ref<string>();
+  let lastWebUpdatePreviewId: string | undefined;
   const pendingScenes = new Map<string, boolean>();
   const pendingTargetReads = new Map<
     string,
@@ -261,19 +272,50 @@ export function createWorkbenchNotificationService(
       : `mar.workbench.notifications.v1.${username.value}`;
   }
 
+  function webUpdatePreviewKey(): string | undefined {
+    const key = storageKey();
+    return key === undefined ? undefined : `${key}.web-update-preview`;
+  }
+
+  function syncWebUpdatePreview(): void {
+    const current = notifications.value.find(
+      (item) => item.kind === 'web-update' && item.action === 'RELOAD_PAGE'
+    );
+    webUpdatePreviewId.value =
+      isWorkbenchForeground() && current?.id !== lastWebUpdatePreviewId ? current?.id : undefined;
+  }
+
+  function takeWebUpdatePreview(id: string): boolean {
+    if (webUpdatePreviewId.value !== id || !isWorkbenchForeground()) return false;
+    webUpdatePreviewId.value = undefined;
+    if (lastWebUpdatePreviewId === id) return false;
+    lastWebUpdatePreviewId = id;
+    const key = webUpdatePreviewKey();
+    if (key !== undefined) {
+      try {
+        const stored: unknown = JSON.parse(storage.getItem(key) ?? 'null');
+        if (
+          isRecord(stored) &&
+          stored.id === id &&
+          typeof stored.expiresAt === 'number' &&
+          stored.expiresAt > Date.now()
+        )
+          return false;
+        storage.setItem(key, JSON.stringify({ id, expiresAt: Date.now() + TTL_MS }));
+      } catch {
+        // The current page still deduplicates when browser storage is unavailable.
+      }
+    }
+    return true;
+  }
+
   function persist(): void {
     const key = storageKey();
     if (key === undefined) return;
     try {
       storage.setItem(
         key,
-        JSON.stringify(
-          notifications.value.filter(
-            (notification) =>
-              notification.source !== 'server' &&
-              (notification.kind === 'upload' || notification.kind === 'web-update')
-          )
-        )
+        JSON.stringify(notifications.value.filter((notification) => notification.kind === 'upload'))
       );
     } catch {
       // Unavailable local storage does not affect notifications on the current page.
@@ -295,20 +337,13 @@ export function createWorkbenchNotificationService(
 
   function restore(): void {
     const key = storageKey();
-    notifications.value = [];
+    const liveUpdate = notifications.value.filter((item) => item.kind === 'web-update');
+    notifications.value = liveUpdate;
     if (key === undefined) return;
     try {
       const value = JSON.parse(storage.getItem(key) ?? '[]') as unknown;
       if (!Array.isArray(value)) return;
-      notifications.value = parseStoredWorkbenchNotifications(value)
-        .filter(
-          (notification) => notification.kind === 'upload' || notification.kind === 'web-update'
-        )
-        .map((notification) => ({
-          ...notification,
-          source: 'local' as const,
-          read: notification.kind === 'upload' ? true : notification.read
-        }));
+      notifications.value = [...liveUpdate, ...parseStoredWorkbenchNotifications(value)];
       persist();
     } catch {
       try {
@@ -322,30 +357,33 @@ export function createWorkbenchNotificationService(
   function notify(input: WorkbenchNotificationInput): void {
     const now = Date.now();
     removeExpired(now);
-    if (input.expiresAt !== undefined && input.expiresAt <= now) return;
+    if (input.kind === 'upload' && input.expiresAt !== undefined && input.expiresAt <= now) return;
     const existing = notifications.value.find((notification) => notification.id === input.id);
+    if (input.kind === 'web-update' && existing !== undefined) return;
     const notification: WorkbenchNotification = {
       ...input,
       source: 'local',
       createdAt: existing?.createdAt ?? input.createdAt ?? now,
       updatedAt: now,
-      expiresAt: input.expiresAt ?? existing?.expiresAt ?? now + TTL_MS,
-      read: input.kind === 'upload' ? true : (existing?.read ?? input.read ?? false)
+      expiresAt:
+        input.kind === 'web-update'
+          ? Number.POSITIVE_INFINITY
+          : (input.expiresAt ?? existing?.expiresAt ?? now + TTL_MS),
+      read: input.kind === 'upload'
     };
-    notifications.value = [
+    notifications.value = withWebUpdateFirst([
       notification,
       ...notifications.value.filter(
         (item) =>
           item.id !== input.id && (input.kind !== 'web-update' || item.kind !== 'web-update')
       )
-    ];
+    ]);
+    if (input.kind === 'web-update') {
+      syncWebUpdatePreview();
+      return;
+    }
     persist();
-    if (
-      existing === undefined &&
-      isWorkbenchForeground() &&
-      (input.kind === 'upload' || !notification.read)
-    )
-      preview(notification.id);
+    if (existing === undefined && isWorkbenchForeground()) preview(notification.id);
   }
 
   function recordUpload(task: WorkspaceUploadTask): void {
@@ -380,20 +418,22 @@ export function createWorkbenchNotificationService(
     confirmedReads: ReadonlyArray<(notification: ServerNotification) => boolean>
   ): void {
     const local = notifications.value.filter((notification) => notification.source !== 'server');
-    notifications.value = [
-      ...result.notifications.flatMap((value) => {
-        const parsed = serverNotificationSchema.safeParse(value);
-        if (!parsed.success) return [];
-        return [
-          {
-            ...parsed.data,
-            read: parsed.data.read || confirmedReads.some((matches) => matches(parsed.data)),
-            source: 'server' as const
-          }
-        ];
-      }),
-      ...local
-    ].sort((left, right) => right.createdAt - left.createdAt);
+    notifications.value = withWebUpdateFirst(
+      [
+        ...result.notifications.flatMap((value) => {
+          const parsed = serverNotificationSchema.safeParse(value);
+          if (!parsed.success) return [];
+          return [
+            {
+              ...parsed.data,
+              read: parsed.data.read || confirmedReads.some((matches) => matches(parsed.data)),
+              source: 'server' as const
+            }
+          ];
+        }),
+        ...local
+      ].sort((left, right) => right.createdAt - left.createdAt)
+    );
     recentRuns.value = (result.recentRuns ?? []).filter(isRecentRun).sort(compareRecentRuns);
   }
 
@@ -483,6 +523,7 @@ export function createWorkbenchNotificationService(
   }
 
   function handleFocus(): void {
+    syncWebUpdatePreview();
     if (username.value !== undefined && isWorkbenchForeground())
       void recover().catch(() => undefined);
   }
@@ -760,7 +801,7 @@ export function createWorkbenchNotificationService(
 
   function markAllRead(): void {
     const unread = notifications.value.filter((notification) => !notification.read);
-    const localUnread = unread.filter((notification) => notification.source !== 'server');
+    const localUnread = unread.filter((notification) => notification.kind === 'upload');
     if (localUnread.length > 0) {
       const localIds = new Set(localUnread.map((notification) => notification.id));
       notifications.value = notifications.value.map((notification) =>
@@ -774,7 +815,8 @@ export function createWorkbenchNotificationService(
 
   function markRead(id: string): void {
     const notification = notifications.value.find((item) => item.id === id);
-    if (notification === undefined || notification.read) return;
+    if (notification === undefined || notification.read || notification.kind === 'web-update')
+      return;
     if (notification.source === 'server') {
       requestAndRefresh(`/api/notifications/${encodeURIComponent(id)}/read`, {
         method: 'POST',
@@ -957,7 +999,8 @@ export function createWorkbenchNotificationService(
 
   function remove(id: string): void {
     const notification = notifications.value.find((item) => item.id === id);
-    if (notification?.source === 'server') {
+    if (notification === undefined || notification.kind === 'web-update') return;
+    if (notification.source === 'server') {
       requestAndRefresh(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
       return;
     }
@@ -969,22 +1012,33 @@ export function createWorkbenchNotificationService(
     const next = notifications.value.filter((notification) => notification.kind !== 'web-update');
     if (next.length === notifications.value.length) return;
     notifications.value = next;
-    persist();
+    webUpdatePreviewId.value = undefined;
   }
 
   async function start(): Promise<void> {
     const generation = loadGeneration;
     systemNotifications.start();
     applicationBadge.start();
-    if (typeof window !== 'undefined') window.addEventListener('focus', handleFocus);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocus);
+      window.addEventListener('blur', syncWebUpdatePreview);
+    }
+    if (typeof document !== 'undefined')
+      document.addEventListener?.('visibilitychange', syncWebUpdatePreview);
     restore();
+    syncWebUpdatePreview();
     await load().catch(() => undefined);
     if (generation === loadGeneration && sweepTimer === undefined)
       sweepTimer = setInterval(removeExpired, SWEEP_MS);
   }
 
   function dispose(): void {
-    if (typeof window !== 'undefined') window.removeEventListener('focus', handleFocus);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', syncWebUpdatePreview);
+    }
+    if (typeof document !== 'undefined')
+      document.removeEventListener?.('visibilitychange', syncWebUpdatePreview);
     systemNotifications.dispose();
     openingNotificationCount = 0;
     applicationBadge.dispose();
@@ -1001,6 +1055,8 @@ export function createWorkbenchNotificationService(
     pendingCreatedNotificationIds.clear();
     pendingScenes.clear();
     previewNotificationId.value = undefined;
+    webUpdatePreviewId.value = undefined;
+    lastWebUpdatePreviewId = undefined;
     handledCreatedNotificationIds.clear();
     notifications.value = [];
     recentRuns.value = [];
@@ -1018,6 +1074,8 @@ export function createWorkbenchNotificationService(
     unreadCount,
     notificationRevision,
     previewNotificationId,
+    webUpdatePreviewId,
+    takeWebUpdatePreview,
     systemNotifications,
     hasActiveWorkspaceRun,
     hasUnreadWorkspace,
@@ -1145,13 +1203,13 @@ export function parseStoredWorkbenchNotifications(
   return value
     .filter(isNotification)
     .filter((item) => item.expiresAt > now)
-    .map((item) => ({ ...item, source: 'local' }));
+    .map((item) => ({ ...item, source: 'local', read: true }));
 }
 
 function isNotification(value: unknown): value is LocalNotification {
   if (!isRecord(value)) return false;
   return (
-    (value.kind === 'upload' || value.kind === 'web-update') &&
+    value.kind === 'upload' &&
     typeof value.id === 'string' &&
     typeof value.title === 'string' &&
     typeof value.message === 'string' &&
@@ -1159,11 +1217,8 @@ function isNotification(value: unknown): value is LocalNotification {
     typeof value.updatedAt === 'number' &&
     typeof value.expiresAt === 'number' &&
     typeof value.read === 'boolean' &&
-    (value.kind === 'upload'
-      ? value.action === undefined &&
-        (value.target === undefined || isNotificationTarget(value.target))
-      : value.target === undefined &&
-        (value.action === undefined || value.action === 'RELOAD_PAGE'))
+    value.action === undefined &&
+    (value.target === undefined || isNotificationTarget(value.target))
   );
 }
 
@@ -1182,6 +1237,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function withWebUpdateFirst(notifications: WorkbenchNotification[]): WorkbenchNotification[] {
+  const index = notifications.findIndex((item) => item.kind === 'web-update');
+  if (index > 0) notifications.unshift(...notifications.splice(index, 1));
+  return notifications;
+}
+
+function webUpdateNotificationId(update: { version: string; buildId: string }): string {
+  return `web-update:${update.version}:${update.buildId}`;
+}
+
 /** Owns the application-update subscription and its notification actions. */
 export function createWorkbenchWebUpdateService(options: {
   readonly application: import('./pwa-application-service.js').PwaApplicationService | undefined;
@@ -1198,22 +1263,25 @@ export function createWorkbenchWebUpdateService(options: {
     if (unsubscribe !== undefined || options.application === undefined) return;
     unsubscribe = options.application.subscribe((value) => {
       if (!value.checked) return;
-      const hasNotice = options.notifications.notifications.value.some(
-        (item) => item.kind === 'web-update'
-      );
-      const update = value.update ?? (hasNotice ? value.reload : undefined);
-      if (update === undefined) {
-        if (value.reload === undefined) options.notifications.clearWebUpdate();
-      } else {
+      if (value.update !== undefined) {
         options.notifications.notify({
-          id: `web-update:${update.version}:${update.buildId}`,
+          id: webUpdateNotificationId(value.update),
           kind: 'web-update',
           source: 'local',
-          title: translate('webUpdate.title'),
-          message: translate('webUpdate.message', { value0: update.version }),
+          version: value.update.version,
           action: 'RELOAD_PAGE'
         });
+        return;
       }
+      const pending =
+        value.unavailableUpdate ?? (value.reload?.action === 'reload' ? value.reload : undefined);
+      if (
+        pending === undefined ||
+        !options.notifications.notifications.value.some(
+          (item) => item.id === webUpdateNotificationId(pending)
+        )
+      )
+        options.notifications.clearWebUpdate();
     });
   }
   function stop(): void {
@@ -1254,6 +1322,8 @@ export interface WorkbenchNotificationsView {
   unreadCount: Readonly<Ref<number, number>>;
   previewNotificationId: Readonly<Ref<string | undefined, string | undefined>>;
   notificationRevision: Readonly<Ref<number, number>>;
+  webUpdatePreviewId: Readonly<Ref<string | undefined>>;
+  takeWebUpdatePreview: (id: string) => boolean;
   recentRuns: Readonly<Ref<RecentRun[], RecentRun[]>>;
   load: () => Promise<void>;
   markAllRead: () => void;

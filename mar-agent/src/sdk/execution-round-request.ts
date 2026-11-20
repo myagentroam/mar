@@ -27,7 +27,10 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
   };
   bind(scope: Scope): void;
   world(): ContextualWorldState;
-  commitWorld(world: ContextualWorldState): Promise<void>;
+  commitWorld(
+    world: ContextualWorldState,
+    deliveredSkills?: ReadonlyMap<string, string>
+  ): Promise<void>;
   preparing(messages: readonly SessionModelMessage[] | undefined, baseLength: number): void;
   transform(request: SessionModelRequest, bindings: Bindings): Promise<SessionModelRequest>;
 }) {
@@ -69,12 +72,15 @@ export async function prepareExecutionRoundRequest<Bindings, Scope>(input: {
     candidateRequest,
     request,
     toolScope,
-    commitSkillContext: async () => {
-      if (!loads || world === promptWorld) return;
-      const current = input.world();
-      const next =
-        current === promptWorld ? world : updateLoadedSkillWorldState(current, skillAnchor, loads);
-      if (next !== current) await input.commitWorld(next);
-    }
+    acknowledgeSkillContext: loads?.size
+      ? async () => {
+          const current = input.world();
+          const next =
+            current === promptWorld
+              ? world
+              : updateLoadedSkillWorldState(current, skillAnchor, loads);
+          await input.commitWorld(next, loads);
+        }
+      : undefined
   };
 }

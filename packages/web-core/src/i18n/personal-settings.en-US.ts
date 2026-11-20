@@ -26,6 +26,7 @@ export const personalSettingsEnUS = {
     mode: 'Mode',
     purpose: 'Purpose',
     trend: 'Usage over time',
+    inspectPeriods: 'Inspect time periods',
     selected:
       'Filtered usage: Input {input} · Cache {cache} · Output {output} · Total tokens {tokens} · {requests} requests',
     timeZone: 'Time zone: {zone}',
@@ -234,7 +235,8 @@ export const personalSettingsEnUS = {
       'border-medium': 'Medium-emphasis boundaries',
       'border-strong': 'Strong boundaries and outlines',
       'text-primary': 'Message text, headings, and resource names',
-      'text-secondary': 'Descriptions, metadata, and placeholders',
+      'text-secondary': 'Unselected labels, descriptions, and placeholders',
+      'text-muted': 'Timestamps, low-emphasis metadata, and supporting notes',
       'text-disabled': 'Text in disabled controls',
       'conversation-canvas': 'Conversation area background',
       'conversation-surface': 'Message content surfaces',

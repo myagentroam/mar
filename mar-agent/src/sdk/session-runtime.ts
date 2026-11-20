@@ -18,7 +18,9 @@ import { restorePendingMcpDiscovery, type McpDiscoveryReceipt } from '../session
 import {
   assertLoadedSkillCapacity,
   latestContextualWorldStateGeneration,
+  parsePendingSkillContext,
   parsePersistedContextualWorldState,
+  persistContextualWorldState,
   recoverLoadedSkillEntries,
   type ContextualWorldState
 } from '../runtime/context/world-state.js';
@@ -30,7 +32,7 @@ import type { ResolvedModelConfiguration } from './model-runtime.js';
 import type { SessionExecution, SessionExecutionContext } from './session-execution.js';
 import { SessionModelAdapters } from './session-model-adapters.js';
 
-/** Owns warm Session state shared across sequential Executions and retained cells. */
+/** Owns warm Session state and serializes private context writes from Executions and retained cells. */
 export class SessionRuntime {
   #executionContext: SessionExecutionContext | undefined;
   #mcpDiscoveryRevision = 0;
@@ -39,7 +41,8 @@ export class SessionRuntime {
   readonly scheduleTool = createSessionToolScheduler();
   readonly #modelAdapters: SessionModelAdapters;
   #contextualWorldState: ContextualWorldState | undefined;
-  readonly #pendingSkillContext = new Map<string, string>();
+  #pendingSkillContext = new Map<string, string>();
+  #contextualWrite: Promise<void> | undefined;
   #inputs: SessionInputCoordinator | undefined;
   #requestSnapshots: ExtensionRequestSnapshots | undefined;
   #recordProjection: Promise<unknown> | undefined;
@@ -115,23 +118,67 @@ export class SessionRuntime {
     this.#requestSnapshots = undefined;
   }
 
-  publishSkillContext(name: string, content: string): void {
-    assertLoadedSkillCapacity(
-      this.#contextualWorldState?.entries ?? [],
-      this.#pendingSkillContext,
-      name,
-      content
-    );
-    this.#pendingSkillContext.set(name, content);
+  publishSkillContext(
+    store: Pick<SessionStore, 'writeContextualWorldState'>,
+    name: string,
+    content: string,
+    signal: AbortSignal
+  ): Promise<void> {
+    return this.#withContextualWrite(async () => {
+      signal.throwIfAborted();
+      const world = this.#contextualWorldState;
+      if (!world)
+        throw new AgentError(
+          'MAR_AGENT_TOOL_NOT_AVAILABLE',
+          'Skill context delivery is unavailable.'
+        );
+      assertLoadedSkillCapacity(world.entries, this.#pendingSkillContext, name, content);
+      const pending = new Map(this.#pendingSkillContext).set(name, content);
+      try {
+        await persistContextualWorldState(store, this.storedSession.id, world, pending);
+      } catch {
+        // An injected Store error need not be safe to show in tool results or history.
+        throw new AgentError(
+          'MAR_AGENT_SKILL_CONTEXT_PERSIST_FAILED',
+          'Could not save the loaded Skill context.'
+        );
+      }
+      this.#pendingSkillContext = pending;
+    });
   }
 
   pendingSkillContext(): ReadonlyMap<string, string> {
     return new Map(this.#pendingSkillContext);
   }
 
-  acknowledgeSkillContext(delivered: ReadonlyMap<string, string>): void {
-    for (const [name, content] of delivered)
-      if (this.#pendingSkillContext.get(name) === content) this.#pendingSkillContext.delete(name);
+  commitContextualWorldState(
+    store: Pick<SessionStore, 'writeContextualWorldState'>,
+    world: ContextualWorldState,
+    options?: { readonly deliveredSkills?: ReadonlyMap<string, string>; readonly checkpoint?: true }
+  ): Promise<void> {
+    return this.#withContextualWrite(async () => {
+      let pending = this.#pendingSkillContext;
+      if (options?.deliveredSkills) {
+        pending = new Map(pending);
+        for (const [name, content] of options.deliveredSkills)
+          if (pending.get(name) === content) pending.delete(name);
+      }
+      // Once a Compact checkpoint commits, its generation wins even if the sidecar write fails.
+      if (options?.checkpoint) this.#contextualWorldState = world;
+      await persistContextualWorldState(store, this.storedSession.id, world, pending);
+      this.#contextualWorldState = world;
+      this.#pendingSkillContext = pending;
+    });
+  }
+
+  async #withContextualWrite(write: () => Promise<void>): Promise<void> {
+    const next = (this.#contextualWrite ?? Promise.resolve()).catch(() => undefined).then(write);
+    this.#contextualWrite = next;
+    try {
+      await next;
+    } finally {
+      if (this.#contextualWrite === next) this.#contextualWrite = undefined;
+    }
   }
 
   publishMcpDiscovery(recordId: string, message: SessionModelMessage): void {
@@ -227,9 +274,10 @@ export class SessionRuntime {
       store.hasRetainedSessionLease(sessionId, writerOwner)
     );
     const generation = latestContextualWorldStateGeneration(state.contextRecords);
-    const persisted = parsePersistedContextualWorldState(
-      await store.readContextualWorldState(sessionId)
-    );
+    const payload = await store.readContextualWorldState(sessionId);
+    const persisted = parsePersistedContextualWorldState(payload);
+    if (this.#contextualWorldState === undefined)
+      this.#pendingSkillContext = parsePendingSkillContext(payload);
     const world =
       this.#contextualWorldState?.generation === generation &&
       this.#contextualWorldState !== undefined
@@ -266,10 +314,6 @@ export class SessionRuntime {
   get contextualWorldState(): ContextualWorldState | undefined {
     return this.#contextualWorldState;
   }
-  updateContextualWorldState(state: ContextualWorldState): void {
-    this.#contextualWorldState = state;
-  }
-
   get activeExecutionId(): string | undefined {
     return this.#activeExecutionId;
   }

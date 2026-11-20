@@ -12,6 +12,8 @@ export interface PwaApplicationState {
   readonly checked: boolean;
   readonly update?: PwaUpdate;
   readonly reload?: PwaUpdate;
+  /** Previously offered or identified target whose readiness could not be confirmed. */
+  readonly unavailableUpdate?: PwaUpdate;
 }
 
 interface WorkerStatus {
@@ -21,6 +23,8 @@ interface WorkerStatus {
   readonly degraded: boolean;
   readonly entry: boolean;
 }
+
+const FOREGROUND_UPDATE_INTERVAL_MS = 5 * 60_000;
 
 function isWorkerStatus(value: unknown): value is WorkerStatus {
   if (typeof value !== 'object' || value === null) return false;
@@ -145,10 +149,22 @@ export function createPwaApplicationService(
         backgroundCheck();
     };
     const online = () => backgroundCheck();
+    const timer =
+      typeof document === 'undefined'
+        ? undefined
+        : setInterval(() => {
+            if (
+              document.visibilityState === 'visible' &&
+              (document.hasFocus?.() ?? true) &&
+              (typeof navigator === 'undefined' || navigator.onLine !== false)
+            )
+              backgroundCheck();
+          }, FOREGROUND_UPDATE_INTERVAL_MS);
     container?.addEventListener('controllerchange', controllerChanged);
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visible);
     if (typeof window !== 'undefined') window.addEventListener('online', online);
     cleanupLifecycle = () => {
+      if (timer !== undefined) clearInterval(timer);
       container?.removeEventListener('controllerchange', controllerChanged);
       if (typeof document !== 'undefined')
         document.removeEventListener('visibilitychange', visible);
@@ -305,44 +321,55 @@ export function createPwaApplicationService(
               : 'preparing';
         let update: PwaUpdate | undefined;
         let reload: PwaUpdate | undefined;
-        if (
-          waiting !== null &&
-          waitingStatus?.supported === true &&
-          waitingStatus.entry &&
-          !waitingStatus.degraded
-        ) {
+        let unavailableUpdate: PwaUpdate | undefined;
+        let activeReloadUnavailable = false;
+        if (waiting !== null && waitingStatus?.supported === true) {
           const prepared: PwaUpdate = {
             mode: 'worker',
             action: 'activate',
             version: waitingStatus.version,
             buildId: waitingStatus.buildId
           };
-          if (waitingStatus.buildId !== identity.buildId) update = prepared;
+          if (!waitingStatus.entry || waitingStatus.degraded) unavailableUpdate = prepared;
+          else if (waitingStatus.buildId !== identity.buildId) update = prepared;
           else reload = prepared;
         } else if (
           waiting === null &&
+          active !== null &&
+          container?.controller === active &&
           activeStatus?.supported === true &&
-          activeStatus.entry &&
-          !activeStatus.degraded &&
           activeStatus.buildId !== identity.buildId
         ) {
-          reload = {
+          const prepared: PwaUpdate = {
             mode: 'worker',
             action: 'reload',
             version: activeStatus.version,
             buildId: activeStatus.buildId
           };
+          if (activeStatus.entry && !activeStatus.degraded) reload = prepared;
+          else {
+            unavailableUpdate = prepared;
+            activeReloadUnavailable = true;
+          }
+        } else if (!updateSucceeded) {
+          const previous = state.value;
+          unavailableUpdate =
+            previous.update ??
+            previous.unavailableUpdate ??
+            (previous.reload?.action === 'reload' ? previous.reload : undefined);
         }
         publish({
           offline,
           checked: true,
           ...(update === undefined ? {} : { update }),
-          ...(reload === undefined ? {} : { reload })
+          ...(reload === undefined ? {} : { reload }),
+          ...(unavailableUpdate === undefined ? {} : { unavailableUpdate })
         });
         if (waiting !== null && waiting === startupTarget && (update ?? reload) !== undefined)
           await applyUpdate();
         if (waitingStatus?.supported === true && (!waitingStatus.entry || waitingStatus.degraded))
           throw new Error('Waiting worker not ready');
+        if (activeReloadUnavailable) throw new Error('Active worker not ready');
         if (!updateSucceeded) throw new Error('Update check failed');
         return;
       }
@@ -435,7 +462,11 @@ export function createPwaApplicationService(
     if (update === undefined) return 'UNAVAILABLE';
     const clearUpdate = () => {
       if ((state.value.update ?? state.value.reload) === update)
-        publish({ offline: state.value.offline, checked: state.value.checked });
+        publish({
+          offline: state.value.offline,
+          checked: state.value.checked,
+          unavailableUpdate: update
+        });
     };
     if (update.mode === 'online') {
       reloadForUpdate();

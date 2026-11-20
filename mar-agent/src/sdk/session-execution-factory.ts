@@ -140,13 +140,13 @@ export function createSessionExecutionFactory(ports: {
   sessionId: string;
   sessionRuntime: Pick<
     SessionRuntime,
-    | 'acknowledgeSkillContext'
     | 'acknowledgeMcpDiscovery'
     | 'pendingMcpDiscoveryNames'
     | 'mcpDiscoveryRevision'
     | 'publishMcpDiscovery'
     | 'assertCanExecute'
     | 'bindExecutionContext'
+    | 'commitContextualWorldState'
     | 'deactivateExecution'
     | 'joinRecordProjection'
     | 'pendingSkillContext'
@@ -158,7 +158,6 @@ export function createSessionExecutionFactory(ports: {
     | 'sessionBackend'
     | 'unbindExecutionContext'
     | 'unregisterExecution'
-    | 'updateContextualWorldState'
     | 'recordRequest'
     | 'completeRequest'
   >;
@@ -401,7 +400,8 @@ export function createSessionExecutionFactory(ports: {
           contextualWorldStateGeneration,
           compactMayContainAgentInstructions,
           messageSources,
-          updateWorldState: (state) => sessionRuntime.updateContextualWorldState(state),
+          persistWorldState: (state, options) =>
+            sessionRuntime.commitContextualWorldState(store, state, options),
           environment: () => executionEnvironment,
           instructionSnapshot: () => currentInstructionSnapshot,
           renderInstructions: (previous) => renderAgentInstructions(instructionEntries, previous),
@@ -771,7 +771,8 @@ export function createSessionExecutionFactory(ports: {
           todo,
           waitInterrupt,
           skills: instructionContext?.skills ?? new Map(),
-          publishSkillContext: (name, content) => sessionRuntime.publishSkillContext(name, content),
+          publishSkillContext: (name, content, signal) =>
+            sessionRuntime.publishSkillContext(store, name, content, signal),
           withRecordProjection,
           publishMcpDiscovery: async (names, signal) => {
             const message: ModelMessage = {
@@ -1100,9 +1101,9 @@ export function createSessionExecutionFactory(ports: {
             await compactCoordinator.checkpoint(true);
             return;
           }
-          const preparedSkillLoads = new WeakMap<
+          const preparedSkillAcknowledgements = new WeakMap<
             ModelRequest['messages'],
-            ReadonlyMap<string, string>
+            () => Promise<void>
           >();
           const prepareRound = createExecutionRoundPreparer<
             ModelMessage,
@@ -1111,8 +1112,7 @@ export function createSessionExecutionFactory(ports: {
               request: ModelRequest;
               toolScope: RoundToolScope;
               discoveryRevision: number;
-              skillLoads: ReadonlyMap<string, string>;
-              commitSkillContext(): Promise<void>;
+              acknowledgeSkillContext: (() => Promise<void>) | undefined;
             },
             PreparedExecutionRound<RoundToolScope>
           >({
@@ -1156,14 +1156,14 @@ export function createSessionExecutionFactory(ports: {
                 capture: captureRoundToolScope,
                 bind: (scope) => sources.bind(scope),
                 world: () => modelContext.worldState,
-                commitWorld: (world) => modelContext.commitWorldState(world),
+                commitWorld: modelContext.commitWorldState,
                 preparing: (next, baseLength) => {
                   preparingRequestMessages = next;
                   preparingRequestBaseLength = baseLength;
                 },
                 transform: (candidate, bindings) => transformModelRequest(candidate, bindings)
               });
-              return { ...candidate, discoveryRevision: capturedDiscoveryRevision, skillLoads };
+              return { ...candidate, discoveryRevision: capturedDiscoveryRevision };
             },
             adoptLateInput: async () => {
               const lateCoreChange =
@@ -1182,8 +1182,7 @@ export function createSessionExecutionFactory(ports: {
               request,
               toolScope,
               discoveryRevision: capturedDiscoveryRevision,
-              skillLoads,
-              commitSkillContext
+              acknowledgeSkillContext
             }) => {
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
                 return { retry: true as const };
@@ -1206,10 +1205,10 @@ export function createSessionExecutionFactory(ports: {
                 candidateRequest.messages
               );
               controller.signal.throwIfAborted();
-              await commitSkillContext();
               if (capturedDiscoveryRevision !== sessionRuntime.mcpDiscoveryRevision)
                 return { retry: true as const };
-              if (skillLoads.size) preparedSkillLoads.set(prepared.messages, skillLoads);
+              if (acknowledgeSkillContext)
+                preparedSkillAcknowledgements.set(prepared.messages, acknowledgeSkillContext);
               return { round: { request: prepared, toolScope } };
             }
           });
@@ -1235,9 +1234,19 @@ export function createSessionExecutionFactory(ports: {
             prepareRound,
             runTools: executeRoundTools,
             startModel: (request) => {
-              const skillLoads = preparedSkillLoads.get(request.messages);
               return modelLifecycle.start(request, async () => {
-                if (skillLoads) sessionRuntime.acknowledgeSkillContext(skillLoads);
+                const acknowledgeSkills = preparedSkillAcknowledgements.get(request.messages);
+                if (acknowledgeSkills) {
+                  try {
+                    await acknowledgeSkills();
+                  } catch {
+                    // Keep the accepted loads pending; a sidecar failure cannot undo model completion.
+                    coreExtensions.diagnose({
+                      code: 'MAR_AGENT_SKILL_CONTEXT_ACK_PERSIST_FAILED',
+                      sessionId
+                    });
+                  }
+                }
                 await sessionRuntime.acknowledgeMcpDiscovery(request.messages, (receipts) =>
                   store.append(sessionId, {
                     type: MCP_DISCOVERY_DELIVERED,

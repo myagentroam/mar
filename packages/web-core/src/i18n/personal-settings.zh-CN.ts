@@ -26,6 +26,7 @@ export const personalSettingsZhCN = {
     mode: '模式',
     purpose: '用途',
     trend: '用量趋势',
+    inspectPeriods: '查看各时段',
     selected:
       '筛选用量：输入 {input} · 缓存 {cache} · 输出 {output} · 总 Token {tokens} · {requests} 次调用',
     timeZone: '时区：{zone}',
@@ -231,7 +232,8 @@ export const personalSettingsZhCN = {
       'border-medium': '中等强调边界',
       'border-strong': '高强调边界和轮廓',
       'text-primary': '消息正文、标题和资源名称',
-      'text-secondary': '说明、元信息和占位文字',
+      'text-secondary': '未选中的名称、一般说明和占位文字',
+      'text-muted': '时间、低强调元信息和辅助说明',
       'text-disabled': '禁用控件文字',
       'conversation-canvas': '对话区域底层背景',
       'conversation-surface': '消息内容表面',

@@ -1,6 +1,6 @@
 ---
 title: What Is MyAgentRoam?
-lastUpdated: 2026-11-10
+lastUpdated: 2026-11-20
 ---
 
 # What Is MyAgentRoam?
@@ -32,7 +32,9 @@ To install a standalone application window, use the browser's install-app contro
 
 Offline resources do not include sign-in state, permissions, sessions, Workspace files, or terminals. If Server cannot be reached on a cold start, the interface reports that your identity is unconfirmed; reconnect to open documentation or retry. Identity and Server- or Node-dependent functions require a connection. An already open page does not sign you out merely because the network is lost.
 
-A notification appears when a new version is prepared, without immediately interrupting the current page. Clicking the notification, applying the update in **Settings → About**, or reloading the page after the update is prepared activates that version and automatically reloads all open same-origin application windows and tabs, without closing them individually, asking for extra confirmation, or waiting for edits and file transfers to finish. If the update is not ready when you reload, the page keeps using the previous version and notifies you when preparation finishes. A failed automatic switch does not retry in a loop; you can still apply the update manually. Browser tabs and installed applications behave the same way. Reloading may discard unsaved content and interrupt file transfers, so save first if needed. Migration from an older version or reclaimed cache may require reconnecting and closing all same-origin application windows and tabs before reopening the application.
+The workbench checks for updates periodically in the foreground, so you do not need to reload to discover a new version. Once the update is ready, its notification stays unread at the top of the list without interrupting your work. When the current window loads the new version, including after a hard reload, the notification and its unread count clear automatically.
+
+Clicking the notification, applying the update in **Settings → About**, or reloading the page after the update is prepared activates that version and automatically reloads all open same-origin application windows and tabs, without closing them individually, asking for extra confirmation, or waiting for edits and file transfers to finish. If the update is not ready when you reload, the page keeps using the previous version and notifies you when preparation finishes. A failed automatic switch does not retry in a loop; you can still apply the update manually. Browser tabs and installed applications behave the same way. Reloading may discard unsaved content and interrupt file transfers, so save first if needed. Migration from an older version or reclaimed cache may require reconnecting and closing all same-origin application windows and tabs before reopening the application.
 
 ## Fastest path to success
 

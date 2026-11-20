@@ -1,6 +1,6 @@
 ---
 title: Work Mode, Nodes, and Workspaces
-lastUpdated: 2026-11-19
+lastUpdated: 2026-11-20
 ---
 
 # Work Mode, Nodes, and Workspaces
@@ -57,6 +57,8 @@ After updating, an old file icon choice falls back to MAR File Icons. Your inter
 
 JSON uses `version: 1`, `name`, and `colors`, not `base`. The colors object maps tokens to values, for example `--mar-bg-panel` to `#ffffff`. Colors accept `#RGB`, `#RGBA`, `#RRGGBB`, and `#RRGGBBAA`. Missing or invalid colors always use the corresponding default dark colors; saving does not expand the original JSON. Use the question mark beside Theme JSON to open **Theme color reference**, with grouped swatches, short descriptions, search and variable-name copying. Light and dark themes share the same `--mar-*` variables; component-library variables are mapped internally. Only currently registered `--mar-*` color keys take effect. `--el-*` and removed keys are unknown and ignored when applied; legacy themes are not supported. Duplicating a theme materializes its complete effective palette without depending on the source theme.
 
+Readable text has three levels: primary (`--mar-text-primary`), secondary (`--mar-text-secondary`), and muted (`--mar-text-muted`). For example, the resource tree, workspace session list, and hosted conversation list use primary for selected names, secondary for unselected names, and muted for timestamps and supporting notes. Disabled control text is configured separately.
+
 Only **invalid JSON syntax** blocks saving or exporting. Missing names, unknown fields or tokens, invalid colors, and low contrast produce advisory warnings. Saved and exported JSON retains unknown and invalid content, but it is ignored when applied. An old `base` field is also retained with an unknown-field warning; it no longer changes the dark fallback rule. Arbitrary CSS, URLs, and scripts are not executed. Contrast checks cover only explicit opaque color pairs, not a complete accessibility audit.
 
 Themes do not change layout, fonts, file icon themes, the fixed terminal palette, or public help. The preview is a representative color sample: it does not perform real workbench actions or cover unaffected areas such as terminals.
@@ -82,6 +84,8 @@ Logout or Session revocation invalidates the corresponding mobile binding. Late 
 ## Usage statistics
 
 Open **Settings → Usage statistics** to view Agent usage for the current account. The default Conversation category includes main agents and subagents. **Conversation**, **Compact**, and **Composer Prediction** are separate categories; title generation and other requests are also available. Compact and prediction are excluded from Conversation. Switching categories updates the rolling last 24 hours and last 7 days (168 hours), charts, and records together. Top summaries for the current category do not change with the filters below. Filter charts and records by time, Runner, model, and Work/Conversation mode. Times use the browser time zone shown on the page.
+
+Hover over a bar for its time period and exact input, cache, output, and total token counts. With a keyboard, Tab to **Inspect time periods** below the chart and use the arrow keys to read the same values for each period.
 
 Custom date ranges can span up to 90 days and may include future dates, such as the rest of the current month, or lie entirely in the future. Statistics include only data recorded by the current refresh; future periods have no data.
 
