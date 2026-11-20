@@ -13,7 +13,7 @@ async function settle(page: Page, path: string, value: unknown, fail = false) {
 }
 async function open(page: Page, label: string) {
   await page
-    .locator('.resource-management-panel .el-table__body')
+    .locator('.resource-management-panel tbody')
     .getByRole('cell', { name: label, exact: true })
     .click();
   await expect(page.getByRole('dialog')).toBeVisible();
