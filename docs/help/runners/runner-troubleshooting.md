@@ -1,6 +1,6 @@
 ---
 title: Agent 不可用或模型缺失
-lastUpdated: 2026-09-24
+lastUpdated: 2026-11-20
 ---
 
 # Agent 不可用或模型缺失
@@ -16,6 +16,8 @@ lastUpdated: 2026-09-24
 5. 返回工作区重新选择有效模型；没有可用模型时先修复配置或授权，不要通过删除历史或安装 Codex CLI 解决。
 
 配置步骤见[MAR Agent](mar-agent.md)。
+
+如果回复因达到模型输出上限而中断，MAR Agent 会结束本轮，不自动补请求。可以发送新消息，请它继续未完成的部分，或请管理员检查模型的最大输出 Token 配置。之前已经完成的工具操作不会回滚。
 
 ## Codex、Claude Code 与 OpenCode
 

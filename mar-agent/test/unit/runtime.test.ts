@@ -1163,101 +1163,45 @@ class EmptyCompletedAdapter implements ModelAdapter {
   }
 }
 
-class MaxOutputContinuationAdapter implements ModelAdapter {
+class TruncatedAnswerAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  calls = 0;
-  constructor(private readonly truncatedResponses = 1) {}
-  readonly configuration = model;
-  async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
-    this.requests.push(request);
-    this.calls++;
-    if (this.calls <= this.truncatedResponses) {
-      yield {
-        type: 'text.completed',
-        itemId: `partial-${this.calls}`,
-        phase: 'commentary',
-        text: `partial ${this.calls}`
-      };
-      yield { type: 'completed', reason: 'max_output' };
-      return;
-    }
-    yield { type: 'text.completed', itemId: 'answer', text: 'completed after continuation' };
-    yield { type: 'completed', reason: 'completed' };
-  }
-}
-
-class MaxOutputContinuationCompactionAdapter implements ModelAdapter {
-  readonly requests: ModelRequest[] = [];
-  calls = 0;
   constructor(readonly configuration: AgentModelConfiguration) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    this.calls++;
-    if (request.toolChoice === 'none') {
-      yield { type: 'text.completed', itemId: 'summary', text: 'compacted continuation state' };
-      yield { type: 'completed', reason: 'completed' };
-      return;
-    }
-    if (this.calls === 1) {
-      yield {
-        type: 'text.completed',
-        itemId: 'partial',
-        phase: 'commentary',
-        text: 'partial before compact'
-      };
-      yield {
-        type: 'usage',
-        usage: { inputTokens: 29_000, contextInputTokens: 29_000, outputTokens: 8 }
-      };
-      yield { type: 'completed', reason: 'max_output' };
-      return;
-    }
-    yield { type: 'text.completed', itemId: 'answer', text: 'completed after compact' };
-    yield { type: 'completed', reason: 'completed' };
+    yield { type: 'text.completed', itemId: 'partial', text: 'partial response' };
+    yield {
+      type: 'usage',
+      usage: { inputTokens: 29_000, contextInputTokens: 29_000, outputTokens: 8 }
+    };
+    yield { type: 'completed', reason: 'max_output' };
   }
 }
 
 class IncompleteToolMaxOutputAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  calls = 0;
   readonly configuration = model;
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    this.calls++;
-    if (this.calls === 1) {
-      yield {
-        type: 'client_tool.call',
-        callId: 'incomplete-read',
-        name: 'read',
-        arguments: {},
-        argumentError: 'Tool arguments are invalid JSON.'
-      };
-      yield { type: 'completed', reason: 'max_output' };
-      return;
-    }
-    yield { type: 'text.completed', itemId: 'answer', text: 'completed after tool continuation' };
-    yield { type: 'completed', reason: 'completed' };
+    yield {
+      type: 'client_tool.call',
+      callId: 'incomplete-read',
+      name: 'read',
+      arguments: {},
+      argumentError: 'Tool arguments are invalid JSON.'
+    };
+    yield { type: 'completed', reason: 'max_output' };
   }
 }
 
-class MaxOutputContinuationWithToolAdapter implements ModelAdapter {
+class CompleteToolMaxOutputAdapter implements ModelAdapter {
   readonly requests: ModelRequest[] = [];
-  calls = 0;
   readonly configuration = model;
+  constructor(private readonly provideFinalAnswer = true) {}
   async *start(request: ModelRequest): AsyncIterable<ModelEvent> {
     this.requests.push(request);
-    this.calls++;
-    if (this.calls === 1 || this.calls === 3) {
-      yield {
-        type: 'text.completed',
-        itemId: `partial-${this.calls}`,
-        phase: 'commentary',
-        text: `partial ${this.calls}`
-      };
-      yield { type: 'completed', reason: 'max_output' };
-      return;
-    }
-    if (this.calls === 2) {
+    if (request.retryState) request.retryState.retryDelayMs = 0;
+    if (this.requests.length === 1) {
+      yield { type: 'text.completed', itemId: 'partial', text: 'truncated before the tool result' };
       yield {
         type: 'client_tool.call',
         callId: 'sleep',
@@ -1267,7 +1211,8 @@ class MaxOutputContinuationWithToolAdapter implements ModelAdapter {
       yield { type: 'completed', reason: 'max_output' };
       return;
     }
-    yield { type: 'text.completed', itemId: 'answer', text: 'completed after tool round' };
+    if (this.provideFinalAnswer)
+      yield { type: 'text.completed', itemId: 'answer', text: 'completed after tool round' };
     yield { type: 'completed', reason: 'completed' };
   }
 }
@@ -2818,7 +2763,7 @@ describe('agent runtime', () => {
       role: 'user',
       content: expect.stringContaining('answer-3')
     });
-    expect(restoredSummary?.content).toContain('Continue directly');
+    expect(restoredSummary?.content).toContain('a factual handoff, not a new user request');
     expect(
       adapter.requests[3]?.messages
         .filter((message) => message.metadata?.source === 'user')
@@ -2861,9 +2806,11 @@ describe('agent runtime', () => {
     expect(lastRequest.messages.map((message) => message.content).join('\n')).not.toContain(
       'Keep task facts'
     );
-    expect(
-      lastRequest.messages.filter((message) => message.content.includes('Continue directly'))
-    ).toHaveLength(1);
+    expect(lastRequest.messages.filter((message) => message.contextKind === 'summary')).toEqual([
+      expect.objectContaining({
+        content: expect.stringContaining('a factual handoff, not a new user request')
+      })
+    ]);
     await agent.dispose();
   });
 
@@ -4612,66 +4559,13 @@ describe('agent runtime', () => {
     await agent.dispose();
   });
 
-  it('continues one max-output response within the same execution', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-runtime-max-output-continuation-'));
-    homes.push(home);
-    const workspace = join(home, 'workspace');
-    await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
-    const adapter = new MaxOutputContinuationAdapter();
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => adapter
-    );
-    const session = await agent.createSession({ workspace, title: 'Max output continuation' });
-
-    await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
-      status: 'completed',
-      finalAnswer: 'completed after continuation'
-    });
-    expect(adapter.requests).toHaveLength(2);
-    expect(adapter.requests[1]?.messages.at(-1)).toEqual({
-      role: 'user',
-      content:
-        'Continue the previous response from exactly where it stopped. Do not repeat completed content.'
-    });
-    await agent.dispose();
-  });
-
-  it('fails after the one allowed max-output continuation', async () => {
+  it('fails on a truncated answer without another request, even near the context limit', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-max-output-terminal-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
-    const adapter = new MaxOutputContinuationAdapter(2);
-    const agent = await createMarAgent(
-      {
-        mode: 'normal',
-        host: new LocalAgentHost({ homeDirectory: home, workspace }),
-        models: [model]
-      },
-      () => adapter
-    );
-    const session = await agent.createSession({ workspace, title: 'Max output terminal' });
-
-    await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
-      status: 'failed',
-      errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE'
-    });
-    expect(adapter.requests).toHaveLength(2);
-    await agent.dispose();
-  });
-
-  it('does not persist max-output continuation through automatic compaction', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'mar-runtime-max-output-compact-'));
-    homes.push(home);
-    const workspace = join(home, 'workspace');
-    await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
     const compactModel = { ...model, contextWindowTokens: 30_000 };
-    const adapter = new MaxOutputContinuationCompactionAdapter(compactModel);
+    const adapter = new TruncatedAnswerAdapter(compactModel);
     const agent = await createMarAgent(
       {
         mode: 'normal',
@@ -4680,35 +4574,19 @@ describe('agent runtime', () => {
       },
       () => adapter
     );
-    const session = await agent.createSession({ workspace, title: 'Max output compact' });
+    const session = await agent.createSession({ workspace, title: 'Max output terminal' });
 
-    await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
-      status: 'completed',
-      finalAnswer: 'completed after compact'
+    const result = await session.run({ prompt: 'answer fully' }).result();
+    expect(result).toMatchObject({
+      status: 'failed',
+      finalAnswer: '',
+      errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE'
     });
-    expect(adapter.requests).toHaveLength(3);
-    expect(adapter.requests.at(-1)?.messages.at(-1)).toEqual({
-      role: 'user',
-      content:
-        'Continue the previous response from exactly where it stopped. Do not repeat completed content.'
-    });
-    const records = await import('../../src/session/store/index.js').then(
-      async ({ JsonlSessionStore }) => {
-        const store = await JsonlSessionStore.open(home);
-        const value = await store.read(session.id);
-        await store.close();
-        return value;
-      }
-    );
-    expect(records.filter((record) => record.type === 'turn.user')).toHaveLength(1);
-    expect(JSON.stringify(records)).not.toContain(
-      'Continue the previous response from exactly where it stopped.'
-    );
-    expect(records.some((record) => record.type === 'compact.completed')).toBe(true);
+    expect(adapter.requests).toHaveLength(1);
     await agent.dispose();
   });
 
-  it('does not execute an incomplete tool call from a max-output response', async () => {
+  it('fails on incomplete tool arguments without executing the call or requesting again', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-max-output-tool-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -4728,23 +4606,20 @@ describe('agent runtime', () => {
     for await (const event of handle) events.push(event);
 
     await expect(handle.result()).resolves.toMatchObject({
-      status: 'completed',
-      finalAnswer: 'completed after tool continuation'
+      status: 'failed',
+      errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE'
     });
     expect(events.some((event) => event.type === 'tool.started')).toBe(false);
-    expect(adapter.requests).toHaveLength(2);
-    expect(adapter.requests[1]?.messages.some((message) => message.role === 'tool_call')).toBe(
-      false
-    );
+    expect(adapter.requests).toHaveLength(1);
     await agent.dispose();
   });
 
-  it('resets max-output continuation after a complete tool round', async () => {
+  it('runs a complete tool call at the output limit and sends its result in the next round', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-max-output-tool-round-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
     await import('node:fs/promises').then(({ mkdir }) => mkdir(workspace));
-    const adapter = new MaxOutputContinuationWithToolAdapter();
+    const adapter = new CompleteToolMaxOutputAdapter();
     const agent = await createMarAgent(
       {
         mode: 'normal',
@@ -4759,11 +4634,48 @@ describe('agent runtime', () => {
       status: 'completed',
       finalAnswer: 'completed after tool round'
     });
-    expect(adapter.requests).toHaveLength(4);
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]?.messages.at(-1)).toMatchObject({
+      role: 'tool',
+      callId: 'sleep',
+      isError: false
+    });
     await agent.dispose();
   });
 
-  it('continues a low-token Anthropic Messages response through the Runtime', async () => {
+  it('does not reuse truncated text as the final answer after a complete tool batch', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'mar-runtime-max-output-empty-tool-round-'));
+    homes.push(home);
+    const adapter = new CompleteToolMaxOutputAdapter(false);
+    const agent = await createMarAgent(
+      {
+        mode: 'normal',
+        host: new LocalAgentHost({ homeDirectory: home, workspace: home }),
+        models: [model]
+      },
+      () => adapter
+    );
+    const session = await agent.createSession({
+      workspace: home,
+      title: 'Max output empty tool round'
+    });
+    try {
+      await expect(session.run({ prompt: 'finish the task' }).result()).resolves.toMatchObject({
+        status: 'failed',
+        finalAnswer: '',
+        errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE'
+      });
+      expect(adapter.requests[1]?.messages.at(-1)).toMatchObject({
+        role: 'tool',
+        callId: 'sleep',
+        isError: false
+      });
+    } finally {
+      await agent.dispose();
+    }
+  });
+
+  it('fails a low-token Anthropic Messages response without a follow-up request', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-runtime-anthropic-max-output-'));
     homes.push(home);
     const workspace = join(home, 'workspace');
@@ -4775,40 +4687,22 @@ describe('agent runtime', () => {
       request.on('data', (chunk) => (body += chunk));
       request.on('end', () => {
         requestBodies.push(JSON.parse(body) as Record<string, unknown>);
-        const events =
-          requestBodies.length === 1
-            ? [
-                { type: 'message_start', message: { id: 'anthropic-partial', usage: {} } },
-                { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
-                {
-                  type: 'content_block_delta',
-                  index: 0,
-                  delta: { type: 'text_delta', text: 'partial response' }
-                },
-                { type: 'content_block_stop', index: 0 },
-                {
-                  type: 'message_delta',
-                  delta: { stop_reason: 'max_tokens' },
-                  usage: { output_tokens: 8 }
-                },
-                { type: 'message_stop' }
-              ]
-            : [
-                { type: 'message_start', message: { id: 'anthropic-final', usage: {} } },
-                { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
-                {
-                  type: 'content_block_delta',
-                  index: 0,
-                  delta: { type: 'text_delta', text: 'completed after continuation' }
-                },
-                { type: 'content_block_stop', index: 0 },
-                {
-                  type: 'message_delta',
-                  delta: { stop_reason: 'end_turn' },
-                  usage: { output_tokens: 4 }
-                },
-                { type: 'message_stop' }
-              ];
+        const events = [
+          { type: 'message_start', message: { id: 'anthropic-partial', usage: {} } },
+          { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+          {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'text_delta', text: 'partial response' }
+          },
+          { type: 'content_block_stop', index: 0 },
+          {
+            type: 'message_delta',
+            delta: { stop_reason: 'max_tokens' },
+            usage: { output_tokens: 8 }
+          },
+          { type: 'message_stop' }
+        ];
         response.writeHead(200, { 'content-type': 'text/event-stream' });
         response.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''));
       });
@@ -4833,23 +4727,17 @@ describe('agent runtime', () => {
     const session = await agent.createSession({ workspace, title: 'Anthropic max output' });
 
     await expect(session.run({ prompt: 'answer fully' }).result()).resolves.toMatchObject({
-      status: 'completed',
-      finalAnswer: 'completed after continuation'
+      status: 'failed',
+      errorCode: 'MAR_AGENT_MODEL_OUTPUT_INCOMPLETE'
     });
-    expect(requestBodies).toHaveLength(2);
-    expect(requestBodies.every((body) => body.max_tokens === 8)).toBe(true);
-    expect(JSON.stringify(requestBodies[1]?.messages)).toContain(
-      'Continue the previous response from exactly where it stopped.'
-    );
+    expect(requestBodies).toHaveLength(1);
+    expect(requestBodies[0]?.max_tokens).toBe(8);
     await agent.dispose();
     const persisted = await readFile(
       join(await activeSessionDirectory(home, session.id), 'events-000001.jsonl'),
       'utf8'
     );
     expect(persisted.match(/"type":"turn\.user"/gu)).toHaveLength(1);
-    expect(persisted).not.toContain(
-      'Continue the previous response from exactly where it stopped.'
-    );
   });
 
   it('compacts and retries when switching to a model with a smaller context window', async () => {

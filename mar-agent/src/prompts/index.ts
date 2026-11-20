@@ -8,10 +8,9 @@ import {
   securityPrompt
 } from './core.js';
 import { modePrompt } from './modes.js';
-import { outputStylePrompt } from './output.js';
 import { toolUsagePrompt } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.75';
+export const MAR_AGENT_PROMPT_VERSION = '1.76';
 
 interface SystemPromptInput {
   mode: ExecutionMode;
@@ -37,7 +36,6 @@ export function buildSystemPromptSections(input: SystemPromptInput): readonly Pr
     ['identity', identityPrompt()],
     ['instruction-priority', instructionPriorityPrompt],
     ['safety', securityPrompt],
-    ['output-style', outputStylePrompt],
     ['environment-rules', environmentPrompt(input)],
     ['tools', input.tools.length > 0 ? toolUsagePrompt(input.tools, input.directTools) : ''],
     [

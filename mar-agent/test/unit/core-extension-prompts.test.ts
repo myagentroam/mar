@@ -10,23 +10,23 @@ afterEach(cleanupCoreFixtures);
 
 describe('Core structured Prompt composition', () => {
   it.each([
-    ['run', [], 'e07b54bb0f1d8d42926a0e1bef897e4dcc7f3f5f91409cbfc57b27c421923e6c'],
+    ['run', [], 'c5f0c94e6b63c6e1dbbba93aee824623d2aec461da8453c0fb99e896791f9bd2'],
     [
       'run',
       ['read', 'exec', 'skill'],
-      '2757a260d0c3c8968bc5e9a106dedab25d47b3a2392ab2ddacf48b4225a1a15a'
+      '0c6fb26e90f5b8c7d957b02876a6ad7fd5354920a14a511a4d63c156d400684c'
     ],
-    ['plan', [], '6be6968278390afb81f071eec37c1022b225efa598501900a3728c2b2a03dfec'],
+    ['plan', [], '9df39d5febafb740ebf709e72d43c0dfa46fc5ceacadfc0ad9105f45d8366df5'],
     [
       'plan',
       ['read', 'exec', 'skill'],
-      '0ce78d2798cac64a0b5ecf166ffaf60169f3697ac810c9174b09eb7bcc7dce5d'
+      '9d644d26e958c35e2009a2b1fb175fe5a9fa2be34d2038c92b46de2dcb347ac3'
     ],
-    ['compact', [], 'fa9bfe8da9ba7b2adcca9f77b2474fe5655f3867ef91c9d51b596351f54ee504'],
+    ['compact', [], '9dc5800d125dfa2ce2f3604d28be6f1307bfd969170eb8c86d0d41a449f87306'],
     [
       'compact',
       ['read', 'exec', 'skill'],
-      '479b19892970d61be911ce60479cee1edb6845e1e6df415106ddf9ae250a4732'
+      '5ba8375340408b9d1b84e1dac1bc2f4d8ea1469826384e45990e8281c2306d86'
     ]
   ] as const)('preserves the current %s Prompt bytes (%j)', (mode, tools, digest) => {
     const input = {
@@ -123,12 +123,7 @@ describe('Core structured Prompt composition', () => {
               context.hooks.intercept('prompt.section', (part, _call, next) =>
                 next({
                   ...part,
-                  text:
-                    part.id === 'core:identity'
-                      ? 'REPLACED_IDENTITY'
-                      : part.id === 'core:output-style'
-                        ? null
-                        : part.text
+                  text: part.id === 'core:identity' ? 'REPLACED_IDENTITY' : part.text
                 })
               );
               context.hooks.intercept('prompt.compose', (text, _call, next) =>

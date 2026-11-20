@@ -228,8 +228,7 @@ describe('system prompt', () => {
       '# Instruction priority',
       '# Environment and workspace',
       '# Tools and execution',
-      '# Security',
-      '# Output and communication style'
+      '# Security'
     ])
       expect(prompt).toContain(section);
     const normalized = prompt.toLowerCase();
@@ -321,30 +320,8 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('never commit secrets or keys');
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
-    expect(normalized).toContain('for a requested review');
-    expect(normalized).toContain('ordered by severity');
-    expect(normalized).toContain('write naturally as a concise teammate');
-    expect(normalized).toContain("match the user's tone and assumed background");
-    expect(normalized).toContain('state the main point early');
-    expect(normalized).toContain('for substantive analysis');
-    expect(normalized).toContain('cohesive conclusion and representative evidence');
-    expect(normalized).toContain('exhaustive inventories');
-    expect(normalized).toContain('for a short follow-up, correction, confirmation');
-    expect(normalized).toContain('answer the new point directly');
-    expect(normalized).toContain('plain paragraph or compact list');
-    expect(normalized).toContain('do not restate prior analysis');
-    expect(normalized).toContain('reproduce the full hierarchy');
-    expect(normalized).toContain('complete revised plan unless the user asks for it');
-    expect(normalized).toContain('plain language, active voice, and connected prose');
-    expect(normalized).toContain('avoid over-formatting');
-    expect(normalized).toContain('use multi-section structure only');
-    expect(normalized).toContain('lists only when the information is genuinely parallel');
-    expect(normalized).toContain('technical details only when they help explain or substantiate');
-    expect(normalized).toContain('summarize routine verification instead of listing every check');
-    expect(normalized).toContain('focus final answers on the most important information');
-    expect(normalized).toContain('avoid long-winded explanations unless necessary');
-    expect(normalized).not.toMatch(/\b10 lines\b|fixed line|hard limit/u);
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.75');
+    expect(normalized).not.toContain('# output and communication style');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.76');
   });
 
   it('leaves Skill usage to its catalog without prescribing a Core-owned loading sequence', () => {
@@ -383,7 +360,8 @@ describe('system prompt', () => {
       'core:workspace-discipline',
       'core:workflow',
       'core:interaction',
-      'core:long-running'
+      'core:long-running',
+      'core:output-style'
     ]) {
       expect(sections.find((section) => section.id === id)).toBeUndefined();
     }
@@ -566,10 +544,8 @@ describe('system prompt', () => {
 
     expect(stablePrefix(first)).toBe(stablePrefix(second));
     expect(stablePrefix(first)).toBe(stablePrefix(compact));
-    expect(stablePrefix(first)).toContain('# Output and communication style');
-    expect(first.indexOf('# Output and communication style')).toBeLessThan(
-      first.indexOf('# Environment and workspace')
-    );
+    expect(stablePrefix(first)).toContain('# Security');
+    expect(first.indexOf('# Security')).toBeLessThan(first.indexOf('# Environment and workspace'));
     expect(first.indexOf('# Environment and workspace')).toBeLessThan(
       first.indexOf('# Caller, project, and selected Skill instructions')
     );

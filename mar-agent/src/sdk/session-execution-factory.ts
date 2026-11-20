@@ -1106,7 +1106,6 @@ export function createSessionExecutionFactory(ports: {
             () => Promise<void>
           >();
           const prepareRound = createExecutionRoundPreparer<
-            ModelMessage,
             {
               candidateRequest: ModelRequest;
               request: ModelRequest;
@@ -1135,12 +1134,11 @@ export function createSessionExecutionFactory(ports: {
                   executionEnvironment = { ...currentEnvironment, ...currentLocalTimeContext() };
                 }
               }),
-            buildCandidate: async (continuation) => {
+            buildCandidate: async () => {
               const skillLoads = sessionRuntime.pendingSkillContext();
               const capturedDiscoveryRevision = discoveryRevision;
               const candidate = await prepareExecutionRoundRequest({
                 messages,
-                continuation,
                 skillLoads,
                 model: selectedModel,
                 requestBase: {

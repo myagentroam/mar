@@ -2900,7 +2900,7 @@ describe('model adapters', () => {
     expect(usages.at(-1)?.outputTokens).toBe(5);
   });
 
-  it('maps Anthropic max_tokens to a commentary response requiring continuation', async () => {
+  it('maps Anthropic max_tokens to commentary and an output-limit stop', async () => {
     const baseUrl = await sseServer(
       [
         { type: 'message_start', message: { id: 'msg_max_tokens', usage: {} } },
