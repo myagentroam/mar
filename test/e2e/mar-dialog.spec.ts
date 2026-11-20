@@ -36,6 +36,92 @@ test('Dialog help closes before its modal and feedback stays with its owner', as
   await expect(page.getByText('Background saved', { exact: true })).toBeVisible();
 });
 
+for (const dismissal of ['manual', 'automatic'] as const) {
+  test(`Message feedback slides and fades on entry and ${dismissal} dismissal`, async ({
+    page
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const transitions = await page.evaluateHandle(() => {
+      const samples: Array<{ property: string; from: number; to: number }> = [];
+      document.addEventListener('transitionstart', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || !target.matches('.mar-message')) return;
+        const transition = target
+          .getAnimations()
+          .find(
+            (animation) =>
+              animation instanceof CSSTransition &&
+              animation.transitionProperty === event.propertyName
+          );
+        if (!(transition?.effect instanceof KeyframeEffect)) return;
+        const [first, last] = transition.effect.getKeyframes();
+        if (event.propertyName === 'opacity') {
+          samples.push({
+            property: 'opacity',
+            from: Number(first?.opacity),
+            to: Number(last?.opacity)
+          });
+        } else if (event.propertyName === 'transform') {
+          const y = (value: unknown) => {
+            if (value === 'none') return 0;
+            // Transition keyframes may keep percentage translations instead of resolving pixels.
+            const transform = String(value).replace(
+              /(-?[\d.]+)%/g,
+              (_, percent) => `${(Number(percent) / 100) * target.offsetHeight}px`
+            );
+            return new DOMMatrixReadOnly(transform).m42;
+          };
+          samples.push({
+            property: 'transform',
+            from: y(first?.transform),
+            to: y(last?.transform)
+          });
+        }
+      });
+      return samples;
+    });
+    await page.getByRole('button', { name: 'Background command' }).press('Enter');
+    const message = page.locator('.mar-message').filter({ hasText: 'Background saved' });
+    await expect.poll(() => transitions.evaluate((samples) => samples.length)).toBe(2);
+    await expect(message).toHaveCSS('opacity', '1');
+
+    if (dismissal === 'manual') await message.getByRole('button', { name: 'Close' }).press('Enter');
+    await expect(message).toHaveCount(0);
+    const samples = await transitions.jsonValue();
+    expect(
+      samples.filter(({ property }) => property === 'opacity').map(({ from, to }) => [from, to])
+    ).toEqual([
+      [0, 1],
+      [1, 0]
+    ]);
+    const [enter, leave] = samples.filter(({ property }) => property === 'transform');
+    expect(enter?.from).toBeLessThan(0);
+    expect(enter?.to).toBe(0);
+    expect(leave?.from).toBe(0);
+    expect(leave?.to).toBeLessThan(0);
+  });
+}
+
+test('Message feedback skips motion when reduced motion is requested', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const events = await page.evaluateHandle(() => {
+    const started: string[] = [];
+    for (const type of ['transitionstart', 'animationstart']) {
+      document.addEventListener(type, ({ target }) => {
+        if (target instanceof HTMLElement && target.matches('.mar-message')) started.push(type);
+      });
+    }
+    return started;
+  });
+  await page.getByRole('button', { name: 'Background command' }).press('Enter');
+  const message = page.locator('.mar-message').filter({ hasText: 'Background saved' });
+  await expect(message).toBeInViewport();
+  await expect(message).toHaveCSS('opacity', '1');
+  await message.getByRole('button', { name: 'Close' }).press('Enter');
+  await expect(message).toHaveCount(0);
+  expect(await events.jsonValue()).toEqual([]);
+});
+
 test('Local loading marks only its owner busy and retains its content', async ({ page }) => {
   const region = page.getByRole('region', { name: 'Record results' });
   const trigger = page.getByRole('checkbox', { name: 'Load region' });
@@ -115,6 +201,56 @@ test('Dialog honors explicit autofocus on its form field', async ({ page }) => {
   await page.getByRole('button', { name: 'Open editor' }).press('Enter');
   await expect(page.getByRole('textbox', { name: 'Draft' })).toBeFocused();
 });
+
+test('Dialog and scrim fade together before the modal releases the page', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const closingFrame = await page.addStyleTag({
+    content: `
+      .mar-ui-dialog-overlay[data-closing],
+      .mar-ui-dialog-overlay[data-closing]::backdrop {
+        animation-delay: -65ms !important;
+        animation-play-state: paused !important;
+      }
+    `
+  });
+  const opener = page.getByRole('button', { name: 'Open editor' });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Edit record' });
+  await dialog.getByRole('button', { name: 'Close this dialog' }).click();
+
+  await expect(dialog).toHaveAttribute('data-closing', 'true');
+  const { panel, scrim, modal } = await dialog.evaluate((element) => ({
+    panel: Number(getComputedStyle(element).opacity),
+    scrim: Number(getComputedStyle(element, '::backdrop').opacity),
+    modal: element.matches(':modal')
+  }));
+  expect(panel).toBeGreaterThan(0);
+  expect(panel).toBeLessThan(1);
+  expect(scrim).toBeCloseTo(panel, 3);
+  expect(modal).toBe(true);
+  await expect(page.getByText('Closed 0', { exact: true })).toBeVisible();
+
+  await closingFrame.evaluate((style) => style.remove());
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await expect(page.getByText('Closed 1', { exact: true })).toBeVisible();
+});
+
+for (const width of [390, 1280]) {
+  test(`Dialog header close uses a square icon action at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    const opener = page.getByRole('button', { name: 'Open editor' });
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'Edit record' });
+    const close = dialog.getByRole('button', { name: 'Close this dialog' });
+    await expect(close).toHaveCSS('width', '32px');
+    await expect(close).toHaveCSS('height', '32px');
+    await expect(close).toHaveCSS('padding', '0px');
+    await close.click();
+    await expect(dialog).toBeHidden();
+    await expect(opener).toBeFocused();
+  });
+}
 
 test('Dialog returns focus to the active parent when the nested opener is removed', async ({
   page

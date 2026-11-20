@@ -44,6 +44,93 @@ for (const [theme, width] of [
   });
 }
 
+test('Dropdown grows toward the free space when a label expands near the right edge', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 640, height: 600 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${fixture.url}mar-controls.html?command-menu`);
+  await page.getByRole('button', { name: 'Commands' }).click();
+  const menu = page.getByRole('menu', { name: 'Commands' });
+  const rename = menu.getByRole('menuitem').last();
+  const initial = (await menu.boundingBox())!;
+  const rowHeight = (await rename.boundingBox())!.height;
+
+  await rename.evaluate((item) => {
+    item.textContent = 'Rename this shared workspace and its configuration';
+  });
+  await expect
+    .poll(async () => {
+      const { x, width } = (await menu.boundingBox())!;
+      return { grew: width > initial.width, shiftedLeft: x < initial.x, inside: x + width <= 632 };
+    })
+    .toEqual({ grew: true, shiftedLeft: true, inside: true });
+  expect((await rename.boundingBox())!.height).toBeCloseTo(rowHeight, 0);
+
+  await page.setViewportSize({ width: 320, height: 600 });
+  await rename.evaluate((item) => {
+    item.textContent = 'RenameThisSharedWorkspaceAndItsConfiguration'.repeat(3);
+  });
+  await expect
+    .poll(() =>
+      menu.evaluate((element) => {
+        const { left, right } = element.getBoundingClientRect();
+        const content = element.firstElementChild!;
+        return left >= 8 && right <= 312 && content.scrollWidth <= content.clientWidth;
+      })
+    )
+    .toBe(true);
+  expect((await rename.boundingBox())!.height).toBeGreaterThan(rowHeight);
+});
+
+test('Organization cascader highlights the entire row and shows the confirmed path', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark`);
+  const owner = page.getByRole('combobox', { name: 'Owner' });
+  await owner.click();
+  const popup = page.getByRole('dialog', { name: 'Select' });
+  const expand = popup.getByRole('button', { name: 'Platform', expanded: false });
+  const chooseControl = page
+    .getByRole('button', { name: 'Platform', exact: true })
+    .and(page.locator('[aria-pressed]'));
+  const choose = popup.locator(chooseControl);
+  const row = popup.locator('.mar-ui-cascader__row').filter({ has: chooseControl });
+  const hoverFill = await row.evaluate((node) => {
+    const probe = document.createElement('div');
+    probe.style.backgroundColor = 'var(--mar-ui-fill-row-hover)';
+    node.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expand.hover();
+  await expect(row).toHaveCSS('background-color', hoverFill);
+  await expect(expand).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await choose.hover();
+  await expect(row).toHaveCSS('background-color', hoverFill);
+
+  await expand.click();
+  await popup.getByRole('button', { name: 'Release', exact: true }).click();
+  await expect(owner).toHaveValue('Platform / Release');
+  await expect(page.getByLabel('Owner value')).toHaveText('2');
+  await owner.click();
+  const selectedOption = page.getByRole('button', { name: 'Release', pressed: true, exact: true });
+  const selectedRow = popup.locator('.mar-ui-cascader__row').filter({ has: selectedOption });
+  await expect(selectedRow).toBeVisible();
+  const selectedFill = await selectedRow.evaluate(
+    (element) => getComputedStyle(element).backgroundColor
+  );
+  expect(selectedFill).not.toBe('rgba(0, 0, 0, 0)');
+  await popup.getByRole('button', { name: 'Operations', expanded: false }).click();
+  await expect(popup.getByRole('button', { name: 'Support', exact: true })).toBeVisible();
+  await expect(selectedRow).toHaveCSS('background-color', selectedFill);
+  await expect(owner).toHaveValue('Platform / Release');
+  await choose.click();
+  await expect(owner).toHaveValue('Platform');
+  await expect(page.getByLabel('Owner value')).toHaveText('1');
+});
+
 test('MAR complex fields keep scalar values, explicit commits and localized UI', async ({
   page
 }, testInfo) => {

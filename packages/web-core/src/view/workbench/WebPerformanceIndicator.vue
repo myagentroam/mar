@@ -99,16 +99,16 @@ onBeforeUnmount(props.diagnostics.dispose);
       <header>
         <strong>{{ t('performanceDiagnostics.title') }}</strong>
         <div class="panel-heading-actions">
-          <span :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
+          <span class="panel-health" :class="`is-${snapshot.health}`">{{ healthLabel }}</span>
           <MarButton
             v-tooltip="t('performanceDiagnostics.copy')"
-            class="mar-icon-action"
+            class="mar-icon-action panel-copy"
+            size="small"
             text
+            icon="copy"
             :aria-label="t('performanceDiagnostics.copy')"
             @click="copyDiagnostics"
-          >
-            <MarIcon name="copy" />
-          </MarButton>
+          />
         </div>
       </header>
       <dl>
@@ -191,22 +191,28 @@ onBeforeUnmount(props.diagnostics.dispose);
   border-bottom: 1px solid var(--mar-border-medium);
   padding-bottom: 0.45rem;
 }
-.web-performance-panel header span {
+.panel-health {
   color: var(--mar-text-secondary);
 }
-.web-performance-panel header span.is-healthy {
+.panel-health.is-healthy {
   color: var(--mar-color-success-text);
 }
-.web-performance-panel header span.is-warning {
+.panel-health.is-warning {
   color: var(--mar-color-warning-text);
 }
-.web-performance-panel header span.is-critical {
+.panel-health.is-critical {
   color: var(--mar-color-danger-text);
 }
 .panel-heading-actions {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+.panel-copy {
+  flex: none;
+  inline-size: var(--mar-compact-control-size);
+  block-size: var(--mar-compact-control-size);
+  padding: 0;
 }
 .web-performance-panel dl {
   display: grid;

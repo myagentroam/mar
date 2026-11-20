@@ -225,7 +225,6 @@ const composer = ref<{
   restoreMessage(text: string): void;
   readonly quoteTarget: import('../../model/composer-quote.js').ComposerQuoteTarget;
 }>();
-const conversationScrollElement = ref<HTMLElement>();
 const expandedFileDirectories = ref<ReadonlySet<string>>(new Set());
 let directorySequence = 0;
 let filesDragDepth = 0;
@@ -312,9 +311,18 @@ const conversationImages = createConversationImageService(props.workspace.select
   }
 });
 const filePage = ref<{ focus(): void }>();
+const fileSurface = ref<InstanceType<typeof FilePreviewSurface>>();
+let closingFileSurface = false;
 const filePreview = createHostedConversationFilePreviewService({
   source: props.workspace
 });
+watch(
+  filePreview.file,
+  (file) => {
+    if (file && closingFileSurface) fileSurface.value?.cancelClose();
+  },
+  { flush: 'sync' }
+);
 const filePreviewError = computed(() =>
   filePreview.error.value === undefined
     ? undefined
@@ -374,7 +382,6 @@ function handleConversationScroll(): void {
 
 function setConversationScrollElement(element: HTMLElement | undefined): void {
   conversationResizeObserver?.disconnect();
-  conversationScrollElement.value = element;
   conversationScrollService.setElement(element);
   if (element === undefined) return;
   conversationResizeObserver = new ResizeObserver(() => conversationScrollService.handleResize());
@@ -384,18 +391,15 @@ function setConversationScrollElement(element: HTMLElement | undefined): void {
 }
 
 async function loadOlderConversationHistory(): Promise<void> {
-  const element = conversationScrollElement.value;
-  const previousHeight = element?.scrollHeight ?? 0;
+  const restoreAnchor = conversationScrollService.capturePrependAnchor();
   const target = selectedConversationKey.value;
   await props.workspace.loadOlderHistory();
   await nextTick();
   if (
     target === selectedConversationKey.value &&
-    element === conversationScrollElement.value &&
-    element !== undefined &&
     props.workspace.olderHistoryError.value === undefined
   )
-    element.scrollTop += element.scrollHeight - previousHeight;
+    restoreAnchor();
 }
 
 async function initialize(): Promise<void> {
@@ -860,6 +864,17 @@ function closePreview(): void {
   conversationImages.preview.value = undefined;
 }
 
+async function dismissFilePreview(): Promise<void> {
+  const surface = fileSurface.value;
+  if (!surface || closingFileSurface) return;
+  closingFileSurface = true;
+  try {
+    if ((await surface.close()) && fileSurface.value === surface) filePreview.close();
+  } finally {
+    closingFileSurface = false;
+  }
+}
+
 function hostedErrorMessage(error: unknown): string {
   const structured =
     typeof error === 'object' && error !== null && !Array.isArray(error)
@@ -1275,7 +1290,7 @@ onBeforeUnmount(() => {
           @scroll-intent="conversationScrollService.stopFollowing"
           @load-older="loadOlderConversationHistory"
           @reload="retryConversation"
-          @latest="conversationScrollService.scrollToLatest"
+          @latest="conversationScrollService.jumpToLatest"
         >
           <ConversationTimeline
             :quote-target="composer?.quoteTarget"
@@ -1404,6 +1419,7 @@ onBeforeUnmount(() => {
       />
       <FilePreviewSurface
         v-if="filePreview.visible.value && filePreview.content.value"
+        ref="fileSurface"
         :overlay="true"
         :label="
           translate('generated.filePreviewDialog.filePreview', {
@@ -1411,7 +1427,7 @@ onBeforeUnmount(() => {
           })
         "
         @focus="filePage?.focus()"
-        @close="filePreview.close"
+        @close="dismissFilePreview"
       >
         <WorkspaceTextFilePage
           :quote-target="composer?.quoteTarget"
@@ -1438,8 +1454,8 @@ onBeforeUnmount(() => {
           :target-line="filePreview.targetLine.value"
           :target-column="filePreview.targetColumn.value"
           :write-enabled="false"
-          @close="filePreview.close"
-          @quoted="filePreview.close"
+          @close="dismissFilePreview"
+          @quoted="dismissFilePreview"
           @download="filePreview.download"
           @open-markdown-file="
             (path, external) => openLinkedFile(path, undefined, undefined, external)
@@ -1457,7 +1473,7 @@ onBeforeUnmount(() => {
           :fullscreen="true"
           :contained="true"
           :kind="filePreview.kind.value"
-          @close="filePreview.close"
+          @close="dismissFilePreview"
           @download="filePreview.download"
         />
       </FilePreviewSurface>
@@ -1744,6 +1760,12 @@ onBeforeUnmount(() => {
 
 .hosted-timeline-scroll :deep(.conversation-scroll) {
   padding-block: 0;
+}
+
+.hosted-timeline-scroll :deep(.conversation-history-control),
+.hosted-timeline-scroll :deep(.conversation-reload),
+.hosted-timeline-scroll :deep(.conversation-loading-initial:not(.is-centered)) {
+  margin-block-start: 0.75rem;
 }
 
 .hosted-timeline-scroll :deep(.conversation-timeline) {

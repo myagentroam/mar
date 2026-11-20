@@ -61,6 +61,53 @@ test('MAR switch preserves confirmed state during controlled writes', async ({ p
   await expect(track.locator('[data-mar-icon="loading-action"]')).toHaveCount(0);
 });
 
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`MAR switch updates its thumb and track with ${reducedMotion} motion`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.goto(`${fixture.url}mar-switch.html`);
+    const draft = page.getByRole('switch', { name: 'Draft setting' });
+    const frames = await draft.evaluate(async (input: HTMLInputElement) => {
+      const track = input.nextElementSibling!;
+      const thumb = track.firstElementChild!;
+      const read = () => ({
+        x: thumb.getBoundingClientRect().x,
+        fill: getComputedStyle(track).backgroundColor
+      });
+      async function toggle() {
+        const before = read();
+        input.click();
+        await new Promise(requestAnimationFrame);
+        read();
+        const animations = [...track.getAnimations(), ...thumb.getAnimations()];
+        for (const animation of animations) {
+          animation.pause();
+          animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
+        }
+        const middle = read();
+        for (const animation of animations) animation.finish();
+        return { before, middle, end: read(), animated: animations.length > 0 };
+      }
+      return [await toggle(), await toggle()] as const;
+    });
+    const [opening, closing] = frames;
+    expect(opening.end.x).toBeGreaterThan(opening.before.x);
+    expect(closing.end.x).toBeCloseTo(opening.before.x);
+    for (const { before, middle, end, animated } of frames) {
+      expect(end.fill).not.toBe(before.fill);
+      expect(animated).toBe(reducedMotion === 'no-preference');
+      if (reducedMotion === 'reduce') {
+        expect(middle).toEqual(end);
+      } else {
+        expect(middle.x).toBeGreaterThan(Math.min(before.x, end.x));
+        expect(middle.x).toBeLessThan(Math.max(before.x, end.x));
+        expect(middle.fill).not.toBe(before.fill);
+        expect(middle.fill).not.toBe(end.fill);
+      }
+    }
+    await expect(draft).not.toBeChecked();
+  });
+}
+
 test.describe('390px touch viewport', () => {
   test.skip(
     ({ browserName }) => browserName !== 'chromium',

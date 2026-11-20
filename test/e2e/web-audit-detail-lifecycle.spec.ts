@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { expect, test as base } from '@playwright/test';
 
 const productRoot = resolve(import.meta.dirname, '../..');
@@ -20,8 +20,7 @@ const test = base.extend<{ auditUrl: string }>({
       resolve: {
         alias: {
           '@': resolve(productRoot, 'ee/web/src'),
-          vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),
-          'element-plus': dirname(webRequire.resolve('element-plus/package.json'))
+          vue: webRequire.resolve('vue/dist/vue.esm-bundler.js')
         }
       },
       server: { host: '127.0.0.1', port: 0, fs: { allow: [productRoot] }, watch: null },
@@ -38,6 +37,87 @@ const test = base.extend<{ auditUrl: string }>({
     }
   }
 });
+
+for (const width of [1280, 390, 320]) {
+  test(`Audit date range stays readable and marks the interval at ${width}px`, async ({
+    page,
+    auditUrl
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const [from, to, nextFrom, nextTo] = await page.evaluate(() => [
+      new Date(2026, 9, 11, 9, 30).getTime(),
+      new Date(2026, 10, 14, 18, 15).getTime(),
+      new Date(2026, 9, 13).getTime(),
+      new Date(2026, 10, 12).getTime()
+    ]);
+    await page.goto(`${auditUrl}?audit.from=${from}&audit.to=${to}&theme=dark`);
+    const range = page.locator('.audit-range-picker');
+    const [start, end] = [range.getByRole('textbox').nth(0), range.getByRole('textbox').nth(1)];
+    await expect(start).toHaveValue('2026-10-11 09:30:00');
+    await expect(end).toHaveValue('2026-11-14 18:15:00');
+    for (const input of [start, end]) {
+      expect(
+        await input.evaluate((element: HTMLInputElement) => {
+          const probe = document.createElement('span');
+          probe.style.cssText = `position:absolute;white-space:pre;font:${getComputedStyle(element).font}`;
+          probe.textContent = element.value;
+          element.after(probe);
+          const textWidth = probe.getBoundingClientRect().width;
+          probe.remove();
+          return element.clientWidth - textWidth;
+        })
+      ).toBeGreaterThanOrEqual(0);
+    }
+    await range.getByRole('button').first().click();
+    const calendar = range.getByRole('dialog');
+    await expect(calendar).toHaveCSS('opacity', '1');
+    const months = calendar.locator('.mar-ui-calendar-month');
+    const october = months.nth(0);
+    const november = months.nth(1);
+    const firstMonth = (await october.boundingBox())!;
+    const secondMonth = (await november.boundingBox())!;
+    if (width === 1280) {
+      expect(firstMonth.y).toBeCloseTo(secondMonth.y, 0);
+      expect(secondMonth.x).toBeGreaterThan(firstMonth.x);
+    } else {
+      expect(secondMonth.y).toBeGreaterThan(firstMonth.y);
+      expect((await calendar.boundingBox())!.width).toBeLessThan(width);
+    }
+    const endpoint = october.getByRole('button', { name: '2026-10-11', exact: true });
+    await expect(endpoint).toHaveAttribute('aria-pressed', 'true');
+    const inside = october.getByRole('button', { name: '2026-10-12', exact: true });
+    const repeated = october.getByRole('button', { name: '2026-11-01', exact: true });
+    const band = (day: typeof inside) =>
+      day.evaluate((element) => getComputedStyle(element, '::before').backgroundColor);
+    expect(await band(inside)).not.toBe('rgba(0, 0, 0, 0)');
+    expect(await inside.evaluate((element) => getComputedStyle(element, '::before').inset)).toBe(
+      '2px 0px'
+    );
+    expect(await band(repeated)).toBe('rgba(0, 0, 0, 0)');
+    await expect(endpoint.locator('.mar-ui-calendar-month__day-number')).toHaveCSS(
+      'border-radius',
+      '50%'
+    );
+    await page.screenshot({ path: testInfo.outputPath(`audit-date-range-${width}.png`) });
+
+    await october.getByRole('button', { name: '2026-10-13', exact: true }).click();
+    expect(new URL(page.url()).searchParams.get('audit.from')).toBe(String(from));
+    const requests = () => page.evaluate(() => window.auditDetailFixture.listRanges());
+    expect(await requests()).toEqual([[String(from), String(to)]]);
+    await november.getByRole('button', { name: '2026-11-12', exact: true }).click();
+    await calendar.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await expect(calendar).toBeHidden();
+    await expect.poll(requests).toEqual([
+      [String(from), String(to)],
+      [String(nextFrom), String(nextTo)]
+    ]);
+    await expect(start).toHaveValue('2026-10-13 00:00:00');
+    await expect(end).toHaveValue('2026-11-12 00:00:00');
+    await page.reload();
+    await expect(start).toHaveValue('2026-10-13 00:00:00');
+    await expect(end).toHaveValue('2026-11-12 00:00:00');
+  });
+}
 
 test('Audit detail keeps the current target and loading across out-of-order completions', async ({
   page,

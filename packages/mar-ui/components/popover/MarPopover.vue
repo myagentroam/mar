@@ -139,7 +139,6 @@ watch(
               }
             : anchor,
         element,
-        false,
         { placement, outsideDismiss: props.outsideDismiss }
       );
     } else if (wasOpen && !open) void leave(element);
@@ -201,7 +200,7 @@ defineExpose({ hide });
   --mar-ui-popup-padding: 0;
 }
 .mar-ui-popover.mar-content-popover {
-  border-radius: var(--mar-ui-radius-surface);
+  --mar-ui-popup-radius: var(--mar-ui-radius-surface);
   box-shadow: var(--mar-ui-content-popover-shadow);
 }
 .mar-ui-popover--no-arrow::before {

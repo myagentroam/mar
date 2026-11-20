@@ -5,6 +5,7 @@ import { MarCascader } from '@myagentroam/mar-ui/cascader';
 import { MarCheckbox, MarCheckboxGroup } from '@myagentroam/mar-ui/checkbox';
 import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
 import { MarDescriptions, MarDescriptionsItem } from '@myagentroam/mar-ui/descriptions';
+import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
 import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
@@ -32,12 +33,36 @@ const controls = ref({
 const changes = ref(0);
 const timeChanges = ref(0);
 const expiration = ref<Date | null>(null);
-const organizations = [{ value: 1, label: 'Platform', children: [{ value: 2, label: 'Release' }] }];
+const showCommandMenu = new URLSearchParams(location.search).has('command-menu');
+const organizations = [
+  {
+    value: 1,
+    label: 'Platform',
+    children: [
+      { value: 2, label: 'Release' },
+      { value: 3, label: 'Operations', children: [{ value: 4, label: 'Support' }] }
+    ]
+  }
+];
 </script>
 
 <template>
   <article>
     <h1>MAR controls</h1>
+    <div
+      v-if="showCommandMenu"
+      style="position: fixed; inset-block-start: 16px; inset-inline-end: 8px"
+    >
+      <MarDropdown trigger="click">
+        <button>Commands</button>
+        <template #dropdown>
+          <MarDropdownMenu>
+            <MarDropdownItem command="copy">Copy</MarDropdownItem>
+            <MarDropdownItem command="rename">Rename</MarDropdownItem>
+          </MarDropdownMenu>
+        </template>
+      </MarDropdown>
+    </div>
     <section aria-label="Display controls">
       <MarTag type="success" effect="plain">Available</MarTag>
       <MarAlert

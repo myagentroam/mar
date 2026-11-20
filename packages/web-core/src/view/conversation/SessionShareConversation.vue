@@ -209,7 +209,7 @@ onBeforeUnmount(() => {
         "
         @scroll-intent="chat.scroll.stopFollowing"
         @load-older="chat.paging.loadOlderConversationTurns"
-        @latest="chat.scroll.scrollToLatest"
+        @latest="chat.scroll.jumpToLatest"
         @reload="chat.restartWatch"
       >
         <ConversationTimeline

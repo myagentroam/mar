@@ -1,8 +1,7 @@
 import { createApp, h, nextTick, ref } from 'vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import AuditManagementPage from '../../../ee/web/src/view/settings/AuditManagementPage.vue';
 import { i18n } from '../../../ee/web/src/service/locale-preference-service.js';
+import '../../../packages/web-core/src/styles.css';
 
 const events = ['audit-A', 'audit-B'].map((id) => ({
   id,
@@ -19,12 +18,14 @@ const events = ['audit-A', 'audit-B'].map((id) => ({
 }));
 const pending: { id: string; resolve: (value: unknown) => void; reject: (error: Error) => void }[] =
   [];
+const listRanges: [string | null, string | null][] = [];
 const mounted = ref(true);
 
 declare global {
   interface Window {
     auditDetailFixture: {
       count: () => number;
+      listRanges: () => typeof listRanges;
       settle: (index: number, success: boolean) => Promise<void>;
       unmount: () => Promise<void>;
     };
@@ -34,6 +35,7 @@ declare global {
 // Only the request boundary is replaced; the page, dialogs, loading and feedback are real.
 window.auditDetailFixture = {
   count: () => pending.length,
+  listRanges: () => listRanges,
   async settle(index, success) {
     const gate = pending[index]!;
     if (success) {
@@ -54,8 +56,11 @@ window.auditDetailFixture = {
   }
 };
 const request = async <T>(path: string): Promise<T> => {
-  if (path.includes('?'))
+  if (path.includes('?')) {
+    const params = new URL(path, location.origin).searchParams;
+    listRanges.push([params.get('from'), params.get('to')]);
     return { events, total: events.length, page: 1, pageSize: 20, hasMore: false } as T;
+  }
   return new Promise<T>((resolve, reject) => {
     pending.push({
       id: decodeURIComponent(path.split('/').at(-1)!),
@@ -66,7 +71,10 @@ const request = async <T>(path: string): Promise<T> => {
 };
 
 i18n.global.locale.value = 'en-US';
+if (new URLSearchParams(location.search).get('theme') === 'dark') {
+  document.documentElement.classList.add('dark', 'console-ui');
+  document.documentElement.dataset.theme = 'vscode-dark-2026';
+}
 createApp({ render: () => (mounted.value ? h(AuditManagementPage, { request }) : null) })
-  .use(ElementPlus)
   .use(i18n)
   .mount('#app');

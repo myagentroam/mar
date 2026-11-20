@@ -49,11 +49,21 @@ function activate(event: MouseEvent) {
   color: var(--mar-ui-text-secondary);
   font: inherit;
   text-align: start;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .mar-ui-dropdown-item--divided {
-  margin-top: 4px;
-  border-top: 1px solid var(--mar-ui-border-subtle);
+  position: relative;
+  margin-block-start: 9px;
+}
+.mar-ui-dropdown-item--divided::before {
+  position: absolute;
+  inset-block-start: -5px;
+  inset-inline: 0;
+  block-size: 1px;
+  background: var(--mar-ui-border-subtle);
+  pointer-events: none;
+  content: '';
 }
 .mar-ui-dropdown-item:enabled:is(:hover, :focus-visible) {
   background: var(--mar-ui-fill-row-hover);

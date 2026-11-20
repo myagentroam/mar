@@ -72,9 +72,7 @@ if (unregister) onBeforeUnmount(unregister);
 .mar-ui-option__content {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .mar-ui-option__check {
   flex: none;

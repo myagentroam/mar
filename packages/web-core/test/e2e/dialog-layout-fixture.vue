@@ -25,6 +25,10 @@ import { MarMessageBox } from '../../src/service/message-box-service.js';
 
 const kind = new URLSearchParams(location.search).get('kind') ?? 'workspace';
 const open = ref(false);
+const fileSurface = ref<InstanceType<typeof FilePreviewSurface>>();
+async function dismissFile(): Promise<void> {
+  if (await fileSurface.value?.close()) open.value = false;
+}
 const focusDestination = ref<HTMLButtonElement>();
 const registrationPath = ref('');
 const pendingDirectoryName = ref('');
@@ -238,11 +242,13 @@ function showMessageBox(): void {
   />
   <FilePreviewSurface
     v-if="kind === 'file' && open"
+    ref="fileSurface"
     :overlay="true"
     label="File preview"
-    @close="open = false"
+    @close="dismissFile"
   >
     <div>Preview content</div>
+    <MarButton @click="dismissFile">Close file</MarButton>
   </FilePreviewSurface>
   <ImagePreviewDialogs
     v-if="kind === 'image'"

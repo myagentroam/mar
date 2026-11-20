@@ -125,7 +125,7 @@ export function useTableOverflowHint() {
           contentObserver = new MutationObserver(refresh);
           contentObserver.observe(next, { childList: true, characterData: true, subtree: true });
         }
-        popup.show(next, surface.value, false, { placement: 'bottom' });
+        popup.show(next, surface.value, { placement: 'bottom' });
       },
       visibleAnchor ? 100 : 350
     );

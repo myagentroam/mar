@@ -706,8 +706,7 @@ function selectFiles(event: Event): void {
   --composer-model-list-height: max(0px, calc(var(--mar-ui-popup-max-height, 100dvh) - 2rem - 2px));
   --mar-ui-popup-content-overflow: clip;
   --mar-ui-popup-padding: 0;
-  width: max-content;
-  max-width: min(500px, var(--mar-ui-popup-max-width, calc(100vw - 16px)));
+  --mar-ui-popup-width-cap: 500px;
 }
 
 .composer-model-menu-columns {

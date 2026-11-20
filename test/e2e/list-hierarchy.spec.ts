@@ -31,7 +31,73 @@ async function colors(page: Page) {
   });
 }
 
+test('Skill and MCP configuration search fields are compact and fit narrow panels', async ({
+  page
+}, testInfo) => {
+  for (const width of [1920, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?list-hierarchy=skills&theme=vscode-dark-2026`
+    );
+    for (const [tab, placeholder] of [
+      ['Skill', 'Search skill names or descriptions'],
+      ['MCP', 'Search MCP servers']
+    ]) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      const input = page.getByPlaceholder(placeholder);
+      await expect(input).toBeVisible();
+      const filters = page.locator('.skill-filter-bar, .mcp-filter-bar').filter({ has: input });
+      const field = filters.locator('.mar-ui-input');
+      const bounds = (await filters.boundingBox())!;
+      const search = (await field.boundingBox())!;
+      expect(search.x).toBeCloseTo(bounds.x, 0);
+      expect(search.width).toBeCloseTo(Math.min(320, bounds.width), 0);
+      expect(search.x + search.width).toBeLessThanOrEqual(width);
+      await filters.screenshot({ path: testInfo.outputPath(`${tab}-filters-${width}.png`) });
+    }
+  }
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
+  test(`Source management only lays out the selected tab in ${theme}`, async ({ page }) => {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const view of ['sources', 'mcp-sources']) {
+        await page.goto(
+          `${fixture.url}visual-alignment.html?list-hierarchy=${view}&scope-columns&theme=${theme}`
+        );
+        const tabs = page.getByRole('tab');
+        await expect(tabs).toHaveCount(2);
+        const sourceTab = tabs.nth(0);
+        const catalogTab = tabs.nth(1);
+        const panels = page.locator('.mar-ui-tab-pane');
+        await expect(sourceTab).toHaveAttribute('aria-selected', 'true');
+        await expect(panels.nth(0)).toBeVisible();
+        await expect(panels.nth(1)).toHaveCSS('display', 'none');
+        await catalogTab.click();
+        await expect(panels.nth(0)).toHaveCSS('display', 'none');
+        await expect(panels.nth(1)).toBeVisible();
+        if (view === 'mcp-sources') {
+          const filters = panels.nth(1).locator('.mcp-toolbar');
+          const search = await filters.locator('.mar-ui-input').boundingBox();
+          const category = await filters.locator('.mar-ui-select').boundingBox();
+          expect(search).not.toBeNull();
+          expect(category).not.toBeNull();
+          if (width === 1280) {
+            expect(Math.abs(category!.y - search!.y)).toBeLessThan(2);
+            expect(category!.x).toBeGreaterThan(search!.x + search!.width);
+          } else {
+            expect(category!.y).toBeGreaterThan(search!.y + search!.height);
+            expect(Math.abs(category!.x - search!.x)).toBeLessThan(2);
+          }
+        }
+        await sourceTab.click();
+        await expect(panels.nth(0)).toBeVisible();
+        await expect(panels.nth(1)).toHaveCSS('display', 'none');
+      }
+    }
+  });
+
   test(`Skills source search has one control frame in ${theme}`, async ({ page }, testInfo) => {
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
@@ -422,7 +488,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(name).toHaveText('Catalog model');
       await expect(name).toHaveCSS('font-weight', '400');
       await expect(name).toHaveCSS('color', (await colors(page)).primary);
-      await page.locator('.catalog-table-wrap tbody .el-checkbox').click();
+      await page.locator('.catalog-table-wrap tbody').getByRole('checkbox').check();
       await expect(name).toHaveCSS('font-weight', '400');
       await page.screenshot({
         path: testInfo.outputPath(`catalog-${width}.png`),

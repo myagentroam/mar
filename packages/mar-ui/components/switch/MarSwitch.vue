@@ -81,12 +81,12 @@ async function onChange(event: Event) {
   cursor: pointer;
 }
 .mar-ui-switch__track {
-  display: flex;
-  align-items: center;
+  --mar-ui-switch-thumb-size: 14px;
+  --mar-ui-switch-thumb-inset: 2px;
+  position: relative;
   box-sizing: border-box;
   inline-size: 100%;
   block-size: 20px;
-  padding-inline: 2px;
   border: 1px solid var(--mar-ui-border-medium);
   border-radius: 999px;
   background: var(--mar-ui-fill-soft);
@@ -94,18 +94,26 @@ async function onChange(event: Event) {
   pointer-events: none;
 }
 .mar-ui-switch__thumb {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--mar-ui-switch-thumb-inset);
+  margin-block: auto;
   display: grid;
   place-items: center;
-  inline-size: 14px;
-  block-size: 14px;
+  inline-size: var(--mar-ui-switch-thumb-size);
+  block-size: var(--mar-ui-switch-thumb-size);
   border-radius: 50%;
   background: currentColor;
 }
 .mar-ui-switch > input:checked + .mar-ui-switch__track {
-  justify-content: end;
   border-color: var(--mar-ui-color-brand);
   background: var(--mar-ui-color-brand);
   color: var(--mar-ui-color-on-accent);
+}
+.mar-ui-switch > input:checked + .mar-ui-switch__track .mar-ui-switch__thumb {
+  inset-inline-start: calc(
+    100% - var(--mar-ui-switch-thumb-size) - var(--mar-ui-switch-thumb-inset)
+  );
 }
 .mar-ui-switch > input:focus-visible + .mar-ui-switch__track {
   outline: 2px solid var(--mar-ui-color-brand);
@@ -134,6 +142,15 @@ async function onChange(event: Event) {
   }
 }
 @media (prefers-reduced-motion: no-preference) {
+  .mar-ui-switch__track {
+    transition:
+      border-color var(--mar-ui-motion-duration-fast),
+      background-color var(--mar-ui-motion-duration-fast),
+      color var(--mar-ui-motion-duration-fast);
+  }
+  .mar-ui-switch__thumb {
+    transition: inset-inline-start var(--mar-ui-motion-duration-fast);
+  }
   .mar-ui-switch__spinner {
     animation: mar-ui-switch-spin 1.4s linear infinite;
   }

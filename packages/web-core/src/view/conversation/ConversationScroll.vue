@@ -41,6 +41,8 @@ const element = ref<HTMLElement>();
 const content = ref<HTMLElement>();
 const historyMarker = ref<HTMLElement>();
 const showFocusOutline = ref(false);
+const hasScrollRange = ref(false);
+const showLatest = computed(() => hasScrollRange.value && !props.following && props.hasTurns);
 let contentObserver: ResizeObserver | undefined;
 let renderedEmpty = false;
 let previousComposerRect: DOMRect | undefined;
@@ -83,9 +85,21 @@ function scheduleInitialHistoryCheck(): void {
   });
 }
 
+function canScroll(current = element.value): boolean {
+  return (
+    current !== undefined && current.clientHeight > 0 && current.scrollHeight > current.clientHeight
+  );
+}
+
+function onScroll(): void {
+  hasScrollRange.value = canScroll();
+  emit('scroll');
+}
+
 function onUpwardIntent(): void {
-  emit('scrollIntent');
-  if (!props.olderError && historyMarkerVisible()) void loadOlder();
+  const atHistoryBoundary = !props.olderError && historyMarkerVisible();
+  if (canScroll() || atHistoryBoundary) emit('scrollIntent');
+  if (atHistoryBoundary) void loadOlder();
 }
 
 function onWheel(event: WheelEvent): void {
@@ -136,6 +150,7 @@ function onScrollPointerdown(event: PointerEvent): void {
     event.button !== 0 ||
     event.pointerType === 'touch' ||
     current === undefined ||
+    !canScroll(current) ||
     event.target !== current
   )
     return;
@@ -292,10 +307,11 @@ onMounted(() => {
   motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
   motionPreference.addEventListener('change', updateMotionPreference);
   emit('scrollElement', element.value);
+  hasScrollRange.value = canScroll();
   scheduleInitialHistoryCheck();
   if (content.value && typeof ResizeObserver !== 'undefined') {
     contentObserver = new ResizeObserver(() => {
-      emit('scroll');
+      onScroll();
       scheduleInitialHistoryCheck();
     });
     contentObserver.observe(content.value);
@@ -319,7 +335,7 @@ onBeforeUnmount(() => {
       :class="{ 'shows-focus-outline': showFocusOutline }"
       tabindex="0"
       @focus="onScrollFocus"
-      @scroll="emit('scroll')"
+      @scroll="onScroll"
       @wheel.passive="onWheel"
       @touchstart.passive="onTouchStart"
       @touchmove.passive="onTouchMove"
@@ -337,6 +353,7 @@ onBeforeUnmount(() => {
         <div
           v-if="loadingInitial && !initialLoadFailed && !reloading"
           class="conversation-load-older conversation-loading-initial"
+          :class="{ 'is-centered': !hasTurns }"
           role="status"
           aria-live="polite"
           :aria-label="translate('generated.conversationScroll.loadingConversationHistory')"
@@ -414,7 +431,7 @@ onBeforeUnmount(() => {
     </div>
     <Transition name="conversation-latest">
       <MarButton
-        v-if="!following && hasTurns"
+        v-if="showLatest"
         class="conversation-latest"
         icon="to-bottom"
         size="small"
@@ -425,11 +442,7 @@ onBeforeUnmount(() => {
         {{ translate('generated.conversationScroll.jumpToLatest') }}
       </MarButton>
     </Transition>
-    <div
-      v-if="$slots.status"
-      class="conversation-status"
-      :class="{ 'has-latest': !following && hasTurns }"
-    >
+    <div v-if="$slots.status" class="conversation-status" :class="{ 'has-latest': showLatest }">
       <slot name="status" />
     </div>
   </div>
@@ -561,10 +574,12 @@ onBeforeUnmount(() => {
   margin: 0 auto 0.8rem;
 }
 
-.conversation-loading-initial {
-  color: var(--mar-text-secondary);
-  font-size: var(--mar-font-size-meta);
-  text-align: center;
+.conversation-loading-initial.is-centered {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  margin: 0;
+  pointer-events: none;
 }
 
 .conversation-latest {

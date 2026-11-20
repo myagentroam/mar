@@ -286,11 +286,13 @@ defineExpose({ handleClose, panel });
   align-items: flex-start;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .mar-ui-dialog-overlay[open]:not([data-closing]) {
+  .mar-ui-dialog-overlay[open]:not([data-closing]),
+  .mar-ui-dialog-overlay[open]:not([data-closing])::backdrop {
     animation: mar-dialog-in 150ms ease-out;
   }
   /* Keep the modal in the top layer while leaving, including browsers without overlay transitions. */
-  .mar-ui-dialog-overlay[open][data-closing] {
+  .mar-ui-dialog-overlay[open][data-closing],
+  .mar-ui-dialog-overlay[open][data-closing]::backdrop {
     animation: mar-dialog-out 130ms ease-in both;
   }
   @keyframes mar-dialog-in {
@@ -373,6 +375,9 @@ defineExpose({ handleClose, panel });
 }
 .mar-ui-dialog__close {
   flex: none;
+  min-inline-size: 32px;
+  aspect-ratio: 1;
+  padding: 0;
 }
 .mar-ui-dialog__header .mar-ui-dialog__close:focus-visible {
   outline-offset: -2px;

@@ -514,6 +514,107 @@ test('Bottom following survives content shrink and subsequent growth', async ({ 
   await expect(page.getByTestId('following')).toHaveText('true');
 });
 
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`Jump to latest scrolls the conversation with motion preference ${reducedMotion}`, async ({
+    page
+  }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&no-older=1`);
+    const region = page.locator('.conversation-scroll');
+    await expect
+      .poll(() => region.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
+      .toBeLessThanOrEqual(1);
+    await region.evaluate((el) => el.scrollTo({ top: 0, behavior: 'instant' }));
+    const latest = page.getByRole('button', { name: 'Jump to latest' });
+    await expect(latest).toBeVisible();
+    await expect
+      .poll(() => region.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
+      .toBeGreaterThan(500);
+    const { before, bottom, immediate, intermediate } = await latest.evaluate(async (button) => {
+      const scroller = button.parentElement!.querySelector<HTMLElement>('.conversation-scroll')!;
+      const before = scroller.scrollTop;
+      const bottom = scroller.scrollHeight - scroller.clientHeight;
+      (button as HTMLButtonElement).click();
+      const immediate = scroller.scrollTop;
+      let intermediate = false;
+      for (let frame = 0; frame < 60 && scroller.scrollTop < bottom - 1; frame++) {
+        await new Promise(requestAnimationFrame);
+        if (scroller.scrollTop > before + 1 && scroller.scrollTop < bottom - 1) {
+          intermediate = true;
+          document.querySelector<HTMLButtonElement>('[data-testid="grow-content"]')!.click();
+          break;
+        }
+      }
+      return { before, bottom, immediate, intermediate };
+    });
+    expect(bottom - before).toBeGreaterThan(500);
+    expect(intermediate).toBe(reducedMotion === 'no-preference');
+    if (reducedMotion === 'reduce') expect(immediate).toBeCloseTo(bottom, 0);
+    else
+      await expect
+        .poll(() => region.evaluate((el) => el.scrollHeight - el.clientHeight))
+        .toBeGreaterThan(bottom);
+    await expect
+      .poll(() => region.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
+      .toBeLessThanOrEqual(1);
+    await expect(page.getByTestId('following')).toHaveText('true');
+    await expect(latest).toHaveCount(0);
+  });
+}
+
+test('An interrupted Jump to latest does not swallow the next manual scroll near the bottom', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&no-older=1`);
+  const region = page.locator('.conversation-scroll');
+  await expect.poll(() => region.evaluate((el) => el.scrollTop)).toBeGreaterThan(3000);
+  await region.evaluate((el) => el.scrollTo({ top: 0, behavior: 'instant' }));
+  await page.getByRole('button', { name: 'Jump to latest' }).click();
+  const interruptedAt = await region.evaluate(async (el) => {
+    for (let frame = 0; frame < 60 && el.scrollTop === 0; frame++)
+      await new Promise(requestAnimationFrame);
+    const inMotion = el.scrollTop > 0 && el.scrollTop < el.scrollHeight - el.clientHeight;
+    if (!inMotion) return null;
+    el.addEventListener('scrollend', () => el.setAttribute('data-scroll-ended', 'true'), {
+      once: true
+    });
+    el.scrollTo({ top: 120, behavior: 'instant' });
+    return el.scrollTop;
+  });
+  expect(interruptedAt).toBe(120);
+  await expect(region).toHaveAttribute('data-scroll-ended', 'true');
+  await expect(page.getByTestId('following')).toHaveText('false');
+  await region.evaluate((el) =>
+    el.scrollTo({ top: el.scrollHeight - el.clientHeight - 15, behavior: 'instant' })
+  );
+  await expect(page.getByTestId('following')).toHaveText('true');
+  await expect(page.getByRole('button', { name: 'Jump to latest' })).toHaveCount(0);
+});
+
+test('Wheel gestures on a complete short conversation neither leave following nor show Jump to latest', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&underflow=1&no-older=1`);
+  const region = page.locator('.conversation-scroll');
+  await page.getByTestId('finish-initial').click();
+  expect(await region.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(0);
+  await region.hover();
+  for (const delta of [-180, 180]) {
+    await region.evaluate((el) => {
+      el.removeAttribute('data-wheel-seen');
+      el.addEventListener('wheel', () => el.setAttribute('data-wheel-seen', 'true'), {
+        once: true
+      });
+    });
+    await page.mouse.wheel(0, delta);
+    await expect(region).toHaveAttribute('data-wheel-seen', 'true');
+    await expect(page.getByTestId('following')).toHaveText('true');
+    await expect(page.getByRole('button', { name: 'Jump to latest' })).toHaveCount(0);
+  }
+  await expect(page.getByTestId('older-requests')).toHaveText('0');
+});
+
 test('Near-bottom geometry does not override upward intent while earlier history is loading', async ({
   page
 }) => {
@@ -689,6 +790,7 @@ for (const input of ['wheel', 'touch', 'keyboard']) {
       };
       await scrollUp();
       await expect(requests).toHaveText('2');
+      await expect(page.getByRole('button', { name: 'Jump to latest' })).toHaveCount(0);
       await expect(region.locator('.conversation-history-control')).toHaveText('');
       await expect(region.locator('.conversation-history-control .mar-busy-indicator')).toHaveCount(
         1
@@ -739,6 +841,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await expect(requests).toHaveText('2');
     await expect(scroll).toHaveCSS('outline-style', 'solid');
 
+    await expect(page.getByRole('button', { name: 'Jump to latest' })).toHaveCount(0);
+    await page.getByTestId('grow-content').click();
+    await page.getByTestId('grow-content').click();
+    await expect
+      .poll(() => scroll.evaluate((el) => el.scrollHeight - el.clientHeight))
+      .toBeGreaterThan(0);
     await before.focus();
     await page.keyboard.press('Tab');
     await expect(scroll).toBeFocused();
@@ -760,12 +868,12 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
 test('Scrollbar gutter clicks wait for upward movement before loading earlier history', async ({
   page
 }) => {
-  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&underflow=1`);
-  await page.getByTestId('finish-initial').click();
+  await page.goto(`${fixture.url}conversation-style.html?cached-scroll=1&small-overflow=1`);
   const requests = page.getByTestId('older-requests');
   await expect(requests).toHaveText('1');
   await page.getByTestId('finish-older').click();
   const scroll = page.locator('.conversation-scroll');
+  await expect.poll(() => scroll.evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(7);
   await scroll.evaluate((element) => {
     const { right, top } = element.getBoundingClientRect();
     Object.defineProperty(element, 'offsetWidth', {
@@ -1096,6 +1204,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await page.getByTestId('leave-latest').click();
         const latest = page.getByRole('button', { name: 'Jump to latest' });
         await expect(latest).toBeVisible();
+        const status = page.locator('.conversation-status');
+        await expect(status).toHaveClass(/\bhas-latest\b/);
+        await expect(latest).toHaveClass(/\bmar-ui-button--round\b/);
         await latest.scrollIntoViewIfNeeded();
         const tokens = await latest.evaluate((element) => {
           const icon = element
@@ -1154,6 +1265,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await expect(latest).toHaveCSS('background-color', tokens.pressed);
         await page.mouse.up();
         await expect(latest).toHaveCount(0);
+        await expect(status).not.toHaveClass(/\bhas-latest\b/);
       } finally {
         await context.close();
       }
@@ -1426,6 +1538,57 @@ test('Touch conversation details open title actions and reveal unavailable chang
   } finally {
     await context.close();
   }
+});
+
+test('Read group keeps its rounded hover and focus ring during expansion', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}conversation-style.html?theme=vscode-dark-2026&group-spacing=1`);
+  await page.locator('[data-process-id="spacing-process"] .process-heading').click();
+  const summary = page.locator('.conversation-record-group > summary').filter({ hasText: /^Read/ });
+  await summary.hover();
+  const hovered = await summary.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, radius: style.borderRadius };
+  });
+  const group = summary.locator('..');
+
+  await summary.click();
+  await expect(group).toHaveAttribute('open', '');
+  await expect(summary).not.toHaveCSS('outline-style', 'solid');
+  await expect(summary).toHaveCSS('background-color', hovered.background);
+  await expect(summary).toHaveCSS('border-radius', hovered.radius);
+  await expect.poll(() => group.evaluate((element) => element.getAnimations().length)).toBe(0);
+  await summary.click();
+  await expect(group).not.toHaveAttribute('open');
+
+  await summary.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(summary).toBeFocused();
+  await summary.press('Enter');
+  await expect
+    .poll(() =>
+      group.evaluate((element) => {
+        const animation = element.getAnimations()[0];
+        if (!animation) return false;
+        animation.pause();
+        animation.currentTime = 0;
+        return getComputedStyle(element).overflowY === 'hidden';
+      })
+    )
+    .toBe(true);
+  await summary.hover();
+  await expect(summary).toHaveCSS('background-color', hovered.background);
+  await expect(summary).toHaveCSS('border-radius', hovered.radius);
+  await expect(summary).toHaveCSS('outline-style', 'solid');
+  await expect(summary).toHaveCSS('outline-width', '2px');
+  await expect(summary).toHaveCSS('outline-offset', '-2px');
+  await summary.screenshot({ path: testInfo.outputPath('read-group-during-expansion.png') });
+  await group.evaluate((element) => element.getAnimations()[0]?.finish());
+  await expect(group.locator(':scope > details').first()).toBeVisible();
 });
 
 for (const theme of ['daylight', 'vscode-dark-2026']) {

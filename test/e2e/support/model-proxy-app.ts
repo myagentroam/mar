@@ -10,28 +10,28 @@ import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../../packages/web-core/src/styles.css';
 
 const parameters = new URLSearchParams(location.search);
-const nodes: NodeSummary[] = parameters.has('test-node')
-  ? [
-      {
-        id: 'fixture-node',
-        displayName: 'Fixture Node',
-        registeredAddress: '127.0.0.1',
-        platform: 'linux',
-        architecture: 'x64',
-        nodeAppVersion: 'fixture',
-        nodeVersion: 'fixture',
-        connected: true,
-        disabled: false,
-        capabilities: {
-          marAgentRuntimeCredentials: {
-            apiVersion: 1,
-            websocket: true,
-            httpVersions: ['1.1', '2'],
-            modelSocks5Proxy: parameters.get('test-node') === 'socks5'
-          }
+const testNode = parameters.get('test-node');
+const nodeNames = testNode === 'socks5' ? ['Fixture Node', 'Backup Node'] : ['Fixture Node'];
+const nodes: NodeSummary[] = testNode
+  ? nodeNames.map((displayName, index) => ({
+      id: `fixture-node-${index}`,
+      displayName,
+      registeredAddress: '127.0.0.1',
+      platform: 'linux',
+      architecture: 'x64',
+      nodeAppVersion: 'fixture',
+      nodeVersion: 'fixture',
+      connected: true,
+      disabled: false,
+      capabilities: {
+        marAgentRuntimeCredentials: {
+          apiVersion: 1,
+          websocket: true,
+          httpVersions: ['1.1', '2'],
+          modelSocks5Proxy: testNode === 'socks5'
         }
       }
-    ]
+    }))
   : [];
 localePreferenceService().setLocale(parameters.get('locale') === 'zh-CN' ? 'zh-CN' : 'en-US');
 document.documentElement.classList.toggle('dark', parameters.get('theme') === 'dark');

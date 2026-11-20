@@ -4,7 +4,11 @@ import { MarIcon } from '../../icons/index.js';
 import { useMarUiLocale } from '../../locale/index.js';
 import { formatLocalDateTime } from './local-date-time.js';
 
-const props = defineProps<{ month: Date; dates: readonly (Date | undefined)[] }>();
+const props = defineProps<{
+  month: Date;
+  adjacentMonth?: Date | undefined;
+  dates: readonly (Date | undefined)[];
+}>();
 const emit = defineEmits<{ move: [offset: number]; pick: [date: Date]; navigate: [date: Date] }>();
 const locale = useMarUiLocale();
 const name = computed(() =>
@@ -24,10 +28,28 @@ const dates = computed(() =>
   })
 );
 const key = (date?: Date) => formatLocalDateTime(date).slice(0, 10);
+const selection = computed(() => props.dates.map(key));
 const grid = useTemplateRef<HTMLElement>('days');
 const focusedDay = ref('');
-const inMonth = (day: Date) =>
-  day.getMonth() === props.month.getMonth() && day.getFullYear() === props.month.getFullYear();
+const inMonth = (day: Date, month = props.month) =>
+  day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear();
+const days = computed(() => {
+  const [start, end] = selection.value;
+  return dates.value.map((date) => {
+    const id = key(date);
+    const duplicate = props.adjacentMonth && inMonth(date, props.adjacentMonth);
+    const selected = !duplicate && (id === start || id === end);
+    const band =
+      !duplicate && start && end && start < end && id >= start && id <= end
+        ? id === start
+          ? 'start'
+          : id === end
+            ? 'end'
+            : 'middle'
+        : undefined;
+    return { date, id, selected, band };
+  });
+});
 const active = computed(() => {
   const current = dates.value.find((day) => inMonth(day) && key(day) === focusedDay.value);
   return key(
@@ -72,38 +94,35 @@ async function navigate(event: KeyboardEvent, day: Date) {
       </button>
     </div>
     <div ref="days" class="mar-ui-calendar-month__days">
-      <span v-for="day in dates.slice(0, 7)" :key="day.getDay()" aria-hidden="true">{{
-        dayName.format(day)
-      }}</span>
-      <button
-        v-for="day in dates"
-        :key="key(day)"
-        type="button"
-        :data-outside="!inMonth(day)"
-        :data-day="key(day)"
-        :tabindex="active === key(day) ? 0 : -1"
-        :aria-label="key(day)"
-        :aria-pressed="props.dates.some((date) => key(date) === key(day))"
-        :data-between="
-          props.dates[0] &&
-          props.dates[1] &&
-          key(day) > key(props.dates[0]) &&
-          key(day) < key(props.dates[1])
-        "
-        @click="emit('pick', day)"
-        @focus="focusedDay = key(day)"
-        @keydown="navigate($event, day)"
+      <span
+        v-for="day in dates.slice(0, 7)"
+        :key="day.getDay()"
+        class="mar-ui-calendar-month__weekday"
+        aria-hidden="true"
+        >{{ dayName.format(day) }}</span
       >
-        {{ day.getDate() }}
+      <button
+        v-for="{ date, id, selected, band } in days"
+        :key="id"
+        class="mar-ui-calendar-month__day"
+        type="button"
+        :data-outside="!inMonth(date)"
+        :data-day="id"
+        :tabindex="active === id ? 0 : -1"
+        :aria-label="id"
+        :aria-pressed="selected"
+        :data-range-band="band"
+        @click="emit('pick', date)"
+        @focus="focusedDay = id"
+        @keydown="navigate($event, date)"
+      >
+        <span class="mar-ui-calendar-month__day-number">{{ date.getDate() }}</span>
       </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.mar-ui-calendar-month {
-  min-inline-size: min(16rem, 100%);
-}
 .mar-ui-calendar-month__header {
   display: flex;
   align-items: center;
@@ -119,8 +138,10 @@ strong {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   margin-block-start: 0.375rem;
   text-align: center;
+  font-size: var(--mar-ui-font-size-input);
+  font-weight: 400;
 }
-span {
+.mar-ui-calendar-month__weekday {
   color: var(--mar-ui-text-secondary);
   overflow: hidden;
 }
@@ -140,15 +161,38 @@ button {
 button[data-outside='true'] {
   color: var(--mar-ui-text-secondary);
 }
-button:hover {
+.mar-ui-calendar-month__header button:hover,
+.mar-ui-calendar-month__day:not([aria-pressed='true']):hover .mar-ui-calendar-month__day-number {
   background: var(--mar-ui-fill-row-hover);
 }
-button[data-between='true'],
-button[aria-pressed='true'] {
-  background: var(--mar-ui-fill-selection);
-  color: var(--mar-ui-text-primary);
+.mar-ui-calendar-month__day {
+  position: relative;
+  min-block-size: 1.625rem;
+  padding: 0;
 }
-button[aria-pressed='true'] {
+.mar-ui-calendar-month__day[data-range-band]::before {
+  content: '';
+  position: absolute;
+  inset: 2px 0;
+  background: var(--mar-ui-fill-selection);
+}
+.mar-ui-calendar-month__day[data-range-band='start']::before {
+  inset-inline-start: 50%;
+}
+.mar-ui-calendar-month__day[data-range-band='end']::before {
+  inset-inline-end: 50%;
+}
+.mar-ui-calendar-month__day-number {
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: min(1.375rem, 100%);
+  block-size: 1.375rem;
+  border-radius: 50%;
+}
+.mar-ui-calendar-month__day[aria-pressed='true'] .mar-ui-calendar-month__day-number {
+  background: var(--mar-ui-color-brand);
+  color: var(--mar-ui-color-on-accent);
   font-weight: 700;
 }
 button:focus-visible {

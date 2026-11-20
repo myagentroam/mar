@@ -26,6 +26,13 @@ withDefaults(defineProps<{ column?: number; border?: boolean }>(), { column: 3 }
   border: 1px solid var(--mar-ui-border-subtle);
   background: var(--mar-ui-border-subtle);
 }
+.is-bordered > :deep(.mar-ui-descriptions__item > .mar-ui-descriptions__label) {
+  border-inline-end: 1px solid var(--mar-ui-border-subtle);
+  background: var(--mar-ui-bg-subtle);
+}
+.is-bordered > :deep(.mar-ui-descriptions__item > .mar-ui-descriptions__content) {
+  background: var(--mar-ui-bg-panel);
+}
 @media (max-width: 480px) {
   .mar-ui-descriptions {
     grid-template-columns: minmax(0, 1fr);

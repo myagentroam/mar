@@ -61,6 +61,8 @@ const list = useTemplateRef<HTMLElement>('list');
 const choices = shallowReactive(new Set<Choice>());
 const active = shallowRef<Choice>();
 const activeValue = computed(() => active.value?.value);
+// A filterable input can match :focus-visible even during pointer interaction.
+const pointerDriven = ref(false);
 const query = ref('');
 const normalizedQuery = computed(() => query.value.toLocaleLowerCase());
 const selectedValues = computed<readonly OptionValue[]>(() => {
@@ -106,6 +108,7 @@ const available = computed(() => visibleItems.value.filter((item) => !disabled(i
 const collapsedTagsOpen = ref(false);
 const { open, show, close } = usePopup(() => {
   active.value = undefined;
+  pointerDriven.value = false;
   query.value = '';
 });
 
@@ -209,7 +212,9 @@ provide(optionContext, {
   disabled,
   multiple: () => Boolean(props.multiple),
   pointAt(item) {
-    if (!disabled(item)) active.value = item;
+    if (disabled(item)) return;
+    pointerDriven.value = true;
+    active.value = item;
   },
   choose
 });
@@ -260,7 +265,7 @@ function expand(key?: string) {
       ? items.at(key === 'ArrowUp' || key === 'End' ? -1 : 0)
       : current;
   collapsedTagsOpen.value = false;
-  show(field.value, list.value, true);
+  show(field.value, list.value);
   if (open.value) revealActive();
 }
 
@@ -273,6 +278,7 @@ function setActiveValue(value: OptionValue) {
   if (!open.value) return;
   const item = available.value.find((item) => item.value === value);
   if (!item) return;
+  pointerDriven.value = false;
   active.value = item;
   revealActive();
 }
@@ -316,6 +322,7 @@ function onKey(event: KeyboardEvent) {
     (!props.filterable && (event.key === 'Home' || event.key === 'End'))
   ) {
     event.preventDefault();
+    pointerDriven.value = false;
     if (!open.value) expand(event.key);
     else move(event.key);
   } else if (
@@ -323,6 +330,7 @@ function onKey(event: KeyboardEvent) {
     (props.filterable && event.key === 'Enter')
   ) {
     event.preventDefault();
+    pointerDriven.value = false;
     if (!open.value) expand();
     else if (active.value) choose(active.value);
   } else if (
@@ -337,7 +345,9 @@ function onKey(event: KeyboardEvent) {
 }
 
 function onQueryInput(event: Event) {
-  if (!(event as InputEvent).isComposing && !open.value) expand();
+  if ((event as InputEvent).isComposing) return;
+  pointerDriven.value = false;
+  if (!open.value) expand();
 }
 
 function onFieldClick(event: MouseEvent) {
@@ -393,6 +403,7 @@ watch(controlDisabled, (disabled) => {
       }"
       :data-disabled="controlDisabled || undefined"
       :data-expanded="open || undefined"
+      @click.capture="pointerDriven = $event.detail > 0"
       @click="onFieldClick"
       @focusout="onFocusOut"
     >
@@ -509,8 +520,9 @@ watch(controlDisabled, (disabled) => {
       :id="id"
       ref="list"
       popover="manual"
-      class="mar-ui-popup"
+      class="mar-ui-popup mar-ui-select__popup"
       :class="popperClass"
+      :data-pointer-driven="pointerDriven || undefined"
       role="listbox"
       :aria-label="ariaLabel"
       :aria-labelledby="ariaLabelledby"
@@ -541,6 +553,11 @@ watch(controlDisabled, (disabled) => {
 .mar-ui-select {
   min-width: 0;
   width: 100%;
+}
+.mar-ui-select__popup {
+  width: max-content;
+  min-width: min(var(--mar-ui-popup-anchor-width, 0px), var(--mar-ui-popup-width-limit));
+  padding-inline: 0;
 }
 .mar-ui-select__field {
   --mar-ui-select-height: 32px;
@@ -582,7 +599,8 @@ watch(controlDisabled, (disabled) => {
   color: var(--mar-ui-text-disabled);
   cursor: not-allowed;
 }
-.mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible) + .mar-ui-popup {
+.mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
+  + .mar-ui-popup:not([data-pointer-driven]) {
   --mar-ui-select-option-focus: 2px solid var(--mar-ui-color-brand);
 }
 .mar-ui-select__selection {
@@ -727,7 +745,8 @@ input.mar-ui-select__trigger {
   .mar-ui-select__action:focus-visible {
     outline: 2px solid Highlight;
   }
-  .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible) + .mar-ui-popup {
+  .mar-ui-select__field:has(.mar-ui-select__trigger:focus-visible)
+    + .mar-ui-popup:not([data-pointer-driven]) {
     --mar-ui-select-option-focus: 2px solid Highlight;
   }
 }

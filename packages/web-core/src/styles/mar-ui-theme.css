@@ -10,6 +10,7 @@
   --mar-ui-scrollbar-thumb: var(--mar-scrollbar-thumb);
   --mar-ui-bg-panel: var(--mar-bg-panel);
   --mar-ui-bg-subtle: var(--mar-bg-subtle);
+  --mar-ui-bg-tab-inactive: var(--mar-bg-tab-inactive);
   --mar-ui-border-default: var(--mar-border-default);
   --mar-ui-border-medium: var(--mar-border-medium);
   --mar-ui-border-subtle: var(--mar-border-subtle);
@@ -32,6 +33,7 @@
   --mar-ui-font-size-body: var(--mar-font-size-body);
   --mar-ui-font-size-input: var(--mar-font-size-input);
   --mar-ui-font-size-meta: var(--mar-font-size-meta);
+  --mar-ui-motion-duration-fast: var(--mar-motion-duration-fast);
   --mar-ui-radius-surface: var(--mar-radius-surface);
   --mar-ui-radius-control: var(--mar-radius-control);
   --mar-ui-input-border: var(--mar-input-border);
@@ -59,6 +61,7 @@
   --mar-ui-tooltip-surface: var(--mar-control-bg-color-overlay);
   --mar-ui-tooltip-shadow: 0 4px 12px var(--mar-shadow-medium);
   --mar-ui-text-disabled: var(--mar-text-disabled);
+  --mar-ui-text-muted: var(--mar-text-muted);
   --mar-ui-text-primary: var(--mar-text-primary);
   --mar-ui-text-secondary: var(--mar-text-secondary);
 }

@@ -329,6 +329,47 @@ describe('Web session scrolling status', () => {
     expect(state.following.value).toBe(true);
   });
 
+  it('smoothly reaches content appended mid-scroll and then restores following', () => {
+    const state = createConversationScrollService();
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 20, clientHeight: 200 });
+    const scrollTo = vi.fn();
+    Object.assign(element, { scrollTo });
+    state.setElement(element);
+    state.stopFollowing();
+    state.jumpToLatest();
+    expect(scrollTo).toHaveBeenCalledWith({ top: 800, behavior: 'smooth' });
+    const restore = state.capturePrependAnchor();
+    Object.defineProperty(element, 'scrollHeight', { value: 1200 });
+    restore();
+    expect(element.scrollTop).toBe(20);
+    const loadOlder = vi.fn();
+    element.scrollTop = 800;
+    state.handleScroll(loadOlder);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: 'smooth' });
+    expect(state.following.value).toBe(false);
+    element.scrollTop = 1000;
+    state.handleScroll(loadOlder);
+    expect(state.following.value).toBe(true);
+    expect(loadOlder).not.toHaveBeenCalled();
+  });
+
+  it('cancels smooth navigation when the reader scrolls up again', () => {
+    const state = createConversationScrollService();
+    const element = scrollElement({ scrollHeight: 1000, scrollTop: 20, clientHeight: 200 });
+    const scrollTo = vi.fn();
+    Object.assign(element, { scrollTo });
+    state.setElement(element);
+    state.stopFollowing();
+    state.jumpToLatest();
+    element.scrollTop = 300;
+    state.stopFollowing();
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 300, behavior: 'instant' });
+    element.scrollTop = 250;
+    state.handleScroll(vi.fn());
+    expect(element.scrollTop).toBe(250);
+    expect(state.following.value).toBe(false);
+  });
+
   it('Do not mistake layout changes for upward user scrolling while following the bottom', () => {
     const layout = {
       scrollHeight: 1000,

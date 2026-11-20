@@ -200,6 +200,7 @@ function saveFeedbackDialog(): void {
         Submit action
       </MarButton>
       <MarButton :loading="buttonLoading">Text action</MarButton>
+      <MarButton aria-label="Idle text reference">Text action</MarButton>
       <MarButton :icon="marIcon('refresh')" aria-label="Refresh action" :loading="buttonLoading" />
       <MarButton @click="buttonLoading = false">Finish action</MarButton>
       <label class="mar-sample-checkbox"

@@ -9,7 +9,6 @@ for (const viewport of [
   for (const entry of [
     {
       name: 'quick prompts',
-      variant: 'page',
       navigation: 'Settings',
       label: 'Quick Prompts',
       createLabel: 'Add prompt',
@@ -20,7 +19,6 @@ for (const viewport of [
     },
     {
       name: 'personal Git',
-      variant: 'page',
       navigation: 'Settings',
       label: 'Git configuration',
       createLabel: 'Add credential',
@@ -31,7 +29,6 @@ for (const viewport of [
     },
     {
       name: 'environment secrets',
-      variant: 'region',
       navigation: 'Admin',
       label: 'Environment Secrets',
       createLabel: 'Add Environment Secret',
@@ -95,19 +92,15 @@ for (const viewport of [
           expect(Math.abs(box![key] - available[key])).toBeLessThanOrEqual(1);
         const spinner = mask.locator('.mar-ui-loading__indicator');
         await expect(spinner).toBeVisible();
-        await expect(mask).toHaveAttribute('data-variant', entry.variant);
-        const indicator = await spinner.evaluate((element, variant) => {
+        await expect(mask).toHaveAttribute('data-variant', 'page');
+        const indicator = await spinner.evaluate((element) => {
           const style = getComputedStyle(element);
           const probe = document.createElement('span');
-          probe.style.color =
-            variant === 'page' ? 'var(--mar-color-brand-text)' : 'var(--mar-color-brand)';
+          probe.style.color = 'var(--mar-color-brand-text)';
           element.append(probe);
           const color = getComputedStyle(probe).color;
           probe.remove();
-          const size =
-            variant === 'page'
-              ? 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize)
-              : 42;
+          const size = 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize);
           return {
             width: parseFloat(style.width),
             height: parseFloat(style.height),
@@ -117,7 +110,7 @@ for (const viewport of [
             color,
             size
           };
-        }, entry.variant);
+        });
         expect(indicator.width).toBeCloseTo(indicator.size);
         expect(indicator.height).toBeCloseTo(indicator.size);
         expect(indicator.border).toBe('solid');

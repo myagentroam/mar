@@ -1692,7 +1692,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(failed).not.toContain(i18n.global.t('generated.conversationScroll.loadEarlierMessages'));
   });
 
-  it('keeps earlier-history loading and latest-follow controls independently gated', async () => {
+  it('renders earlier-history loading before the client measures the scroll range', async () => {
     const loadingOlder = await render(ConversationScroll, {
       hasOlder: true,
       loadingInitial: false,
@@ -1719,10 +1719,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     expect(loadingOlder).not.toMatch(
       /<button(?=[^>]*class="[^"]*\bconversation-load-older\b)[^>]*>/u
     );
-    expect(loadingOlder).toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
-    expect(loadingOlder).toMatch(
-      /<button(?=[^>]*class="[^"]*\bmar-ui-button\b)(?=[^>]*class="[^"]*\bmar-ui-button--round\b)(?=[^>]*class="[^"]*\bconversation-latest\b)[^>]*>/u
-    );
+    expect(loadingOlder).not.toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
     expect(following).not.toContain(i18n.global.t('generated.conversationScroll.jumpToLatest'));
     expect(following).not.toContain(i18n.global.t('conversationActivity.historyStart'));
   });
@@ -1856,7 +1853,7 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
     }
   });
 
-  it('moves session status above the jump-to-latest control when both are visible', async () => {
+  it('does not reserve room around the session status before measuring the scroll range', async () => {
     const props = {
       hasOlder: false,
       loadingInitial: false,
@@ -1865,13 +1862,9 @@ describe.each(['zh-CN', 'en-US'] as const)('public Conversation components (%s)'
       hasTurns: true
     };
     const statusSlot = { status: () => h('span', 'status') };
-    const withLatest = await render(ConversationScroll, { ...props, following: false }, statusSlot);
-    const following = await render(ConversationScroll, { ...props, following: true }, statusSlot);
-    expect(withLatest).toMatch(
-      /class="(?=[^"]*\bconversation-status\b)(?=[^"]*\bhas-latest\b)[^"]*"/u
-    );
-    expect(following).toContain('class="conversation-status"');
-    expect(following).not.toContain('conversation-status has-latest');
+    const reading = await render(ConversationScroll, { ...props, following: false }, statusSlot);
+    expect(reading).toContain('class="conversation-status"');
+    expect(reading).not.toContain('conversation-status has-latest');
   });
 
   it('renders an error card with the Node error code, HTTP status and safe message', async () => {

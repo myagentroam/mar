@@ -3,6 +3,7 @@ import { nextTick, ref } from 'vue';
 const FOLLOW_THRESHOLD_PX = 28;
 const LOAD_OLDER_THRESHOLD_PX = 48;
 
+/** Owns conversation following, explicit navigation, and reading-anchor compensation. */
 export function createConversationScrollService() {
   const element = ref<HTMLElement>();
   const following = ref(true);
@@ -11,9 +12,20 @@ export function createConversationScrollService() {
   let clientHeight: number | undefined;
   let scrollHeight: number | undefined;
   let lastScrollTop = 0;
+  let latestScrollTarget: number | undefined;
   let readingAnchor: { readonly element: Element; readonly top: number } | undefined;
 
   function setElement(next: HTMLElement | undefined): void {
+    const previous = element.value;
+    if (previous !== next) {
+      if (previous !== undefined) {
+        if (Reflect.has(previous, 'onscrollend'))
+          previous.removeEventListener('scrollend', handleScrollEnd);
+        cancelLatestScroll(previous);
+      }
+      if (next !== undefined && Reflect.has(next, 'onscrollend'))
+        next.addEventListener('scrollend', handleScrollEnd);
+    }
     element.value = next;
     clientWidth = next?.clientWidth;
     clientHeight = next?.clientHeight;
@@ -49,6 +61,13 @@ export function createConversationScrollService() {
     const current = element.value;
     if (current === undefined || positioningInitialConversation.value) return;
     const layoutChanged = updateLayout(current);
+    if (latestScrollTarget !== undefined) {
+      const bottom = current.scrollHeight - current.clientHeight;
+      if (current.scrollTop >= bottom - 1) scrollToLatest();
+      else if (!Reflect.has(current, 'onscrollend') && current.scrollTop >= latestScrollTarget - 1)
+        jumpToLatest();
+      return;
+    }
     // Layout can also move scrollTop. Explicit upward intent stops following before the scroll event.
     if (layoutChanged && following.value) {
       scrollToLatest();
@@ -88,6 +107,7 @@ export function createConversationScrollService() {
   function stopFollowing(): void {
     const current = element.value;
     if (current === undefined) return;
+    cancelLatestScroll(current);
     following.value = false;
     positioningInitialConversation.value = false;
     updateLayout(current);
@@ -98,10 +118,52 @@ export function createConversationScrollService() {
   function scrollToLatest(): void {
     const current = element.value;
     if (current === undefined) return;
+    latestScrollTarget = undefined;
     current.scrollTop = current.scrollHeight;
     lastScrollTop = current.scrollTop;
     following.value = true;
     readingAnchor = undefined;
+  }
+
+  function cancelLatestScroll(current: HTMLElement): void {
+    if (latestScrollTarget === undefined) return;
+    latestScrollTarget = undefined;
+    current.scrollTo({ top: current.scrollTop, behavior: 'instant' });
+  }
+
+  function handleScrollEnd(): void {
+    const current = element.value;
+    // A previously queued scrollend can arrive before a new jump has moved the viewport.
+    if (
+      current === undefined ||
+      latestScrollTarget === undefined ||
+      current.scrollTop === lastScrollTop
+    )
+      return;
+    if (current.scrollTop >= latestScrollTarget - 1) {
+      // Streaming content may have moved the bottom while heading to the previous destination.
+      jumpToLatest();
+      return;
+    }
+    latestScrollTarget = undefined;
+    lastScrollTop = current.scrollTop;
+    captureReadingAnchor(current);
+  }
+
+  function jumpToLatest(): void {
+    const current = element.value;
+    if (current === undefined) return;
+    const bottom = current.scrollHeight - current.clientHeight;
+    if (
+      current.scrollTop >= bottom - 1 ||
+      current.ownerDocument.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      scrollToLatest();
+      return;
+    }
+    lastScrollTop = current.scrollTop;
+    latestScrollTarget = bottom;
+    current.scrollTo({ top: bottom, behavior: 'smooth' });
   }
 
   function captureAnchor(followBottom: boolean): () => void {
@@ -111,7 +173,12 @@ export function createConversationScrollService() {
     const previousTop = target.scrollTop;
     const wasFollowing = followBottom && following.value;
     return () => {
-      if (element.value !== target || target.scrollTop !== previousTop) return;
+      if (
+        element.value !== target ||
+        target.scrollTop !== previousTop ||
+        latestScrollTarget !== undefined
+      )
+        return;
       if (wasFollowing) {
         if (following.value) {
           scrollToLatest();
@@ -158,6 +225,7 @@ export function createConversationScrollService() {
     handleResize,
     stopFollowing,
     scrollToLatest,
+    jumpToLatest,
     captureRenderAnchor,
     capturePrependAnchor,
     scrollToLatestAfterLayout

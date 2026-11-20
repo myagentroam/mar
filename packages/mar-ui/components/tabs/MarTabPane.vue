@@ -16,3 +16,10 @@ const tabs = inject(tabsKey, undefined);
     <slot />
   </div>
 </template>
+
+<style scoped>
+.mar-ui-tab-pane[hidden] {
+  /* Consumer layout (e.g. display: grid) only applies to the active panel. */
+  display: none !important;
+}
+</style>

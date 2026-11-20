@@ -2396,7 +2396,8 @@ details.conversation-record-group[open] > details:last-child {
 
 .conversation-item summary:focus-visible {
   outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
+  /* Keep the ring inside the rounded row while the details animation clips overflow. */
+  outline-offset: -2px;
 }
 
 .conversation-item summary strong {
@@ -2439,11 +2440,6 @@ details.conversation-record-group[open] > details:last-child {
 
 .permission-call-details > summary {
   cursor: pointer;
-}
-
-.permission-call-details > summary:focus-visible {
-  outline: 2px solid var(--mar-color-brand);
-  outline-offset: 2px;
 }
 
 .approval-detail {

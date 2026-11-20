@@ -164,7 +164,7 @@ for (const [width, height, theme, top] of [
   [390, 844, 'vscode-dark-2026', false],
   [320, 360, 'daylight', true]
 ] as const) {
-  test(`Composer menus keep gutters and local scrolling (${width}x${height}, ${theme})`, async ({
+  test(`Composer menus fill their columns and keep local scrolling (${width}x${height}, ${theme})`, async ({
     page
   }, info) => {
     await page.setViewportSize({ width, height });
@@ -175,15 +175,38 @@ for (const [width, height, theme, top] of [
       await page.locator(`.composer-${kind}-select`).click();
       const menu = page.locator(`[role="listbox"].composer-${kind}-popper:visible`);
       await expectMenuInsideViewport(menu);
+      const menuBounds = (await menu.boundingBox())!;
+      const edges = await menu.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [parseFloat(style.borderLeftWidth), parseFloat(style.borderRightWidth)];
+      });
       if (kind === 'model-effort') {
         const modelGroup = menu.getByRole('group', { name: 'Model' });
         const effortGroup = menu.getByRole('group', { name: 'Reasoning' });
         const modelBounds = (await modelGroup.boundingBox())!;
         const effortBounds = (await effortGroup.boundingBox())!;
+        expect(modelBounds.x - menuBounds.x).toBeCloseTo(edges[0], 0);
+        expect(menuBounds.x + menuBounds.width - effortBounds.x - effortBounds.width).toBeCloseTo(
+          edges[1],
+          0
+        );
         expect(modelBounds.x + modelBounds.width).toBeLessThanOrEqual(effortBounds.x + 1);
         expect(Math.abs(modelBounds.y - effortBounds.y)).toBeLessThan(1);
         if (height > 400) expect((await menu.boundingBox())!.height).toBeGreaterThan(400);
         const scroll = modelGroup.locator('.mar-ui-scrollbar');
+        for (const group of [modelGroup, effortGroup]) {
+          const insets = await group
+            .getByRole('option')
+            .first()
+            .evaluate((option) => {
+              const list = option.parentElement!;
+              const listRect = list.getBoundingClientRect();
+              const row = option.getBoundingClientRect();
+              return [row.left - listRect.left, listRect.left + list.clientWidth - row.right];
+            });
+          expect(insets[0]).toBeCloseTo(0, 0);
+          expect(Math.abs(insets[1])).toBeLessThan(1); // clientWidth is rounded to whole pixels.
+        }
         expect(
           await scroll.evaluate((element) => element.scrollHeight > element.clientHeight)
         ).toBe(true);
@@ -242,6 +265,17 @@ for (const [width, height, theme, top] of [
           true
         );
       } else {
+        const option = (await menu.getByRole('option').first().boundingBox())!;
+        expect(option.x - menuBounds.x).toBeCloseTo(edges[0], 0);
+        expect(menuBounds.x + menuBounds.width - option.x - option.width).toBeCloseTo(edges[1], 0);
+        if (kind === 'access') {
+          const field = page.locator('.composer-access-select .mar-ui-select__field');
+          expect(menuBounds.width).toBeGreaterThan((await field.boundingBox())!.width);
+          const fullAccess = menu.getByText('Full access', { exact: true });
+          expect(await fullAccess.evaluate((label) => label.scrollWidth <= label.clientWidth)).toBe(
+            true
+          );
+        }
         await page.keyboard.press('Escape');
         await expect(menu).toBeHidden();
       }

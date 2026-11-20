@@ -187,6 +187,13 @@ test('MAR choice and command menus keep selection and actions separate', async (
     'aria-activedescendant',
     (await nextOption.getAttribute('id'))!
   );
+  await expect(nextOption).toHaveCSS('outline-style', 'solid');
+  await section.getByRole('option', { name: 'Unavailable choice' }).hover();
+  await expect(choice).toHaveAttribute(
+    'aria-activedescendant',
+    (await nextOption.getAttribute('id'))!
+  );
+  await expect(nextOption).toHaveCSS('outline-style', 'solid');
   await choice.press('Escape');
   await expect(page.getByRole('listbox')).toBeHidden();
   await expect(selected).toHaveText('false');
@@ -219,13 +226,32 @@ test('MAR choice and command menus keep selection and actions separate', async (
   await expect(disabled).toHaveAttribute('aria-disabled', 'true');
   await expect(apply).toBeFocused();
   await expect(trigger).toHaveAttribute('aria-controls', (await menu.getAttribute('id'))!);
+  const reset = menu.getByRole('menuitem', { name: 'Reset command' });
+  const layout = await reset.evaluate((item) => {
+    const menu = item.closest('[role="menu"]')!;
+    const menuStyle = getComputedStyle(menu);
+    const menuRect = menu.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    const divider = getComputedStyle(item, '::before');
+    const dividerTop = itemRect.top + parseFloat(divider.insetBlockStart);
+    return {
+      leftInset: itemRect.left - menuRect.left - parseFloat(menuStyle.borderLeftWidth),
+      rightInset: menuRect.right - itemRect.right - parseFloat(menuStyle.borderRightWidth),
+      before: dividerTop - item.previousElementSibling!.getBoundingClientRect().bottom,
+      after: itemRect.top - (dividerTop + parseFloat(divider.height)),
+      dividerPoint: { x: itemRect.left + itemRect.width / 2, y: dividerTop + 0.5 }
+    };
+  });
+  expect(layout.leftInset).toBeCloseTo(0, 0);
+  expect(layout.rightInset).toBeCloseTo(0, 0);
+  expect(layout.before).toBeGreaterThan(0);
+  expect(layout.after).toBeCloseTo(layout.before, 1);
   await menu.screenshot({
     path: testInfo.outputPath('mar-dropdown-dark.png'),
     animations: 'disabled'
   });
   await disabled.dispatchEvent('click');
   await expect(command).toBeEmpty();
-  const reset = menu.getByRole('menuitem', { name: 'Reset command' });
   await page.keyboard.press('ArrowDown');
   await expect(reset).toBeFocused();
   await page.keyboard.press('Home');
@@ -244,6 +270,9 @@ test('MAR choice and command menus keep selection and actions separate', async (
   await expect(menu).toBeHidden();
   await expect(trigger).toBeFocused();
   await trigger.press('Enter');
+  await expect(menu).toBeVisible();
+  await page.mouse.click(layout.dividerPoint.x, layout.dividerPoint.y);
+  await expect(command).toHaveText('apply');
   await expect(menu).toBeVisible();
   await outside.click();
   await expect(menu).toBeHidden();
@@ -469,6 +498,7 @@ test('MAR button preserves the icon and label positions during native submit loa
       return { height, borderRadius, fontSize, fontWeight, color, backgroundColor, borderColor };
     });
   const text = section.getByRole('button', { name: 'Text action' });
+  const idleText = section.getByRole('button', { name: 'Idle text reference' });
   const iconOnly = section.getByRole('button', { name: 'Refresh action' });
   const finish = section.getByRole('button', { name: 'Finish action' });
   const input = section.getByRole('textbox', { name: 'Action input' });
@@ -487,7 +517,9 @@ test('MAR button preserves the icon and label positions during native submit loa
 
   await submit.scrollIntoViewIfNeeded();
   const originalSubmitLayout = await layout(submit);
-  const originalTextLayout = await layout(text);
+  const originalTextBox = await text.boundingBox();
+  expect(originalTextBox!.width).toBeCloseTo((await idleText.boundingBox())!.width, 2);
+  await expect(text.locator('.mar-ui-button__icon')).toHaveCount(0);
   await expect(submit.locator('[data-mar-icon="check"]')).toBeVisible();
   expect(await appearance(submit)).toEqual(await appearance(reference));
   expect(await appearance(text)).toEqual(await appearance(referenceText));
@@ -505,7 +537,16 @@ test('MAR button preserves the icon and label positions during native submit loa
   await expect(iconOnly).toBeDisabled();
   await expect(iconOnly.locator('[data-mar-icon="loading-action"]')).toBeVisible();
   expect(await layout(submit)).toEqual(originalSubmitLayout);
-  expect(await layout(text)).toEqual(originalTextLayout);
+  expect(await text.boundingBox()).toEqual(originalTextBox);
+  await expect(text).toBeDisabled();
+  await expect(text).toHaveAttribute('aria-busy', 'true');
+  await expect(text).toHaveAccessibleName('Text action');
+  await expect(text.locator('.mar-ui-button__label')).toHaveCSS('opacity', '0');
+  const textBusyIcon = text.locator('[data-mar-icon="loading-action"]');
+  await expect(textBusyIcon).toBeVisible();
+  const [buttonBox, , iconBox] = await layout(text);
+  expect(iconBox.x + iconBox.width / 2).toBeCloseTo(buttonBox.x + buttonBox.width / 2, 0);
+  expect(iconBox.y + iconBox.height / 2).toBeCloseTo(buttonBox.y + buttonBox.height / 2, 0);
   await section.screenshot({ path: testInfo.outputPath('mar-button-loading.png') });
   await submit.click({ force: true });
   await input.press('Enter');
@@ -514,6 +555,9 @@ test('MAR button preserves the icon and label positions during native submit loa
   const disabled = section.getByRole('checkbox', { name: 'Disable submit action' });
   await disabled.check();
   await finish.click();
+  await expect(text.locator('.mar-ui-button__label')).toHaveCSS('opacity', '1');
+  await expect(textBusyIcon).toHaveCount(0);
+  expect(await text.boundingBox()).toEqual(originalTextBox);
   await expect(submit).toBeDisabled();
   await expect(submit).not.toHaveAttribute('aria-busy');
   await expect(reference).toBeDisabled();

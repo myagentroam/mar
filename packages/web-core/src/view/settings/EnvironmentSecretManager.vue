@@ -61,6 +61,7 @@ const operationLoading = ref(false);
 const saving = ref(false);
 const refreshLoading = ref(false);
 const dialogOpen = ref(false);
+const editorDialog = ref<InstanceType<typeof MarDialog>>();
 const editing = shallowRef<Secret>();
 const secretDetailsOpen = ref(false);
 const secretDetails = shallowRef<Secret>();
@@ -133,10 +134,15 @@ const pagination = createManagementPageService<Secret>({
     ])
 });
 watchManagementPageFailure(pagination);
+const pageReady = ref(false);
+watch(pagination.result, (result) => {
+  if (result !== undefined) pageReady.value = true;
+});
+const loadingVariant = computed(() => (targetScoped.value || pageReady.value ? 'region' : 'page'));
 const loading = computed(
   () => saving.value || operationLoading.value || (!targetScoped.value && pagination.loading.value)
 );
-const regionLoading = computed(
+const panelLoading = computed(
   () =>
     (operationLoading.value && !refreshLoading.value) ||
     (!targetScoped.value &&
@@ -332,8 +338,8 @@ function message(error: unknown): string {
 
 <template>
   <LoadingPanel
-    :loading="regionLoading"
-    variant="region"
+    :loading="panelLoading"
+    :variant="loadingVariant"
     class="secret-manager"
     :aria-label="translate('generated.environmentSecretManager.environmentSecrets')"
   >
@@ -489,6 +495,7 @@ function message(error: unknown): string {
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
+      ref="editorDialog"
       v-model="dialogOpen"
       :before-close="requestEditorClose"
       :show-close="!saving"
@@ -548,7 +555,7 @@ function message(error: unknown): string {
         /></MarFormItem>
       </MarForm>
       <template #footer
-        ><MarButton :disabled="saving" @click="dialogOpen = false">{{
+        ><MarButton :disabled="saving" @click="editorDialog?.handleClose()">{{
           translate('generated.environmentSecretManager.cancel2')
         }}</MarButton
         ><MarButton type="primary" :loading="saving" :disabled="writable === false" @click="save">{{

@@ -360,8 +360,7 @@
     font-size: var(--mar-action-icon-size, 18px);
   }
 
-  .mar-ui-button__icon,
-  .mar-ui-button--text-only::after {
+  .mar-ui-button__icon {
     font-size: var(--mar-action-icon-size, 18px);
   }
 }
