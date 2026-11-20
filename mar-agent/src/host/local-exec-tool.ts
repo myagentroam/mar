@@ -115,13 +115,43 @@ export class ExecTool {
     const input = parseExecInput(arguments_);
     if ('processId' in input) {
       this.#handles.assertType(input.processId);
-      const process = this.#processes.get(input.processId);
-      const completed = this.#completed.get(input.processId);
-      if (completed) {
-        if (owner !== undefined && completed.ownerSessionId !== owner.sessionId)
-          throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
-        if (onExecutionSource) await onExecutionSource(processSource(completed));
+      let process = this.#processes.get(input.processId);
+      let completed = this.#completed.get(input.processId);
+      const source = completed ?? process;
+      if (
+        !source ||
+        process?.native ||
+        (owner !== undefined && source.ownerSessionId !== owner.sessionId)
+      )
+        throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
+      if (onExecutionSource) {
+        await onExecutionSource(processSource(source));
         if (signal?.aborted) throw executionAbortReason(signal);
+        // Source publication can overlap terminal collection or eviction of this handle.
+        process = this.#processes.get(input.processId);
+        completed = this.#completed.get(input.processId);
+      }
+      let outcome: ProcessWaitOutcome | undefined;
+      if (process && input.action === 'poll') {
+        outcome = await waitForProcessCompletion(
+          'poll',
+          input.processId,
+          process,
+          input.yieldMs,
+          signal,
+          waitInterrupt,
+          onOutput
+        );
+        // A skipped or displaced poll must not drain the active poll's output.
+        if (outcome === 'superseded' || (outcome === 'interrupted' && process.supersedePoll))
+          return {
+            ...this.#result(input.processId, process, false),
+            waitOutcome: 'interrupted',
+            reason: outcome === 'superseded' ? 'superseded' : 'steer'
+          };
+        completed = this.#completed.get(input.processId);
+      }
+      if (completed) {
         if (input.action === 'write')
           throw new AgentError(
             'MAR_AGENT_TOOL_INPUT_INVALID',
@@ -134,32 +164,8 @@ export class ExecTool {
           ...(input.action === 'poll' ? waitMetadata('completion') : {})
         };
       }
-      if (
-        !process ||
-        process.native ||
-        (owner !== undefined && process.ownerSessionId !== owner.sessionId)
-      )
+      if (!process)
         throw new AgentError('MAR_AGENT_PROCESS_NOT_FOUND', 'Managed process was not found.');
-      if (onExecutionSource) await onExecutionSource(processSource(process));
-      if (signal?.aborted) throw executionAbortReason(signal);
-      let outcome: ProcessWaitOutcome | undefined;
-      if (input.action === 'poll')
-        outcome = await waitForProcessCompletion(
-          'poll',
-          input.processId,
-          process,
-          input.yieldMs,
-          signal,
-          waitInterrupt,
-          onOutput
-        );
-      // A skipped or displaced poll must not drain the active poll's output.
-      if (outcome === 'superseded' || (outcome === 'interrupted' && process.supersedePoll))
-        return {
-          ...this.#result(input.processId, process, false),
-          waitOutcome: 'interrupted',
-          reason: outcome === 'superseded' ? 'superseded' : 'steer'
-        };
       if (input.action === 'write') {
         if (process.status !== 'running')
           throw new AgentError(
