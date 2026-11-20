@@ -83,7 +83,8 @@ async function request<T>(path: string): Promise<T> {
   if (path === '/api/personal-git') return { configuration: { credentials: [] } } as T;
   throw new Error(`Unexpected fixture request: ${path}`);
 }
-const notifications = createWorkbenchNotificationService(ref(undefined));
+const notifications = createWorkbenchNotificationService(ref('settings-layout-fixture'));
+notifications.systemNotifications.start();
 const diagnostics = createWebPerformanceDiagnostics();
 onBeforeUnmount(() => {
   navigation.dispose();
