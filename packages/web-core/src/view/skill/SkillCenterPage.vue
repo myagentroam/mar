@@ -908,7 +908,7 @@ function scopeLabel(scope: string): string {
   gap: 10px;
 }
 .skill-filter-bar > :deep(.mar-ui-input) {
-  width: min(620px, 100%);
+  width: min(320px, 100%);
 }
 .skill-category-strip {
   display: flex;

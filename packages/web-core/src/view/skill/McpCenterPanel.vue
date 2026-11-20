@@ -582,7 +582,7 @@ function mcpErrorMessage(error: unknown): string {
   gap: 10px;
 }
 .mcp-filter-bar > :deep(.mar-ui-input) {
-  width: min(620px, 100%);
+  width: min(320px, 100%);
 }
 .mcp-category-strip {
   display: flex;

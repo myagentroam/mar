@@ -31,6 +31,33 @@ async function colors(page: Page) {
   });
 }
 
+test('Skill and MCP configuration search fields are compact and fit narrow panels', async ({
+  page
+}, testInfo) => {
+  for (const width of [1920, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(
+      `${fixture.url}visual-alignment.html?list-hierarchy=skills&theme=vscode-dark-2026`
+    );
+    for (const [tab, placeholder] of [
+      ['Skill', 'Search skill names or descriptions'],
+      ['MCP', 'Search MCP servers']
+    ]) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      const input = page.getByPlaceholder(placeholder);
+      await expect(input).toBeVisible();
+      const filters = page.locator('.skill-filter-bar, .mcp-filter-bar').filter({ has: input });
+      const field = filters.locator('.mar-ui-input');
+      const bounds = (await filters.boundingBox())!;
+      const search = (await field.boundingBox())!;
+      expect(search.x).toBeCloseTo(bounds.x, 0);
+      expect(search.width).toBeCloseTo(Math.min(320, bounds.width), 0);
+      expect(search.x + search.width).toBeLessThanOrEqual(width);
+      await filters.screenshot({ path: testInfo.outputPath(`${tab}-filters-${width}.png`) });
+    }
+  }
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Source management only lays out the selected tab in ${theme}`, async ({ page }) => {
     for (const width of [1280, 390]) {
