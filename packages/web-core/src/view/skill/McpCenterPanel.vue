@@ -680,7 +680,7 @@ function mcpErrorMessage(error: unknown): string {
   overflow: hidden;
   block-size: 4px;
   border-radius: 2px;
-  background: var(--mar-action-hover-bg);
+  background: var(--mar-control-fill-color-light);
 }
 .mcp-install-progress__indicator::after {
   position: absolute;

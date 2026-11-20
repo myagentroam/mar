@@ -583,6 +583,14 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     page
   }) => {
     const ui = await preparePersonalCredentials(page, locale, 'succeeds');
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-control-fill-color-light', '#dde9f6');
+      element.style.setProperty('--mar-border-default', '#a6b7cc');
+    });
+    for (const value of await ui.credentials.locator('.credential-result dd').all()) {
+      await expect(value).toHaveCSS('background-color', 'rgb(221, 233, 246)');
+      await expect(value).toHaveCSS('border-top-color', 'rgb(166, 183, 204)');
+    }
     await ui.copy.click();
     const expectedPayload =
       locale === 'en-US'
@@ -593,7 +601,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(clipboard.copiedText).toBe(expectedPayload);
     expect(clipboard.unhandledRejections).toBe(0);
     expect(ui.pageErrors()).toBe(0);
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(page.locator('.mar-ui-message')).toHaveCount(0);
     await expect(ui.credentials).toBeVisible();
     expect(ui.writes).toHaveLength(1);
 

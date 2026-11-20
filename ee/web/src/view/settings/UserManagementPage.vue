@@ -405,9 +405,9 @@ onUnmounted(() => usersPage.dispose());
 .credential-result dd {
   margin: 0;
   overflow-wrap: anywhere;
-  border: 1px solid var(--mar-input-border);
+  border: 1px solid var(--mar-border-default);
   border-radius: 6px;
-  background: var(--mar-action-hover-bg);
+  background: var(--mar-control-fill-color-light);
   padding: 10px 12px;
   color: var(--mar-text-primary);
   font-size: var(--mar-font-size-body);

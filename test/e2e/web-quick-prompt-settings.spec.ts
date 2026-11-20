@@ -224,7 +224,7 @@ test('Quick prompt settings invalidate saving before the close animation finishe
       'aria-busy',
       'true'
     );
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(page.locator('.mar-ui-message')).toHaveCount(0);
     expect(reads).toBe(initialReads);
   } finally {
     pending.release();
@@ -293,7 +293,7 @@ for (const outcome of ['success', 'failure'] as const) {
         await expect(dialog.getByRole('textbox', { name: /Phrase$/ })).toHaveValue('second');
         await expect(dialog.getByRole('textbox', { name: /Prompt$/ })).toHaveValue('Second body');
         await expect(save).toHaveAttribute('aria-busy', 'true');
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-ui-message')).toHaveCount(0);
         expect(reads).toBe(initialReads);
         const saved = page.waitForRequest(
           (value) => value.method() === 'GET' && value.url().endsWith('/api/quick-prompts')
@@ -339,7 +339,7 @@ for (const outcome of ['success', 'failure'] as const) {
         await expect(dialog).toHaveCount(0);
         refresh.release();
         await expect(page.locator('.quick-prompts')).toHaveAttribute('aria-busy', 'false');
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-ui-message')).toHaveCount(0);
         if (outcome === 'failure') {
           await expect(page.locator('.quick-prompts')).toContainText(
             'Unable to load quick prompts'

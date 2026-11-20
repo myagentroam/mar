@@ -1534,12 +1534,17 @@ for (const scheme of ['Light', 'Dark']) {
             hover: color('--mar-fill-row-hover'),
             pressed: color('--mar-fill-selection'),
             border: color('--mar-border-medium'),
+            disabledFill: color('--mar-control-fill-color-light'),
+            disabledBorder: color('--mar-border-subtle'),
             foreground: color('--mar-color-on-accent'),
             primaryHover: color('--mar-color-brand-hover')
           };
           probe.remove();
           return palette;
         });
+        const previewDisabled = preview.locator('.preview-button:disabled');
+        await expect(previewDisabled).toHaveCSS('background-color', previewColors.disabledFill);
+        await expect(previewDisabled).toHaveCSS('border-top-color', previewColors.disabledBorder);
         const previewSecondary = preview.locator('.preview-button.secondary');
         await previewSecondary.hover();
         await expect(previewSecondary).toHaveCSS('color', previewColors.text);

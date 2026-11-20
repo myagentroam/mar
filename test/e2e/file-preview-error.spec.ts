@@ -60,7 +60,7 @@ for (const theme of ['light', 'dark']) {
           await expect(state.locator('p')).toHaveText(scene.copy);
           const action = state.getByRole('button', { name: scene.action, exact: true });
           await expectNeutralAction(action);
-          await expect(page.locator('.el-message')).toHaveCount(0);
+          await expect(page.locator('.mar-ui-message')).toHaveCount(0);
           await page.screenshot({
             path: testInfo.outputPath(`state-${scene.id}-${theme}-${width}.png`),
             animations: 'disabled'

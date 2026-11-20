@@ -462,7 +462,14 @@ for (const labels of [
     }
     await checkBounds(390);
     await expect(dialog.locator('.share-note')).toHaveCount(0);
+    await page.locator('html').evaluate((element) => {
+      element.style.setProperty('--mar-control-fill-color-light', '#dde9f6');
+      element.style.setProperty('--mar-border-subtle', '#a6b7cc');
+    });
     await dialog.getByRole('button', { name: labels.create, exact: true }).click();
+    const shareReceipt = dialog.locator('.created-share');
+    await expect(shareReceipt).toHaveCSS('background-color', 'rgb(221, 233, 246)');
+    await expect(shareReceipt).toHaveCSS('border-top-color', 'rgb(166, 183, 204)');
     const shareUrl = new URL(
       '/share/shared-conversation-link-with-a-long-identifier',
       page.url()

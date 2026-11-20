@@ -317,9 +317,9 @@ input::placeholder {
   border-color: var(--mar-control-color-primary-dark-2);
 }
 .preview-button:disabled {
-  background: var(--mar-action-hover-bg);
+  background: var(--mar-control-fill-color-light);
   color: var(--mar-text-disabled);
-  border-color: var(--mar-overlay-border);
+  border-color: var(--mar-border-subtle);
   cursor: not-allowed;
 }
 button:focus-visible,
