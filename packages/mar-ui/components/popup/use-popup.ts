@@ -79,6 +79,7 @@ export function usePopup(onClose: () => void) {
     options?: { placement: PopupPlacement; offset?: number | undefined }
   ) {
     if (open.value && surface !== popup) close();
+    const previousAnchor = anchor;
     anchor = reference;
     surface = popup;
     matchAnchorWidth = matchWidth;
@@ -86,6 +87,11 @@ export function usePopup(onClose: () => void) {
     offset = options?.offset;
     // A second programmatic/context-menu open can move the same surface in place.
     if (open.value) {
+      if (previousAnchor !== reference) {
+        if (previousAnchor instanceof HTMLElement) resizeObserver?.unobserve(previousAnchor);
+        if (reference instanceof HTMLElement)
+          resizeObserver?.observe(reference, { box: 'border-box' });
+      }
       place();
       return;
     }
@@ -109,9 +115,11 @@ export function usePopup(onClose: () => void) {
     view?.addEventListener('resize', place, { signal });
     view?.addEventListener('scroll', place, { capture: true, signal });
     if (typeof ResizeObserver !== 'undefined') {
-      // Lazily loaded actions can change the height of a flipped menu without moving its anchor.
+      // Async options and wrapping tags can resize either side of the anchor gap.
       resizeObserver = new ResizeObserver(place);
       resizeObserver.observe(popup);
+      if (reference instanceof HTMLElement)
+        resizeObserver.observe(reference, { box: 'border-box' });
     }
   }
 

@@ -49,6 +49,41 @@ test('a filterable multiple select creates tags without crossing the selection l
   await page.screenshot({ path: test.info().outputPath('filterable-tags.png') });
 });
 
+test('the open tag menu stays anchored when the selected tags wrap', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${fixture.url}mar-select.html`);
+  const tags = page.getByRole('combobox', { name: 'Catalog tags' });
+  const select = page.locator('.mar-ui-select').filter({ has: tags });
+  const field = select.locator('.mar-ui-select__field');
+  await select.evaluate((element) => element.style.setProperty('width', '170px'));
+  const list = page.getByRole('listbox', { name: 'Catalog tags' });
+  await tags.click();
+  const initialField = (await field.boundingBox())!;
+  const initialList = (await list.boundingBox())!;
+  const gap = initialList.y - initialField.y - initialField.height;
+  expect(gap).toBeGreaterThan(0);
+
+  await tags.press('Enter');
+  await expect(page.getByTestId('tags')).toHaveText('["pinned","alpha"]');
+  const wrappedField = (await field.boundingBox())!;
+  expect(wrappedField.height).toBeGreaterThan(initialField.height);
+  await expect
+    .poll(async () => (await list.boundingBox())!.y)
+    .toBeCloseTo(wrappedField.y + wrappedField.height + gap, 0);
+  await expect(tags).toBeFocused();
+  await page.screenshot({ path: info.outputPath('wrapped-tags-popup.png') });
+
+  await tags.press('Backspace');
+  await expect(page.getByTestId('tags')).toHaveText('["pinned"]');
+  await expect.poll(async () => (await list.boundingBox())!.y).toBeCloseTo(initialList.y, 0);
+  await select.evaluate((element) => element.style.setProperty('width', '230px'));
+  await expect.poll(async () => (await list.boundingBox())!.width).toBe(230);
+  expect(errors).toEqual([]);
+});
+
 test('data options preserve falsy values when loading, choosing and clearing', async ({ page }) => {
   await page.goto(`${fixture.url}mar-select.html`);
   const state = page.getByRole('combobox', { name: 'Record state' });
