@@ -856,6 +856,46 @@ test('uses area height for wrapped single-line execution output and keeps copy o
   await expect(exec.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
 });
 
+for (const { width, locale, theme, labels } of [
+  { width: 1280, locale: 'en-US', theme: 'daylight', labels: ['Show more', 'Show less'] },
+  { width: 390, locale: 'zh-CN', theme: 'dark', labels: ['展开更多', '收起'] }
+]) {
+  test(`detail preview chevron stays aligned with its text at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(
+      `${fixture.url}conversation-tool-detail.html?preview-probe=1&locale=${locale}&theme=${theme}`
+    );
+    await page.getByTestId('stretch-preview').click();
+
+    for (const [index, label] of labels.entries()) {
+      const expanded = index === 1;
+      const toggle = page
+        .getByTestId('preview-probe')
+        .getByRole('button', { name: label, exact: true });
+      await expect(toggle).toHaveAttribute('aria-expanded', String(expanded));
+      const geometry = await toggle.evaluate((button) => {
+        const icon = button.querySelector('svg')!.getBoundingClientRect();
+        const label = button.querySelector('.detail-preview-toggle-text')!;
+        const text = label.getBoundingClientRect();
+        return {
+          width: icon.width,
+          fontSize: parseFloat(getComputedStyle(label).fontSize),
+          centerOffset: icon.y + icon.height / 2 - (text.y + text.height / 2)
+        };
+      });
+      expect(geometry.width).toBeCloseTo(geometry.fontSize, 1);
+      expect(geometry.centerOffset).toBeCloseTo(0, 0);
+      await toggle.screenshot({
+        path: testInfo.outputPath(expanded ? 'show-less.png' : 'show-more.png')
+      });
+      if (!expanded) await toggle.click();
+    }
+  });
+}
+
 test('detail preview animates height and reverses from its current size', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.url}conversation-tool-detail.html?preview-probe=1`);
@@ -880,8 +920,10 @@ test('detail preview animates height and reverses from its current size', async 
     const full = element.firstElementChild!.getBoundingClientRect().height;
     const expand = await toggleAndGetMotion();
     if (!expand?.effect) throw new Error('Expected a detail expansion animation');
+    const endTime = expand.effect.getComputedTiming().endTime;
+    if (typeof endTime !== 'number') throw new Error('Expected a time-based detail animation');
     expand.pause();
-    expand.currentTime = expand.effect.getComputedTiming().endTime / 2;
+    expand.currentTime = endTime / 2;
     const middle = height();
 
     const shrink = await toggleAndGetMotion();
