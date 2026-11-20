@@ -302,6 +302,32 @@ describe('Contextual prompt state', () => {
       const native = compactions.filter((request) => !fallbacks.includes(request));
       expect(native.length).toBeGreaterThan(0);
       expect(fallbacks).toHaveLength(native.length);
+      const interactionId = 'core:interaction';
+      const interaction = requests[0]!.messages.find(
+        (message) => message.contextualBlock?.id === interactionId
+      );
+      expect(interaction?.contextualBlock).toMatchObject({
+        source: 'sdk',
+        authority: 'instruction',
+        operation: 'replace'
+      });
+      expect(interaction?.content).toContain('not during context compaction');
+      for (const request of native) {
+        expect(
+          request.messages.find((message) => message.contextualBlock?.id === interactionId)
+        ).toEqual(interaction);
+      }
+      for (const request of fallbacks) {
+        expect(
+          request.messages.some((message) => message.contextualBlock?.id === interactionId)
+        ).toBe(false);
+        expect(
+          request.messages.some((message) => message.content.includes('# Progress communication'))
+        ).toBe(false);
+      }
+      expect(
+        requests.every((request) => !request.system.includes('# Progress communication'))
+      ).toBe(true);
       expect(
         native.every((request) =>
           request.messages.some((message) => message.content.includes('HOST_POLICY'))

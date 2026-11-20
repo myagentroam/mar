@@ -68,6 +68,47 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'dark']
+] as const) {
+  test(`process, group and tool disclosure arrows share the same size (${width}px)`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`${fixture.url}conversation-style.html?disclosure-reset=1&theme=${theme}`);
+    const process = page.locator('[data-process-id="first"]');
+    const heading = process.locator('.process-heading');
+    const processArrow = heading.locator('[data-mar-icon="chevron-right"]');
+    const arrowStyle = (element: Element) => {
+      const { width, height, transform } = getComputedStyle(element);
+      return { width, height, transform };
+    };
+    await expect(heading).toHaveAttribute('aria-expanded', 'false');
+    const collapsed = await processArrow.evaluate(arrowStyle);
+    expect(collapsed.transform).toBe('none');
+    await heading.click();
+    const expanded = { ...collapsed, transform: 'matrix(0, 1, -1, 0, 0, 0)' };
+    expect(await processArrow.evaluate(arrowStyle)).toEqual(expanded);
+
+    const group = process.locator('.command_execution .conversation-record-group');
+    const summary = group.locator(':scope > summary');
+    const groupArrow = summary.locator('[data-mar-icon="chevron-right"]');
+    expect(await groupArrow.evaluate(arrowStyle)).toEqual(collapsed);
+    await summary.click();
+    expect(await groupArrow.evaluate(arrowStyle)).toEqual(expanded);
+
+    const tool = group.locator(':scope > details');
+    const toolSummary = tool.locator(':scope > summary');
+    const toolArrow = toolSummary.locator('[data-mar-icon="chevron-right"]');
+    expect(await toolArrow.evaluate(arrowStyle)).toEqual(collapsed);
+    await toolSummary.click();
+    expect(await toolArrow.evaluate(arrowStyle)).toEqual(expanded);
+    await process.screenshot({ path: testInfo.outputPath('disclosure-arrows.png') });
+  });
+}
+
 for (const [width, reducedMotion] of [
   [1280, 'no-preference'],
   [390, 'reduce']

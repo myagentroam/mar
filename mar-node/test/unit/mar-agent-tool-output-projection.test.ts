@@ -1062,6 +1062,65 @@ describe('MAR Agent live tool output projection', () => {
     }
   );
 
+  it.each([
+    ['code_exec', 'skill_load', { name: 'demo' }, 'SKILL', '{"success":true}'],
+    ['code_exec_wait', 'skill_load', { name: 'demo' }, 'SKILL', '{"success":true}'],
+    ['code_exec', 'read', { reads: [{ path: 'sample.txt' }] }, 'READ', 'File contents\n'],
+    ['code_exec_wait', 'web_fetch', { url: 'https://example.test/' }, 'WEB_FETCH', 'Page contents'],
+    ['code_exec', 'web_search', { query: 'example' }, 'WEB_SEARCH', 'Search results']
+  ] as const)(
+    'keeps %s output unchanged alongside the native %s card',
+    (toolName, nestedName, input, kind, content) => {
+      const normalizer = new MarAgentConversationNormalizer();
+      const nested = { toolName: nestedName, callId: 'nested-call', parentCallId: 'cell' };
+      normalizer.normalize(toolEvent({ type: 'tool.started', ...nested, input }));
+      const card = normalizer.normalize(
+        toolEvent({
+          type: 'tool.completed',
+          ...nested,
+          summary: 'Separate card summary',
+          data: input
+        })
+      );
+      expect(card).toMatchObject([{ kind: 'tool_call', payload: { toolPresentation: { kind } } }]);
+      const outerCall = { toolName, callId: toolName === 'code_exec' ? 'cell' : 'wait' };
+      normalizer.normalize(
+        toolEvent({
+          type: 'tool.started',
+          ...outerCall,
+          input: toolName === 'code_exec' ? { code: 'load()' } : { cellId: 'c_cell' }
+        })
+      );
+      const outer = normalizer.normalize(
+        toolEvent({
+          type: 'tool.completed',
+          ...outerCall,
+          data: structuredToolEventData(toolName, {
+            cellId: 'c_cell',
+            status: 'completed',
+            observations: [
+              { type: 'value', id: 'before', format: 'text', value: 'before' },
+              {
+                type: 'tool_result',
+                id: 'observed-result',
+                source: { callId: nested.callId, toolName: nested.toolName, input: null },
+                outcome: 'completed',
+                result: { content }
+              },
+              { type: 'value', id: 'after', format: 'text', value: 'after' }
+            ]
+          })
+        })
+      );
+      expect(outer).toMatchObject([
+        {
+          kind: 'command_execution',
+          payload: { output: { blocks: [{ channel: 'TEXT', text: `before\n${content}\nafter` }] } }
+        }
+      ]);
+    }
+  );
+
   it.each(['code_exec', 'code_exec_wait'] as const)(
     'renders %s exec observations without the SDK result wrapper',
     (toolName) => {

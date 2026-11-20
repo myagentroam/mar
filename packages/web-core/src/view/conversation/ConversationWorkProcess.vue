@@ -159,6 +159,8 @@ watch(open, async () => {
   outline-offset: 2px;
 }
 .process-chevron {
+  /* This row disclosure matches the nested summary arrows, not standalone mobile actions. */
+  font-size: inherit;
   width: 1em;
   height: 1em;
   flex: none;

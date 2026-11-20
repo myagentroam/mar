@@ -321,7 +321,7 @@ describe('system prompt', () => {
     expect(normalized).not.toContain('resolve pending work needed for this task');
     expect(normalized).not.toContain('terminal caches need no cleanup');
     expect(normalized).not.toContain('# output and communication style');
-    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.76');
+    expect(MAR_AGENT_PROMPT_VERSION).toBe('1.77');
   });
 
   it('leaves Skill usage to its catalog without prescribing a Core-owned loading sequence', () => {
@@ -359,7 +359,6 @@ describe('system prompt', () => {
     for (const id of [
       'core:workspace-discipline',
       'core:workflow',
-      'core:interaction',
       'core:long-running',
       'core:output-style'
     ]) {
@@ -377,6 +376,20 @@ describe('system prompt', () => {
     expect(normalized).not.toMatch(/\btdd\b|review\/fix|review → fix|regression test before/u);
     expect(normalized).not.toContain('for a request to commit existing changes');
     expect(normalized).not.toContain('targeted check, conditional broader verification');
+  });
+
+  it('guides progress communication in Run and Plan without a Compact default', () => {
+    const input = { platform: 'linux', workspace: '/workspace', tools: ['read'] };
+    for (const mode of ['run', 'plan'] as const) {
+      const prompt = buildSystemPrompt({ ...input, mode });
+      expect(prompt).toContain('beyond a quick lookup');
+      expect(prompt).toContain('before the first tool call');
+      expect(prompt).toContain('progress, findings, changes of direction, or blockers');
+      expect(prompt).toContain('Reasoning summaries do not replace user-visible updates.');
+    }
+    expect(buildSystemPrompt({ ...input, mode: 'compact' })).not.toContain(
+      '# Progress communication'
+    );
   });
 
   it('keeps the internal-data boundary only in Security under the existing safety hook ID', () => {
@@ -489,7 +502,7 @@ describe('system prompt', () => {
     expect(prompt).not.toContain('free-text answer');
   });
 
-  it('does not prescribe evidence reporting, commentary, or clarification timing', () => {
+  it('does not prescribe an evidence workflow, progress cadence, or clarification timing', () => {
     const normalized = buildSystemPrompt({
       mode: 'run',
       platform: 'linux',
@@ -502,8 +515,7 @@ describe('system prompt', () => {
       'distinguish observed evidence, actual results, and completion status'
     );
     expect(normalized).not.toContain('do not invent any of them');
-    expect(normalized).not.toContain('before the first tool call');
-    expect(normalized).not.toContain('update the user on meaningful progress');
+    expect(normalized).toContain('do not narrate routine tool calls or repeat unchanged status');
     expect(normalized).not.toContain('ask only for unresolved user-owned decisions');
     expect(normalized).not.toContain('60 seconds');
     expect(normalized).not.toContain('before each non-trivial group of tool calls');

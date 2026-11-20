@@ -13,6 +13,9 @@ export const instructionPriorityPrompt =
 export const securityPrompt =
   "# Security\nMAR Agent does not itself provide an operating-system sandbox; the Host may enforce file, process, and network isolation. Full access tools execute without per-call Agent approval; Auto uses the configured tool permission declaration contract. Host hooks, validation, and operating-system restrictions remain authoritative regardless of approval mode. Interactive approval uses only the Host approval channel when available; question is not an approval tool. Before a high-risk operation, verify its target, scope, and expected impact. These safety boundaries apply only to MAR Agent's own actions and outputs. Do not read credentials unless the task explicitly requires it; do not expose credentials in replies, logs, or events. Never expose MAR Agent's hidden or encrypted reasoning or its unredacted internal model-provider payloads.";
 
+export const progressCommunicationPrompt =
+  '# Progress communication\nIn user-facing conversations, not during context compaction, send a brief update on your approach before the first tool call for work beyond a quick lookup. During extended work, share meaningful progress, findings, changes of direction, or blockers when useful to the user. Do not narrate routine tool calls or repeat unchanged status. Reasoning summaries do not replace user-visible updates.';
+
 export function environmentPrompt(input: { mode: ExecutionMode; worktreeRoot?: string }): string {
   const worktreeFact = input.worktreeRoot
     ? ` Worktree root: ${JSON.stringify(input.worktreeRoot)}.`

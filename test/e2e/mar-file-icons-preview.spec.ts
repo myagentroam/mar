@@ -30,6 +30,8 @@ test('MAR icon development preview opens as one offline HTML file', async ({ pag
     ['AGENTS.md', 'agent'],
     ['docs/AGENTS.md', 'agent'],
     ['CLAUDE.local.md', 'agent'],
+    ['.gitignore', 'git'],
+    ['.gitmodules', 'git'],
     ['*.py', 'python'],
     ['theme.module.css', 'style'],
     ['*.scss', 'style'],

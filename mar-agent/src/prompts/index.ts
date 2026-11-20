@@ -5,12 +5,13 @@ import {
   environmentPrompt,
   identityPrompt,
   instructionPriorityPrompt,
+  progressCommunicationPrompt,
   securityPrompt
 } from './core.js';
 import { modePrompt } from './modes.js';
 import { toolUsagePrompt } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.76';
+export const MAR_AGENT_PROMPT_VERSION = '1.77';
 
 interface SystemPromptInput {
   mode: ExecutionMode;
@@ -38,6 +39,7 @@ export function buildSystemPromptSections(input: SystemPromptInput): readonly Pr
     ['safety', securityPrompt],
     ['environment-rules', environmentPrompt(input)],
     ['tools', input.tools.length > 0 ? toolUsagePrompt(input.tools, input.directTools) : ''],
+    ['interaction', input.mode === 'compact' ? null : progressCommunicationPrompt],
     [
       'mode',
       modePrompt(input.mode, {

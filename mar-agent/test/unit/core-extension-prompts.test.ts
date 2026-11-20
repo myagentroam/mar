@@ -10,17 +10,17 @@ afterEach(cleanupCoreFixtures);
 
 describe('Core structured Prompt composition', () => {
   it.each([
-    ['run', [], 'c5f0c94e6b63c6e1dbbba93aee824623d2aec461da8453c0fb99e896791f9bd2'],
+    ['run', [], 'd0c3ed4a015f8c84bec4dc29095f57fb0bfcf439f50506a8866124c9504b1d71'],
     [
       'run',
       ['read', 'exec', 'skill'],
-      '0c6fb26e90f5b8c7d957b02876a6ad7fd5354920a14a511a4d63c156d400684c'
+      'f9bd374420b5ed6246ce25717b40dfe290e6b22da3113e75e158e90172271107'
     ],
-    ['plan', [], '9df39d5febafb740ebf709e72d43c0dfa46fc5ceacadfc0ad9105f45d8366df5'],
+    ['plan', [], 'b32c06d3ac5ba7b89a0b73c31b49dd2d0c178f1e5871961444c1de6fcc315c52'],
     [
       'plan',
       ['read', 'exec', 'skill'],
-      '9d644d26e958c35e2009a2b1fb175fe5a9fa2be34d2038c92b46de2dcb347ac3'
+      '67f42a95d8321338097d62992dab14eb1041c67a0c2bde70b25b709042a80df4'
     ],
     ['compact', [], '9dc5800d125dfa2ce2f3604d28be6f1307bfd969170eb8c86d0d41a449f87306'],
     [
@@ -157,6 +157,17 @@ describe('Core structured Prompt composition', () => {
         expect(request.system).toContain('STRUCTURED_POLICY');
         expect(request.system).toContain('REPLACED_IDENTITY');
       }
+      const compactRequest = f.adapter.requests.find((request) => request.toolChoice === 'none');
+      expect(compactRequest?.system).toBe(f.adapter.requests[0]!.system);
+      expect(compactRequest?.system).toContain(
+        'In user-facing conversations, not during context compaction'
+      );
+      expect(compactRequest?.messages.at(-1)).toMatchObject({
+        contextKind: 'compact_control',
+        content: expect.stringContaining(
+          'Do not continue implementation, call tools, address the user'
+        )
+      });
     }
   );
 
