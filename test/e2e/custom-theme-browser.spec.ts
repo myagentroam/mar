@@ -327,6 +327,35 @@ for (const motion of ['no-preference', 'reduce'] as const) {
   });
 }
 
+test('MAR commands keep keyboard focus visible in a scrolling menu', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  const section = page.getByRole('region', { name: 'MAR scrolling commands' });
+  const trigger = section.getByRole('button', { name: 'Long command menu' });
+  const menu = section.getByRole('menu', { name: 'Long command menu' });
+  const first = menu.getByRole('menuitem', { name: 'Command 1', exact: true });
+  const last = menu.getByRole('menuitem', { name: 'Command 36', exact: true });
+  await trigger.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  await trigger.press('ArrowDown');
+  await expect(first).toBeFocused();
+  const anchorTop = (await trigger.boundingBox())!.y;
+
+  await page.keyboard.press('End');
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport({ ratio: 0.95 });
+  await menu.screenshot({ path: testInfo.outputPath('mar-menu-focused-item.png') });
+  await page.keyboard.press('Home');
+  await expect(first).toBeFocused();
+  await expect(first).toBeInViewport({ ratio: 0.95 });
+  expect((await trigger.boundingBox())!.y).toBeCloseTo(anchorTop, 0);
+
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.press('ArrowUp');
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport({ ratio: 0.95 });
+});
+
 test('MAR choice keeps the active row visible inside a scrolling list', async ({
   page
 }, testInfo) => {

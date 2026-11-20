@@ -64,12 +64,14 @@ const items = () => [
 function focusItem(item?: HTMLButtonElement) {
   const menu = popup.value;
   (item ?? menu)?.focus({ preventScroll: true });
-  if (!item || !menu) return;
+  // Only scroll the contents; the outer surface lets the arrow extend past its edge.
+  const content = menu?.querySelector<HTMLElement>(':scope > .mar-ui-popup__content');
+  if (!item || !content) return;
   const row = item.getBoundingClientRect();
-  const top = menu.getBoundingClientRect().top + menu.clientTop;
-  const bottom = top + menu.clientHeight;
-  if (row.top < top) menu.scrollTop += row.top - top;
-  else if (row.bottom > bottom) menu.scrollTop += row.bottom - bottom;
+  const top = content.getBoundingClientRect().top + content.clientTop;
+  const bottom = top + content.clientHeight;
+  if (row.top < top) content.scrollTop += row.top - top;
+  else if (row.bottom > bottom) content.scrollTop += row.bottom - bottom;
 }
 
 function canUse(element: HTMLElement) {

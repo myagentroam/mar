@@ -168,6 +168,18 @@ function saveFeedbackDialog(): void {
     </MarSelect>
     <output aria-label="Confirmed choice">{{ longChoice }}</output>
   </section>
+  <section class="mar-control-visual-sample" aria-label="MAR scrolling commands">
+    <MarDropdown trigger="click">
+      <MarButton>Long command menu</MarButton>
+      <template #dropdown>
+        <MarDropdownMenu>
+          <MarDropdownItem v-for="number in 36" :key="number" :command="number">
+            Command {{ number }}
+          </MarDropdownItem>
+        </MarDropdownMenu>
+      </template>
+    </MarDropdown>
+  </section>
   <section class="mar-control-visual-sample" aria-label="MAR button states">
     <form
       @submit.prevent="
