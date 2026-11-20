@@ -202,6 +202,14 @@ test('proxy transport tests require a compatible Node and use standard Select st
   await list.screenshot({ path: testInfo.outputPath('model-test-node-keyboard.png') });
   await node.hover({ position: { x: 12, y: 12 } });
   await expect(node).toHaveCSS('outline-style', 'none');
+  // Filtering out the active option must leave Enter with nothing to select.
+  await select.press('End');
+  await select.pressSequentially('-missing');
+  await expect(list.getByRole('option')).toHaveCount(0);
+  await expect(select).not.toHaveAttribute('aria-activedescendant', /.+/);
+  await select.press('Enter');
+  await expect(list).toBeVisible();
+  await expect(select).toHaveValue('fixture-missing');
   await select.press('Escape');
   await expect(list).toBeHidden();
   await expect(dialog).toBeVisible();
