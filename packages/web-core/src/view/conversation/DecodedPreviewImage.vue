@@ -164,10 +164,11 @@ async function loaded(event: Event): Promise<void> {
   object-fit: contain;
 }
 .decoded-preview-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content;
   flex: none;
   padding-top: 6px;
-  /* Keep a narrow image centered without counting the action toward its width. */
+  /* Keep the image centered while letting the action use its intrinsic width. */
   width: 0;
 }
 .image-preview-failure {
