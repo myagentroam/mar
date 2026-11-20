@@ -49,13 +49,7 @@ describe('bounded MCP catalog efficiency', () => {
     const searchStart = performance.now();
     const result = await registry.expose(
       { query: target.definition.name },
-      {
-        signal: new AbortController().signal,
-        base: baseline,
-        window: 200_000,
-        system: 'Stable system prefix.',
-        persist: async () => undefined
-      }
+      { signal: new AbortController().signal }
     );
     const searchMs = performance.now() - searchStart;
     expect(result.data).toEqual({ tools: [target.definition.name] });

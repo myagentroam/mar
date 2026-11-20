@@ -481,8 +481,8 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
     const callId = 'search-call';
     const arguments_ = { query: 'records' };
     const diagnostic = JSON.stringify({
-      error: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
-      message: 'MCP definition budget exceeded (estimated 17000 tokens; limit 16384).'
+      error: 'MAR_AGENT_TOOL_INPUT_INVALID',
+      message: 'Tool Search input is invalid.'
     });
     const previousCall = {
       type: 'tool_search_call',

@@ -53,12 +53,7 @@ function generatedCatalog(
   return { revision: `generated-${count}`, servers: [{ id: 's', name: 'server' }], tools };
 }
 function exposureContext() {
-  return {
-    signal: new AbortController().signal,
-    base: [],
-    window: 1_000_000,
-    system: ''
-  };
+  return { signal: new AbortController().signal };
 }
 
 describe('deferred tool search', () => {
@@ -90,7 +85,7 @@ describe('deferred tool search', () => {
     expect(base.map((tool) => tool.name)).toEqual(['zeta', 'alpha']);
   });
 
-  it('budgets deferred schemas even when Only mode keeps its description unchanged', async () => {
+  it('loads large deferred definitions without changing the resident Code Mode description', async () => {
     const registry = new DeferredMcpRegistry([]);
     const value = catalog();
     const tool = value.tools[0]!;
@@ -107,38 +102,15 @@ describe('deferred tool search', () => {
       () => true
     );
     const base = [codeModeToolDefinition];
-    await expect(
-      registry.expose(
-        { query: tool.definition.name },
-        {
-          ...exposureContext(),
-          base,
-          window: 10_000
-        }
-      )
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT' });
-    expect(registry.snapshot()).toEqual([]);
     const before = projectCodeModeTools(registry.project(base), registry.projectDirect(base));
-    await registry.expose({ query: tool.definition.name }, { ...exposureContext(), base });
+    const result = await registry.expose({ query: tool.definition.name }, exposureContext());
+    expect(result.toolSearchTools).toEqual([
+      { ...tool.definition, description: 'x'.repeat(20_000) }
+    ]);
+    expect(registry.snapshot()).toEqual([tool.definition.name]);
     expect(projectCodeModeTools(registry.project(base), registry.projectDirect(base))).toEqual(
       before
     );
-  });
-
-  it('reports the context window when the definitions alone fit', async () => {
-    const registry = new DeferredMcpRegistry([]);
-    registry.update(catalog(), () => true);
-    await expect(
-      registry.expose(
-        { query: 'mcp__sentry__get_trace' },
-        { ...exposureContext(), window: 2000, system: 'x'.repeat(4000) }
-      )
-    ).rejects.toMatchObject({
-      code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
-      publicMessage: expect.stringMatching(/context window.*estimated \d+ tokens; limit 2000/),
-      details: { maximumTokens: 2000 }
-    });
-    expect(registry.snapshot()).toEqual([]);
   });
 
   it('accepts bounded inputs and rejects unknown fields', () => {
@@ -194,7 +166,7 @@ describe('deferred tool search', () => {
     expect(registry.project([]).map((tool) => tool.name)).toEqual([direct.definition.name]);
   });
 
-  it('appends selection once and rejects budget failures atomically', async () => {
+  it('appends selection once and preserves it when publishing a new discovery fails', async () => {
     const registry = new DeferredMcpRegistry([]);
     registry.update(catalog(), () => true);
     const context = exposureContext();
@@ -202,16 +174,19 @@ describe('deferred tool search', () => {
     await registry.expose({ query: 'mcp__sentry__get_trace' }, context);
     await registry.expose({ query: 'mcp__sentry__get_trace' }, context);
     expect(registry.project([])).toHaveLength(1);
+    const failure = new Error('Discovery could not be published.');
     await expect(
       registry.expose(
-        { query: 'production' },
+        { query: 'mcp__sentry__search_errors' },
         {
           ...context,
-          window: 1
+          publish: async () => {
+            throw failure;
+          }
         }
       )
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT' });
-    expect(registry.project([])).toHaveLength(1);
+    ).rejects.toBe(failure);
+    expect(registry.snapshot()).toEqual(['mcp__sentry__get_trace']);
     const restored = new DeferredMcpRegistry(registry.snapshot());
     restored.update(catalog(), () => true);
     expect(restored.project([])).toHaveLength(1);
@@ -471,13 +446,11 @@ describe('deferred tool search', () => {
     expect(registry.snapshot()).toEqual([name]);
   });
 
-  it('never evicts an existing discovery when a new batch exceeds the budget', async () => {
+  it('appends a later discovery without evicting the earlier one', async () => {
     const registry = new DeferredMcpRegistry([]);
     registry.update(catalog(), () => true);
     await registry.expose({ query: 'mcp__sentry__get_trace' }, exposureContext());
-    await expect(
-      registry.expose({ query: 'mcp__sentry__search_errors' }, { ...exposureContext(), window: 1 })
-    ).rejects.toMatchObject({ code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT' });
-    expect(registry.snapshot()).toEqual(['mcp__sentry__get_trace']);
+    await registry.expose({ query: 'mcp__sentry__search_errors' }, exposureContext());
+    expect(registry.snapshot()).toEqual(['mcp__sentry__get_trace', 'mcp__sentry__search_errors']);
   });
 });
