@@ -55,14 +55,12 @@ describe('workflow tools', () => {
 
   it('documents model-visible execution and recovery behavior', () => {
     expect(execToolDefinition.description).toContain('bounded stdout/stderr');
-    expect(execToolDefinition.description).toContain('with processId, not exec');
-    expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
-    expect(execWaitToolDefinition.codeModeExposure).toBe('both');
+    expect(execToolDefinition.description).toContain('Use direct exec_wait with processId');
+    expect(execToolDefinition.description).toContain('poll after the initial exec call returns');
     expect(execWaitToolDefinition.description).toContain(
       'Cancelling a wait does not terminate the process'
     );
     expect(execWaitToolDefinition.description).toContain('incremental stdout/stderr');
-    expect(execWaitToolDefinition.description).toContain('cannot start a process');
     expect(execToolDefinition.description).toContain('truncated');
     const patchDescription = applyPatchToolDefinition.description;
     expect(patchDescription).toContain('Split long or hard-to-review patches');

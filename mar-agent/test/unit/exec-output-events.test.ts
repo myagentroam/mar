@@ -242,8 +242,8 @@ describe('exec live output and model observation separation', () => {
     [true, false],
     [true, true]
   ] as const)(
-    'retains earlier child output during a retained wait (revisit first: %s, large: %s)',
-    async (revisitFirst, large) => {
+    'retains earlier child output during a retained wait (first yields: %s, large: %s)',
+    async (firstYields, large) => {
       const limit = TOOL_EXECUTION_LIMITS.execProgressMaxOutputBytes;
       const characters = large ? Math.floor((limit * 3) / 4) - 4 : 1;
       const oneText = 'A'.repeat(characters) + (large ? '🦊' : '');
@@ -264,9 +264,7 @@ describe('exec live output and model observation separation', () => {
         (_request, index) => {
           if (index === 0)
             return call('code_exec', {
-              code: revisitFirst
-                ? '// @options: {"yieldMs":0}\nconst r=await tools.exec({command:"one"}); await tools.exec({command:"two",yieldMs:20000}); await tools.exec_wait({processId:r.data.processId});'
-                : '// @options: {"yieldMs":0}\nawait tools.exec({command:"one",yieldMs:20000}); const r=await tools.exec({command:"two"}); await tools.exec_wait({processId:r.data.processId});'
+              code: '// @options: {"yieldMs":0}\nawait tools.exec({command:"one"}); await tools.exec({command:"two"});'
             });
           if (index === 2)
             return call('code_exec_wait', { cellId, yieldMs: 300000 }).map((event) =>
@@ -323,7 +321,7 @@ describe('exec live output and model observation separation', () => {
             })
           )
         );
-        if (!revisitFirst) {
+        if (!firstYields) {
           one.exitCode = 0;
           one.emit('close', 0, null);
         } else {
@@ -331,21 +329,6 @@ describe('exec live output and model observation separation', () => {
         }
         await vi.waitFor(() => expect(two.stdout.listenerCount('data')).toBe(1), { timeout: 2500 });
         two.stdout.write(twoText);
-        await vi.waitFor(() =>
-          expect(events).toContainEqual(
-            expect.objectContaining({
-              type: 'tool.output',
-              callId: 'later-wait',
-              output: expect.objectContaining({ mode: 'delta', stdout: twoText })
-            })
-          )
-        );
-        if (revisitFirst) {
-          two.exitCode = 0;
-          two.emit('close', 0, null);
-        } else {
-          await vi.advanceTimersByTimeAsync(10_000);
-        }
         await vi.waitFor(
           () =>
             expect(events).toContainEqual(
@@ -353,10 +336,10 @@ describe('exec live output and model observation separation', () => {
                 type: 'tool.output',
                 callId: 'later-wait',
                 output: expect.objectContaining({
-                  mode: 'snapshot',
-                  stdout: expected,
-                  truncated: large,
+                  mode: 'delta',
+                  stdout: twoText,
                   displayOutput: expect.objectContaining({
+                    stdout: expected,
                     stdoutDroppedBytes: large ? 2 * (characters + 4) - limit : 0,
                     stderrDroppedBytes: 0
                   })
@@ -380,101 +363,6 @@ describe('exec live output and model observation separation', () => {
       }
     }
   );
-  it('does not report a false HEAD when a retained wait receives an overlapping process snapshot', async () => {
-    const child = Object.assign(new EventEmitter(), {
-      stdin: new PassThrough(),
-      stdout: new PassThrough(),
-      stderr: new PassThrough(),
-      exitCode: null as number | null
-    });
-    let cellId = '';
-    const f = await fixture(
-      [],
-      (_request, index) => {
-        if (index === 0)
-          return call('code_exec', {
-            code: '// @options: {"yieldMs":0}\nconst r = await tools.exec({command:"fixture"}); await tools.exec_wait({processId:r.data.processId});'
-          });
-        if (index === 2)
-          return call('code_exec_wait', { cellId, yieldMs: 300000 }).map((event) =>
-            event.type === 'client_tool.call' ? { ...event, callId: 'later-wait' } : event
-          );
-        return answer();
-      },
-      true,
-      false,
-      {
-        processExecutor: {
-          async spawn(request) {
-            return request.command === 'fixture'
-              ? (child as unknown as ChildProcessWithoutNullStreams)
-              : directLocalProcessExecutor.spawn(request);
-          }
-        }
-      }
-    );
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const first = f.session.run({ prompt: 'Start.' });
-    const firstEvents: AgentEvent[] = [];
-    const collectingFirst = (async () => {
-      for await (const event of first) firstEvents.push(event);
-    })();
-    try {
-      await vi.waitFor(() => expect(child.stdout.listenerCount('data')).toBe(1));
-      await first.result();
-      await collectingFirst;
-      const completed = firstEvents.find(
-        (event) => event.type === 'tool.completed' && event.toolName === 'code_exec'
-      );
-      if (!completed || completed.type !== 'tool.completed') throw new Error('missing cell');
-      cellId = (completed.data as { cellId: string }).cellId;
-      const second = f.session.run({ prompt: 'Wait.' });
-      const events: AgentEvent[] = [];
-      const collecting = (async () => {
-        for await (const event of second) events.push(event);
-      })();
-      await vi.waitFor(() =>
-        expect(
-          events.some((event) => event.type === 'tool.started' && event.callId === 'later-wait')
-        ).toBe(true)
-      );
-      child.stdout.write('a');
-      await vi.waitFor(() =>
-        expect(events).toContainEqual(
-          expect.objectContaining({
-            type: 'tool.output',
-            callId: 'later-wait',
-            output: expect.objectContaining({ mode: 'delta', stdout: 'a' })
-          })
-        )
-      );
-      await vi.advanceTimersByTimeAsync(10_000);
-      await vi.waitFor(
-        () =>
-          expect(events).toContainEqual(
-            expect.objectContaining({
-              type: 'tool.output',
-              callId: 'later-wait',
-              output: expect.objectContaining({
-                mode: 'snapshot',
-                stdout: 'a',
-                truncated: false,
-                displayOutput: expect.objectContaining({ stdoutDroppedBytes: 0 })
-              })
-            })
-          ),
-        { timeout: 2500 }
-      );
-      child.exitCode = 0;
-      child.emit('close', 0, null);
-      await second.result();
-      await collecting;
-    } finally {
-      vi.useRealTimers();
-      child.exitCode = 0;
-      child.emit('close', 0, null);
-    }
-  });
   it('forwards retained Code Mode output to the waiting call in a later execution', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),

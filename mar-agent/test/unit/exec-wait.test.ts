@@ -760,7 +760,7 @@ describe('exec_wait', () => {
       maximum: 300_000,
       description: expect.stringContaining('floor: 10000')
     });
-    expect(execWaitToolDefinition.allowedCallers).toEqual(['direct', 'programmatic']);
+    expect(execWaitToolDefinition.allowedCallers).toEqual(['direct']);
     expect(execWaitToolDefinition.inputSchema).toMatchObject({
       required: ['processId'],
       properties: {

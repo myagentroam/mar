@@ -22,7 +22,7 @@ export function allowsToolCaller(tool: ClientToolDefinition, caller: ToolCaller)
   // Control tools cannot be widened by a Host override or historical definition.
   if (
     caller === 'programmatic' &&
-    ['code_exec', 'code_exec_wait', 'question', 'sleep'].includes(tool.name)
+    ['code_exec', 'code_exec_wait', 'exec_wait', 'question', 'sleep'].includes(tool.name)
   )
     return false;
   return toolCallers(tool).includes(caller);

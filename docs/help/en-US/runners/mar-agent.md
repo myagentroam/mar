@@ -1,6 +1,6 @@
 ---
 title: Configure and Use MAR Agent
-lastUpdated: 2026-11-20
+lastUpdated: 2026-11-21
 ---
 
 # Configure and Use MAR Agent
@@ -207,7 +207,7 @@ All six Agent collaboration tools support direct and programmatic calls. Code Mo
 
 Code Mode is disabled by default. MAR Agent exposes a restricted JavaScript orchestration cell only when **Code Mode** is enabled for the selected model and the Host supports execution. The main Agent and Subagents use their respective model settings; protocol type does not imply support. A cell can compose permitted tool calls and emit only the results needed, reducing intermediate model round trips. Enabling the switch defaults to **Code Mode Only**: programmatic tools, including single-tool operations, use `code_exec` by default; direct-only tools and tools explicitly exposed in both places keep their direct entry points. Disabling it restores ordinary direct calls. Only controls tool exposure and model guidance, not additional permissions; dispatch still follows caller permissions, discovery state, and Host policy. Configuration changes apply to the next execution, not one already running.
 
-With Code Mode enabled, the model can start a command by calling `exec` directly or `tools.exec` inside a cell. With Code Mode disabled, it calls `exec` directly. `apply_patch` and `exec_wait` also retain both entry points. Either `exec_wait` or `tools.exec_wait` can wait for a process started through either entry point. Existing caller permissions remain unchanged.
+With Code Mode enabled, the model can start a command by calling `exec` directly or `tools.exec` inside a cell. With Code Mode disabled, it calls `exec` directly. `apply_patch` also keeps both entry points. After the initial `exec` call returns, use direct `exec_wait` with the `processId` for any follow-up wait. Use `code_exec_wait` with the `cellId` only to wait for or cancel the cell.
 
 Each cell uses a fresh QuickJS WASM runtime in a Host-managed worker process. Top-level `await` and `Promise.all` are supported; Node globals, module imports, native file/network APIs, and `console.*` are unavailable. Use `observe.result(result)` to register an unmodified complete tool result or caught tool error; use `observe.text(value)` for derived values and `observe.image(value)` for images. Observation selects evidence for the model; it does not prove the model read or inspected it. There is no `out` alias. Files, commands, and network access require explicit `programmatic` permission on `tools.NAME(input)`, retaining each tool's own authorization and safety checks. Results use a shared envelope: raw file text is in `result.data.results[0].text`, not the line-numbered `content` display.
 

@@ -31,7 +31,7 @@ export function retainedSessionResourcesSnapshot(
       : []),
     processes.length === 0
       ? ''
-      : 'Use exec_wait with processId to wait, write stdin or cancel. Cancelling a wait leaves the process running; explicit cancel releases the process resource.',
+      : 'Use direct exec_wait with processId to write stdin, cancel, or poll after the initial exec call returns. Cancelling a wait leaves the process running; explicit cancel releases the process resource.',
     input.idleTtlMs === undefined
       ? ''
       : `When the Session becomes idle again, unclaimed resources are retained for up to ${input.idleTtlMs} ms.`,

@@ -45,7 +45,7 @@ export const codeModeToolDefinition: ClientToolDefinition = {
 - Code Mode Only by default: call the programmatic tools listed below through tools.NAME, including single-tool operations. Tools exposed in both places may also be called directly.
 - Evaluates source in a fresh restricted ECMAScript runtime with top-level await. It is not Node.js or a browser. JavaScript globals do not survive between cells; bounded JSON state is available through state.
 - Accepts JavaScript source text. When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. JSON input example: \`{"code":"observe.text(1);"}\`. Do not add another JSON wrapper, quoted string, or markdown code fence inside the source.
-- Use only standard ECMAScript built-ins and the explicitly documented tools, observe, state, catalog and cell namespaces. Do not use Node.js, browser or Web APIs. Module imports, filesystem and network APIs are unavailable. Obtain external capabilities only through available tools. Use tools.exec to start managed processes when permitted; follow exec_wait's calling guidance for process control.
+- Use only standard ECMAScript built-ins and the explicitly documented tools, observe, state, catalog and cell namespaces. Do not use Node.js, browser or Web APIs. Module imports, filesystem and network APIs are unavailable. Obtain external capabilities only through available tools. Use tools.exec to start managed processes when permitted; use direct exec_wait with the returned processId for follow-up process control.
 
 Tool calls:
 - tools.NAME(input) returns a Promise. Pass a JavaScript value matching the current catalog inputSchema. For parameterless tools prefer tools.NAME({}); tools.NAME() is accepted only for explicitly closed empty-object schemas.
@@ -456,7 +456,6 @@ export class CodeModeTool {
           const indices = original.result.images?.map(addImage);
           const data = [
             'exec',
-            'exec_wait',
             'apply_patch',
             'todo',
             'todo_read',
@@ -482,7 +481,7 @@ export class CodeModeTool {
           };
           const display = original.result.eventData?.displayOutput;
           if (
-            (original.source.toolName === 'exec' || original.source.toolName === 'exec_wait') &&
+            original.source.toolName === 'exec' &&
             display !== null &&
             typeof display === 'object' &&
             'stdout' in display &&
