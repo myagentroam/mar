@@ -26,7 +26,6 @@ export const personalSettingsEnUS = {
     mode: 'Mode',
     purpose: 'Purpose',
     trend: 'Usage over time',
-    inspectPeriods: 'Inspect time periods',
     selected:
       'Filtered usage: Input {input} · Cache {cache} · Output {output} · Total tokens {tokens} · {requests} requests',
     timeZone: 'Time zone: {zone}',

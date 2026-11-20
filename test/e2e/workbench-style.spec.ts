@@ -737,6 +737,10 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await page.setViewportSize({ width, height: 900 });
       await page.route('**/api/terminals**', (route) => route.fulfill({ json: { terminals: [] } }));
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&list-state=main`);
+      // Give the standalone sidebar a bounded pane like the product grid.
+      await page.addStyleTag({
+        content: '[aria-label="Session fixture"] > .conversation-sidebar { height: 360px; }'
+      });
       const sessions = page.getByRole('region', { name: 'Session fixture' });
       const state = sessions.getByRole('combobox', { name: 'Set fixture list state' });
       const empty = sessions.locator('.sidebar-empty');
@@ -752,7 +756,22 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await state.selectOption('loading');
       const loading = sessions.locator('.watch-status:not(.failed)');
       await expect(loading).toBeVisible();
-      await expect(loading).toHaveCSS('text-align', 'center');
+      const centerOffset = await loading.evaluate((status) => {
+        const sidebar = status.closest<HTMLElement>('.conversation-sidebar')!;
+        const controls = status.previousElementSibling!;
+        const controlsBottom =
+          controls.getBoundingClientRect().bottom +
+          parseFloat(getComputedStyle(controls).marginBottom);
+        const pane = sidebar.getBoundingClientRect();
+        const paddingBottom = parseFloat(getComputedStyle(sidebar).paddingBottom);
+        const indicator = status.querySelector('.mar-busy-indicator')!.getBoundingClientRect();
+        return {
+          x: indicator.x + indicator.width / 2 - (pane.x + pane.width / 2),
+          y: indicator.y + indicator.height / 2 - (controlsBottom + pane.bottom - paddingBottom) / 2
+        };
+      });
+      expect(Math.abs(centerOffset.x)).toBeLessThan(1);
+      expect(Math.abs(centerOffset.y)).toBeLessThan(1);
       await expect(empty).toHaveCount(0);
       await state.selectOption('failed');
       await expect(sessions.locator('.watch-status.failed')).toBeVisible();
@@ -771,8 +790,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await state.selectOption('unselected');
       await tree.locator('.workspace-tree-filter input').fill('');
       await expect(tree.getByRole('button', { name: 'Node', exact: true })).toBeVisible();
-      await expect(tree.locator('.tree-foot')).toHaveCount(0);
+      await expect(tree.locator('.tree-foot')).toBeVisible();
       await state.selectOption('main');
+      await expect(tree.locator('.tree-foot')).toHaveCount(0);
       await sessions.getByRole('textbox', { name: 'Set fixture search' }).fill('');
       await expect(empty).toBeVisible();
       const alignment = await empty.evaluate((element) => {
@@ -1056,7 +1076,9 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
         await syncTag.hover();
         const hint = page.locator('.mar-tooltip:visible');
         await expect(hint).toHaveText(description!);
-        await expect(hint.locator('.el-popper__arrow')).toBeVisible();
+        await expect
+          .poll(() => hint.evaluate((element) => getComputedStyle(element, '::before').content))
+          .toBe('""');
         await page.screenshot({ path: testInfo.outputPath('git-sync-tooltip.png') });
         await page.mouse.move(0, 0);
         await expect(hint).toHaveCount(0);
@@ -1320,7 +1342,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(offline).toBeVisible();
       await expect(offline).toContainText('Offline. Waiting for reconnection.');
       await expect(
-        page.locator('.readonly-banner, .workspace-recovery-panel, .el-message')
+        page.locator('.readonly-banner, .workspace-recovery-panel, .mar-message')
       ).toHaveCount(0);
       await offline.screenshot({ path: testInfo.outputPath('network-offline.png') });
       await page.evaluate(() => {
@@ -1330,7 +1352,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       });
       await expect(offline).toHaveCount(0);
       await expect(page.locator('.workspace-recovery-panel')).toBeVisible();
-      await expect(page.locator('.el-message')).toHaveCount(0);
+      await expect(page.locator('.mar-message')).toHaveCount(0);
 
       await page.goto(`${fixture.url}workbench-style.html?theme=${theme}&offline=1&restriction=1`);
       const notice = page.locator('.readonly-banner');
@@ -1339,7 +1361,6 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       await expect(notice).toContainText('disabled');
       await expect(notice.locator('[data-mar-icon="info"]')).toBeVisible();
       await expect(notice).toHaveCSS('border-radius', '6px');
-      await expect(notice).not.toHaveClass(/el-alert/);
       const surface = (await page.locator('.session-layout').boundingBox())!;
       const box = (await notice.boundingBox())!;
       expect(box.x - surface.x).toBeGreaterThanOrEqual(8);
@@ -1356,8 +1377,8 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
       const failure = panel.locator('[role="status"]');
       const retry = panel.getByRole('button');
       await expect(failure).toBeVisible();
-      await expect(panel.locator('.el-empty')).toHaveCount(0);
-      await expect(retry).toHaveClass(/is-link/);
+      await expect(panel.locator('.mar-ui-empty')).toHaveCount(0);
+      await expect(retry).toHaveClass(/mar-ui-button--inline/);
       await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(retry).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
       await expect(retry).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)');
@@ -2008,7 +2029,7 @@ for (const theme of ['daylight', 'vscode-dark-2026']) {
     await input.press('Enter');
     const retry = inspector.locator('button.watch-status');
     await expect(retry).toBeVisible();
-    await expect(retry).toHaveClass(/is-link/);
+    await expect(retry).toHaveClass(/mar-ui-button--inline/);
     await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await retry.hover();
     await expect(retry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

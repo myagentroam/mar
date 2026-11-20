@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue?unit-render';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue?unit-render';
 import PersonalInstructionsSettings from '../../src/view/settings/PersonalInstructionsSettings.vue?unit-render';
@@ -77,9 +76,7 @@ describe('Public personal settings ownership', () => {
             }
           )
       });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 951, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html.toLowerCase()).toContain(content.toLowerCase());
       expect(html.includes('Host identity extension')).toBe(section === 'account');

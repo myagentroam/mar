@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createRenderer, createSSRApp, h, ssrContextKey, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
@@ -21,10 +20,7 @@ import { renderComponent } from './support/component-renderer.js';
 async function render(component: Component, props: Record<string, unknown>): Promise<string> {
   const app = createSSRApp({ render: () => h(component, props) });
   app.use(i18n);
-  app.use(ElementPlus);
   app.directive('tooltip', { getSSRProps: () => ({}) });
-  app.provide(ID_INJECTION_KEY, { prefix: 200, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
 }
 

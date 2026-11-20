@@ -1,5 +1,4 @@
 import { defineAsyncComponent, h, ref } from 'vue';
-import ElementPlus from 'element-plus';
 import { createTooltipApp } from './tooltip-app.js';
 import WorkspaceFilesPanel from '../../src/view/workspace/WorkspaceFilesPanel.vue';
 import WorkspaceContentSearch from '../../src/view/workspace/WorkspaceContentSearch.vue';
@@ -12,8 +11,6 @@ import { createScopedHttpService } from '../../src/service/scoped-http-service.j
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
 import type { WorkspaceFileTreeNode } from '../../src/service/workspace-file-tree-service.js';
-import 'element-plus/dist/index.css';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 
 const parameters = new URL(location.href).searchParams;
@@ -144,7 +141,6 @@ createTooltipApp({
     ]);
   }
 })
-  .use(ElementPlus)
   .use(i18n)
   .mount('#app');
 

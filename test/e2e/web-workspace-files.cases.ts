@@ -48,7 +48,7 @@ test('samples first and warm mobile Files opening with a populated directory', a
   for (const phase of ['first', 'warm']) {
     const before = await page.evaluate(() => ({
       nodes: document.querySelectorAll('*').length,
-      poppers: document.querySelectorAll('.el-popper').length,
+      poppers: document.querySelectorAll('.mar-tooltip').length,
       markdown: document.querySelectorAll('.agent-markdown').length
     }));
     await page.evaluate(() => {
@@ -181,7 +181,7 @@ test('samples first and warm mobile Files opening with a populated directory', a
           scrollHeight: tree.scrollHeight,
           renderedRows: tree.querySelectorAll('.file-tree-row').length,
           asideNodes: tree.closest('.workspace-aside')?.querySelectorAll('*').length,
-          tooltipNodes: document.querySelectorAll('.el-popper').length,
+          tooltipNodes: document.querySelectorAll('.mar-tooltip').length,
           markdownNodes: document.querySelectorAll('.agent-markdown').length,
           bounds: tree.getBoundingClientRect().toJSON()
         }))
@@ -1651,7 +1651,7 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   ).toBeLessThanOrEqual(28);
   const regex = page.getByRole('checkbox', { name: '使用正则表达式' });
   await expect(regex).not.toBeChecked();
-  await page.locator('.content-search-options .el-checkbox').click();
+  await regex.check();
   await expect(regex).toBeChecked();
   await search.fill('中文内容');
   await search.press('Enter');
@@ -1663,14 +1663,14 @@ test('Ctrl+Shift+F searches Workspace file contents and jumps to matching lines'
   await expect(searchResult.locator('small')).toHaveText('第 2 行');
   await expect(searchResult.locator('code')).toHaveText('const 中文内容 = true;');
   await expect(searchResult.locator('code mark')).toHaveCount(0);
-  await page.locator('.content-search-options .el-checkbox').click();
+  await regex.uncheck();
   searchGate = new Promise((resolve) => {
     releaseSearch = resolve;
   });
   await search.press('Enter');
   await expect.poll(() => contentSearchUrl?.searchParams.get('regex')).toBeNull();
   // Changing the draft cannot reinterpret the in-flight plain-text result.
-  await page.locator('.content-search-options .el-checkbox').click();
+  await regex.check();
   await expect(regex).toBeChecked();
   releaseSearch!();
   await expect(searchResult.locator('code mark')).toHaveText('中文内容');
@@ -1811,7 +1811,7 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await editor.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '重新加载' }).click();
   await expect(page.locator('.mar-message-box')).toContainText('重新加载会丢弃未保存的修改');
-  await page.locator('.mar-ui-dialog__footer .el-button--primary').click();
+  await page.locator('.mar-ui-dialog__footer .mar-ui-button--primary').click();
   await expect(editor).toContainText('answer1()');
   await editor.press('Control+Home');
   await page.keyboard.press('Alt+m');
@@ -1850,7 +1850,7 @@ test('Text files default to editing and support saving, replacement, symbols, an
   await expect(preview).toBeVisible();
   await expect(editor).toContainText('// pasted from menu');
   await closeWindow.click();
-  await page.locator('.mar-ui-dialog__footer .el-button--primary').click();
+  await page.locator('.mar-ui-dialog__footer .mar-ui-button--primary').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
 });
 

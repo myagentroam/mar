@@ -565,7 +565,7 @@ test('Mobile Back confirms all files, preserves cancelled windows, and can close
   await expect(editor).toContainText('// dirty');
   await page.evaluate(() => history.back());
   await expect(confirm).toContainText('未保存的修改');
-  await confirm.locator('.el-button--primary').click();
+  await confirm.locator('.mar-ui-button--primary').click();
   await expect(page.locator('.workspace-file-tabs')).toHaveCount(0);
   await expect(page.locator('.mar-ui-dialog-overlay[open]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => history.state)).toEqual(initialState);

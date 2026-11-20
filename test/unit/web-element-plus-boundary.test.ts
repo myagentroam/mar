@@ -10,7 +10,7 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-describe('Element Plus production boundary', () => {
+describe('Element Plus retirement boundary', () => {
   it('keeps the product sources on MAR controls and tokens', () => {
     for (const root of [
       'packages/mar-ui',
@@ -27,11 +27,14 @@ describe('Element Plus production boundary', () => {
     }
   });
 
-  it('keeps Element Plus out of runtime dependencies and production transforms', () => {
+  it('keeps Element Plus out of runtime and development dependencies', () => {
     for (const pkg of ['packages/mar-ui', 'packages/web-core', 'ee/web', 'mar-web-console']) {
-      const { dependencies = {} } = JSON.parse(readFileSync(`${pkg}/package.json`, 'utf8'));
-      expect(Object.keys(dependencies), pkg).not.toContain('element-plus');
-      expect(Object.keys(dependencies), pkg).not.toContain('@element-plus/icons-vue');
+      const { dependencies = {}, devDependencies = {} } = JSON.parse(
+        readFileSync(`${pkg}/package.json`, 'utf8')
+      );
+      const names = [...Object.keys(dependencies), ...Object.keys(devDependencies)];
+      expect(names, pkg).not.toContain('element-plus');
+      expect(names, pkg).not.toContain('@element-plus/icons-vue');
     }
     for (const file of ['packages/web-core/vite.config.mts', 'mar-web-console/vite.config.ts']) {
       expect(readFileSync(file, 'utf8'), file).not.toMatch(/ElementPlusResolver|element-plus/u);

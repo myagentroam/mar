@@ -21,8 +21,6 @@
     <script type="module">
       import { h, ref } from 'vue';
       import { createTooltipApp as createApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
-      import ElementPlus from 'element-plus';
-      import 'element-plus/dist/index.css';
       import PanelResizeHandle from '/packages/web-core/src/view/workbench/PanelResizeHandle.vue';
 
       createApp({
@@ -73,9 +71,7 @@
             })
           ];
         }
-      })
-        .use(ElementPlus)
-        .mount('#app');
+      }).mount('#app');
     </script>
   </body>
 </html>

@@ -161,7 +161,7 @@ for (const english of [false, true]) {
       ]);
     await expect(dialog.locator('.mar-ui-table__row')).toHaveCount(5);
     await dialog.locator('.mar-ui-table__row').last().getByRole('button').click();
-    await page.locator('.mar-message-box .el-button--primary').click();
+    await page.locator('.mar-message-box .mar-ui-button--primary').click();
     await expect.poll(() => revoked).toEqual(['grant-created']);
     await expect(dialog.locator('.mar-ui-table__row')).toHaveCount(4);
   });

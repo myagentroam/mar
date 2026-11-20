@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import SecretPage from '../../src/view/settings/SecretManagementPage.vue?unit-render';
 import Details from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
 import SecretManager from '../../src/view/settings/EnvironmentSecretManager.vue?unit-render';
@@ -346,9 +345,7 @@ describe('Public environment secret management', () => {
       const app = createSSRApp({
         render: () => h(SecretPage, { request, writable: false })
       });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 921, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html).toContain(
         commonMessages[locale].generated.environmentSecretManager.environmentSecrets

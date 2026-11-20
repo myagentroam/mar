@@ -41,6 +41,7 @@ window.auditDetailFixture = {
     if (success) {
       gate.resolve({
         ...events.find((event) => event.id === gate.id),
+        metadata: { workspaceName: `FixtureWorkspace${'LongIdentifier'.repeat(6)}` },
         conversationPayload: {
           conversationTitle: gate.id,
           userMessage: `Payload ${gate.id} request ${index}`

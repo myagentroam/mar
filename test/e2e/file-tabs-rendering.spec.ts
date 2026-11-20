@@ -1059,7 +1059,10 @@ test('opening a file preview does not reclaim focus the user moved during the tr
       route.fulfill({ json: { diff: { binary: false, text: '@@ -1 +1 @@\n-before\n+after' } } })
     );
     await page.goto(`${fixture.url}file-tabs.html?diff-navigation=1`);
-    await page.addStyleTag({ content: ':root { --el-transition-duration: 2s !important; }' });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.addStyleTag({
+      content: '.mar-ui-dialog-overlay[open]:not([data-closing]) { animation-duration: 2s; }'
+    });
     await page.getByRole('tab', { name: 'Git Changes', exact: true }).click();
     await page.getByRole('button', { name: 'View diff for src/first.ts', exact: true }).click();
     const dialog = page.locator('.file-preview-surface');
@@ -1067,7 +1070,13 @@ test('opening a file preview does not reclaim focus the user moved during the tr
     const tab = dialog.getByRole('tab', { name: /first\.ts/ });
     await tab.focus();
     await expect(tab).toBeFocused();
-    await expect(page.locator('.dialog-fade-enter-active')).toHaveCount(0);
+    const overlay = page.locator('.mar-ui-dialog-overlay[open]').filter({ has: dialog });
+    const waitedForEntrance = await overlay.evaluate(async (element) => {
+      const animations = element.getAnimations();
+      await Promise.all(animations.map((animation) => animation.finished));
+      return animations.length > 0;
+    });
+    expect(waitedForEntrance).toBe(true);
     await expect(tab).toBeFocused();
   } finally {
     await fixture.close();
@@ -1294,7 +1303,7 @@ for (const [width, action] of [
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await page.goto(`${fixture.url}file-tabs.html`);
       const surface = page.locator('.file-preview-surface.mar-ui-dialog');
-      const overlay = page.locator('.el-overlay').filter({ has: surface });
+      const overlay = page.locator('.mar-ui-dialog-overlay').filter({ has: surface });
       await expect(surface).toBeVisible();
       if (action === 'last-tab') {
         for (let index = 0; index < 11; index += 1) {

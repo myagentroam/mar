@@ -3,12 +3,7 @@ import { computed, h, ref } from 'vue';
 import { marUiLocaleKey } from '@myagentroam/mar-ui/locale';
 import marEn from '@myagentroam/mar-ui/locale/en';
 import marZhCn from '@myagentroam/mar-ui/locale/zh-cn';
-import 'element-plus/theme-chalk/dark/css-vars.css';
-// Preload styles needed by the lazy controls so Vite does not reload the settings page mid-action.
-import 'element-plus/es/components/tabs/style/css';
-import 'element-plus/es/components/tab-pane/style/css';
 import '../../src/styles.css';
-import '../support/element-plus-theme.css';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import FileTypeIcon from '../../src/view/workspace/FileTypeIcon.vue';
 import ThemeControlsFixture from './theme-controls-fixture.vue';

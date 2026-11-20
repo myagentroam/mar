@@ -477,14 +477,14 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
         expect(readPosts).toEqual([]);
         await expect(page.getByText('Gap recovery history', { exact: true })).toHaveCount(0);
         await page.locator('.mar-ui-message__close').click();
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-message')).toHaveCount(0);
         await tab.getByRole('tab').click();
         await expect(page.locator('.conversation-reload')).toBeVisible();
         expect(watchPosts).toBe(0);
         expect(readPosts).toEqual([]);
         await expect(tab.locator('.workspace-tab-unread')).toBeVisible();
         await page.locator('.mar-ui-message__close').click();
-        await expect(page.locator('.el-message')).toHaveCount(0);
+        await expect(page.locator('.mar-message')).toHaveCount(0);
         await page.evaluate(() => {
           const gap = (
             window as unknown as {

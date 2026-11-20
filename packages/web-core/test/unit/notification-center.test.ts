@@ -1,6 +1,5 @@
 import { createSSRApp, h, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus from 'element-plus';
 import { afterEach, describe, expect, it } from 'vitest';
 import SystemNotificationControl from '../../src/view/settings/SystemNotificationControl.vue';
 import WorkbenchActivityCenter from '../../src/view/workbench/WorkbenchActivityCenter.vue';
@@ -23,7 +22,7 @@ describe('Shared notification center', () => {
       const app = createSSRApp({
         render: () => h(SystemNotificationControl, { service: service.systemNotifications })
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html.match(/<h3\b[^>]*>([^<]*)</u)?.[1]).toBe(title);
@@ -74,7 +73,7 @@ describe('Shared notification center', () => {
             mobileMode: false
           })
       });
-      app.use(i18n).use(ElementPlus);
+      app.use(i18n);
       app.directive('tooltip', { getSSRProps: () => ({}) });
       const html = await renderToString(app);
       expect(html).toContain(commonMessages[locale].activityCenter.title.replaceAll('&', '&amp;'));

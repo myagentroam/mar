@@ -239,7 +239,7 @@ async function chooseNamedCatalogModel(
   const dialog = page.getByRole('dialog', { name: 'OAuth 模型目录' });
   const row = dialog.locator('.mar-ui-table__row').filter({ hasText: displayName });
   const selection = row.getByRole('checkbox');
-  await row.locator('.el-checkbox__inner').click();
+  await selection.check();
   await expect(selection).toBeChecked();
   if (options.fillContextWindow) await row.getByRole('spinbutton').fill('200000', { force: true });
 }
@@ -539,7 +539,7 @@ test('Codex credentials appear only after device login and support refresh, test
   await expect(page.getByText('OAuth 凭据已刷新。', { exact: true })).toBeVisible();
   await expect(credentialDetails.getByText(/2036年/u)).toBeVisible();
   const queryUsage = credentialDetails.getByRole('button', { name: '查询用量', exact: true });
-  await expect(queryUsage.locator('.el-icon')).toBeVisible();
+  await expect(queryUsage.locator('[data-mar-icon]')).toBeVisible();
   await queryUsage.click();
   await expect(credentialDetails.getByText('Codex 用量', { exact: true })).toBeVisible();
   await expect(credentialDetails.getByText('5 小时额度', { exact: true })).toBeVisible();
@@ -559,7 +559,7 @@ test('Codex credentials appear only after device login and support refresh, test
     name: '重新登录',
     exact: true
   });
-  await expect(reloginButton.locator('.el-icon')).toBeVisible();
+  await expect(reloginButton.locator('[data-mar-icon]')).toBeVisible();
   await reloginButton.click();
   const relogin = page.getByRole('dialog', { name: '重新登录 OAuth 凭据' });
   await expect(relogin.getByRole('textbox').first()).toHaveValue('Team Codex');
@@ -1524,7 +1524,7 @@ for (const english of [false, true]) {
     await expect(urlInput).toHaveValue('https://images.example.test/custom/generate');
     await expect(dialog).toBeVisible();
     await page.mouse.move(0, 0);
-    await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator('.mar-message')).toHaveCount(0, { timeout: 10_000 });
     await page.screenshot({
       path: testInfo.outputPath('image-models-ark-config.png'),
       animations: 'disabled'
@@ -1537,7 +1537,7 @@ for (const english of [false, true]) {
     expect(writes.at(-1)?.[0]?.config).not.toHaveProperty('apiKey');
     await expect(page.locator('.image-generation-management .mar-ui-loading')).not.toBeVisible();
     await page.mouse.move(0, 0);
-    await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator('.mar-message')).toHaveCount(0, { timeout: 10_000 });
     await page.screenshot({
       path: testInfo.outputPath('image-models-desktop.png'),
       animations: 'disabled'
@@ -1555,7 +1555,7 @@ for (const english of [false, true]) {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(rows.first()).toContainText('Ark renamed');
     await page.mouse.move(0, 843);
-    await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator('.mar-message')).toHaveCount(0, { timeout: 10_000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );

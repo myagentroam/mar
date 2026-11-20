@@ -104,7 +104,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       expect(writes.filter((write) => write === method)).toHaveLength(1);
       // Dismissing feedback must not replay the uncertain write.
       await warning.locator('.mar-message-close').click();
-      await expect(page.locator('.el-message')).toHaveCount(0);
+      await expect(page.locator('.mar-message')).toHaveCount(0);
       expect(writes.filter((write) => write === method)).toHaveLength(1);
     });
   }

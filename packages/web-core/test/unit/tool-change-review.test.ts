@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import GitDiffViewer from '../../src/view/workspace/GitDiffViewer.vue';
 import {
@@ -68,9 +67,6 @@ describe('tool change review', () => {
       // Tooltip layout is browser-only; SSR has no tooltip output.
       app.directive('tooltip', {});
       app.use(i18n);
-      app.use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 50, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
       const html = await renderToString(app);
       expect(html).toContain('aria-label="Open source file"');
       expect(html).not.toContain('Open current file');

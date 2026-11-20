@@ -8,7 +8,6 @@ import {
   type Ref,
   type SetupContext
 } from 'vue';
-import { type MessageBoxData } from 'element-plus';
 import { MarMessageBox } from '../../src/service/message-box-service.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WorkspaceTextFilePage from '../../src/view/workspace/WorkspaceTextFilePage.vue';
@@ -29,7 +28,7 @@ beforeEach(() => {
     documentElement: { lang: '' }
   });
 
-  vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData);
+  vi.spyOn(MarMessageBox, 'confirm').mockResolvedValue('confirm');
 });
 
 afterEach(() => {
@@ -403,7 +402,7 @@ describe('hosted message draft preservation', () => {
     'does not apply a stale template confirmation: %s',
     async (reason) => {
       const { composer, workspace } = hostedFixture();
-      const confirmation = deferred<MessageBoxData>();
+      const confirmation = deferred<Awaited<ReturnType<typeof MarMessageBox.confirm>>>();
       vi.mocked(MarMessageBox.confirm).mockReturnValueOnce(confirmation.promise);
       await composer.handleTemplateMenuVisibility(true);
       const pending = composer.selectTemplate('template-2');
@@ -417,7 +416,7 @@ describe('hosted message draft preservation', () => {
       }
       if (reason === 'unmounted') apps.pop()!.unmount();
       if (reason === 'cancel') confirmation.reject(new Error('cancel'));
-      else confirmation.resolve('confirm' as MessageBoxData);
+      else confirmation.resolve('confirm');
       await pending;
       expect(workspace.switchTemplate).not.toHaveBeenCalled();
     }

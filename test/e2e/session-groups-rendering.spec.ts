@@ -21,6 +21,7 @@ for (const [width, theme] of [
       const status = sidebar.getByRole('status', { name: 'Loading sessions…' });
       await expect(status).toBeVisible();
       await expect(status).toHaveText('');
+      await expect(status).toHaveCSS('flex-grow', '0');
       await expect(status.locator('.mar-busy-indicator')).toBeVisible();
       const indicatorSize = await status.locator('.mar-busy-indicator').evaluate((indicator) => ({
         width: parseFloat(getComputedStyle(indicator).width),
@@ -31,12 +32,15 @@ for (const [width, theme] of [
       await expect(sidebar.locator('.session-row')).toHaveCount(1);
 
       await page.goto(
-        `${fixture.url}session-groups.html?locale=en-US&watch-status=loading&empty-sessions`
+        `${fixture.url}session-groups.html?locale=en-US&theme=${theme}&watch-status=loading&empty-sessions`
       );
       await expect(status).toBeVisible();
+      await expect(status).toHaveCSS('flex-grow', '1');
       await expect(sidebar.locator('.session-row')).toHaveCount(0);
 
-      await page.goto(`${fixture.url}session-groups.html?locale=en-US&watch-status=failed`);
+      await page.goto(
+        `${fixture.url}session-groups.html?locale=en-US&theme=${theme}&watch-status=failed`
+      );
       await expect(sidebar.getByRole('status', { name: 'Loading sessions…' })).toHaveCount(0);
       await expect(sidebar.locator('.watch-status.failed')).toBeVisible();
       await expect(sidebar.locator('.session-row')).toHaveCount(1);
@@ -164,7 +168,7 @@ for (const [width, theme, locale] of [
           return getComputedStyle(probe).color;
         };
         const result = {
-          running: color('--el-color-success'),
+          running: color('--mar-control-color-success'),
           track: color('--mar-bg-subtle'),
           border: color('--mar-border-default'),
           selected: color('--mar-fill-selection'),

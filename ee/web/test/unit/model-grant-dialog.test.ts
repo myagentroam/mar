@@ -24,7 +24,6 @@ const organizations = [
   { id: 2, name: 'Research', parentOrganizationId: null }
 ];
 const originalLocale = i18n.global.locale.value;
-// Confirm resolves to the action string at runtime, despite Element Plus's intersection type.
 const confirmed = 'confirm' as Awaited<ReturnType<typeof MarMessageBox.confirm>>;
 
 describe('Model grant dialog', () => {

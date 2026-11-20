@@ -1,7 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { json, mockConsoleApi } from './support/web-console-api.js';
 
-test.use({ timezoneId: 'Asia/Shanghai' });
+test.use({ timezoneId: 'Asia/Shanghai', hasTouch: true });
 
 // Mock APIs isolate browser behavior; the ledger integration has its own real database test.
 for (const locale of ['en-US', 'zh-CN'] as const) {
@@ -44,7 +44,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
             update: 'Update records',
             chart: 'View chart data',
             trend: 'Usage over time',
-            inspectPeriods: 'Inspect time periods',
             mode: 'Mode',
             metric: 'Metric',
             cache: 'Cache',
@@ -70,7 +69,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
             update: '更新明细',
             chart: '查看图表数据',
             trend: '用量趋势',
-            inspectPeriods: '查看各时段',
             mode: '模式',
             metric: '统计指标',
             cache: '缓存',
@@ -166,6 +164,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const requests: URL[] = [];
     let categoryTesting = false;
     let failure = false;
+    let rollTrendForward = false;
     let finishInitialRead!: () => void;
     const pendingInitialRead = new Promise<void>((resolve) => {
       finishInitialRead = resolve;
@@ -210,7 +209,13 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
         last7Days: categoryTotals,
         selected: categoryTotals,
         coverage: 'observed-only',
-        buckets,
+        buckets: rollTrendForward
+          ? buckets.map((bucket) => ({
+              ...bucket,
+              from: bucket.from + 60_000,
+              to: bucket.to + 60_000
+            }))
+          : buckets,
         runners: [{ ...totals, key: 'mar-agent', label: 'mar-agent' }],
         models: [{ ...totals, key: 'fixture-model', label: 'Fixture model' }]
       });
@@ -252,7 +257,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     });
     finishInitialRead();
     await expect(panel).toHaveAttribute('aria-busy', 'false');
-    // The paused refresh clock also controls Element Plus loading transitions.
+    // The paused refresh clock also controls MAR loading transitions.
     await page.clock.runFor(500);
     await expect(loadingMask).toBeHidden();
     await expect(panel.getByRole('heading', { name: labels.title, exact: true })).toBeVisible();
@@ -380,7 +385,8 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.locator('.overview')).not.toContainText(
       locale === 'en-US' ? 'Partial usage' : '部分用量'
     );
-    const trend = panel.getByRole('img', { name: labels.trend });
+    await expect(panel.getByRole('slider')).toHaveCount(0);
+    const trend = panel.getByRole('group', { name: labels.trend, exact: true });
     await expect(trend).toBeVisible();
     await expect(trend).toHaveAccessibleDescription(
       new RegExp(`2026-10-14 07:44:05.*2026-10-14 09:44:05.*${labels.totalTokens}`)
@@ -448,7 +454,6 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     const hoverDetails: string[][] = [];
     for (const [index, values] of buckets.entries()) {
       const bar = bars.nth(index);
-      await expect(bar).not.toHaveAttribute('tabindex', /^(0|[1-9]\d*)$/);
       await hoverForTooltip(bar);
       const lines = [
         ranges[index]!,
@@ -464,8 +469,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     }
     await hoverForTooltip(bucket);
     await bucket.click();
-    await expect(bucket).not.toBeFocused();
-    await expect(bucket).toHaveCSS('outline-style', 'none');
+    await expect(trend.locator('.trend-bucket:focus-visible')).toHaveCount(0);
     await expect(tooltip).toContainText(exact(buckets[0]!.inputTokens));
     await expect(bucket).toHaveAccessibleName(
       new RegExp(
@@ -481,20 +485,20 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(panel.locator('.section-heading .usage-count').first()).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(panel.locator('.legend').getByText(labels.cache, { exact: true })).toBeFocused();
-    const inspector = panel.getByRole('slider', { name: labels.inspectPeriods, exact: true });
     await page.keyboard.press('Tab');
-    await expect(inspector).toBeFocused();
-    await expect(inspector).toHaveCSS('outline-style', 'solid');
     const expectPeriod = async (index: number) => {
-      await expect(inspector).toBeFocused();
+      const focused = bars.nth(index);
+      await expect(focused).toBeFocused();
+      await expect(trend.locator('.trend-bucket:focus-visible')).toHaveCount(1);
+      await expect(trend.locator('.trend-bucket[tabindex="0"]')).toHaveCount(1);
       await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[index]!);
-      await expect(inspector).toHaveAttribute('aria-valuetext', hoverDetails[index]!.join(' · '));
+      await expect(focused).toHaveAccessibleName(hoverDetails[index]!.join(' · '));
     };
     await expectPeriod(0);
     await page.keyboard.press('ArrowRight');
     await expectPeriod(1);
     await page.keyboard.press('Escape');
-    await expect(inspector).toBeFocused();
+    await expect(bars.nth(1)).toBeFocused();
     await expect(tooltip).toHaveCount(0);
     await page.keyboard.press('ArrowLeft');
     await expectPeriod(0);
@@ -503,6 +507,14 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       panel.getByRole('radiogroup', { name: labels.metric, exact: true }).getByRole('radio').first()
     ).toBeFocused();
     await expect(tooltip).toHaveCount(0);
+    if (mobile) {
+      await bars.nth(1).tap();
+      await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[1]!);
+      await trend.getByRole('img').first().tap();
+      await expect(tooltip.locator('.usage-tooltip-detail')).toHaveText(hoverDetails[0]!);
+      await panel.locator('.axis-labels').tap();
+      await expect(tooltip).toHaveCount(0);
+    }
 
     await expect(panel.getByText(labels.chart, { exact: true })).toHaveCount(0);
     await expect(panel.getByText(labels.notes, { exact: true })).toHaveCount(0);
@@ -595,11 +607,22 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       path: testInfo.outputPath(`usage-pager-${locale}.png`)
     });
     const recordReads = requests.filter((url) => url.pathname.endsWith('/records')).length;
+    const focusedPeriod = bars.nth(1);
+    await focusedPeriod.scrollIntoViewIfNeeded();
+    await focusedPeriod.focus();
+    await expect(tooltip.locator('.usage-tooltip-detail').first()).toHaveText(ranges[1]!);
+    rollTrendForward = true;
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
     await page.clock.fastForward(60_000);
     await expect
       .poll(() => requests.filter((url) => url.pathname.endsWith('/overview')).length)
       .toBe(2);
+    await expect(focusedPeriod).toHaveAccessibleName(/^2026-10-14 08:45:05/);
+    await expect(focusedPeriod).toBeFocused();
+    await expect(tooltip.locator('.usage-tooltip-detail').first()).toHaveText(
+      '2026-10-14 08:45:05 – 2026-10-14 09:45:05'
+    );
+    rollTrendForward = false;
     await expect(rows).toHaveCount(mobile ? 61 : 1);
     expect(requests.filter((url) => url.pathname.endsWith('/records')).length).toBe(recordReads);
     await expect(panel.getByRole('button', { name: labels.update, exact: true })).toBeVisible();
@@ -669,7 +692,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(Math.abs(layout.timeWidth - layout.runnerWidth)).toBeLessThan(2);
     expect(layout.rangeTop).toBeGreaterThan(layout.runnerBottom);
     expect(layout.width).toBeLessThanOrEqual(Math.min(layout.maximumWidth, layout.formWidth) + 1);
-    await expect(page.locator('.el-message')).toHaveCount(0);
+    await expect(page.locator('.mar-message')).toHaveCount(0);
     await panel.screenshot({
       animations: 'disabled',
       path: testInfo.outputPath(`usage-custom-${locale}.png`)

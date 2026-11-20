@@ -4,22 +4,14 @@ import { MarTable, MarTableColumn } from '@myagentroam/mar-ui/table';
 import WorkspaceLabelsFixture from './workspace-labels-fixture.vue';
 import ChatGPTManageUsageButton from '../../src/view/common/ChatGPTManageUsageButton.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
-import { provide, ref } from 'vue';
-import {
-  ElCascader,
-  ElDatePicker,
-  ElDrawer,
-  ElInputNumber,
-  ElTimePicker,
-  ElTimeSelect
-} from 'element-plus';
-import 'element-plus/es/components/cascader/style/css';
-import 'element-plus/es/components/date-picker/style/css';
-import 'element-plus/es/components/drawer/style/css';
-import 'element-plus/es/components/input-number/style/css';
-import 'element-plus/es/components/time-picker/style/css';
-import 'element-plus/es/components/time-select/style/css';
-import MarIcon from '../../src/view/common/MarIcon.vue';
+import { onMounted, provide, ref, useTemplateRef } from 'vue';
+import { MarCascader } from '@myagentroam/mar-ui/cascader';
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
+import { MarForm, MarFormItem } from '@myagentroam/mar-ui/form';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
+import { MarLink } from '@myagentroam/mar-ui/link';
+import { MarTimePicker } from '@myagentroam/mar-ui/time-picker';
+import { MarTimeSelect } from '@myagentroam/mar-ui/time-select';
 import { MarButton } from '@myagentroam/mar-ui/button';
 import { MarDropdown, MarDropdownItem, MarDropdownMenu } from '@myagentroam/mar-ui/dropdown';
 import { MarInput } from '@myagentroam/mar-ui/input';
@@ -49,13 +41,8 @@ const marChoice = ref(false);
 const longChoice = ref(36);
 const showMarCommands = ref(true);
 const marCommand = ref('');
-const activeTab = ref('settings');
-const configurationScope = ref('node');
-const scopeOptions = [
-  { label: 'Node', value: 'node' },
-  { label: 'Workspace', value: 'workspace' },
-  { label: 'Unavailable', value: 'unavailable', disabled: true }
-];
+const invalidForm = useTemplateRef('invalid-form');
+onMounted(() => void invalidForm.value?.validate().catch(() => undefined));
 async function refreshPrompts(): Promise<void> {}
 async function requestPrompt<T>(): Promise<T> {
   throw new Error('This visual fixture does not persist prompts');
@@ -89,7 +76,6 @@ function recordMarkdownFile(
 }
 
 const dialogOpen = ref(false);
-const drawerOpen = ref(false);
 
 async function openConfirmation(): Promise<void> {
   await MarMessageBox.confirm('Confirm this fixture action.', 'Action confirmation').catch(
@@ -124,14 +110,6 @@ function saveFeedbackDialog(): void {
       autocomplete="off"
       :disabled="marInputDisabled"
     />
-    <label for="el-input-sample">EL sample</label>
-    <el-input
-      id="el-input-sample"
-      :model-value="marInput"
-      :prefix-icon="marIcon('search')"
-      :suffix-icon="marIcon('lock')"
-      :disabled="marInputDisabled"
-    />
     <label class="mar-sample-checkbox"
       ><input v-model="marInputDisabled" type="checkbox" /> Disable sample inputs</label
     >
@@ -140,11 +118,6 @@ function saveFeedbackDialog(): void {
       <MarOption :value="'disabled'" label="Unavailable choice" disabled />
       <MarOption :value="true" label="Second choice" />
     </MarSelect>
-    <el-select :model-value="marChoice" aria-label="EL choice">
-      <el-option :value="false" label="First choice" />
-      <el-option :value="'disabled'" label="Unavailable choice" disabled />
-      <el-option :value="true" label="Second choice" />
-    </el-select>
     <output aria-label="Selected value">{{ marChoice }}</output>
     <MarDropdown v-if="showMarCommands" trigger="click" @command="marCommand = $event">
       <MarButton id="mar-command-trigger" text icon="more" aria-label="MAR commands" />
@@ -208,14 +181,6 @@ function saveFeedbackDialog(): void {
       >
       <output aria-label="Submission count">{{ buttonSubmissions }}</output>
     </form>
-    <el-button
-      type="primary"
-      :icon="marIcon('check')"
-      :disabled="buttonDisabled"
-      aria-label="EL reference action"
-      >Submit action</el-button
-    >
-    <el-button aria-label="EL reference text">Text action</el-button>
     <MarButton
       tag="a"
       :disabled="buttonDisabled"
@@ -238,106 +203,89 @@ function saveFeedbackDialog(): void {
     />
   </section>
   <section aria-label="Real theme controls">
-    <el-input v-model="value" aria-label="Sample input" />
-    <el-select v-model="value" aria-label="Sample select">
-      <el-option label="One" value="one" />
-    </el-select>
-    <el-button>Sample default</el-button>
-    <el-button disabled>Sample disabled default</el-button>
-    <el-button type="primary">Sample primary</el-button>
-    <el-button type="primary" disabled>Sample disabled primary</el-button>
-    <el-button type="primary" link>Sample link</el-button>
-    <el-button type="primary" link disabled>Sample disabled link</el-button>
-    <el-button link>Sample neutral action</el-button>
-    <el-button link disabled>Sample disabled neutral action</el-button>
-    <el-button link type="danger">Sample dangerous action</el-button>
-    <div v-for="type in ['success', 'warning', 'danger', 'info'] as const" :key="type">
-      <el-button :type="type" link :icon="marIcon('delete')">Sample {{ type }} action</el-button>
-      <el-button :type="type" link disabled :icon="marIcon('delete')"
-        >Sample disabled {{ type }} action</el-button
+    <MarInput v-model="value" aria-label="Sample input" />
+    <MarSelect v-model="value" aria-label="Sample select">
+      <MarOption label="One" value="one" />
+    </MarSelect>
+    <MarButton>Sample default</MarButton>
+    <MarButton disabled>Sample disabled default</MarButton>
+    <MarButton type="primary">Sample primary</MarButton>
+    <MarButton type="primary" disabled>Sample disabled primary</MarButton>
+    <MarButton type="primary" link>Sample link</MarButton>
+    <MarButton type="primary" link disabled>Sample disabled link</MarButton>
+    <MarButton link>Sample neutral action</MarButton>
+    <MarButton link disabled>Sample disabled neutral action</MarButton>
+    <MarButton link type="danger">Sample dangerous action</MarButton>
+    <div v-for="type in ['warning', 'danger'] as const" :key="type">
+      <MarButton :type="type" link :icon="marIcon('delete')">Sample {{ type }} action</MarButton>
+      <MarButton :type="type" link disabled :icon="marIcon('delete')"
+        >Sample disabled {{ type }} action</MarButton
       >
     </div>
     <ChatGPTManageUsageButton />
-    <el-link type="primary">Sample anchor</el-link>
+    <MarLink type="primary" href="#button-link-target">Sample anchor</MarLink>
     <MarTable :data="[{ name: 'First' }, { name: 'Second' }]">
       <MarTableColumn prop="name" label="Name" />
     </MarTable>
   </section>
   <section aria-label="Select state samples">
-    <el-select v-model="selection" aria-label="Neutral select">
-      <el-option label="One" value="one" />
-      <el-option label="Two" value="two" />
-      <el-option label="Unavailable" value="unavailable" disabled />
-    </el-select>
-    <el-select v-model="selections" aria-label="Multiple select" multiple>
-      <el-option label="One" value="one" />
-      <el-option label="Two" value="two" />
-      <el-option label="Unavailable" value="unavailable" disabled />
-    </el-select>
-    <el-select v-model="selection" aria-label="Disabled select" disabled>
-      <el-option label="One" value="one" />
-    </el-select>
+    <MarSelect v-model="selection" aria-label="Neutral select">
+      <MarOption label="One" value="one" />
+      <MarOption label="Two" value="two" />
+      <MarOption label="Unavailable" value="unavailable" disabled />
+    </MarSelect>
+    <MarSelect v-model="selections" aria-label="Multiple select" multiple>
+      <MarOption label="One" value="one" />
+      <MarOption label="Two" value="two" />
+      <MarOption label="Unavailable" value="unavailable" disabled />
+    </MarSelect>
+    <MarSelect v-model="selection" aria-label="Disabled select" disabled>
+      <MarOption label="One" value="one" />
+    </MarSelect>
   </section>
   <section aria-label="Standard field boundaries">
-    <el-input aria-label="Text field" model-value="Value" />
-    <el-input type="textarea" aria-label="Textarea field" model-value="Value" />
-    <el-input-number aria-label="Number field" :model-value="2" />
-    <el-select v-model="selection" aria-label="Select field">
-      <el-option label="One" value="one" />
-    </el-select>
-    <el-cascader placeholder="Cascader field" :options="[{ value: 'one', label: 'One' }]" />
-    <el-date-picker placeholder="Single date field" type="date" />
-    <el-date-picker type="daterange" start-placeholder="Start date" end-placeholder="End date" />
-    <el-time-select aria-label="Time select field" />
-    <el-time-picker placeholder="Single time field" />
-    <el-time-picker is-range start-placeholder="Start time" end-placeholder="End time" />
-    <el-input aria-label="Disabled text field" disabled model-value="Value" />
-    <el-select :model-value="selection" aria-label="Disabled field" disabled>
-      <el-option label="One" value="one" />
-    </el-select>
-    <el-date-picker
-      type="daterange"
+    <MarInput aria-label="Text field" model-value="Value" />
+    <MarInput type="textarea" aria-label="Textarea field" model-value="Value" />
+    <MarInputNumber aria-label="Number field" :model-value="2" />
+    <MarSelect v-model="selection" aria-label="Select field">
+      <MarOption label="One" value="one" />
+    </MarSelect>
+    <MarCascader placeholder="Cascader field" :options="[{ value: 'one', label: 'One' }]" />
+    <MarDatePicker placeholder="Single date field" type="date" />
+    <MarDatePicker type="datetimerange" start-placeholder="Start date" end-placeholder="End date" />
+    <MarTimeSelect aria-label="Time select field" />
+    <MarTimePicker placeholder="Single time field" />
+    <MarInput aria-label="Disabled text field" disabled model-value="Value" />
+    <MarSelect :model-value="selection" aria-label="Disabled field" disabled>
+      <MarOption label="One" value="one" />
+    </MarSelect>
+    <MarDatePicker
+      type="datetimerange"
       start-placeholder="Disabled start date"
       end-placeholder="Disabled end date"
       disabled
     />
-    <el-form>
-      <el-form-item error="Select a value">
-        <el-select aria-label="Invalid field">
-          <el-option label="One" value="one" />
-        </el-select>
-      </el-form-item>
-      <el-form-item error="Select a date range">
-        <el-date-picker
-          type="daterange"
+    <MarForm
+      ref="invalid-form"
+      :model="{}"
+      :rules="{
+        select: { required: true, message: 'Select a value' },
+        range: { required: true, message: 'Select a date range' }
+      }"
+    >
+      <MarFormItem prop="select">
+        <MarSelect aria-label="Invalid field">
+          <MarOption label="One" value="one" />
+        </MarSelect>
+      </MarFormItem>
+      <MarFormItem prop="range">
+        <MarDatePicker
+          type="datetimerange"
           start-placeholder="Invalid start date"
           end-placeholder="Invalid end date"
         />
-      </el-form-item>
-    </el-form>
-  </section>
-  <section aria-label="Tabs state samples">
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="Settings" name="settings">Settings content</el-tab-pane>
-      <el-tab-pane label="Permissions" name="permissions">Permissions content</el-tab-pane>
-      <el-tab-pane label="Unavailable" name="unavailable" disabled />
-      <el-tab-pane label="Long configuration tab name" name="configuration">
-        Configuration content
-      </el-tab-pane>
-    </el-tabs>
-  </section>
-  <section class="segmented-surface-fixture" aria-label="Segmented state samples">
-    <el-segmented
-      v-model="configurationScope"
-      aria-label="Configuration scope"
-      :options="scopeOptions"
-    />
-    <el-segmented
-      model-value="node"
-      aria-label="Disabled configuration scope"
-      :options="scopeOptions"
-      disabled
-    />
+      </MarFormItem>
+    </MarForm>
   </section>
   <section aria-label="Dropdown state samples">
     <MarDropdown trigger="click" @command="menuAction = $event">
@@ -417,17 +365,6 @@ function saveFeedbackDialog(): void {
     <button type="button" data-testid="open-close-confirmation" @click="openConfirmation">
       Open confirmation
     </button>
-    <button type="button" data-testid="open-close-drawer" @click="drawerOpen = true">
-      Open drawer
-    </button>
-    <el-drawer
-      v-if="drawerOpen"
-      v-model="drawerOpen"
-      title="Action drawer"
-      :close-icon="marIcon('close')"
-    >
-      Drawer content
-    </el-drawer>
     <MarDialog v-if="dialogOpen" v-model="dialogOpen" title="Message feedback dialog">
       <p>Dialog content</p>
       <button
@@ -472,12 +409,8 @@ function saveFeedbackDialog(): void {
   gap: 0.375rem;
 }
 
-.mar-control-visual-sample > :is(.el-button, .mar-ui-button) {
+.mar-control-visual-sample > .mar-ui-button {
   justify-self: start;
-}
-.segmented-surface-fixture {
-  background: var(--mar-bg-panel);
-  padding: 0.75rem;
 }
 
 .conversation-typography-fixture {

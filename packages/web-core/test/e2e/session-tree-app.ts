@@ -17,7 +17,6 @@ import type {
 import Header from '../../src/view/conversation/ConversationHeader.vue';
 import TreeButton from '../../src/view/workspace/WorkspaceSessionTreeButton.vue';
 import TreePopover from '../../src/view/workspace/WorkspaceSessionTreePopover.vue';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 
 const query = new URLSearchParams(location.search);

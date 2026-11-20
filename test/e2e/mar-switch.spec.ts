@@ -16,7 +16,6 @@ test('MAR switch uses native labels, keyboard and draft form values', async ({
   await page.goto(`${fixture.url}mar-switch.html`);
   const draft = page.getByRole('switch', { name: 'Draft setting' });
   const disabled = page.getByRole('switch', { name: 'Unavailable setting' });
-  const reference = page.getByRole('switch', { name: 'EL reference' });
   const changes = page.getByRole('status', { name: 'Draft changes' });
 
   await page.keyboard.press('Tab');
@@ -24,7 +23,6 @@ test('MAR switch uses native labels, keyboard and draft form values', async ({
   await expect(draft).not.toBeChecked();
   await page.keyboard.press('Space');
   await expect(draft).toBeChecked();
-  await expect(reference).toHaveAttribute('aria-checked', 'true');
   await expect(changes).toHaveText('true');
   expect(
     await page.locator('form').evaluate((form: HTMLFormElement) => new FormData(form).get('draft'))

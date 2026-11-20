@@ -37,8 +37,7 @@ function element(type: string, text = ''): TestElement {
   };
 }
 
-// Execute the real template and lifecycle without a browser. Element Plus controls
-// are dependency stubs; layout, focus and control validation belong in Chromium.
+// Execute the real template and lifecycle without a browser. Native dialog layout and focus belong in browser tests.
 export function renderComponent(
   component: Component,
   props: object = {},
@@ -134,62 +133,23 @@ export function renderComponent(
         this.$.exposed.validate = options.validate;
     }
   });
-  for (const name of [
-    'ElIcon',
-    'ElInput',
-    'ElInputNumber',
-    'ElSelect',
-    'ElSegmented',
-    'ElOption',
-    'ElOptionGroup',
-    'ElFormItem',
-    'ElTag',
-    'ElCheckTag',
-    'ElSwitch',
-    'ElTooltip',
-    'ElEmpty',
-    'ElDescriptions',
-    'ElDescriptionsItem',
-    'ElTabs',
-    'ElTabPane',
-    'ElDatePicker',
-    'ElAlert',
-    'ElCheckbox',
-    'ElProgress',
-    'ElLink',
-    'ElRadioGroup',
-    'ElRadioButton',
-    'ElRadio',
-    'ElDivider',
+  app.component(
     'MarDialog',
-    'ElForm',
-    'ElPopover'
-  ]) {
-    app.component(
-      name,
-      defineComponent({
-        inheritAttrs: false,
-        props: ['modelValue', 'data', 'prop'],
-        setup(controlProps, { attrs, slots: controlSlots, expose }) {
-          if (name === 'ElForm')
-            expose({
-              validate: options.validate ?? (async () => true),
-              validateField: async () => undefined,
-              clearValidate() {}
-            });
-          return () => {
-            if (name === 'MarDialog' && !controlProps.modelValue) return null;
-            const children = Object.entries(controlSlots).map(([slotName, slot]) =>
-              name === 'ElInput' && slotName === 'password-icon'
-                ? slot?.({ visible: false })
-                : slot?.()
-            );
-            return h(name, { ...attrs, ...controlProps }, children);
-          };
-        }
-      })
-    );
-  }
+    defineComponent({
+      inheritAttrs: false,
+      props: ['modelValue'],
+      setup(props, { attrs, slots }) {
+        return () =>
+          props.modelValue
+            ? h(
+                'MarDialog',
+                { ...attrs, modelValue: props.modelValue },
+                Object.values(slots).map((slot) => slot?.())
+              )
+            : null;
+      }
+    })
+  );
   const root = element('root');
   app.mount(root);
   function findAll(type: string): TestElement[] {

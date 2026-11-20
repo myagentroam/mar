@@ -1,6 +1,5 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsContent from '../../src/view/settings/SettingsContent.vue';
 import QuickPromptSettings from '../../src/view/settings/QuickPromptSettings.vue';
@@ -68,10 +67,8 @@ async function render(section: SettingsSection, slots = {}) {
         slots
       )
   });
-  app.use(i18n).use(ElementPlus);
+  app.use(i18n);
   app.directive('tooltip', { getSSRProps: () => ({}) });
-  app.provide(ID_INJECTION_KEY, { prefix: 810, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return { html: await renderToString(app), request };
 }
 
@@ -203,7 +200,6 @@ describe('Shared personal settings components', () => {
             () => h('p', 'Retained page content')
           )
       });
-      app.use(ElementPlus);
       const html = await renderToString(app);
       expect(html).toContain(`aria-busy="${loading}"`);
       expect(html).toContain('aria-label="Page content"');
@@ -223,9 +219,7 @@ describe('Shared personal settings components', () => {
         request: vi.fn(),
         refresh: async () => undefined
       });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 811, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html).toContain('aria-busy="true"');
       expect(html).toContain('#review');

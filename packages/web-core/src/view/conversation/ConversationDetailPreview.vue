@@ -101,17 +101,20 @@ onBeforeUnmount(() => {
       :aria-controls="contentId"
       @click.stop="togglePreview"
     >
-      <MarIcon
-        name="chevron-down"
-        class="detail-preview-toggle-icon"
-        :class="{ 'is-expanded': expanded }"
-        aria-hidden="true"
-      />{{
-        translate(
-          expanded ? 'toolPresentation.detail.showLess' : 'toolPresentation.detail.showMore'
-        )
-      }}</MarButton
-    >
+      <span class="detail-preview-toggle-content">
+        <MarIcon
+          name="chevron-down"
+          class="detail-preview-toggle-icon"
+          :class="{ 'is-expanded': expanded }"
+          aria-hidden="true"
+        />
+        <span class="detail-preview-toggle-text">{{
+          translate(
+            expanded ? 'toolPresentation.detail.showLess' : 'toolPresentation.detail.showMore'
+          )
+        }}</span>
+      </span>
+    </MarButton>
   </div>
 </template>
 
@@ -126,6 +129,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .detail-preview-toggle {
+  --mar-action-icon-size: 1em;
   --mar-ui-button-hover-fg: var(--mar-text-primary);
   --mar-ui-button-active-fg: var(--mar-text-primary);
   margin: 0.375rem 0 0;
@@ -137,8 +141,16 @@ onBeforeUnmount(() => {
   font-weight: 400;
   color: var(--mar-text-secondary);
 }
+.detail-preview-toggle-content {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-block-size: 1lh;
+}
+.detail-preview-toggle-text {
+  text-box: trim-both cap alphabetic;
+}
 .detail-preview-toggle-icon {
-  margin-inline-end: 0.25rem;
   transition: transform var(--mar-motion-duration-fast);
 }
 .detail-preview-toggle-icon.is-expanded {

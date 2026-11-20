@@ -417,8 +417,8 @@ for (const english of [false, true]) {
     await expect(panel.locator('.mar-ui-form-item')).toHaveCount(4);
     await expect(panel.getByRole('switch')).toHaveCount(2);
     await expect(panel.getByRole('combobox')).toHaveCount(2);
-    await expect(panel.locator('.el-checkbox')).toHaveCount(0);
-    await expect(panel.locator('.el-radio')).toHaveCount(0);
+    await expect(panel.getByRole('checkbox')).toHaveCount(0);
+    await expect(panel.getByRole('radio')).toHaveCount(0);
     await expect(panel.getByText(/标准|高密度|Standard|High-density/u)).toHaveCount(0);
 
     // Initial authority: disabled configuration without model or effort.

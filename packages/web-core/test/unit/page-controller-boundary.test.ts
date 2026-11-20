@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { commonMessages } from '../../src/i18n/messages.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
 import WorkbenchPage from '../../src/view/workbench/WorkbenchPage.vue';
@@ -37,6 +36,7 @@ function pageFixture(
       standaloneFileError: state === 'error' ? 'FILE_UNAVAILABLE' : undefined
     },
     application: {},
+    registration: {},
     tree: {},
     selection: {},
     notifications: {},
@@ -54,9 +54,7 @@ describe('public Workbench page controller', () => {
     async (state) => {
       const page = pageFixture(true, state);
       const app = createSSRApp({ render: () => h(WorkbenchPage, { page, surface: page }) });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 2048, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html).toContain('inert');
       expect(html.includes('class="standalone-file-loading"')).toBe(state !== 'ready');
@@ -107,9 +105,7 @@ describe('public Workbench page controller', () => {
               : {}
           )
       });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 1024, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html.includes('Host identity entry')).toBe(!authenticated && hostSlots);
       expect(html.includes('Host work surface')).toBe(authenticated && hostSlots);

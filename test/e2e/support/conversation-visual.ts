@@ -138,7 +138,7 @@ export async function verifyConversationThemes(
         const details = process.locator(':scope > details');
         await page.emulateMedia({ reducedMotion: 'no-preference' });
         await page.evaluate(() =>
-          document.documentElement.style.setProperty('--el-transition-duration-fast', '1s')
+          document.documentElement.style.setProperty('--mar-motion-duration-fast', '1s')
         );
         await summary.focus();
         await page.keyboard.press('Enter');
@@ -185,7 +185,7 @@ export async function verifyConversationThemes(
         await summary.click();
         await expect(details).not.toHaveAttribute('open', '');
         await page.evaluate(() =>
-          document.documentElement.style.removeProperty('--el-transition-duration-fast')
+          document.documentElement.style.removeProperty('--mar-motion-duration-fast')
         );
         await page.emulateMedia({ reducedMotion: 'no-preference' });
       }

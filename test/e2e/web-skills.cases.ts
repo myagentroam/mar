@@ -152,7 +152,9 @@ test('Skill settings show the available internal catalog and remove Skill Center
   await expect(favorite).not.toContainText('aaaaaaaaaaaa');
   await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible();
   await expect(favorite.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(favorite.getByRole('button', { name: '安装' }).locator('.el-icon')).toBeVisible();
+  await expect(
+    favorite.getByRole('button', { name: '安装' }).locator('[data-mar-icon]')
+  ).toBeVisible();
   await expect(favorite.getByRole('button', { name: '安装' })).toBeDisabled();
   await page.getByRole('button', { name: '代码质量', exact: true }).click();
   await expect(
@@ -362,7 +364,7 @@ test('Skill installation runs asynchronously in the current Workspace and refres
   await expect(environmentDialog).toContainText('受管副本');
   await environmentDialog.getByRole('button', { name: '知道了' }).click();
   const repairButton = page.getByRole('button', { name: '修正环境' });
-  await expect(repairButton.locator('.el-icon')).toBeVisible();
+  await expect(repairButton.locator('[data-mar-icon]')).toBeVisible();
   await repairButton.click();
   const repairDialog = page.getByRole('dialog', { name: '修正技能环境' });
   await expect(repairDialog).toContainText('本地 Git 排除规则');
@@ -397,7 +399,7 @@ test('Skill installation runs asynchronously in the current Workspace and refres
   await expect(installedSkill).toContainText('已是最新版本');
   await expect(installedSkill.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(
-    installedSkill.getByRole('button', { name: '删除' }).locator('.el-icon')
+    installedSkill.getByRole('button', { name: '删除' }).locator('[data-mar-icon]')
   ).toBeVisible();
   await expect(installedSkill.getByRole('button', { name: '重新安装' })).toBeVisible();
 });
@@ -674,7 +676,7 @@ test('Skill source management discovers external entries and adds them to the pe
   expect(new URL(sourceRequestUrls[0]!).searchParams.get('query')).toBe('code review');
   expect(new URL(sourceRequestUrls[0]!).searchParams.get('limit')).toBe('40');
   await expect(candidate.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(candidate.locator('.row-actions .el-icon')).toBeVisible();
+  await expect(candidate.locator('.row-actions [data-mar-icon]')).toBeVisible();
   await candidate.click();
   const candidateDetails = page.getByRole('dialog', { name: 'code-review' });
   await expect(candidateDetails).toContainText('安装热度');
@@ -718,7 +720,7 @@ test('Skill source management discovers external entries and adds them to the pe
   await expect(addedSkill).toBeVisible();
   await expect(addedSkill.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(
-    addedSkill.getByRole('button', { name: '编辑', exact: true }).locator('.el-icon')
+    addedSkill.getByRole('button', { name: '编辑', exact: true }).locator('[data-mar-icon]')
   ).toBeVisible();
   await addedSkill.getByRole('button', { name: '编辑', exact: true }).click();
   const editDialog = page.getByRole('dialog', { name: '编辑技能信息' });
@@ -1026,7 +1028,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await expect(page.locator('.source-mcp-table')).toContainText('说明');
   await expect(candidateRow).toContainText('Search MCP server');
   await expect(candidateRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
-  await expect(candidateRow.locator('.row-actions .el-icon')).toBeVisible();
+  await expect(candidateRow.locator('.row-actions [data-mar-icon]')).toBeVisible();
   await candidateRow.click();
   await expect(page.getByRole('dialog', { name: 'Acme Search' })).toBeVisible();
   await page
@@ -1041,7 +1043,7 @@ test('MCP source tables open source, discovery, and catalog details through clic
   await expect(catalogRow).toContainText('1.0.0');
   await expect(catalogRow.getByRole('button', { name: '详情', exact: true })).toHaveCount(0);
   await expect(
-    catalogRow.getByRole('button', { name: '编辑', exact: true }).locator('.el-icon')
+    catalogRow.getByRole('button', { name: '编辑', exact: true }).locator('[data-mar-icon]')
   ).toBeVisible();
   const firstCheckUpdateButton = catalogRow.getByRole('button', { name: '检查更新' });
   const secondCatalogRow = page

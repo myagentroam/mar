@@ -1255,7 +1255,7 @@ test('ADMIN enables hosting only on organization Nodes and can disable existing 
   const enable = details.getByRole('button', { name: '启用托管对话', exact: true });
   await expect(enable).toBeEnabled();
   await expect(enable).toHaveClass(/mar-ui-button--primary/);
-  await expect(enable.locator('.el-icon')).toHaveCount(1);
+  await expect(enable.locator('[data-mar-icon]')).toHaveCount(1);
   await expect(
     details.locator('.mar-detail-descriptions').getByRole('button', { name: '启用托管对话' })
   ).toHaveCount(1);
@@ -1375,7 +1375,7 @@ test('Node environment secrets use default controls, compact layout, and plain-t
   await page.getByRole('cell', { name: '研发节点', exact: true }).click();
   const details = page.getByRole('dialog', { name: '节点详情' });
   const spacing = await details.evaluate((element) => {
-    const descriptions = element.querySelector('.el-descriptions')!.getBoundingClientRect();
+    const descriptions = element.querySelector('.mar-ui-descriptions')!.getBoundingClientRect();
     const secrets = element.querySelector('.node-secret-manager')!.getBoundingClientRect();
     return Math.round(secrets.top - descriptions.bottom);
   });
@@ -1713,7 +1713,7 @@ test('Enterprise management exposes role-based sections and disables writes when
   await expect(auditDetails).toContainText('权限不足');
   await expect(auditDetails.getByText('请求 ID', { exact: true })).toBeVisible();
   await expect(
-    auditDetails.locator('.el-descriptions__label').getByText('组织', { exact: true })
+    auditDetails.locator('.mar-ui-descriptions__label').getByText('组织', { exact: true })
   ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(auditDetails).toBeHidden();
@@ -1752,13 +1752,13 @@ test('Enterprise management exposes role-based sections and disables writes when
   ])
     await expect(auditDetails.getByText(text, { exact: true }).first()).toBeVisible();
   await expect(
-    auditDetails.locator('.el-descriptions__label').getByText('Node', { exact: true })
+    auditDetails.locator('.mar-ui-descriptions__label').getByText('Node', { exact: true })
   ).toBeVisible();
   await expect(
-    auditDetails.locator('.el-descriptions__label').getByText('Workspace', { exact: true })
+    auditDetails.locator('.mar-ui-descriptions__label').getByText('Workspace', { exact: true })
   ).toBeVisible();
   await expect(
-    auditDetails.locator('.el-descriptions__label').getByText('Session', { exact: true })
+    auditDetails.locator('.mar-ui-descriptions__label').getByText('Session', { exact: true })
   ).toBeVisible();
   await expect(auditDetails.getByText('节点 ID', { exact: true })).toHaveCount(0);
   await page.evaluate(() =>
@@ -2331,7 +2331,7 @@ test('Reload restores CSRF and temporary directories and Workspaces are created 
   await expect(upwardButton).toContainText('返回上一级');
   await expect(upwardButton).toHaveClass(/mar-ui-button--ghost/);
   const createDirectoryButton = selectionPanel.getByRole('button', { name: '新建目录' });
-  await expect(createDirectoryButton.locator('.el-icon')).toBeVisible();
+  await expect(createDirectoryButton.locator('[data-mar-icon]')).toBeVisible();
   const selectCurrentButton = selectionPanel.getByRole('button', { name: '选择当前目录' });
   await expect(selectCurrentButton).toHaveClass(/mar-ui-button/);
   await expect(selectCurrentButton).not.toHaveClass(/mar-ui-button--ghost/);

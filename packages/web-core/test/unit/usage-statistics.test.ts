@@ -1,6 +1,5 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   PersonalUsageOverview,
@@ -805,9 +804,7 @@ describe('usage statistics settings contract', () => {
     const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
     // Tooltip layout is browser-only; SSR has no tooltip output.
     app.directive('tooltip', {});
-    app.use(i18n).use(ElementPlus);
-    app.provide(ID_INJECTION_KEY, { prefix: 942, current: 0 });
-    app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+    app.use(i18n);
     const html = await renderToString(app);
     const summary = html.match(/<div class="section-heading"[^>]*>([\s\S]*?)<\/div>/u)?.[1];
     expect(summary).toBeDefined();
@@ -885,9 +882,7 @@ describe('usage statistics settings contract', () => {
           })
       });
       app.directive('tooltip', {});
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html.includes('mar-ui-pagination__total')).toBe(total);
       expect(
@@ -1004,7 +999,7 @@ describe('usage statistics settings contract', () => {
         });
         await flushComponent();
         expect(
-          view.findAll('svg').find((node) => node.props['role'] === 'img')?.props['aria-label']
+          view.findAll('svg').find((node) => node.props['role'] === 'group')?.props['aria-label']
         ).toBe(commonMessages[locale].usageStatistics.trend);
         const tables = view.findAll('MarTable');
         expect(tables).toHaveLength(1);
@@ -1024,9 +1019,7 @@ describe('usage statistics settings contract', () => {
       const request = vi.fn();
       const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
       app.directive('tooltip', {});
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 940, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
 
       expect(html).toContain(commonMessages[locale].usageStatistics.title);
@@ -1067,9 +1060,7 @@ describe('usage statistics settings contract', () => {
       );
       const app = createSSRApp({ render: () => h(UsageStatisticsSettings, { request }) });
       app.directive('tooltip', {});
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 941, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       const legend = html.match(/<div class="legend"[^>]*>([\s\S]*?)<\/div>/u)?.[1];
       expect(legend).toBeDefined();

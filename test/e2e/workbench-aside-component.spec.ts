@@ -487,7 +487,7 @@ for (const [language, theme, width] of [
           divider: resolve('--mar-border-subtle'),
           mediumBorder: resolve('--mar-border-medium'),
           tabBorder: resolve('--mar-border-default'),
-          success: resolve('--el-color-success')
+          success: resolve('--mar-control-color-success')
         };
         probe.remove();
         return result;

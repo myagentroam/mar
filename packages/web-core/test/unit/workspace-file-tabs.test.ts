@@ -9,7 +9,6 @@ import {
   type VNode
 } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { createConsoleKeyboardShortcutService } from '../../src/service/console-keyboard-shortcut-service.js';
 import { createFilePreviewWindowInteractionService } from '../../src/service/file-preview-window-interaction-service.js';
 import {
@@ -789,10 +788,7 @@ describe('Workspace file tabs frame', () => {
         )
     });
     app.use(i18n);
-    app.use(ElementPlus);
     app.directive('tooltip', { getSSRProps: () => ({}) });
-    app.provide(ID_INJECTION_KEY, { prefix: 40, current: 0 });
-    app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
 
     const html = await renderToString(app);
 

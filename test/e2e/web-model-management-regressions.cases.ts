@@ -568,8 +568,8 @@ for (const english of [false, true]) {
     await catalogDialog
       .locator('.mar-ui-table__row')
       .filter({ hasText: 'Catalog model' })
-      .locator('.el-checkbox__inner')
-      .click();
+      .getByRole('checkbox')
+      .check();
     await catalogDialog.getByRole('button', { name: strings.importCatalog, exact: true }).click();
     await expect(page.getByText(strings.created, { exact: true })).toBeVisible();
     expect(importBodies).toHaveLength(1);
@@ -614,9 +614,9 @@ for (const english of [false, true]) {
       return page.getByRole('dialog', { name: strings.edit, exact: true });
     }
     const legacy = await edit();
-    await expect(legacy.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked();
-    await legacy.locator('label.el-checkbox').filter({ hasText: label }).click();
-    await expect(legacy.getByRole('checkbox', { name: label, exact: true })).toBeChecked();
+    const legacyCompact = legacy.getByRole('checkbox', { name: label, exact: true });
+    await expect(legacyCompact).not.toBeChecked();
+    await legacyCompact.check();
     await expect(
       legacy.getByRole('checkbox', {
         name: english ? 'Supports Subagent' : '支持 Subagent',
@@ -634,8 +634,9 @@ for (const english of [false, true]) {
     await details.getByRole('button', { name: strings.close, exact: true }).click();
 
     const reopened = await edit();
-    await expect(reopened.getByRole('checkbox', { name: label, exact: true })).toBeChecked();
-    await reopened.locator('label.el-checkbox').filter({ hasText: label }).click();
+    const reopenedCompact = reopened.getByRole('checkbox', { name: label, exact: true });
+    await expect(reopenedCompact).toBeChecked();
+    await reopenedCompact.uncheck();
     await reopened.getByRole('button', { name: strings.save, exact: true }).click();
     await expect.poll(() => updates.at(-1)?.unifiedCompact).toBe(false);
     const disabled = await edit();
@@ -751,8 +752,7 @@ for (const english of [false, true]) {
       exact: true
     });
     await expect(conversationCheckbox).toBeChecked();
-    await legacyDialog.locator('label.el-checkbox').filter({ hasText: conversationLabel }).click();
-    await expect(conversationCheckbox).not.toBeChecked();
+    await conversationCheckbox.uncheck();
     const legacySpeedField = legacyDialog
       .locator('.mar-ui-form-item')
       .filter({ hasText: strings.speed });

@@ -1,6 +1,5 @@
 import { createSSRApp, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import LoadingPanel from '../../src/view/common/LoadingPanel.vue';
 import BusyIndicator from '../../src/view/common/BusyIndicator.vue';
@@ -31,10 +30,7 @@ async function render(
   const app = createSSRApp({
     render: () => h(component, props, content ? () => h('input', { value: content }) : undefined)
   });
-  app.use(ElementPlus);
   app.directive('tooltip', { getSSRProps: () => ({}) });
-  app.provide(ID_INJECTION_KEY, { prefix: 700, current: 0 });
-  app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
   return renderToString(app);
 }
 

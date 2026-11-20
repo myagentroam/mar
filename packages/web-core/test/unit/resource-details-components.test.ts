@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import RuntimeEnvironment from '../../src/view/settings/NodeRuntimeEnvironment.vue';
 import WorkspaceGitSettings from '../../src/view/settings/WorkspaceGitSettings.vue';
 import UnitDetails from '../../src/view/settings/NodeDetailsDialogs.vue?unit-render';
@@ -304,9 +303,7 @@ describe('Public resource details', () => {
       });
       // Tooltip layout is browser-only; SSR has no tooltip output.
       app.directive('tooltip', {});
-      app.use(ElementPlus).use(i18n);
-      app.provide(ID_INJECTION_KEY, { prefix: 1, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       const save = html
         .match(/<button\b[^>]*>[\s\S]*?<\/button>/gu)
@@ -375,7 +372,7 @@ describe('Public resource details', () => {
         })
     });
     app.directive('tooltip', {});
-    app.use(i18n).use(ElementPlus);
+    app.use(i18n);
     const html = await renderToString(app);
     expect(html).toContain('/usr/bin/git');
     expect(html).not.toContain('invalid-entry');

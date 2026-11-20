@@ -237,7 +237,12 @@ for (const [locale, width] of [
       else await page.mouse.click(4, 4);
       await expect(ui.dialog).toHaveCount(0);
       await expect(ui.create).toBeFocused();
-      if (close === 'escape') await expect(ui.create).toHaveCSS('outline-style', 'none');
+      if (close === 'escape') {
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await expect(ui.create).toBeFocused();
+        await expect(ui.create).toHaveCSS('outline-style', 'solid');
+      }
     }
     await ui.create.click();
     await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveCount(0);
@@ -254,7 +259,8 @@ test('Registered users form retains its existing validation and optional role/or
   const nickname = ui.dialog.getByRole('textbox', { name: 'Display Name' });
   const submit = ui.dialog.getByRole('button', { name: 'Create user', exact: true });
   await expect(ui.dialog.getByRole('combobox', { name: 'Role' })).toBeVisible();
-  await expect(ui.dialog.getByRole('textbox', { name: 'Organization' })).toHaveValue('Root');
+  const organization = ui.dialog.getByRole('combobox', { name: /Organization/ });
+  await expect(organization).toHaveValue('Root');
   await submit.click();
   await expect(ui.dialog.locator('.mar-ui-form-item__error')).toHaveText(['Enter a username']);
   await username.fill('   ');
@@ -310,11 +316,13 @@ test('Registered users form retains its existing validation and optional role/or
   await username.fill('scoped-user');
   await ui.dialog.getByRole('combobox', { name: 'Role' }).press('Enter');
   await page.getByRole('option', { name: /organization administrator/i }).click();
-  await ui.dialog.getByRole('textbox', { name: 'Organization' }).click();
-  await page.getByRole('menuitem', { name: 'Root' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Team' })).toBeVisible();
-  await page.getByRole('menuitem', { name: 'Team' }).click();
-  await expect(ui.dialog.getByRole('textbox', { name: 'Organization' })).toHaveValue(/Team/);
+  await organization.click();
+  await organization.fill('Team');
+  const choices = ui.dialog.locator('.mar-ui-cascader__popup');
+  const team = choices.getByRole('button', { name: 'Root / Team', exact: true });
+  await expect(team).toBeVisible();
+  await team.click();
+  await expect(organization).toHaveValue(/Team/);
   await submit.click();
   await expect(receipt).toContainText('scoped-user');
   expect(ui.writes[2]).toEqual({ username: 'scoped-user', role: 'ORG_ADMIN', organizationId: 2 });

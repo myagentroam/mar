@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { computed, createSSRApp, h, nextTick, shallowReactive, ref } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus from 'element-plus';
 import Surface from '../../src/view/workbench/WorkbenchSurface.vue?unit-render';
 import SessionPane from '../../src/view/workbench/WorkspaceSessionPane.vue?unit-render';
 import {
@@ -414,7 +413,6 @@ describe('Workbench surface composition behavior', () => {
         async function renderUnavailable() {
           const app = createSSRApp({ render: () => h(Surface, { page } as never) });
           app.use(i18n);
-          app.use(ElementPlus);
           app.directive('tooltip', {});
           return renderToString(app);
         }
@@ -868,7 +866,7 @@ describe('Workbench surface composition behavior', () => {
       });
       const view = renderComponent(Surface, { page });
       try {
-        expect(view.findAll('ElEmpty')).toHaveLength(0);
+        expect(view.findAll('MarEmpty')).toHaveLength(0);
         expect(textContent(view.root)).toContain(
           translate('generated.workbenchSurface.workspaceMetadataUnavailable')
         );

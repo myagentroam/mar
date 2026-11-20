@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import Page from '../../src/view/settings/SystemConfigurationPage.vue?unit-render';
 import { createSystemConfigurationService } from '../../src/service/system-configuration-service.js';
 import { i18n } from '../../src/service/locale-preference-service.js';
@@ -61,9 +60,7 @@ describe('Public system configuration page', () => {
       }
       const request = vi.fn(async <T>() => ({ skillTlsVerificationDisabled: false }) as T);
       const app = createSSRApp({ render: () => h(Page, { request, writable: false }) });
-      app.use(i18n).use(ElementPlus);
-      app.provide(ID_INJECTION_KEY, { prefix: 922, current: 0 });
-      app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
+      app.use(i18n);
       const html = await renderToString(app);
       expect(html).toContain(commonMessages[locale].generated.systemConfigurationPage.refresh);
       expect(html).not.toContain('audit-retention');

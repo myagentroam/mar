@@ -1,9 +1,8 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { h, ref } from 'vue';
-import ElementPlus, { ElButton, ElDatePicker, ElInputNumber } from 'element-plus';
+import { MarDatePicker } from '@myagentroam/mar-ui/date-picker';
+import { MarInputNumber } from '@myagentroam/mar-ui/input-number';
 import { MarButton } from '@myagentroam/mar-ui/button';
-import 'element-plus/dist/index.css';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 import MarIcon from '../../src/view/common/MarIcon.vue';
 import { iconShapes, type MarIconName } from '../../src/util/icon-shapes.js';
@@ -207,20 +206,20 @@ const app = createApp({
               ])
             : changesView(),
           h(
-            ElButton,
+            MarButton,
             { onClick: () => (restoringPath.value = changeKey(entry)) },
             () => 'Show restore loading'
           ),
           watchRetryFixture
             ? h(
-                ElButton,
+                MarButton,
                 { onClick: () => (watchStatus.value = 'ready') },
                 () => 'Finish Watch retry'
               )
             : undefined,
           manyChanges
             ? h(
-                ElButton,
+                MarButton,
                 {
                   onClick: () => {
                     changesRefreshing.value = false;
@@ -266,9 +265,9 @@ const app = createApp({
               },
               () => 'Query usage'
             ),
-            h(ElButton, { icon: marIcon('refresh') }, () => 'Refresh credential'),
-            h(ElButton, { icon: marIcon('key') }, () => 'Sign in again'),
-            h(ElButton, { icon: marIcon('help') }, () => 'Help')
+            h(MarButton, { icon: marIcon('refresh') }, () => 'Refresh credential'),
+            h(MarButton, { icon: marIcon('key') }, () => 'Sign in again'),
+            h(MarButton, { icon: marIcon('help') }, () => 'Help')
           ]),
           h(
             'section',
@@ -402,7 +401,7 @@ const app = createApp({
               })
             ]
           ),
-          h(ElButton, { icon: marIcon('edit'), size: 'small' }, () => 'Edit'),
+          h(MarButton, { icon: marIcon('edit'), size: 'small' }, () => 'Edit'),
           h('span', { 'data-testid': 'status-icon', style: { fontSize: '11px' } }, [
             h(MarIcon, { name: 'clock' })
           ]),
@@ -736,37 +735,21 @@ const app = createApp({
           ]),
           h('section', { 'data-testid': 'management' }, [
             h('h2', {}, 'Management'),
-            h(
-              ElDatePicker,
-              {
-                modelValue: new Date(2026, 9, 23),
-                placeholder: 'Review date',
-                prefixIcon: marIcon('calendar'),
-                clearIcon: marIcon('clear-input')
-              },
-              {
-                'prev-month': () => h(MarIcon, { name: 'chevron-left' }),
-                'next-month': () => h(MarIcon, { name: 'chevron-right' }),
-                'prev-year': () => h(MarIcon, { name: 'chevrons-left' }),
-                'next-year': () => h(MarIcon, { name: 'chevrons-right' })
+            h(MarDatePicker, {
+              modelValue: new Date(2026, 9, 23),
+              placeholder: 'Review date',
+              prefixIcon: marIcon('calendar'),
+              clearIcon: marIcon('clear-input')
+            }),
+            h(MarInputNumber, {
+              'data-testid': 'quantity',
+              modelValue: quantity.value,
+              min: 1,
+              max: 5,
+              'onUpdate:modelValue': (value: number | null | undefined) => {
+                quantity.value = value ?? 1;
               }
-            ),
-            h(
-              ElInputNumber,
-              {
-                'data-testid': 'quantity',
-                modelValue: quantity.value,
-                min: 1,
-                max: 5,
-                'onUpdate:modelValue': (value: number | undefined) => {
-                  quantity.value = value ?? 1;
-                }
-              },
-              {
-                'increase-icon': () => h(MarIcon, { name: 'plus' }),
-                'decrease-icon': () => h(MarIcon, { name: 'subtract' })
-              }
-            ),
+            }),
             h(MailTemplateManagement, {
               writable: true,
               request: async <T>(url: string) => {
@@ -811,4 +794,4 @@ const app = createApp({
       ]);
   }
 });
-app.use(i18n).use(ElementPlus).mount('#app');
+app.use(i18n).mount('#app');

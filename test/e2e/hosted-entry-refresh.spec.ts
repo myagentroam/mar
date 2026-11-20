@@ -10,6 +10,54 @@ test.afterAll(async () => {
   await fixture?.close();
 });
 
+for (const [width, theme] of [
+  [1280, 'daylight'],
+  [390, 'vscode-dark-2026']
+] as const) {
+  test(`Hosted directory centers its first load at ${width}px in ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    let releaseDirectory!: () => void;
+    const pendingDirectory = new Promise<void>((resolve) => {
+      releaseDirectory = resolve;
+    });
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/hosted-conversations') {
+        await pendingDirectory;
+        return route.fulfill({ json: { items: [], nextCursor: null } });
+      }
+      if (path === '/api/conversation-templates') return route.fulfill({ json: { templates: [] } });
+      return route.abort('failed');
+    });
+    const list = page.locator('#hosted-pane-history .history-list');
+    const ring = list.locator('.mar-ui-loading__indicator');
+    try {
+      await page.goto(
+        `${fixture.url}hosted-entry.html?workspace-page=1&history-open=1&theme=${theme}`
+      );
+      await expect(list).toHaveAttribute('aria-busy', 'true');
+      await expect(ring).toBeVisible();
+      const listBounds = (await list.boundingBox())!;
+      const ringBounds = (await ring.boundingBox())!;
+      expect(listBounds.height).toBeGreaterThan(200);
+      expect(
+        Math.abs(ringBounds.x + ringBounds.width / 2 - listBounds.x - listBounds.width / 2)
+      ).toBeLessThan(1);
+      expect(
+        Math.abs(ringBounds.y + ringBounds.height / 2 - listBounds.y - listBounds.height / 2)
+      ).toBeLessThan(1);
+      await expect(page.getByRole('textbox', { name: 'Search chat titles' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'New chat', exact: true })).toBeEnabled();
+      await expect(list.getByText('No conversations yet.')).toHaveCount(0);
+    } finally {
+      releaseDirectory();
+    }
+    await expect(ring).toHaveCount(0);
+    await expect(list.getByText('No conversations yet.')).toBeVisible();
+  });
+}
+
 const template = {
   id: 'template-1',
   nodeId: 'node-1',

@@ -31,7 +31,7 @@ test('Authentication recovery preserves CSRF after network failure and resumes t
     if (path.startsWith('/api/') && !path.startsWith('/api/auth/')) businessRequests.push(path);
   });
   await page.goto('/console?view=settings&settings=account');
-  await expect(page.locator('.el-message')).toContainText('无法确认登录状态，请刷新重试');
+  await expect(page.locator('.mar-message')).toContainText('无法确认登录状态，请刷新重试');
   await expect(page.getByRole('textbox', { name: '账户', exact: true })).toHaveCount(0);
   await expect(page.getByTestId('workbench-brand')).toHaveCount(0);
   expect(businessRequests).toEqual([]);
@@ -66,7 +66,7 @@ test('CSRF renewal failure hides protected content and recovers after reload', a
     if (new URL(request.url()).pathname === '/api/nodes') nodeReads += 1;
   });
   await page.goto('/console?view=settings&settings=account');
-  await expect(page.locator('.el-message')).toContainText('无法确认登录状态，请刷新重试');
+  await expect(page.locator('.mar-message')).toContainText('无法确认登录状态，请刷新重试');
   await expect(page.getByRole('textbox', { name: '账户', exact: true })).toHaveCount(0);
   await expect(page.getByTestId('workbench-brand')).toHaveCount(0);
   expect(nodeReads).toBe(0);
@@ -87,7 +87,7 @@ test('Explicit unauthenticated recovery clears CSRF and shows login', async ({ p
   await page.goto('/console');
   await expect(page.getByRole('textbox', { name: '账户', exact: true })).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('mar.user.csrf-token'))).toBeNull();
-  await expect(page.locator('.el-message')).toHaveCount(0);
+  await expect(page.locator('.mar-message')).toHaveCount(0);
 });
 
 test('Enterprise account identity keeps OAuth unlinking without passing roles to shared settings', async ({
@@ -531,7 +531,7 @@ test('Personal password dialog closes only after success and reopens without sen
   await confirmation.fill('updated-password');
   await submit.click();
   await expect(
-    page.locator('.el-message').filter({ hasText: 'Fixture password rejected' })
+    page.locator('.mar-message').filter({ hasText: 'Fixture password rejected' })
   ).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(current).toHaveValue('old-password');
@@ -543,7 +543,7 @@ test('Personal password dialog closes only after success and reopens without sen
   await expect(submit).toHaveAttribute('aria-busy', 'true');
   await finish();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('.el-message').filter({ hasText: '密码已更新' })).toBeVisible();
+  await expect(page.locator('.mar-message').filter({ hasText: '密码已更新' })).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('mar.user.csrf-token'))).toBe(
     'updated-csrf'
   );
@@ -698,7 +698,7 @@ for (const delayedStep of ['workbench recovery', 'session refresh'] as const) {
       await submit.click();
       await expect.poll(() => blocked).toBe(true);
       await expect(dialog).toHaveCount(0);
-      await expect(page.locator('.el-message').filter({ hasText: '密码已更新' })).toBeVisible();
+      await expect(page.locator('.mar-message').filter({ hasText: '密码已更新' })).toBeVisible();
       expect(await page.evaluate(() => sessionStorage.getItem('mar.user.csrf-token'))).toBe(
         'confirmed-csrf'
       );

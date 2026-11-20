@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 const productRoot = resolve(import.meta.dirname, '../../..');
 const webRequire = createRequire(resolve(productRoot, 'packages/web-core/package.json'));
@@ -19,12 +19,7 @@ export async function startUserManagementFixture() {
     resolve: {
       alias: {
         '@': resolve(productRoot, 'ee/web/src'),
-        vue: webRequire.resolve('vue/dist/vue.esm-bundler.js'),
-        'element-plus': dirname(webRequire.resolve('element-plus/package.json')),
-        '@element-plus/icons-vue': resolve(
-          dirname(webRequire.resolve('@element-plus/icons-vue/package.json')),
-          'dist/index.js'
-        )
+        vue: webRequire.resolve('vue/dist/vue.esm-bundler.js')
       }
     },
     server: {

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, h, nextTick, ref, shallowReactive, toRaw } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import WorkspaceGitChanges from '../../src/view/workspace/WorkspaceGitChanges.vue?unit-render';
 import { renderComponent, textContent, trigger } from './support/component-renderer.js';
@@ -378,9 +377,6 @@ describe.each(['zh-CN', 'en-US'] as const)('Git changes in %s', (locale) => {
     });
     app.directive('tooltip', {});
     app.use(i18n);
-    app.use(ElementPlus);
-    app.provide(ID_INJECTION_KEY, { prefix: 400, current: 0 });
-    app.provide(ZINDEX_INJECTION_KEY, { current: 0 });
     const html = await renderToString(app);
     expect(html).toContain('linked');
     expect(html).toContain('feature/test');

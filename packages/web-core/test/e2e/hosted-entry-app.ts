@@ -9,7 +9,6 @@ import { createHostedConversationEntryService } from '../../src/service/hosted-c
 import { createHostedConversationWorkspaceService } from '../../src/service/hosted-conversation-workspace-service.js';
 import { i18n, localePreferenceService } from '../../src/service/locale-preference-service.js';
 import { themePreferenceService } from '../../src/service/theme-preference-service.js';
-import 'element-plus/theme-chalk/dark/css-vars.css';
 import '../../src/styles.css';
 
 localePreferenceService().setLocale('en-US');

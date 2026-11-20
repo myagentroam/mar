@@ -142,7 +142,7 @@ for (const language of [
     expect(tags!.y).toBeGreaterThanOrEqual(button!.y + button!.height);
     expect(button!.x + button!.width).toBeLessThanOrEqual(panel!.x + panel!.width);
     for (const tag of await heading.locator('.repository-tags-row .mar-ui-tag').all()) {
-      await expect(tag).not.toHaveClass(/el-zoom-in-center-enter-active/);
+      await expect(tag).toHaveCSS('animation-name', 'none');
     }
     await heading.scrollIntoViewIfNeeded();
     await expect(heading.locator('.repository-title-row')).toBeVisible();

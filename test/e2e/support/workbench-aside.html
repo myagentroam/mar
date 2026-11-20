@@ -10,8 +10,6 @@
     <script type="module">
       import { computed, defineComponent, h, onMounted, ref } from 'vue';
       import { createTooltipApp as createApp } from '/packages/web-core/test/e2e/tooltip-app.ts';
-      import ElementPlus from 'element-plus';
-      import 'element-plus/dist/index.css';
       import '/packages/web-core/src/styles.css';
       import WorkbenchAside from '/packages/web-core/src/view/workbench/WorkbenchAside.vue';
       import WorkspaceHtmlBrowser from '/packages/web-core/src/view/workspace/WorkspaceHtmlBrowser.vue';
@@ -239,9 +237,7 @@
             h('output', { id: 'activations' }, activations.value)
           ];
         }
-      })
-        .use(ElementPlus)
-        .mount('#app');
+      }).mount('#app');
     </script>
   </body>
 </html>

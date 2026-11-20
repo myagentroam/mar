@@ -1,7 +1,5 @@
 import { createTooltipApp as createApp } from './tooltip-app.js';
 import { h, ref } from 'vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import '../../src/styles.css';
 import WorkspaceTabs from '../../src/view/workspace/WorkspaceTabs.vue';
 import WorkbenchHeader from '../../src/view/workbench/WorkbenchHeader.vue';
@@ -131,4 +129,4 @@ function renderWorkspaceTabs() {
     : content;
 }
 
-app.use(i18n).use(ElementPlus).mount('#app');
+app.use(i18n).mount('#app');

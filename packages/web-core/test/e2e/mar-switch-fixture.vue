@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { ElSwitch } from 'element-plus';
-import 'element-plus/es/components/switch/style/css';
 import { MarSwitch } from '@myagentroam/mar-ui/switch';
 
 const draft = ref(false);
@@ -18,15 +16,11 @@ function finish(accept: boolean) {
 
 <template>
   <main class="switch-fixture">
-    <h1>Switch comparison</h1>
+    <h1>Switch states</h1>
     <form>
       <div class="switch-row">
         <label for="draft">Draft setting</label>
         <MarSwitch id="draft" v-model="draft" name="draft" @change="changes.push($event)" />
-      </div>
-      <div class="switch-row">
-        <span id="reference-label">EL reference</span>
-        <ElSwitch :model-value="draft" aria-label="EL reference" />
       </div>
       <div class="switch-row">
         <label for="disabled">Unavailable setting</label>

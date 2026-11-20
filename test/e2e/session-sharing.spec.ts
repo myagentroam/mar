@@ -291,7 +291,7 @@ test('Work session shares preserve the original conversation, readonly previews 
         response.url().includes('/shares/' + first.share.id) &&
         response.request().method() === 'DELETE'
     );
-    await consolePage.locator('.mar-ui-dialog__footer .el-button--primary').click();
+    await consolePage.locator('.mar-ui-dialog__footer .mar-ui-button--primary').click();
     expect((await removal).status()).toBe(204);
     await expect(
       managementDialog.locator('.mar-ui-table__row').filter({ hasText: first.share.id })
