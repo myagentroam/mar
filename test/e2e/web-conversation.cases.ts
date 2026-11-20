@@ -99,8 +99,9 @@ test('Assistant Markdown images use compact thumbnails and the conversation imag
         .poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth))
         .toBe(imageSizes[index]!.width);
       const bounds = await img.boundingBox();
-      expect(bounds!.width).toBeLessThanOrEqual(160);
-      expect(bounds!.height).toBeLessThanOrEqual(120);
+      // DOM rectangles can differ by a floating-point rounding step in Firefox.
+      expect(bounds!.width).toBeLessThanOrEqual(160.01);
+      expect(bounds!.height).toBeLessThanOrEqual(120.01);
       const source = await img.getAttribute('data-image-source');
       const name = await img.getAttribute('alt');
       const previewResponse = source?.startsWith('/api/')

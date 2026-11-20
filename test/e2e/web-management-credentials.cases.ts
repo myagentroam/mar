@@ -250,6 +250,16 @@ test('Secret and OAuth management show read-only row details and organization se
     });
   await expect(secretDialog).toBeHidden();
 
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const pauseClosing = await page.addStyleTag({
+    content: '.mar-ui-dialog-overlay[data-closing] { animation-play-state: paused !important }'
+  });
+  await page.getByRole('button', { name: '新增环境密钥', exact: true }).click();
+  await secretDialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(secretDialog).toHaveAttribute('data-closing', 'true');
+  await pauseClosing.evaluate((element) => element.remove());
+  await expect(secretDialog).toBeHidden();
+
   await managementMenu.getByRole('button', { name: 'OAuth 配置', exact: true }).click();
   const providerRow = page
     .locator('.oauth-provider-table .mar-ui-table__row')

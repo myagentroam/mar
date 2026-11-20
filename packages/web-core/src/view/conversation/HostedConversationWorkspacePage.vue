@@ -312,9 +312,18 @@ const conversationImages = createConversationImageService(props.workspace.select
   }
 });
 const filePage = ref<{ focus(): void }>();
+const fileSurface = ref<InstanceType<typeof FilePreviewSurface>>();
+let closingFileSurface = false;
 const filePreview = createHostedConversationFilePreviewService({
   source: props.workspace
 });
+watch(
+  filePreview.file,
+  (file) => {
+    if (file && closingFileSurface) fileSurface.value?.cancelClose();
+  },
+  { flush: 'sync' }
+);
 const filePreviewError = computed(() =>
   filePreview.error.value === undefined
     ? undefined
@@ -858,6 +867,17 @@ function closePreview(): void {
   filePreview.close();
   conversationImages.previewOpen.value = false;
   conversationImages.preview.value = undefined;
+}
+
+async function dismissFilePreview(): Promise<void> {
+  const surface = fileSurface.value;
+  if (!surface || closingFileSurface) return;
+  closingFileSurface = true;
+  try {
+    if ((await surface.close()) && fileSurface.value === surface) filePreview.close();
+  } finally {
+    closingFileSurface = false;
+  }
 }
 
 function hostedErrorMessage(error: unknown): string {
@@ -1404,6 +1424,7 @@ onBeforeUnmount(() => {
       />
       <FilePreviewSurface
         v-if="filePreview.visible.value && filePreview.content.value"
+        ref="fileSurface"
         :overlay="true"
         :label="
           translate('generated.filePreviewDialog.filePreview', {
@@ -1411,7 +1432,7 @@ onBeforeUnmount(() => {
           })
         "
         @focus="filePage?.focus()"
-        @close="filePreview.close"
+        @close="dismissFilePreview"
       >
         <WorkspaceTextFilePage
           :quote-target="composer?.quoteTarget"
@@ -1438,8 +1459,8 @@ onBeforeUnmount(() => {
           :target-line="filePreview.targetLine.value"
           :target-column="filePreview.targetColumn.value"
           :write-enabled="false"
-          @close="filePreview.close"
-          @quoted="filePreview.close"
+          @close="dismissFilePreview"
+          @quoted="dismissFilePreview"
           @download="filePreview.download"
           @open-markdown-file="
             (path, external) => openLinkedFile(path, undefined, undefined, external)
@@ -1457,7 +1478,7 @@ onBeforeUnmount(() => {
           :fullscreen="true"
           :contained="true"
           :kind="filePreview.kind.value"
-          @close="filePreview.close"
+          @close="dismissFilePreview"
           @download="filePreview.download"
         />
       </FilePreviewSurface>

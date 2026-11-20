@@ -366,6 +366,7 @@ for (const theme of ['light', 'dark']) {
             await expect(save).toHaveCSS('outline-width', '2px');
             await page.mouse.move(0, 0);
             await expect(save).toHaveCSS('background-color', tokens.background);
+            await expect(save).toHaveCSS('color', normal.color);
             const enabled = await save.evaluate(
               (element) => getComputedStyle(element).backgroundColor
             );
@@ -377,7 +378,7 @@ for (const theme of ['light', 'dark']) {
                 'background-color',
                 active ? tokens.pressedBackground : enabled
               );
-              if (active || width >= 768) await expect(save).toHaveCSS('color', tokens.hoverText);
+              await expect(save).toHaveCSS('color', active ? tokens.hoverText : normal.color);
             } finally {
               await page.keyboard.up('Space');
             }

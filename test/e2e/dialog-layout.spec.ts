@@ -623,3 +623,42 @@ for (const kind of ['short', 'centered', 'fullscreen', 'file', 'image']) {
     }
   });
 }
+
+for (const kind of ['file', 'image'] as const) {
+  test(`${kind} preview fades its viewport scrim on close`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.setViewportSize({ width: 390, height: 620 });
+    await visit(page, kind);
+    const style = await page.addStyleTag({
+      content: `
+        .mar-ui-dialog-overlay[data-closing],
+        .mar-ui-dialog-overlay[data-closing]::backdrop {
+          animation-delay: -65ms !important;
+          animation-play-state: paused !important;
+        }
+      `
+    });
+    const opener = page.getByRole('button', { name: 'Open content' });
+    await opener.click();
+    const preview = page.getByRole('dialog', {
+      name: kind === 'file' ? 'File preview' : 'Image preview'
+    });
+    await preview
+      .getByRole('button', { name: kind === 'file' ? 'Close file' : 'Close this dialog' })
+      .click();
+    await expect(preview).toHaveAttribute('data-closing', 'true');
+    const backdrop = await preview.evaluate((element) => {
+      const overlay = element.getBoundingClientRect();
+      return {
+        fillsViewport: overlay.width === innerWidth && overlay.height === innerHeight,
+        scrimOpacity: Number(getComputedStyle(element, '::backdrop').opacity)
+      };
+    });
+    expect(backdrop.fillsViewport).toBe(true);
+    expect(backdrop.scrimOpacity).toBeGreaterThan(0);
+    expect(backdrop.scrimOpacity).toBeLessThan(1);
+    await style.evaluate((element) => element.remove());
+    await expect(preview).toHaveCount(0);
+    await expect(opener).toBeFocused();
+  });
+}

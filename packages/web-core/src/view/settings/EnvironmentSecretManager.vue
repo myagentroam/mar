@@ -61,6 +61,7 @@ const operationLoading = ref(false);
 const saving = ref(false);
 const refreshLoading = ref(false);
 const dialogOpen = ref(false);
+const editorDialog = ref<InstanceType<typeof MarDialog>>();
 const editing = shallowRef<Secret>();
 const secretDetailsOpen = ref(false);
 const secretDetails = shallowRef<Secret>();
@@ -494,6 +495,7 @@ function message(error: unknown): string {
       @vue:mounted="mountMobileDialogReturn"
       @vue:before-unmount="unmountMobileDialogReturn"
       v-if="dialogOpen"
+      ref="editorDialog"
       v-model="dialogOpen"
       :before-close="requestEditorClose"
       :show-close="!saving"
@@ -553,7 +555,7 @@ function message(error: unknown): string {
         /></MarFormItem>
       </MarForm>
       <template #footer
-        ><MarButton :disabled="saving" @click="dialogOpen = false">{{
+        ><MarButton :disabled="saving" @click="editorDialog?.handleClose()">{{
           translate('generated.environmentSecretManager.cancel2')
         }}</MarButton
         ><MarButton type="primary" :loading="saving" :disabled="writable === false" @click="save">{{

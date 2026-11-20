@@ -116,6 +116,40 @@ test('Dialog honors explicit autofocus on its form field', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Draft' })).toBeFocused();
 });
 
+test('Dialog and scrim fade together before the modal releases the page', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const closingFrame = await page.addStyleTag({
+    content: `
+      .mar-ui-dialog-overlay[data-closing],
+      .mar-ui-dialog-overlay[data-closing]::backdrop {
+        animation-delay: -65ms !important;
+        animation-play-state: paused !important;
+      }
+    `
+  });
+  const opener = page.getByRole('button', { name: 'Open editor' });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Edit record' });
+  await dialog.getByRole('button', { name: 'Close this dialog' }).click();
+
+  await expect(dialog).toHaveAttribute('data-closing', 'true');
+  const { panel, scrim, modal } = await dialog.evaluate((element) => ({
+    panel: Number(getComputedStyle(element).opacity),
+    scrim: Number(getComputedStyle(element, '::backdrop').opacity),
+    modal: element.matches(':modal')
+  }));
+  expect(panel).toBeGreaterThan(0);
+  expect(panel).toBeLessThan(1);
+  expect(scrim).toBeCloseTo(panel, 3);
+  expect(modal).toBe(true);
+  await expect(page.getByText('Closed 0', { exact: true })).toBeVisible();
+
+  await closingFrame.evaluate((style) => style.remove());
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await expect(page.getByText('Closed 1', { exact: true })).toBeVisible();
+});
+
 for (const width of [390, 1280]) {
   test(`Dialog header close uses a square icon action at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 700 });
