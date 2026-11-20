@@ -1023,16 +1023,15 @@ function scopeLabel(scope: string): string {
   min-width: 200px;
 }
 .toolbar {
-  flex: 1 1 420px;
+  flex: 0 1 360px;
   min-width: 0;
-  max-width: 620px;
 }
 .catalog-filter-bar {
   display: grid;
   gap: 10px;
 }
 .catalog-filter-bar :deep(.mar-ui-input) {
-  width: min(620px, 100%);
+  width: min(320px, 100%);
 }
 .skill-category-strip {
   display: flex;
@@ -1110,7 +1109,8 @@ function scopeLabel(scope: string): string {
     align-items: stretch;
     flex-direction: column;
   }
-  .source-search-bar :deep(.mar-ui-select) {
+  .source-search-bar :deep(.mar-ui-select),
+  .catalog-filter-bar :deep(.mar-ui-input) {
     width: 100%;
   }
   .source-search-bar .toolbar {

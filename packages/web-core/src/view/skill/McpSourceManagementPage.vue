@@ -961,18 +961,18 @@ p {
   min-width: 200px;
 }
 .toolbar {
-  flex: 1 1 420px;
+  flex: 0 1 360px;
   min-width: 0;
-  max-width: 620px;
 }
 .mcp-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 .mcp-toolbar > :deep(.mar-ui-input) {
-  width: min(620px, 100%);
+  width: min(320px, 100%);
 }
 .mcp-toolbar > :deep(.mar-ui-select) {
   width: min(200px, 100%);
@@ -1010,6 +1010,7 @@ p {
     flex-direction: column;
   }
   .source-search-bar :deep(.mar-ui-select),
+  .mcp-toolbar > :deep(.mar-ui-input),
   .mcp-toolbar > :deep(.mar-ui-select) {
     width: 100%;
   }
