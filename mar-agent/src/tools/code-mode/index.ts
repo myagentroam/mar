@@ -49,7 +49,8 @@ export const codeModeToolDefinition: ClientToolDefinition = {
 - Single-tool cells are valid. Keep loops and retries bounded, and do not blindly replay operations with side effects.
 - Evaluates source in a fresh restricted ECMAScript runtime with top-level await and Promise.all. It is not Node.js or a browser. JavaScript globals do not survive between cells; bounded JSON state is available through state.
 - Accepts JavaScript source text. When exposed as a freeform tool, send the source directly; when exposed with a JSON input schema, put the source in its code field. JSON input example: \`{"code":"observe.text(1);"}\`. Do not add another JSON wrapper, quoted string, or markdown code fence inside the source.
-- Keep embedded commands, patches and source in JSON-escaped double-quoted strings when they contain backticks or literal \${...}; escape newlines as \\n, never put literal line breaks inside single- or double-quoted JS strings. JavaScript template literals would interpolate their contents before the tool runs. Do not paste Python literals such as None into JavaScript expressions.
+- When passing scripts, patches, or other embedded text to tools, prefer a form that preserves the original text without unnecessary escaping. \`String.raw\` is often a good fit for multiline text. If the text contains backticks or literal \${...}, consider a properly escaped JavaScript string or a direct text input, if available.
+- Do not paste Python literals such as None into JavaScript expressions.
 - Use only standard ECMAScript built-ins and the explicitly documented tools, observe, state, catalog and cell namespaces. Do not use Node.js, browser or Web APIs. Module imports, filesystem and network APIs are unavailable. Obtain external capabilities only through available tools. Use tools.exec to start managed processes when permitted; follow exec_wait's calling guidance for process control.
 
 Tool calls:
@@ -85,8 +86,22 @@ Inspect before a dependent edit; successful await needs no invented success flag
 const inspected = await tools.read({ reads: [{ path: "source.txt" }] });
 const sourceText = inspected.data.results[0].text;
 if (!sourceText?.includes("original=1")) throw new Error("Unexpected source");
-const patched = await tools.apply_patch({ input: "*** Begin Patch\\n*** Update File: source.txt\\n@@\\n original=1\\n+updated=2\\n*** End Patch" });
+const patch = String.raw\`*** Begin Patch
+*** Update File: source.txt
+@@
+ original=1
++updated=2
++pattern=\\bword\\b
+*** End Patch\`;
+const patched = await tools.apply_patch({ input: patch });
 observe.result(patched);
+\`\`\`
+Pass literal backslashes to a script (POSIX shell with Python installed):
+\`\`\`js
+const command = String.raw\`python3 - <<'PY'
+print('a\\0b'.split('\\0'))
+PY\`;
+observe.result(await tools.exec({ command }));
 \`\`\``,
   inputMode: 'freeform',
   inputSchema: {
