@@ -8,6 +8,7 @@ import {
   shallowRef,
   useAttrs,
   useId,
+  watch,
   type VNode
 } from 'vue';
 import { MarIcon } from '../../icons/index.js';
@@ -59,6 +60,16 @@ const { surface, text: hintText } = hint;
 let resize: ResizeObserver | undefined;
 const sort = shallowRef<{ key: string; order: Exclude<TableOrder, null> }>();
 const overrides = shallowRef<ReadonlyMap<TableKey, boolean>>(new Map());
+
+// A replacement tree reapplies default expansion so filtering cannot hide matching descendants.
+watch(
+  () => props.data,
+  () => {
+    if (props.treeProps && props.defaultExpandAll && overrides.value.size) {
+      overrides.value = new Map();
+    }
+  }
+);
 
 const height = computed(() => {
   const value = props.maxHeight;

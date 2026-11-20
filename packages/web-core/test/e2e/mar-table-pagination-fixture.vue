@@ -12,7 +12,17 @@ const rows = ref([
     note: 'Long unbroken value: abcdefghijklmnopqrstuvwxyz0123456789'
   }
 ]);
-const trees = [{ id: 'root', name: 'Parent', children: [{ id: 'leaf', name: 'Child' }] }];
+const organizationTree = [
+  {
+    id: 'root',
+    name: 'Parent',
+    children: [
+      { id: 'leaf', name: 'Child' },
+      { id: 'match', name: 'Matching organization' }
+    ]
+  }
+];
+const trees = ref(organizationTree);
 const treeProps = { children: 'children' };
 const expanded = ref<string[]>([]);
 const extra = ref(false);
@@ -35,6 +45,11 @@ function recordSort({ prop, order }: { prop: string; order: string | null }): vo
 function requestPage(value: number): void {
   requested.value = value;
   pageChanges.value.push(value);
+}
+
+function filterOrganizations(): void {
+  const root = organizationTree[0]!;
+  trees.value = [{ ...root, children: root.children.filter(({ id }) => id === 'match') }];
 }
 </script>
 
@@ -75,6 +90,7 @@ function requestPage(value: number): void {
     <output aria-label="Sort">{{ sorts }}</output>
     <output aria-label="Expanded rows">{{ expanded.join(',') }}</output>
 
+    <button type="button" @click="filterOrganizations">Filter organizations</button>
     <MarTable
       aria-label="Organizations"
       :data="trees"

@@ -76,6 +76,24 @@ test('Table expands controlled details and tree branches without opening row act
   await expect(page.getByRole('table', { name: 'Empty table' })).toContainText('Nothing here');
 });
 
+test('Table reapplies default expansion to a filtered tree without resetting on unrelated updates', async ({
+  page
+}) => {
+  const tree = page.getByRole('table', { name: 'Organizations' });
+  const match = tree.getByRole('cell', { name: 'Matching organization' });
+  await expect(match).toBeVisible();
+  await tree.getByRole('button', { name: 'Collapse row' }).click();
+  await expect(match).toBeHidden();
+  await page.getByRole('button', { name: 'Toggle column' }).click();
+  await expect(match).toBeHidden();
+
+  await page.getByRole('button', { name: 'Filter organizations' }).click();
+  await expect(match).toBeVisible();
+  await expect(tree.getByRole('cell', { name: 'Child', exact: true })).toHaveCount(0);
+  await tree.getByRole('button', { name: 'Collapse row' }).click();
+  await expect(match).toBeHidden();
+});
+
 test('Table keeps narrow overflow local and offers one enterable full-value hint', async ({
   page
 }) => {
