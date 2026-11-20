@@ -202,6 +202,40 @@ async function fixture(
 }
 
 describe('MCP discovery runtime', () => {
+  it.each([false, true])(
+    'returns the definition budget diagnostic to the model with Code Mode=%s',
+    async (codeMode) => {
+      const f = await fixture(codeMode);
+      try {
+        const value = catalog();
+        f.update({
+          ...value,
+          tools: value.tools.map((tool) =>
+            tool.definition.name === externalName
+              ? { ...tool, definition: { ...tool.definition, description: 'x'.repeat(65536) } }
+              : tool
+          )
+        });
+        f.adapter.batches.push([
+          codeMode
+            ? searchInCell(externalName)
+            : { name: 'tool_search', arguments: { query: externalName } }
+        ]);
+        const execution = f.session.run({ prompt: 'Find a lookup tool.' });
+        expect((await execution.result()).status).toBe('completed');
+        const request = f.adapter.requests.at(-1)!;
+        const result = request.messages.find((message) => message.role === 'tool');
+        expect(result?.content).toContain('MAR_AGENT_TOOL_EXPOSURE_LIMIT');
+        expect(result?.content).toMatch(/definition budget.*estimated \d+ tokens; limit 16384/);
+        expect(request.tools.some((tool) => tool.name === externalName)).toBe(false);
+        expect(request.messages.some((message) => message.mcpDiscovery)).toBe(false);
+        expect(result?.toolSearchTools).toBeUndefined();
+      } finally {
+        await f.agent.dispose();
+      }
+    }
+  );
+
   it('runs unmarked external MCP calls concurrently after discovery', async () => {
     const release = Promise.withResolvers<void>();
     let entered = 0;

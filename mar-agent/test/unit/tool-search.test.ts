@@ -124,6 +124,23 @@ describe('deferred tool search', () => {
       before
     );
   });
+
+  it('reports the context window when the definitions alone fit', async () => {
+    const registry = new DeferredMcpRegistry([]);
+    registry.update(catalog(), () => true);
+    await expect(
+      registry.expose(
+        { query: 'mcp__sentry__get_trace' },
+        { ...exposureContext(), window: 2000, system: 'x'.repeat(4000) }
+      )
+    ).rejects.toMatchObject({
+      code: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
+      publicMessage: expect.stringMatching(/context window.*estimated \d+ tokens; limit 2000/),
+      details: { maximumTokens: 2000 }
+    });
+    expect(registry.snapshot()).toEqual([]);
+  });
+
   it('accepts bounded inputs and rejects unknown fields', () => {
     expect(parseToolSearchInput({ query: ' get_trace ' })).toEqual({
       query: ' get_trace ',

@@ -231,12 +231,14 @@ export function openAiInput(
   const providerCallIds = new Set<string>();
   const functionCallIds = new Set<string>();
   const customCallIds = new Set<string>();
+  const searchCallIds = new Set<string>();
   const providerMessageTexts = new Set<string>();
   // Incremental input omits the calls already retained by the WebSocket response.
   for (const item of previousOutputItems) {
     if (typeof item.call_id !== 'string') continue;
     if (item.type === 'function_call') functionCallIds.add(item.call_id);
     if (nativeTools && item.type === 'custom_tool_call') customCallIds.add(item.call_id);
+    if (nativeTools && item.type === 'tool_search_call') searchCallIds.add(item.call_id);
   }
   for (const message of compatibleMessages) {
     if (message.role !== 'provider' || !message.item) continue;
@@ -244,8 +246,10 @@ export function openAiInput(
       providerCallIds.add(message.item.call_id);
       functionCallIds.add(message.item.call_id);
     }
-    if (message.item.type === 'tool_search_call' && typeof message.item.call_id === 'string')
+    if (message.item.type === 'tool_search_call' && typeof message.item.call_id === 'string') {
       providerCallIds.add(message.item.call_id);
+      searchCallIds.add(message.item.call_id);
+    }
     if (message.item.type === 'custom_tool_call' && typeof message.item.call_id === 'string') {
       providerCallIds.add(message.item.call_id);
       customCallIds.add(message.item.call_id);
@@ -261,14 +265,11 @@ export function openAiInput(
       if (value) providerMessageTexts.add(value);
     }
   }
-  for (const message of compatibleMessages)
-    if (
-      nativeTools &&
-      message.role === 'tool_call' &&
-      message.inputMode === 'freeform' &&
-      message.callId
-    )
-      customCallIds.add(message.callId);
+  for (const message of compatibleMessages) {
+    if (!nativeTools || message.role !== 'tool_call' || !message.callId) continue;
+    if (message.inputMode === 'freeform') customCallIds.add(message.callId);
+    else if (message.name === 'tool_search') searchCallIds.add(message.callId);
+  }
   const orderedMessages: typeof compatibleMessages = [];
   for (const message of compatibleMessages) {
     if (message.role === 'provider' && message.item?.type === 'configuration_update') {
@@ -282,13 +283,30 @@ export function openAiInput(
   }
   // SDK records the update after the user input; the wire item must precede
   // that user message so the new effort applies to the response.
-  return orderedMessages
-    .filter(
-      (message) =>
-        !(message.role === 'tool_call' && message.callId && providerCallIds.has(message.callId)) &&
-        !(message.role === 'assistant' && providerMessageTexts.has(message.content))
-    )
-    .map((message) =>
+  const input: ReturnType<typeof openAiInputItem>[] = [];
+  const searchDiagnostics: string[] = [];
+  const flushSearchDiagnostics = () => {
+    if (searchDiagnostics.length)
+      input.push({ role: 'user', content: searchDiagnostics.splice(0).join('\n\n') });
+  };
+  for (let message of orderedMessages) {
+    if (message.role === 'tool_call' && message.callId && providerCallIds.has(message.callId))
+      continue;
+    if (message.role === 'assistant' && providerMessageTexts.has(message.content)) continue;
+    if (message.role !== 'tool') flushSearchDiagnostics();
+    else if (
+      message.callId &&
+      searchCallIds.has(message.callId) &&
+      !functionCallIds.has(message.callId) &&
+      message.toolSearchTools === undefined
+    ) {
+      // Native search output has no text field; send the diagnostic after the tool batch.
+      searchDiagnostics.push(
+        `Tool Search failed (call ID: ${message.callId}):\n${message.content}`
+      );
+      message = { ...message, toolSearchTools: [] };
+    }
+    input.push(
       openAiInputItem(
         message,
         message === lastUser ? images : undefined,
@@ -298,6 +316,9 @@ export function openAiInput(
         tools
       )
     );
+  }
+  flushSearchDiagnostics();
+  return input;
 }
 
 function openAiInputItem(

@@ -296,14 +296,18 @@ export class DeferredMcpRegistry {
       TOOL_SEARCH_LIMITS.maximumDefinitionTokens,
       Math.floor(window * TOOL_SEARCH_LIMITS.definitionWindowFraction)
     );
-    if (
-      estimated > maximum ||
-      full + countModelTokens(system) + TOOL_SEARCH_LIMITS.minimumContinuationTokens > window
-    )
+    if (estimated > maximum)
       throw new AgentError(
         'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
-        'The selected MCP definitions cannot fit within the exposure budget.',
+        `MCP definition budget exceeded (estimated ${estimated} tokens; limit ${maximum}).`,
         { details: { estimatedTokens: estimated, maximumTokens: maximum } }
+      );
+    const required = full + countModelTokens(system) + TOOL_SEARCH_LIMITS.minimumContinuationTokens;
+    if (required > window)
+      throw new AgentError(
+        'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
+        `MCP tool exposure would exceed the context window with continuation space reserved (estimated ${required} tokens; limit ${window}).`,
+        { details: { estimatedTokens: required, maximumTokens: window } }
       );
   }
   navigation(): string | undefined {

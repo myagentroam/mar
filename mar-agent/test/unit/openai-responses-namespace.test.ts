@@ -470,6 +470,88 @@ describe('OpenAI Responses tool namespace on STANDARD transport', () => {
     }
   );
 
+  it.each([
+    'persisted',
+    'reconstructed',
+    'incremental',
+    'function',
+    'non-native',
+    'no-match'
+  ] as const)('keeps %s Tool Search results paired and preserves failure diagnostics', (path) => {
+    const callId = 'search-call';
+    const arguments_ = { query: 'records' };
+    const diagnostic = JSON.stringify({
+      error: 'MAR_AGENT_TOOL_EXPOSURE_LIMIT',
+      message: 'MCP definition budget exceeded (estimated 17000 tokens; limit 16384).'
+    });
+    const previousCall = {
+      type: 'tool_search_call',
+      call_id: callId,
+      execution: 'client',
+      status: 'completed',
+      arguments: arguments_
+    };
+    const messages: ModelRequest['messages'] = [
+      ...(path === 'persisted' ? [providerMessage(previousCall, 'standard')] : []),
+      ...(path === 'function'
+        ? [
+            providerMessage(
+              { type: 'function_call', name: 'tool_search', call_id: callId, arguments: '{}' },
+              'standard'
+            )
+          ]
+        : []),
+      ...(path !== 'incremental'
+        ? [
+            {
+              role: 'tool_call' as const,
+              name: 'tool_search',
+              callId,
+              arguments: arguments_,
+              content: ''
+            }
+          ]
+        : []),
+      { role: 'tool_call', name: 'read', callId: 'read-call', arguments: {}, content: '' },
+      path === 'no-match'
+        ? { role: 'tool', callId, content: '{"tools":[]}', toolSearchTools: [] }
+        : { role: 'tool', callId, content: diagnostic },
+      { role: 'tool', callId: 'read-call', content: 'Read result.' },
+      { role: 'assistant', content: 'Search could not complete.' }
+    ];
+    const native = path !== 'function' && path !== 'non-native';
+    const input = openAiInput(
+      messages,
+      undefined,
+      'standard',
+      true,
+      true,
+      path !== 'non-native',
+      [],
+      path === 'incremental' ? [previousCall] : []
+    );
+    expect(input).toMatchObject([
+      ...(path !== 'incremental'
+        ? [{ type: native ? 'tool_search_call' : 'function_call', call_id: callId }]
+        : []),
+      { type: 'function_call', call_id: 'read-call' },
+      native
+        ? {
+            type: 'tool_search_output',
+            call_id: callId,
+            status: 'completed',
+            execution: 'client',
+            tools: []
+          }
+        : { type: 'function_call_output', call_id: callId, output: diagnostic },
+      { type: 'function_call_output', call_id: 'read-call', output: 'Read result.' },
+      ...(native && path !== 'no-match'
+        ? [{ role: 'user', content: expect.stringContaining(diagnostic) }]
+        : []),
+      { role: 'assistant', content: 'Search could not complete.' }
+    ]);
+  });
+
   it('strips obsolete encoding without changing the standard SDK model configuration', () => {
     const model = {
       ...configuration('https://api.openai.com/v1'),
