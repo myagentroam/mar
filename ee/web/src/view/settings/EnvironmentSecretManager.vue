@@ -125,21 +125,16 @@ async function submitCreate(input: CoreInput<string>): Promise<void> {
         :label="translate('generated.environmentSecretManager.organization3')"
         prop="organizationId"
       >
-        <div
-          role="group"
-          :aria-label="translate('generated.environmentSecretManager.organization3')"
-        >
-          <MarCascader
-            v-model="organizationId"
-            :disabled="disabled"
-            style="width: 100%"
-            filterable
-            :placeholder="translate('generated.environmentSecretManager.selectAnOrganization2')"
-            :options="organizationOptions"
-            :props="{ checkStrictly: true, emitPath: false }"
-            :clear-icon="marIcon('clear-input')"
-          />
-        </div>
+        <MarCascader
+          v-model="organizationId"
+          :disabled="disabled"
+          style="width: 100%"
+          filterable
+          :placeholder="translate('generated.environmentSecretManager.selectAnOrganization2')"
+          :options="organizationOptions"
+          :props="{ checkStrictly: true, emitPath: false }"
+          :clear-icon="marIcon('clear-input')"
+        />
       </MarFormItem>
     </template>
   </CoreManager>

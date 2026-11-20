@@ -44,6 +44,54 @@ for (const [theme, width] of [
   });
 }
 
+test('Organization cascader highlights the entire row and shows the confirmed path', async ({
+  page
+}) => {
+  await page.goto(`${fixture.url}mar-controls.html?theme=dark`);
+  const owner = page.getByRole('combobox', { name: 'Owner' });
+  await owner.click();
+  const popup = page.getByRole('dialog', { name: 'Select' });
+  const expand = popup.getByRole('button', { name: 'Platform', expanded: false });
+  const chooseControl = page
+    .getByRole('button', { name: 'Platform', exact: true })
+    .and(page.locator('[aria-pressed]'));
+  const choose = popup.locator(chooseControl);
+  const row = popup.locator('.mar-ui-cascader__row').filter({ has: chooseControl });
+  const hoverFill = await row.evaluate((node) => {
+    const probe = document.createElement('div');
+    probe.style.backgroundColor = 'var(--mar-ui-fill-row-hover)';
+    node.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expand.hover();
+  await expect(row).toHaveCSS('background-color', hoverFill);
+  await expect(expand).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await choose.hover();
+  await expect(row).toHaveCSS('background-color', hoverFill);
+
+  await expand.click();
+  await popup.getByRole('button', { name: 'Release', exact: true }).click();
+  await expect(owner).toHaveValue('Platform / Release');
+  await expect(page.getByLabel('Owner value')).toHaveText('2');
+  await owner.click();
+  const selectedOption = page.getByRole('button', { name: 'Release', pressed: true, exact: true });
+  const selectedRow = popup.locator('.mar-ui-cascader__row').filter({ has: selectedOption });
+  await expect(selectedRow).toBeVisible();
+  const selectedFill = await selectedRow.evaluate(
+    (element) => getComputedStyle(element).backgroundColor
+  );
+  expect(selectedFill).not.toBe('rgba(0, 0, 0, 0)');
+  await popup.getByRole('button', { name: 'Operations', expanded: false }).click();
+  await expect(popup.getByRole('button', { name: 'Support', exact: true })).toBeVisible();
+  await expect(selectedRow).toHaveCSS('background-color', selectedFill);
+  await expect(owner).toHaveValue('Platform / Release');
+  await choose.click();
+  await expect(owner).toHaveValue('Platform');
+  await expect(page.getByLabel('Owner value')).toHaveText('1');
+});
+
 test('MAR complex fields keep scalar values, explicit commits and localized UI', async ({
   page
 }, testInfo) => {

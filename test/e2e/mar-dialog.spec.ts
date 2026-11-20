@@ -116,6 +116,22 @@ test('Dialog honors explicit autofocus on its form field', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Draft' })).toBeFocused();
 });
 
+for (const width of [390, 1280]) {
+  test(`Dialog header close uses a square icon action at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    const opener = page.getByRole('button', { name: 'Open editor' });
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'Edit record' });
+    const close = dialog.getByRole('button', { name: 'Close this dialog' });
+    await expect(close).toHaveCSS('width', '32px');
+    await expect(close).toHaveCSS('height', '32px');
+    await expect(close).toHaveCSS('padding', '0px');
+    await close.click();
+    await expect(dialog).toBeHidden();
+    await expect(opener).toBeFocused();
+  });
+}
+
 test('Dialog returns focus to the active parent when the nested opener is removed', async ({
   page
 }) => {

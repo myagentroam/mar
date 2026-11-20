@@ -32,7 +32,16 @@ const controls = ref({
 const changes = ref(0);
 const timeChanges = ref(0);
 const expiration = ref<Date | null>(null);
-const organizations = [{ value: 1, label: 'Platform', children: [{ value: 2, label: 'Release' }] }];
+const organizations = [
+  {
+    value: 1,
+    label: 'Platform',
+    children: [
+      { value: 2, label: 'Release' },
+      { value: 3, label: 'Operations', children: [{ value: 4, label: 'Support' }] }
+    ]
+  }
+];
 </script>
 
 <template>

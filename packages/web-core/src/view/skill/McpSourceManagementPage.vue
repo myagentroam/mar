@@ -965,6 +965,18 @@ p {
   min-width: 0;
   max-width: 620px;
 }
+.mcp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.mcp-toolbar > :deep(.mar-ui-input) {
+  width: min(620px, 100%);
+}
+.mcp-toolbar > :deep(.mar-ui-select) {
+  width: min(200px, 100%);
+}
 .mcp-tags {
   display: flex;
   flex-wrap: wrap;
@@ -992,11 +1004,13 @@ p {
   text-align: center;
 }
 @media (max-width: 720px) {
-  .source-search-bar {
+  .source-search-bar,
+  .mcp-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
-  .source-search-bar :deep(.mar-ui-select) {
+  .source-search-bar :deep(.mar-ui-select),
+  .mcp-toolbar > :deep(.mar-ui-select) {
     width: 100%;
   }
   .source-search-bar .toolbar {

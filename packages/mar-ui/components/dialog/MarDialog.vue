@@ -373,6 +373,9 @@ defineExpose({ handleClose, panel });
 }
 .mar-ui-dialog__close {
   flex: none;
+  min-inline-size: 32px;
+  aspect-ratio: 1;
+  padding: 0;
 }
 .mar-ui-dialog__header .mar-ui-dialog__close:focus-visible {
   outline-offset: -2px;

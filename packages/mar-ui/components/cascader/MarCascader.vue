@@ -381,12 +381,12 @@ input:disabled {
   text-align: start;
   cursor: pointer;
 }
-.mar-ui-cascader__option:hover,
-.mar-ui-cascader__row:hover {
+.mar-ui-cascader__column > .mar-ui-cascader__option:enabled:hover,
+.mar-ui-cascader__row:has(.mar-ui-cascader__option:enabled):hover {
   background: var(--mar-ui-fill-row-hover);
 }
-.mar-ui-cascader__option[aria-pressed='true'],
-.mar-ui-cascader__row[data-current='true'] {
+.mar-ui-cascader__column > .mar-ui-cascader__option[aria-pressed='true'],
+.mar-ui-cascader__row:is([data-current='true'], :has(> [aria-pressed='true'])) {
   background: var(--mar-ui-fill-selection);
 }
 .mar-ui-cascader__option:focus-visible,
