@@ -32,7 +32,7 @@ export const questionToolDefinition: ClientToolDefinition = {
               minItems: 2,
               maxItems: 3,
               description:
-                'Provide 2-3 mutually exclusive choices with consequences. Put the recommended option first and identify it in its label or description.',
+                'Provide mutually exclusive choices with consequences. Put the recommended option first and identify it in its label or description.',
               items: {
                 type: 'object',
                 properties: {
