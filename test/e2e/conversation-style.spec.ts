@@ -1540,6 +1540,57 @@ test('Touch conversation details open title actions and reveal unavailable chang
   }
 });
 
+test('Read group keeps its rounded hover and focus ring during expansion', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}conversation-style.html?theme=vscode-dark-2026&group-spacing=1`);
+  await page.locator('[data-process-id="spacing-process"] .process-heading').click();
+  const summary = page.locator('.conversation-record-group > summary').filter({ hasText: /^Read/ });
+  await summary.hover();
+  const hovered = await summary.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, radius: style.borderRadius };
+  });
+  const group = summary.locator('..');
+
+  await summary.click();
+  await expect(group).toHaveAttribute('open', '');
+  await expect(summary).not.toHaveCSS('outline-style', 'solid');
+  await expect(summary).toHaveCSS('background-color', hovered.background);
+  await expect(summary).toHaveCSS('border-radius', hovered.radius);
+  await expect.poll(() => group.evaluate((element) => element.getAnimations().length)).toBe(0);
+  await summary.click();
+  await expect(group).not.toHaveAttribute('open');
+
+  await summary.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(summary).toBeFocused();
+  await summary.press('Enter');
+  await expect
+    .poll(() =>
+      group.evaluate((element) => {
+        const animation = element.getAnimations()[0];
+        if (!animation) return false;
+        animation.pause();
+        animation.currentTime = 0;
+        return getComputedStyle(element).overflowY === 'hidden';
+      })
+    )
+    .toBe(true);
+  await summary.hover();
+  await expect(summary).toHaveCSS('background-color', hovered.background);
+  await expect(summary).toHaveCSS('border-radius', hovered.radius);
+  await expect(summary).toHaveCSS('outline-style', 'solid');
+  await expect(summary).toHaveCSS('outline-width', '2px');
+  await expect(summary).toHaveCSS('outline-offset', '-2px');
+  await summary.screenshot({ path: testInfo.outputPath('read-group-during-expansion.png') });
+  await group.evaluate((element) => element.getAnimations()[0]?.finish());
+  await expect(group.locator(':scope > details').first()).toBeVisible();
+});
+
 for (const theme of ['daylight', 'vscode-dark-2026']) {
   test(`Expanded command details expose the complete command in ${theme}`, async ({
     browser
