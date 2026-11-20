@@ -1189,6 +1189,48 @@ test('Performance hover displays the details panel without a second hint', async
   await expect(page.locator('.mar-tooltip:visible')).toHaveCount(0);
 });
 
+test('Performance popup arrow clears its larger surface corner near the viewport edge', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1000, height: 750 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${fixture.url}visual-alignment.html?performance=1`);
+  const trigger = page.locator('.web-performance-indicator');
+  await trigger.evaluate((element) => {
+    element.style.cssText = 'position: fixed; left: 12px; bottom: 8px; width: 32px; height: 24px';
+  });
+  const popup = page
+    .locator('.mar-ui-popover')
+    .filter({ has: page.locator('.web-performance-panel') });
+  await trigger.hover();
+  await expect(popup).toHaveAttribute('data-side', 'right');
+  const { center, clearance } = await popup.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const arrow = getComputedStyle(element, '::before');
+    const width = parseFloat(arrow.width) + parseFloat(arrow.borderLeftWidth);
+    const height = parseFloat(arrow.height) + parseFloat(arrow.borderTopWidth);
+    const center = rect.top + parseFloat(style.borderTopWidth) + parseFloat(arrow.top) + height / 2;
+    return {
+      center,
+      clearance:
+        rect.bottom -
+        center -
+        Math.hypot(width, height) / 2 -
+        parseFloat(style.borderBottomLeftRadius)
+    };
+  });
+  expect(clearance).toBeGreaterThanOrEqual(1);
+  const target = (await trigger.boundingBox())!;
+  expect(center).toBeGreaterThan(target.y);
+  expect(center).toBeLessThan(target.y + target.height);
+  const panel = (await popup.boundingBox())!;
+  await page.screenshot({
+    clip: { ...panel, x: panel.x - 12, width: panel.width + 12 },
+    path: testInfo.outputPath('performance-popup-corner.png')
+  });
+});
+
 test('Performance details stay open on keyboard focus after the pointer leaves', async ({
   page
 }) => {

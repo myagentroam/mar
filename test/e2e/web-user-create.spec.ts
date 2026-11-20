@@ -27,7 +27,9 @@ for (const [view, name, title, desktopWidth, actionCount] of [
   ['users', 'example-user', 'User details', 320, 3],
   ['organizations', 'Example team', 'Organization details', 280, 3]
 ] as const) {
-  test(`Management ${view} keeps row details and narrow actions reachable`, async ({ page }) => {
+  test(`Management ${view} keeps row details and narrow actions reachable`, async ({
+    page
+  }, testInfo) => {
     const time = 1_700_000_000_000;
     const user = {
       id: 2,
@@ -86,9 +88,52 @@ for (const [view, name, title, desktopWidth, actionCount] of [
     }
     await row.getByText(name, { exact: true }).click();
     await expect(detail).toContainText(name);
+    const descriptions = detail.locator('.mar-ui-descriptions');
+    async function expectDescriptionSurfaces() {
+      const palette = await descriptions.evaluate((element) => {
+        const probe = document.createElement('span');
+        element.append(probe);
+        const color = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const colors = {
+          label: color('--mar-ui-bg-subtle'),
+          value: color('--mar-ui-bg-panel'),
+          line: color('--mar-ui-border-subtle')
+        };
+        probe.remove();
+        return colors;
+      });
+      await expect(descriptions).toHaveCSS('background-color', palette.line);
+      const label = descriptions.locator('dt').first();
+      await expect(label).toHaveCSS('background-color', palette.label);
+      await expect(label).toHaveCSS('border-inline-end-width', '1px');
+      await expect(label).toHaveCSS('border-inline-end-color', palette.line);
+      await expect(descriptions.locator('dd').first()).toHaveCSS('background-color', palette.value);
+      const rows = descriptions.locator('.mar-ui-descriptions__item');
+      const first = (await rows.first().boundingBox())!;
+      const second = (await rows.nth(1).boundingBox())!;
+      expect(second.y - first.y - first.height).toBeCloseTo(1, 1);
+    }
+    await expectDescriptionSurfaces();
+    if (view === 'organizations') {
+      await descriptions.screenshot({
+        path: testInfo.outputPath('organization-details-mobile.png')
+      });
+    }
 
     await page.setViewportSize({ width: 1280, height: 844 });
     await expect.poll(() => actionCell.evaluate((cell) => cell.clientWidth)).toBe(desktopWidth);
+    if (view === 'organizations') {
+      await page
+        .locator('html')
+        .evaluate((root) => root.setAttribute('data-theme', 'vscode-dark-2026'));
+      await expectDescriptionSurfaces();
+      await descriptions.screenshot({
+        path: testInfo.outputPath('organization-details-desktop.png')
+      });
+    }
   });
 }
 

@@ -30,11 +30,4 @@ dt {
   color: var(--mar-ui-text-secondary);
   font-weight: 500;
 }
-:global(.mar-ui-descriptions.is-bordered) > .mar-ui-descriptions__item > dt {
-  border-inline-end: 1px solid var(--mar-ui-border-subtle);
-  background: var(--mar-ui-bg-subtle);
-}
-:global(.mar-ui-descriptions.is-bordered) > .mar-ui-descriptions__item > dd {
-  background: var(--mar-ui-bg-panel);
-}
 </style>
