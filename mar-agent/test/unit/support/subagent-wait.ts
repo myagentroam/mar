@@ -9,6 +9,6 @@ export function waitForNewChild(request: ModelRequest): ModelEvent | undefined {
     type: 'client_tool.call',
     callId: `${receipt.callId}-wait`,
     name: 'agent_wait',
-    arguments: { agentId, waitMs: 300_000 }
+    arguments: { agentIds: [agentId], waitFor: 'completion', waitMs: 300_000 }
   };
 }

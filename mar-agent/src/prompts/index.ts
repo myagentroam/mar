@@ -5,19 +5,13 @@ import {
   environmentPrompt,
   identityPrompt,
   instructionPriorityPrompt,
-  workspaceDisciplinePrompt
+  securityPrompt
 } from './core.js';
 import { modePrompt } from './modes.js';
 import { outputStylePrompt } from './output.js';
-import {
-  interactionPrompt,
-  longRunningPrompt,
-  safetyPrompt,
-  toolUsagePrompt,
-  workflowPrompt
-} from './workflow.js';
+import { toolUsagePrompt } from './workflow.js';
 
-export const MAR_AGENT_PROMPT_VERSION = '1.71';
+export const MAR_AGENT_PROMPT_VERSION = '1.75';
 
 interface SystemPromptInput {
   mode: ExecutionMode;
@@ -38,21 +32,14 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
 
 export function buildSystemPromptSections(input: SystemPromptInput): readonly PromptPart[] {
   const toolNames = new Set(input.tools);
-  const hasLongRunningCapability = ['exec', 'todo', 'agent_start', 'agent_wait', 'agent_stop'].some(
-    (name) => toolNames.has(name)
-  );
 
-  const values: readonly (readonly [string, string])[] = [
+  const values: readonly (readonly [string, string | null])[] = [
     ['identity', identityPrompt()],
     ['instruction-priority', instructionPriorityPrompt],
-    ['workspace-discipline', workspaceDisciplinePrompt],
-    ['workflow', workflowPrompt],
-    ['interaction', interactionPrompt],
-    ['safety', safetyPrompt],
+    ['safety', securityPrompt],
     ['output-style', outputStylePrompt],
     ['environment-rules', environmentPrompt(input)],
     ['tools', input.tools.length > 0 ? toolUsagePrompt(input.tools, input.directTools) : ''],
-    ['long-running', hasLongRunningCapability ? longRunningPrompt() : ''],
     [
       'mode',
       modePrompt(input.mode, {

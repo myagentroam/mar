@@ -136,7 +136,7 @@ it('uses the selected child model for generic Host policies and tool execution',
                 ? {
                     title: 'Child task',
                     description: 'Child task',
-                    prompt: 'Use the host action.',
+                    content: 'Use the host action.',
                     role: 'general-purpose',
                     modelId: 'child'
                   }

@@ -556,7 +556,7 @@ class SubagentAdapter implements ModelAdapter {
           arguments: {
             title: 'Inspect input',
             description: 'Inspect input',
-            prompt: 'Read input.txt',
+            content: 'Read input.txt',
             role: 'explore'
           }
         };
@@ -603,7 +603,7 @@ class EmptyFinalSubagentAdapter implements ModelAdapter {
         arguments: {
           title: 'Inspect input',
           description: 'Inspect input',
-          prompt: 'Read input.txt',
+          content: 'Read input.txt',
           role: 'explore'
         }
       };
@@ -669,10 +669,10 @@ class SubagentModelAdapter implements ModelAdapter {
         arguments: {
           title: 'Inspect input',
           description: 'Inspect input',
-          prompt: 'Read input.txt',
+          content: 'Read input.txt',
           role: 'explore',
           modelId: 'review',
-          ...(reasoningEffort === undefined ? {} : { reasoningEffort })
+          ...(reasoningEffort === undefined ? {} : { effort: reasoningEffort })
         }
       };
       yield { type: 'completed', reason: 'tool_use' };
@@ -3159,8 +3159,8 @@ describe('agent runtime', () => {
     expect(instructions).not.toContain('NESTED_RULE_NOT_AUTOLOADED');
     expect(system).not.toContain('APP_RULE');
     expect(system).toContain('The Runtime supplies applicable AGENTS.md instructions');
-    expect(system).toContain('Do not independently search for or reread AGENTS.md files');
-    expect(system).toContain('explicit user or injected instructions');
+    expect(system).not.toContain('Do not independently search for or reread AGENTS.md files');
+    expect(system).toContain('a trusted instruction explicitly asks to load and follow it');
     expect(system).not.toContain('check for applicable AGENTS.md');
     const catalog = adapter.requests[0]!.messages.find(
       (message) => message.contextualBlock?.id === 'runtime:skills'
@@ -3358,8 +3358,13 @@ describe('agent runtime', () => {
     if (startResult?.type !== 'tool.completed' || waitResult?.type !== 'tool.completed')
       throw new Error('Missing external subagent start or wait result.');
     const startedChild = JSON.parse(startResult.summary);
-    expect(startedChild).toMatchObject({ description: 'Inspect input', role: 'explore' });
-    expect(waitResult.summary).toContain('"status":"completed"');
+    expect(startedChild).toMatchObject({ start: { status: 'accepted' } });
+    expect((await agent.getSession(startedChild.agentId)).source).toMatchObject({
+      type: 'subagent',
+      description: 'Inspect input',
+      role: 'explore'
+    });
+    expect(waitResult.summary).toContain('"status":"SUCCEEDED"');
     const childRequest = requests.find((request) =>
       effectiveInstructions(request).includes('delegated subagent')
     );
@@ -3375,11 +3380,15 @@ describe('agent runtime', () => {
     expect(childRequest?.system).not.toContain('SUBAGENT_SCOPED_RULE');
     expect(childInstructions).toContain('SUBAGENT_SCOPED_RULE');
     expect(childInstructions).not.toContain('SUBAGENT_NESTED_RULE_NOT_AUTOLOADED');
-    expect(childRequest?.system).toContain('from the project root through the current Workspace');
     expect(childRequest?.system).toContain(
+      'The Runtime supplies applicable AGENTS.md instructions'
+    );
+    expect(childRequest?.system).not.toContain(
       'Do not independently search for or reread AGENTS.md files'
     );
-    expect(childRequest?.system).toContain('explicit user or injected instructions');
+    expect(childRequest?.system).toContain(
+      'a trusted instruction explicitly asks to load and follow it'
+    );
     expect(childRequest?.system).not.toContain('check for applicable AGENTS.md');
     expect(childInstructions).toContain('Project instructions');
     expect(childRequest?.tools.map((tool) => tool.name)).not.toContain('skill_load');
@@ -3411,11 +3420,14 @@ describe('agent runtime', () => {
     const taskResult = JSON.parse(
       parentContinuation?.messages.findLast((message) => message.role === 'tool')?.content ?? '{}'
     );
-    expect(taskResult).toMatchObject({ agentId: startedChild.agentId, status: 'completed' });
-    expect(Buffer.byteLength(taskResult.summary)).toBeLessThanOrEqual(16_384);
-    expect(taskResult.summaryTruncated).toBe(true);
-    expect(taskResult).not.toHaveProperty('evidence');
-    expect(taskResult.changedFiles).toEqual(['move.txt', 'moved.txt']);
+    expect(taskResult).toMatchObject({
+      waitOutcome: 'completion',
+      agents: [{ agentId: startedChild.agentId, status: 'SUCCEEDED', summaryTruncated: true }]
+    });
+    const [childResult] = taskResult.agents;
+    expect(Buffer.byteLength(childResult.summary)).toBeLessThanOrEqual(16_384);
+    expect(childResult).not.toHaveProperty('evidence');
+    expect(childResult.changedFiles).toEqual(['move.txt', 'moved.txt']);
     await agent.dispose();
     const catalog = await openAgentSessionCatalog({ homeDirectory: home });
     try {
@@ -3467,9 +3479,14 @@ describe('agent runtime', () => {
     if (waitResult?.type !== 'tool.completed')
       throw new Error('Missing external subagent wait result.');
     expect(JSON.parse(waitResult.summary)).toMatchObject({
-      status: 'failed',
-      errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-      errorMessage: 'Subagent completed without a final summary.'
+      waitOutcome: 'completion',
+      agents: [
+        {
+          status: 'FAILED',
+          errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
+          errorMessage: 'Subagent completed without a final summary.'
+        }
+      ]
     });
     const parentContinuation = adapter.requests.filter(
       (request) => !effectiveInstructions(request).includes('delegated subagent')
@@ -3479,9 +3496,14 @@ describe('agent runtime', () => {
         parentContinuation?.messages.findLast((message) => message.role === 'tool')?.content ?? '{}'
       )
     ).toMatchObject({
-      status: 'failed',
-      errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
-      errorMessage: 'Subagent completed without a final summary.'
+      waitOutcome: 'completion',
+      agents: [
+        {
+          status: 'FAILED',
+          errorCode: 'MAR_AGENT_SUBAGENT_FAILED',
+          errorMessage: 'Subagent completed without a final summary.'
+        }
+      ]
     });
     await agent.dispose();
   });
@@ -5304,8 +5326,10 @@ describe('agent runtime', () => {
       defaultRequests.at(-1)?.messages.findLast((message) => message.role === 'tool')?.content ??
         '{}'
     );
-    expect(taskResult.status).toBe('completed');
-    expect(taskResult.summary).toBe('child done');
+    expect(taskResult).toMatchObject({
+      waitOutcome: 'completion',
+      agents: [{ status: 'SUCCEEDED', summary: 'child done' }]
+    });
 
     requestedReasoningEffort = undefined;
     const inheritedSupportedRequestCount = reviewRequests.length;

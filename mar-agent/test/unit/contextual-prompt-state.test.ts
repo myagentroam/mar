@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JsonlSessionStore } from '../../src/session/store/index.js';
 import { activeSessionDirectory } from '../support/jsonl-session-path.js';
 import { fixture, answer, cleanupCoreFixtures } from './support/core-extension-fixture.js';
+import { effectiveInstructions } from './support/model-context.js';
 import { LocalAgentHost } from '../../src/host.js';
 import { SecretValue, type AgentModelConfiguration } from '../../src/index.js';
 import { createAgentWithAdapter } from '../../src/sdk/agent.js';
@@ -54,6 +55,78 @@ const model: AgentModelConfiguration = {
 };
 
 describe('Contextual prompt state', () => {
+  it.each(['run', 'compact'] as const)(
+    'revokes the retired long-running block in the next %s request',
+    async (mode) => {
+      const id = 'core:long-running';
+      const oldPolicy = 'OLD_LONG_RUNNING_POLICY';
+      const f = await fixture([], answer);
+      if (mode === 'compact') {
+        expect(await f.session.run({ prompt: 'seed history' }).result()).toMatchObject({
+          status: 'completed'
+        });
+        await f.agent.dispose();
+      }
+      const host = part('core:caller-instructions', 'HOST_POLICY');
+      const world = updatePromptWorldState(
+        {
+          generation: undefined,
+          initialized: true,
+          instructionSnapshot: undefined,
+          resourceSnapshot: undefined,
+          entries: []
+        },
+        // A normal Run appends contextual prompts after the environment and user input.
+        mode === 'compact' ? 2 : 0,
+        [host, { id, source: 'sdk', authority: 'instruction', content: oldPolicy }]
+      );
+      const store = await JsonlSessionStore.open(f.home);
+      try {
+        await persistContextualWorldState(store, f.session.id, world);
+      } finally {
+        await store.close();
+      }
+
+      if (mode === 'compact') {
+        const reopened = await createAgentWithAdapter(
+          {
+            mode: 'normal',
+            host: new LocalAgentHost({ homeDirectory: f.home, workspace: f.home }),
+            models: [f.adapter.configuration],
+            systemInstruction: host.content
+          },
+          () => f.adapter
+        );
+        try {
+          const session = await reopened.openSession(f.session.id);
+          expect(await session.compact().result()).toMatchObject({ status: 'completed' });
+        } finally {
+          await reopened.dispose();
+        }
+      } else {
+        f.agent.setSystemInstruction(host.content);
+        expect(await f.session.run({ prompt: 'continue' }).result()).toMatchObject({
+          status: 'completed'
+        });
+      }
+      const current = f.adapter.requests.at(-1)!;
+      if (mode === 'compact') expect(current.toolChoice).toBe('none');
+      expect(
+        current.messages.find((message) => message.contextualBlock?.id === id)?.content
+      ).toContain(oldPolicy);
+      const removal = current.messages.findLast((message) => message.contextualBlock?.id === id);
+      expect(removal?.contextualBlock).toMatchObject({
+        id,
+        source: 'sdk',
+        authority: 'instruction',
+        operation: 'remove'
+      });
+      expect(removal?.content).not.toContain(oldPolicy);
+      expect(effectiveInstructions(current)).not.toContain(oldPolicy);
+      expect(effectiveInstructions(current)).toContain('HOST_POLICY');
+    }
+  );
+
   it('revokes an old skill catalog as an SDK instruction without re-emitting its contents', () => {
     const initial = {
       generation: undefined,
@@ -129,57 +202,61 @@ describe('Contextual prompt state', () => {
     expect(migrated.entries.some((entry) => entry.content.includes('HOST_POLICY'))).toBe(true);
     expect(updatePromptWorldState(migrated, 2, [host])).toBe(migrated);
   });
-  it('revokes legacy catalog instructions during initialization before a manual Compact can project them', async () => {
-    const host = part('host:policy', 'HOST_POLICY');
-    const catalog: ContextualPart = {
-      id: 'core:skill-catalog',
-      source: 'sdk',
-      authority: 'instruction',
-      content: 'OLD_CATALOG'
-    };
-    const initial = updatePromptWorldState(
-      {
-        generation: undefined,
-        initialized: true,
-        instructionSnapshot: undefined,
-        resourceSnapshot: undefined,
-        entries: []
-      },
-      0,
-      [host, catalog]
-    );
-    const write = vi.fn(async () => {});
-    const context = createExecutionModelContext({
-      restored: {
-        messages: [{ role: 'user', content: 'task' }],
-        userMessages: [],
-        environmentState: undefined
-      },
-      initialContextualWorldState: initial,
-      sessionId: 'session',
-      executionId: 'execution',
-      turnId: 'turn',
-      mode: 'compact',
-      contextRecords: [],
-      contextualWorldStateGeneration: undefined,
-      compactMayContainAgentInstructions: false,
-      messageSources: new WeakMap(),
-      persistWorldState: write,
-      instructionSnapshot: () => undefined,
-      renderInstructions: () => undefined
-    } as unknown as Parameters<typeof createExecutionModelContext>[0]);
-    await context.initializeWorldState();
-    expect(write).toHaveBeenCalled();
-    expect(context.worldState.entries.some((entry) => entry.content.includes('OLD_CATALOG'))).toBe(
-      false
-    );
-    expect(context.worldState.entries.at(-1)?.block).toMatchObject({
-      id: 'core:skill-catalog',
-      operation: 'remove',
-      authority: 'instruction'
-    });
-    expect(context.worldState.promptSnapshot).toEqual([host]);
-  });
+  it.each(['core:skill-catalog', 'core:long-running'])(
+    'revokes retired %s instructions during initialization before manual Compact',
+    async (id) => {
+      const host = part('host:policy', 'HOST_POLICY');
+      const retired: ContextualPart = {
+        id,
+        source: 'sdk',
+        authority: 'instruction',
+        content: 'RETIRED_INSTRUCTION'
+      };
+      const initial = updatePromptWorldState(
+        {
+          generation: undefined,
+          initialized: true,
+          instructionSnapshot: undefined,
+          resourceSnapshot: undefined,
+          entries: []
+        },
+        0,
+        [host, retired]
+      );
+      const write = vi.fn(async () => {});
+      const context = createExecutionModelContext({
+        restored: {
+          messages: [{ role: 'user', content: 'task' }],
+          userMessages: [],
+          environmentState: undefined
+        },
+        initialContextualWorldState: initial,
+        sessionId: 'session',
+        executionId: 'execution',
+        turnId: 'turn',
+        mode: 'compact',
+        contextRecords: [],
+        contextualWorldStateGeneration: undefined,
+        compactMayContainAgentInstructions: false,
+        messageSources: new WeakMap(),
+        persistWorldState: write,
+        instructionSnapshot: () => undefined,
+        renderInstructions: () => undefined
+      } as unknown as Parameters<typeof createExecutionModelContext>[0]);
+      await context.initializeWorldState();
+      expect(write).toHaveBeenCalled();
+      expect(
+        context.worldState.entries.some((entry) => entry.content.includes(retired.content))
+      ).toBe(id !== 'core:skill-catalog');
+      expect(context.worldState.entries.at(-1)?.block).toMatchObject({
+        id,
+        operation: 'remove',
+        source: 'sdk',
+        authority: 'instruction'
+      });
+      expect(context.worldState.promptSnapshot).toEqual([host]);
+    }
+  );
   it('retains active instructions in native automatic Compact but excludes them from fallback evidence', async () => {
     const home = await mkdtemp(join(tmpdir(), 'mar-contextual-budget-'));
     roots.push(home);

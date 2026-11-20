@@ -10,23 +10,23 @@ afterEach(cleanupCoreFixtures);
 
 describe('Core structured Prompt composition', () => {
   it.each([
-    ['run', [], 'f6facf2f7a772ded1446cf59aac493e9113887f1c7824be86b8ede325bdc2f99'],
+    ['run', [], 'e07b54bb0f1d8d42926a0e1bef897e4dcc7f3f5f91409cbfc57b27c421923e6c'],
     [
       'run',
       ['read', 'exec', 'skill'],
-      'bf0b78260966c973822f0d9b11cb0f3a13d9aabdfb73976e63aaf240c7e4b299'
+      '2757a260d0c3c8968bc5e9a106dedab25d47b3a2392ab2ddacf48b4225a1a15a'
     ],
-    ['plan', [], '43f0786265a49a7848e30d2dbd3cea52547669cd89c91a24f518e1150280ba7a'],
+    ['plan', [], '6be6968278390afb81f071eec37c1022b225efa598501900a3728c2b2a03dfec'],
     [
       'plan',
       ['read', 'exec', 'skill'],
-      'b531f7af7e8e676bd742d65dc3f7f82029bd9f2c0459bc1ca2a39c83c75df0cf'
+      '0ce78d2798cac64a0b5ecf166ffaf60169f3697ac810c9174b09eb7bcc7dce5d'
     ],
-    ['compact', [], '9d453e4f73a6bdd80c59c7d191affdb3971a9ec018d46725079a684407b90d4f'],
+    ['compact', [], 'fa9bfe8da9ba7b2adcca9f77b2474fe5655f3867ef91c9d51b596351f54ee504'],
     [
       'compact',
       ['read', 'exec', 'skill'],
-      'e69dde0f081f4a0df9eb216c5967b6edd402d48276fd1de4b1f41e0d43aece21'
+      '479b19892970d61be911ce60479cee1edb6845e1e6df415106ddf9ae250a4732'
     ]
   ] as const)('preserves the current %s Prompt bytes (%j)', (mode, tools, digest) => {
     const input = {
