@@ -107,10 +107,7 @@ test('Touch highlights stay transparent on menus, scrims and preview overlays', 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
       if (supportsTapHighlight)
-        await expect(page.locator('.el-overlay').filter({ has: dialog })).toHaveCSS(
-          '-webkit-tap-highlight-color',
-          'rgba(0, 0, 0, 0)'
-        );
+        await expect(dialog).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
     }
@@ -770,8 +767,7 @@ for (const dismissal of ['Escape', 'the backdrop', 'browser Back'] as const) {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.goto(`${fixture.url}workbench-mobile-drawer.html`);
     const pause = await page.addStyleTag({
-      content: `.el-overlay.dialog-fade-leave-active {
-        animation-duration: 2s !important;
+      content: `dialog.mar-ui-dialog-overlay[open][data-closing] {
         animation-play-state: paused !important;
       }`
     });
@@ -779,14 +775,15 @@ for (const dismissal of ['Escape', 'the backdrop', 'browser Back'] as const) {
     const dialog = page.getByRole('dialog', { name: 'Quick Open' });
     await trigger.click();
     await expect(dialog.getByRole('textbox')).toBeFocused();
-    await expect(page.locator('.el-overlay.dialog-fade-enter-active')).toHaveCount(0);
+    await expect(dialog).toHaveCSS('opacity', '1');
 
     if (dismissal === 'Escape') await page.keyboard.press('Escape');
     else if (dismissal === 'browser Back') await page.goBack();
     else await dialog.click({ position: { x: 4, y: 4 } });
 
-    const leaving = page.locator('.el-overlay.dialog-fade-leave-active');
-    await expect(leaving.getByRole('dialog', { name: 'Quick Open' })).toBeVisible();
+    await expect(dialog).toHaveAttribute('data-closing', 'true');
+    await expect(dialog).toHaveCSS('animation-play-state', 'paused');
+    await expect(dialog).toBeVisible();
     await pause.evaluate((style) => style.remove());
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();

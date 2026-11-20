@@ -587,7 +587,9 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       element.style.setProperty('--mar-control-fill-color-light', '#dde9f6');
       element.style.setProperty('--mar-border-default', '#a6b7cc');
     });
-    for (const value of await ui.credentials.locator('.credential-result dd').all()) {
+    const values = ui.credentials.locator('.credential-result dd');
+    await expect(values).toHaveText(['fixture-user', 'fixture-temporary-password']);
+    for (const value of await values.all()) {
       await expect(value).toHaveCSS('background-color', 'rgb(221, 233, 246)');
       await expect(value).toHaveCSS('border-top-color', 'rgb(166, 183, 204)');
     }

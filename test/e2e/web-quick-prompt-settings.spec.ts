@@ -193,18 +193,24 @@ test('Quick prompt settings invalidate saving before the close animation finishe
     return json(route, { prompt: prompts[0] });
   });
   try {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await openSettings(page);
     const initialReads = reads;
-    await page.addStyleTag({
+    const pause = await page.addStyleTag({
       content:
-        '.dialog-fade-leave-active { animation-duration: 60s !important; transition-duration: 60s !important; }'
+        'dialog.mar-ui-dialog-overlay[open][data-closing] { animation-play-state: paused !important; }'
     });
     let dialog = await edit(page, 'first');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await started.promise;
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
     await dialog.getByRole('button', { name: 'Close this dialog', exact: true }).click();
-    // Closing must destroy the editor now, not defer invalidation to afterLeave.
-    await expect(page.locator('.mar-ui-dialog')).toHaveCount(0, { timeout: 1500 });
+    // The editor must unmount even if a native dialog exit animation cannot finish.
+    await expect(dialog).toHaveCount(0);
+    await pause.evaluate((style) => style.remove());
     dialog = await edit(page, 'second');
     const response = page.waitForResponse((value) =>
       value.url().endsWith('/api/quick-prompts/first')
