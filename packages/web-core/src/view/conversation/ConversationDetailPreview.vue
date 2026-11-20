@@ -5,18 +5,68 @@ import { translate } from '../../service/locale-preference-service.js';
 import MarIcon from '../common/MarIcon.vue';
 
 const contentId = useId();
+const viewport = ref<HTMLElement>();
 const content = ref<HTMLElement>();
 const expanded = ref(false);
 const overflowing = ref(false);
+interface PreviewMotion {
+  animation?: Animation;
+  contentHeight?: number;
+}
 let observer: ResizeObserver | undefined;
+let motion: PreviewMotion | undefined;
 
 function measure() {
   const element = content.value!;
   const limit = Number.parseFloat(getComputedStyle(element).lineHeight) * 12;
-  overflowing.value = element.getBoundingClientRect().height > Math.ceil(limit);
+  const height = element.getBoundingClientRect().height;
+  overflowing.value = height > Math.ceil(limit);
+  // Let the current layout take over if streamed text or reflow invalidates the measured endpoint.
+  if (motion?.contentHeight !== undefined && motion.contentHeight !== height) cancelMotion();
 }
+
+function cancelMotion(): void {
+  motion?.animation?.cancel();
+  motion = undefined;
+}
+
+async function togglePreview(): Promise<void> {
+  const element = viewport.value!;
+  const duration = getComputedStyle(element).getPropertyValue('--mar-motion-duration-fast').trim();
+  const durationMs = Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000);
+  if (!durationMs) {
+    cancelMotion();
+    expanded.value = !expanded.value;
+    return;
+  }
+
+  // Read the visible height before cancelling so a reversal starts where the last motion stopped.
+  const start = element.getBoundingClientRect().height;
+  cancelMotion();
+  const current: PreviewMotion = {};
+  motion = current;
+  expanded.value = !expanded.value;
+  await nextTick();
+  if (motion !== current) return;
+
+  const end = element.getBoundingClientRect().height;
+  if (start === end) {
+    cancelMotion();
+    return;
+  }
+  current.contentHeight = content.value!.getBoundingClientRect().height;
+  current.animation = element.animate(
+    { maxHeight: [`${start}px`, `${end}px`], overflow: ['hidden', 'hidden'] },
+    { duration: durationMs, easing: 'ease', fill: 'both' }
+  );
+  current.animation.onfinish = () => {
+    if (motion === current) cancelMotion();
+  };
+}
+
 async function revealFocusedContent(event: FocusEvent) {
-  if (expanded.value || !overflowing.value) return;
+  if ((!motion && expanded.value) || !overflowing.value) return;
+  cancelMotion();
   expanded.value = true;
   await nextTick();
   (event.target as Element).scrollIntoView({ block: 'nearest' });
@@ -26,13 +76,17 @@ onMounted(() => {
   observer.observe(content.value!);
   measure();
 });
-onBeforeUnmount(() => observer?.disconnect());
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  cancelMotion();
+});
 </script>
 
 <template>
   <div class="detail-preview">
     <div
       :id="contentId"
+      ref="viewport"
       class="detail-preview-window"
       :class="{ 'is-collapsed': !expanded }"
       @focusin="revealFocusedContent"
@@ -45,7 +99,7 @@ onBeforeUnmount(() => observer?.disconnect());
       class="detail-preview-toggle"
       :aria-expanded="expanded"
       :aria-controls="contentId"
-      @click.stop="expanded = !expanded"
+      @click.stop="togglePreview"
     >
       <MarIcon
         name="chevron-down"
@@ -85,6 +139,7 @@ onBeforeUnmount(() => observer?.disconnect());
 }
 .detail-preview-toggle-icon {
   margin-inline-end: 0.25rem;
+  transition: transform var(--mar-motion-duration-fast);
 }
 .detail-preview-toggle-icon.is-expanded {
   transform: rotate(180deg);

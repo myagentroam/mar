@@ -856,6 +856,83 @@ test('uses area height for wrapped single-line execution output and keeps copy o
   await expect(exec.getByRole('button', { name: 'Show less', exact: true })).toBeVisible();
 });
 
+test('detail preview animates height and reverses from its current size', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}conversation-tool-detail.html?preview-probe=1`);
+  const probe = page.getByTestId('preview-probe');
+  await page.getByTestId('stretch-preview').click();
+  const toggle = probe.getByRole('button', { name: 'Show more', exact: true });
+  await expect(toggle).toBeVisible();
+
+  const preview = probe.locator('.detail-preview-window');
+  const sizes = await preview.evaluate(async (element) => {
+    const button =
+      element.parentElement!.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+    const height = () => element.getBoundingClientRect().height;
+    async function toggleAndGetMotion() {
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      return element.getAnimations()[0];
+    }
+
+    const collapsed = height();
+    const full = element.firstElementChild!.getBoundingClientRect().height;
+    const expand = await toggleAndGetMotion();
+    if (!expand?.effect) throw new Error('Expected a detail expansion animation');
+    expand.pause();
+    expand.currentTime = expand.effect.getComputedTiming().endTime / 2;
+    const middle = height();
+
+    const shrink = await toggleAndGetMotion();
+    if (!shrink) throw new Error('Expected a detail collapse animation');
+    shrink.pause();
+    shrink.currentTime = 0;
+    const reversal = height();
+    shrink.finish();
+    return { collapsed, full, middle, reversal };
+  });
+  expect(sizes.middle).toBeGreaterThan(sizes.collapsed);
+  expect(sizes.middle).toBeLessThan(sizes.full);
+  expect(sizes.reversal).toBeCloseTo(sizes.middle, 0);
+  await expect
+    .poll(async () => (await preview.boundingBox())?.height)
+    .toBeCloseTo(sizes.collapsed, 0);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await toggle.click();
+  await expect(preview).toHaveCSS('max-height', 'none');
+  expect(await preview.evaluate((element) => element.getAnimations().length)).toBe(0);
+  expect((await preview.boundingBox())!.height).toBeCloseTo(sizes.full, 0);
+});
+
+test('a detail expansion releases its old height when the content grows', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.url}conversation-tool-detail.html?preview-probe=1`);
+  const probe = page.getByTestId('preview-probe');
+  const preview = probe.locator('.detail-preview-window');
+  await expect(probe.getByRole('button', { name: 'Show more', exact: true })).toBeVisible();
+  await preview.evaluate(async (element) => {
+    element.parentElement!.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    const animation = element.getAnimations()[0];
+    if (!animation) throw new Error('Expected a detail expansion animation');
+    animation.pause();
+  });
+
+  await page.getByTestId('stretch-preview').click();
+  await expect(preview.locator('pre')).toHaveText('wrapped content '.repeat(800).trim());
+  await expect(preview).toHaveCSS('max-height', 'none');
+  expect(await preview.evaluate((element) => element.getAnimations().length)).toBe(0);
+  await expect(probe.getByRole('button', { name: 'Show less', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  );
+});
+
 test('remeasures on resize and reveals a keyboard-focused link below the preview', async ({
   page
 }) => {
