@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,8 @@ import { structuredToolEventData } from '../../src/tools/output-projection.js';
 import { TOOL_EXECUTION_LIMITS as limits } from '../../src/tools/execution-limits.js';
 import { execToolDefinition, execWaitToolDefinition } from '../../src/tools/local/exec.js';
 import { applyPatchToolDefinition } from '../../src/tools/local/apply-patch.js';
+import { skillToolDefinition } from '../../src/tools/agent/skill.js';
+import { readToolDefinition } from '../../src/tools/local/read.js';
 import type { ToolExecutionContext, ToolExecutionResult } from '../../src/sdk/types.js';
 
 const hosts: LocalAgentHost[] = [];
@@ -26,17 +28,99 @@ const context = (signal = new AbortController().signal): ToolExecutionContext =>
 });
 const data = (result: ToolExecutionResult) =>
   result.data as { cellId: string; status: string; output: string; cached: boolean };
-async function fixture() {
+async function fixture(files: Record<string, string> = {}) {
   const home = await mkdtemp(join(tmpdir(), 'mar-code-exec-'));
   roots.push(home);
   const workspace = join(home, 'workspace');
   await mkdir(workspace);
+  await Promise.all(
+    Object.entries(files).map(([path, text]) => writeFile(join(workspace, path), text))
+  );
   const host = new LocalAgentHost({ homeDirectory: home, workspace });
   hosts.push(host);
   return host;
 }
 
 describe('Code Exec retained cells', () => {
+  it('keeps the original observed read output, not the separate read card summary', async () => {
+    const host = await fixture({ 'sample.txt': 'first line\nsecond line\n' });
+    const ctx = context();
+    const read = await host.executeTool(
+      { name: 'read', arguments: { reads: [{ path: 'sample.txt' }] } },
+      ctx
+    );
+    expect(read.content).toContain('second line');
+    expect(read.eventSummary).not.toBe(read.content);
+    ctx.codeMode = { tools: [readToolDefinition], invoke: async () => read };
+    const result = await host.executeTool(
+      {
+        name: 'code_exec',
+        arguments: 'observe.result(await tools.read({reads: [{path: "sample.txt"}]}));'
+      },
+      ctx
+    );
+    const event = structuredToolEventData('code_exec', result.eventData);
+    expect(event).toMatchObject({
+      observations: [
+        { source: { toolName: 'read', input: null }, result: { content: read.content } }
+      ]
+    });
+    expect(event).not.toHaveProperty('observations.0.result.data');
+  });
+
+  it.each([false, true])(
+    'preserves observed Skill receipts in the public cell body (yield: %s)',
+    async (yieldFirst) => {
+      const host = await fixture();
+      const ctx = context();
+      const receipt = '{"success":true}';
+      ctx.codeMode = {
+        tools: [skillToolDefinition],
+        invoke: async () => ({ content: receipt, data: { success: true, private: 'not public' } })
+      };
+      const started = await host.executeTool(
+        {
+          name: 'code_exec',
+          arguments: `${yieldFirst ? 'await cell.yield_control();\n' : ''}
+const results = await Promise.all(['one', 'two', 'not-observed'].map(name => tools.skill_load({ name })));
+observe.text('before');
+for (const result of results.slice(0, 2)) observe.result(result);
+observe.text('after');`
+        },
+        ctx
+      );
+      const poll = () =>
+        host.executeTool(
+          { name: 'code_exec_wait', arguments: { cellId: data(started).cellId } },
+          ctx
+        );
+      expect(data(started).status).toBe(yieldFirst ? 'running' : 'completed');
+      const completed = yieldFirst ? await poll() : started;
+      const observations = [
+        { type: 'value', value: 'before' },
+        ...Array.from({ length: 2 }, () => ({
+          type: 'tool_result',
+          source: { input: null, toolName: 'skill_load' },
+          result: { content: receipt }
+        })),
+        { type: 'value', value: 'after' }
+      ];
+      expect(data(completed).status).toBe('completed');
+      expect(completed.eventData).toMatchObject({ observations });
+      const event = structuredToolEventData(
+        yieldFirst ? 'code_exec_wait' : 'code_exec',
+        completed.eventData
+      );
+      expect(event).toMatchObject({ observations });
+      expect(JSON.stringify(event)).not.toContain('not public');
+      const replay = await poll();
+      expect(structuredToolEventData('code_exec_wait', replay.eventData)).toMatchObject({
+        cached: true,
+        observations
+      });
+    }
+  );
+
   it('publishes a bounded source before retained waits and keeps it available after wait cancellation', async () => {
     const cells = new CodeCells();
     let finish!: () => void;

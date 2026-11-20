@@ -179,6 +179,30 @@ describe('public tool metadata', () => {
     expect(JSON.stringify(result)).not.toContain('unknown_tool');
   });
   it.each(['code_exec', 'code_exec_wait'])(
+    'does not publish non-receipt Skill text or partially display a receipt in %s',
+    (name) => {
+      const receipt = {
+        type: 'tool_result',
+        id: 'skill-observation',
+        source: { callId: 'skill-call', toolName: 'skill_load', input: { name: 'private-name' } },
+        outcome: 'completed',
+        result: { content: '{"success":true}' }
+      };
+      const tail = { type: 'value', id: 'tail', format: 'text', value: 'x'.repeat(9999) };
+      const event = structuredToolEventData(name, {
+        cellId: 'cell',
+        status: 'completed',
+        observations: [
+          { ...receipt, id: 'private', result: { content: 'private skill body' } },
+          receipt,
+          tail
+        ]
+      });
+      expect(event).toMatchObject({ observations: [tail], outputHeadTruncated: true });
+      expect(JSON.stringify(event)).not.toContain('private');
+    }
+  );
+  it.each(['code_exec', 'code_exec_wait'])(
     'publishes bounded explicit %s observations without private result fields',
     (name) => {
       const observation = {

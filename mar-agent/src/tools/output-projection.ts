@@ -160,7 +160,13 @@ export function publicCodeObservations(
       });
     } else if (entry.type === 'tool_result' && isRecord(entry.source) && isRecord(entry.result)) {
       const name = entry.source.toolName;
-      if (name !== 'exec' && name !== 'exec_wait') {
+      const shell = name === 'exec' || name === 'exec_wait';
+      const text = entry.result.content;
+      // Skill instructions are contextual; only the unmodified success receipt is public output.
+      const skillReceipt =
+        name === 'skill_load' && entry.outcome === 'completed' && text === '{"success":true}';
+      const publicText = name === 'read' || name === 'web_fetch' || name === 'web_search';
+      if (!shell && !skillReceipt && !publicText) {
         if (retained.has(entry)) {
           if (!data.outputSourceKnown && entry.result.truncated === true) sourceTruncated = true;
           selected.unshift(
@@ -168,12 +174,11 @@ export function publicCodeObservations(
           );
         }
       } else if (
-        (name === 'exec' || name === 'exec_wait') &&
         typeof entry.id === 'string' &&
         typeof entry.source.callId === 'string' &&
         (entry.outcome === 'completed' || entry.outcome === 'failed')
       ) {
-        if (displayedCount >= 32) {
+        if (displayedCount >= 32 || (skillReceipt && text.length > remaining)) {
           truncated = true;
           headTruncated = true;
           continue;
@@ -181,12 +186,12 @@ export function publicCodeObservations(
         displayedCount++;
         if (!data.outputSourceKnown && entry.result.truncated === true) sourceTruncated = true;
         truncated ||= entry.result.truncated === true;
-        const resultData = isRecord(entry.result.data) ? entry.result.data : undefined;
+        const resultData = shell && isRecord(entry.result.data) ? entry.result.data : undefined;
         const stderr = typeof resultData?.stderr === 'string' ? clip(resultData.stderr) : undefined;
         const stdout = typeof resultData?.stdout === 'string' ? clip(resultData.stdout) : undefined;
         const content =
-          stdout === undefined && stderr === undefined && typeof entry.result.content === 'string'
-            ? clip(entry.result.content)
+          stdout === undefined && stderr === undefined && typeof text === 'string'
+            ? clip(text)
             : '';
         selected.unshift({
           type: 'tool_result',
